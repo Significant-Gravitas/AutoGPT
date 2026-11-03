@@ -18,7 +18,7 @@ export function PanelSkeleton() {
         <Skeleton className="h-4 w-5/6" />
         <Skeleton className="h-4 w-2/3" />
       </div>
-      <Skeleton className="h-24 w-full rounded-2xl" />
+      <Skeleton className="h-24 w-full" />
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { Add01Icon } from "@hugeicons/core-free-icons";
 import type { FormEvent, KeyboardEvent } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { isKey } from "@/lib/keyboard";
 import { STATUS_LABELS, taskKey } from "../../../../data/helpers";
@@ -56,7 +55,7 @@ export function SubtaskList({ task, onOpenTask }: Props) {
       }
     >
       {subtasks.length ? (
-        <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-xl border border-border-card">
+        <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-card bg-surface shadow-card">
           {subtasks.map((subtask) => {
             const status = STATUS_ICONS[subtask.status];
             return (
@@ -64,7 +63,7 @@ export function SubtaskList({ task, onOpenTask }: Props) {
                 <button
                   type="button"
                   onClick={() => onOpenTask?.(subtask.id)}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+                  className="flex min-h-9 w-full items-center gap-2.5 px-3 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset"
                 >
                   <Icon
                     icon={status.icon}
@@ -76,7 +75,7 @@ export function SubtaskList({ task, onOpenTask }: Props) {
                     {taskKey(subtask.number)}
                   </Text>
                   <Text
-                    variant="small"
+                    variant="inbox"
                     as="span"
                     tone={subtask.status === "done" ? "quiet" : "ink"}
                     className="min-w-0 flex-1 truncate"
@@ -95,12 +94,12 @@ export function SubtaskList({ task, onOpenTask }: Props) {
       {canAdd ? (
         isAdding ? (
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <Input
-              bare
+            <input
+              type="text"
               autoFocus
               aria-label="Sub-task title"
               placeholder="Sub-task title"
-              className="flex-1"
+              className="h-8 w-full min-w-0 flex-1 rounded-control bg-surface px-2.5 text-body-sm text-foreground-ink shadow-card transition-shadow duration-150 ease-out-expo placeholder:text-foreground-faint focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               onKeyDown={handleKeyDown}

@@ -5,7 +5,6 @@ import { Task01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { formatCost } from "@/app/(platform)/tasks/data/helpers";
 import type { TaskPlan } from "@/app/(platform)/tasks/data/types";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
@@ -83,63 +82,57 @@ export function PlanCard({ plan }: { plan: TaskPlan }) {
 
   return (
     <div className="flex flex-col gap-2 py-2">
-      <AttentionCard.Root variant="default" density="comfortable">
-        <div className="flex flex-col gap-3">
-          <AttentionCard.Row align="start">
-            <AttentionCard.Icon nudge>
-              <Icon icon={Task01Icon} size={16} tone="muted" />
-            </AttentionCard.Icon>
-            <AttentionCard.Content>
-              <Text variant="small-medium" tone="muted">
-                Plan
-              </Text>
-              <Text
-                variant="body-medium"
-                tone="primary"
-                className="text-pretty"
-              >
-                {plan.title}
-              </Text>
-              {plan.summary ? (
-                <Text variant="small" tone="secondary" className="text-pretty">
-                  {plan.summary}
-                </Text>
-              ) : null}
-            </AttentionCard.Content>
-          </AttentionCard.Row>
-
-          <ol className="divide-y divide-separator border-y border-separator">
-            {plan.steps.map((step, i) => (
-              <PlanStepRow key={`${i}-${step.title}`} step={step} index={i} />
-            ))}
-          </ol>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Text variant="small" tone="secondary">
-              {plan.steps.length} {plan.steps.length === 1 ? "step" : "steps"}
-              {plan.budget_usd !== null
-                ? ` · Budget ${formatCost(plan.budget_usd)}`
-                : ""}
+      <div className="flex flex-col gap-3 rounded-card bg-surface p-4 shadow-card">
+        <div className="flex items-start gap-2.5">
+          <span className="flex h-5 shrink-0 items-center">
+            <Icon icon={Task01Icon} size={16} tone="quiet" aria-hidden />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <Text variant="inbox-medium" tone="quiet">
+              Plan
             </Text>
-            {!card.isStarted && !card.isCancelled ? (
-              <Button
-                variant="primary"
-                size="small"
-                loading={card.isApproving}
-                disabled={card.isApproving}
-                onClick={card.handleApprove}
-              >
-                Approve & start
-              </Button>
-            ) : null}
-            {card.isCancelled ? (
-              <Text variant="small-medium" tone="muted">
-                Plan cancelled
+            <Text variant="inbox-medium" tone="ink" className="text-pretty">
+              {plan.title}
+            </Text>
+            {plan.summary ? (
+              <Text variant="inbox" tone="text" className="text-pretty">
+                {plan.summary}
               </Text>
             ) : null}
           </div>
         </div>
-      </AttentionCard.Root>
+
+        <ol className="divide-y divide-border-hairline border-y border-border-hairline">
+          {plan.steps.map((step, i) => (
+            <PlanStepRow key={`${i}-${step.title}`} step={step} index={i} />
+          ))}
+        </ol>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Text variant="inbox" tone="quiet" tabular>
+            {plan.steps.length} {plan.steps.length === 1 ? "step" : "steps"}
+            {plan.budget_usd !== null
+              ? ` · Budget ${formatCost(plan.budget_usd)}`
+              : ""}
+          </Text>
+          {!card.isStarted && !card.isCancelled ? (
+            <Button
+              variant="primary"
+              size="small"
+              loading={card.isApproving}
+              disabled={card.isApproving}
+              onClick={card.handleApprove}
+            >
+              Approve & start
+            </Button>
+          ) : null}
+          {card.isCancelled ? (
+            <Text variant="inbox-medium" tone="quiet">
+              Plan cancelled
+            </Text>
+          ) : null}
+        </div>
+      </div>
       {card.isStarted ? (
         <PlanStartedCard
           parentId={card.parentId}

@@ -33,7 +33,7 @@ export function StepRow({ status, label, mono, trailing }: Props) {
       </span>
       <Text
         as="span"
-        variant={mono ? "small-mono" : "small"}
+        variant={mono ? "small-mono" : "inbox"}
         tone={
           status === "error" ? "error" : status === "running" ? "ink" : "text"
         }

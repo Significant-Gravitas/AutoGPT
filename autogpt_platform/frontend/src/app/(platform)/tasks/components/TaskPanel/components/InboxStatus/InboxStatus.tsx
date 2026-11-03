@@ -42,18 +42,18 @@ export function InboxStatus({ task }: Props) {
               : DOT[inbox.state],
           )}
         />
-        <Text as="span" variant="small" weight="medium" tone={state.tone}>
+        <Text as="span" variant="inbox-medium" tone={state.tone}>
           {state.label}
         </Text>
         {elapsed ? (
-          <Text as="span" variant="small" tone="faint" tabular>
+          <Text as="span" variant="inbox" tone="faint" tabular>
             · {elapsed}
           </Text>
         ) : null}
         {inbox.last_activity ? (
           <Text
             as="span"
-            variant="small"
+            variant="inbox"
             tone="quiet"
             className="min-w-0 flex-1 truncate"
           >
@@ -68,12 +68,12 @@ export function InboxStatus({ task }: Props) {
       {inbox.steps.length ? (
         <ol
           aria-label="Latest steps"
-          className="flex flex-col rounded-xl bg-surface-tray px-3 py-1"
+          className="flex flex-col divide-y divide-border-hairline"
         >
           {inbox.steps.map((step, index) => (
             <li
               key={`${step.time}-${index}`}
-              className="flex animate-inbox-enter py-1.5"
+              className="flex min-h-9 animate-inbox-enter items-center"
             >
               <StepRow
                 status={step.status}

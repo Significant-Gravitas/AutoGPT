@@ -25,14 +25,12 @@ export function TaskNeedsYou({ className }: Props) {
       title="Tasks that need you"
       badge={
         tasks.length > 0 ? (
-          <span className="rounded-md bg-warning-surface px-1.5 py-0.5">
-            <Text
-              variant="small-medium"
-              as="span"
-              tone="warning"
-              tabular
-              className="block"
-            >
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full bg-status-waiting"
+            />
+            <Text variant="inbox-medium" as="span" tone="waiting" tabular>
               {tasks.length}
             </Text>
           </span>
@@ -52,12 +50,12 @@ export function TaskNeedsYou({ className }: Props) {
     >
       {tasks.length === 0 ? (
         <div className="px-4 py-3">
-          <Text variant="small" tone="muted">
+          <Text variant="inbox" tone="quiet">
             {isLoading ? "Loading…" : "Nothing needs you right now."}
           </Text>
         </div>
       ) : (
-        <ul className="divide-y divide-separator">
+        <ul className="divide-y divide-border-hairline">
           {tasks.map((task) => (
             <li key={task.id}>
               <TaskRow task={task} />
@@ -74,7 +72,7 @@ function TaskRow({ task }: { task: Task }) {
   return (
     <NextLink
       href={`/tasks?task=${encodeURIComponent(task.id)}`}
-      className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+      className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset"
     >
       {asker ? (
         <span className="mt-0.5 shrink-0">
@@ -83,25 +81,25 @@ function TaskRow({ task }: { task: Task }) {
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <Text variant="small-medium" as="span" tone="muted" tabular>
+          <Text variant="small-mono" as="span" tone="faint">
             {taskKey(task.number)}
           </Text>
           <Text
-            variant="body-medium"
+            variant="inbox-medium"
             as="span"
-            tone="primary"
+            tone="ink"
             className="truncate"
           >
             {task.title}
           </Text>
         </div>
         {task.open_question ? (
-          <Text variant="small" tone="body" className="line-clamp-2">
+          <Text variant="inbox" tone="text" className="line-clamp-2">
             {task.open_question.question}
           </Text>
         ) : null}
         {asker ? (
-          <Text variant="small" tone="muted">
+          <Text variant="small" tone="quiet">
             {asker.name}
           </Text>
         ) : null}

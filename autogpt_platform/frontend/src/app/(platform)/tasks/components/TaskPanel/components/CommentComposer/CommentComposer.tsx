@@ -2,7 +2,6 @@
 
 import { SentIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { ExpertOption } from "../../../../data/types";
@@ -39,7 +38,7 @@ export function CommentComposer({ taskId, experts }: Props) {
             id={listboxId}
             role="listbox"
             aria-label="Mention an expert"
-            className="absolute bottom-full left-0 z-10 mb-1.5 flex w-64 animate-inbox-enter flex-col gap-0.5 rounded-xl border border-border-card bg-surface p-1 shadow-md"
+            className="absolute bottom-full left-0 z-10 mb-1.5 flex w-64 animate-inbox-enter flex-col gap-0.5 rounded-card bg-surface p-1 shadow-card"
           >
             {suggestions.map((expert, index) => (
               <li
@@ -52,10 +51,10 @@ export function CommentComposer({ taskId, experts }: Props) {
                   selectExpert(expert);
                 }}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color] duration-150 ease-out-expo",
+                  "flex cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 transition-[background-color] duration-150 ease-out-expo",
                   index === activeIndex
-                    ? "bg-surface-tray"
-                    : "hover:bg-surface-tray",
+                    ? "bg-surface-wash"
+                    : "hover:bg-surface-wash",
                 )}
               >
                 <AssigneeAvatar
@@ -67,16 +66,14 @@ export function CommentComposer({ taskId, experts }: Props) {
                   }}
                   size={18}
                 />
-                <Text variant="small" weight="medium" tone="ink" as="span">
+                <Text variant="inbox-medium" tone="ink" as="span">
                   {expert.name}
                 </Text>
               </li>
             ))}
           </ul>
         ) : null}
-        <Input
-          bare
-          type="textarea"
+        <textarea
           ref={textareaRef}
           aria-label="Comment"
           role="combobox"
@@ -95,7 +92,7 @@ export function CommentComposer({ taskId, experts }: Props) {
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           readOnly={isSending}
-          className="resize-none"
+          className="block min-h-16 w-full resize-none rounded-card bg-surface px-3 py-2.5 text-body-sm text-foreground-ink shadow-card transition-shadow duration-150 ease-out-expo placeholder:text-foreground-faint focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
       <div className="flex items-center justify-between gap-2">

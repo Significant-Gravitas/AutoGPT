@@ -26,30 +26,29 @@ export function TaskOutcome({ task }: Props) {
   if (!task.outcome_summary && !task.artifacts.length) return null;
 
   return (
-    <section
-      aria-label="Outcome"
-      className="flex animate-inbox-enter flex-col gap-2.5 px-5 py-4"
-    >
-      <div className="flex items-center gap-1.5">
-        <Icon icon={CheckmarkCircle02Icon} tone="ok" size={14} aria-hidden />
-        <Text as="h3" variant="small" weight="medium" tone="ok">
-          Outcome
-        </Text>
+    <section aria-label="Outcome" className="animate-inbox-enter px-5 py-4">
+      <div className="flex flex-col gap-2.5 rounded-card bg-status-ok-surface p-4">
+        <div className="flex items-center gap-1.5">
+          <Icon icon={CheckmarkCircle02Icon} tone="ok" size={14} aria-hidden />
+          <Text as="h3" variant="inbox-medium" tone="ok">
+            Outcome
+          </Text>
+        </div>
+        {task.outcome_summary ? (
+          <Text variant="inbox" tone="ink" className="whitespace-pre-wrap">
+            {task.outcome_summary}
+          </Text>
+        ) : null}
+        {task.artifacts.length ? (
+          <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-card bg-surface shadow-card">
+            {task.artifacts.map((artifact) => (
+              <li key={artifact.id}>
+                <ArtifactLink artifact={artifact} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
-      {task.outcome_summary ? (
-        <Text variant="body-tight" tone="ink" className="whitespace-pre-wrap">
-          {task.outcome_summary}
-        </Text>
-      ) : null}
-      {task.artifacts.length ? (
-        <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-xl border border-border-card">
-          {task.artifacts.map((artifact) => (
-            <li key={artifact.id}>
-              <ArtifactLink artifact={artifact} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 }
@@ -63,15 +62,17 @@ function ArtifactLink({ artifact }: { artifact: TaskArtifact }) {
         size={14}
         aria-hidden
       />
-      <Text variant="small" tone="text" as="span" className="truncate">
+      <Text variant="inbox" tone="text" as="span" className="truncate">
         {artifact.title}
       </Text>
     </>
   );
   const className =
-    "flex items-center gap-2.5 px-3 py-2 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset";
+    "flex min-h-9 items-center gap-2.5 px-3 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset";
   if (!artifact.url || !/^(https?:\/\/|\/)/.test(artifact.url)) {
-    return <div className="flex items-center gap-2.5 px-3 py-2">{content}</div>;
+    return (
+      <div className="flex min-h-9 items-center gap-2.5 px-3">{content}</div>
+    );
   }
   const isExternal = /^https?:\/\//.test(artifact.url);
   return (

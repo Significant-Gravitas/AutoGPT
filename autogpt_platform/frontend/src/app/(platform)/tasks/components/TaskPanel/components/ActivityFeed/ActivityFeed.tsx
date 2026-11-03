@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  AlertCircleIcon,
-  CornerDownRightIcon,
-} from "@hugeicons/core-free-icons";
+import { CornerDownRightIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -29,11 +26,11 @@ export function ActivityFeed({ items, isLoading, experts }: Props) {
       {isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-11 w-full" />
           <Skeleton className="h-5 w-1/2" />
         </div>
       ) : !items.length ? (
-        <Text variant="small" tone="faint">
+        <Text variant="inbox" tone="faint">
           No activity yet.
         </Text>
       ) : (
@@ -59,28 +56,20 @@ function ActivityRow({ item, names }: { item: TaskActivity; names: string[] }) {
   ) {
     const isQuestion = item.kind === "question";
     return (
-      <div
-        className={
-          isQuestion
-            ? "flex gap-3 rounded-xl border border-status-waiting/20 bg-status-waiting/5 p-3"
-            : "flex gap-3 rounded-xl bg-surface-tray p-3"
-        }
-      >
+      <div className="flex gap-3 rounded-card bg-surface-wash p-3">
         <AssigneeAvatar assignee={item.actor} size={24} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-x-2">
-            <Text variant="small" weight="medium" tone="ink" as="span">
+            <Text variant="inbox-medium" tone="ink" as="span">
               {item.actor.name}
             </Text>
             {isQuestion ? (
-              <span className="inline-flex items-center gap-1">
-                <Icon
-                  icon={AlertCircleIcon}
-                  tone="waiting"
-                  size={12}
+              <span className="inline-flex items-center gap-1.5">
+                <span
                   aria-hidden
+                  className="size-1.5 shrink-0 rounded-full bg-status-waiting"
                 />
-                <Text variant="small" tone="waiting" as="span">
+                <Text variant="inbox-medium" tone="waiting" as="span">
                   asked
                 </Text>
               </span>
@@ -93,7 +82,7 @@ function ActivityRow({ item, names }: { item: TaskActivity; names: string[] }) {
                   size={12}
                   aria-hidden
                 />
-                <Text variant="small" tone="quiet" as="span">
+                <Text variant="inbox" tone="quiet" as="span">
                   answered
                 </Text>
               </span>
@@ -103,19 +92,13 @@ function ActivityRow({ item, names }: { item: TaskActivity; names: string[] }) {
             </Text>
           </div>
           <Text
-            variant="small"
+            variant="inbox"
             tone="text"
             className="break-words whitespace-pre-wrap"
           >
             {splitMentions(item.body, names).map((part, index) =>
               part.mention ? (
-                <Text
-                  key={index}
-                  variant="small"
-                  weight="medium"
-                  tone="brand"
-                  as="span"
-                >
+                <Text key={index} variant="inbox-medium" tone="brand" as="span">
                   {part.text}
                 </Text>
               ) : (
@@ -131,8 +114,8 @@ function ActivityRow({ item, names }: { item: TaskActivity; names: string[] }) {
   return (
     <div className="flex items-center gap-2.5 px-3 py-1">
       <AssigneeAvatar assignee={item.actor} size={16} />
-      <Text variant="small" tone="quiet" className="min-w-0 flex-1">
-        <Text variant="small" weight="medium" tone="text" as="span">
+      <Text variant="inbox" tone="quiet" className="min-w-0 flex-1">
+        <Text variant="inbox-medium" tone="text" as="span">
           {item.actor.name}
         </Text>{" "}
         {describeActivity(item)}

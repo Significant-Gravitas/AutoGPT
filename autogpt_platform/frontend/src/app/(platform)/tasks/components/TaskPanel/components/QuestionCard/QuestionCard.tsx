@@ -1,10 +1,7 @@
 "use client";
 
-import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import type { FormEvent } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import type { TaskQuestion } from "../../../../data/types";
 import { useQuestionCard } from "./useQuestionCard";
@@ -27,15 +24,21 @@ export function QuestionCard({ taskId, question }: Props) {
   return (
     <section
       aria-label="Question for you"
-      className="flex animate-inbox-enter flex-col gap-3 rounded-xl border border-status-waiting/20 bg-status-waiting/5 p-4"
+      className="flex animate-inbox-enter flex-col gap-3 rounded-card bg-surface-wash p-4"
     >
       <div className="flex items-center gap-2">
-        <Icon icon={AlertCircleIcon} tone="waiting" size={14} />
-        <Text variant="small" weight="medium" tone="waiting">
-          Needs you · {question.asked_by.name} asks
+        <span
+          aria-hidden
+          className="size-2 shrink-0 rounded-full bg-status-waiting"
+        />
+        <Text variant="inbox-medium" tone="waiting">
+          Needs you
+        </Text>
+        <Text variant="inbox" tone="quiet">
+          · {question.asked_by.name} asks
         </Text>
       </div>
-      <Text variant="body-tight" tone="ink" className="whitespace-pre-wrap">
+      <Text variant="inbox" tone="ink" className="whitespace-pre-wrap">
         {question.question}
       </Text>
       {options.length ? (
@@ -55,11 +58,11 @@ export function QuestionCard({ taskId, question }: Props) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
-          <Input
-            bare
+          <input
+            type="text"
             aria-label="Your answer"
             placeholder="Type your answer"
-            className="flex-1"
+            className="h-8 w-full min-w-0 flex-1 rounded-control bg-surface px-2.5 text-body-sm text-foreground-ink shadow-card transition-shadow duration-150 ease-out-expo placeholder:text-foreground-faint focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
             disabled={isSending}

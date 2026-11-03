@@ -12,7 +12,7 @@ interface Props {
 
 export function PanelHeader({ task, onClose }: Props) {
   return (
-    <div className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border-hairline bg-surface pr-2 pl-5">
+    <div className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 bg-surface pr-2 pl-5 shadow-hairline-b">
       {task ? (
         <>
           <Text
@@ -25,8 +25,7 @@ export function PanelHeader({ task, onClose }: Props) {
           </Text>
           <Text
             as="span"
-            variant="small"
-            weight="medium"
+            variant="inbox-medium"
             tone="ink"
             className="min-w-0 flex-1 truncate"
           >
@@ -37,7 +36,7 @@ export function PanelHeader({ task, onClose }: Props) {
         <span className="flex-1" />
       )}
       <Button
-        variant="icon"
+        variant="ghost-muted"
         size="icon-xs"
         aria-label="Close task"
         onClick={onClose}

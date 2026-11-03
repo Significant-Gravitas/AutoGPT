@@ -15,7 +15,7 @@ export function PanelPlan({ planId }: Props) {
   if (isLoading) {
     return (
       <div className="px-5 py-4">
-        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full" />
       </div>
     );
   }

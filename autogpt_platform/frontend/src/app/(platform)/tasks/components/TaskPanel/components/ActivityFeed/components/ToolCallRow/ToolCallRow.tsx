@@ -34,17 +34,21 @@ export function ToolCallRow({ call, since }: Props) {
   );
 
   if (!hasDetails) {
-    return <div className="flex px-3 py-2">{row}</div>;
+    return (
+      <div className="flex min-h-9 items-center rounded-card bg-surface px-3 shadow-card">
+        {row}
+      </div>
+    );
   }
 
   return (
-    <div>
+    <div className="overflow-hidden rounded-card bg-surface shadow-card transition-shadow duration-150 ease-out-expo hover:shadow-card-hover">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+        className="flex min-h-9 w-full items-center gap-2 px-3 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset"
       >
         {row}
         <Icon
@@ -57,7 +61,7 @@ export function ToolCallRow({ call, since }: Props) {
         />
       </button>
       <Fold open={open} id={bodyId}>
-        <div className="flex flex-col gap-2 px-3 pb-3 pl-9">
+        <div className="flex flex-col gap-3 border-t border-border-hairline px-3 pt-2.5 pb-3">
           {call.input_preview ? (
             <Preview label="Input" text={call.input_preview} />
           ) : null}
@@ -72,11 +76,11 @@ export function ToolCallRow({ call, since }: Props) {
 
 function Preview({ label, text }: { label: string; text: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <Text variant="small" tone="faint">
+    <div className="flex flex-col gap-1.5">
+      <Text variant="small" weight="medium" tone="quiet">
         {label}
       </Text>
-      <div className="rounded-lg bg-surface-tray px-2.5 py-1.5">
+      <div className="rounded-control bg-surface-wash px-3 py-2.5">
         <Text
           variant="small-mono"
           tone="text"

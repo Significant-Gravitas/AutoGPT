@@ -75,14 +75,14 @@ export function TaskPanel({ taskId, onClose, onOpenTask }: Props) {
               <PanelSection label="Description">
                 {task.description ? (
                   <Text
-                    variant="body-tight"
+                    variant="inbox"
                     tone="text"
                     className="whitespace-pre-wrap"
                   >
                     {task.description}
                   </Text>
                 ) : (
-                  <Text variant="body-tight" tone="faint">
+                  <Text variant="inbox" tone="faint">
                     No description
                   </Text>
                 )}
@@ -95,7 +95,7 @@ export function TaskPanel({ taskId, onClose, onOpenTask }: Props) {
                 experts={experts}
               />
             </div>
-            <div className="shrink-0 border-t border-border-hairline bg-surface p-3">
+            <div className="shrink-0 border-t border-border-hairline bg-surface px-4 pt-3 pb-4">
               <CommentComposer taskId={task.id} experts={experts} />
             </div>
           </>

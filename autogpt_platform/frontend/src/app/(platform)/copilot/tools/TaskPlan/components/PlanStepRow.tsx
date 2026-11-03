@@ -9,22 +9,18 @@ interface Props {
 
 export function PlanStepRow({ step, index }: Props) {
   return (
-    <li className="flex items-start gap-3 py-2">
-      <Text
-        variant="small-medium"
-        as="span"
-        tone="muted"
-        tabular
-        className="mt-0.5 w-4 shrink-0 text-right"
-      >
-        {index + 1}
-      </Text>
+    <li className="flex items-start gap-3 py-2.5">
+      <span className="w-4 shrink-0 text-right">
+        <Text variant="inbox" as="span" tone="faint" tabular>
+          {index + 1}
+        </Text>
+      </span>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium" tone="primary" className="text-pretty">
+        <Text variant="inbox-medium" tone="ink" className="text-pretty">
           {step.title}
         </Text>
         {step.description ? (
-          <Text variant="small" tone="secondary" className="text-pretty">
+          <Text variant="inbox" tone="text" className="text-pretty">
             {step.description}
           </Text>
         ) : null}
@@ -32,7 +28,7 @@ export function PlanStepRow({ step, index }: Props) {
       {step.expert ? (
         <div className="flex shrink-0 items-center gap-1.5">
           <AssigneeAvatar assignee={step.expert} size={20} />
-          <Text variant="small-medium" as="span" tone="body">
+          <Text variant="inbox" as="span" tone="text">
             {step.expert.name}
           </Text>
         </div>

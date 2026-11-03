@@ -34,22 +34,22 @@ export function TurnRow({ item }: Props) {
   const status = getTurnStatus(item);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border-card bg-surface">
+    <div className="overflow-hidden rounded-card bg-surface shadow-card transition-shadow duration-150 ease-out-expo hover:shadow-card-hover">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+        className="flex min-h-11 w-full items-center gap-2 px-3.5 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset"
       >
         <StepRow
           status={status}
           label={
             <>
-              <Text as="span" variant="small" weight="medium" tone="ink">
+              <Text as="span" variant="inbox-medium" tone="ink">
                 {item.actor.name}
               </Text>
-              <Text as="span" variant="small" tone="quiet" tabular>
+              <Text as="span" variant="inbox" tone="quiet" tabular>
                 {" "}
                 · {formatMetrics(item.metrics)}
               </Text>
@@ -73,18 +73,14 @@ export function TurnRow({ item }: Props) {
         />
       </button>
       <Fold open={open} id={bodyId}>
-        <div className="flex flex-col border-t border-border-hairline">
+        <div className="flex flex-col gap-3 border-t border-border-hairline px-3.5 pt-3 pb-3.5">
           {item.summary ? (
-            <Text
-              variant="small"
-              tone="text"
-              className="px-3 py-2.5 whitespace-pre-wrap"
-            >
+            <Text variant="inbox" tone="text" className="whitespace-pre-wrap">
               {item.summary}
             </Text>
           ) : null}
           {item.tool_calls.length ? (
-            <div className="flex flex-col divide-y divide-border-hairline border-t border-border-hairline first:border-t-0">
+            <div className="flex flex-col gap-1.5">
               {item.tool_calls.map((call) => (
                 <ToolCallRow
                   key={call.id}
@@ -94,7 +90,7 @@ export function TurnRow({ item }: Props) {
               ))}
             </div>
           ) : (
-            <Text variant="small" tone="quiet" className="px-3 py-2.5">
+            <Text variant="inbox" tone="quiet">
               No tool calls in this step.
             </Text>
           )}

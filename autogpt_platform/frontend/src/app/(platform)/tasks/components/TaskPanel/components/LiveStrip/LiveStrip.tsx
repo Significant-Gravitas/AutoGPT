@@ -15,7 +15,7 @@ export function LiveStrip({ live, metrics }: Props) {
   return (
     <section
       aria-label="Live progress"
-      className="flex flex-col gap-2 rounded-xl border border-border-card bg-surface px-3 py-2.5 shadow-sm"
+      className="flex flex-col gap-1.5 rounded-card bg-surface px-3.5 py-3 shadow-card"
     >
       <div className="flex items-center">
         <StepRow
@@ -24,10 +24,12 @@ export function LiveStrip({ live, metrics }: Props) {
           trailing={<LiveTimer since={live.started_at} />}
         />
       </div>
-      <Text variant="small" tone="quiet" tabular className="pl-6">
-        {formatCost(metrics.cost_usd)} · {formatTokens(metrics.tokens)} ·{" "}
-        {metrics.tool_calls} tool call{metrics.tool_calls === 1 ? "" : "s"}
-      </Text>
+      <div className="pl-6">
+        <Text variant="small" tone="quiet" tabular>
+          {formatCost(metrics.cost_usd)} · {formatTokens(metrics.tokens)} ·{" "}
+          {metrics.tool_calls} tool call{metrics.tool_calls === 1 ? "" : "s"}
+        </Text>
+      </div>
     </section>
   );
 }

@@ -72,7 +72,7 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
       <Text variant="small-mono" tone="faint">
         {taskKey(task.number)}
       </Text>
-      <Text variant="h4" as="h2" tone="ink" className="text-pretty">
+      <Text variant="large-medium" as="h2" tone="ink" className="text-pretty">
         {task.title}
       </Text>
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -172,7 +172,7 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
         </DropdownMenu>
 
         {task.due_date ? (
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-md bg-surface-tray px-2.5">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-wash px-2.5">
             <Icon
               icon={Calendar03Icon}
               tone={isOverdue ? "waiting" : "quiet"}

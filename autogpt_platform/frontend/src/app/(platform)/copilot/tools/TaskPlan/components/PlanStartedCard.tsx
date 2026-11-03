@@ -1,8 +1,7 @@
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import NextLink from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
-import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { taskKey } from "@/app/(platform)/tasks/data/helpers";
 import { taskHref } from "../helpers";
 
@@ -17,30 +16,28 @@ export function PlanStartedCard({ goal, parentId, parentNumber }: Props) {
     ? `Plan started · ${taskKey(parentNumber)}`
     : "Plan started";
   return (
-    <AttentionCard.Root variant="success" density="snug">
-      <AttentionCard.Row align="center">
-        <AttentionCard.Icon>
-          <Icon icon={CheckmarkCircle02Icon} size={16} tone="success" />
-        </AttentionCard.Icon>
-        <AttentionCard.Content>
-          <Text variant="body-medium" as="span" tone="success-strong">
-            {label}
+    <div className="flex animate-inbox-enter items-center gap-2.5 rounded-card bg-status-ok-surface px-3.5 py-3">
+      <Icon icon={CheckmarkCircle02Icon} size={16} tone="ok" aria-hidden />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Text variant="inbox-medium" as="span" tone="ok">
+          {label}
+        </Text>
+        {goal ? (
+          <Text variant="inbox" tone="text" className="truncate">
+            {goal}
           </Text>
-          {goal ? (
-            <Text variant="small" tone="secondary" className="truncate">
-              {goal}
-            </Text>
-          ) : null}
-        </AttentionCard.Content>
-        {parentId ? (
-          <Link
-            href={taskHref(parentId)}
-            className="shrink-0 rounded-sm text-body font-medium text-success-foreground focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
-          >
-            Open task
-          </Link>
         ) : null}
-      </AttentionCard.Row>
-    </AttentionCard.Root>
+      </div>
+      {parentId ? (
+        <NextLink
+          href={taskHref(parentId)}
+          className="shrink-0 rounded-control px-2 py-1 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none"
+        >
+          <Text variant="inbox-medium" as="span" tone="ok">
+            Open task
+          </Text>
+        </NextLink>
+      ) : null}
+    </div>
   );
 }
