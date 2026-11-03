@@ -249,17 +249,19 @@ def _audit_cross_user_access(
 
 
 async def _resolve_and_audit_memory_scope(
-    *,
     request: Request,
+    user_id: str,
     caller_id: str,
-    target_id: str,
     jwt_payload: dict,
+    *,
     expert_id: str | None,
-) -> MemoryScope:
-    """Resolve an authorized scope while auditing successful and failed attempts.
+) -> tuple[str, MemoryScope]:
+    """Resolve the target user and an authorized scope, auditing successful and
+    failed attempts.
 
     ``expert_id`` is required so an account-only caller says so explicitly
     instead of landing in the account graph by omission."""
+    target_id = _resolve_user_id(user_id, caller_id)
     try:
         memory_scope = await _resolve_memory_scope(target_id, expert_id)
     except Exception:
@@ -280,7 +282,21 @@ async def _resolve_and_audit_memory_scope(
         expert_id=memory_scope.expert_id,
         group_id=memory_scope.group_id,
     )
-    return memory_scope
+    return target_id, memory_scope
+
+
+def _resolve_and_audit_target(
+    request: Request, user_id: str, caller_id: str, jwt_payload: dict
+) -> str:
+    """Resolve the target user of a route that reads no memory scope, auditing it."""
+    target_id = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target_id,
+        jwt_payload=jwt_payload,
+    )
+    return target_id
 
 
 async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> None:
@@ -355,13 +371,8 @@ async def _get_memory_overview_impl(
     jwt_payload: dict,
     expert_id: str | None,
 ) -> MemoryOverview:
-    target = _resolve_user_id(user_id, caller_id)
-    memory_scope = await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=expert_id,
+    target, memory_scope = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=expert_id
     )
     group_id = memory_scope.group_id
 
@@ -438,13 +449,8 @@ async def _list_entities_impl(
     expert_id: str | None,
     limit: int,
 ) -> EntityListResponse:
-    target = _resolve_user_id(user_id, caller_id)
-    memory_scope = await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=expert_id,
+    target, memory_scope = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=expert_id
     )
     group_id = memory_scope.group_id
 
@@ -532,13 +538,8 @@ async def _list_facts_impl(
     status: str,
     scope: str | None,
 ) -> FactListResponse:
-    target = _resolve_user_id(user_id, caller_id)
-    memory_scope = await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=expert_id,
+    target, memory_scope = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=expert_id
     )
     group_id = memory_scope.group_id
 
@@ -667,13 +668,8 @@ async def _list_communities_impl(
     expert_id: str | None,
     limit: int,
 ) -> CommunityListResponse:
-    target = _resolve_user_id(user_id, caller_id)
-    memory_scope = await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=expert_id,
+    target, memory_scope = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=expert_id
     )
     group_id = memory_scope.group_id
 
@@ -770,13 +766,8 @@ async def _get_graph_impl(
     include_episodes: bool,
     include_communities: bool,
 ) -> GraphResponse:
-    target = _resolve_user_id(user_id, caller_id)
-    memory_scope = await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=expert_id,
+    target, memory_scope = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=expert_id
     )
     group_id = memory_scope.group_id
 
@@ -1079,13 +1070,8 @@ async def trigger_dream_pass(
     the account unless ``force`` expires that pass first. ``force`` does not
     take a lock another pass holds.
     """
-    target = _resolve_user_id(user_id, caller_id)
-    await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=None,
+    target, _ = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=None
     )
 
     job_id = str(_uuid.uuid4())
@@ -1144,13 +1130,7 @@ async def list_dream_pass_records(
     it. A finished pass keeps its phase outputs, operations and usage; its
     input bundle went when it closed, and its lease with it, or, for a pass
     whose close left a cleanup pending, once that cleanup finished."""
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     passes = await read_user_passes(target, open_only=status == "open", limit=limit)
     return DreamPassListResponse(passes=[_public_pass_record(row) for row in passes])
 
@@ -1167,13 +1147,7 @@ async def get_dream_pass_status(
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> DreamJobStatus:
     """Read the current status of a fire-and-forget dream pass job."""
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     status = await read_status(kind="dream_pass", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -1201,13 +1175,7 @@ async def get_dream_pass_record(
     (the cost log still has that usage). 404 for a pass that does not exist
     or belongs to another user, alike.
     """
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     record = await read_dream_pass(pass_id, user_id=target)
     if record is None:
         raise HTTPException(status_code=404, detail="dream pass not found")
@@ -1239,13 +1207,7 @@ async def cancel_dream_pass_run(
     does not exist or belongs to another user, alike; 409 once the pass has
     ended.
     """
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     reason = (body.reason if body else None) or ADMIN_CANCEL_REASON
     cancel = await cancel_dream_pass(pass_id, user_id=target, reason=reason)
     if cancel.record is None:
@@ -1273,13 +1235,8 @@ async def trigger_ratification_pass(
     community rebuild. Useful for testing ratification behavior
     without the full nightly fan-out.
     """
-    target = _resolve_user_id(user_id, caller_id)
-    await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=None,
+    target, _ = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=None
     )
 
     try:
@@ -1317,13 +1274,8 @@ async def trigger_nightly_batch(
     batch-family submitter runs in sequence sharing one ``nightly_id``
     for cost-log attribution.
     """
-    target = _resolve_user_id(user_id, caller_id)
-    await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=None,
+    target, _ = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=None
     )
 
     job_id = str(_uuid.uuid4())
@@ -1368,13 +1320,7 @@ async def get_nightly_batch_status(
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> NightlyJobStatus:
     """Read the current status of a fire-and-forget nightly batch job."""
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     status = await read_status(kind="nightly", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -1412,13 +1358,8 @@ async def rebuild_communities(
     for progress.
     """
     _ = force  # not yet plumbed through the with_status wrapper
-    target = _resolve_user_id(user_id, caller_id)
-    await _resolve_and_audit_memory_scope(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-        expert_id=None,
+    target, _ = await _resolve_and_audit_memory_scope(
+        request, user_id, caller_id, jwt_payload, expert_id=None
     )
 
     job_id = str(_uuid.uuid4())
@@ -1465,13 +1406,7 @@ async def get_community_rebuild_status(
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
 ) -> CommunityRebuildJobStatus:
     """Read the current status of a fire-and-forget community rebuild job."""
-    target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
-        request=request,
-        caller_id=caller_id,
-        target_id=target,
-        jwt_payload=jwt_payload,
-    )
+    target = _resolve_and_audit_target(request, user_id, caller_id, jwt_payload)
     status = await read_status(kind="rebuild", job_id=job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="job not found")

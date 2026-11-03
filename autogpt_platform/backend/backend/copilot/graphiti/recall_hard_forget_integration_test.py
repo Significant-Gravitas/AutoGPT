@@ -105,7 +105,7 @@ async def _admin_views(
     mocker.patch.object(
         memory_admin_routes,
         "_resolve_and_audit_memory_scope",
-        AsyncMock(return_value=scope),
+        AsyncMock(return_value=(scope.owner_user_id, scope)),
     )
     common = {
         "request": MagicMock(),
