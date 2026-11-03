@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import os
 import platform as _platform
+import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from xml.sax.saxutils import escape as _xml_escape
 
 from . import platform_info
 
@@ -41,11 +44,15 @@ TASKSCHED_TASK_NAME = r"\AutoGPT\Shim"
 class AutostartContext:
     """Values substituted into the templates at install time."""
 
-    python_executable: str
-    shim_executable_path: str
+    # The program that starts the shim, and any arguments before its own.
+    shim_command: tuple[str, ...]
     config_path: str
     stdout_log: str
     stderr_log: str
+
+    @property
+    def start_argv(self) -> tuple[str, ...]:
+        return (*self.shim_command, "--config", self.config_path, "start")
 
 
 def _read_template(name: str) -> str:
@@ -53,35 +60,79 @@ def _read_template(name: str) -> str:
 
 
 def render_template(name: str, ctx: AutostartContext) -> str:
-    """Substitute placeholders in a template. KeyError surfaces unknown vars."""
-    tpl = _read_template(name)
-    return tpl.format(
-        python_executable=ctx.python_executable,
-        shim_executable_path=ctx.shim_executable_path,
-        config_path=ctx.config_path,
-        stdout_log=ctx.stdout_log,
-        stderr_log=ctx.stderr_log,
-    )
+    """Fill a template, each value quoted for that file's own syntax.
+
+    KeyError surfaces unknown placeholders.
+    """
+    for value in (*ctx.start_argv, ctx.stdout_log, ctx.stderr_log):
+        if _CONTROL_CHARACTER.search(value):
+            raise ValueError(f"Autostart value {value!r} contains a control character")
+    return _read_template(name).format(**_TEMPLATE_VALUES[name](ctx))
+
+
+_CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+# Characters an ExecStart word may hold without quotes.
+_SYSTEMD_PLAIN = re.compile(r"[\w@+=:,./-]+")
+
+
+def _launchd_values(ctx: AutostartContext) -> dict[str, str]:
+    return {
+        "program_arguments": "\n".join(
+            f"        <string>{_xml_escape(arg)}</string>" for arg in ctx.start_argv
+        ),
+        "stdout_log": _xml_escape(ctx.stdout_log),
+        "stderr_log": _xml_escape(ctx.stderr_log),
+    }
+
+
+def _systemd_values(ctx: AutostartContext) -> dict[str, str]:
+    return {
+        "exec_start": " ".join(_systemd_word(arg) for arg in ctx.start_argv),
+        # Specifiers are expanded in these paths; variables are not.
+        "stdout_log": ctx.stdout_log.replace("%", "%%"),
+        "stderr_log": ctx.stderr_log.replace("%", "%%"),
+    }
+
+
+def _systemd_word(arg: str) -> str:
+    """One ExecStart argument, which systemd reads back exactly as given."""
+    text = arg.replace("%", "%%").replace("$", "$$")
+    if _SYSTEMD_PLAIN.fullmatch(arg):
+        return text
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _task_scheduler_values(ctx: AutostartContext) -> dict[str, str]:
+    program, *arguments = ctx.start_argv
+    return {
+        "command": _xml_escape(subprocess.list2cmdline([program])),
+        "arguments": _xml_escape(subprocess.list2cmdline(arguments)),
+    }
+
+
+_TEMPLATE_VALUES: dict[str, Callable[[AutostartContext], dict[str, str]]] = {
+    "launchd.plist.template": _launchd_values,
+    "systemd.service.template": _systemd_values,
+    "taskscheduler.xml.template": _task_scheduler_values,
+}
 
 
 # ── Path resolution ──────────────────────────────────────────────────────────
 
 
-def resolve_shim_executable() -> str:
-    """Locate the `autogpt-shim` console script.
+def resolve_shim_command() -> tuple[str, ...]:
+    """The command that starts the shim, as separate arguments.
 
-    Prefer the installed entry point (shutil.which); fall back to invoking
-    the current Python with `-m autogpt_local_executor.cli`. The fallback
-    is what pipx-with-symlinks-not-on-PATH installs hit.
+    Prefer the `autogpt-shim` console script on PATH, then the one beside
+    this interpreter (a pipx or venv install run by absolute path), then
+    `python -m autogpt_local_executor`.
     """
-    found = shutil.which("autogpt-shim")
+    found = shutil.which("autogpt-shim") or shutil.which(
+        "autogpt-shim", path=str(Path(sys.executable).parent)
+    )
     if found:
-        return found
-    # Fallback: python -m. We render this as a single string so callers that
-    # plug it into ProgramArguments (launchd) get a working command via sh.
-    # For tests and simple cases that's fine; for launchd users may want to
-    # re-render after they put the script on PATH.
-    return f"{sys.executable} -m autogpt_local_executor.cli"
+        return (found,)
+    return (sys.executable, "-m", "autogpt_local_executor")
 
 
 def default_stdout_log() -> Path:
@@ -122,8 +173,7 @@ def default_config_path() -> Path:
 def build_context(config_path: Path | None) -> AutostartContext:
     cfg = config_path or default_config_path()
     return AutostartContext(
-        python_executable=sys.executable,
-        shim_executable_path=resolve_shim_executable(),
+        shim_command=resolve_shim_command(),
         config_path=str(cfg),
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
@@ -154,9 +204,9 @@ def windows_task_xml_path(home: Path | None = None) -> Path:
 # ── Per-OS writers (small, testable) ─────────────────────────────────────────
 
 
-def _write_atomic(target: Path, content: str) -> Path:
+def _write_atomic(target: Path, content: str, *, encoding: str = "utf-8") -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    target.write_text(content, encoding=encoding)
     return target
 
 
@@ -181,7 +231,10 @@ def write_windows_task_xml(
     target: Path | None = None,
 ) -> Path:
     target = target or windows_task_xml_path()
-    return _write_atomic(target, render_template("taskscheduler.xml.template", ctx))
+    # The template declares UTF-16, the encoding Task Scheduler exports.
+    return _write_atomic(
+        target, render_template("taskscheduler.xml.template", ctx), encoding="utf-16"
+    )
 
 
 # ── Status / uninstall helpers ───────────────────────────────────────────────
@@ -356,7 +409,7 @@ __all__ = [
     "linux_systemd_unit_path",
     "macos_launchagent_path",
     "render_template",
-    "resolve_shim_executable",
+    "resolve_shim_command",
     "status_for",
     "target_path_for",
     "uninstall_autostart",

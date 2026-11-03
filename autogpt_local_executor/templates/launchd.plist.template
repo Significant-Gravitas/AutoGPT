@@ -12,10 +12,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>{shim_executable_path}</string>
-        <string>--config</string>
-        <string>{config_path}</string>
-        <string>start</string>
+{program_arguments}
     </array>
 
     <key>RunAtLoad</key>

@@ -51,8 +51,8 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>{shim_executable_path}</Command>
-      <Arguments>--config "{config_path}" start</Arguments>
+      <Command>{command}</Command>
+      <Arguments>{arguments}</Arguments>
     </Exec>
   </Actions>
 </Task>
