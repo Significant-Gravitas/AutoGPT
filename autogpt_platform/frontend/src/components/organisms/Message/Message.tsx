@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
@@ -378,7 +378,7 @@ function ExternalLinkModal({
 }
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
-// reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
+// reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
 // KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
 // its default strict mode console.warns each time, and console capture filed
 // every warning as a Sentry issue (BUILDER-94S). The plugin has no option for
@@ -479,9 +479,7 @@ export const MessageResponse = memo(function MessageResponse({
       linkSafety={LINK_SAFETY}
       {...props}
     >
-      {typeof children === "string"
-        ? escapeCurrencyAmounts(children)
-        : children}
+      {typeof children === "string" ? escapeLiteralDollars(children) : children}
     </Streamdown>
   );
 }, areSameChildren);

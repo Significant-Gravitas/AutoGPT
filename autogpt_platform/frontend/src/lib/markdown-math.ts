@@ -7,11 +7,10 @@ const HEADING_RE = /^#{1,6}(?:\s|$)/;
 const THEMATIC_BREAK_RE = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const SETEXT_UNDERLINE_RE = /^(?:=+|-+)[ \t]*$/;
 
-// With single-dollar math on, remark-math reads "$5 and $10" as one formula. A "$"
-// before a digit is therefore currency unless the span up to the next "$" on that
-// line carries LaTeX syntax, which keeps "$5x^2$" math; escaping the rest leaves
-// them literal and every other delimiter to remark-math.
-export function escapeCurrencyAmounts(markdown: string): string {
+// With single-dollar math on, remark-math pairs any two dollars, so "$5 and $10"
+// or shell text like "$p ($(ps -p $p))" became formulas. Only a "$…$" span on one
+// line that reads as math is kept for it; every other lone "$" is escaped.
+export function escapeLiteralDollars(markdown: string): string {
   let openFence: string | null = null;
   let codeIndent: number | null = null;
   // Content column of each open list item, innermost last.
@@ -86,12 +85,12 @@ export function escapeCurrencyAmounts(markdown: string): string {
       }
 
       inParagraph = !(startsBlock && HEADING_RE.test(content));
-      return escapeCurrencyAmountsInLine(line);
+      return escapeLiteralDollarsInLine(line);
     })
     .join("\n");
 }
 
-function escapeCurrencyAmountsInLine(line: string): string {
+function escapeLiteralDollarsInLine(line: string): string {
   let result = "";
   let index = 0;
 
@@ -108,9 +107,10 @@ function escapeCurrencyAmountsInLine(line: string): string {
     } else if (char === "$" && line[index + 1] === "$") {
       result += "$$";
       index += 2;
-    } else if (char === "$" && isCurrencyAmount(line, index)) {
-      result += "\\$";
-      index += 1;
+    } else if (char === "$") {
+      const close = closingDollar(line, index);
+      result += close === null ? "\\$" : line.slice(index, close + 1);
+      index = close === null ? index + 1 : close + 1;
     } else {
       result += char;
       index += 1;
@@ -130,14 +130,36 @@ function endOfCodeSpan(line: string, start: number): number {
   return close === -1 ? runEnd : close + runEnd - start;
 }
 
-function isCurrencyAmount(line: string, index: number): boolean {
-  if (!/\d/.test(line[index + 1] ?? "")) {
-    return false;
+// Pandoc's delimiter rule (no space just inside either "$", no digit right after
+// the closer), plus: a span opening on a digit is a price unless it carries LaTeX
+// syntax, and a span with unbalanced brackets is shell text such as "$p ($".
+function closingDollar(line: string, open: number): number | null {
+  const first = line[open + 1] ?? "";
+  if (!first || /\s/.test(first)) return null;
+
+  let close = open + 1;
+  while (close < line.length && line[close] !== "$") {
+    close += line[close] === "\\" ? 2 : 1;
+  }
+  if (close >= line.length || line[close + 1] === "$") return null;
+  if (/\s/.test(line[close - 1]) || /\d/.test(line[close + 1] ?? "")) {
+    return null;
   }
 
-  const rest = line.slice(index + 1);
-  const close = rest.search(/(?<!\\)\$/);
-  return close === -1 || !LATEX_SYNTAX_RE.test(rest.slice(0, close));
+  const body = line.slice(open + 1, close);
+  if (/\d/.test(first) && !LATEX_SYNTAX_RE.test(body)) return null;
+  return bracketsBalance(body) ? close : null;
+}
+
+// Openers and closers of either kind count alike, so "[0, 1)" balances.
+function bracketsBalance(text: string): boolean {
+  let depth = 0;
+  for (const char of text) {
+    if (char === "(" || char === "[") depth += 1;
+    if (char === ")" || char === "]") depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
 }
 
 function indentWidth(line: string): number {

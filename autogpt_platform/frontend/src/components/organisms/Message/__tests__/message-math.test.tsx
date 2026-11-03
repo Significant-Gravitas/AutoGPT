@@ -84,4 +84,17 @@ describe("MessageResponse math", () => {
       expect(container.textContent).toContain("echo $5 and $10"),
     );
   });
+
+  it.each([
+    [
+      "a pasted shell command",
+      '$ for p in $(sudo lsns -t net -n -o PID); do echo "== netns of PID $p ($(ps -o comm= -p $p))"; done',
+    ],
+    ["shell variables in prose", "Both $HOME and $PATH are set."],
+  ])("leaves %s as literal text", async (_, markdown) => {
+    const container = await renderReply(markdown);
+
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(proseOf(container)).toBe(markdown);
+  });
 });
