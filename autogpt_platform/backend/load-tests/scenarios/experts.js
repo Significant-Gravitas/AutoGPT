@@ -249,7 +249,10 @@ export function expertHire(data, profile) {
   }
 
   // Cleaning up, timed apart from the reads: the kickoff chat, then the
-  // expert, archived, which pauses the schedules its setup created.
+  // expert, archived, which pauses the schedules its setup created. An
+  // expert still installing is left to teardown, which archives every
+  // expert the run hired, so a schedule its setup creates after this point
+  // is paused too.
   if (sessionId) {
     api("DELETE", `/chat/sessions/${sessionId}`, {
       data,
@@ -260,7 +263,11 @@ export function expertHire(data, profile) {
       expect: [200, 204],
     });
   }
-  if (ours) {
+  if (ours && status === "installing") {
+    console.warn(
+      `expert_hire: expert ${expertId} was still installing after ${SETUP_POLLS} polls; teardown archives it`,
+    );
+  } else if (ours) {
     api("DELETE", `/experts/${expertId}`, {
       data,
       account,
