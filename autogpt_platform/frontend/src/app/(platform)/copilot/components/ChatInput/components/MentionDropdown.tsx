@@ -103,7 +103,7 @@ export function MentionDropdown({
         role="listbox"
         aria-label="Skill commands"
         onMouseDown={(e) => e.preventDefault()}
-        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-white p-1.5 shadow-md"
+        className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-border-base bg-surface p-1.5 shadow-md"
       >
         {options.map((option, index) =>
           option.kind === "skill"
