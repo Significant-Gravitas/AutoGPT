@@ -13,32 +13,40 @@ import Link from "next/link";
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import { formatWhen } from "../../ToolChain/resultHelpers";
 import type { SessionRun, SessionSchedule } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
+import type { Tone } from "@/components/styles/tones";
 
-const RUN_STATUS: Record<
-  string,
-  { icon: IconSvgElement; className: string; spin: boolean }
-> = {
+interface RunStatus {
+  icon: IconSvgElement;
+  tone: Tone;
+  spin: boolean;
+}
+
+const RUN_STATUS: Record<string, RunStatus> = {
   COMPLETED: {
     icon: CheckmarkCircle02Icon,
-    className: "text-green-600",
+    tone: "success",
     spin: false,
   },
-  FAILED: { icon: CancelCircleIcon, className: "text-red-500", spin: false },
-  RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
-  QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
+  FAILED: { icon: CancelCircleIcon, tone: "error", spin: false },
+  RUNNING: { icon: Loading03Icon, tone: "brand-strong", spin: true },
+  QUEUED: {
+    icon: ClockIcon,
+    tone: "warning",
+    spin: false,
+  },
 };
 
-const FALLBACK_STATUS = {
+const FALLBACK_STATUS: RunStatus = {
   icon: PlayIcon,
-  className: "text-zinc-400",
+  tone: "subtle",
   spin: false,
 };
 
 const LIST =
-  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200";
+  "-mx-2.5 grid max-h-72 gap-0.5 overflow-y-auto px-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active";
 
 /** Runs this chat triggered. Chrome-free (the section title lives outside the
  *  card) so the floating stack and the popover can each frame it. */
@@ -86,15 +94,19 @@ function RunRow({ run }: { run: SessionRun }) {
         icon={status.icon}
         size={16}
         aria-label={run.status?.toLowerCase()}
-        className={cn(
-          "shrink-0",
-          status.className,
-          status.spin && "animate-spin motion-reduce:animate-none",
-        )}
+        tone={status.tone}
+        spin={status.spin}
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{name}</p>
-        {meta && <p className="truncate text-xs text-zinc-400">{meta}</p>}
+        <Text variant="body-tight" tone="emphasis" className="truncate">
+          {name}
+        </Text>
+        {meta && (
+          <Text variant="small-tight" tone="subtle" className="truncate">
+            {meta}
+          </Text>
+        )}
       </div>
     </>
   );
@@ -102,7 +114,7 @@ function RunRow({ run }: { run: SessionRun }) {
   // padding so row content lands on the card's content edge, with the hover
   // background spilling into the gutter.
   const rowClass =
-    "-mx-2.5 flex items-center gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-zinc-50";
+    "-mx-2.5 flex items-center gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-surface-muted";
 
   if (run.href) {
     return (
@@ -123,21 +135,24 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
     ? `Next ${formatWhen(schedule.nextRunTime)}`
     : null;
   return (
-    <div className="-mx-2.5 flex items-start gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-zinc-50">
+    <div className="-mx-2.5 flex items-start gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-surface-muted">
       <Icon
         icon={schedule.isRecurring ? RepeatIcon : ClockIcon}
         size={16}
-        className="mt-0.5 shrink-0 text-zinc-700"
+        tone="body"
+        className="mt-0.5 shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-zinc-800">{schedule.name}</p>
+        <Text variant="body-tight" tone="emphasis" className="truncate">
+          {schedule.name}
+        </Text>
         {schedule.detail && (
-          <p className="line-clamp-2 text-xs text-zinc-500">
+          <Text variant="small-tight" tone="muted" className="line-clamp-2">
             {schedule.detail}
-          </p>
+          </Text>
         )}
         {(when || schedule.cron) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-400">
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-subtle">
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (

@@ -20,6 +20,7 @@ import {
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import {
   markPaywallCheckoutStarted,
@@ -72,7 +73,13 @@ export function useSubscriptionStep() {
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isProcessing = isUpdatingTier || isSubmitting;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isRequesting = isUpdatingTier || isSubmitting;
+  const isProcessing = isRequesting || checkoutRedirect.isRedirecting;
+  // Every checkout button on the page shares the redirect, so only this
+  // step's own request or redirect may spin its plan button.
+  const loadingPlan =
+    isRequesting || checkoutRedirect.isRedirectingHere ? selectedPlan : null;
 
   const countryIdx = Math.max(
     0,
@@ -141,6 +148,7 @@ export function useSubscriptionStep() {
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
+        checkoutRedirect.markRedirecting();
         return;
       }
       await queryClient.invalidateQueries(
@@ -150,6 +158,7 @@ export function useSubscriptionStep() {
       if (useOnboardingWizardStore.getState().userID !== ownerID) return;
       nextStep();
     } catch (error) {
+      setSelectedPlan(null);
       toast({
         title: "Couldn't start checkout",
         description:
@@ -171,6 +180,6 @@ export function useSubscriptionStep() {
     isYearly,
     handlePlanSelect,
     isUpdatingTier: isProcessing,
-    selectedPlan,
+    selectedPlan: loadingPlan,
   };
 }

@@ -305,7 +305,7 @@ class GithubCreateFileBlock(Block):
                     "abc123",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -405,7 +405,7 @@ class GithubUpdateFileBlock(Block):
                     "def456",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

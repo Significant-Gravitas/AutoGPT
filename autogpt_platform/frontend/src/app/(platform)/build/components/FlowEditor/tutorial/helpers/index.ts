@@ -1,14 +1,4 @@
-export {
-  waitForElement,
-  waitForInputValue,
-  waitForSearchResult,
-  waitForAnyBlockCard,
-  focusElement,
-  scrollIntoView,
-  typeIntoInput,
-  observeElement,
-  watchSearchInput,
-} from "./dom";
+export { waitForElement, focusElement } from "./dom";
 
 export {
   disableOtherBlocks,
@@ -21,43 +11,21 @@ export {
 
 export {
   prefetchTutorialBlocks,
-  getPrefetchedBlock,
   clearPrefetchedBlocks,
-  addPrefetchedBlock,
-  getNodeByBlockId,
   addSecondCalculatorBlock,
-  getCalculatorNodes,
   getSecondCalculatorNode,
-  getFormContainerSelector,
-  getFormContainerElement,
 } from "./blocks";
 
 export {
   waitForNodeOnCanvas,
   waitForNodesCount,
-  getNodesCount,
   getFirstNode,
-  getNodeById,
-  nodeHasValues,
   fitViewToScreen,
 } from "./canvas";
 
-export { isConnectionMade } from "./connections";
+export { forceBlockMenuOpen, closeBlockMenu } from "./menu";
 
-export {
-  forceBlockMenuOpen,
-  openBlockMenu,
-  closeBlockMenu,
-  clearBlockMenuSearch,
-} from "./menu";
-
-export {
-  openSaveControl,
-  closeSaveControl,
-  forceSaveOpen,
-  clickSaveButton,
-  isAgentSaved,
-} from "./save";
+export { forceSaveOpen } from "./save";
 
 export {
   handleTutorialCancel,

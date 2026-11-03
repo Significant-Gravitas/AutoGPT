@@ -243,6 +243,7 @@ def credits(mocker) -> MagicMock:
     db.spend_credits = AsyncMock(return_value=0)
     db.get_org_credits = AsyncMock(return_value=0)
     db.spend_org_credits = AsyncMock(return_value=0)
+    db.get_personal_org_owner = AsyncMock(return_value=None)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
     # A deployment that bills credits, on a route the SDK engine can take.
     mocker.patch(_CREDITS_ON, True)
@@ -276,12 +277,14 @@ async def test_a_block_turn_past_its_allowance_runs_on_credits_and_pays_its_cost
 
     turn.engine.assert_called_once()
     assert _paused(turn) == []
-    # $0.1234 is 1,234 tenths of a cent: 13 credits, rounded up.
-    credits.spend_credits.assert_awaited_once()
-    charge = credits.spend_credits.await_args.kwargs
-    assert (charge["user_id"], charge["cost"]) == ("user-1", 13)
-    assert charge["metadata"].chat_session_id == "sess-1"
-    assert charge["metadata"].block == "AutoPilotBlock"
+    # $0.1234 is 1,234 tenths of a cent: the 12 whole credits as the cost
+    # landed, and 1 more rounding it up when the turn ended.
+    charges = [call.kwargs for call in credits.spend_credits.await_args_list]
+    assert [charge["cost"] for charge in charges] == [12, 1]
+    for charge in charges:
+        assert charge["user_id"] == "user-1"
+        assert charge["metadata"].chat_session_id == "sess-1"
+        assert charge["metadata"].block == "AutoPilotBlock"
     windows.assert_not_awaited()
     turn.complete.assert_awaited_once_with(
         "sess-1", error_message=None, error_code=None, turn_id="turn-1"
@@ -303,12 +306,11 @@ async def test_an_organizations_block_turn_is_charged_to_the_organization(
 
     credits.get_org_credits.assert_awaited_once_with(org_id="org-1")
     credits.spend_credits.assert_not_awaited()
-    charge = credits.spend_org_credits.await_args.kwargs
-    assert (charge["org_id"], charge["team_id"], charge["cost"]) == (
-        "org-1",
-        "team-1",
-        13,
-    )
+    charges = [call.kwargs for call in credits.spend_org_credits.await_args_list]
+    assert [(c["org_id"], c["team_id"], c["cost"]) for c in charges] == [
+        ("org-1", "team-1", 12),
+        ("org-1", "team-1", 1),
+    ]
 
 
 @pytest.mark.asyncio

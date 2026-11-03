@@ -64,8 +64,9 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.trial_cost_context import capture_cost_context
-from backend.copilot.trial_reads import shared_trial_read
+from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
 from backend.copilot.usage_activation import (
     UsageActivationUnavailable,
     get_ready_usage_state,
@@ -91,6 +92,8 @@ if TYPE_CHECKING:
     from backend.data.subscription_trial import TrialState
 
 logger = logging.getLogger(__name__)
+
+_chat_config = ChatConfig()
 
 # "copilot:cost" (not the legacy "copilot:usage") so stale token-based
 # counters are not misread as microdollars.
@@ -154,7 +157,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 
 # Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
 # BASIC so users who cancel retain a small quota and see a real overage cap,
-# while LaunchDarkly can still tune tiers without a deploy.
+# while PostHog can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
     SubscriptionTier.TRIAL: 250,
@@ -605,7 +608,7 @@ async def get_usage_status(
     trial_spent = False
     weekly_is_trial_allowance = False
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         trial_spent = _trial_spent(trial)
         if trial and _trial_uses_total_budget(
             trial, daily_cost_limit, weekly_cost_limit
@@ -803,6 +806,40 @@ async def build_budget_ctx(
         "Pace your tool use and reasoning depth so the response stays "
         "within this envelope."
     )
+
+
+async def platform_spend_refusal(user_id: str | None) -> str | None:
+    """Why a call billed to the platform's own key may not run for *user_id* now.
+
+    Turn admission checks the allowance once per turn; a tool call or a dry run
+    that pays a provider itself asks again right before each call. Fails closed
+    when the allowance can't be read. ``None`` means the call may run.
+    """
+    if not user_id:
+        return None
+    daily, weekly, tier = await get_global_rate_limits(
+        user_id,
+        _chat_config.daily_cost_limit_microdollars,
+        _chat_config.weekly_cost_limit_microdollars,
+    )
+    if daily == 0 and weekly == 0:
+        return "Your plan has no usage allowance for this right now."
+    try:
+        await check_rate_limit(
+            user_id=user_id,
+            daily_cost_limit=daily,
+            weekly_cost_limit=weekly,
+            expected_tier=tier,
+        )
+    except RateLimitExceeded as e:
+        return str(e)
+    except RateLimitUnavailable:
+        logger.warning(
+            f"Usage limits unreadable for user {user_id}; refusing platform spend",
+            exc_info=True,
+        )
+        return "Usage limits can't be checked right now. Retry shortly."
+    return None
 
 
 async def check_rate_limit(
@@ -1198,6 +1235,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     if tier == SubscriptionTier.TRIAL:
         return await _effective_usage_tier(user_id, tier)
     if tier == SubscriptionTier.NO_TIER and await _maybe_reconcile_stripe_tier(user_id):
+        # The reconcile wrote the tier: read it again rather than the
+        # request's shared copy from before.
+        forget_usage_state(user_id)
         return SubscriptionTier((await get_ready_usage_state(user_id)).tier)
     return tier
 
@@ -1424,9 +1464,9 @@ async def get_global_rate_limits(
     config_daily: int,
     config_weekly: int,
 ) -> tuple[int, int, SubscriptionTier]:
-    """Resolve global rate limits from LaunchDarkly, falling back to config.
+    """Resolve global rate limits from PostHog, falling back to config.
 
-    Values are microdollars. The base limits (from LD or config) are
+    Values are microdollars. The base limits (from the flag or config) are
     multiplied by the user's tier multiplier so that higher tiers receive
     proportionally larger allowances.
 

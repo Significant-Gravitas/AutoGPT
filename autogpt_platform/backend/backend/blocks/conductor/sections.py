@@ -55,7 +55,7 @@ class ConductorManageSectionBlock(Block):
             description="Create or delete a Conductor cloud section. Sections group "
             "workspaces in the sidebar; move workspaces with Manage Workspace.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input=[

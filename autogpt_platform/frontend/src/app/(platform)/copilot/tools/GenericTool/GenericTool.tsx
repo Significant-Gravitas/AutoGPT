@@ -11,6 +11,11 @@ import {
 } from "../../components/ToolAccordion/AccordionContent";
 import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
 import {
+  isBlankOutput,
+  isEmptyResult,
+  NOTHING_FOUND,
+} from "../../components/ToolChain/resultHelpers";
+import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
@@ -42,6 +47,7 @@ import {
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   part: ToolUIPart;
@@ -73,40 +79,39 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
 
-  const iconClass = "text-green-500";
   switch (category) {
     case "bash":
-      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} tone="success" />;
     case "web":
-      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} tone="success" />;
     case "browser":
-      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} tone="success" />;
     case "file-read":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-write":
-      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} tone="success" />;
     case "file-delete":
-      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} tone="success" />;
     case "file-list":
-      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} tone="success" />;
     case "search":
-      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Search01Icon} size={14} tone="success" />;
     case "edit":
-      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
+      return <Icon icon={PencilIcon} size={14} tone="success" />;
     case "todo":
-      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
+      return <Icon icon={CheckListIcon} size={14} tone="success" />;
     case "compaction":
-      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
+      return <Icon icon={ReloadIcon} size={14} tone="success" />;
     case "agent":
-      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} tone="success" />;
     default:
-      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} tone="success" />;
   }
 }
 
@@ -265,19 +270,25 @@ function getBashAccordionData(
       <div className="space-y-2">
         {command && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">command</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              command
+            </Text>
             <ContentCodeBlock>{command}</ContentCodeBlock>
           </div>
         )}
         {stdout && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stdout</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stdout
+            </Text>
             <ContentCodeBlock>{stdout}</ContentCodeBlock>
           </div>
         )}
         {stderr && (
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">stderr</p>
+            <Text variant="small-medium-tight" tone="muted" className="mb-1">
+              stderr
+            </Text>
             <ContentCodeBlock>{stderr}</ContentCodeBlock>
           </div>
         )}
@@ -314,7 +325,7 @@ function getWebAccordionData(
       content: (
         <div className="space-y-3">
           {answer && (
-            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+            <div className="rounded-md bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-body">
               {answer}
             </div>
           )}
@@ -327,7 +338,7 @@ function getWebAccordionData(
             return (
               <div key={i} className="text-sm">
                 {citation !== null && (
-                  <span className="mr-1.5 text-xs tabular-nums text-slate-500">
+                  <span className="mr-1.5 text-xs text-foreground-tertiary tabular-nums">
                     [{citation}]
                   </span>
                 )}
@@ -336,7 +347,7 @@ function getWebAccordionData(
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-blue-600 hover:underline"
+                    className="font-medium text-info-foreground hover:underline"
                   >
                     {title}
                   </a>
@@ -344,13 +355,17 @@ function getWebAccordionData(
                   <span className="font-medium">{title}</span>
                 )}
                 {href && (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-foreground-tertiary">
                     {truncate(href, 100)}
                   </div>
                 )}
-                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {snippet && (
+                  <p className="mt-0.5 text-foreground-body">{snippet}</p>
+                )}
                 {pageAge && (
-                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                  <div className="mt-0.5 text-xs text-foreground-subtle">
+                    {pageAge}
+                  </div>
                 )}
               </div>
             );
@@ -476,6 +491,15 @@ function getFileAccordionData(
   if (!displayContent) {
     displayContent = extractMcpText(output);
   }
+  // A search or listing that found nothing answers "[]"; a file read keeps
+  // its text, even when the file itself holds "[]".
+  if (
+    (category === "file-list" || category === "search") &&
+    displayContent &&
+    isBlankOutput(displayContent)
+  ) {
+    displayContent = NOTHING_FOUND;
+  }
 
   // For edit: show old/new diff; for write: show written content if output is just a status
   const oldString =
@@ -536,11 +560,19 @@ function getFileAccordionData(
         {oldString && newString != null ? (
           <>
             <div>
-              <p className="mb-1 text-xs font-medium text-red-400">removed</p>
+              <Text variant="small-medium-tight" tone="error" className="mb-1">
+                removed
+              </Text>
               <ContentCodeBlock>{oldString}</ContentCodeBlock>
             </div>
             <div>
-              <p className="mb-1 text-xs font-medium text-green-400">added</p>
+              <Text
+                variant="small-medium-tight"
+                tone="success"
+                className="mb-1"
+              >
+                added
+              </Text>
               <ContentCodeBlock>{newString}</ContentCodeBlock>
             </div>
           </>
@@ -601,23 +633,11 @@ function getTodoAccordionData(input: unknown): AccordionData {
           <div key={i} className="flex items-start gap-2 text-xs">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <Icon
-                  icon={CheckmarkCircle02Icon}
-                  size={14}
-                  className="text-green-500"
-                />
+                <Icon icon={CheckmarkCircle02Icon} size={14} tone="success" />
               ) : todo.status === "in_progress" ? (
-                <Icon
-                  icon={CircleDashedIcon}
-                  size={14}
-                  className="text-blue-500"
-                />
+                <Icon icon={CircleDashedIcon} size={14} tone="info" />
               ) : (
-                <Icon
-                  icon={CircleIcon}
-                  size={14}
-                  className="text-neutral-400"
-                />
+                <Icon icon={CircleIcon} size={14} tone="subtle" />
               )}
             </span>
             <span
@@ -696,9 +716,11 @@ function getDefaultAccordionData(
   if (typeof raw === "string") {
     displayContent = raw;
   } else if (mcpText) {
-    displayContent = mcpText;
+    displayContent = isBlankOutput(mcpText) ? NOTHING_FOUND : mcpText;
   } else if (message) {
     displayContent = message;
+  } else if (isEmptyResult(output)) {
+    displayContent = NOTHING_FOUND;
   } else {
     try {
       displayContent = JSON.stringify(output, null, 2);
@@ -787,7 +809,7 @@ export function GenericTool({ part }: Props) {
         <MorphingTextAnimation
           text={text}
           animate={isStreaming}
-          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
+          className={cn("min-w-0 flex-1", isError ? "text-error" : undefined)}
         />
       </div>
 
@@ -796,7 +818,7 @@ export function GenericTool({ part }: Props) {
           icon={<AccordionIcon category={category} />}
           title={accordionData.title}
           description={accordionData.description}
-          titleClassName={isError ? "text-red-500" : undefined}
+          titleClassName={isError ? "text-error" : undefined}
           defaultExpanded={category === "todo"}
         >
           {accordionData.content}

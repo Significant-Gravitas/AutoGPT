@@ -92,16 +92,12 @@ export function ComposerPlusMenu({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="icon"
+            variant="tray"
             size="icon"
             aria-label="Add files and more"
             data-testid="composer-plus-button"
             disabled={disabled}
-            className={cn(
-              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
-              className,
-              disabled && "opacity-40",
-            )}
+            className={cn(className)}
           >
             <Icon icon={PlusSignIcon} className="h-4 w-4" />
           </Button>
@@ -180,7 +176,7 @@ export function ComposerPlusMenu({
 
 function CapLabel() {
   return (
-    <span className="ml-auto pl-3 text-xs text-zinc-500">
+    <span className="ml-auto pl-3 text-xs text-foreground-tertiary">
       {MAX_ATTACHMENTS} max
     </span>
   );

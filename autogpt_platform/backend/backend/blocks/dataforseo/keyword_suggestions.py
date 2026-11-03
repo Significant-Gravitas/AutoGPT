@@ -140,6 +140,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def _fetch_keyword_suggestions(

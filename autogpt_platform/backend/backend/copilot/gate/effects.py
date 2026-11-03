@@ -63,8 +63,11 @@ def graph_effect(graph: "GraphModel") -> Resolved:
                 unreadable = unreadable or block
             elif _worse(effect, block, worst):
                 worst = Resolved(effect, block)
-    if unreadable is None or _irreversible(worst):
-        return worst._replace(unreadable=unreadable)
+    if unreadable is None:
+        return worst
+    if _irreversible(worst):
+        # The unknown step still asks as EXTERNAL does, whatever tier names the run.
+        return Resolved(BlockEffect.EXTERNAL, worst.decided_by, unreadable)
     return Resolved(None, unreadable, unreadable)
 
 
@@ -141,6 +144,7 @@ _INPUT_DECIDED: dict[
 UNREADABLE_BLOCKS = frozenset(
     {
         "AutoPilotBlock",
+        "BlockInstallationBlock",
         "ClaudeCodeBlock",
         "CodeGenerationBlock",
         "ExecuteCodeBlock",

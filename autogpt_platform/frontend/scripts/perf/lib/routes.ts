@@ -23,6 +23,10 @@ const ROUTE_TABLE = [
   ["graph", /^\/api\/proxy\/api\/graphs\/([^/]+)$/],
   ["libraryAgents", /^\/api\/proxy\/api\/library\/agents$/],
   ["executions", /^\/api\/proxy\/api\/executions$/],
+  ["libraryAgent", /^\/api\/proxy\/api\/library\/agents\/([^/]+)$/],
+  ["graphExecutions", /^\/api\/proxy\/api\/graphs\/([^/]+)\/executions$/],
+  ["graphSchedules", /^\/api\/proxy\/api\/graphs\/([^/]+)\/schedules$/],
+  ["libraryPresets", /^\/api\/proxy\/api\/library\/presets$/],
 ] as const;
 
 export type RouteName = (typeof ROUTE_TABLE)[number][0];

@@ -35,9 +35,18 @@ export function TrialStatus({
     );
   const end = formatTrialEnd(trial.ends_at);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
-      <div className="min-w-0 basis-full space-y-2 sm:flex-1 sm:basis-auto">
-        <div className="flex flex-wrap items-center gap-2.5">
+    <div
+      data-slot="trial-status"
+      className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3"
+    >
+      <div
+        data-slot="trial-status-details"
+        className="min-w-0 basis-full space-y-2 sm:flex-1 sm:basis-auto"
+      >
+        <div
+          data-slot="trial-status-header"
+          className="flex flex-wrap items-center gap-2.5"
+        >
           <Text variant="large-semibold" as="h2">
             {trial.active ? "Your trial" : "Your trial has ended"}
           </Text>
@@ -49,12 +58,7 @@ export function TrialStatus({
                 : "Ended"}
           </Badge>
         </div>
-        <Text
-          variant="small"
-          unmask={false}
-          tone="secondary"
-          className="max-w-[560px] leading-5"
-        >
+        <Text variant="small-loose" tone="secondary" className="max-w-[560px]">
           {trial.status === "canceled"
             ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
             : trial.cancel_at_period_end
@@ -64,7 +68,7 @@ export function TrialStatus({
                 : "Paid access requires a successful payment. Review your payment method and plan below."}
         </Text>
         {trial.active && (
-          <Text variant="small" tone="secondary" className="text-xs">
+          <Text variant="small-tight" tone="secondary">
             Cancel before your trial ends to avoid a charge.
           </Text>
         )}

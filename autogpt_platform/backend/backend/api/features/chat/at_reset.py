@@ -5,11 +5,13 @@ whether to still fire then, live in ``backend.copilot.at_reset``; the job is a
 scheduled copilot turn, at most one of each kind per chat.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Response, Security
 from pydantic import BaseModel, Field, model_validator
 
 from backend.api.features.chat.routes import (
@@ -22,9 +24,10 @@ from backend.copilot.at_reset import (
     at_reset_schedule_id,
     next_reset_run_at,
 )
+from backend.copilot.at_reset_lock import at_reset_job_lock
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.rate_limit import RateLimitUnavailable, enforce_payment_paywall
 from backend.executor.scheduler import CopilotTurnJobInfo, SchedulerClient
 from backend.util.clients import get_scheduler_client
 
@@ -77,7 +80,7 @@ class AtResetTurnsResponse(BaseModel):
 @router.post(
     "/sessions/{session_id}/at-reset",
     summary="Schedule turn at budget reset",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found, or not writable"},
         409: {
@@ -106,25 +109,27 @@ async def schedule_at_reset(
     """
     session = await _validate_and_get_writable_session(session_id, user_id)
     run_at = await _run_at(user_id, session, request.kind)
-    message = (
-        await _joined_with_waiting_send(user_id, session_id, request.message)
-        if request.kind == "send" and request.message
-        else None
-    )
-    await _scheduler().add_copilot_turn_schedule(
-        user_id=user_id,
-        session_id=session_id,
-        message=message or _RESUME_DESCRIPTION,
-        run_at=run_at,
-        # The budget windows reset in UTC.
-        user_timezone="UTC",
-        # Anchored on the session, as for a message sent now.
-        organization_id=session.organization_id or ctx.org_id,
-        team_id=session.team_id if session.organization_id else ctx.team_id,
-        expert_id=session.expert_id,
-        purpose=request.kind,
-        schedule_id=at_reset_schedule_id(request.kind, session_id),
-    )
+    job_id = at_reset_schedule_id(request.kind, session_id)
+    async with _holding(job_id):
+        message = (
+            await _joined_with_waiting_send(user_id, session_id, request.message)
+            if request.kind == "send" and request.message
+            else None
+        )
+        await _scheduler().add_copilot_turn_schedule(
+            user_id=user_id,
+            session_id=session_id,
+            message=message or _RESUME_DESCRIPTION,
+            run_at=run_at,
+            # The budget windows reset in UTC.
+            user_timezone="UTC",
+            # Anchored on the session, as for a message sent now.
+            organization_id=session.organization_id or ctx.org_id,
+            team_id=session.team_id if session.organization_id else ctx.team_id,
+            expert_id=session.expert_id,
+            purpose=request.kind,
+            schedule_id=job_id,
+        )
     return AtResetTurn(kind=request.kind, run_at=run_at, message=message)
 
 
@@ -159,9 +164,10 @@ async def cancel_at_reset(
     """Cancel the chat's resume or send at the budget reset; one that isn't
     set is already cancelled."""
     await _validate_and_get_session(session_id, user_id)
-    await _scheduler().cancel_at_reset_turn(
-        user_id=user_id, session_id=session_id, kind=kind
-    )
+    async with _holding(at_reset_schedule_id(kind, session_id)):
+        await _scheduler().cancel_at_reset_turn(
+            user_id=user_id, session_id=session_id, kind=kind
+        )
     return Response(status_code=204)
 
 
@@ -178,11 +184,30 @@ async def _run_at(
     except NoResetAhead as e:
         raise HTTPException(status_code=409, detail=e.reason) from e
     except RateLimitUnavailable as e:
-        raise HTTPException(
-            status_code=503,
-            detail="Rate limit service degraded, retry shortly",
-            headers={"Retry-After": "30"},
-        ) from e
+        raise _service_degraded() from e
+
+
+@asynccontextmanager
+async def _holding(job_id: str) -> AsyncIterator[None]:
+    """Hold the chat's job from reading it to setting it, on any replica.
+
+    Two tabs, or the scheduler putting the job back after it ran, would
+    otherwise each write over the other, and a send written meanwhile would
+    be lost. A 503 rather than going on without it.
+    """
+    async with at_reset_job_lock(job_id) as locked:
+        if not locked:
+            raise _service_degraded()
+        yield
+
+
+def _service_degraded() -> HTTPException:
+    """Redis, behind the budget and the job's lock, can't answer right now."""
+    return HTTPException(
+        status_code=503,
+        detail="Rate limit service degraded, retry shortly",
+        headers={"Retry-After": "30"},
+    )
 
 
 async def _joined_with_waiting_send(user_id: str, session_id: str, message: str) -> str:

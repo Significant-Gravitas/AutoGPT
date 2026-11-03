@@ -3,6 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 
 interface Props {
   className?: string;
@@ -12,18 +13,23 @@ interface Props {
  *  reset carries text only. */
 export function AtResetFilesNotice({ className }: Props) {
   return (
-    <div
+    <AttentionCard.Root
+      variant="warning"
+      density="compact"
       role="status"
-      className={cn(
-        "flex w-full items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-sm text-amber-800",
-        className,
-      )}
+      className={cn("w-full", className)}
     >
-      <Icon icon={Alert02Icon} className="h-4 w-4 shrink-0" aria-hidden />
-      <span className="min-w-0 flex-1">
-        Only text can wait for the reset. Remove the files to schedule this
-        message.
-      </span>
-    </div>
+      <AttentionCard.Row align="center">
+        <AttentionCard.Icon>
+          <Icon icon={Alert02Icon} className="h-4 w-4" aria-hidden />
+        </AttentionCard.Icon>
+        <AttentionCard.Content asChild>
+          <span>
+            Only text can wait for the reset. Remove the files to schedule this
+            message.
+          </span>
+        </AttentionCard.Content>
+      </AttentionCard.Row>
+    </AttentionCard.Root>
   );
 }

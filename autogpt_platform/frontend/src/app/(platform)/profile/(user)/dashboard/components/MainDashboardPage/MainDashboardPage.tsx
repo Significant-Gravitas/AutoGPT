@@ -1,5 +1,5 @@
 import { useMainDashboardPage } from "./useMainDashboardPage";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EditAgentModal } from "@/components/contextual/EditAgentModal/EditAgentModal";
@@ -35,11 +35,7 @@ export const MainDashboardPage = () => {
             Workflow dashboard
           </Text>
           <div className="space-y-2">
-            <Text
-              variant="h2"
-              size="large-medium"
-              className="text-neutral-900 dark:text-neutral-100"
-            >
+            <Text variant="h2" size="large-medium" tone="primary">
               Submit a New Workflow
             </Text>
             <Text variant="body" size="small">
@@ -67,11 +63,7 @@ export const MainDashboardPage = () => {
 
       {/* Agents Section */}
       <div>
-        <Text
-          variant="h2"
-          size="large-medium"
-          className="mb-4 text-neutral-900 dark:text-neutral-100"
-        >
+        <Text variant="h2" size="large-medium" tone="primary" className="mb-4">
           Your uploaded workflows
         </Text>
 

@@ -1,7 +1,12 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { ImpersonationState } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
@@ -124,10 +129,6 @@ export default class BackendAPI {
 
   createUser(): Promise<User> {
     return this._request("POST", "/auth/user", {});
-  }
-
-  updateUserEmail(email: string): Promise<{ email: string }> {
-    return this._request("POST", "/auth/user/email", { email });
   }
 
   ////////////////////////////////////////
@@ -734,7 +735,11 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
+      throw error;
     }
 
     return await response.json();
@@ -795,6 +800,9 @@ export default class BackendAPI {
           let errorMessage = `Upload failed (${xhr.status})`;
           try {
             const errorData = JSON.parse(xhr.responseText);
+            if (isAccountBannedResponse(xhr.status, errorData)) {
+              signOutBannedAccount();
+            }
             if (errorData.detail) {
               if (
                 typeof errorData.detail === "string" &&
@@ -895,6 +903,7 @@ export default class BackendAPI {
     }
 
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
 
     const response = await fetch(url, {
       method,
@@ -905,6 +914,9 @@ export default class BackendAPI {
 
     if (!response.ok) {
       const error = await handleFetchError(response);
+      if (isAccountBannedResponse(error.status, error.response)) {
+        signOutBannedAccount();
+      }
       if (
         isAuthenticationError(response, error.message) &&
         isLogoutInProgress()

@@ -25,8 +25,10 @@ export function Swap({ swapKey, children, className }: Props) {
     <span
       className={cn(
         "inline-block transition-[transform,filter,opacity] duration-150 ease-in-out motion-reduce:transition-none",
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- a 2px motion blur on the swap; blur-sm is 4px
         phase === "exit" && "-translate-y-1 opacity-0 blur-[2px]",
         phase === "enter" &&
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a 2px motion blur on the swap; blur-sm is 4px
           "translate-y-1 opacity-0 blur-[2px] transition-none",
         className,
       )}

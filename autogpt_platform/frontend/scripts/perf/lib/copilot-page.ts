@@ -3,6 +3,7 @@ import {
   COPILOT_SESSIONS,
   createCopilotFixture,
   SESSION_L,
+  type SessionSpec,
 } from "./copilot-fixture";
 import { installRoutes } from "./routes";
 import { settle, type ScenarioContext } from "./scenario";
@@ -14,27 +15,34 @@ const READY_TIMEOUT_MS = 60_000;
 
 interface OpenArgs {
   ctx: ScenarioContext;
+  sessions?: SessionSpec[];
   paceMs?: number;
+  sessionID?: string;
+  replyFixture?: string;
 }
 
 /**
- * Serves the three fixture sessions, opens the 200-message one and waits
- * until its newest message and the composer are on screen.
+ * Serves the three fixture sessions, opens the 200-message one (or
+ * `sessionID`) and waits until its newest message and the composer are on
+ * screen.
  */
 export async function openLongSession({
   ctx,
+  sessions = COPILOT_SESSIONS,
   paceMs = LIVE_PACE_MS,
+  sessionID = SESSION_L,
+  replyFixture = REPLY_FIXTURE,
 }: OpenArgs) {
   const fixture = createCopilotFixture({
     userID: ctx.userID,
-    sessions: COPILOT_SESSIONS,
+    sessions,
     stream: ctx.stream,
-    replyFixture: REPLY_FIXTURE,
+    replyFixture,
     paceMs,
   });
   await installRoutes(ctx.page, fixture.handlers);
   const copilot = new CopilotPage(ctx.page);
-  await copilot.open(SESSION_L);
+  await copilot.open(sessionID);
   await copilot
     .getChatInput()
     .waitFor({ state: "visible", timeout: READY_TIMEOUT_MS });
