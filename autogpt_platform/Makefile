@@ -29,7 +29,8 @@ format:
 # .env.default deliberately leaves blank (see single-container/runtime_config.py
 # SECRET_GENERATORS). Existing files and the values you set are never
 # overwritten. The exceptions are a service password, or the Web Push key
-# pair, still holding a value published in a .env.default, which is replaced.
+# pair, still holding a value published in a .env.default, which is replaced
+# (and frontend/.env's copy of the published public key, which is cleared).
 # On an install that is
 # running, empty RabbitMQ's queues before `docker compose up -d` restarts it:
 # see "Upgrading: service passwords are generated per install" in

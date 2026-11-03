@@ -15,8 +15,10 @@ from backend.util import secrets_guard
 def clear_debounce():
     """Reset the per-user debounce state between tests."""
     push_sender._user_last_push.clear()
+    push_sender._warn_published_vapid_key_once.cache_clear()
     yield
     push_sender._user_last_push.clear()
+    push_sender._warn_published_vapid_key_once.cache_clear()
 
 
 @pytest.fixture
@@ -167,10 +169,14 @@ class TestSendPushForUser:
         mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
         await push_sender.send_push_for_user("user-1", _make_payload())
+        await push_sender.send_push_for_user("user-2", _make_payload())
 
         mock_db_client.get_user_push_subscriptions.assert_not_awaited()
         mock_webpush.assert_not_called()
-        assert "make init-env" in caplog.text
+        # Every notification is refused, but the process says why only once:
+        # startup already warned, and this runs before the per-user debounce.
+        warnings = [r for r in caplog.records if "make init-env" in r.getMessage()]
+        assert len(warnings) == 1
 
     @pytest.mark.asyncio
     async def test_debounces_rapid_calls(self, mocker, mock_db_client):

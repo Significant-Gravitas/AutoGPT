@@ -207,6 +207,32 @@ class RuntimeConfigTest(unittest.TestCase):
                     Path(directory) / "runtime.env", environment
                 )
 
+    def test_a_published_pair_in_the_environment_does_not_stop_the_next_boot(
+        self,
+    ) -> None:
+        """The first boot replaces the published pair, and the environment it
+        came from is passed in unchanged on every later boot, which must take
+        the pair persisted then rather than refuse to start."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            hashlib.sha256(value.encode()).hexdigest() for value in environment.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / "runtime.env"
+
+            first = runtime_config.ensure_runtime_config(path, environment)
+            second = runtime_config.ensure_runtime_config(path, environment)
+
+        self.assertEqual(second, first)
+        self.assertNotIn(first["VAPID_PRIVATE_KEY"], environment.values())
+        self.assertNotIn(first["VAPID_PUBLIC_KEY"], environment.values())
+
     def test_rejects_corrupt_existing_config(self) -> None:
         invalid_vapid_public = (
             base64.urlsafe_b64encode(b"\x03" + b"q" * 64).rstrip(b"=").decode()
@@ -647,6 +673,90 @@ class FillEnvSecretsTest(unittest.TestCase):
                 runtime_config._p256_public_point(int.from_bytes(private, "big")),
             )
 
+    def test_a_padded_or_wrapped_published_key_still_counts_as_published(
+        self,
+    ) -> None:
+        """py-vapid drops newlines and restores Base64 padding before decoding,
+        so `KEY=`, `KEY==` and a key split over lines are the published key."""
+        published = "pretend-shipped-private"
+        digests = frozenset({hashlib.sha256(published.encode()).hexdigest()})
+        spellings = (
+            published,
+            f"{published}=",
+            f"{published}==\n",
+            f"{published[:8]}\n{published[8:]}",
+        )
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            for spelling in spellings:
+                with self.subTest(spelling=spelling):
+                    self.assertTrue(runtime_config._is_published_vapid_key(spelling))
+            self.assertFalse(runtime_config._is_published_vapid_key("their-private"))
+            self.assertFalse(runtime_config._is_published_vapid_key(""))
+            self.assertFalse(runtime_config._is_published_vapid_key("=\n"))
+
+    def test_a_vapid_pair_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the pair existed gets one, like a
+        password .env.default declared later, rather than inheriting the
+        blank .env.default lines and running with push disabled."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_published_frontend_public_key_is_cleared(self) -> None:
+        """The app takes NEXT_PUBLIC_VAPID_PUBLIC_KEY over the backend's key,
+        so the published one left in frontend/.env would keep browsers
+        subscribing under a pair the backend no longer signs with. Blank, the
+        app fetches the backend's key; any other value is the operator's."""
+        published = "pretend-shipped-public"
+        digests = frozenset({hashlib.sha256(published.encode()).hexdigest()})
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            root = Path(directory) / "frontend"
+            root.mkdir()
+            path = root / ".env"
+            path.write_text(
+                f'NEXT_PUBLIC_VAPID_PUBLIC_KEY="{published}"\n'
+                "NEXT_PUBLIC_OTHER=kept\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["NEXT_PUBLIC_VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], "")
+            self.assertEqual(values["NEXT_PUBLIC_OTHER"], "kept")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            for value in ("", "their-public"):
+                with self.subTest(value=value):
+                    path.write_text(
+                        f"NEXT_PUBLIC_VAPID_PUBLIC_KEY={value}\n", encoding="utf-8"
+                    )
+                    self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                    self.assertEqual(
+                        _env_values(path)["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], value
+                    )
+
     def test_published_vapid_pair_in_the_environment_is_regenerated(self) -> None:
         """The single-container first boot takes the pair from the environment,
         unless it is the published one."""
@@ -691,14 +801,34 @@ class FillEnvSecretsTest(unittest.TestCase):
 
     def test_key_generation_needs_no_cryptography_package(self) -> None:
         """`make init-env` runs under the system interpreter, which has no
-        `cryptography`: the pair is then made with the interpreter alone."""
-        with mock.patch.dict(sys.modules, {"cryptography": None}):
+        `cryptography`: the pair is then made with the interpreter alone.
+
+        The package is blocked under every name on the import path, since an
+        already loaded subpackage is found in sys.modules before its blocked
+        parent is consulted; and the scalar comes from a patched draw, so a
+        pair the package made would fail the check."""
+        # RFC 6979 appendix A.2.5 again, so the point is a published answer.
+        scalar = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        blocked = {
+            name: None
+            for name in (
+                "cryptography",
+                "cryptography.hazmat",
+                "cryptography.hazmat.primitives",
+                "cryptography.hazmat.primitives.asymmetric",
+                "cryptography.hazmat.primitives.asymmetric.ec",
+            )
+        }
+        with (
+            mock.patch.dict(sys.modules, blocked),
+            mock.patch.object(
+                runtime_config.secrets, "randbelow", return_value=scalar - 1
+            ),
+        ):
             private, public = runtime_config._generate_p256_keypair()
 
-        self.assertEqual(len(private), 32)
-        self.assertEqual(
-            public, runtime_config._p256_public_point(int.from_bytes(private, "big"))
-        )
+        self.assertEqual(int.from_bytes(private, "big"), scalar)
+        self.assertEqual(public, runtime_config._p256_public_point(scalar))
 
     def test_interpreter_only_p256_agrees_with_cryptography(self) -> None:
         try:

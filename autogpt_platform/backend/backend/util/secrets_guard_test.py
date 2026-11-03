@@ -21,6 +21,9 @@ def _settings(encryption_key: str, unsubscribe_key: str = "fresh-unsubscribe-key
     settings = Settings()
     settings.secrets.encryption_key = encryption_key
     settings.secrets.unsubscribe_secret_key = unsubscribe_key
+    # A developer's backend/.env may still hold the retired pair, whose
+    # warning would otherwise count against the one these tests expect.
+    settings.secrets.vapid_private_key = ""
     return settings
 
 
@@ -92,7 +95,13 @@ def test_published_vapid_key_warns_and_still_starts(monkeypatch, caplog):
     assert len(warnings) == 1
     assert "make init-env" in warnings[0]
     assert secrets_guard.vapid_private_key_is_published(published)
+    # py-vapid reads a padded or wrapped key as the same key.
+    assert secrets_guard.vapid_private_key_is_published(f"{published}=")
+    assert secrets_guard.vapid_private_key_is_published(
+        f"{published[:8]}\n{published[8:]}"
+    )
     assert not secrets_guard.vapid_private_key_is_published("")
+    assert not secrets_guard.vapid_private_key_is_published("=\n")
     assert not secrets_guard.vapid_private_key_is_published(_fresh_key())
 
 

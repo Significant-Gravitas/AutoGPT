@@ -1,6 +1,7 @@
 """Fire-and-forget Web Push delivery for notification events."""
 
 import asyncio
+import functools
 import json
 import logging
 import re
@@ -58,6 +59,16 @@ def _build_push_payload(payload: NotificationPayload) -> str:
     return json.dumps(compact)
 
 
+@functools.cache
+def _warn_published_vapid_key_once() -> None:
+    # A key anyone can read signs nothing on this site's behalf. Once per
+    # process: this runs for every notification, and startup already warned.
+    logger.warning(
+        f"Refusing to send Web Push with the VAPID key pair published in "
+        f".env.default. {VAPID_HINT}"
+    )
+
+
 async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None:
     """Send push notifications to all of a user's subscriptions.
 
@@ -72,11 +83,7 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
         logger.debug("VAPID keys not fully configured, skipping push")
         return
     if vapid_private_key_is_published(vapid_private):
-        # A key anyone can read signs nothing on this site's behalf.
-        logger.warning(
-            f"Refusing to send Web Push with the VAPID key pair published in "
-            f".env.default. {VAPID_HINT}"
-        )
+        _warn_published_vapid_key_once()
         return
     # py_vapid rejects unprefixed strings deep in webpush(), where they'd
     # surface once per subscription as an "Unexpected error". Catch the

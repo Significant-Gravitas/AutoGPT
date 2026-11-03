@@ -122,8 +122,17 @@ def main() -> int:
                     print(f"{path}: symlink, left untouched", file=sys.stderr)
                     continue
                 names = fill_env_blanks(path)
-                if names:
-                    print(f"{path}: generated {', '.join(names)}")
+                generated = [
+                    name for name in names if name != FRONTEND_VAPID_PUBLIC_KEY
+                ]
+                if generated:
+                    print(f"{path}: generated {', '.join(generated)}")
+                if FRONTEND_VAPID_PUBLIC_KEY in names:
+                    print(
+                        f"{path}: cleared {FRONTEND_VAPID_PUBLIC_KEY}, which held the "
+                        "published key; the app now takes the public key from the "
+                        "backend. Rebuild the frontend if it was built with the old one."
+                    )
                 if _shell_overrides_database_password(path, os.environ):
                     print(
                         f"{path}: POSTGRES_PASSWORD is also set in this shell, and "
@@ -290,6 +299,11 @@ def _new_value(
         return _database_url(written, value, path, database_password)
     if name in VAPID_KEY_SETTINGS:
         return _vapid_value(name, path, vapid_keypair)
+    if name == FRONTEND_VAPID_PUBLIC_KEY:
+        # The app takes this over the backend's key, so the published one
+        # would keep browsers subscribing under a pair the backend no longer
+        # signs with. Blank, the app fetches the backend's current key.
+        return "" if _is_published_vapid_key(value) else None
     if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(
         name, _file_settings(path)
     ):
@@ -331,10 +345,19 @@ def _vapid_value(
 
 
 def _is_unset_vapid_key(value: str) -> bool:
-    return (
-        not value
-        or hashlib.sha256(value.encode()).hexdigest() in PUBLISHED_VAPID_DIGESTS
-    )
+    return not value or _is_published_vapid_key(value)
+
+
+def _is_published_vapid_key(value: str) -> bool:
+    """Whether a Web Push key is one this repository published, however it is
+    padded or wrapped: py-vapid drops newlines and restores Base64 padding
+    before decoding, so those spellings are the same key."""
+    return _vapid_key_digest(value) in PUBLISHED_VAPID_DIGESTS
+
+
+def _vapid_key_digest(value: str) -> str:
+    canonical = "".join(value.split()).rstrip("=")
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _database_url(
@@ -641,9 +664,10 @@ def _closing_brace(template: str) -> int:
 
 
 def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
-    """Credentials the file's .env.default leaves for setup to fill that the
-    file has no line for, typically because it was copied before they existed.
-    Without them the services would fall back to a blank .env.default value."""
+    """Credentials, and the Web Push key pair, the file's .env.default leaves
+    for setup to fill that the file has no line for, typically because it was
+    copied before they existed. Without them the services would fall back to a
+    blank .env.default value."""
     defaults = path.with_name(".env.default")
     if path.name == defaults.name or not defaults.is_file():
         return []
@@ -652,7 +676,11 @@ def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
         for line in defaults.read_text(encoding="utf-8").splitlines(keepends=True)
         if (match := BLANK_ASSIGNMENT.match(line)) is not None
     ]
-    return [name for name in names if name in CREDENTIALS and name not in assigned]
+    return [
+        name
+        for name in names
+        if (name in CREDENTIALS or name in VAPID_KEY_SETTINGS) and name not in assigned
+    ]
 
 
 def _is_unset(value: str) -> bool:
@@ -926,9 +954,11 @@ PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
 # The Web Push (VAPID) signing key pair in backend/.env. `fill-env` fills the
 # two as one, from a single generated key, and a published pair counts as
 # blank: the pair signs nothing that is stored, so replacing it costs only
-# the browsers' push subscriptions. frontend/.env's NEXT_PUBLIC_VAPID_PUBLIC_KEY
-# is left alone: blank, the app fetches the public key from the backend.
+# the browsers' push subscriptions. frontend/.env's copy of the public key
+# is cleared when it is the published one and otherwise left alone: blank,
+# the app fetches the public key from the backend.
 VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+FRONTEND_VAPID_PUBLIC_KEY = "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
 
 # SHA-256 of the private and public key backend/.env.default shipped from
 # #12723 (2026-04-29) until the pair was retired. Re-derive from git history:
@@ -1039,11 +1069,16 @@ def _verify_environment_matches(
 ) -> None:
     for name, persisted in values.items():
         configured = environment.get(name)
-        if configured and configured != persisted:
-            raise ValueError(
-                f"{name} differs from the value persisted on first boot; "
-                "restore the original value or start with a new data volume"
-            )
+        if not configured or configured == persisted:
+            continue
+        if name in VAPID_KEY_SETTINGS and _is_published_vapid_key(configured):
+            # The first boot replaced the published pair, so the environment
+            # still carrying it is not a changed value.
+            continue
+        raise ValueError(
+            f"{name} differs from the value persisted on first boot; "
+            "restore the original value or start with a new data volume"
+        )
 
 
 def _write_config(path: Path, values: dict[str, str]) -> None:

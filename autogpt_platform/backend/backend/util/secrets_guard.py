@@ -80,19 +80,23 @@ _RETIRED_VAPID_PRIVATE_KEY_DIGESTS = {
     "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
 }
 VAPID_HINT = (
-    "Clear VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY in autogpt_platform/backend/.env "
-    "and run `make init-env` in autogpt_platform/ to generate a pair for this "
-    "install. Browsers subscribed under the old pair stop receiving pushes until "
-    "they turn notifications off and on again."
+    "Run `make init-env` in autogpt_platform/ to replace the pair with one "
+    "generated for this install, then recreate the services so they read it "
+    "(`docker compose up -d`). Browsers subscribed under the old pair stop "
+    "receiving pushes until they turn notifications off and on again."
 )
 
 
 def vapid_private_key_is_published(value: str) -> bool:
-    """Whether a Web Push private key is one this repository published."""
-    if not value:
+    """Whether a Web Push private key is one this repository published, however
+    it is padded or wrapped: py-vapid drops newlines and restores Base64 padding
+    before decoding, so those spellings are the same key."""
+    canonical = "".join(value.split()).rstrip("=")
+    if not canonical:
         return False
     return (
-        hashlib.sha256(value.encode()).hexdigest() in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
+        hashlib.sha256(canonical.encode()).hexdigest()
+        in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
     )
 
 
