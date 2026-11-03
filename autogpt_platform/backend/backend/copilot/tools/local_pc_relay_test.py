@@ -7,7 +7,9 @@ import pytest
 
 from backend.copilot.tools import local_pc_relay_routing as relay_routing
 from backend.copilot.tools.local_pc_relay import RedisShimRelay
+from backend.copilot.tools.local_pc_relay_protocol import stream_key
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis, FakeWebSocket
+from backend.copilot.tools.local_pc_relay_transport import append_request
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimConnectionManager,
@@ -365,3 +367,51 @@ async def test_a_request_over_the_relay_cap_fails_alone(
     await websocket.close()
     await asyncio.wait_for(serve, 1)
     await asyncio.gather(first_shim.kill(), second_shim.kill())
+
+
+@pytest.mark.asyncio
+async def test_a_request_read_just_before_a_replacement_is_not_sent() -> None:
+    """The pump checks its connection is current before each send, not only
+    before each read, so a request it read just before the connection was
+    replaced never reaches the superseded socket."""
+    redis = FakeRedis()
+    relay = RedisShimRelay(redis)
+    websocket = FakeWebSocket()
+    reading = asyncio.Event()
+    real_xread = redis.xread
+
+    async def xread(*, streams: dict[str, str], block: int, count: int):
+        if any(key.endswith(":requests") for key in streams):
+            reading.set()
+        return await real_xread(streams=streams, block=block, count=count)
+
+    redis.xread = xread
+    serve = asyncio.create_task(
+        relay.serve_websocket(
+            "session-1",
+            websocket,
+            hello=_hello().model_dump(mode="json"),
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+    )
+    presence = await relay.wait_for_presence("session-1", timeout=1)
+    await asyncio.wait_for(reading.wait(), 1)
+    await relay._register_presence(
+        "session-1", hello={}, user_id="user-1", client_id="autogpt-local-executor"
+    )
+    await append_request(
+        redis,
+        stream_key("session-1", presence.connection_id, "requests"),
+        json.dumps({"type": "FILE_READ", "id": "request-1", "ts": 0, "payload": {}}),
+        reply_id="a" * 32,
+    )
+
+    await asyncio.wait_for(serve, 2)
+
+    sent = [
+        json.loads(websocket.outbound.get_nowait())["type"]
+        for _ in range(websocket.outbound.qsize())
+    ]
+    assert sent == ["SESSION_REVOKED"]
+    assert websocket.close_code == 4427

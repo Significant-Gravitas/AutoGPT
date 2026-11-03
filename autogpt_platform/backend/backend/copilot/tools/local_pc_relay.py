@@ -163,6 +163,10 @@ class RedisShimRelay:
             envelope = fields.get("envelope")
             if envelope is None:
                 return
+            # Before each send, not only each read: one read returns a batch,
+            # and a replacement mid-batch must not get the rest of it.
+            if not await self.is_current(presence):
+                raise RelayConnectionReplaced
             message = await response_router.accept_request(
                 envelope, fields.get("reply_id")
             )
