@@ -470,7 +470,7 @@ def _audit_show(current: Path, seq: int) -> int:
 
 
 def _audit_verify(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key
+    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
@@ -480,12 +480,14 @@ def _audit_verify(current: Path) -> int:
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    violations = AuditWriter.verify(current, key)
+    # The daemon may be appending; a half-written record would read as a break.
+    with holding_log_lock(current):
+        violations = AuditWriter.verify(current, key)
     return _print_violations(current, violations)
 
 
 def _audit_verify_all(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, list_rotated_files
+    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock, list_rotated_files
 
     try:
         key = get_or_create_audit_key()
@@ -500,11 +502,13 @@ def _audit_verify_all(current: Path) -> int:
         print("No audit logs found.")
         return 0
     failures = 0
-    for path in files:
-        violations = AuditWriter.verify(path, key)
-        if violations:
-            failures += 1
-        _print_violations(path, violations)
+    # Hold off appends and rotations while the files are read.
+    with holding_log_lock(current):
+        for path in files:
+            violations = AuditWriter.verify(path, key)
+            if violations:
+                failures += 1
+            _print_violations(path, violations)
     if failures:
         print(f"\n{failures} of {len(files)} files have violations.")
         return 1
@@ -525,7 +529,12 @@ def _audit_export(current: Path, output: Path | None) -> int:
     import json
     import zipfile
 
-    from .audit import KEYCHAIN_AUDIT_KEY_USERNAME, get_or_create_audit_key, list_rotated_files
+    from .audit import (
+        KEYCHAIN_AUDIT_KEY_USERNAME,
+        get_or_create_audit_key,
+        holding_log_lock,
+        list_rotated_files,
+    )
 
     try:
         key = get_or_create_audit_key()
@@ -550,7 +559,8 @@ def _audit_export(current: Path, output: Path | None) -> int:
         "files": [],
         "key_username": KEYCHAIN_AUDIT_KEY_USERNAME,
     }
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
+    # Hold off appends and rotations so the export is one consistent set.
+    with holding_log_lock(current), zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in files:
             data = path.read_bytes()
             digest = hashlib.sha256(data).hexdigest()

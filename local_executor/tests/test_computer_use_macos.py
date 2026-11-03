@@ -348,6 +348,7 @@ def test_preserve_clipboard_skips_restore_when_user_copied_during_paste(
 
     monkeypatch.setattr(b, "_write_pasteboard_text", _write)
     monkeypatch.setattr(b, "_read_pasteboard_text", _read)
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: ["public.utf8-plain-text"])
     fake_pg = MagicMock()
     fake_pg.FAILSAFE = True
     monkeypatch.setitem(sys.modules, "pyautogui", fake_pg)
@@ -429,7 +430,9 @@ def test_permissions_check_unknown_keys_are_not_applicable(tmp_path, monkeypatch
 # ── Paste with preserve_clipboard (Q3/Q4) ───────────────────────────────
 
 
-def _fake_pasteboard(b: MacOSBackend, monkeypatch, *, content: str, types=()) -> dict:
+def _fake_pasteboard(
+    b: MacOSBackend, monkeypatch, *, content: str, types=("public.utf8-plain-text",)
+) -> dict:
     state: dict = {"content": content, "seq": 1, "types": list(types), "writes": []}
 
     def _write(text: str) -> int:
@@ -697,3 +700,52 @@ def test_window_list_asks_for_off_screen_windows_when_minimized_ones_are_wanted(
 
     options = fake_qz.CGWindowListCopyWindowInfo.call_args.args[0]
     assert bool(options & 0x1) is on_screen_only
+
+
+@pytest.mark.parametrize(
+    "types",
+    [None, ["public.png"], ["public.utf8-plain-text", "public.rtf"]],
+    ids=["unreadable", "image", "rich-text"],
+)
+def test_preserving_a_clipboard_a_text_restore_cannot_rebuild_types_instead(
+    tmp_path, monkeypatch, types
+) -> None:
+    """The restore puts back plain text only, so pasting over an image, rich
+    text, or a clipboard whose types can't be read would lose it."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content="kept")
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: types)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+
+
+def test_a_clipboard_read_refuses_when_its_types_cannot_be_read(tmp_path, monkeypatch) -> None:
+    """Unreadable types could be hiding a concealed marker."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_read_pasteboard_text", lambda: ("password", 3))
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: None)
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
+
+
+def test_window_focus_fails_when_macos_will_not_activate_the_app(tmp_path, monkeypatch) -> None:
+    b = MacOSBackend(_config(tmp_path))
+    focus = _focusable(
+        b,
+        monkeypatch,
+        cg_frame=(0, 25, 800, 600),
+        cg_title="",
+        ax_windows=[((0, 25, 800, 600), "Notes")],
+    )
+    focus["app"].activateWithOptions_.return_value = False
+
+    with pytest.raises(WindowStaleError):
+        b.window_focus(focus["window_id"])

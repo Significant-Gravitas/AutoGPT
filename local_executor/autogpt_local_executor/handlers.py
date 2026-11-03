@@ -2317,6 +2317,25 @@ class RecordingHandler:
                 details={"recording_id": self._active_recording_id},
             )
 
+        # Probe the interpretation route first. The consent token approves one
+        # route, and a machine that can't honor it must not fall back to
+        # another under that approval: the fallback can be
+        # screenshots_to_cloud, which sends frames off the machine. Probing
+        # before the token is checked also leaves the single-use token unspent.
+        decision = probe_interpretation_route(
+            channels=p.channels,
+            local_llm_models=list(self._advertised_models()),
+            requested=p.interpretation_route,
+        )
+        if decision.route != p.interpretation_route:
+            return make_error(
+                msg.id,
+                ErrorCode.CONSENT_REQUIRED,
+                f"This machine can't use the approved interpretation route "
+                f"{p.interpretation_route!r}; {decision.route!r} needs its own consent.",
+                details={"available_route": decision.route},
+            )
+
         # Consent: the token must be a valid, shim-issued, single-use token.
         # A platform that self-asserts (no/forged token) gets CONSENT_REQUIRED.
         try:
@@ -2331,15 +2350,6 @@ class RecordingHandler:
                 ErrorCode.CONSENT_REQUIRED,
                 f"Valid shim-issued consent token required: {exc}",
             )
-
-        # Probe / honor the interpretation route. We don't drive the §9.1 cloud
-        # consent dialog here (the token already gated the recording); the
-        # decision's requires_consent informs the platform via details.
-        decision = probe_interpretation_route(
-            channels=p.channels,
-            local_llm_models=list(self._advertised_models()),
-            requested=p.interpretation_route,
-        )
 
         session = RecordingSession(
             machine_id=self.config.machine_id,

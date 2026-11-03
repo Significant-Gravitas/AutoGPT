@@ -49,6 +49,18 @@ CONCEALED_PB_TYPES = {
     "org.nspasteboard.TransientType",
 }
 
+# Pasteboard types holding plain text, which is all a text-only restore rebuilds.
+_PLAIN_TEXT_PB_TYPES = frozenset(
+    {
+        "public.utf8-plain-text",
+        "public.utf16-external-plain-text",
+        "public.utf16-plain-text",
+        "public.plain-text",
+        "NSStringPboardType",
+        "com.apple.traditional-mac-plain-text",
+    }
+)
+
 
 class MacOSBackend(ComputerUseBackend):
     def __init__(self, config: ShimConfig) -> None:
@@ -668,8 +680,15 @@ class MacOSBackend(ComputerUseBackend):
                 message=f"window_id {window_id} could not be raised through Accessibility",
             )
         # NSApplicationActivateIgnoringOtherApps = 2: the app comes to the
-        # front with the raised window on top.
-        app.activateWithOptions_(2)
+        # front with the raised window on top. If it doesn't, later input
+        # would go to whichever app is in front.
+        if not app.activateWithOptions_(2):
+            from ..errors import WindowStaleError
+
+            raise WindowStaleError(
+                window_id,
+                message=f"macOS did not bring the app of window_id {window_id} to the front",
+            )
 
     def _ax_window_for(self, pid: int, cg_window_id: Any) -> Any | None:
         """The app's Accessibility window that is this CoreGraphics window: the
@@ -868,8 +887,15 @@ class MacOSBackend(ComputerUseBackend):
                 reason=f"format {format!r} not supported in v1",
             )
         text, seq = self._read_pasteboard_text()
-        # Concealed-marker check first.
+        # Concealed-marker check first. Types that can't be read could be
+        # hiding a marker, so they refuse the read too.
         markers = self._read_pasteboard_types()
+        if markers is None:
+            raise ClipboardConcealedError(
+                "concealed_type",
+                marker="unknown",
+                message="clipboard contents not readable: its types could not be read",
+            )
         for c in CONCEALED_PB_TYPES:
             if c in markers:
                 raise ClipboardConcealedError(
@@ -946,29 +972,32 @@ class MacOSBackend(ComputerUseBackend):
             raise ClipboardWriteError("the pasteboard refused the text")
         return change_count
 
-    def _read_pasteboard_types(self) -> list[str]:
+    def _read_pasteboard_types(self) -> list[str] | None:
+        """The pasteboard's types, or None if they can't be read."""
         pb = self._pasteboard()
         if pb is None:
-            return []
+            return None
         try:
             types = pb.types() or []
             return [str(t) for t in types]
         except Exception:
-            return []
+            return None
 
     def _type(self, text: str, *, paste: bool, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            # A concealed clipboard would lose its marker when restored, so one
-            # that must be preserved is left alone and the text is typed.
-            if not (preserve_clipboard and self._pasteboard_is_concealed()):
+            # The restore puts back plain text only. A clipboard holding
+            # anything else (an image, rich text, a concealed password), or
+            # one whose types can't be read, is left alone and the text typed.
+            if not (preserve_clipboard and not self._pasteboard_is_plain_text()):
                 self._do_paste(text, preserve_clipboard=preserve_clipboard)
                 return
         pyautogui.write(text, interval=0.02)
 
-    def _pasteboard_is_concealed(self) -> bool:
-        return any(t in CONCEALED_PB_TYPES for t in self._read_pasteboard_types())
+    def _pasteboard_is_plain_text(self) -> bool:
+        types = self._read_pasteboard_types()
+        return types is not None and set(types) <= _PLAIN_TEXT_PB_TYPES
 
     def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]

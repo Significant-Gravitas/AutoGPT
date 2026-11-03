@@ -47,6 +47,9 @@ logger = logging.getLogger(__name__)
 # set a format in this range alongside CF_TEXT/CF_UNICODETEXT.
 CF_PRIVATEFIRST = 0x0200
 CF_PRIVATELAST = 0x02FF
+# What a text-only restore rebuilds: CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT and
+# CF_LOCALE (Windows synthesizes the others from any one of them).
+_TEXT_CLIPBOARD_FORMATS = frozenset({1, 7, 13, 16})
 
 
 class WindowsBackend(ComputerUseBackend):
@@ -681,30 +684,42 @@ class WindowsBackend(ComputerUseBackend):
         except Exception:
             return None
 
-    def _has_private_format(self) -> bool:
+    def _clipboard_formats(self) -> set[int] | None:
+        """Every format on the clipboard, or None if they can't be read."""
         try:
             import win32clipboard  # type: ignore[import-not-found]
 
             win32clipboard.OpenClipboard()
             try:
+                formats: set[int] = set()
                 fmt = win32clipboard.EnumClipboardFormats(0)
                 while fmt != 0:
-                    if CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST:
-                        return True
+                    formats.add(fmt)
                     fmt = win32clipboard.EnumClipboardFormats(fmt)
-                return False
+                return formats
             finally:
                 win32clipboard.CloseClipboard()
         except Exception:
-            return False
+            return None
+
+    def _has_private_format(self) -> bool:
+        """Whether the clipboard may hold a CF_PRIVATE ("do not paste")
+        format: true when one is there, and when the formats can't be read."""
+        formats = self._clipboard_formats()
+        return formats is None or any(CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST for fmt in formats)
+
+    def _clipboard_is_plain_text(self) -> bool:
+        formats = self._clipboard_formats()
+        return formats is not None and formats <= _TEXT_CLIPBOARD_FORMATS
 
     def _type(self, text: str, *, paste: bool, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            # A CF_PRIVATE clipboard would lose that format when restored, so
-            # one that must be preserved is left alone and the text is typed.
-            if not (preserve_clipboard and self._has_private_format()):
+            # The restore puts back text only. A clipboard holding anything
+            # else (an image, a CF_PRIVATE secret), or one whose formats can't
+            # be read, is left alone and the text is typed.
+            if not (preserve_clipboard and not self._clipboard_is_plain_text()):
                 self._do_paste(text, preserve_clipboard=preserve_clipboard)
                 return
         pyautogui.write(text, interval=0.02)
