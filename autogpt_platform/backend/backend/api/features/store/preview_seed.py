@@ -1,0 +1,510 @@
+"""Publish the synthetic marketplace in :mod:`.preview_seed_content`.
+
+Preview environments start from an empty database, so their store has nothing
+to browse. This puts a small marketplace there the way real listings arrive:
+each creator gets a profile and a saved workflow, submits it, and an admin
+approves it; then reviews land and the store's materialized views refresh.
+Skills go through the same submit-and-approve path.
+
+Identities come from the content (uuid5), so every run addresses the same
+rows. A run creates what is missing, approves a submission an earlier run left
+pending, and leaves everything else as it is: a listing someone in the preview
+has since rejected or deleted stays rejected or deleted.
+
+It needs only the database. Approval skips the creator's verdict email, which
+would need the message queue and has nobody to reach; the listing's search
+embedding is generated if an embedding provider is configured, as on any
+approval, and skipped otherwise.
+"""
+
+import logging
+import uuid
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+import prisma.enums
+import prisma.models
+from pydantic import BaseModel
+
+from backend.api.features.orgs.db import get_user_default_team
+from backend.blocks.io import (
+    AgentLongTextInputBlock,
+    AgentNumberInputBlock,
+    AgentOutputBlock,
+    AgentShortTextInputBlock,
+)
+from backend.blocks.maths import CalculatorBlock, CountItemsBlock
+from backend.blocks.text import FillTextTemplateBlock, TextReplaceBlock, TextSplitBlock
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    canonicalize_skill,
+    parse_skill_markdown,
+    validate_skill_content,
+)
+from backend.data.block import initialize_blocks
+from backend.data.db import execute_raw_with_schema
+from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
+from backend.data.org_migration import ensure_personal_org
+
+from . import db as store_db
+from . import model as store_model
+from . import skill_model, skill_submission_db
+from .preview_seed_content import (
+    ADMIN,
+    CREATORS,
+    LISTINGS,
+    REVIEW_COMMENTS,
+    REVIEWERS,
+    SKILLS,
+    CalculatorWorkflow,
+    ReplaceWorkflow,
+    SeedListing,
+    SeedSkill,
+    SeedUser,
+    TemplateWorkflow,
+)
+
+logger = logging.getLogger(__name__)
+
+# Fixed forever: every id the seed writes is derived from it.
+SEED_NAMESPACE = uuid.UUID("6f1c2d8e-3b4a-4c5d-9e7f-a1b2c3d4e5f6")
+
+WORKFLOW_BLOCKS = (
+    AgentShortTextInputBlock,
+    AgentLongTextInputBlock,
+    AgentNumberInputBlock,
+    AgentOutputBlock,
+    FillTextTemplateBlock,
+    CalculatorBlock,
+    TextReplaceBlock,
+    TextSplitBlock,
+    CountItemsBlock,
+)
+
+APPROVAL_COMMENT = "Approved for the preview marketplace."
+SEED_NOTE = "Seeded by seed-preview-marketplace."
+
+
+class SeedSummary(BaseModel):
+    users: int = 0
+    # Per listing or skill slug: "created", "approved" (a submission an earlier
+    # run left pending) or "existing" (left as it was).
+    listings: dict[str, str] = {}
+    skills: dict[str, str] = {}
+    reviews: int = 0
+    failed: dict[str, str] = {}
+
+
+@dataclass(frozen=True)
+class _SeededUser:
+    id: str
+    org_id: str | None
+    team_id: str | None
+
+
+def seed_id(*parts: str) -> str:
+    return str(uuid.uuid5(SEED_NAMESPACE, "/".join(parts)))
+
+
+def seed_user_id(user: SeedUser) -> str:
+    return seed_id("user", user.key)
+
+
+def seed_graph_id(listing: SeedListing) -> str:
+    return seed_id("graph", listing.slug)
+
+
+def all_users() -> tuple[SeedUser, ...]:
+    return (*CREATORS, *REVIEWERS, ADMIN)
+
+
+def reviewer_keys(listing: SeedListing) -> list[str]:
+    """Who reviews a listing, in order: the reviewers, then the other creators."""
+    return [user.key for user in REVIEWERS] + [
+        user.key for user in CREATORS if user.key != listing.creator
+    ]
+
+
+async def seed_marketplace() -> SeedSummary:
+    summary = SeedSummary()
+    await _ensure_workflow_blocks()
+
+    users = {user.key: await _ensure_user(user) for user in all_users()}
+    summary.users = len(users)
+    admin_id = users[ADMIN.key].id
+
+    for listing in LISTINGS:
+        try:
+            outcome, live_version_id = await _ensure_listing(
+                listing, users[listing.creator], admin_id
+            )
+            summary.listings[listing.slug] = outcome
+            if live_version_id:
+                summary.reviews += await _ensure_reviews(
+                    listing,
+                    live_version_id,
+                    [users[key].id for key in reviewer_keys(listing)],
+                )
+        except Exception as e:
+            logger.exception(f"Could not seed listing '{listing.slug}'")
+            summary.failed[f"listing:{listing.slug}"] = str(e)
+
+    for skill in SKILLS:
+        try:
+            summary.skills[skill.slug] = await _ensure_skill(
+                skill, users[skill.creator].id, admin_id
+            )
+        except Exception as e:
+            logger.exception(f"Could not seed skill '{skill.slug}'")
+            summary.failed[f"skill:{skill.slug}"] = str(e)
+
+    # Ratings and run counts come from these views; pg_cron refreshes them
+    # every 15 minutes where it is installed, and nowhere else.
+    await execute_raw_with_schema(
+        "SELECT {schema_prefix}refresh_store_materialized_views()"
+    )
+    return summary
+
+
+async def _ensure_workflow_blocks() -> None:
+    """Workflow nodes reference ``AgentBlock`` rows, which the API server
+    writes when it starts. The seed can run before it ever has."""
+    block_ids = [block_cls().id for block_cls in WORKFLOW_BLOCKS]
+    stored = await prisma.models.AgentBlock.prisma().count(
+        where={"id": {"in": block_ids}}
+    )
+    if stored < len(block_ids):
+        await initialize_blocks()
+
+
+async def _ensure_user(user: SeedUser) -> _SeededUser:
+    user_id = seed_user_id(user)
+    await prisma.models.User.prisma().upsert(
+        where={"id": user_id},
+        data={
+            "create": {
+                "id": user_id,
+                "email": user.email,
+                "name": user.name,
+                # Synthetic addresses: nothing should try to mail them.
+                "briefingFrequency": prisma.enums.BriefingFrequency.OFF,
+                "alertsEnabled": False,
+                "notifyOnStoreVerdict": False,
+                "maxEmailsPerDay": 0,
+            },
+            "update": {},
+        },
+    )
+    profile = await prisma.models.Profile.prisma().find_unique(
+        where={"userId": user_id}
+    )
+    if profile is None:
+        await store_db.update_profile(
+            user_id,
+            store_model.ProfileUpdateRequest(
+                username=user.username,
+                name=user.name,
+                description=user.description,
+                links=list(user.links),
+            ),
+        )
+        if user.featured:
+            await prisma.models.Profile.prisma().update(
+                where={"userId": user_id}, data={"isFeatured": True}
+            )
+    # update_profile stores no avatar as NULL, but the Creator view's avatar_url
+    # is non-null, so one NULL fails the whole creators list. An empty avatar
+    # renders the frontend's generated one.
+    await prisma.models.Profile.prisma().update_many(
+        where={"userId": user_id, "avatarUrl": None}, data={"avatarUrl": ""}
+    )
+    await ensure_personal_org(user_id)
+    org_id, team_id = await get_user_default_team(user_id)
+    return _SeededUser(id=user_id, org_id=org_id, team_id=team_id)
+
+
+def build_graph(listing: SeedListing) -> Graph:
+    """The listing's workflow: input, one or two processing nodes, output."""
+
+    def node_id(role: str) -> str:
+        return seed_id("node", listing.slug, role)
+
+    workflow = listing.workflow
+    if isinstance(workflow, CalculatorWorkflow):
+        input_block = AgentNumberInputBlock()
+    elif isinstance(workflow, TemplateWorkflow) and not workflow.long_input:
+        input_block = AgentShortTextInputBlock()
+    else:
+        input_block = AgentLongTextInputBlock()
+
+    # Left to right: (role, block id, input defaults).
+    steps: list[tuple[str, str, dict]]
+    # (source role, source pin, sink role, sink pin)
+    wiring: list[tuple[str, str, str, str]]
+    if isinstance(workflow, TemplateWorkflow):
+        steps = [
+            (
+                "step",
+                FillTextTemplateBlock().id,
+                {"format": workflow.template, "values": {}},
+            )
+        ]
+        wiring = [
+            ("input", "result", "step", f"values_#_{workflow.input_name}"),
+            ("step", "output", "output", "value"),
+        ]
+    elif isinstance(workflow, CalculatorWorkflow):
+        steps = [
+            (
+                "step",
+                CalculatorBlock().id,
+                {
+                    "operation": workflow.operation,
+                    "b": workflow.operand,
+                    "round_result": False,
+                },
+            )
+        ]
+        wiring = [
+            ("input", "result", "step", "a"),
+            ("step", "result", "output", "value"),
+        ]
+    elif isinstance(workflow, ReplaceWorkflow):
+        steps = [
+            (
+                "step",
+                TextReplaceBlock().id,
+                {"old": workflow.old, "new": workflow.new},
+            )
+        ]
+        wiring = [
+            ("input", "result", "step", "text"),
+            ("step", "output", "output", "value"),
+        ]
+    else:
+        steps = [
+            (
+                "split",
+                TextSplitBlock().id,
+                {"delimiter": workflow.delimiter, "strip": True},
+            ),
+            ("step", CountItemsBlock().id, {}),
+        ]
+        wiring = [
+            ("input", "result", "split", "text"),
+            ("split", "texts", "step", "collection"),
+            ("step", "count", "output", "value"),
+        ]
+
+    layout = [
+        (
+            "input",
+            input_block.id,
+            {
+                "name": workflow.input_name,
+                "title": workflow.input_title,
+                "value": workflow.example,
+            },
+        ),
+        *steps,
+        ("output", AgentOutputBlock().id, {"name": workflow.output_name}),
+    ]
+    return Graph(
+        id=seed_graph_id(listing),
+        version=1,
+        is_active=True,
+        name=listing.name,
+        description=listing.description,
+        instructions=listing.instructions,
+        recommended_schedule_cron=listing.recommended_schedule_cron,
+        nodes=[
+            Node(
+                id=node_id(role),
+                block_id=block_id,
+                input_default=input_default,
+                metadata={"position": {"x": column * 450, "y": 0}},
+            )
+            for column, (role, block_id, input_default) in enumerate(layout)
+        ],
+        links=[
+            Link(
+                id=seed_id("link", listing.slug, source, sink, sink_pin),
+                source_id=node_id(source),
+                source_name=source_pin,
+                sink_id=node_id(sink),
+                sink_name=sink_pin,
+                # Input blocks emit a static value; the save path marks their
+                # links static whatever the caller sends.
+                is_static=source == "input",
+            )
+            for source, source_pin, sink, sink_pin in wiring
+        ],
+    )
+
+
+async def _ensure_graph(listing: SeedListing, owner: _SeededUser) -> tuple[str, int]:
+    latest = await prisma.models.AgentGraph.prisma().find_first(
+        where={"id": seed_graph_id(listing)}, order={"version": "desc"}
+    )
+    if latest is not None:
+        return latest.id, latest.version
+    graph = make_graph_model(build_graph(listing), owner.id)
+    graph.validate_graph(for_run=False)
+    created = await create_graph(
+        graph, owner.id, organization_id=owner.org_id, team_id=owner.team_id
+    )
+    return created.id, created.version
+
+
+async def _ensure_listing(
+    listing: SeedListing, owner: _SeededUser, admin_id: str
+) -> tuple[str, str | None]:
+    """Returns the outcome and the version reviews belong on, if any."""
+    graph_id, graph_version = await _ensure_graph(listing, owner)
+    existing = await prisma.models.StoreListing.prisma().find_unique(
+        where={"agentGraphId": graph_id}, include={"Versions": True}
+    )
+    if existing is not None:
+        pending = _unreviewed_pending(existing.Versions or [])
+        if existing.isDeleted or existing.hasApprovedVersion or pending is None:
+            live = (
+                not existing.isDeleted
+                and existing.hasApprovedVersion
+                and existing.activeVersionId
+            )
+            return "existing", existing.activeVersionId if live else None
+        version_id, outcome = pending.id, "approved"
+    else:
+        request = store_model.StoreSubmissionRequest(
+            graph_id=graph_id,
+            graph_version=graph_version,
+            slug=listing.slug,
+            name=listing.name,
+            sub_heading=listing.sub_heading,
+            description=listing.description,
+            instructions=listing.instructions,
+            categories=list(listing.categories),
+            recommended_schedule_cron=listing.recommended_schedule_cron,
+        )
+        submission = await store_db.create_store_submission(
+            user_id=owner.id,
+            graph_id=request.graph_id,
+            graph_version=request.graph_version,
+            slug=request.slug,
+            name=request.name,
+            sub_heading=request.sub_heading,
+            description=request.description,
+            instructions=request.instructions,
+            categories=request.categories,
+            recommended_schedule_cron=request.recommended_schedule_cron,
+            organization_id=owner.org_id,
+        )
+        if submission.listing_version_id is None:
+            raise ValueError(f"Submission of '{listing.slug}' returned no version")
+        version_id, outcome = submission.listing_version_id, "created"
+
+    await store_db.review_store_submission(
+        store_listing_version_id=version_id,
+        is_approved=True,
+        external_comments=APPROVAL_COMMENT,
+        internal_comments=SEED_NOTE,
+        reviewer_id=admin_id,
+        notify_creator=False,
+    )
+    if listing.featured:
+        await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": version_id}, data={"isFeatured": True}
+        )
+    return outcome, version_id
+
+
+def _unreviewed_pending(
+    versions: Iterable[
+        prisma.models.StoreListingVersion | prisma.models.SkillListingVersion
+    ],
+):
+    """A pending version nobody has reviewed: what a run that stopped between
+    submitting and approving leaves behind."""
+    return next(
+        (
+            version
+            for version in versions
+            if version.submissionStatus == prisma.enums.SubmissionStatus.PENDING
+            and not version.isDeleted
+            and version.reviewerId is None
+        ),
+        None,
+    )
+
+
+async def _ensure_reviews(
+    listing: SeedListing, version_id: str, reviewer_ids: list[str]
+) -> int:
+    if len(listing.reviews) > len(reviewer_ids):
+        raise ValueError(f"'{listing.slug}' has more reviews than reviewers")
+    for score, reviewer_id in zip(listing.reviews, reviewer_ids):
+        review = store_model.StoreReviewCreate(
+            store_listing_version_id=version_id,
+            score=score,
+            comments=REVIEW_COMMENTS[score],
+        )
+        # An upsert per reviewer and version, so a rerun rewrites the same row.
+        await store_db.create_store_review(
+            user_id=reviewer_id,
+            store_listing_version_id=review.store_listing_version_id,
+            score=review.score,
+            comments=review.comments,
+        )
+    return len(listing.reviews)
+
+
+def parse_seed_skill(skill: SeedSkill) -> ParsedSkill:
+    """The skill as a library would hold it: parsed, normalised and checked
+    against the limits every saved skill meets."""
+    parsed = parse_skill_markdown(skill.skill_md, fallback_name=skill.slug)
+    if parsed is None:
+        raise ValueError(f"'{skill.slug}' is not a valid SKILL.md")
+    parsed = canonicalize_skill(parsed)
+    validate_skill_content(
+        parsed.description, parsed.body, parsed.triggers, name=parsed.name
+    )
+    if parsed.name != skill.slug:
+        raise ValueError(f"'{skill.slug}' is named '{parsed.name}' in its SKILL.md")
+    return parsed
+
+
+async def _ensure_skill(skill: SeedSkill, owner_id: str, admin_id: str) -> str:
+    existing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": skill.slug}, include={"Versions": True}
+    )
+    if existing is None:
+        submission = await skill_submission_db.submit_skill_package(
+            owner_id,
+            skill_model.SkillSubmissionRequest(
+                skill_name=skill.slug,
+                categories=list(skill.categories),
+                changes_summary="Initial submission",
+            ),
+            parse_seed_skill(skill),
+            files=[],
+        )
+        version_id, outcome = submission.skill_listing_version_id, "created"
+    else:
+        pending = _unreviewed_pending(existing.Versions or [])
+        if (
+            existing.owningUserId != owner_id
+            or existing.isDeleted
+            or existing.hasApprovedVersion
+            or pending is None
+        ):
+            return "existing"
+        version_id, outcome = pending.id, "approved"
+
+    await skill_submission_db.review_skill_submission(
+        version_id,
+        is_approved=True,
+        reviewer_id=admin_id,
+        comments=APPROVAL_COMMENT,
+        internal_comments=SEED_NOTE,
+    )
+    return outcome
