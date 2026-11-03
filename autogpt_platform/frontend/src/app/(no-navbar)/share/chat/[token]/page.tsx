@@ -187,6 +187,7 @@ export default function SharedChatPage() {
               error={undefined}
               isLoading={false}
               turnStats={turnStats}
+              isTurnSettling={false}
               readOnly
               filePattern={filePattern}
               fileUrlBuilder={fileUrlBuilder}

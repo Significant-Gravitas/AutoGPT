@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
 
 import fastapi.exceptions
@@ -39,21 +39,31 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+)
+from backend.data.graph import create_graph as db_create_graph
+from backend.data.graph import (
     delete_graph,
     fork_graph,
     get_graph,
     get_graph_all_versions,
+    get_graph_at_version,
     get_graph_settings,
     get_store_listed_graphs,
     graph_in_library_filter,
+    graph_owner_id,
+    is_graph_version_owner,
     make_graph_model,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -374,6 +384,28 @@ def test_stripped_for_export_drops_declared_credentials_field():
     assert "credentials" not in stripped.input_default
     assert stripped.input_default["code"] == "print('hi')"
     assert stripped.webhook_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_is_graph_version_owner(server: SpinTestServer):
+    """A graph version is owned by the user who saved it, by no one else, and a
+    missing version is owned by no one."""
+    graph = Graph(
+        name="Owned graph",
+        description="",
+        nodes=[Node(block_id=StoreValueBlock().id, input_default={})],
+        links=[],
+    )
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), DEFAULT_USER_ID
+    )
+    other_user = await create_test_user(alt_user=True)
+
+    assert await is_graph_version_owner(created.id, created.version, DEFAULT_USER_ID)
+    assert not await is_graph_version_owner(created.id, created.version, other_user.id)
+    assert not await is_graph_version_owner(
+        created.id, created.version + 1, DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1137,6 +1169,36 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
     assert [version.version for version in versions] == [created.version]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_at_version_reads_the_version_asked_for(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "first"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    edited = _value_to_output_graph({"name": "second"}, value_node.id, output_node.id)
+    edited.id = created.id
+    await graphs_routes.update_graph(
+        created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    versions = sorted(
+        v.version
+        for v in await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    )
+    assert len(versions) == 2
+
+    read = [await get_graph_at_version(created.id, v, client=None) for v in versions]
+
+    assert [(g.version, list(g.output_schema["properties"])) for g in read if g] == [
+        (versions[0], ["first"]),
+        (versions[1], ["second"]),
+    ]
+
+
 def _owner_context(user_id: str) -> RequestContext:
     return RequestContext(
         user_id=user_id,
@@ -1265,6 +1327,63 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+class _CountedProviders(frozenset):
+    """A provider set that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__ne__(self, other)
+
+    __hash__ = frozenset.__hash__
+
+
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
+    count = 300
+    inputs = {
+        f"provider_{i}_credentials": (
+            CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": [f"provider_{i}"],
+                    "credentials_types": ["api_key"],
+                },
+                by_alias=True,
+            ).model_copy(update={"provider": _CountedProviders({f"provider_{i}"})}),
+            {(f"node-{i}", "credentials")},
+            True,
+        )
+        for i in range(count)
+    }
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[],
+        links=[],
+    )
+    _CountedProviders.comparisons = 0
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=inputs,
+    ):
+        schema = graph.credentials_input_schema
+
+    assert len(schema["properties"]) == count
+    assert _CountedProviders.comparisons <= count
 
 
 # ============================================================================
@@ -3645,3 +3764,201 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
         "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
+
+
+def _graph(name: str, graph_id: str | None = None, **kwargs) -> Graph:
+    return Graph(
+        id=graph_id or str(uuid4()),
+        name=name,
+        description="",
+        nodes=[],
+        links=[],
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_refuses_a_version_under_another_users_graph_id(
+    server: SpinTestServer,
+):
+    """A graph ID belongs to whoever created it, for the graph and its sub-graphs."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(
+            _graph(
+                "their own graph",
+                sub_graphs=[BaseGraph(id=owned.id, name="other's", description="")],
+            ),
+            other.id,
+        )
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+    # The owner's own next save still lands, as the next version.
+    second = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert second.version == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_graph_ids_owner_is_the_owner_of_its_first_version(
+    server: SpinTestServer,
+):
+    """A graph ID stays its creator's, whoever owns a later version of it."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    await AgentGraph.prisma().create(
+        data={
+            "id": owned.id,
+            "version": 2,
+            "name": "owned",
+            "description": "",
+            "isActive": True,
+            "userId": other.id,
+        }
+    )
+
+    assert await graph_owner_id(owned.id) == owner.id
+    saved = await db_create_graph(_graph("owned v3", graph_id=owned.id), owner.id)
+    assert (saved.version, saved.user_id) == (3, owner.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_appends_after_the_latest_version_it_finds(
+    server: SpinTestServer,
+):
+    """The stored version number is the database's, never the request's."""
+    owner = await create_test_user()
+    first = await db_create_graph(_graph("versioned"), owner.id)
+
+    requested = _graph("versioned", graph_id=first.id, version=7)
+    saved = await db_create_graph(requested, owner.id)
+
+    assert saved.version == first.version + 1
+    assert requested.version == first.version + 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_graph_in_library_forks_another_users_graph(
+    server: SpinTestServer,
+):
+    """Editing a workflow the caller does not own saves the caller's own copy."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("installed"), owner.id)
+
+    edited = _graph("installed, edited", graph_id=owned.id, version=owned.version)
+    forked, library_agent = await library_db.update_graph_in_library(edited, other.id)
+
+    assert forked.id != owned.id
+    assert forked.user_id == other.id
+    assert forked.forked_from_id == owned.id
+    assert forked.forked_from_version == owned.version
+    assert library_agent.graph_id == forked.id
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_rejects_unsafe_pin_names(server: SpinTestServer):
+    """The store path refuses a graph whose node input-default key or link name
+    carries an unsafe dynamic object-attribute token, so one never persists.
+
+    The base of each token is a real input field, so graph validation — which
+    inspects base names, not the flattened tokens — would pass it on.
+    """
+    # Local import: the module-level name `create_graph` is taken by a
+    # CreateGraph request object throughout this file.
+    from backend.data.graph import create_graph as create_graph_db
+
+    value_block = StoreValueBlock().id
+    node_a, node_b = str(uuid4()), str(uuid4())
+
+    # Unsafe token in a node input-default key.
+    bad_input = Graph(
+        name="bad-input",
+        description="",
+        nodes=[
+            Node(
+                id=node_a,
+                block_id=value_block,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+        links=[],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_input, DEFAULT_USER_ID)
+
+    # Unsafe token in a link sink name.
+    bad_link = Graph(
+        name="bad-link",
+        description="",
+        nodes=[
+            Node(id=node_a, block_id=value_block),
+            Node(id=node_b, block_id=value_block),
+        ],
+        links=[
+            Link(
+                source_id=node_a,
+                sink_id=node_b,
+                source_name="output",
+                sink_name="input_@___class__",
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_link, DEFAULT_USER_ID)
+
+    # Nothing was written by either refusal.
+    for refused in (bad_input, bad_link):
+        assert (
+            await get_graph(refused.id, refused.version, user_id=DEFAULT_USER_ID)
+        ) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_checks_pin_names_and_the_owner_before_any_write(
+    server: SpinTestServer,
+):
+    """A re-save of an existing graph ID passes both checks before anything is
+    written, sub-graphs included, and the owner's clean save still lands."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    sub_graph = BaseGraph(
+        id=str(uuid4()),
+        name="sub",
+        description="",
+        nodes=[
+            Node(
+                id=str(uuid4()),
+                block_id=StoreValueBlock().id,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await db_create_graph(
+            _graph("owned v2", graph_id=owned.id, sub_graphs=[sub_graph]), owner.id
+        )
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    rows = await AgentGraph.prisma().find_many(
+        where={"id": {"in": [owned.id, sub_graph.id]}}
+    )
+    assert [(row.id, row.version, row.userId) for row in rows] == [
+        (owned.id, 1, owner.id)
+    ]
+    saved = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert saved.version == 2
