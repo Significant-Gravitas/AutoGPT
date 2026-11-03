@@ -1006,8 +1006,8 @@ def get_service_client(
     return client
 
 
-# Errors defined in backend code that a later attempt can cure; a new transient
-# error subclasses one of the bases. Every other one is answered at once.
+# A backend error class not covered here is answered at once, never retried: a new
+# transient one (lost connection, lock, not ready yet) subclasses a base or joins this.
 RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
     ConnectionError,
     TimeoutError,
@@ -1017,6 +1017,7 @@ RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
     RequestHTTPServerError,
     exceptions.DatabaseError,
     exceptions.ExpertHireUnavailableError,
+    exceptions.RedisError,
     exceptions.WebhookSetupUnavailableError,
 )
 

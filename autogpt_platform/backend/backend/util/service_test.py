@@ -20,6 +20,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import exceptions as shared_errors
 from backend.util import retry as retry_module
 from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
@@ -1644,3 +1645,67 @@ async def _attempts_until_raised(
     with pytest.raises(expected):
         await asyncio.wait_for(client.lookup(), timeout=30)
     return attempts
+
+
+# Every class in util/exceptions.py, by how a retrying client treats it; a new
+# class fails the test below until its author decides which it is.
+_RETRIED_SHARED_ERRORS = {
+    "DatabaseError",
+    "ExpertHireUnavailableError",
+    "RedisError",
+    "WebhookSetupUnavailableError",
+}
+_ANSWERED_AT_ONCE_SHARED_ERRORS = {
+    "BlockError",
+    "BlockExecutionError",
+    "BlockInputError",
+    "BlockOutputError",
+    "BlockUnknownError",
+    "ConflictError",
+    "DuplicateChatMessageError",
+    "EmailUndeliverableError",
+    "ExpertLimitExceededError",
+    "ExpertNotFoundError",
+    "ExpertPrivateTenancyNotFoundError",
+    "ExpertRunPausedError",
+    "ExpertTemplateNotFoundError",
+    "ExpertWriteNotReadableError",
+    "GraphNotAccessibleError",
+    "GraphNotFoundError",
+    "GraphNotInLibraryError",
+    "GraphValidationError",
+    "InsufficientBalanceError",
+    "InvalidInputError",
+    "LinkAlreadyExistsError",
+    "LinkFlowMismatchError",
+    "LinkTokenExpiredError",
+    "MissingConfigError",
+    "ModerationError",
+    "NeedConfirmation",
+    "NotAuthorizedError",
+    "NotFoundError",
+    "PreconditionFailed",
+    "RaisedExpertLifetimeLimitExceededError",
+    "RoutineNotFoundError",
+    "RoutineUnansweredAsksError",
+    "SharedCredentialsRefusedError",
+    "UserBannedError",
+    "UserPaywalledError",
+    "WebhookRegistrationError",
+}
+
+
+def test_every_shared_error_is_classed_as_retried_or_answered_at_once():
+    defined = {
+        name: cls
+        for name, cls in inspect.getmembers(shared_errors, inspect.isclass)
+        if issubclass(cls, BaseException) and cls.__module__ == shared_errors.__name__
+    }
+
+    assert set(defined) == _RETRIED_SHARED_ERRORS | _ANSWERED_AT_ONCE_SHARED_ERRORS
+    retried = {
+        name
+        for name, cls in defined.items()
+        if not service_module._raised_on_purpose(cls)
+    }
+    assert retried == _RETRIED_SHARED_ERRORS
