@@ -197,6 +197,24 @@ describe("onboarding layout", () => {
     expect(result.current.steps.subscription).toBe(6);
     expect(result.current.steps.access).toBe(7);
   });
+  it("keeps a late step-order answer from moving steps while payment is unknown", () => {
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: true,
+    };
+    source.signIn = { provider: "microsoft", isReady: true };
+    const { result, rerender } = renderHook(useOnboardingLayout, {
+      initialProps,
+    });
+    const steps = result.current.steps;
+    source.flags[Flag.ONBOARDING_STEP_ORDER] = {
+      value: ["team", "autopilot", "role", "access"],
+      resolved: true,
+    };
+    rerender(initialProps);
+    expect(result.current.steps).toEqual(steps);
+  });
   it("waits for the sign-in lookup before freezing the steps", () => {
     source.payment = {
       isPaymentEnabled: false,

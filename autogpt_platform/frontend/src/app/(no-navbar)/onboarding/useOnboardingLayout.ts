@@ -22,32 +22,28 @@ export function useOnboardingLayout({
   const signIn = useSignInProvider(isLoggedIn);
 
   const flagsReady = payment.isResolved;
-  // A failed read is laid out as off but not frozen, so a later success still
-  // counts. The step placement follows the same rule, since the paywall moves
-  // the access step.
-  const paymentKnown = flagsReady && !payment.isError;
-  const placementReady = stepOrder.ready && signIn.isReady && !isUserLoading;
-  const readPlacement = () => ({
-    order: resolveStepOrder(stepOrder.enabled, {
-      paywall: payment.isPaymentEnabled,
-    }),
-    hasAccess: signIn.provider !== null,
-  });
   // Resolved once per account: a setting or flag change must not reorder an
   // active wizard. Payment and placement resolve apart, so a checkout return
-  // is confirmed without waiting on the sign-in lookup.
+  // is confirmed without waiting on the sign-in lookup. A failed payment read
+  // is laid out as off but not frozen, so a later success still counts.
   const hasPayment = useFrozenPerUser(
     userID,
-    paymentKnown && !isUserLoading,
+    flagsReady && !payment.isError && !isUserLoading,
     () => payment.isPaymentEnabled,
   );
-  const frozenPlacement = useFrozenPerUser(
+  const placement = useFrozenPerUser(
     userID,
-    paymentKnown && placementReady,
-    readPlacement,
+    stepOrder.ready && signIn.isReady && !isUserLoading,
+    () => ({
+      requestedOrder: stepOrder.enabled,
+      hasAccess: signIn.provider !== null,
+    }),
   );
-  const placement =
-    frozenPlacement ?? (flagsReady && placementReady ? readPlacement() : null);
+  // The paywall moves the access step, so the order follows payment as the
+  // layout sees it: off until a read succeeds.
+  const order = placement
+    ? resolveStepOrder(placement.requestedOrder, { paywall: !!hasPayment })
+    : undefined;
   const paidConfirmation = usePaidCheckoutStatus(
     userID,
     !!hasPayment && !environment.isLocal(),
@@ -59,7 +55,7 @@ export function useOnboardingLayout({
     hasPaywall: isPaymentEnabled,
     hasConnect: isSelfHostConnectEnabled,
     hasAccess: !!placement?.hasAccess,
-    order: placement?.order,
+    order,
   });
   return {
     steps,
