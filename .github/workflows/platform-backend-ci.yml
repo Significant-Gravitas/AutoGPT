@@ -650,13 +650,17 @@ jobs:
           fi
 
           unit="ci-backend-${TEST_SHARD}.scope"
+          preserve_env=$(python -c 'import os; print(",".join(os.environ))')
           set +e
-          sudo -E systemd-run --scope --expand-environment=no --unit="$unit" \
+          sudo --preserve-env="$preserve_env" systemd-run --scope --expand-environment=no --unit="$unit" \
             -p RuntimeMaxSec=8min -p TimeoutStopSec=15s -p KillMode=control-group \
             /usr/bin/setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
-            /usr/bin/env PATH="$PATH" HOME="$HOME" /usr/bin/time -v \
+            /usr/bin/env PATH="$PATH" HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /usr/bin/time -v \
             python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
           status=$?
+          if [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == loaded ]]; then
+            sudo systemctl stop "$unit" || status=1
+          fi
           sudo systemctl show "$unit" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent || true
           exit "$status"
 
