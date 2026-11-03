@@ -213,6 +213,21 @@ def taint_for_source_platform(
 _tls = threading.local()
 
 
+def _pin_local_pc_to_sdk(
+    session: "ChatSession", use_sdk: bool, *, thinking_available: bool
+) -> bool:
+    """Run a Local PC chat on the SDK engine, the only one bound to the
+    user's machine; the baseline engine would run its tools in a cloud
+    sandbox. Where the SDK transport cannot run, the baseline engine
+    refuses the turn instead."""
+    if use_sdk or not thinking_available:
+        return use_sdk
+    if session.metadata.execution_target.kind == "local":
+        logger.info("Forcing SDK engine: the chat runs on a Local PC")
+        return True
+    return use_sdk
+
+
 async def _building_mode_forces_sdk(session_id: str) -> bool:
     """True when the session's history shows it entered agent-building mode.
 
@@ -824,6 +839,11 @@ class CoPilotProcessor:
                             log.info(
                                 "Forcing SDK engine: session is in agent building mode"
                             )
+                    use_sdk = _pin_local_pc_to_sdk(
+                        session,
+                        use_sdk,
+                        thinking_available=config.thinking_available,
+                    )
                     if credit_turn is not None and not use_sdk:
                         # Only the SDK engine caps a turn's spend, and a turn
                         # on the credit balance mustn't overdraw it.
