@@ -81,13 +81,23 @@ def is_deployment_chat_available() -> bool:
 
 async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
     """Every transport this user can chat over, one of them marked default."""
-    # Each is a database read, and a new chat waits for this list before it
-    # is created: read them side by side.
-    codex, microsoft_365, (saved_provider, saved_credential_id) = await asyncio.gather(
+    # A new chat waits for this list before it is created, so the three
+    # reads run side by side. The list answers only once every read has
+    # ended, and a failure is raised in a fixed order (ChatGPT, Microsoft,
+    # the saved default), whichever read fails first.
+    codex, microsoft_365, saved = await asyncio.gather(
         _valid_codex_credentials(user_id),
         _valid_microsoft_365_copilot_credentials(user_id),
         user_db().get_user_default_chat_route(user_id),
+        return_exceptions=True,
     )
+    if isinstance(codex, BaseException):
+        raise codex
+    if isinstance(microsoft_365, BaseException):
+        raise microsoft_365
+    if isinstance(saved, BaseException):
+        raise saved
+    saved_provider, saved_credential_id = saved
     transports = [
         ChatTransportResponse(
             auth_provider="platform",

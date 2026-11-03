@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -792,7 +793,7 @@ async def set_default_chat_transport(
     return ChatTransportsResponse(transports=transports)
 
 
-async def _new_session_expert(user_id: str, expert_id: str | None):
+async def _new_session_expert(user_id: str, expert_id: str | None) -> Expert | None:
     if expert_id is None:
         return None
     return await experts_db.get_expert(user_id, expert_id)
@@ -940,8 +941,10 @@ async def create_session(
             detail="builder_graph_id and expert_id are mutually exclusive",
         )
 
-    # Two lookups the new chat waits on, neither needing the other: run them
-    # side by side, then fail in the order they used to run in.
+    # The expert and the connection don't depend on each other, so they are
+    # looked up side by side. Both lookups end before either is acted on, and
+    # the expert's failures come first: a failed lookup, then a missing or
+    # archived expert (404), then the connection's error.
     expert, route = await asyncio.gather(
         _new_session_expert(user_id, expert_id),
         _resolve_new_session_llm_route(user_id, request),

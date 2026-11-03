@@ -2856,6 +2856,61 @@ def test_create_session_reports_a_failed_expert_lookup_before_a_bad_connection(
     mock_create.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_create_session_abandoned_mid_lookup_leaves_no_lookup_running(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The client goes away while the expert and the connection are being
+    looked up: every lookup stops with the request, the connection's three
+    reads included, and nothing is created."""
+    mock_create = _mock_create_chat_session(mocker)
+    started: list[str] = []
+    stopped: list[str] = []
+    all_started = asyncio.Event()
+
+    async def lookup(name: str) -> None:
+        started.append(name)
+        if len(started) == 4:
+            all_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            stopped.append(name)
+            raise
+
+    async def expert(*_args) -> None:
+        await lookup("expert")
+
+    async def connections(_user_id: str, provider: str) -> None:
+        await lookup("chatgpt" if provider == "codex" else "microsoft")
+
+    async def saved_default(_user_id: str) -> None:
+        await lookup("saved default")
+
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.get_expert", side_effect=expert
+    )
+    chat_transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        connections
+    )
+    chat_transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        request = asyncio.create_task(
+            async_client.post("/sessions", json={"expert_id": "expert-1"})
+        )
+        await asyncio.wait_for(all_started.wait(), timeout=5)
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+    assert sorted(started) == ["chatgpt", "expert", "microsoft", "saved default"]
+    assert sorted(stopped) == sorted(started)
+    mock_create.assert_not_called()
+
+
 def test_create_session_maps_missing_personal_org_to_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
