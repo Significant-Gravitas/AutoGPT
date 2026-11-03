@@ -1,0 +1,14 @@
+{
+  "type": "expert_soul_updated",
+  "message": "Nothing saved yet. The user is looking at this diff on a card with Approve and Decline buttons — do not repeat it in text. Reply with one short line at most and wait. Only after they explicitly approve, call tool:confirm_expert_soul_update with this confirmation_id.",
+  "session_id": "session-1",
+  "applied": false,
+  "changes": [
+    {
+      "field": "voice_preferences",
+      "before": "Short and factual.",
+      "after": "Warmer."
+    }
+  ],
+  "confirmation_id": "5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10"
+}

@@ -1,8 +1,10 @@
+from typing import Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from backend.blocks.mcp.oauth import MCPTokenEndpointAuthMethod
+from backend.integrations.mcp_catalog import MCPServerMetadata
 from backend.util.settings import Secrets
 
 
@@ -22,6 +24,11 @@ PREREGISTERED_APPS: dict[str, PreregisteredApp] = {
         client_id_field="slack_mcp_client_id",
         client_secret_field="slack_mcp_client_secret",
         endpoint_hosts=frozenset({"slack.com"}),
+    ),
+    "mcp.hubspot.com": PreregisteredApp(
+        client_id_field="hubspot_mcp_client_id",
+        client_secret_field="hubspot_mcp_client_secret",
+        endpoint_hosts=frozenset({"mcp.hubspot.com"}),
     ),
 }
 
@@ -55,6 +62,30 @@ def select_client_auth_method(
     raise ValueError(
         "This MCP server requires an unsupported client authentication method"
     )
+
+
+def requested_scopes(
+    server: MCPServerMetadata | None,
+    protected_resource: dict[str, Any] | None,
+    metadata: dict[str, Any],
+) -> list[str]:
+    """The scopes to ask for when the caller names none: the catalog entry's
+    own, else the minimum the resource lists, else everything the authorization
+    server advertises. An entry can ask for everything advertised outright."""
+    if server and server.oauth_scopes is not None:
+        return server.oauth_scopes
+    advertised = metadata.get("scopes_supported") or []
+    if server and server.oauth_request_all_scopes and advertised:
+        return advertised
+    return (protected_resource or {}).get("scopes_supported") or advertised
+
+
+def requires_registered_client(metadata: dict[str, object]) -> bool:
+    """Whether the server's token endpoint only takes clients that authenticate
+    with a secret, so the public placeholder client can never sign in. A server
+    that does not list its methods keeps the placeholder, as before."""
+    supported = metadata.get("token_endpoint_auth_methods_supported")
+    return isinstance(supported, list) and "none" not in supported
 
 
 def preregistered_client(server_url: str, secrets: Secrets) -> tuple[str, str] | None:

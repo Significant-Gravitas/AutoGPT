@@ -11,7 +11,10 @@ import stripe
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel
 
-from backend.data.credit import sync_subscription_from_stripe
+from backend.data.credit import (
+    invalidate_billing_lookups,
+    sync_subscription_from_stripe,
+)
 from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import (
@@ -21,7 +24,6 @@ from backend.data.subscription_checkout import (
     other_plan_is_live,
     subscription_checkout_lock,
 )
-from backend.data.subscription_lookup_cache import invalidate_active_subscription_cache
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_payment import (
     CONVERSION_PRICE_KEY,
@@ -202,7 +204,7 @@ async def _save_conversion(trial: TrialState, converted: stripe.Subscription) ->
                 f"Trial {trial.id} converted in Stripe but the follow-up sync failed"
             )
     finally:
-        await invalidate_active_subscription_cache(trial.customer_id)
+        await invalidate_billing_lookups(trial.customer_id)
 
 
 def _is_cancel_pending(trial: TrialState) -> bool:

@@ -150,3 +150,22 @@ export function tierLock(
   if (!match?.lock_reason) return undefined;
   return { reason: match.lock_reason, href: "/settings/billing" };
 }
+
+/**
+ * The connections the sheet lists under "Runs on".
+ *
+ * One runnable row is nothing to choose between, and a session's connection
+ * is fixed once it exists. A locked-only row is the exception: its
+ * explanation and unlock link are the reason the control is shown at all.
+ */
+export function listedConnections(
+  offers: AIConnectionOffer[],
+  connectionLocked: boolean,
+): AIConnectionOffer[] {
+  const onlyOfferIsLocked =
+    offers.length === 1 && Boolean(offers[0]?.lock_reason);
+  const shows =
+    (!connectionLocked || onlyOfferIsLocked) &&
+    (offers.length > 1 || onlyOfferIsLocked);
+  return shows ? offers : [];
+}

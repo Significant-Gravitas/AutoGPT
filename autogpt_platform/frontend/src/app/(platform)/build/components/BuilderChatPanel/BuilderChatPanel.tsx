@@ -10,6 +10,7 @@ import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   className?: string;
@@ -27,6 +28,7 @@ export function BuilderChatPanel({ className }: Props) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,
@@ -51,13 +53,13 @@ export function BuilderChatPanel({ className }: Props) {
   const activeErrorTitle = bindError
     ? "Could not start the builder chat"
     : bootstrapError
-      ? "Could not create a blank agent"
+      ? "Could not create a blank workflow"
       : "Could not check the AI connection";
 
   return (
     <div
       className={cn(
-        "pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2",
+        "pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-2",
         className,
       )}
     >
@@ -67,7 +69,7 @@ export function BuilderChatPanel({ className }: Props) {
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
+            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-node-border bg-surface shadow-2xl sm:h-[75vh]"
           >
             <PanelHeader
               onClose={handleToggle}
@@ -80,24 +82,39 @@ export function BuilderChatPanel({ className }: Props) {
               {hasNoModel ? (
                 <NoModelNotice />
               ) : activeError && activeRetry ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
-                  <p className="font-medium text-slate-800">
-                    {activeErrorTitle}
-                  </p>
-                  <p className="text-slate-500">
-                    Something went wrong. Retry to try again.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={activeRetry}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                <div className="flex flex-1 flex-col px-4 py-6">
+                  <Text
+                    variant="body-tight"
+                    tone="secondary"
+                    as="div"
+                    className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
                   >
-                    Retry
-                  </button>
+                    <Text variant="body-medium-tight" tone="body">
+                      {activeErrorTitle}
+                    </Text>
+                    <Text variant="body-tight" tone="muted">
+                      Something went wrong. Retry to try again.
+                    </Text>
+                    <button
+                      type="button"
+                      onClick={activeRetry}
+                      className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+                    >
+                      <Text
+                        variant="body-medium-tight"
+                        as="span"
+                        tone="inherit"
+                      >
+                        Retry
+                      </Text>
+                    </button>
+                  </Text>
                 </div>
               ) : isBootstrapping ? (
-                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
-                  Preparing builder chat…
+                <div className="flex flex-1 items-center justify-center px-4 py-6">
+                  <Text variant="body-tight" tone="muted" as="div">
+                    Preparing builder chat…
+                  </Text>
                 </div>
               ) : sessionId ? (
                 <>
@@ -109,24 +126,28 @@ export function BuilderChatPanel({ className }: Props) {
                       isLoading={false}
                       sessionID={sessionId}
                       queuedMessages={queuedMessages}
+                      isTurnSettling={isTurnSettling}
                     />
                   </div>
-                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                  <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}
                       disabled={false}
                       isStreaming={isStreaming}
+                      isTurnStarting={status === "submitted"}
                       onStop={stop}
                       onEnqueue={onSend}
-                      placeholder="Ask the builder to edit or run this agent…"
+                      placeholder="Ask the builder to edit or run this workflow…"
                       hasSession={true}
                     />
                   </div>
                 </>
               ) : (
-                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
-                  Open an agent to start chatting with the builder.
+                <div className="flex flex-1 items-center justify-center px-4 py-6">
+                  <Text variant="body-tight" tone="muted" as="div">
+                    Open a workflow to start chatting with the builder.
+                  </Text>
                 </div>
               )}
             </div>
@@ -141,10 +162,10 @@ export function BuilderChatPanel({ className }: Props) {
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
           "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2",
+          "focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none",
           isOpen
-            ? "bg-slate-800 text-white hover:bg-slate-700"
-            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ? "bg-action text-action-foreground hover:bg-foreground-body"
+            : "border border-node-border bg-surface text-foreground-body hover:bg-surface-muted",
         )}
       >
         {isOpen ? (

@@ -5,7 +5,7 @@
 This guide will get you up and running on the hosted AutoGPT Platform at [platform.agpt.co](https://platform.agpt.co). No local installation or Docker setup is required — just sign up and start building.
 
 {% hint style="info" %}
-Looking to self-host instead? See the [Self-Hosting Guide](getting-started.md).
+Looking to self-host instead? Run the [single-container Docker image](single-container.md) or see the [Self-Hosting Guide](getting-started.md).
 {% endhint %}
 
 ## Creating Your Account

@@ -64,7 +64,7 @@ function renderAllSizes() {
       {sizes.map((size) => (
         <div key={size} className="flex flex-col items-center gap-2">
           <Emoji text="🔥" size={size} />
-          <span className="text-xs text-muted-foreground">{size}px</span>
+          <span className="text-caption text-muted-foreground">{size}px</span>
         </div>
       ))}
     </div>

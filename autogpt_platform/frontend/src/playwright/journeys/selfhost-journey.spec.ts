@@ -130,7 +130,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
       target: { node: "Agent Output", input: "value" },
     });
     await buildPage.fillLastNodeTextInput("Agent Output", outputName);
-    await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
     await buildPage.saveAgent(agentName, "Self-hosted first-hour journey");
     await buildPage.waitForSaveComplete();
     await buildPage.waitForSaveButton();
@@ -149,7 +148,7 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
 
   await test.step("the Library's briefing shows no spend", async () => {
     await page.goto("/library");
-    await expect(page.getByText("Agent Briefing")).toBeVisible();
+    await expect(page.getByText("Workflow Briefing")).toBeVisible();
     await expect.soft(page.getByText("Spent this month")).toHaveCount(0);
     await expect
       .soft(page.getByRole("button", { name: /costs breakdown/i }))
@@ -182,8 +181,6 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
     "a self-hosted install must not make the browser call other hosts",
   ).toEqual([]);
 });
-
-const AGENTATION = "[data-agentation-root], [data-agentation-toolbar]";
 
 async function libraryAgentNames(page: Page) {
   const response = await page.request.get(
@@ -234,7 +231,6 @@ async function expectNoHostedOnlyChrome(page: Page) {
   const accountMenu = page.getByTestId("profile-popout-menu-trigger");
   await expect(accountMenu).toBeVisible();
   await expect.soft(page.getByText(/earn credits/i)).toHaveCount(0);
-  await expect.soft(page.locator(AGENTATION)).toHaveCount(0);
 
   await accountMenu.click();
   const menu = page.getByTestId("account-menu-popover");

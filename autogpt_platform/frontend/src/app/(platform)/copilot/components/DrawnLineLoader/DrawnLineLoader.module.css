@@ -1,0 +1,60 @@
+/*
+ * One stroke path per shape. Every path has pathLength="1", so a dash of 1
+ * covers the whole stroke no matter how long the artwork is, and animating
+ * stroke-dashoffset from 1 to 0 "draws" it.
+ *
+ * Default (and reduced-motion) state: the first shape, fully drawn, static.
+ * The animation only exists inside prefers-reduced-motion: no-preference.
+ */
+.path {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 0;
+  opacity: 0;
+}
+
+.path:first-child {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .path {
+    animation-name: drawn-line-cycle;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    /* Hold the 0% frame (hidden) while a later shape waits for its turn. */
+    animation-fill-mode: backwards;
+  }
+}
+
+/*
+ * Timeline of ONE path over the full cycle (3 shapes x 2.5s). A shape's own
+ * slot is the first third: draw, hold, then fade out while the next shape
+ * starts drawing, which gives the crossfade. The stops assume exactly 3
+ * shapes; changing the count means retuning them.
+ */
+@keyframes drawn-line-cycle {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  2% {
+    stroke-dashoffset: 0.97;
+    opacity: 1;
+  }
+  20% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  31% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  39% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}

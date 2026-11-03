@@ -8,8 +8,8 @@ interface Props {
 function UserTable({ data }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+      <table className="w-full text-left text-body">
+        <thead className="border-b text-caption text-muted-foreground uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               User
@@ -39,7 +39,7 @@ function UserTable({ data }: Props) {
             >
               <td className="px-4 py-3">
                 <div className="font-medium">{row.email || "Unknown"}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-caption text-muted-foreground">
                   {row.user_id}
                 </div>
               </td>

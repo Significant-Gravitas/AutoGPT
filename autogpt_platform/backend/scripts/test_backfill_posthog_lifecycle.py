@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
-from prisma.enums import SubscriptionTier
 
 import scripts.backfill_posthog_lifecycle as backfill
 from backend.data.posthog_lifecycle import LifecycleUser
+from backend.data.stripe_subscription_facts import LIST_EXPAND
 
 SYNC = "backend.data.posthog_lifecycle_sync"
 NOW = datetime.now(UTC)
@@ -27,12 +27,9 @@ def _sub(sub_id: str, customer: str, status: str, **extra) -> dict:
     }
 
 
-def _user(user_id: str, customer: str | None, tier: str) -> LifecycleUser:
+def _user(user_id: str, customer: str | None) -> LifecycleUser:
     return LifecycleUser(
-        id=user_id,
-        created_at=NOW - timedelta(days=100),
-        stripe_customer_id=customer,
-        subscription_tier=SubscriptionTier(tier),
+        id=user_id, created_at=NOW - timedelta(days=100), stripe_customer_id=customer
     )
 
 
@@ -56,15 +53,23 @@ def sources(monkeypatch: pytest.MonkeyPatch, secrets: MagicMock):
             "data": [
                 _sub("sub_1", "cus_1", "active"),
                 _sub("sub_2", "cus_2", "canceled", ended_at=int(NOW.timestamp())),
+                # A 100% coupon: not a paying subscriber (SECRT-2795).
+                _sub(
+                    "sub_4",
+                    "cus_4",
+                    "active",
+                    discounts=[{"coupon": {"percent_off": 100}, "end": None}],
+                ),
             ],
             "has_more": False,
         },
         "k",
     )
     users = [
-        _user("u-1", "cus_1", "PRO"),
-        _user("u-2", "cus_2", "NO_TIER"),
-        _user("u-3", "cus_3", "NO_TIER"),
+        _user("u-1", "cus_1"),
+        _user("u-2", "cus_2"),
+        _user("u-3", "cus_3"),
+        _user("u-4", "cus_4"),
     ]
     with (
         patch(
@@ -96,12 +101,13 @@ async def test_dry_run_prints_counts_and_sends_nothing(sources, capsys):
     assert await backfill.main(send=False, all_users=False, batch_size=500) == 0
 
     posthog.capture.assert_not_called()
-    list_async.assert_awaited_once_with(status="all", limit=100)
+    # Discounts expanded, so a full coupon is seen without a call per user.
+    list_async.assert_awaited_once_with(status="all", limit=100, expand=LIST_EXPAND)
     out = capsys.readouterr().out
     assert "DRY RUN, nothing sent" in out
     assert "Stripe: test mode" in out
-    assert "Users mapped: 3" in out
-    assert "  signed: 1" in out
+    assert "Users mapped: 4" in out
+    assert "  signed: 2" in out
     assert "  subscribed: 1" in out
     assert "  subscription_ended: 1" in out
     assert "$set sent" not in out
@@ -122,9 +128,10 @@ async def test_send_mode_sets_every_user_and_flushes(sources, capsys):
         "u-1": "subscribed",
         "u-2": "subscription_ended",
         "u-3": "signed",
+        "u-4": "signed",
     }
     assert posthog.flush.called
-    assert "$set sent: 3" in capsys.readouterr().out
+    assert "$set sent: 4" in capsys.readouterr().out
 
 
 async def test_send_requires_a_posthog_key(sources, secrets):

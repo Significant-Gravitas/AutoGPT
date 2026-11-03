@@ -7,6 +7,7 @@ viewer can drill into the underlying agent run; the cascade rules are
 encoded here (see :func:`disable_chat_session_share`).
 """
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -29,6 +30,7 @@ from backend.blocks import get_block
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
     ChatShareState,
@@ -353,7 +355,11 @@ async def get_shared_chat_messages_paginated(
         messages=[
             sanitize_chat_message(message)
             for message in page.messages
+            # Hidden control turns, and the platform's notes to the owner: a
+            # scheduled chat's note says what their plan, usage or connections
+            # are, and the shared copy carries no metadata to hide it by.
             if not is_hidden_chat_message(message.metadata)
+            and not is_hidden_from_model(message.metadata)
         ],
         has_more=page.has_more,
         oldest_sequence=page.oldest_sequence,
@@ -378,7 +384,11 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     SharedChatFile row so subsequent downloads short-circuit.
     """
     record = await SharedChatFile.prisma().find_first(
-        where={"shareToken": share_token, "fileId": file_id}
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+            "Session": {"is": {"shareToken": share_token, "isShared": True}},
+        }
     )
     if record is not None:
         return record.sessionId
@@ -478,16 +488,18 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     # live state of the chat — sharing is live, not snapshot-at-enable
     # (see the share-modal warning text), so the numbers under the
     # toggle ARE the numbers that will be visible the moment the
-    # owner clicks "Enable sharing".
+    # owner clicks "Enable sharing".  Read only once the row proved the
+    # session is the user's.  The messages are counted first, so a message
+    # landing meanwhile can only add to what the two scans find, never be
+    # counted with its runs and files left out; the scans run side by side.
     message_count = await PrismaChatMessage.prisma().count(
         where={"sessionId": session_id},
     )
-    linked_run_count = len(
-        await _collect_execution_ids_from_messages(session_id=session_id)
+    linked_run_ids, file_count = await asyncio.gather(
+        _collect_execution_ids_from_messages(session_id=session_id),
+        _count_referenced_workspace_files(session_id=session_id, user_id=user_id),
     )
-    file_count = await _count_referenced_workspace_files(
-        session_id=session_id, user_id=user_id
-    )
+    linked_run_count = len(linked_run_ids)
 
     return ChatShareState(
         is_shared=row.isShared,
@@ -724,7 +736,7 @@ async def _build_shared_execution_file_allowlist(
             "NodeExecutions": {
                 "include": {
                     "Input": True,
-                    "Node": {"include": {"AgentBlock": True}},
+                    "Node": True,
                 }
             }
         },
@@ -773,7 +785,7 @@ async def _resolve_linked_executions(
     session_id: str,
 ) -> list[SharedChatLinkedExecution]:
     rows = await ChatLinkedShare.prisma().find_many(
-        where={"sessionId": session_id},
+        where={"sessionId": session_id, "Execution": {"is": {"isDeleted": False}}},
         include={"Execution": {"include": {"AgentGraph": True}}},
     )
     out: list[SharedChatLinkedExecution] = []
