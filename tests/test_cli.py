@@ -478,3 +478,54 @@ def test_version_prints_the_installed_version(
 
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.strip() == f"autogpt-shim {version('autogpt-local-executor')}"
+
+
+def test_an_unknown_log_level_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli._build_parser().parse_args(["--log-level", "trace", "status"])
+
+    assert exit_info.value.code == 2
+    assert cli._build_parser().parse_args(["--log-level", "debug", "status"]).log_level == "DEBUG"
+
+
+@contextlib.contextmanager
+def _embedder_logging_at_debug() -> Iterator[None]:
+    """A program that imports ShimDaemon sets up its own logging; main()'s
+    cap on the websockets loggers never runs there."""
+    root = logging.getLogger()
+    saved = (root.handlers[:], root.level)
+    root.handlers = [logging.StreamHandler()]
+    root.setLevel(logging.DEBUG)
+    try:
+        yield
+    finally:
+        root.handlers = saved[0]
+        root.setLevel(saved[1])
+
+
+@pytest.mark.asyncio
+async def test_an_embedder_logging_at_debug_never_sees_the_bearer_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str | None] = []
+
+    async def record(_connection, request) -> None:
+        sent.append(request.headers.get("Authorization"))
+
+    async def handler(ws) -> None:
+        await ws.close()
+
+    with _embedder_logging_at_debug():
+        async with serve(handler, "127.0.0.1", 0, process_request=record) as server:
+            config = ShimConfig(
+                platform_url=f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}",
+                allowed_root=tmp_path,
+                audit_log_path=tmp_path / "audit.log",
+            )
+            store = SimpleNamespace(get_access_token=AsyncMock(return_value="access-secret"))
+            daemon = ShimDaemon(config, token_store=store, audit=MagicMock())
+            monkeypatch.setattr(daemon, "_run_session", AsyncMock())
+            await asyncio.wait_for(daemon._session(), timeout=30)
+
+    assert sent == ["Bearer access-secret"]
+    assert "access-secret" not in capsys.readouterr().err

@@ -123,7 +123,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--log-level",
         default="INFO",
-        help="Python logging level (DEBUG/INFO/WARNING/ERROR).",
+        type=str.upper,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Python logging level.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("auth", help="Authenticate with the AutoGPT platform (OAuth)")
