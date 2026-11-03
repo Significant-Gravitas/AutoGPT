@@ -8,13 +8,14 @@ vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
   useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
 }));
 vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: () => ({
-    initialPrompt: prompts.initialPrompt,
-    setInitialPrompt: (value: string | null) => {
-      prompts.initialPrompt = value;
-    },
-    notifyMessageSent: vi.fn(),
-  }),
+  useCopilotUIStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      initialPrompt: prompts.initialPrompt,
+      setInitialPrompt: (value: string | null) => {
+        prompts.initialPrompt = value;
+      },
+      notifyMessageSent: vi.fn(),
+    }),
 }));
 import { useChatDraftAccess } from "../useChatDraft";
 import { useChatInput } from "../useChatInput";

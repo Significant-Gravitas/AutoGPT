@@ -1,7 +1,7 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { PopoverClose } from "@radix-ui/react-popover";
 
 import { TaskGroup } from "../helpers";
@@ -9,6 +9,7 @@ import { WalletRefill } from "./WalletRefill";
 import { TaskGroups } from "./WalletTaskGroups";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   groups: TaskGroup[];
@@ -16,30 +17,35 @@ interface Props {
 }
 
 export function WalletFullPanel({ groups, formattedCredits }: Props) {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
 
   return (
     <>
       {/* Header */}
-      <div className="mx-1 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+      <div className="mx-1 flex items-start justify-between gap-3 border-b border-border-base pb-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <span className="font-poppins text-base font-semibold text-zinc-900">
+          <Text variant="h5-semibold" as="span" tone="primary">
             Automation Credits
-          </span>
-          <span className="font-sans text-xs text-zinc-500">
+          </Text>
+          <Text variant="small-tight" as="span" tone="muted">
             Platform-only credits for automations. This is separate from your
             subscription and is not usable for plan fees.
-          </span>
+          </Text>
         </div>
-        <div className="flex shrink-0 items-center text-sm text-violet-700">
-          <div className="rounded-lg bg-violet-100 px-3 py-2">
-            Earn credits{" "}
-            <span className="font-semibold">{formattedCredits}</span>
+        <div className="flex shrink-0 items-center text-body leading-5 text-accent-strong">
+          <div className="rounded-lg bg-accent-surface px-3 py-2">
+            <Text variant="body-tight" as="div" tone="inherit">
+              Earn credits{" "}
+              <Text as="span" variant="body-semibold-tight" tone="inherit">
+                {formattedCredits}
+              </Text>
+            </Text>
           </div>
           <PopoverClose aria-label="Close wallet">
             <Icon
               icon={Cancel01Icon}
-              className="ml-2 h-5 w-5 text-zinc-800 hover:text-foreground"
+              tone="emphasis"
+              className="ml-2 h-5 w-5 hover:text-foreground"
             />
           </PopoverClose>
         </div>
@@ -48,9 +54,9 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
         {/* Top ups */}
         {isPaymentEnabled && <WalletRefill />}
         {/* Tasks */}
-        <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
+        <Text variant="small-tight" as="p" tone="subtle" className="mx-1 my-3">
           Complete the following tasks to earn more credits!
-        </p>
+        </Text>
         <TaskGroups groups={groups} />
       </ScrollArea>
     </>

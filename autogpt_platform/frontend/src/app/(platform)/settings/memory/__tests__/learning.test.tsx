@@ -21,9 +21,7 @@ import { within } from "@testing-library/react";
 import { SkillVersionSummary } from "@/app/api/__generated__/models/skillVersionSummary";
 import { server } from "@/mocks/mock-server";
 
-let graphitiEnabled = true;
 let learningEnabled = true;
-let flagsAnswered = true;
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -53,13 +51,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      (flag === "graphiti-memory" && graphitiEnabled) ||
-      flag === "hire-experts" ||
-      (flag === "dream-skill-learning-enabled" && learningEnabled),
-    useFlagStatus: (flag: string) => ({
-      answered: flagsAnswered,
-      enabled: flag === "graphiti-memory" ? graphitiEnabled : learningEnabled,
-    }),
+      flag === "dream-skill-learning-enabled" && learningEnabled,
   };
 });
 
@@ -101,9 +93,7 @@ const proposal: SkillVersionSummary = {
 };
 
 beforeEach(() => {
-  graphitiEnabled = true;
   learningEnabled = true;
-  flagsAnswered = true;
   resetCopilotChatRegistry();
   window.history.replaceState({}, "", "/settings/memory");
   server.use(
@@ -155,8 +145,7 @@ beforeEach(() => {
   );
 });
 
-it("keeps personal learning controls available without requesting Graphiti data", async () => {
-  graphitiEnabled = false;
+it("shows memory data alongside personal learning controls", async () => {
   const facts = vi.fn(() => ({ expert_id: null, items: [] }));
   const overview = vi.fn(() => ({
     expert_id: null,
@@ -170,22 +159,20 @@ it("keeps personal learning controls available without requesting Graphiti data"
   );
   render(<SettingsMemoryPage />);
   expect(await screen.findByText("Learning history")).toBeDefined();
-  expect(screen.queryByText("Recent memories")).toBeNull();
-  expect(facts).not.toHaveBeenCalled();
-  expect(overview).not.toHaveBeenCalled();
+  expect(screen.getByText("Recent memories")).toBeDefined();
+  await waitFor(() => expect(facts).toHaveBeenCalled());
+  await waitFor(() => expect(overview).toHaveBeenCalled());
 });
 
-it("waits for a flag answer before showing controls", () => {
-  flagsAnswered = false;
+it("shows memory controls without a feature flag answer", () => {
   render(<SettingsMemoryPage />);
-  expect(screen.queryByRole("heading", { name: "Memory" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Memory" })).toBeDefined();
 });
 
-it("hides the page when both features are disabled", () => {
-  graphitiEnabled = false;
+it("keeps memory available when skill learning is disabled", () => {
   learningEnabled = false;
   render(<SettingsMemoryPage />);
-  expect(screen.queryByRole("heading", { name: "Memory" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Memory" })).toBeDefined();
 });
 
 describe("Settings memory page — learning", () => {
@@ -337,7 +324,6 @@ describe("Settings memory page — learning", () => {
   });
 
   it("deep links from a chat chip open the requested personal version", async () => {
-    graphitiEnabled = false;
     window.history.replaceState(
       {},
       "",

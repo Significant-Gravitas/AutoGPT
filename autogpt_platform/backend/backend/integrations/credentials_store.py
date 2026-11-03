@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import hashlib
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -748,3 +750,24 @@ class IntegrationCredentialsStore:
         key = (f"user:{user_id}", "integrations")
         locks = await self.locks()
         return locks.locked(key)
+
+
+class CredentialsSnapshot:
+    """One user's credentials, loaded on the first lookup and shared by every
+    later or concurrent lookup; a failed load is shared the same way."""
+
+    def __init__(self, load: Callable[[], Awaitable[list[Credentials]]]):
+        self._load = load
+        self._loaded: asyncio.Task[dict[str, Credentials]] | None = None
+
+    async def get(self, credentials_id: str) -> Credentials | None:
+        if self._loaded is None:
+            self._loaded = asyncio.ensure_future(self._by_id())
+        return (await asyncio.shield(self._loaded)).get(credentials_id)
+
+    async def _by_id(self) -> dict[str, Credentials]:
+        by_id: dict[str, Credentials] = {}
+        for credentials in await self._load():
+            # First match wins, as in IntegrationCredentialsStore.get_creds_by_id.
+            by_id.setdefault(credentials.id, credentials)
+        return by_id

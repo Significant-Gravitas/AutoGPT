@@ -54,8 +54,8 @@ export function ServerStatusPanel({
     >
       {isError ? (
         <DebugNote>
-          Status request failed — the endpoint 404s when ONBOARDING_BRAIN_DUMP
-          is off for this user, and 401s when signed out.
+          Status request failed — check that you are signed in and the backend
+          is available.
         </DebugNote>
       ) : null}
       {isLoading && !dump ? <DebugNote>Loading status…</DebugNote> : null}

@@ -40,7 +40,7 @@ function nodeEvents(execution: Execution) {
  * subscribe for the fixture run, which the harness acknowledges itself (the
  * backend has no such run and would reject it).
  */
-async function routeExecutionSocket(page: Page, executionID: string) {
+export async function routeExecutionSocket(page: Page, executionID: string) {
   let socket: WebSocketRoute | null = null;
   let markSubscribed: () => void = () => undefined;
   const subscribed = new Promise<void>((resolve) => {
@@ -76,7 +76,11 @@ async function routeExecutionSocket(page: Page, executionID: string) {
   };
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, what: string) {
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  what: string,
+) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

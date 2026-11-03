@@ -1,11 +1,14 @@
 """Tests for chat-turn orchestration — esp. the duplicate-message guard."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
@@ -17,6 +20,10 @@ from .chat import (
     upload_workspace_file,
 )
 from .models import BotChatRequest, Platform, TurnDenial, WorkspaceUploadRequest
+
+
+def _owns(answer: bool) -> AsyncMock:
+    return AsyncMock(return_value=answer)
 
 
 def _request(**overrides) -> BotChatRequest:
@@ -49,6 +56,67 @@ class TestStartChatTurn:
             new=AsyncMock(return_value=None),
         ):
             yield
+
+    @pytest.fixture(autouse=True)
+    def turn_slot(self):
+        """The owner is under the in-flight cap and the slot is granted."""
+        slot = MagicMock()
+
+        @asynccontextmanager
+        async def granted(_user_id, _session_id, capacity=None):
+            yield slot
+
+        acquire = MagicMock(side_effect=granted)
+        count = AsyncMock(return_value=0)
+        with (
+            patch(
+                "backend.platform_linking.chat.get_inflight_turn_limit", return_value=3
+            ),
+            patch("backend.platform_linking.chat.count_inflight_turns", new=count),
+            patch("backend.platform_linking.chat.acquire_turn_slot", new=acquire),
+        ):
+            yield SimpleNamespace(slot=slot, acquire=acquire, count=count)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cause", ["at-cap", "lost-slot-race"])
+    async def test_a_turn_over_the_inflight_cap_is_refused_without_dispatch(
+        self, turn_slot, cause
+    ):
+        if cause == "at-cap":
+            turn_slot.count.return_value = 3
+        else:
+            turn_slot.acquire.side_effect = ConcurrentTurnLimitError()
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        mock_append = AsyncMock(return_value=MagicMock())
+        mock_dispatch = AsyncMock()
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="sess-new")),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=mock_append,
+            ),
+            patch(
+                "backend.platform_linking.chat.resolve_default_chat_route",
+                new=AsyncMock(return_value=("platform", None)),
+            ),
+            patch("backend.platform_linking.chat.dispatch_turn", new=mock_dispatch),
+        ):
+            handle = await start_chat_turn(_request())
+
+        assert handle.denial is not None
+        assert handle.denial.reason == "rate_limited"
+        assert "limit of 3 tasks" in handle.denial.message
+        assert handle.turn_id == ""
+        mock_append.assert_not_awaited()
+        mock_dispatch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
@@ -83,23 +151,18 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=AsyncMock(),
             ) as mock_enqueue,
         ):
-            mock_stream_registry.create_session = AsyncMock()
 
             with pytest.raises(DuplicateChatMessageError):
                 await start_chat_turn(_request())
 
-        mock_stream_registry.create_session.assert_not_awaited()
         mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_happy_path_creates_stream_and_enqueues(self):
+    async def test_happy_path_dispatches_inside_the_held_slot(self, turn_slot):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         session = MagicMock(session_id="sess-new")
@@ -119,14 +182,10 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=AsyncMock(),
             ) as mock_enqueue,
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(_request())
 
         assert handle.session_id == "sess-new"
@@ -136,8 +195,10 @@ class TestStartChatTurn:
         create_call = mock_create_chat_session.await_args
         assert create_call is not None
         assert create_call.kwargs["source_platform"] == "discord"
-        mock_stream_registry.create_session.assert_awaited_once()
         mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.args == (turn_slot.slot,)
+        assert mock_enqueue.await_args.kwargs["turn_id"] == handle.turn_id
+        turn_slot.acquire.assert_called_once_with("owner-1", "sess-new", capacity=3)
         # Its paid reads count against, and ask on, this chat's spend ceiling.
         envelope = mock_enqueue.await_args.kwargs["envelope"]
         assert envelope.tainted and envelope.spend_session_id == "sess-new"
@@ -169,14 +230,10 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=AsyncMock(),
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(_request(session_id="deleted-session"))
 
         assert handle.session_id == "sess-fresh"
@@ -244,14 +301,10 @@ class TestStartChatTurn:
                 new=mock_append,
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=mock_enqueue,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(
                 _request(
                     platform_server_id="guild-1",
@@ -289,7 +342,7 @@ class TestStartChatTurn:
                 new=mock_append,
             ),
             patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=mock_enqueue,
             ),
         ):
@@ -304,6 +357,38 @@ class TestStartChatTurn:
 
         mock_append.assert_not_awaited()
         mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dm_attachment_rejects_session_of_archived_expert(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
+        mock_append = AsyncMock()
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=expert_session),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=mock_append,
+            ),
+            patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=_owns(False)),
+            ),
+        ):
+            with pytest.raises(NotFoundError, match="no longer exists"):
+                await start_chat_turn(
+                    _request(session_id="expert-session", file_ids=["file-1"])
+                )
+
+        mock_append.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_dm_can_resume_owned_expert_session_in_personal_scope(self):
@@ -343,18 +428,20 @@ class TestStartChatTurn:
                 ),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.dispatch_turn",
                 new=mock_enqueue,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
-            handle = await start_chat_turn(_request(session_id="expert-session"))
+            owns = _owns(True)
+            with patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=owns),
+            ):
+                handle = await start_chat_turn(_request(session_id="expert-session"))
 
         assert handle.session_id == "expert-session"
         mock_create.assert_not_awaited()
+        owns.assert_awaited_once_with("owner-1", "expert-1")
         assert mock_enqueue.await_args.kwargs["organization_id"] == "personal-org"
         assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
 
@@ -639,7 +726,9 @@ class TestEnsureChatSession:
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(session_id="cached")),
+                new=AsyncMock(
+                    return_value=MagicMock(session_id="cached", expert_id=None)
+                ),
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
@@ -731,6 +820,10 @@ class TestEnsureChatSession:
                 "backend.platform_linking.chat.create_chat_session",
                 new=AsyncMock(),
             ) as mock_create,
+            patch(
+                "backend.platform_linking.chat_experts.experts_db",
+                return_value=MagicMock(owns_active_expert=_owns(True)),
+            ),
         ):
             result = await ensure_chat_session(
                 Platform.DISCORD,
@@ -779,6 +872,35 @@ class TestEnsureChatSession:
 
 class TestEvaluateTurnGate:
     _PATH = "backend.platform_linking.chat"
+
+    @pytest.fixture(autouse=True)
+    def _not_banned(self):
+        with patch(f"{self._PATH}.is_user_banned", AsyncMock(return_value=False)):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_a_banned_owner_is_denied_before_the_paywall(self):
+        paywall = AsyncMock(return_value=True)
+        with (
+            patch(f"{self._PATH}.is_user_banned", AsyncMock(return_value=True)),
+            patch(f"{self._PATH}.is_user_paywalled", paywall),
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial == TurnDenial(
+            reason="banned", message="This account has been banned."
+        )
+        paywall.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_ban_fails_closed(self):
+        with patch(
+            f"{self._PATH}.is_user_banned", AsyncMock(side_effect=ConnectionError())
+        ):
+            denial = await evaluate_turn_gate("user-1")
+
+        assert denial is not None
+        assert denial.reason == "unavailable"
 
     @pytest.mark.asyncio
     async def test_paywalled_returns_denial_with_button(self):

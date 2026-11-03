@@ -186,7 +186,7 @@ class ScheduleFollowupTool(BaseTool):
                 message=(
                     "Scheduled followups are currently disabled for this "
                     "user. Re-enable the ``copilot-scheduled-followups`` "
-                    "LaunchDarkly flag to use ``schedule_followup``."
+                    "feature flag to use ``schedule_followup``."
                 ),
                 error="feature_disabled",
                 session_id=current_session_id,

@@ -30,13 +30,23 @@ describe("getGreetingName", () => {
     expect(getGreetingName(user)).toBe("John");
   });
 
-  it("falls back to the email prefix when metadata has no name", () => {
-    const user = makeUser({}, "jane.doe@example.com");
-    expect(getGreetingName(user)).toBe("jane.doe");
+  it("keeps a given name that the email address starts with", () => {
+    const user = makeUser({ name: "Jane Doe" }, "jane@example.com");
+    expect(getGreetingName(user)).toBe("Jane");
   });
 
-  it('falls back to "there" without a user', () => {
-    expect(getGreetingName(null)).toBe("there");
-    expect(getGreetingName(undefined)).toBe("there");
+  // Email sign-up stores the address's local part as the name.
+  it.each([
+    ["the name an email sign-up stores", { name: "Jane.Doe" }],
+    ["no name at all", {}],
+  ])("has no name for %s", (_, metadata) => {
+    expect(getGreetingName(makeUser(metadata, "jane.doe@example.com"))).toBe(
+      null,
+    );
+  });
+
+  it("has no name without a user", () => {
+    expect(getGreetingName(null)).toBe(null);
+    expect(getGreetingName(undefined)).toBe(null);
   });
 });

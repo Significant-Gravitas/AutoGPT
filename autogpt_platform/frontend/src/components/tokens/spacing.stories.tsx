@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
@@ -98,7 +99,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               Tailwind utilities
             </Text>
@@ -108,15 +109,19 @@ export function AllVariants() {
                   href="https://tailwindcss.com/docs/margin"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-blue-600 hover:underline"
                 >
                   Margin Classes{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Used for external spacing between elements
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-zinc-800">
                   m-4 → margin: 1rem (16px)
                 </div>
               </div>
@@ -125,17 +130,21 @@ export function AllVariants() {
                   href="https://tailwindcss.com/docs/padding"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-blue-600 hover:underline"
                 >
                   Padding Classes
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
 
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Used for internal spacing within elements (same scale as
                   margin)
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-zinc-800">
                   p-4 → padding: 1rem (16px)
                 </div>
               </div>
@@ -150,14 +159,14 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               FAQ
             </Text>
             <div className="space-y-4">
               <Text
                 variant="h3"
-                className="mb-2 text-base font-semibold text-zinc-800"
+                className="mb-2 text-body-lg font-semibold text-zinc-800"
               >
                 🤔 Why use spacing tokens?
               </Text>
@@ -166,7 +175,7 @@ export function AllVariants() {
                   Always use spacing classes instead of arbitrary values.
                   Reasons:
                 </Text>
-                <ul className="ml-4 list-disc space-y-1 text-sm">
+                <ul className="ml-4 list-disc space-y-1 text-body">
                   <li>Ensures consistent spacing relationships</li>
                   <li>Makes responsive design easier with consistent ratios</li>
                   <li>Provides a harmonious visual rhythm</li>
@@ -177,7 +186,7 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-zinc-800"
+                  className="mb-2 text-body-lg font-semibold text-zinc-800"
                 >
                   📏 How to choose spacing values?
                 </Text>
@@ -206,7 +215,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-zinc-800"
           >
             Complete Spacing Scale
           </Text>
@@ -231,13 +240,17 @@ export function AllVariants() {
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-zinc-500">{space.rem}</p>
-                <p className="font-mono text-xs text-zinc-500">{space.px}</p>
+                <p className="font-mono text-caption text-zinc-500">
+                  {space.rem}
+                </p>
+                <p className="font-mono text-caption text-zinc-500">
+                  {space.px}
+                </p>
               </div>
               <div className="ml-8 flex-1">
                 <div className="relative h-6 bg-gray-50">
                   <div
-                    className="absolute left-0 top-0 h-full bg-blue-500"
+                    className="absolute top-0 left-0 h-full bg-blue-500"
                     style={{ width: space.value }}
                   ></div>
                 </div>

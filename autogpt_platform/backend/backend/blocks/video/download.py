@@ -17,19 +17,15 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.video._utils import VideoMediaStorage
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import (
-    MAX_FILE_SIZE_BYTES,
-    MediaFileType,
-    get_exec_file_path,
-    store_media_file,
-)
+from backend.util.file import MAX_FILE_SIZE_BYTES, MediaFileType, get_exec_file_path
 from backend.util.request import validate_url_host
 
 
-class VideoDownloadBlock(Block):
+class VideoDownloadBlock(VideoMediaStorage, Block):
     """Download video from URL using yt-dlp."""
 
     class Input(BlockSchemaInput):
@@ -92,16 +88,6 @@ class VideoDownloadBlock(Block):
         does, or sandboxing yt-dlp — which is why this block stays `disabled`.
         """
         await validate_url_host(url)
-
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
-        )
 
     def _get_format_string(self, quality: str) -> str:
         formats = {

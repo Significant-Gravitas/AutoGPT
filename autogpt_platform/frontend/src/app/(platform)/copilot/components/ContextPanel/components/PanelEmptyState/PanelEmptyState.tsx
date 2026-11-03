@@ -12,6 +12,8 @@ interface Props {
   children?: ReactNode;
   /** A quieter line under the actions, e.g. a link elsewhere. */
   footer?: ReactNode;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 const TILE_POSITIONS = [
@@ -28,15 +30,16 @@ export function PanelEmptyState({
   description,
   children,
   footer,
+  textSize = "body",
 }: Props) {
   return (
-    <div className="group flex flex-col items-center px-6 pb-8 pt-10 text-center">
+    <div className="group flex flex-col items-center px-6 pt-10 pb-8 text-center">
       <div aria-hidden className="relative mb-7 h-24 w-36">
         {tiles.map((tile, index) => (
           <div
             key={index}
             className={cn(
-              "absolute flex h-20 w-16 items-center justify-center rounded-xl bg-white transition-transform duration-300 ease-out smooth-shadow-ring-sm motion-reduce:transition-none",
+              "absolute flex h-20 w-16 items-center justify-center rounded-xl bg-surface smooth-shadow-ring-sm transition-transform duration-300 ease-out motion-reduce:transition-none",
               TILE_POSITIONS[index],
             )}
           >
@@ -44,10 +47,10 @@ export function PanelEmptyState({
           </div>
         ))}
       </div>
-      <Text variant="large-medium" className="!text-zinc-900">
+      <Text tone="primary" variant="large-medium">
         {title}
       </Text>
-      <Text variant="body" className="mt-1.5 max-w-[17rem] !text-zinc-500">
+      <Text tone="muted" variant={textSize} className="mt-1.5 max-w-[17rem]">
         {description}
       </Text>
       {children && (

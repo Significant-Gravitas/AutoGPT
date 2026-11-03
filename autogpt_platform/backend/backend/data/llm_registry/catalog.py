@@ -735,6 +735,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.1-flash-lite",
+                display_name="Gemini 3.1 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=37.5,
+                    output_credits_per_1m=225.0,
+                    cache_read_credits_per_1m=3.75,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-3.1-flash-lite-preview",
                 display_name="Gemini 3.1 Flash Lite Preview",
                 provider="open_router",
@@ -760,6 +778,42 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash",
+                display_name="Gemini 3.5 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1350.0,
+                    cache_read_credits_per_1m=22.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash-lite",
+                display_name="Gemini 3.5 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=45.0,
+                    output_credits_per_1m=375.0,
+                    cache_read_credits_per_1m=4.5,
                 ),
             ),
             CatalogModel(
@@ -1050,12 +1104,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=524288,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-06: $0.68/$2.09 per 1M
-                # (cache read $0.07); 150 credits per USD.
+                # Live OpenRouter rate as of 2026-10-29: $0.70/$2.10 per 1M
+                # on every Mistral route (down from the $1.36/$4.18 seen on
+                # 2026-10-21); cache read $0.07; 150 credits per USD.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=102.0,
-                    output_credits_per_1m=313.5,
+                    input_credits_per_1m=105.0,
+                    output_credits_per_1m=315.0,
                     cache_read_credits_per_1m=10.5,
                 ),
             ),
@@ -1204,6 +1259,29 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=45.0,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
+                ),
+            ),
+            CatalogModel(
+                slug="moonshotai/kimi-k3.1-pro",
+                display_name="Kimi K3.1 Pro",
+                provider="open_router",
+                creator="moonshot-ai",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_reasoning=True,
+                # Moonshot's K3 successor (multimodal reasoning). OpenRouter's
+                # default Moonshot AI route is $2/$10 per Mtok, cache read
+                # $0.20/1M -- live listing 2026-10-24. Kimi K3 is untouched.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=30.0,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
                 ),
             ),
             CatalogModel(
@@ -1854,6 +1932,24 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
                     cache_read_credits_per_1m=15.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.1-terra",
+                display_name="GPT-6.1 Terra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $1/1M in, $5/1M out, $0.05/1M cache read -- live
+                # OpenRouter rate as of 2026-10-27. Mid tier between
+                # gpt-6-luna and gpt-6.1-sol; gpt-5.6-terra stays listed.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=150.0,
+                    output_credits_per_1m=750.0,
+                    cache_read_credits_per_1m=7.5,
                 ),
             ),
             CatalogModel(

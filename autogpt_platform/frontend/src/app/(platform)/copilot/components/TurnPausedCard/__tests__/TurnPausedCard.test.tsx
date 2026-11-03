@@ -41,6 +41,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useGetFlag: () => true,
 }));
 
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
 const SESSION_ID = "chat-1";
 // Sunday evening in local time, so the resets below read the same anywhere.
 const NOW = new Date(2026, 9, 11, 20, 48);
@@ -273,15 +277,15 @@ describe("TurnPausedCard — what it says and offers", () => {
     [
       "a budget with no plan behind it, which never refills",
       pause({ reason: "weekly", resets_at: null }),
-      "Paused · out of AutoPilot budget",
+      "Paused · out of budget",
       "Otto saved its progress above.",
       ["Upgrade"],
     ],
     [
       "a turn refused on a budget that never refills",
       pause({ reason: "weekly", resets_at: null, started: false }),
-      "Not started · out of AutoPilot budget",
-      "Otto didn't start this because you're out of AutoPilot budget.",
+      "Not started · out of budget",
+      "Otto didn't start this because you're out of budget.",
       ["Upgrade"],
     ],
     [
@@ -337,7 +341,7 @@ describe("TurnPausedCard — what it says and offers", () => {
     const calls = backend({ offers: [PLATFORM, CHATGPT] });
     renderCard(pause({ reason: "weekly", resets_at: null }));
     const card = await screen.findByRole("region", {
-      name: "Paused · out of AutoPilot budget",
+      name: "Paused · out of budget",
     });
 
     await waitFor(() =>

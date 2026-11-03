@@ -5,9 +5,15 @@ import {
   writeLocalProgress,
 } from "./progress";
 
+interface ServerProgress {
+  progress: OnboardingWizardProgress | null;
+  revision: number;
+}
+
 export function createProgressSaver({
   userID,
   save,
+  load,
   onError,
   onConflict,
   initialRevision,
@@ -20,11 +26,14 @@ export function createProgressSaver({
     revision: number,
     signal: AbortSignal,
   ) => Promise<number>;
+  // Resolves null when the server answers for a different account.
+  load: (signal: AbortSignal) => Promise<ServerProgress | null>;
   onError: (message: string | null) => void;
 }) {
   let revision = initialRevision;
   let conflicted = false;
   let pending: OnboardingWizardProgress | null = null;
+  const sent = new Set<OnboardingWizardProgress>();
   let inFlight: Promise<void> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -47,13 +56,13 @@ export function createProgressSaver({
     schedule(200);
   }
 
-  async function saveWithTimeout(progress: OnboardingWizardProgress) {
+  async function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>) {
     const request = new AbortController();
     controller = request;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        save(progress, revision, request.signal),
+        run(request.signal),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
             request.abort();
@@ -70,20 +79,11 @@ export function createProgressSaver({
   async function drain() {
     while (pending && !disposed) {
       const progress = pending;
+      sent.add(progress);
       try {
-        const previousRevision = revision;
-        revision = await saveWithTimeout(progress);
+        const saved = await saveOrAdopt(progress);
         if (disposed) return;
-        const latest = pending ?? progress;
-        const local = readLocalProgress(userID);
-        const ownsLocal =
-          local?.revision === previousRevision &&
-          sameProgress(latest, local.progress);
-        if (pending === progress) pending = null;
-        if (ownsLocal)
-          writeLocalProgress(userID, latest, pending !== null, revision);
-        failures = 0;
-        onError(null);
+        confirm(saved);
       } catch (error) {
         if (disposed) return;
         if (isProgressConflict(error)) {
@@ -99,6 +99,44 @@ export function createProgressSaver({
         throw error;
       }
     }
+  }
+
+  async function saveOrAdopt(progress: OnboardingWizardProgress) {
+    try {
+      const saved = await withTimeout((signal) =>
+        save(progress, revision, signal),
+      );
+      return { progress, revision: saved };
+    } catch (error) {
+      if (!isProgressConflict(error) || disposed) throw error;
+      // A save this tab timed out on may have landed and moved the revision on.
+      const server = await withTimeout(load);
+      if (!server || server.revision <= revision) throw error;
+      const own = [...sent].find((sentProgress) =>
+        sameProgress(sentProgress, server.progress),
+      );
+      if (!own) throw error;
+      return { progress: own, revision: server.revision };
+    }
+  }
+
+  function confirm(saved: {
+    progress: OnboardingWizardProgress;
+    revision: number;
+  }) {
+    const previousRevision = revision;
+    revision = saved.revision;
+    sent.clear();
+    const latest = pending ?? saved.progress;
+    const local = readLocalProgress(userID);
+    const ownsLocal =
+      local?.revision === previousRevision &&
+      sameProgress(latest, local.progress);
+    if (pending === saved.progress) pending = null;
+    if (ownsLocal)
+      writeLocalProgress(userID, latest, pending !== null, revision);
+    failures = 0;
+    onError(null);
   }
 
   async function flush() {
