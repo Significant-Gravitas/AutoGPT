@@ -22,6 +22,7 @@ from autogpt_local_executor.computer_use.backends.macos import (
 )
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     PermissionPendingError,
@@ -569,3 +570,22 @@ def test_the_accessibility_names_used_for_focus_exist() -> None:
         "kAXWindowsAttribute",
     ):
         assert hasattr(services, name), name
+
+
+def test_a_failed_pasteboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
+    """Pasting after a failed write would paste whatever the user had copied."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    monkeypatch.setitem(sys.modules, "AppKit", MagicMock())
+    pasteboard = MagicMock()
+    pasteboard.setString_forType_.return_value = False
+    monkeypatch.setattr(b, "_pasteboard", lambda: pasteboard)
+
+    with pytest.raises(ClipboardWriteError):
+        b.clipboard_write(content="hello")
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
+    pyautogui.hotkey.assert_not_called()

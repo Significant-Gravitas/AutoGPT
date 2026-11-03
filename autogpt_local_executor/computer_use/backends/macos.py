@@ -26,6 +26,7 @@ from ..backend import ClipboardReadResult, ComputerUseBackend, ScreenshotResult
 from ..display import displays_to_bounds_list, displays_via_mss
 from ..errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     PermissionPendingError,
@@ -919,18 +920,23 @@ class MacOSBackend(ComputerUseBackend):
         except Exception:
             return None, None
 
-    def _write_pasteboard_text(self, content: str) -> int | None:
+    def _write_pasteboard_text(self, content: str) -> int:
+        """Write `content` and return the new changeCount; raise if the text
+        did not land, so nothing acknowledges or pastes a stale clipboard."""
         pb = self._pasteboard()
         if pb is None:
-            return None
+            raise ClipboardWriteError("the pasteboard is unavailable")
         try:
             from AppKit import NSPasteboardTypeString  # type: ignore[import-not-found]
 
             pb.clearContents()
-            pb.setString_forType_(content, NSPasteboardTypeString)
-            return int(pb.changeCount())
-        except Exception:
-            return None
+            written = pb.setString_forType_(content, NSPasteboardTypeString)
+            change_count = int(pb.changeCount())
+        except Exception as exc:
+            raise ClipboardWriteError(str(exc)) from exc
+        if not written:
+            raise ClipboardWriteError("the pasteboard refused the text")
+        return change_count
 
     def _read_pasteboard_types(self) -> list[str]:
         pb = self._pasteboard()
@@ -979,7 +985,10 @@ class MacOSBackend(ComputerUseBackend):
                     return
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
-                self._write_pasteboard_text(previous)
+                try:
+                    self._write_pasteboard_text(previous)
+                except ClipboardWriteError:
+                    logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

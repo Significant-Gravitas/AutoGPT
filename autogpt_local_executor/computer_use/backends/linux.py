@@ -32,6 +32,7 @@ from ..backend import ClipboardReadResult, ComputerUseBackend, ScreenshotResult
 from ..display import displays_to_bounds_list, displays_via_mss
 from ..errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
 )
@@ -554,23 +555,18 @@ class LinuxBackend(ComputerUseBackend):
         return None, None
 
     def _write_clipboard_text(self, content: str) -> int | None:
+        """Write `content`; raise if it did not land, so nothing acknowledges
+        or pastes a stale clipboard. The CLI tools expose no sequence number."""
         if self._wayland and self._has_wlcopy:
-            try:
-                subprocess.run(["wl-copy"], input=content.encode("utf-8"), check=True, timeout=2)
-                return None
-            except Exception:
-                return None
-        if self._has_xclip:
-            try:
-                subprocess.run(
-                    ["xclip", "-selection", "clipboard", "-i"],
-                    input=content.encode("utf-8"),
-                    check=True,
-                    timeout=2,
-                )
-                return None
-            except Exception:
-                return None
+            command = ["wl-copy"]
+        elif self._has_xclip:
+            command = ["xclip", "-selection", "clipboard", "-i"]
+        else:
+            raise ClipboardWriteError("neither wl-copy nor xclip is available")
+        try:
+            subprocess.run(command, input=content.encode("utf-8"), check=True, timeout=2)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ClipboardWriteError(str(exc)) from exc
         return None
 
     def _type(self, text: str, *, paste: bool, preserve_clipboard: bool) -> None:
@@ -603,7 +599,10 @@ class LinuxBackend(ComputerUseBackend):
             # COMPUTER_USE.md Q4 as a race window.
             # The restored contents are the user's, not ours, so they are not
             # recorded as a writeback: a writeback-only read refuses them.
-            self._write_clipboard_text(snapshot[0])
+            try:
+                self._write_clipboard_text(snapshot[0])
+            except ClipboardWriteError:
+                logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

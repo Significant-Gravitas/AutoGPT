@@ -15,6 +15,7 @@ from autogpt_local_executor.computer_use.backends.windows import (
 )
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     WindowStaleError,
@@ -220,4 +221,23 @@ def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monke
 
     assert clipboard["writes"] == []
     pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
+    """Another window holding the clipboard makes OpenClipboard fail; pasting
+    then would paste whatever the user had copied."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = MagicMock()
+    clipboard.OpenClipboard.side_effect = OSError("Access is denied.")
+    monkeypatch.setitem(sys.modules, "win32clipboard", clipboard)
+    monkeypatch.setitem(sys.modules, "win32con", MagicMock())
+
+    with pytest.raises(ClipboardWriteError):
+        b.clipboard_write(content="hello")
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
     pyautogui.hotkey.assert_not_called()
