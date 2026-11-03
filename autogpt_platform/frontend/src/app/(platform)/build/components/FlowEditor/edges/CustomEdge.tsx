@@ -101,7 +101,7 @@ const CustomEdge = ({
         <Button
           onClick={handleRemoveEdge}
           className={cn(
-            "pointer-events-auto absolute top-[var(--label-y)] left-[var(--label-x)] h-fit min-w-0 -translate-x-1/2 -translate-y-1/2 p-1 transition-opacity",
+            "pointer-events-auto absolute top-[var(--label-y)] left-[var(--label-x)] -translate-x-1/2 -translate-y-1/2 transition-opacity",
             isBroken
               ? "bg-error opacity-100 hover:bg-error-hover"
               : isHovered
@@ -109,6 +109,8 @@ const CustomEdge = ({
                 : "opacity-0",
           )}
           variant={isBroken ? "primary" : "secondary"}
+          size="icon-2xs"
+          shape="pill"
           style={
             {
               "--label-x": `${labelX}px`,

@@ -231,10 +231,7 @@ export default function AuthorizePage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon
-                  icon={Image01Icon}
-                  className="h-8 w-8 text-foreground-subtle"
-                />
+                <Icon icon={Image01Icon} tone="subtle" className="h-8 w-8" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
@@ -257,7 +254,8 @@ export default function AuthorizePage() {
                 <li key={scopeKey} className="flex items-start gap-3">
                   <Icon
                     icon={CheckmarkBadge01Icon}
-                    className="mt-0.5 text-success"
+                    tone="success"
+                    className="mt-0.5"
                   />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
@@ -282,7 +280,8 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -290,7 +289,8 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Deny
             </Button>

@@ -113,10 +113,11 @@ export const JsonTextField = (props: FieldProps) => {
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-2xs"
+              shape="pill"
               onClick={handleModalOpen}
               type="button"
-              className="p-1"
+              withTooltip={false}
               aria-label="Expand JSON input"
             >
               <Icon icon={ArrowExpandIcon} className="size-4" />

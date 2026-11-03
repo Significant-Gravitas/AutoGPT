@@ -33,21 +33,19 @@ export function WalletFullPanel({ groups, formattedCredits }: Props) {
           </Text>
         </div>
         <div className="flex shrink-0 items-center text-body leading-5 text-accent-strong">
-          <Text
-            variant="body-tight"
-            as="div"
-            tone="inherit"
-            className="rounded-lg bg-accent-surface px-3 py-2"
-          >
-            Earn credits{" "}
-            <Text as="span" variant="body-semibold-tight" tone="inherit">
-              {formattedCredits}
+          <div className="rounded-lg bg-accent-surface px-3 py-2">
+            <Text variant="body-tight" as="div" tone="inherit">
+              Earn credits{" "}
+              <Text as="span" variant="body-semibold-tight" tone="inherit">
+                {formattedCredits}
+              </Text>
             </Text>
-          </Text>
+          </div>
           <PopoverClose aria-label="Close wallet">
             <Icon
               icon={Cancel01Icon}
-              className="ml-2 h-5 w-5 text-foreground-emphasis hover:text-foreground"
+              tone="emphasis"
+              className="ml-2 h-5 w-5 hover:text-foreground"
             />
           </PopoverClose>
         </div>

@@ -107,12 +107,7 @@ export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
         </div>
       )}
       {held.state === "waiting" && reviewId && (
-        <Button
-          variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
-          onClick={goToApproval}
-        >
+        <Button variant="link" size="inline" onClick={goToApproval}>
           Go to the approval
         </Button>
       )}
