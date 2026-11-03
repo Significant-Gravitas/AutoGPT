@@ -6,6 +6,7 @@ from time import monotonic
 
 import jinja2
 import pytest
+from markupsafe import escape
 
 from backend.util import text
 from backend.util.text import (
@@ -311,8 +312,25 @@ BIG_VALUE = "{% set a = 'x' * 10000 %}"
 # Five megabytes, built within the budget, so what multiplies it is
 # what the case is about
 MEGABYTES = "{% set a = 'x'|center(5000000) %}"
+# Over half the budget, so what the next operation does with it decides
+THIRTY_MEGABYTES = "{% set a = 'x'|center(30000000) %}"
 BEFORE_IT_ALLOCATES = "would exceed"
 AFTER_IT_IS_BUILT = "rendering exceeded"
+
+# Literals big enough that ten thousand of them pass the budget, each still
+# inside the per-tag length cap
+_LIST_LITERAL = "[" + ",".join(["1"] * 1000) + "]"
+_DICT_LITERAL = "{" + ",".join(f"'k{i}':1" for i in range(500)) + "}"
+
+
+def _rebuilt_every_iteration(literal: str) -> str:
+    """A loop that builds ``literal`` again on every pass."""
+    return (
+        "{% set acc = [] %}{% for i in range(10000) %}"
+        f"{{% set _ = acc.append({literal}) %}}"
+        "{% endfor %}{{ acc|length }}"
+    )
+
 
 OVERSIZED_TEMPLATES = {
     "center filter": (
@@ -420,6 +438,30 @@ OVERSIZED_TEMPLATES = {
     "a container emitted whole": (
         BIG_VALUE + "{% set l = [a] * 10000 %}{{ l }}",
         AFTER_IT_IS_BUILT,
+    ),
+    "a container nested three deep": (
+        # Every level multiplies the text the outer value renders as, while
+        # the references it holds stay few
+        BIG_VALUE
+        + "{% set inner = [a] * 60 %}{% set middle = [inner] * 10 %}"
+        + "{{ [middle] * 10 }}",
+        AFTER_IT_IS_BUILT,
+    ),
+    "a list literal rebuilt every iteration": (
+        _rebuilt_every_iteration(_LIST_LITERAL),
+        AFTER_IT_IS_BUILT,
+    ),
+    "a dict literal rebuilt every iteration": (
+        _rebuilt_every_iteration(_DICT_LITERAL),
+        AFTER_IT_IS_BUILT,
+    ),
+    "the % operator without a precision": (
+        THIRTY_MEGABYTES + "{{ '%s' % a }}",
+        BEFORE_IT_ALLOCATES,
+    ),
+    "str.format's receiver": (
+        THIRTY_MEGABYTES + "{{ a.format() }}",
+        BEFORE_IT_ALLOCATES,
     ),
     "string filter on a container": (
         BIG_VALUE + "{% set l = [a] * 10000 %}{{ l|string|length }}",
@@ -562,6 +604,11 @@ WORKING_TEMPLATES = {
     "tilde concatenation": ("{{ 'a' ~ 1 ~ 'b' }}", {}, "a1b"),
     "plus concatenation": ("{{ 1 + 2 }}", {}, "3"),
     "macro": ("{% macro g(x) %}[{{ x }}]{% endmacro %}{{ g('v') }}", {}, "[v]"),
+    "a precision that truncates a big value": (
+        THIRTY_MEGABYTES + "{{ ('%.5s' % a)|length }}",
+        {},
+        "5",
+    ),
     "a megabyte through a filter chain": (
         "{{ (v|trim|upper|lower|trim)|length }}",
         {"v": "z" * 2_000_000},
@@ -619,6 +666,77 @@ async def test_a_replace_under_autoescape_is_sized_as_escaped(template: str):
     # in the escaped text with the escaped arguments
     with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
         await TextFormatter(autoescape=True).format_string(template)
+
+
+@pytest.mark.asyncio
+async def test_a_value_is_charged_for_what_escaping_makes_of_it():
+    # Escaping is what reaches the output, and it expands "&" fivefold, so a
+    # value that fits before it is escaped need not fit after
+    value = "&" * (MAX_RENDER_BYTES // 4)
+    assert len(value) < MAX_RENDER_BYTES
+    with pytest.raises(ValueError, match=AFTER_IT_IS_BUILT):
+        await TextFormatter(autoescape=True).format_string("{{ v }}", {"v": value})
+
+
+@pytest.mark.parametrize(
+    "value", ["", "plain text", "&<>\"'", "a&b<c>d\"e'f", "&amp;", "<<<&&&"]
+)
+def test_the_escape_growth_is_what_escaping_adds(value: str):
+    # The charge above counts the growth without building it, so the count
+    # is read against what markupsafe really produces
+    assert len(escape(value)) == len(value) + text._escaped_growth(value)
+
+
+def test_a_container_that_holds_itself_is_measured_once():
+    loop: list = ["abc"]
+    loop.append(loop)
+    # The reference back into it counts for nothing, as `repr` renders it
+    assert text._text_size(loop) == len("abc") + 6
+
+
+def test_a_container_referenced_twice_is_counted_twice():
+    shared = ["abcde"]
+    assert text._text_size([shared, shared]) == text._text_size([["abcde"], ["abcde"]])
+
+
+@pytest.mark.parametrize("depth", [0, 1, 2, 3, 4])
+def test_the_charge_for_a_container_tracks_the_text_it_renders(depth: int):
+    # The charge is an estimate, so it is held to a factor of two rather
+    # than to the character; what nesting used to cost it was the whole
+    # of every level below the second
+    value: list = ["abcdefghij"] * 3
+    for _ in range(depth):
+        value = [value] * 3
+    rendered = len(str(value))
+    assert rendered / 2 <= text._text_size(value) <= rendered * 2
+
+
+# A thousand tags of forty concatenations each: 0.59 s to compile here, an
+# order of magnitude over the deadline it is given below
+SLOW_TO_COMPILE = ("{{ " + " ~ ".join(["'a'"] * 40) + " }}") * 1_000
+
+
+@pytest.mark.asyncio
+async def test_another_task_runs_while_a_template_compiles(fmt: TextFormatter):
+    served = 0
+
+    async def serve_other_requests():
+        nonlocal served
+        while True:
+            await asyncio.sleep(0.001)
+            served += 1
+
+    other = asyncio.create_task(serve_other_requests())
+    await asyncio.sleep(0.01)
+    before = served
+    try:
+        with pytest.raises(ValueError, match="timed out"):
+            await fmt.format_string(SLOW_TO_COMPILE, timeout=0.05)
+    finally:
+        other.cancel()
+    # Lexing, parsing and code generation hold the loop solid unless they
+    # run off it, and the deadline cannot be answered while they do
+    assert served > before
 
 
 def test_the_wordwrap_line_bound_holds():
@@ -691,7 +809,9 @@ async def test_another_task_runs_while_a_template_renders(fmt: TextFormatter):
             await fmt.format_string(NESTED_LOOPS, timeout=0.5)
     finally:
         other.cancel()
-    assert served > 5
+    # Only that the render let go of the loop at all: how many turns a
+    # 10 ms timer gets inside half a second is the runner's to decide
+    assert served > 0
 
 
 @pytest.mark.asyncio

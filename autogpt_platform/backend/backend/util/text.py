@@ -21,7 +21,7 @@ from jinja2.async_utils import auto_aiter
 from jinja2.compiler import CodeGenerator, CompilerExit, Frame
 from jinja2.exceptions import TemplateError
 from jinja2.filters import make_attrgetter
-from jinja2.nodes import Concat, Node
+from jinja2.nodes import Concat, Const, Dict, List, Node
 from jinja2.runtime import Context
 from jinja2.sandbox import (
     SandboxedEnvironment,
@@ -96,23 +96,40 @@ def _check_percent_format(
     position = 0
     rendered = len(format_string)
     for key, width, precision, conversion in _percent_conversions(format_string):
-        sizes: list[str | int | None] = []
+        resolved: list[Any] = []
         for size in (width, precision):
             if size == "*":
                 # Taken even by a literal "%%", so later sizes keep their place
                 size = values[position] if position < len(values) else 0
                 position += 1
-            sizes.append(size if isinstance(size, (str, int)) else 0)
+            resolved.append(size)
+        sizes = [s if isinstance(s, (str, int)) else 0 for s in resolved]
         if conversion != "%":
             if mapping is not None:
                 # Without a "(key)" the whole mapping is what renders
-                rendered += _text_size(mapping.get(key) if key is not None else mapping)
-            elif position < len(values):
-                rendered += _text_size(values[position])
+                size = _text_size(mapping.get(key) if key is not None else mapping)
+            else:
+                size = _text_size(values[position]) if position < len(values) else 0
+            rendered += _truncated_size(size, resolved[1], conversion)
             position += 1
         _check_field_size(*sizes)
     if budget is not None:
         budget.check(rendered)
+
+
+def _truncated_size(size: int, precision: Any, conversion: str) -> int:
+    """What a conversion renders, where its precision truncates the text.
+
+    Only the text conversions truncate; for a numeric one the precision
+    says how much it renders, not how little.
+    """
+    if conversion not in ("s", "r", "a"):
+        return size
+    if isinstance(precision, str) and precision.isdigit():
+        return min(size, int(precision))
+    if isinstance(precision, int) and not isinstance(precision, bool):
+        return min(size, abs(precision))
+    return size
 
 
 def _percent_conversions(
@@ -196,10 +213,12 @@ class TextFormatter:
         a value and at the top of every loop, macro and block body, which is
         where the render also gives the event loop a turn;
         ``asyncio.wait_for`` stays as a backstop. Compiling the template
-        happens before either of those exist, so it answers to bounds of its
-        own: a template with no tag is returned as Jinja's lexer would have
-        left it, and one that has tags is bounded by how many there are, how
-        long the longest runs, and the length of the whole.
+        reaches none of those checks, so it answers to bounds of its own: a
+        template with no tag is returned as Jinja's lexer would have left
+        it, and one that has tags is bounded by how many there are, how long
+        the longest runs, and the length of the whole. Within those bounds
+        it still runs for seconds, so it runs in a thread, inside the same
+        deadline and leaving the event loop its turns.
 
         Raises ``ValueError`` for anything the caller's template is refused
         for, so the API answers 400 rather than 500.
@@ -230,8 +249,7 @@ class TextFormatter:
         )
         token = _render_budget.set(budget)
         try:
-            template = self.env.from_string(template_str)
-            coro = template.render_async(values or {}, **kwargs)
+            coro = self._compile_and_render(template_str, values or {}, kwargs)
             if timeout is not None:
                 return await asyncio.wait_for(coro, timeout=timeout)
             return await coro
@@ -246,6 +264,18 @@ class TextFormatter:
             raise ValueError(e) from e
         finally:
             _render_budget.reset(token)
+
+    async def _compile_and_render(
+        self, template_str: str, values: dict, kwargs: dict
+    ) -> str:
+        """Compile off the event loop, then render on it.
+
+        Lexing, parsing and code generation are one uninterruptible step
+        each, so the deadline can only reach them from outside; the thread
+        is what leaves the loop a turn while they run.
+        """
+        template = await asyncio.to_thread(self.env.from_string, template_str)
+        return await template.render_async(values, **kwargs)
 
 
 def _longest_tag(template_str: str) -> int:
@@ -353,7 +383,10 @@ def _value_size(value: Any) -> int:
     """
     if isinstance(value, (str, bytes, bytearray)):
         return len(value)
-    if isinstance(value, (list, tuple, set, frozenset, dict)):
+    if isinstance(value, dict):
+        # An entry holds both its key and its value
+        return len(value) * 2 * _REFERENCE_BYTES
+    if isinstance(value, (list, tuple, set, frozenset)):
         return len(value) * _REFERENCE_BYTES
     if _is_plain_int(value):
         return value.bit_length() // 8
@@ -363,23 +396,51 @@ def _value_size(value: Any) -> int:
 _REFERENCE_BYTES = 8
 
 
-def _text_size(value: Any, depth: int = 2) -> int:
+def _text_size(value: Any, escaped: bool = False) -> int:
     """About how many characters ``value`` renders as.
 
     A container renders as its items' text, not as the references it holds,
-    which is what `_value_size` measures. The depth bound keeps a nested or
-    self-referential structure from being walked.
+    which is what `_value_size` measures, so the walk goes all the way down.
+    ``escaped`` adds what autoescaping that text would grow it by.
+    """
+    return _walk_text_size(value, escaped, {})
+
+
+def _walk_text_size(value: Any, escaped: bool, measured: dict[int, int]) -> int:
+    """``_text_size`` over one structure, measuring each container once.
+
+    Measuring a container once is what bounds the walk: the budget pays to
+    build each one, while the references to it are free and can repeat. Its
+    size is counted per reference, because that is what the text holds. One
+    reached from inside itself counts for nothing, as ``repr`` renders it.
     """
     if isinstance(value, (str, bytes, bytearray)):
-        return len(value)
+        return len(value) + (_escaped_growth(value) if escaped else 0)
     if isinstance(value, (list, tuple, set, frozenset, dict)):
-        if depth <= 0:
-            return _value_size(value)
+        already = measured.get(id(value))
+        if already is not None:
+            return already
+        measured[id(value)] = 0
         items = value.items() if isinstance(value, dict) else value
-        return sum(_text_size(item, depth - 1) + 2 for item in items) + 2
+        total = sum(_walk_text_size(i, escaped, measured) + 2 for i in items) + 2
+        measured[id(value)] = total
+        return total
     if _is_plain_int(value):
         return value.bit_length() // 3
     return 0
+
+
+def _escaped_growth(value: Any) -> int:
+    """How many characters escaping adds to the text, without building it."""
+    if not isinstance(value, str):
+        return 0
+    return (
+        4 * value.count("&")
+        + 3 * value.count("<")
+        + 3 * value.count(">")
+        + 4 * value.count('"')
+        + 4 * value.count("'")
+    )
 
 
 def _check_deadline() -> None:
@@ -401,13 +462,15 @@ def _check_deadline() -> None:
 def _charge_rendered_value(context: Context, value: Any) -> Any:
     """Count an expression the template renders against the budget.
 
-    Jinja calls `str()` on what this returns, so the charge is the text the
-    value renders as rather than the references it holds.
+    Jinja calls `str()` on what this returns and escapes it where the
+    template autoescapes, so the charge is the text that reaches the output
+    rather than the references the value holds.
 
     Taking the context is also what stops Jinja finalizing — and so
     evaluating — an output expression while it compiles the template.
     """
-    _current_budget().spend(_text_size(value))
+    escaped = context.eval_ctx.autoescape and not hasattr(value, "__html__")
+    _current_budget().spend(_text_size(value, escaped))
     return value
 
 
@@ -444,6 +507,27 @@ class _BudgetedCodeGenerator(CodeGenerator):
             self.visit(child, frame)
             self.write(", ")
         self.write("))")
+
+    def visit_List(self, node: List, frame: Frame) -> None:
+        self._charged_literal(super().visit_List, node, frame)
+
+    def visit_Dict(self, node: Dict, frame: Frame) -> None:
+        self._charged_literal(super().visit_Dict, node, frame)
+
+    def visit_Const(self, node: Const, frame: Frame) -> None:
+        # Jinja folds a list or dict of constants to one Const, and emits it
+        # as a literal that the line rebuilds every time it runs
+        if isinstance(node.value, (list, dict)):
+            self._charged_literal(super().visit_Const, node, frame)
+        else:
+            super().visit_Const(node, frame)
+
+    def _charged_literal(
+        self, visit: Callable[[Any, Frame], None], node: Any, frame: Frame
+    ) -> None:
+        self.write("environment.charge_literal(")
+        visit(node, frame)
+        self.write(")")
 
     def _output_const_repr(self, group: Iterable[Any]) -> str:
         return f"environment.charge_data({super()._output_const_repr(group)})"
@@ -485,6 +569,15 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         """Count a literal chunk of template text the render emits."""
         _current_budget().spend(len(data))
         return data
+
+    def charge_literal(self, value: list | dict) -> list | dict:
+        """Count a list or dict the template builds from a literal.
+
+        Jinja compiles one to a plain Python literal, so nothing else sees
+        it being built, however many times a loop runs it.
+        """
+        _current_budget().spend(_value_size(value))
+        return value
 
     def join_checked(
         self, join: Callable[[tuple[Any, ...]], str], pieces: tuple[Any, ...]
@@ -529,9 +622,10 @@ class _RestrictedEnvironment(SandboxedEnvironment):
                     )
                 kwargs = args[0]
                 args = ()
-            return _current_budget().charge(
-                str_type(vformat(f_self, args, kwargs)), f_self
-            )
+            budget = _current_budget()
+            # vformat walks and copies the receiver, as the % operator does
+            budget.check(_value_size(f_self))
+            return budget.charge(str_type(vformat(f_self, args, kwargs)), f_self)
 
         return update_wrapper(wrapper, value)
 
