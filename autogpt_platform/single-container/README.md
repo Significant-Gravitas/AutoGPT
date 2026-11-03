@@ -112,7 +112,7 @@ every visitor appears as the proxy.
 For a host nginx container on a Docker network named `proxy`:
 
 ```bash
-docker network inspect proxy --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+docker network inspect proxy --format '{{range $i, $c := .IPAM.Config}}{{if $i}},{{end}}{{$c.Subnet}}{{end}}'
 # 172.18.0.0/16 -> run this container with TRUSTED_PROXIES=172.18.0.0/16
 ```
 
