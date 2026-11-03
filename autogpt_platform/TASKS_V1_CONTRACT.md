@@ -175,3 +175,4 @@ Frontend: on any `task_event`, invalidate the tasks list/detail/activity queries
 
 ## Changelog
 - v1 (initial).
+- v1.1: create/update also accept `assignee: {type, id}` (alias of `assignee_type`/`assignee_id`) and `budget_usd` (alias of `budget_cap_usd`); `POST /api/tasks/plans/{plan_id}/approve` aliases `/confirm`.
