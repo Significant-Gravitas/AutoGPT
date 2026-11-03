@@ -730,16 +730,17 @@ class WindowsBackend(ComputerUseBackend):
         snapshot: tuple[str | None, int | None] | None = None
         if preserve_clipboard:
             snapshot = self._read_clipboard_text()
-        self._write_clipboard_text(text)
-        self.clipboard_writeback.record_write(text)
+        written_seq = self._write_clipboard_text(text)
+        self.clipboard_writeback.record_write(text, sequence=written_seq)
         pyautogui.hotkey("ctrl", "v")
         if preserve_clipboard and snapshot is not None:
-            previous, prev_seq = snapshot
+            previous = snapshot[0]
             time.sleep(0.05)
             _, current_seq = self._read_clipboard_text()
-            if previous is not None and prev_seq is not None and current_seq is not None:
-                if current_seq > prev_seq + 1:
-                    return
+            # Restore only if nothing has changed the clipboard since our
+            # write. EmptyClipboard and SetClipboardData each advance the
+            # sequence number, so compare with what our write left behind.
+            if previous is not None and written_seq is not None and current_seq == written_seq:
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
                 try:

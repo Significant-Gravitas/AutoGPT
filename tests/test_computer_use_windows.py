@@ -296,3 +296,45 @@ def test_a_clipboard_read_refuses_when_its_formats_cannot_be_read(tmp_path, monk
 
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+@pytest.mark.parametrize(("bump", "restored"), [(2, True), (5, True)])
+def test_the_clipboard_is_restored_however_far_our_write_moves_the_sequence(
+    tmp_path, monkeypatch, bump: int, restored: bool
+) -> None:
+    """EmptyClipboard and SetClipboardData each advance the sequence number,
+    so one write of ours moves it by more than one."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+
+    def write(text: str) -> int:
+        clipboard["content"] = text
+        clipboard["seq"] += bump
+        clipboard["writes"].append(text)
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_write_clipboard_text", write)
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert (clipboard["content"] == "user text") is restored
+
+
+def test_the_clipboard_is_not_restored_over_a_copy_made_during_the_paste(
+    tmp_path, monkeypatch
+) -> None:
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+
+    def user_copies(*_keys: str) -> None:
+        clipboard["content"] = "copied during the paste"
+        clipboard["seq"] += 1
+
+    pyautogui.hotkey.side_effect = user_copies
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["content"] == "copied during the paste"
