@@ -87,7 +87,9 @@ function createdSession(executionTarget: { kind: string } | null = null) {
   };
 }
 
-function mockCreatedSession(executionTarget: { kind: string } | null = null) {
+function mockCreatedSession(
+  executionTarget: { kind: string; [field: string]: unknown } | null = null,
+) {
   server.use(
     http.get(`${SESSIONS_URL}/session-1`, () =>
       HttpResponse.json({
@@ -149,7 +151,11 @@ describe("useChatSession execution target", () => {
         });
       }
       let requestBody: unknown;
-      mockCreatedSession({ kind: "local" });
+      mockCreatedSession({
+        kind: "local",
+        machine_id: "machine-1",
+        allowed_root: "C:\\Users\\Ada\\Projects",
+      });
       server.use(
         http.post(SESSIONS_URL, async ({ request }) => {
           requestBody = await request.json();
@@ -183,6 +189,14 @@ describe("useChatSession execution target", () => {
             browse_id: "browse-1",
             directory_ref: "directory-1",
           },
+        });
+      });
+      // The created session reads back as bound to that machine and folder.
+      await waitFor(() => {
+        expect(session.result.current.sessionExecutionTarget).toEqual({
+          kind: "local",
+          machine_id: "machine-1",
+          allowed_root: "C:\\Users\\Ada\\Projects",
         });
       });
     },
@@ -236,6 +250,34 @@ describe("useChatSession execution target", () => {
     expect(requestBodies[0]).toMatchObject({
       execution_target: { kind: "local" },
     });
+  });
+
+  it("blocks an incomplete Local PC selection before sending a create request", async () => {
+    const requestBodies: unknown[] = [];
+    server.use(
+      http.post(SESSIONS_URL, async ({ request }) => {
+        requestBodies.push(await request.json());
+        return HttpResponse.json(createdSession());
+      }),
+    );
+
+    const session = renderChatSession({
+      kind: "local",
+      machineID: "machine-1",
+      machineLabel: "Workstation",
+      connectionID: "connection-1",
+      browseID: "browse-1",
+      directoryRef: null,
+      displayPath: null,
+    });
+    await act(async () => {
+      await expect(session.result.current.createSession()).rejects.toThrow(
+        /Choose a connected computer and folder/i,
+      );
+    });
+
+    expect(requestBodies).toHaveLength(0);
+    expect(useCopilotUIStore.getState().isExecutionTargetPickerOpen).toBe(true);
   });
 
   it("keeps the chosen folder when only the session id was taken", async () => {
