@@ -6,6 +6,15 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    environmentOptions: {
+      happyDOM: {
+        // happy-dom fetches an <iframe src> for real. chat-surface-parity's
+        // desktop stream opened a TLS connection that teardown cut mid-write,
+        // failing the shard with an unhandled "write ECANCELED". A child frame
+        // now just takes its URL and fires load, without the network.
+        settings: { navigation: { disableChildFrameNavigation: true } },
+      },
+    },
     include: [
       "src/**/*.test.tsx",
       "src/**/*.test.ts",
