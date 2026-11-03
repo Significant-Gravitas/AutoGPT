@@ -423,7 +423,7 @@ it("keeps learning off under its own flag when graph memory is disabled", async 
   expect(decisions).not.toHaveBeenCalled();
 });
 
-it("shows learning history when graph memory is disabled", async () => {
+it("shows learning history and pending decisions when graph memory is disabled", async () => {
   vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
   render(<SettingsMemoryPage />);
   expect(
@@ -436,6 +436,10 @@ it("shows learning history when graph memory is disabled", async () => {
     await screen.findByText(
       "Added an encoding check after the previous import failed.",
     ),
+  ).toBeDefined();
+  expect(await screen.findByText("Needs your decision")).toBeDefined();
+  expect(
+    await screen.findByText(/Added a duplicate column check/),
   ).toBeDefined();
 });
 
