@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit + integration tests for the external API rate limiter."""
 
 from __future__ import annotations

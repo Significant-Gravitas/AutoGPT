@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Per-principal rate limiting for the AutoGPT external API.
 
 The external API authenticates with API keys / OAuth tokens, so one valid
@@ -26,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Response, Security, status
 from redis.exceptions import RedisClusterException, RedisError
@@ -120,7 +119,7 @@ def require_rate_limit(
 
     async def dependency(
         response: Response,
-        auth: APIAuthorizationInfo = Security(require_auth),
+        auth: Annotated[APIAuthorizationInfo, Security(require_auth)],
     ) -> APIAuthorizationInfo:
         now = datetime.now(UTC)
         window_start = _window_start(now, window_seconds)
@@ -137,7 +136,7 @@ def require_rate_limit(
             RedisClusterException,
             ConnectionError,
             OSError,
-            asyncio.TimeoutError,
+            TimeoutError,
             ValueError,
         ) as e:
             logger.warning(

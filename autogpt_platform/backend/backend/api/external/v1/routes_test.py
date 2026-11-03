@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,9 +8,12 @@ import fastapi.testclient
 import pytest
 from prisma.enums import APIKeyPermission
 
+import backend.api.external.v1.integrations as integrations_mod
 import backend.api.external.v1.routes as routes_mod
+import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
@@ -19,8 +24,8 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_auth(test_user_id):
-    """Override require_auth to return a synthetic API-key principal with all scopes."""
+def setup_auth(test_user_id, v1_counter):
+    """Give each case an authenticated principal and a fresh quota counter."""
 
     async def fake_require_auth() -> APIAuthorizationInfo:
         return APIAuthorizationInfo(
@@ -183,6 +188,77 @@ def test_execute_block_forwards_execution_context(
     assert ctx.user_timezone == "Europe/Amsterdam"
 
 
+def test_execute_block_runs_off_the_server_loop_under_the_time_budget(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
+        0.5,
+    )
+    thread_names: list[str] = []
+    block = _stub_block(name="SlowBlock")
+
+    async def _never_finishes(_data, **kwargs):
+        thread_names.append(threading.current_thread().name)
+        await asyncio.Event().wait()
+        yield "result", "unreachable"
+
+    block.execute = _never_finishes
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 504, f"got {response.status_code}: {response.text}"
+    assert "did not finish within 0.5 seconds" in response.json()["detail"]
+    assert len(thread_names) == 1
+    assert thread_names[0].startswith("direct-block-execution")
+
+
+def test_execute_block_over_the_run_cap_returns_429_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
+        0,
+    )
+    block = _stub_block(name="CappedBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 429, f"got {response.status_code}: {response.text}"
+    assert "Wait for one to finish" in response.json()["detail"]
+    charge.assert_not_awaited()
+
+
+def test_execute_block_at_the_retired_worker_cap_returns_503_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
+        0,
+    )
+    block = _stub_block(name="UnavailableBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.charge_for_direct_block_execution", charge
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 503, f"got {response.status_code}: {response.text}"
+    assert "temporarily unavailable" in response.json()["detail"]
+    charge.assert_not_awaited()
+
+
 def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
     """Pre-existing behavior: disabled blocks return 403, not bypassed by new gates."""
     block = _stub_block(name="DisabledBlock", disabled=True)
@@ -192,6 +268,71 @@ def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
 
     assert response.status_code == 403
     assert "disabled" in response.json()["detail"]
+
+
+def test_registry_blocks_needing_a_workflow_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The registry's own blocks are refused before they are charged or run."""
+    ran: list[str] = []
+
+    async def _record_run(self, _data, **_kwargs):
+        ran.append(self.name)
+        yield "result", "ok"
+
+    charge_mock = AsyncMock()
+    monkeypatch.setattr(routes_mod, "charge_for_direct_block_execution", charge_mock)
+
+    outcomes: dict[str, tuple[int, str]] = {}
+    for block_id, block_cls in backend.blocks.get_blocks().items():
+        block = block_cls()
+        if block.disabled or not is_graph_only_block(block):
+            continue
+        monkeypatch.setattr(block_cls, "execute", _record_run)
+        response = client.post(f"/blocks/{block_id}/execute", json={})
+        outcomes[block.name] = (response.status_code, response.json().get("detail"))
+
+    assert {
+        name: outcome
+        for name, outcome in outcomes.items()
+        if outcome[0] != 403 or "inside a workflow" not in str(outcome[1])
+    } == {}
+    assert {"AgentExecutorBlock", "AutoPilotBlock", "OrchestratorBlock"} <= set(
+        outcomes
+    )
+    charge_mock.assert_not_awaited()
+    assert not ran
+
+
+def test_execute_block_context_carries_key_org_and_team(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    """A team-restricted org key's block run carries that org and team, as
+    execute_graph's runs do."""
+
+    async def org_scoped_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=[APIKeyPermission.EXECUTE_BLOCK],
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-a",
+            team_id_restriction="team-a",
+        )
+
+    app.dependency_overrides[require_auth] = org_scoped_auth
+    captured: dict = {}
+    block = _stub_block(name="FreeBlock", capture=captured)
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 200, f"got {response.status_code}: {response.text}"
+    ctx = captured["execution_context"]
+    assert (ctx.organization_id, ctx.team_id) == ("org-a", "team-a")
 
 
 def test_unknown_block_returns_404(monkeypatch: pytest.MonkeyPatch):
@@ -334,3 +475,62 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
             "/blocks/00000000-0000-0000-0000-000000000001/execute",
             json={},
         )
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", None),
+        ("smtp", ""),
+        ("smtp", "smtp.example.com"),
+        ("smtp", "smtp://*.example.com"),
+        ("smtp", "postgresql://smtp.example.com"),
+        ("database", None),
+        ("database", "db.example.com:5432"),
+        ("database", "smtp://db.example.com"),
+    ],
+)
+def test_create_login_without_a_valid_scope_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str | None
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+    body = {"type": "user_password", "username": "u", "password": "p", "title": "t"}
+    if scope is not None:
+        body["scope"] = scope
+
+    response = client.post(f"/integrations/{provider}/credentials", json=body)
+
+    assert response.status_code == 400
+    create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", "smtp://smtp.example.com:587"),
+        ("database", "postgresql://db.example.com:5432"),
+        ("database", "mysql://db.example.com"),
+    ],
+)
+def test_create_login_with_a_scope_stores_it(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+
+    response = client.post(
+        f"/integrations/{provider}/credentials",
+        json={
+            "type": "user_password",
+            "username": "u",
+            "password": "p",
+            "title": "t",
+            "scope": scope,
+        },
+    )
+
+    assert response.status_code == 201
+    stored = create.await_args.args[1]
+    assert stored.provider == provider
+    assert stored.scope == scope

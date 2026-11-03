@@ -28,6 +28,7 @@ from typing import Any
 from backend.api.features.experts.models import Expert
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import take_consult_slot
+from backend.copilot.credit_billing import tool_spend_refusal
 from backend.copilot.inference.complete import StructuredCompletion, structured_complete
 from backend.copilot.inference.context import (
     InferenceContext,
@@ -202,6 +203,9 @@ async def _audit_via_provider(
         {"role": "user", "content": audit_material(work, authority, question)},
     ]
     try:
+        # Billed to the platform's key whoever pays for the turn's model.
+        if refusal := await tool_spend_refusal(user_id):
+            return _not_checked(f"{reviewer.name} was not asked: {refusal}")
         completion = await _complete(user_id, session, messages)
     except InferenceError as e:
         logger.warning(f"Consult of {reviewer.id} did not parse: {e}")
