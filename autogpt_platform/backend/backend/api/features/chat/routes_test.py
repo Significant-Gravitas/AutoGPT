@@ -1,6 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -5654,6 +5655,64 @@ def test_standard_tier_is_not_gated(
     # Balanced. The request goes on to fail for unrelated reasons in this
     # harness; what matters is that it was not refused for entitlement.
     allowed.assert_not_called()
+
+
+def test_a_named_local_create_runs_inside_the_session_create_lock(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A resent create must wait for the first attempt to keep or delete the
+    session, so the route adopts or creates only while holding the lock on
+    the session id the browser named."""
+    session_id = str(uuid4())
+    held: list[tuple[str, str | None]] = []
+    released: list[str | None] = []
+
+    @asynccontextmanager
+    async def lock(user_id: str, named: str | None):
+        held.append((user_id, named))
+        yield
+        released.append(named)
+
+    async def create_local(*, user_id: str, session_id: str | None, **_kwargs):
+        assert held == [(user_id, session_id)] and released == []
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=chat_routes.LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            ),
+        )
+
+    mocker.patch.object(chat_routes, "client_named_local_create", lock)
+    mocker.patch.object(
+        chat_routes,
+        "_create_local_chat_session",
+        new=AsyncMock(side_effect=create_local),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "session_id": session_id,
+            "execution_target": {
+                "kind": "local",
+                "machine_id": "machine-1",
+                "expected_connection_id": "connection-1",
+                "browse_id": "browse-1",
+                "directory_ref": "directory-1",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == session_id
+    assert held == [(test_user_id, session_id)]
+    assert released == [session_id]
 
 
 def test_local_pc_expert_kickoff_rejects_before_session_creation(

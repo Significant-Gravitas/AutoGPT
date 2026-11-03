@@ -20,6 +20,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.api.features.chat.local_create_lock import client_named_local_create
 from backend.api.features.experts import experts_db
 from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.blocks.desktop._api import DesktopStream
@@ -1210,18 +1211,19 @@ async def create_session(
 
     if request.execution_target.kind == "local":
         try:
-            session = await _create_local_chat_session(
-                user_id=user_id,
-                organization_id=ctx.org_id,
-                team_id=ctx.team_id,
-                dry_run=dry_run,
-                target=request.execution_target,
-                session_id=client_session_id,
-                llm_auth_provider=llm_auth_provider,
-                llm_credential_id=llm_credential_id,
-                expert_id=expert_id,
-                autopilot_mode=autopilot_mode,
-            )
+            async with client_named_local_create(user_id, client_session_id):
+                session = await _create_local_chat_session(
+                    user_id=user_id,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    dry_run=dry_run,
+                    target=request.execution_target,
+                    session_id=client_session_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
         except SessionIdConflictError as e:
             raise HTTPException(
                 status_code=409, detail="Session id already in use"
