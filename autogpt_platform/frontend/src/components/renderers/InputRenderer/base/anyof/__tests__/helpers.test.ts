@@ -1,5 +1,5 @@
 import { getFirstMatchingOption, StrictRJSFSchema } from "@rjsf/utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { customValidator } from "../../../utils/custom-validator";
 import { getDefaultTypeIndex, stripEmptyProperties } from "../helpers";
 
@@ -64,6 +64,94 @@ describe("stripEmptyProperties", () => {
 
     expect(index).toBe(1);
   });
+
+  it("preserves frozen schemas and their nested constraints", () => {
+    const patternProperties = Object.freeze({
+      "^name": Object.freeze({ type: "string" as const }),
+    });
+    const option: StrictRJSFSchema = Object.freeze({
+      type: "object",
+      properties: Object.freeze({}),
+      additionalProperties: false,
+      patternProperties,
+    });
+    const options = [option, { type: "null" } as StrictRJSFSchema];
+    Object.freeze(options);
+
+    const result = stripEmptyProperties(options);
+
+    expect(result).not.toBe(options);
+    expect(result[0]).not.toBe(option);
+    expect(result[0].patternProperties).toBe(patternProperties);
+    expect(result[0].additionalProperties).toBe(false);
+    expect(option.properties).toEqual({});
+    expect(result[1]).toBe(options[1]);
+  });
+
+  it("preserves malformed and boolean union members at their original indexes", () => {
+    const options = [null, false, true, 0, "object", undefined, {}];
+
+    expect(
+      stripEmptyProperties(options as unknown as StrictRJSFSchema[]),
+    ).toEqual(options);
+  });
+
+  it.each(
+    [null, false, true, 0, "invalid", [], ["invalid"]].map((properties) => ({
+      properties,
+    })),
+  )(
+    "leaves malformed properties $properties for the validator to reject",
+    ({ properties }) => {
+      const option = { type: "object", properties };
+      const [result] = stripEmptyProperties([
+        option as unknown as StrictRJSFSchema,
+      ]);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(result).toBe(option);
+        expect(customValidator.isValid(result, {}, {})).toBe(false);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "preserves %s as an own property without changing prototypes",
+    (name) => {
+      const before = Object.getOwnPropertyDescriptors(Object.prototype);
+      const option: StrictRJSFSchema = JSON.parse(
+        `{"type":"object","properties":{},"${name}":{"marker":true}}`,
+      );
+      const [result] = stripEmptyProperties([option]);
+      expect(Object.hasOwn(result, name)).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(result, name)?.value).toEqual({
+        marker: true,
+      });
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(
+        getFirstMatchingOption(
+          customValidator,
+          {},
+          [{ type: "string" }, result],
+          {},
+        ),
+      ).toBe(1);
+
+      const withProperty: StrictRJSFSchema = JSON.parse(
+        `{"type":"object","properties":{"${name}":{"type":"string"}}}`,
+      );
+      expect(stripEmptyProperties([withProperty])[0]).toBe(withProperty);
+      const data = JSON.parse(`{"${name}":"value"}`);
+      expect(customValidator.isValid(withProperty, data, withProperty)).toBe(
+        true,
+      );
+      expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(
+        before,
+      );
+    },
+  );
 });
 
 describe("getDefaultTypeIndex", () => {

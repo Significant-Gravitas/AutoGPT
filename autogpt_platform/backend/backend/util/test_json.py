@@ -1,11 +1,14 @@
 import datetime
+import gc
 import threading
+import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
 import pytest
+import referencing.exceptions
 from prisma import Json
 from pydantic import BaseModel
 
@@ -161,6 +164,10 @@ class TestSafeJson:
         # by raising an exception, which our fallback should handle
         data = {}
         data["self"] = data  # Create circular reference
+
+        # Anything an earlier test left for the collector goes now: a finalizer
+        # that runs at the recursion limit raises there and fails this test.
+        gc.collect()
 
         # This should either work with fallback or raise a reasonable error
         try:
@@ -1196,6 +1203,18 @@ class TestValidateWithJsonschema:
         assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
             schema, data
         )
+
+    def test_a_ref_outside_the_schema_is_never_retrieved(self, monkeypatch):
+        """`$ref` resolves only within the schema and the bundled meta-schemas."""
+        retrievals: list[tuple] = []
+        monkeypatch.setattr(
+            urllib.request, "urlopen", lambda *args, **_: retrievals.append(args)
+        )
+        schema = {"properties": {"f": {"$ref": "https://example.com/schema.json"}}}
+
+        with pytest.raises(referencing.exceptions.Unresolvable):
+            validate_with_jsonschema(schema, {"f": "x"})
+        assert retrievals == []
 
     @staticmethod
     def _baseline_outcome(schema: dict[str, Any], data: dict[str, Any]) -> str | None:

@@ -4,6 +4,9 @@ import {
   getGetV2GetSessionMockHandler200,
   getPostV2CancelSessionTaskMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetSubscriptionStatusMockHandler200 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { getGetTrialsGetTrialStatusMockHandler200 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
+import { ProActivationProvider } from "@/services/pro-activation/ProActivationProvider";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
@@ -20,6 +23,7 @@ import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetStarToastCounts } from "../helpers/githubStarToast";
 import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
@@ -31,10 +35,12 @@ export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
 export type StreamPath = (typeof STREAM_PATHS)[number];
 export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
 
-/** Both paths keep a per-session runtime in a module-level map. */
+/** Both paths keep a per-session runtime in a module-level map; the GitHub
+ *  star toast keeps the prompts it has counted in one too. */
 export function resetChatRuntimes() {
   resetCopilotChatRegistry();
   resetTurnRuntimes();
+  resetStarToastCounts();
 }
 
 export interface SessionOverride {
@@ -109,7 +115,9 @@ function Wrapper({
       <NuqsTestingAdapter searchParams={searchParams}>
         <BackendAPIProvider>
           <OnboardingProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <TooltipProvider>
+              <ProActivationProvider>{children}</ProActivationProvider>
+            </TooltipProvider>
           </OnboardingProvider>
         </BackendAPIProvider>
       </NuqsTestingAdapter>
@@ -149,6 +157,20 @@ export function renderHost(
       },
       tier: "PRO",
       reset_cost: 0,
+    }),
+    getGetSubscriptionStatusMockHandler200({
+      tier: "PRO",
+      monthly_cost: 5000,
+      tier_costs: { PRO: 5000, MAX: 32000 },
+      proration_credit_cents: 0,
+    }),
+    getGetTrialsGetTrialStatusMockHandler200({
+      active: false,
+      converted: true,
+      eligible: false,
+      offer: null,
+      ends_at: null,
+      status: "active",
     }),
     getGetV2GetPendingMessagesMockHandler200({
       count: opts.pendingMessages?.length ?? 0,
@@ -200,7 +222,12 @@ export async function typeAndSend(text: string) {
   await user.click(screen.getByRole("button", { name: /submit/i }));
 }
 
+/** Stop ignores taps for a moment after it appears; wait until it takes one. */
 export async function clickStop() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /stop/i }));
+  const stop = await screen.findByRole("button", { name: "Stop" });
+  await waitFor(() => expect(stop.hasAttribute("disabled")).toBe(false), {
+    timeout: 3000,
+  });
+  await user.click(stop);
 }

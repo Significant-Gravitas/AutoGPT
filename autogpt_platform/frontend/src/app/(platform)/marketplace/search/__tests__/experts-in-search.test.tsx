@@ -21,7 +21,6 @@ import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSea
 configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
-const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -38,21 +37,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: () => ({ enabled: false, ready: true }),
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts"
-        ? hireExpertsFlag.enabled
-        : actual.useGetFlag(flag as never),
-  };
-});
 
 const maria: Expert = {
   id: "template-maria",
@@ -86,7 +70,7 @@ function rosterHandler(matches: Expert[]) {
 describe("Experts in marketplace search", () => {
   beforeEach(() => {
     searchedTerms.length = 0;
-    hireExpertsFlag.enabled = true;
+
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
       getGetV2ListStoreAgentsMockHandler(),
@@ -280,16 +264,26 @@ describe("Experts in marketplace search", () => {
     expect(isExpertCardShown("template-max")).toBe(true);
   });
 
-  test("asks for no experts and offers no chip outside the beta", async () => {
-    hireExpertsFlag.enabled = false;
-    server.use(rosterHandler([maria]));
+  test("offers public expert search to signed-out visitors", async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+    let privateRosterRequests = 0;
+    server.use(
+      rosterHandler([maria]),
+      getListExpertsMockHandler(() => {
+        privateRosterRequests += 1;
+        return [];
+      }),
+    );
 
     render(<MainSearchResultPage searchTerm="Maria" sort="runs" />);
 
     await screen.findByText(/Showing results for/);
-    await waitFor(() => expect(searchedTerms).toHaveLength(0));
-    expect(screen.queryByRole("heading", { name: "Experts" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Experts/ })).toBeNull();
+    await waitFor(() => expect(searchedTerms).toEqual(["Maria"]));
+    expect(
+      await screen.findByRole("heading", { name: "Experts" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /Experts/ })).toBeDefined();
+    expect(privateRosterRequests).toBe(0);
   });
 });
 

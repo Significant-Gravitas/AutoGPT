@@ -99,7 +99,7 @@ test("an approved call that failed when it ran shows its error, still marked app
   // The error line under the row, as an unheld call's failure shows it.
   const errorLine = screen
     .getAllByText("Folder exists")
-    .find((el) => el.className.includes("text-red"));
+    .find((el) => el.className.includes("text-error"));
   expect(errorLine).toBeDefined();
 });
 
@@ -235,7 +235,7 @@ test("the late result wins over the click: approved but failed shows its error",
   expect(await screen.findByText("Approved")).toBeDefined();
   const errorLine = screen
     .getAllByText("Folder exists")
-    .find((el) => el.className.includes("text-red"));
+    .find((el) => el.className.includes("text-error"));
   expect(errorLine).toBeDefined();
 });
 

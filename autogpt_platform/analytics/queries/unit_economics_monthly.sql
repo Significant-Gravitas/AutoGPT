@@ -27,7 +27,7 @@
 --   platform.PlatformCostLog, platform.CreditTransaction, platform.User
 --
 -- OUTPUT COLUMNS
---   user_id, email, subscription_tier, month (DATE, first of month),
+--   user_id, subscription_tier, month (DATE, first of month),
 --   tasks_human, tasks_automated, agent_runs, autopilot_turns, expert_turns,
 --   active_days, platform_cost_usd, agent_cost_usd, copilot_cost_usd,
 --   background_cost_usd, credits_spent_usd, credits_purchased_usd,
@@ -164,7 +164,6 @@ keys AS (
 assembled AS (
   SELECT
     k.user_id,
-    u."email"                                                            AS email,
     u."subscriptionTier"::text                                           AS subscription_tier,
     k.month,
     COALESCE(r.agent_runs_human, 0) - COALESCE(r.agent_runs_copilot, 0)

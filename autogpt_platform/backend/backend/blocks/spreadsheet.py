@@ -1,3 +1,5 @@
+import asyncio
+import io
 from pathlib import Path
 
 from backend.blocks._base import (
@@ -11,6 +13,7 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.file_content_parser import check_xlsx_unpacked_size
 from backend.util.type import MediaFileType
 
 
@@ -134,16 +137,23 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
-                    # dtype=object and keep_default_na=False keep the sheet's own
-                    # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
-                    # missing, and a gap in a numeric column no longer upcasts the
-                    # whole column to float (turning 12 into "12.0").
-                    df = pd.read_excel(
-                        file_path,
-                        sheet_name=input_data.sheet_name or 0,
-                        dtype=object,
-                        keep_default_na=False,
-                    )
+                    def _read_xlsx() -> "pd.DataFrame":
+                        workbook = Path(file_path).read_bytes()
+                        check_xlsx_unpacked_size(
+                            io.BytesIO(workbook), source="spreadsheet_block"
+                        )
+                        # dtype=object and keep_default_na=False keep the sheet's own
+                        # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
+                        # missing, and a gap in a numeric column no longer upcasts the
+                        # whole column to float (turning 12 into "12.0").
+                        return pd.read_excel(
+                            io.BytesIO(workbook),
+                            sheet_name=input_data.sheet_name or 0,
+                            dtype=object,
+                            keep_default_na=False,
+                        )
+
+                    df = await asyncio.to_thread(_read_xlsx)
 
                     # Write the CSV with the same dialect it is parsed with below,
                     # otherwise a non-default delimiter yields a single column.

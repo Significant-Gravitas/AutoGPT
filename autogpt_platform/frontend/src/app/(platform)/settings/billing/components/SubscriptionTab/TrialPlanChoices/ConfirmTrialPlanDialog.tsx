@@ -31,7 +31,7 @@ export function ConfirmTrialPlanDialog({
       }}
     >
       <Dialog.Content>
-        <Text variant="body" unmask={false}>
+        <Text variant="body">
           Your trial ends now and your saved card is charged {price}, plus
           applicable tax.
         </Text>

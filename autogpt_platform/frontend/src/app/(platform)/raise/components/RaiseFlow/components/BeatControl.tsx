@@ -84,6 +84,7 @@ export function BeatControl({ beat, flow }: Props) {
           name={flow.name}
           samples={VOICE_SAMPLES}
           hideHeader
+          // oxlint-disable-next-line design-system/require-static-classes -- the colour helpers return whole, static class strings from COLOR_OPTIONS
           labelClassName={textClassFor(flow.color)}
           cardColors={{
             selected: selectedCardClassFor(flow.color),

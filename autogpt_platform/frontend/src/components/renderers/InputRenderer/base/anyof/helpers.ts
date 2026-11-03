@@ -35,6 +35,7 @@ export function stripEmptyProperties<T extends StrictRJSFSchema>(
     if (
       properties &&
       typeof properties === "object" &&
+      !Array.isArray(properties) &&
       Object.keys(properties).length === 0
     ) {
       const copy = { ...option };

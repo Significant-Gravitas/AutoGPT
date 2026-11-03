@@ -15,7 +15,7 @@ from backend.copilot.tools.schedule_followup import (
     ScheduleCreatedResponse,
     ScheduleFollowupTool,
 )
-from backend.data.model import APIKeyCredentials
+from backend.data.model import APIKeyCredentials, HostScopedCredentials
 from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.integrations.credentials_store import exa_credentials
 
@@ -134,6 +134,23 @@ async def test_a_pick_already_made_in_the_chat_is_kept_without_naming_it():
 
     kwargs = scheduler.add_copilot_turn_schedule.call_args.kwargs
     assert kwargs["credential_pins"]["exa"].id == "exa-new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("integrations", [None, ["http"]])
+async def test_a_schedule_keeps_separate_picks_for_http_hosts(integrations):
+    credentials = [
+        HostScopedCredentials(id="linear-key", provider="http", host="api.linear.app"),
+        HostScopedCredentials(id="github-key", provider="http", host="api.github.com"),
+    ]
+    picks = {"http:api.linear.app": "linear-key", "http:api.github.com": "github-key"}
+    with _account(credentials, picks=picks), _scheduler() as scheduler:
+        result = await _schedule_briefing(
+            make_session(_USER), integrations=integrations
+        )
+    assert isinstance(result, ScheduleCreatedResponse)
+    pins = scheduler.add_copilot_turn_schedule.call_args.kwargs["credential_pins"]
+    assert {key: pin.id for key, pin in pins.items()} == picks
 
 
 @pytest.mark.asyncio

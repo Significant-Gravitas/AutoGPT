@@ -26,7 +26,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
   return (
     <ColumnFilter active={value.length > 0} label="Status" align="start">
       <div className="flex flex-col gap-2">
-        <Text variant="small-medium" as="span" className="px-2 text-textBlack">
+        <Text variant="small-medium" as="span" className="mx-2">
           Filter by status
         </Text>
         <ul className="flex flex-col gap-1">
@@ -41,9 +41,9 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   aria-pressed={checked}
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left",
-                    "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,transform] duration-150",
+                    "transition-[background-color,transform] duration-150",
                     "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
-                    checked ? "bg-violet-50" : "hover:bg-zinc-100",
+                    checked ? "bg-accent-surface" : "hover:bg-surface-hover",
                   )}
                 >
                   <span
@@ -53,11 +53,11 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   </span>
                   <span
                     className={cn(
-                      "flex h-4 w-4 items-center justify-center rounded-[4px] border",
-                      "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,border-color,transform] duration-200",
+                      "flex h-4 w-4 items-center justify-center rounded-xsmall border",
+                      "transition-[background-color,border-color,transform] duration-200",
                       checked
-                        ? "scale-100 border-violet-600 bg-violet-600 text-white"
-                        : "scale-95 border-zinc-300 bg-white text-transparent",
+                        ? "scale-100 border-brand bg-brand text-action-foreground"
+                        : "scale-95 border-border-strong bg-surface text-transparent",
                     )}
                   >
                     <Icon icon={Tick02Icon} size={10} />

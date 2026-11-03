@@ -4,6 +4,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { cn } from "@/lib/utils";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SpendMeter } from "../../components/ExpertTeamCard/components/SpendMeter";
@@ -12,20 +13,31 @@ import { EditBudgetDialog } from "./EditBudgetDialog/EditBudgetDialog";
 
 interface Props {
   expert: Expert;
+  /** The cover colour it sits on: text and meter take darker shades of it. */
+  color?: string;
+  className?: string;
 }
 
-export function ExpertBudgetSection({ expert }: Props) {
+export function ExpertBudgetSection({ expert, color, className }: Props) {
   const weeklySpend = getWeeklySpend(expert);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   return (
     <section
       aria-label={`${expert.name} budget`}
-      className="flex w-full shrink-0 flex-col gap-1.5 md:ml-auto md:w-64"
+      style={
+        color
+          ? {
+              // oxlint-disable-next-line design-system/no-inline-styles -- tinted by the expert's own colour, which is runtime data
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+            }
+          : undefined
+      }
+      className={cn("flex w-full shrink-0 flex-col gap-1.5", className)}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 tabular-nums">
         <div className="flex items-center gap-1">
-          <Text variant="body-medium" tone="secondary">
+          <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
             Budget
           </Text>
           <Button
@@ -34,15 +46,12 @@ export function ExpertBudgetSection({ expert }: Props) {
             size="icon-xs"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no variant that takes a tinted card's colour (src/components is P9's)
+            className={cn(color && "text-inherit hover:bg-surface/50")}
             onClick={() => setIsEditOpen(true)}
           />
         </div>
-        <Text
-          variant="body-medium"
-          tone="secondary"
-          unmask={false}
-          className="tabular-nums"
-        >
+        <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
           {weeklySpend
             ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
             : "No budget"}
@@ -52,6 +61,7 @@ export function ExpertBudgetSection({ expert }: Props) {
         spent={weeklySpend?.spent ?? 0}
         budget={weeklySpend?.budget ?? 1}
         muted={!weeklySpend}
+        color={color}
       />
       <EditBudgetDialog
         expert={expert}

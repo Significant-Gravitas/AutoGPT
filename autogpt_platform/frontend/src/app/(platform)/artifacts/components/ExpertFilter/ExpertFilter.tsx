@@ -32,7 +32,7 @@ export function ExpertFilter({ experts, value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-expert-filter">
       <div className="flex flex-col gap-1">
-        <Text variant="small" as="span" className="pl-4 text-zinc-500">
+        <Text variant="small" as="span" tone="muted" className="ml-4">
           From
         </Text>
         <div
@@ -87,16 +87,18 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
-        hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
-        active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
+        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        hasAvatar ? "pr-3.5 pl-1.5" : "px-4",
+        active
+          ? "text-foreground-strong"
+          : "text-foreground-tertiary hover:text-foreground-strong",
       )}
       data-testid={testId}
     >
       {active ? (
         <motion.span
           layoutId="artifacts-expert-active"
-          className="absolute inset-0 rounded-full bg-zinc-100"
+          className="absolute inset-0 rounded-full bg-surface-hover"
           transition={snappySpring}
         />
       ) : null}

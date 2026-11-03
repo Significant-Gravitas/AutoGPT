@@ -28,7 +28,10 @@ publish content or settings to MailerLite.
 `#6144DF` actions, ink `#171925`, white sheet and lavender paper. Facts stack on
 phones. At 600px and below, the paper has no side padding and the sheet has
 square corners; content keeps its 22px gutters. The sheet is fluid even when a
-client strips the stylesheet. Button links own their full padded surface,
+client strips the stylesheet. The card cell owns inline 22px side padding and
+centers a 464px content table, with a fixed-width Outlook wrapper. Content rows
+add no side padding. Fonts load through a separate link rather than an import
+inside the style block. Button links own their full padded surface,
 including when styles are removed. MSO-only rules transfer that padding to
 table cells for Outlook without doubling it. Inline font stacks preserve
 the fallback appearance in Outlook; action glyphs request text
@@ -39,6 +42,20 @@ feedback stay escaped, and customer-authored punctuation is preserved.
 Plan labels use a middle dot (`Pro · monthly`). Trial prices use the same
 formatted amount as lifecycle emails, with a currency code retained when the
 formatter has no currency symbol (`20.00 CAD / month`, `2,000 JPY / year`).
+
+Briefing amounts already represent dollars; neither the displayed amount nor
+the balance is divided again. Balance alerts use the same dollar unit. A trial
+conversion shows its actual conversion date, not the original trial end date.
+
+Payment-failure notices are queued only when the failed-payment handler reports
+that customer action is required. Wallet-settled, stale, replaced and processing
+invoices do not queue them. A missing retry timestamp is not proof of exhaustion:
+the final notice requires a current `unpaid` subscription. The latest invoice
+still requires action when Stripe marked it uncollectible after its last retry,
+unless a newer plan replaced its subscription. Canceled subscriptions
+use the existing plan-ended message. The final notice dates the failed event and
+links to the hosted invoice when available; it never presents the invoice's
+renewal date as a future pause date.
 
 One primary button is the default. Cancellation confirmation uses a billing
 text link. A Briefing without an attention item uses highlight/run-history text
@@ -111,6 +128,15 @@ the defaults here do not prove the effective production values. Before rollout:
   senders and the transactional Postmark stream.
 - Check that the new public Otto URL returns a PNG without authentication from
   the configured asset host before deploying the notification service.
+- Deploy the updated notification consumers before API producers: consumers
+  accept old final-notice payloads without mislabeling their renewal date, while
+  new producers can omit an unknown retry date and use the new last-attempt field.
+- Keep user notifications disabled until the asset and access-behavior changes
+  are deployed together. Confirm Stripe's final failed-payment action and its
+  own recovery emails before enabling the application emails; validate an actual
+  retry, wallet-covered invoice, unpaid subscription and canceled subscription.
+  The final notice is sent only when that action marks the subscription
+  `unpaid`; the invoice may be left past due or marked uncollectible.
 
 To verify the trial-ending reminder, follow the delivery path in order:
 
@@ -118,8 +144,12 @@ To verify the trial-ending reminder, follow the delivery path in order:
    subscribes to `customer.subscription.trial_will_end`.
 2. Check the Stripe Dashboard's **Trial ending events** setting is three days.
    Compare a recent event's creation time with its subscription's `trial_end`.
-   The code only sends an ending notice inside the final three days, while the
-   trial is active, the card is verified and cancellation is not scheduled.
+   The code only sends an ending notice inside the final four days (Stripe's
+   three plus a day of slack for an early event), while the trial is active,
+   the card is verified and cancellation is not scheduled. A notice dropped by
+   these checks is logged at info as `Dropped trial <kind> notice for user
+   <user id>: <reason>`. Events for an earlier checkout attempt or an unstarted
+   trial, and a notice already sent once, return without this line.
 3. Check the endpoint's delivery result and backend processing. A successful
    Stripe webhook response is not proof that an email was delivered.
 4. Check PostHog for `trial_ending`, the current event name, and

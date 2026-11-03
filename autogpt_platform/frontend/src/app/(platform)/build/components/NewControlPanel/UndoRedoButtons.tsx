@@ -1,4 +1,4 @@
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import {
   Tooltip,
   TooltipContent,
@@ -57,7 +57,7 @@ export const UndoRedoButtons = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
       </Tooltip>
-      <Separator className="text-[#E1E1E1]" />
+      <Separator />
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton

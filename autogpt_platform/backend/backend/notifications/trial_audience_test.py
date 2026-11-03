@@ -15,7 +15,6 @@ from backend.data.notifications import (
     AudienceEventModel,
     NotificationResult,
     SubscriberField,
-    SubscriptionStatus,
 )
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
@@ -182,13 +181,18 @@ async def _notify(
         ("ending", []),
     ],
 )
-async def test_each_trial_transition_moves_the_trial_group(trial, kind, actions):
+async def test_each_trial_transition_moves_the_trial_group(
+    trial, lifecycle_resync, kind, actions
+):
     trial, raw = _state(trial, kind)
     if kind == "ending":
         raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
     got, notice, _ = await _notify(trial, raw, kind)
     assert got == actions
     notice.assert_awaited_once()
+    # Joining may create the subscriber, so the status follows a join.
+    joined = AudienceAction.ADD_TRIAL in actions
+    assert lifecycle_resync.await_count == (1 if joined else 0)
 
 
 @pytest.mark.asyncio
@@ -197,12 +201,13 @@ async def test_each_trial_transition_moves_the_trial_group(trial, kind, actions)
     [(False, AudienceAction.ENROLL_TOUR), (True, AudienceAction.ADD_CHANGELOG)],
 )
 async def test_conversion_leaves_the_trial_and_joins_the_paying_audience(
-    trial, welcomed, paying
+    trial, lifecycle_resync, welcomed, paying
 ):
     trial, raw = _state(trial, "converted")
     got, notice, _ = await _notify(trial, raw, "converted", welcomed=welcomed)
     assert got == [AudienceAction.REMOVE_TRIAL, paying]
     notice.assert_awaited_once()
+    lifecycle_resync.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -218,12 +223,11 @@ async def test_the_api_server_queues_without_any_mailerlite_settings(
 ):
     """The API server, which handles the webhook, never holds the MailerLite
     token or group IDs: only the notification service does. Its changes must
-    be queued anyway, with their fields, for the consumer to decide."""
+    be queued anyway, for the consumer to decide."""
     trial, raw = _state(trial, kind)
     audience = AsyncMock(return_value=NotificationResult(success=True))
     got, notice, _ = await _notify(trial, raw, kind, audience=audience)
     assert got == actions
-    assert audience.await_args_list[0].args[0].fields
     notice.assert_awaited_once()
 
 
@@ -259,13 +263,16 @@ async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(trial, ki
 
 
 @pytest.mark.asyncio
-async def test_joining_the_paying_audience_never_fails_the_sent_conversion(trial):
+async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
+    trial, lifecycle_resync
+):
     trial, raw = _state(trial, "converted")
     broken = AsyncMock(side_effect=RuntimeError("database unavailable"))
     got, notice, release = await _notify(trial, raw, "converted", claim_welcome=broken)
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
     release.assert_not_awaited()
+    lifecycle_resync.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -434,54 +441,23 @@ async def test_remove_from_trial_fails_loudly_so_the_job_retries(mailerlite_conf
 
 
 # ── subscriber fields ──────────────────────────────────────────────────────
-
-
-def _day(timestamp: int) -> str:
-    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d")
+#
+# The status and dates come from the lifecycle sync every trial transition
+# triggers (`lifecycle_audience.py`), by PostHog's rules: a trial that runs
+# out is `trial_expired` there, not here.
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kind, status",
-    [
-        ("started", SubscriptionStatus.IN_TRIAL),
-        ("resumed", SubscriptionStatus.IN_TRIAL),
-        ("canceled", SubscriptionStatus.TRIAL_CANCELED),
-        # Neither ever became a paid subscription, so neither is churn.
-        ("ended", SubscriptionStatus.TRIAL_CANCELED),
-        ("payment_failed", SubscriptionStatus.TRIAL_CANCELED),
-        ("converted", SubscriptionStatus.SUBSCRIBED),
-    ],
+    "kind", ["started", "resumed", "canceled", "ended", "payment_failed", "converted"]
 )
-async def test_each_trial_transition_sets_the_status_on_its_group_change(
-    trial, kind, status
-):
+async def test_a_trial_group_change_carries_no_status(trial, kind):
     trial, raw = _state(trial, kind)
     audience = AsyncMock(return_value=NotificationResult(success=True))
     await _notify(trial, raw, kind, audience=audience)
     event = audience.await_args_list[0].args[0]
     assert event.action in (AudienceAction.ADD_TRIAL, AudienceAction.REMOVE_TRIAL)
-    assert event.fields[SubscriberField.STATUS] == status.value
-
-
-@pytest.mark.asyncio
-async def test_a_trial_start_carries_stripes_trial_start_date(trial):
-    trial, raw = _state(trial, "started")
-    raw["trial_start"] = 1788000000
-    audience = AsyncMock(return_value=NotificationResult(success=True))
-    await _notify(trial, raw, "started", audience=audience)
-    fields = audience.await_args.args[0].fields
-    assert fields[SubscriberField.TRIAL_STARTED] == _day(1788000000)
-
-
-@pytest.mark.asyncio
-async def test_a_conversion_starts_the_subscription_when_the_trial_ended(trial):
-    trial, raw = _state(trial, "converted")
-    audience = AsyncMock(return_value=NotificationResult(success=True))
-    await _notify(trial, raw, "converted", audience=audience)
-    fields = audience.await_args_list[0].args[0].fields
-    assert fields[SubscriberField.SUBSCRIPTION_STARTED] == _day(raw["trial_end"])
-    assert fields[SubscriberField.SUBSCRIPTION_ENDED] is None
+    assert event.fields == {}
 
 
 @pytest.mark.asyncio

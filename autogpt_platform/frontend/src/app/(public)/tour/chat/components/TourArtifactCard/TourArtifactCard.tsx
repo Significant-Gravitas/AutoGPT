@@ -9,24 +9,24 @@ interface Props {
 
 export function TourArtifactCard({ artifact }: Props) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-zinc-200/70 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-1.5 text-sm text-zinc-500">
+    <div className="flex flex-col gap-2.5 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
+      <div className="flex items-center gap-1.5 text-sm text-foreground-tertiary">
         <Icon icon={Mail02Icon} className="size-4 shrink-0" />
         <span>Artifact · {artifact.caption}</span>
       </div>
 
-      <Text variant="large-medium" className="text-zinc-900">
+      <Text variant="large-medium" tone="primary">
         {artifact.title}
       </Text>
 
       {artifact.subtitle && (
-        <Text variant="body" className="text-zinc-600">
+        <Text variant="body" tone="secondary">
           {artifact.subtitle}
         </Text>
       )}
 
       {artifact.bullets && artifact.bullets.length > 0 && (
-        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-zinc-700">
+        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-foreground-body">
           {artifact.bullets.map((bullet) => (
             <li key={bullet}>{bullet}</li>
           ))}
@@ -34,18 +34,19 @@ export function TourArtifactCard({ artifact }: Props) {
       )}
 
       {artifact.diff && (
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-zinc-50 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-muted px-4 py-3">
           <div className="flex items-center gap-3 text-base font-medium">
-            <span className="text-red-700 line-through decoration-red-700/70">
+            <span className="text-error-foreground line-through decoration-error-foreground/70">
               {artifact.diff.from}
             </span>
-            <Icon
-              icon={ArrowRight02Icon}
-              className="size-4 shrink-0 text-zinc-500"
-            />
-            <span className="text-emerald-700">{artifact.diff.to}</span>
+            <span className="contents text-foreground-tertiary">
+              <Icon icon={ArrowRight02Icon} className="size-4 shrink-0" />
+            </span>
+            <span className="text-success-foreground">{artifact.diff.to}</span>
           </div>
-          <span className="text-sm text-zinc-500">{artifact.diff.delta}</span>
+          <span className="text-sm text-foreground-tertiary">
+            {artifact.diff.delta}
+          </span>
         </div>
       )}
     </div>

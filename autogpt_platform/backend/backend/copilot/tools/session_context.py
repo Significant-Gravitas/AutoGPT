@@ -129,7 +129,13 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     # The endpoint already narrows by ``kind`` server-side; the isinstance
     # filter is a belt-and-braces guard against a legacy untyped row that
     # might slip through (matches ``schedules.routes.list_copilot_turn_schedules``).
-    jobs = [j for j in raw_jobs if isinstance(j, CopilotTurnJobInfo)]
+    # A resume or send at the budget reset is the user's, set and cancelled
+    # from the chat, so the model isn't told about it.
+    jobs = [
+        j
+        for j in raw_jobs
+        if isinstance(j, CopilotTurnJobInfo) and j.purpose == "followup"
+    ]
 
     if not jobs:
         # Zero-follow-up sessions are the common case — collapse to one

@@ -117,13 +117,13 @@ function SearchCommandModalDemo({
     // overflow or scrollbars. ``[&_.fixed]:!absolute`` also retargets
     // the backdrop's positioning so it sits inside this box.
     <div
-      className="relative h-[720px] w-full overflow-hidden rounded-md bg-zinc-100 [&_.fixed]:!absolute [&_.pt-\[18vh\]]:!pt-12"
+      className="relative h-[720px] w-full overflow-hidden rounded-md bg-surface-hover [&_.fixed]:!absolute [&_.pt-\[18vh\]]:!pt-12"
       style={{ transform: "translateZ(0)" }}
     >
       {!isOpen && (
         <button
           type="button"
-          className="m-4 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm"
+          className="m-4 rounded-md border border-border-base bg-surface px-3 py-2 text-sm shadow-sm"
           onClick={() => setIsOpen(true)}
         >
           Open search
