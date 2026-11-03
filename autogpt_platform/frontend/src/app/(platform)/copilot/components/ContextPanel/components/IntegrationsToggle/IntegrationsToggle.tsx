@@ -64,10 +64,8 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
           >
             <Icon
               icon={PlugSocketIcon}
-              className={cn(
-                "text-sidebar-foreground/90",
-                isLarge ? "!size-5" : "!size-4",
-              )}
+              tone="emphasis-soft"
+              className={cn(isLarge ? "!size-5" : "!size-4")}
             />
           </button>
         </TooltipTrigger>

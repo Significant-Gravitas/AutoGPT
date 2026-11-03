@@ -104,7 +104,7 @@ export function ProfileHeader({
         >
           {isUploading ? (
             // oxlint-disable-next-line design-system/no-restyle -- the upload glyph spins while the photo uploads
-            <Icon icon={Loading03Icon} size={26} className="animate-spin" />
+            <Icon icon={Loading03Icon} size={26} spin />
           ) : (
             <Icon icon={Camera01Icon} size={26} />
           )}

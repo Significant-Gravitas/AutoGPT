@@ -74,10 +74,8 @@ export function FileChips({
                 const chipIcon = (
                   <Icon
                     icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-foreground-strong",
-                      stacked && "text-foreground-subtle",
-                    )}
+                    tone={stacked ? "subtle" : "primary"}
+                    className="h-3.5 w-3.5 shrink-0"
                   />
                 );
                 const count = isFolder
@@ -142,7 +140,9 @@ export function FileChips({
                     {showSpinner ? (
                       <Icon
                         icon={Loading03Icon}
-                        className="ml-0.5 h-3 w-3 animate-spin text-foreground-subtle"
+                        spin
+                        tone="subtle"
+                        className="ml-0.5 h-3 w-3"
                       />
                     ) : (
                       <button

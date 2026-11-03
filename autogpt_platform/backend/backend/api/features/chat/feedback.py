@@ -77,11 +77,8 @@ async def submit_message_feedback(
     """Rate a reply in one of the caller's chats.
 
     Saves the rating, one per reply and score name so rating again
-    overwrites it, and scores it in Langfuse on the trace of the turn that
-    wrote the reply, or on the chat's Langfuse session when that trace is
-    not known. It also goes to PostHog LLM analytics as an ``$ai_metric``
-    event. Langfuse or PostHog being down does not fail the request; the
-    response says where the Langfuse score went.
+    overwrites it, and sends it to PostHog LLM analytics as an
+    ``$ai_metric`` event. PostHog being down does not fail the request.
     """
     feedback = await record_message_feedback(
         user_id=user_id,

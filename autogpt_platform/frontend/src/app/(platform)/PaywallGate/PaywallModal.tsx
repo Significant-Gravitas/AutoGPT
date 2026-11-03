@@ -67,11 +67,10 @@ export function PaywallModal() {
             )}
           >
             <Button
-              variant="ghost"
+              variant="ghost-muted"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-surface/90 text-foreground-tertiary hover:text-foreground-body"
             >
               Log out
             </Button>

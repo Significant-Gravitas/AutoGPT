@@ -64,6 +64,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_refused
+from backend.executor.input_depth import (
+    validate_graph_input_depth,
+    validate_starting_node_input_depth,
+)
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -991,6 +995,8 @@ async def validate_and_construct_node_execution_input(
         GraphValidationError: If the graph has validation issues.
         ValueError: If there are other validation errors.
     """
+    validate_graph_input_depth(graph_inputs, nodes_input_masks or {})
+
     if prisma.is_connected():
         gdb = graph_db
     else:
@@ -1039,6 +1045,7 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
     )
+    validate_starting_node_input_depth(starting_nodes_input)
     # Also enforced by create_graph_execution; here a schedule or a request is
     # refused before anything is written.
     check_node_input_counts(starting_nodes_input)

@@ -28,8 +28,9 @@ export function ConsequenceList({ items }: Props) {
           <Icon
             icon={CONSEQUENCE_ICON[item.key]}
             size={18}
+            tone="muted"
             aria-hidden
-            className="mt-0.5 shrink-0 text-foreground-tertiary"
+            className="mt-0.5 shrink-0"
           />
           <Text variant="body" as="span" tone="emphasis" className="min-w-0">
             {item.text}

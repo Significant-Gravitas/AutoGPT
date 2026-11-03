@@ -24,7 +24,8 @@ export function SkillPackageFileList({ files, onOpenFile }: Props) {
             <Icon
               icon={File01Icon}
               size={14}
-              className="shrink-0 text-foreground-subtle"
+              tone="subtle"
+              className="shrink-0"
               aria-hidden
             />
             <span className="min-w-0 flex-1 truncate font-mono text-body-sm leading-inherit text-foreground-body">

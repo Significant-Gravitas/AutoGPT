@@ -68,7 +68,7 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
           isDragging ? "opacity-100" : "opacity-0",
         )}
       >
-        <Icon icon={Upload03Icon} className="h-10 w-10 text-brand" />
+        <Icon icon={Upload03Icon} tone="brand" className="h-10 w-10" />
         <span className="text-lg font-medium text-brand">Drop files here</span>
       </div>
     </div>

@@ -93,7 +93,7 @@ export function ThumbnailImages({
                 className="hidden"
               />
               {isUploading ? (
-                <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+                <Icon icon={Loading03Icon} size={16} spin />
               ) : (
                 <Icon icon={PlusSignIcon} size={16} />
               )}

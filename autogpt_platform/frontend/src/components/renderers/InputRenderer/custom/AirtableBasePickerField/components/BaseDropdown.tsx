@@ -116,7 +116,8 @@ export function BaseDropdown({
           <Icon
             icon={UnfoldMoreIcon}
             size={16}
-            className="shrink-0 text-foreground-tertiary"
+            tone="muted"
+            className="shrink-0"
           />
         </button>
       </PopoverTrigger>
@@ -187,9 +188,11 @@ export function BaseDropdown({
             );
           })}
           {shown.length === 0 && (
-            <Text variant="small" tone="muted" className="px-3 py-2">
-              No base matches “{search.trim()}”.
-            </Text>
+            <div className="px-3 py-2">
+              <Text variant="small" tone="muted">
+                No base matches “{search.trim()}”.
+              </Text>
+            </div>
           )}
         </div>
       </PopoverContent>
