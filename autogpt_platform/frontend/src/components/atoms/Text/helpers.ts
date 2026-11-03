@@ -69,6 +69,9 @@ export const variants = {
   "body-sm-medium-inherit":
     "font-sans text-body-sm font-medium leading-inherit text-foreground-base",
   small: "font-sans text-caption font-normal text-foreground-base",
+  // The tasks inbox (AffectUI clean): 13px, 400 body / 500 headings.
+  inbox: "font-sans text-body-sm font-normal text-foreground-ink",
+  "inbox-medium": "font-sans text-body-sm font-medium text-foreground-ink",
   "small-medium": "font-sans text-caption font-medium text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1.25rem (text-sm); body plus leading-5.
   "body-semibold-tight":
@@ -278,6 +281,8 @@ export const variantElementMap: Record<Variant, As> = {
   "body-sm-medium-inherit-touch": "p",
   "small-medium-tight-touch": "p",
   small: "p",
+  inbox: "p",
+  "inbox-medium": "p",
   "small-medium": "p",
   "small-tight": "p",
   "small-tight-underline": "p",

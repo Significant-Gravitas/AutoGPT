@@ -31,16 +31,23 @@
   --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
   --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
   --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
-  /* Inbox (AffectUI "classic" palette, used by /tasks) */
-  --color-surface-tray: 240 240 240; /* #F0F0F0, the gray tray a white card sits on */
-  --color-border-hairline: 240 240 240; /* #F0F0F0, row dividers inside a card */
-  --color-border-card: 229 229 229; /* #E5E5E5, the edge of a white card on the tray */
-  --color-foreground-ink: 23 23 23; /* #171717, titles */
-  --color-foreground-text: 64 64 64; /* #404040, body copy */
-  --color-foreground-quiet: 143 143 143; /* #8F8F8F, meta */
-  --color-foreground-faint: 181 181 181; /* #B5B5B5, timestamps and hints */
-  --color-status-waiting: 232 89 12; /* #E8590C, needs you / waiting */
-  --color-status-ok: 31 138 76; /* #1F8A4C, done */
+  /* Inbox (AffectUI "clean" palette, used by /tasks). Black at set
+     opacities: each triplet below is read with the alpha in the theme. */
+  --color-surface-tray: 0 0 0; /* rgba(0,0,0,.03), the wash: hover and fills */
+  --color-surface-wash: 0 0 0; /* rgba(0,0,0,.03) */
+  --color-border-hairline: 0 0 0; /* rgba(0,0,0,.06), dividers */
+  --color-border-card: 0 0 0; /* rgba(0,0,0,.06) */
+  --color-foreground-black: 0 0 0; /* #000, strong */
+  --color-foreground-ink: 0 0 0; /* rgba(0,0,0,.88), titles */
+  --color-foreground-text: 0 0 0; /* rgba(0,0,0,.61), body copy */
+  --color-foreground-quiet: 0 0 0; /* rgba(0,0,0,.45), meta */
+  --color-foreground-faint: 0 0 0; /* rgba(0,0,0,.27), timestamps and hints */
+  --color-status-waiting: 232 162 12; /* #E8A20C, needs you / waiting */
+  --color-status-ok: 26 154 82; /* #1A9A52, done */
+  --color-status-ok-surface: 26 154 82; /* rgba(26,154,82,.08) */
+  --color-focus-inbox: 0 96 226; /* rgba(0,96,226,.35), focus ring */
+  --color-action-inbox: 0 0 0; /* rgba(0,0,0,.88) primary fill, .8 on hover */
+  --color-action-inbox-foreground: 252 252 252; /* #FCFCFC */
   --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
 
   /* Text */
@@ -145,18 +152,31 @@
   --color-surface-muted: rgb(var(--color-surface-muted) / 1);
   --color-surface-hover: rgb(var(--color-surface-hover) / 1);
   --color-surface-active: rgb(var(--color-surface-active) / 1);
-  --color-surface-tray: rgb(var(--color-surface-tray) / 1);
-  --color-border-hairline: rgb(var(--color-border-hairline) / 1);
-  --color-border-card: rgb(var(--color-border-card) / 1);
-  --color-foreground-ink: rgb(var(--color-foreground-ink) / 1);
-  --color-foreground-text: rgb(var(--color-foreground-text) / 1);
-  --color-foreground-quiet: rgb(var(--color-foreground-quiet) / 1);
-  --color-foreground-faint: rgb(var(--color-foreground-faint) / 1);
+  --color-surface-tray: rgb(var(--color-surface-tray) / 0.03);
+  --color-surface-wash: rgb(var(--color-surface-wash) / 0.03);
+  --color-border-hairline: rgb(var(--color-border-hairline) / 0.06);
+  --color-border-card: rgb(var(--color-border-card) / 0.06);
+  --color-foreground-black: rgb(var(--color-foreground-black) / 1);
+  --color-foreground-ink: rgb(var(--color-foreground-ink) / 0.88);
+  --color-foreground-text: rgb(var(--color-foreground-text) / 0.61);
+  --color-foreground-quiet: rgb(var(--color-foreground-quiet) / 0.45);
+  --color-foreground-faint: rgb(var(--color-foreground-faint) / 0.27);
   --color-status-waiting: rgb(var(--color-status-waiting) / 1);
   --color-status-ok: rgb(var(--color-status-ok) / 1);
+  --color-status-ok-surface: rgb(var(--color-status-ok-surface) / 0.08);
+  --color-focus-inbox: rgb(var(--color-focus-inbox) / 0.35);
+  --color-action-inbox: rgb(var(--color-action-inbox) / 0.88);
+  --color-action-inbox-hover: rgb(var(--color-action-inbox) / 0.8);
+  --color-action-inbox-foreground: rgb(var(--color-action-inbox-foreground) / 1);
+  --radius-card: 10px;
+  --radius-control: 6px;
+  --shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-card-hover: 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12), 0 1px 3px 0 rgb(0 0 0 / 0.07);
+  --shadow-hairline-b: inset 0 -0.5px 0 rgb(0 0 0 / 0.06);
+  --shadow-hairline-l: inset 0.5px 0 0 rgb(0 0 0 / 0.06);
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow-pill: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08), 0 2px 8px -2px rgb(0 0 0 / 0.06);
-  --animate-inbox-enter: inbox-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --shadow-pill: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --animate-inbox-enter: inbox-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-inbox-empty: inbox-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
   --animate-number-in: number-in 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --color-overlay: rgb(var(--color-overlay) / 1);
