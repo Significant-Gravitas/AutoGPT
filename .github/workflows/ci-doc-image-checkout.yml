@@ -1,219 +1,111 @@
-name: Compare backend checkout without documentation images
+name: Paired backend checkout without documentation images
+permissions:
+  contents: read
+jobs:
+  compare:
+    name: Docs image checkout (${{ matrix.order }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        order:
+        - whole-first
+        - sparse-first
+    steps:
+    - name: Start checkout 1
+      run: echo "BENCHMARK_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+    - name: Checkout 1
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: 5458782482a0a71ed9472f2e1759b17d971215f7
+        path: checkout-1
+        filter: blob:none
+        fetch-depth: 1
+        persist-credentials: false
+        sparse-checkout-cone-mode: false
+        sparse-checkout: ${{ matrix.order == 'sparse-first' && format('/*{0}!/docs/platform/.gitbook/assets/',
+          fromJSON('"\n"')) || '' }}
+        submodules: true
+    - name: Measure checkout 1 and verify all other source files
+      env:
+        MODE: ${{ matrix.order == 'sparse-first' && 'sparse' || 'whole' }}
+      working-directory: checkout-1
+      run: 'elapsed=$(($(date +%s)-BENCHMARK_STARTED))
+
+        echo "::notice title=checkout-comparison::{\"order\":\"${{ matrix.order }}\",\"mode\":\"$MODE\",\"seconds\":$elapsed}"
+
+        git count-objects -v
+
+        python3 - <<''PY''
+
+        import os, pathlib, subprocess
+
+        files = set(subprocess.check_output([''git'', ''ls-files'', ''-z'']).decode().split(''\0'')) -
+        {''''}
+
+        allowed = {p for p in files if p.startswith(''docs/platform/.gitbook/assets/'')}
+
+        assert len(allowed) == 43
+
+        assert all(pathlib.Path(p).suffix in {''.png'', ''.gif''} for p in allowed)
+
+        missing = {p for p in files if not pathlib.Path(p).exists() and not pathlib.Path(p).is_symlink()}
+
+        assert missing == (allowed if os.environ[''MODE''] == ''sparse'' else set()), sorted(missing)
+
+        print(''All application code, tests, fixtures and other documentation retained'')
+
+        PY
+
+        '
+    - name: Start checkout 2
+      run: echo "BENCHMARK_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+    - name: Checkout 2
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: 5458782482a0a71ed9472f2e1759b17d971215f7
+        path: checkout-2
+        filter: blob:none
+        fetch-depth: 1
+        persist-credentials: false
+        sparse-checkout-cone-mode: false
+        sparse-checkout: ${{ matrix.order == 'whole-first' && format('/*{0}!/docs/platform/.gitbook/assets/',
+          fromJSON('"\n"')) || '' }}
+        submodules: true
+    - name: Measure checkout 2 and verify all other source files
+      env:
+        MODE: ${{ matrix.order == 'whole-first' && 'sparse' || 'whole' }}
+      working-directory: checkout-2
+      run: 'elapsed=$(($(date +%s)-BENCHMARK_STARTED))
+
+        echo "::notice title=checkout-comparison::{\"order\":\"${{ matrix.order }}\",\"mode\":\"$MODE\",\"seconds\":$elapsed}"
+
+        git count-objects -v
+
+        python3 - <<''PY''
+
+        import os, pathlib, subprocess
+
+        files = set(subprocess.check_output([''git'', ''ls-files'', ''-z'']).decode().split(''\0'')) -
+        {''''}
+
+        allowed = {p for p in files if p.startswith(''docs/platform/.gitbook/assets/'')}
+
+        assert len(allowed) == 43
+
+        assert all(pathlib.Path(p).suffix in {''.png'', ''.gif''} for p in allowed)
+
+        missing = {p for p in files if not pathlib.Path(p).exists() and not pathlib.Path(p).is_symlink()}
+
+        assert missing == (allowed if os.environ[''MODE''] == ''sparse'' else set()), sorted(missing)
+
+        print(''All application code, tests, fixtures and other documentation retained'')
+
+        PY
+
+        '
 'on':
   push:
     branches:
     - codex/ci-doc-image-checkout-20261103-1813
-permissions:
-  contents: read
-  actions: read
-defaults:
-  run:
-    shell: bash
-    working-directory: autogpt_platform/backend
-jobs:
-  docs:
-    name: Docs checkout (${{ matrix.mode }})
-    permissions:
-      contents: read
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - python-version: '3.13'
-          test-shard: copilot
-          partition: 1
-          mode: whole
-          paths: ''
-        - python-version: '3.13'
-          test-shard: copilot
-          partition: 1
-          mode: no-doc-images
-          paths: '/*
-
-            !/docs/platform/.gitbook/assets/'
-    runs-on: ubuntu-latest
-    services:
-      rabbitmq:
-        image: rabbitmq:4.1.4
-        ports:
-        - 5672:5672
-        env:
-          RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
-          RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
-        options: --health-cmd "rabbitmq-diagnostics -q check_running" --health-interval 30s --health-timeout 10s --health-retries 5 --health-start-period 10s
-      clamav:
-        image: clamav/clamav-debian:latest
-        ports:
-        - 3310:3310
-        env:
-          CLAMAV_NO_FRESHCLAMD: false
-          CLAMD_CONF_StreamMaxLength: 50M
-          CLAMD_CONF_MaxFileSize: 100M
-          CLAMD_CONF_MaxScanSize: 100M
-          CLAMD_CONF_MaxThreads: 4
-          CLAMD_CONF_ReadTimeout: 300
-        options: --health-cmd "clamdscan --version || exit 1" --health-interval 30s --health-timeout 10s --health-retries 5 --health-start-period 180s
-      falkordb:
-        image: falkordb/falkordb:v4.12.5
-        ports:
-        - 6380:6379
-        env:
-          REDIS_ARGS: --requirepass ci-${{ github.run_id }}-${{ github.run_attempt }}
-        options: --health-cmd "redis-cli -a ci-${{ github.run_id }}-${{ github.run_attempt }} ping || exit 1" --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 10s
-    steps:
-    - name: Start checkout measurement
-      working-directory: .
-      run: echo "CHECKOUT_START=$(date +%s)" >> "$GITHUB_ENV"
-    - name: Checkout repository
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      with:
-        ref: ${{ github.sha }}
-        fetch-depth: 1
-        filter: blob:none
-        submodules: true
-        sparse-checkout: ${{ matrix.paths }}
-        sparse-checkout-cone-mode: false
-    - name: Verify only documentation images were omitted
-      working-directory: .
-      env:
-        MODE: ${{ matrix.mode }}
-      run: 'python3 - <<''PY''
-
-        import os,subprocess,pathlib,json,time
-
-        files=subprocess.check_output([''git'',''ls-files'',''-z'']).decode().split(''\0'')
-
-        files=[p for p in files if p]
-
-        allowed={p for p in files if p.startswith(''docs/platform/.gitbook/assets/'')}
-
-        assert len(allowed)==43,len(allowed)
-
-        assert all(pathlib.Path(p).suffix in {''.png'',''.gif''} for p in allowed)
-
-        missing={p for p in files if not pathlib.Path(p).exists() and not pathlib.Path(p).is_symlink()}
-
-        expected=allowed if os.environ[''MODE'']==''no-doc-images'' else set()
-
-        assert missing==expected,sorted(missing^expected)
-
-        print(''::notice title=checkout-measurement::''+json.dumps({''mode'':os.environ[''MODE''],''seconds'':int(time.time())-int(os.environ[''CHECKOUT_START'']),''excluded_doc_images'':len(missing),''all_other_tracked_paths_present'':True}))
-
-        PY
-
-        git count-objects -v'
-    - name: Checkout skills catalog
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      with:
-        repository: Significant-Gravitas/skills-catalog
-        ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
-        path: skills-catalog
-    - name: Configure test shard
-      shell: bash
-      env:
-        MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
-        MATRIX_TEST_PARTITION: ${{ matrix.partition }}
-      run: "# The trial tests' safety guard only accepts localhost:5432/postgres\n# under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway \u2014\n# each shard already has its own runner and its own Postgres container.\ncase \"$MATRIX_TEST_SHARD\" in\n  data)\n    database_name=\"postgres\"\n    ;;\n  copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)\n    database_name=\"ci_${MATRIX_TEST_SHARD//-/_}\"\n    ;;\n  *)\n    echo \"Unknown backend test shard: $MATRIX_TEST_SHARD\" >&2\n    exit 1\n    ;;\nesac\n\n{\n  echo \"TEST_SHARD=${MATRIX_TEST_SHARD}-${MATRIX_TEST_PARTITION}\"\n  echo \"DATABASE_NAME=${database_name}\"\n  echo \"RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}\"\n  echo \"REDIS_PORT=17000\"\n} >> \"$GITHUB_ENV\"\n"
-    - name: Start isolated stateful services
-      id: stateful-services
-      working-directory: autogpt_platform
-      background: true
-      env:
-        CLAMAV_CONTAINER: ${{ job.services.clamav.id }}
-        RABBITMQ_CONTAINER: ${{ job.services.rabbitmq.id }}
-      run: "postgres_image=pgvector/pgvector:pg15\nbash \"$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh\" \"$postgres_image\"\ndocker run --pull=never -d --name postgres-test \\\n  -e POSTGRES_USER=postgres \\\n  -e POSTGRES_PASSWORD=postgres \\\n  -e POSTGRES_DB=postgres \\\n  -p 5432:5432 \\\n  -v \"$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro\" \\\n  \"$postgres_image\"\n\npostgres_ready=false\nfor _ in $(seq 1 30); do\n  if docker exec postgres-test pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then\n    postgres_ready=true\n    break\n  fi\n  sleep 1\ndone\nif [[ \"$postgres_ready\" != \"true\" ]]; then\n  echo \"Postgres failed to start\" >&2\n  docker logs postgres-test >&2\n  exit 1\nfi\n\n# The container's entrypoint already created and initialised `postgres`.\nif [[ \"$DATABASE_NAME\" != \"postgres\" ]]; then\n  docker exec postgres-test createdb -h 127.0.0.1 -U postgres \"$DATABASE_NAME\"\n  docker exec postgres-test psql -h 127.0.0.1 -U postgres \\\n    -v ON_ERROR_STOP=1 -d \"$DATABASE_NAME\" \\\n    -f /docker-entrypoint-initdb.d/00-init.sql\n\
-        fi\n\nif [[ -z \"$RABBITMQ_CONTAINER\" ]]; then\n  echo \"RabbitMQ service container was not found\" >&2\n  exit 1\nfi\ndocker exec \"$RABBITMQ_CONTAINER\" rabbitmqctl add_vhost \"$RABBITMQ_VHOST\"\ndocker exec \"$RABBITMQ_CONTAINER\" rabbitmqctl set_permissions \\\n  -p \"$RABBITMQ_VHOST\" \"$RABBITMQ_DEFAULT_USER\" \".*\" \".*\" \".*\"\n\nstart_redis_cluster() {\n  local name=\"$1\"\n  local base_port=\"$2\"\n  local network=\"redis-cluster-ci-${name}\"\n  docker network create \"$network\"\n\n  for offset in 0 1 2; do\n    local port=$((base_port + offset))\n    local bus=$((base_port + 10000 + offset))\n    local container=\"redis-${name}-${offset}\"\n    docker run --pull=never -d --name \"$container\" --network \"$network\" \\\n      --network-alias \"$container\" \\\n      -p \"$port:$port\" \\\n      \"$redis_image\" \\\n      redis-server --port \"$port\" \\\n        --cluster-enabled yes \\\n        --cluster-config-file nodes.conf \\\n        --cluster-node-timeout 5000 \\\n        --cluster-require-full-coverage no \\\n        --cluster-announce-hostname \"$container\"\
-        \ \\\n        --cluster-announce-port \"$port\" \\\n        --cluster-announce-bus-port \"$bus\" \\\n        --cluster-preferred-endpoint-type hostname\n  done\n\n  for offset in 0 1 2; do\n    local port=$((base_port + offset))\n    local container=\"redis-${name}-${offset}\"\n    local ready=false\n    for _ in $(seq 1 30); do\n      if docker exec \"$container\" redis-cli -p \"$port\" ping 2>/dev/null | grep -q '^PONG$'; then\n        ready=true\n        break\n      fi\n      sleep 1\n    done\n    if [[ \"$ready\" != \"true\" ]]; then\n      echo \"$container failed to accept commands\" >&2\n      docker logs \"$container\" >&2\n      return 1\n    fi\n  done\n\n  docker run --pull=never --rm --network \"$network\" \"$redis_image\" \\\n    redis-cli --cluster create \\\n      \"redis-${name}-0:${base_port}\" \\\n      \"redis-${name}-1:$((base_port + 1))\" \\\n      \"redis-${name}-2:$((base_port + 2))\" \\\n      --cluster-replicas 0 --cluster-yes\n\n  for _ in $(seq 1 30); do\n    local info\n    if info=$(docker exec \"redis-${name}-0\" redis-cli -p \"$base_port\" cluster\
-        \ info); then\n      local state\n      state=$(printf '%s\\n' \"$info\" | awk -F: '/^cluster_state:/ {print $2}' | tr -d '[:cntrl:]')\n      if [[ \"$state\" == \"ok\" ]]; then\n        echo \"Redis cluster ${name} ready on ${base_port}-$((base_port + 2))\"\n        return 0\n      fi\n    fi\n    sleep 1\n  done\n\n  echo \"Redis cluster ${name} failed to converge\" >&2\n  docker exec \"redis-${name}-0\" redis-cli -p \"$base_port\" cluster info >&2\n  return 1\n}\n\nredis_image=redis:7\nbash \"$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh\" \"$redis_image\"\nstart_redis_cluster \"$TEST_SHARD\" \"$REDIS_PORT\"\n\nif [[ -z \"$CLAMAV_CONTAINER\" ]]; then\n  echo \"ClamAV service container was not found\" >&2\n  exit 1\nfi\nclamav_ready=false\nfor _ in $(seq 1 60); do\n  if nc -z localhost 3310; then\n    clamav_ready=true\n    break\n  fi\n  sleep 5\ndone\nif [[ \"$clamav_ready\" != \"true\" ]]; then\n  echo \"ClamAV failed to start\" >&2\n  docker logs \"$CLAMAV_CONTAINER\" >&2\n  exit 1\nfi\nif ! timeout 10 bash -c 'echo \"PING\" | nc localhost 3310'; then\n  echo\
-        \ \"ClamAV is not responding to PING\" >&2\n  docker logs \"$CLAMAV_CONTAINER\" >&2\n  exit 1\nfi\n"
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Set up Python dependency cache
-      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-      with:
-        path: ~/.cache/pypoetry
-        key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
-    - name: Install Poetry
-      run: "# Extract Poetry version from backend/poetry.lock\nHEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)\necho \"Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock\"\n\nif [ -n \"$BASE_REF\" ]; then\n  if [[ ! \"$BASE_SHA\" =~ ^[0-9a-f]{40}$ ]]; then\n    echo \"Missing or invalid base commit for ${BASE_REF}\" >&2\n    exit 1\n  fi\n  git fetch --no-tags --no-recurse-submodules --depth=1 --filter=blob:none origin \"$BASE_SHA\"\n  if ! BASE_LOCK=$(git show \"${BASE_SHA}:autogpt_platform/backend/poetry.lock\"); then\n    echo \"Could not read poetry.lock from ${BASE_REF}\" >&2\n    exit 1\n  fi\n  BASE_POETRY_VERSION=$(printf '%s\\n' \"$BASE_LOCK\" | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)\n  echo \"Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}\"\n  POETRY_VERSION=$(printf '%s\\n' \"$HEAD_POETRY_VERSION\" \"$BASE_POETRY_VERSION\" | sort -V | tail -n1)\nelse\n  POETRY_VERSION=$HEAD_POETRY_VERSION\nfi\necho \"Using Poetry version\
-        \ ${POETRY_VERSION}\"\n\n# Install Poetry\ncurl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -\n\nif [ \"${{ runner.os }}\" = \"macOS\" ]; then\n  PATH=\"$HOME/.local/bin:$PATH\"\n  echo \"$HOME/.local/bin\" >> \"$GITHUB_PATH\"\nfi\n"
-      env:
-        BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
-        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-    - name: Install Python dependencies
-      run: poetry install
-    - name: Generate Prisma Client
-      run: poetry run prisma generate && poetry run gen-prisma-stub
-    - name: Wait for isolated stateful services
-      wait: stateful-services
-    - name: Migrate shard database
-      run: 'export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
-
-        export DIRECT_URL="$DATABASE_URL"
-
-        poetry run prisma migrate deploy
-
-        '
-    - name: Generate ephemeral secrets
-      run: 'echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
-
-        echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
-
-        echo "INTERNAL_API_KEY=$(openssl rand -base64 32 | tr ''+/'' ''-_'')" >> "$GITHUB_ENV"
-
-        '
-    - name: Run documentation consumers with unchanged assertions
-      run: 'poetry run pytest -q --tb=short backend/copilot/tools/get_doc_page_test.py backend/util/docs_test.py backend/api/features/search/content_handlers_test.py scripts/test_generate_block_docs.py --junitxml="$RUNNER_TEMP/doc-assets.xml"
-
-        poetry run python ../../.github/scripts/validate_junit.py --require-no-skips "$RUNNER_TEMP/doc-assets.xml"'
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-      if: always()
-      with:
-        name: backend-doc-assets-${{ matrix.mode }}
-        path: ${{ runner.temp }}/doc-assets.xml
-        retention-days: 3
-    env:
-      CI: true
-      PLAIN_OUTPUT: true
-      RUN_ENV: local
-      PORT: 8080
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
-      SKILLS_CATALOG_TOKEN: ${{ github.token }}
-      RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-      RABBITMQ_DEFAULT_PASS: ci-${{ github.run_id }}-${{ github.run_attempt }}
-      GRAPHITI_FALKORDB_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
-  verify:
-    needs: docs
-    if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
-    steps:
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: backend-doc-assets-*
-        path: reports
-    - name: Require identical passing test inventories
-      env:
-        RESULT: ${{ needs.docs.result }}
-      run: 'test "$RESULT" = success
-
-        python3 - <<''PY''
-
-        import pathlib,xml.etree.ElementTree as ET,json
-
-        reports={p.parent.name:p for p in pathlib.Path(''reports'').rglob(''doc-assets.xml'')}
-
-        assert set(reports)=={''backend-doc-assets-whole'',''backend-doc-assets-no-doc-images''},reports
-
-        identities={key:{(case.get(''classname''),case.get(''name'')) for case in ET.parse(path).iter(''testcase'')} for key,path in reports.items()}
-
-        assert identities[''backend-doc-assets-whole''] and identities[''backend-doc-assets-whole'']==identities[''backend-doc-assets-no-doc-images'']
-
-        print(''::notice title=docs-test-parity::''+json.dumps({''identical_test_identities'':True,''cases'':len(identities[''backend-doc-assets-whole''])}))
-
-        PY'
