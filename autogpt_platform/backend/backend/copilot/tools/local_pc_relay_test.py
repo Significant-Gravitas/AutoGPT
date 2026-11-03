@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from backend.copilot.tools import local_pc_relay_routing as relay_routing
 from backend.copilot.tools.local_pc_relay import RedisShimRelay
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis, FakeWebSocket
 from backend.copilot.tools.local_pc_shim import (
@@ -307,3 +308,60 @@ async def test_worker_manager_replaces_cached_transport_after_reconnect() -> Non
     await second.close()
     await asyncio.gather(first_task, second_task)
     await shim.kill()
+
+
+@pytest.mark.asyncio
+async def test_a_request_over_the_relay_cap_fails_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request the relay can't take fails fast for its own worker. Ending
+    the connection instead would fail every other request on it."""
+    monkeypatch.setattr(relay_routing, "_MAX_PENDING_REQUESTS", 1)
+    redis = FakeRedis()
+    server = ShimConnectionManager(relay=RedisShimRelay(redis))
+    first_worker = ShimConnectionManager(relay=RedisShimRelay(redis))
+    second_worker = ShimConnectionManager(relay=RedisShimRelay(redis))
+    websocket = FakeWebSocket()
+    serve = asyncio.create_task(
+        server.serve_websocket(
+            "session-1",
+            websocket,
+            _hello(),
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+    )
+    first_shim = await LocalPCShim.for_session(
+        "session-1", manager=first_worker, connect_timeout=1
+    )
+    second_shim = await LocalPCShim.for_session(
+        "session-1", manager=second_worker, connect_timeout=1
+    )
+    first_task = asyncio.create_task(first_shim.commands.run("echo first"))
+    first_request = json.loads(await asyncio.wait_for(websocket.outbound.get(), 1))
+
+    with pytest.raises(RuntimeError, match="concurrency cap"):
+        await asyncio.wait_for(second_shim.commands.run("echo second"), 5)
+
+    assert websocket.outbound.empty()
+    assert not serve.done()
+    await websocket.inbound.put(
+        json.dumps(
+            {
+                "type": "COMMAND_RESULT",
+                "id": first_request["id"],
+                "ts": 0,
+                "payload": {
+                    "stdout": "first\n",
+                    "stderr": "",
+                    "exit_code": 0,
+                    "timed_out": False,
+                },
+            }
+        )
+    )
+    assert (await asyncio.wait_for(first_task, 1)).stdout == "first\n"
+
+    await websocket.close()
+    await asyncio.wait_for(serve, 1)
+    await asyncio.gather(first_shim.kill(), second_shim.kill())

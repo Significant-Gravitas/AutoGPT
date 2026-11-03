@@ -198,8 +198,12 @@ def stream_key(session_id: str, connection_id: str, direction: str) -> str:
     return f"local-executor:{{{_session_tag(session_id)}}}:{connection_id}:{direction}"
 
 
+def is_reply_id(value: str) -> bool:
+    return re.fullmatch(_REPLY_ID_PATTERN, value) is not None
+
+
 def response_stream_key(session_id: str, connection_id: str, reply_id: str) -> str:
-    if re.fullmatch(_REPLY_ID_PATTERN, reply_id) is None:
+    if not is_reply_id(reply_id):
         raise ValueError("Local executor request has an invalid reply id")
     return stream_key(session_id, connection_id, f"responses:{reply_id}")
 

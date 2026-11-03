@@ -19,7 +19,6 @@ from .local_pc_relay_presence import (
     register_presence,
 )
 from .local_pc_relay_protocol import (
-    PLATFORM_REQUEST_TYPES,
     SHIM_RESPONSE_TYPES,
     RelayConnectionReplaced,
     RelayPresence,
@@ -155,26 +154,26 @@ class RedisShimRelay:
                 )
                 for message_id, fields in decode_stream_entries(result):
                     cursor = message_id
-                    envelope = fields.get("envelope")
-                    if envelope is None:
-                        await acknowledge_stream_entry(redis, key, message_id, fields)
-                        continue
-                    message: dict[str, Any] | None = None
                     try:
-                        message = validate_envelope(envelope, PLATFORM_REQUEST_TYPES)
-                        reply_id = fields.get("reply_id")
-                        if reply_id is None:
-                            raise ValueError(
-                                "Local executor request has no reply stream"
-                            )
-                        response_router.register_request(message, reply_id)
-                        await send_to_shim(envelope)
-                    except Exception:
-                        if message is not None:
-                            response_router.remove_request(message["id"])
-                        raise
+                        await forward_request(fields)
                     finally:
                         await acknowledge_stream_entry(redis, key, message_id, fields)
+
+        async def forward_request(fields: dict[str, str]) -> None:
+            envelope = fields.get("envelope")
+            if envelope is None:
+                return
+            message = await response_router.accept_request(
+                envelope, fields.get("reply_id")
+            )
+            if message is None:
+                return
+            try:
+                await send_to_shim(envelope)
+            except Exception:
+                # The socket failed, so the connection ends with it.
+                response_router.remove_request(message["id"])
+                raise
 
         async def pump_responses() -> None:
             async for raw in websocket.iter_text():

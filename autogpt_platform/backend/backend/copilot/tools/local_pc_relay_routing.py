@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from time import monotonic
+from time import monotonic, time
 from typing import Any
 
 from .local_pc_relay_protocol import (
     NONTERMINAL_RESPONSE_TYPES,
+    PLATFORM_REQUEST_TYPES,
     RelayBacklogExceeded,
     RelayRequestTarget,
+    is_reply_id,
     register_pending_request,
     response_stream_key,
+    validate_envelope,
     validate_response_correlation,
 )
 from .local_pc_relay_transport import append_response
@@ -36,6 +40,39 @@ class RelayResponseRouter:
         # Streaming requests that lost a chunk to a full reply stream: the rest
         # of their stream is dropped too, so the worker never reads a gap.
         self._abandoned: set[str] = set()
+
+    async def accept_request(
+        self, envelope: str, reply_id: str | None
+    ) -> dict[str, Any] | None:
+        """Register a worker's request for the machine, or turn it away.
+
+        A request the relay can't take fails alone: it is never sent, and the
+        connection carries on for every other request. Ending the connection
+        instead would fail them all. Returns the request to send, or None.
+        """
+        try:
+            message = validate_envelope(envelope, PLATFORM_REQUEST_TYPES)
+            if reply_id is None or not is_reply_id(reply_id):
+                raise ValueError("Local executor request has no valid reply stream")
+        except ValueError:
+            logger.warning("Dropping a malformed Local PC relay request")
+            return None
+        try:
+            self.register_request(message, reply_id)
+        except RelayBacklogExceeded:
+            logger.warning(
+                "Turning away a Local PC request: "
+                f"{_MAX_PENDING_REQUESTS} are already outstanding"
+            )
+            # An ERROR tells its worker the request was not applied, so it
+            # fails now rather than at its own timeout.
+            await self._append_or_drop(_overloaded(message["id"]), reply_id)
+            return None
+        except ValueError:
+            # A reused id; the outstanding request keeps its registration.
+            logger.warning("Dropping a Local PC request that reused an outstanding id")
+            return None
+        return message
 
     def register_request(self, message: dict[str, Any], reply_id: str) -> None:
         self._prune_pending_requests()
@@ -158,3 +195,22 @@ class RelayResponseRouter:
         ]
         for message_id in expired:
             self.remove_request(message_id)
+
+
+def _overloaded(request_id: str) -> str:
+    return json.dumps(
+        {
+            "type": "ERROR",
+            "id": request_id,
+            "ts": time(),
+            "payload": {
+                "code": "SHIM_OVERLOADED",
+                "message": (
+                    "The Local PC has too many requests in progress. "
+                    "Try again in a moment."
+                ),
+                "details": {"max_concurrent": _MAX_PENDING_REQUESTS},
+            },
+        },
+        separators=(",", ":"),
+    )

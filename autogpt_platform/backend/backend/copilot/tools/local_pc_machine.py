@@ -35,8 +35,9 @@ class MachineControlError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.details = details or {}
-        # Only the machine's own ERROR reply proves it applied nothing; any
-        # other failure may have reached it first.
+        # Only an ERROR reply proves nothing was applied: the machine's own,
+        # or the relay's for a request it never sent on. Any other failure
+        # may have reached the machine first.
         self.refused = refused
 
 

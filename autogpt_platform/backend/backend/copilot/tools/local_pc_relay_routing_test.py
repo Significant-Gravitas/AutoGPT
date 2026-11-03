@@ -237,3 +237,76 @@ async def test_a_recording_step_for_a_full_stream_is_dropped(
     await router.route(json.dumps(step), step)
 
     assert _stream_types(redis, reply_id) == ["RECORDING_STARTED"]
+
+
+def _request(message_id: str) -> str:
+    return json.dumps(_message("FILE_READ", message_id, {"path": "a.txt"}))
+
+
+def _stream_envelopes(redis: FakeRedis, reply_id: str) -> list[dict[str, Any]]:
+    key = response_stream_key("session-1", "connection-1", reply_id)
+    return [json.loads(fields["envelope"]) for _, fields in redis.streams.get(key, [])]
+
+
+@pytest.mark.asyncio
+async def test_a_request_over_the_cap_gets_an_error_and_the_others_carry_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(relay_routing, "_MAX_PENDING_REQUESTS", 1)
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    first, second = "a" * 32, "b" * 32
+
+    assert await router.accept_request(_request("request-1"), first) is not None
+    assert await router.accept_request(_request("request-2"), second) is None
+
+    [refusal] = _stream_envelopes(redis, second)
+    assert refusal["type"] == "ERROR"
+    assert refusal["id"] == "request-2"
+    assert refusal["payload"]["code"] == "SHIM_OVERLOADED"
+    # A capacity hint would hold back the worker's later requests.
+    assert "pending_capacity" not in refusal["payload"]
+    answered = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
+    await router.route(json.dumps(answered), answered)
+    assert _stream_types(redis, first) == ["FILE_CONTENTS"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("envelope", "reply_id"),
+    [
+        ("not json", "a" * 32),
+        (json.dumps(_message("COMMAND_RESULT", "request-1")), "a" * 32),
+        (_request("request-1"), None),
+        (_request("request-1"), "not-a-reply-id"),
+    ],
+)
+async def test_a_malformed_request_is_dropped_without_ending_anything(
+    envelope: str, reply_id: str | None
+) -> None:
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+
+    assert await router.accept_request(envelope, reply_id) is None
+    assert redis.streams == {}
+
+
+@pytest.mark.asyncio
+async def test_a_reused_id_keeps_the_outstanding_request() -> None:
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    original, duplicate = "a" * 32, "b" * 32
+    assert await router.accept_request(_request("request-1"), original) is not None
+
+    assert await router.accept_request(_request("request-1"), duplicate) is None
+
+    answered = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
+    await router.route(json.dumps(answered), answered)
+    assert _stream_types(redis, original) == ["FILE_CONTENTS"]
+    assert _stream_types(redis, duplicate) == []
