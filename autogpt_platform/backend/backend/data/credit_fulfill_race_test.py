@@ -72,6 +72,9 @@ async def test_concurrent_fulfilments_of_one_checkout_credit_it_once(
             timeout=WAIT_SECONDS * 3,
         )
         assert [o for o in outcomes if isinstance(o, BaseException)] == []
+        assert (
+            forced.overlap_observed
+        ), "the second activation never waited on the first"
 
         balance = await UserBalance.prisma().find_unique(where={"userId": USER_ID})
         assert balance is not None and balance.balance == AMOUNT
@@ -88,7 +91,9 @@ async def test_concurrent_fulfilments_of_one_checkout_credit_it_once(
             == 0
         )
     finally:
-        await other_client.disconnect()
+        # Bounded like `db.disconnect()`: an engine that ignores SIGINT would
+        # otherwise hold the shard here for good.
+        await other_client.disconnect(db.DISCONNECT_TIMEOUT)
         await _reset_user(balance=None)
 
 
@@ -97,29 +102,46 @@ class _ForcedOrder:
 
     The first call runs inside a transaction held open until the second
     call's statement is waiting on a lock, then commits. The second call runs
-    plainly once the first holds its locks, so it blocks behind them."""
+    plainly once the first holds its locks, so it blocks behind them.
+
+    A wait that runs out fails the test there and then. Raised as an error
+    into `_enable_transaction`, it would be retried: the retry rolls the
+    first activation back, the second then activates alone, and every
+    assertion passes without the two having overlapped at all."""
 
     def __init__(self, real_query, other_client: Prisma):
         self._real_query = real_query
         self._other_client = other_client
         self._calls = 0
         self._first_holds_its_locks = asyncio.Event()
+        self.overlap_observed = False
 
     async def run(self, *args, **kwargs):
         self._calls += 1
         if self._calls > 1:
-            await asyncio.wait_for(
-                self._first_holds_its_locks.wait(), timeout=WAIT_SECONDS
+            await _or_fail(
+                self._first_holds_its_locks.wait(),
+                "the first activation never took its locks",
             )
             result = await self._real_query(*args, client=self._other_client, **kwargs)
             return result
         async with db.transaction() as tx:
             result = await self._real_query(*args, client=tx, **kwargs)
             self._first_holds_its_locks.set()
-            await asyncio.wait_for(
-                _until_a_statement_waits_on_a_lock(tx), timeout=WAIT_SECONDS
+            await _or_fail(
+                _until_a_statement_waits_on_a_lock(tx),
+                "the second activation never waited on the first's lock",
             )
+            self.overlap_observed = True
         return result
+
+
+async def _or_fail(waiting, reason: str) -> None:
+    try:
+        await asyncio.wait_for(waiting, timeout=WAIT_SECONDS)
+    except TimeoutError:
+        # pytest's failure is a BaseException, which no retry catches.
+        pytest.fail(f"{reason} within {WAIT_SECONDS} s, so no race was forced")
 
 
 async def _until_a_statement_waits_on_a_lock(tx) -> None:
