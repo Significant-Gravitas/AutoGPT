@@ -132,6 +132,33 @@ class AffectedWorkflowTests(unittest.TestCase):
                 results["frontend"]["result"] = state
                 self.invoke("gate", results=results, expected=1)
 
+    def test_sparse_checkout_still_detects_and_requires_unmaterialized_changes(self):
+        self.write(".github/selection.json")
+        self.base = self.commit()
+        self.write("autogpt_platform/backend/backend/server.py")
+        self.commit()
+        self.git("sparse-checkout", "set", "--no-cone", "/.github/")
+        self.assertFalse((self.repository / "autogpt_platform").exists())
+        for event in ("pull_request", "merge_group"):
+            with self.subTest(event=event):
+                self.invoke("plan", event_name=event)
+                self.invoke("verify", event_name=event)
+                plan = json.loads(self.plan.read_text())
+                self.assertEqual(
+                    plan, {"backend": True, "frontend": False, "fullstack": True}
+                )
+                self.plan.write_text(json.dumps({name: False for name in plan}))
+                result = self.invoke(
+                    "gate",
+                    event_name=event,
+                    results={
+                        "changes": {"result": "success"},
+                        **{name: {"result": "skipped"} for name in plan},
+                    },
+                    expected=1,
+                )
+                self.assertIn("Affected projects incorrectly skipped", result.stderr)
+
     def test_delete_and_rename_out_of_backend_keep_backend_required(self):
         for operation in ("delete", "rename"):
             with self.subTest(operation=operation):
