@@ -320,7 +320,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 text={heading}
                 shimmer={isStreaming && !expanded}
                 className={
-                  "min-w-0 text-sm font-normal " +
+                  "min-w-0 text-body font-normal " +
                   (hasError && !isStreaming
                     ? "text-error"
                     : "text-foreground-body")
@@ -421,7 +421,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
                         <Icon icon={Tick02Icon} size={14} tone="secondary" />
                       </div>
-                      <div className="flex h-7 items-center text-sm text-foreground-secondary">
+                      <div className="flex h-7 items-center text-body text-foreground-secondary">
                         Done
                       </div>
                     </div>
@@ -474,7 +474,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             still need somewhere to send from. */}
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+            <span className="flex items-center gap-1.5 text-body text-foreground-secondary">
               <Icon icon={SentIcon} size={16} tone="subtle" />
               {allActionsReady
                 ? "Everything's filled in"

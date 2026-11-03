@@ -167,18 +167,18 @@ export function SubmissionItem({
 
       <td className="px-4 py-3 align-middle">
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
 
-      <td className="px-4 py-3 align-middle text-sm whitespace-nowrap text-foreground-body">
+      <td className="px-4 py-3 align-middle text-body whitespace-nowrap text-foreground-body">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="px-4 py-3 text-right align-middle text-sm whitespace-nowrap text-foreground-body tabular-nums">
+      <td className="px-4 py-3 text-right align-middle text-body whitespace-nowrap text-foreground-body tabular-nums">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 

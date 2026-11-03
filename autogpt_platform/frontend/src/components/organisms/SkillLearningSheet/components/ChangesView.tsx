@@ -40,7 +40,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
         </Text>
         <select
           data-slot="skill-learning-sheet-changes-version-picker"
-          className="rounded-md border border-border-base px-2 py-1 text-sm"
+          className="rounded-md border border-border-base px-2 py-1 text-body"
           value={version.id}
           onChange={(event) => onSelect(event.target.value)}
           aria-label="Choose a version"
@@ -105,7 +105,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
       {showRaw ? (
         <pre
           data-slot="skill-learning-sheet-changes-raw-diff"
-          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-action-foreground"
+          className="overflow-x-auto rounded-lg bg-action-hover p-3 text-caption text-action-foreground"
         >
           {lineDiff(before, after) || "(no line-level differences)"}
         </pre>

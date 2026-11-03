@@ -134,6 +134,40 @@ tester.run("no-dark-variant", rule("no-dark-variant"), {
   ],
 });
 
+tester.run("no-raw-text-size", rule("no-raw-text-size"), {
+  valid: [
+    jsx("text-body md:text-heading-md text-foreground-base"),
+    jsx("text-[var(--accent)] text-base-content text-left"),
+  ],
+  invalid: [
+    {
+      ...jsx("text-sm md:text-2xl"),
+      errors: [
+        {
+          message:
+            /^"text-sm" is not a step of the type scale\. Use "text-body"/,
+        },
+        { message: /^"md:text-2xl" is not .* Use "text-heading-md"/ },
+      ],
+    },
+    {
+      code: "const styles = cn(`!text-xs ${extra} [&_svg]:text-lg`);",
+      filename: FILE,
+      errors: [
+        { message: /"!text-xs" .* Use "text-caption"/ },
+        { message: /"\[&_svg\]:text-lg" .* Use "text-lead"/ },
+      ],
+    },
+    {
+      ...jsx("text-[13px] text-[length:var(--size)]"),
+      errors: [
+        { message: /"text-\[13px\]" .* nearest step \(0\.8125rem\)/ },
+        { message: /"text-\[length:var\(--size\)\]" .* a step of the type/ },
+      ],
+    },
+  ],
+});
+
 tester.run("no-legacy-import", rule("no-legacy-import"), {
   valid: [
     {
