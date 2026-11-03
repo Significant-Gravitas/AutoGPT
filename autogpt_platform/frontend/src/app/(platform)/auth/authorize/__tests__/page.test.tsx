@@ -68,6 +68,33 @@ afterEach(() => {
 });
 
 describe("AuthorizePage", () => {
+  test("describes the Local PC scope as the connection it grants", async () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        client_id: "autogpt-local-executor",
+        redirect_uri: "http://localhost:41899/callback",
+        scope: "CONNECT_LOCAL_EXECUTOR",
+        state: "state-1",
+        code_challenge: "challenge",
+      }),
+    );
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "AutoGPT Local Executor",
+        scopes: ["CONNECT_LOCAL_EXECUTOR"],
+      }),
+    );
+
+    render(<AuthorizePage />);
+
+    expect(
+      await screen.findByText(
+        "Connect a computer as your Local PC, so Otto can work in the folders you choose there",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/search and fetch web pages/i)).toBeNull();
+  });
+
   test("offers no way back to a redirect_uri the app did not register", async () => {
     openWith("https://evil.example/collect");
     server.use(getGetOauthGetOauthAppInfoMockHandler400());

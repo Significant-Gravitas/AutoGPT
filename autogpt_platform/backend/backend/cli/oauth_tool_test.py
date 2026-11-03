@@ -10,7 +10,7 @@ def test_generate_public_app_with_explicit_client_id() -> None:
         client_id="autogpt-local-executor",
         is_public=True,
         redirect_uris=["http://localhost:41899/callback"],
-        scopes=["USE_TOOLS"],
+        scopes=["CONNECT_LOCAL_EXECUTOR"],
     )
 
     assert credentials["client_id"] == "autogpt-local-executor"
@@ -23,7 +23,7 @@ def test_generate_public_app_with_explicit_client_id() -> None:
     assert "true\n);" in sql
     assert "ARRAY{" not in sql
     assert "'{\"http://localhost:41899/callback\"}'::TEXT[]" in sql
-    assert '\'{"USE_TOOLS"}\'::"APIKeyPermission"[]' in sql
+    assert '\'{"CONNECT_LOCAL_EXECUTOR"}\'::"APIKeyPermission"[]' in sql
 
 
 def test_a_line_break_in_the_name_cannot_end_the_header_comment() -> None:

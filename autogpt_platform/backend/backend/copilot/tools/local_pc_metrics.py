@@ -52,6 +52,7 @@ _HANDSHAKE_STAGES = frozenset(
     {
         "missing_token",
         "invalid_token",
+        "missing_scope",
         "session_access_denied",
         "feature_disabled",
         "auth_error",

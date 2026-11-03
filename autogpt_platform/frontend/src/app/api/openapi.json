@@ -20161,7 +20161,8 @@
           "WRITE_RUN_REVIEW",
           "READ_CREDITS",
           "READ_FILES",
-          "WRITE_FILES"
+          "WRITE_FILES",
+          "CONNECT_LOCAL_EXECUTOR"
         ],
         "title": "APIKeyPermission"
       },

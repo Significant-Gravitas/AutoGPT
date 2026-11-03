@@ -24,7 +24,7 @@ operation can execute.
 
 | Boundary | Enforcement |
 | --- | --- |
-| Pairing | Public-client OAuth with PKCE; the platform verifies user, client, and session ownership. Companion keychain records bind deployment, client, and credential-bearing endpoints. Legacy unscoped tokens require reauthentication; redirects cannot forward credentials. |
+| Pairing | Public-client OAuth with PKCE, for the dedicated `CONNECT_LOCAL_EXECUTOR` scope: it grants the Local PC connection and nothing else, and API keys cannot carry it. The platform verifies user, client, and session ownership. Companion keychain records bind deployment, client, and credential-bearing endpoints. Legacy unscoped tokens require reauthentication; redirects cannot forward credentials. |
 | Remote folder selection | One-level directory browsing returns expiring, connection-bound opaque references. A raw path supplied by a model is not a selection grant. |
 | Chat binding | A selected root grant binds machine, session, revision, canonical folder, and filesystem fingerprint. Reconnection cannot select a different execution target. |
 | Files | Each file operation validates its complete canonical path, including missing destinations. Content operations check opened descriptors and reject non-regular or multi-linked files before reading/truncating. Moves never fall back to copying across filesystems. |

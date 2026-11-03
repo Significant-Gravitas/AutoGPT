@@ -41,6 +41,8 @@ LOCAL_EXECUTOR_PROTOCOL_VERSION = "1.1"
 MAX_HELLO_BYTES = 64 * 1024
 HELLO_TIMEOUT_SECONDS = 10.0
 _TOKEN_RECHECK_SECONDS = 60.0
+# The OAuth scope a Local PC connection needs, and the only one it needs.
+LOCAL_EXECUTOR_SCOPE = "CONNECT_LOCAL_EXECUTOR"
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 4
 SERVER_SUPPORTED_CAPABILITIES = frozenset(
@@ -225,12 +227,23 @@ async def _authenticate_connection(
             or token_info.token_type != "access_token"
             or not token_info.user_id
             or token_info.client_id != allowed_client_id
-            or "USE_TOOLS" not in (token_info.scopes or [])
             or token_info.exp is None
             or token_info.exp <= now
         ):
             record_handshake_failure("invalid_token")
             await _deny(websocket, 401, "Invalid or expired token", close_code=4401)
+            return None
+        if LOCAL_EXECUTOR_SCOPE not in (token_info.scopes or []):
+            # A valid token from before the scope existed: refreshing it keeps
+            # its scopes, so 403, which the companion does not retry.
+            record_handshake_failure("missing_scope")
+            await _deny(
+                websocket,
+                403,
+                "This computer's sign-in does not include the Local PC permission. "
+                "Run `autogpt-shim auth` again.",
+                close_code=4403,
+            )
             return None
         user_id = token_info.user_id
         client_id = token_info.client_id

@@ -3175,6 +3175,9 @@ enum APIKeyPermission {
   READ_CREDITS // Can get credit balance and transactions
   READ_FILES // Can list and download workspace files
   WRITE_FILES // Can upload and delete workspace files
+
+  // OAuth-only permissions: API keys cannot carry them
+  CONNECT_LOCAL_EXECUTOR // Can connect a computer as the user's Local PC executor
 }
 
 model APIKey {

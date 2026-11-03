@@ -73,7 +73,7 @@ _FAKE_TOKEN_INFO = TokenIntrospectionResult(
     active=True,
     client_id="autogpt-local-executor",
     user_id="owner-1",
-    scopes=["USE_TOOLS"],
+    scopes=["CONNECT_LOCAL_EXECUTOR"],
     token_type="access_token",
     exp=int(time.time()) + 3600,
 )
@@ -449,12 +449,16 @@ class TestHandshake:
                     pass
         assert exc_info.value.status_code == 401
 
-    def test_route_rejects_token_without_tool_scope(
-        self, _patched_introspect, _fresh_manager
+    @pytest.mark.parametrize("scopes", [[], ["USE_TOOLS"]])
+    def test_route_refuses_a_token_without_the_local_pc_scope(
+        self, _patched_introspect, _fresh_manager, scopes
     ):
+        """USE_TOOLS, which the companion asked for before, is not enough. 403,
+        not 401: refreshing keeps a token's scopes, so the companion must not
+        retry, and the detail tells the user to sign in again."""
         app = _make_app()
         client = TestClient(app)
-        token_without_scope = _FAKE_TOKEN_INFO.model_copy(update={"scopes": []})
+        token_without_scope = _FAKE_TOKEN_INFO.model_copy(update={"scopes": scopes})
         with patch(
             "backend.api.features.local_executor.websocket.introspect_token",
             return_value=token_without_scope,
@@ -464,7 +468,8 @@ class TestHandshake:
                     "/ws/local-executor/sess-1", headers=_AUTH_HEADERS
                 ):
                     pass
-        assert exc_info.value.status_code == 401
+        assert exc_info.value.status_code == 403
+        assert "autogpt-shim auth" in exc_info.value.json()["detail"]
 
     def test_route_rejects_token_for_different_oauth_client(
         self, _patched_introspect, _fresh_manager

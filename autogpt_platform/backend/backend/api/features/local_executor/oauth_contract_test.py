@@ -34,7 +34,7 @@ def _issued_token(value: str):
         token=SecretStr(value),
         expires_at=datetime.now(timezone.utc),
         user_id="user-1",
-        scopes=[APIKeyPermission.USE_TOOLS],
+        scopes=[APIKeyPermission.CONNECT_LOCAL_EXECUTOR],
     )
 
 
@@ -80,7 +80,7 @@ def _oauth_application(*, is_public: bool) -> OAuthApplicationInfoWithSecret:
         client_id="autogpt-local-executor",
         redirect_uris=["http://localhost:41899/callback"],
         grant_types=["authorization_code", "refresh_token"],
-        scopes=[APIKeyPermission.USE_TOOLS],
+        scopes=[APIKeyPermission.CONNECT_LOCAL_EXECUTOR],
         owner_id="owner-1",
         is_active=True,
         is_public=is_public,
@@ -141,7 +141,9 @@ def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None
     client = _make_client()
     application = SimpleNamespace(id="app-1", name="Local Executor")
     validate_client = AsyncMock(return_value=application)
-    consume_code = AsyncMock(return_value=("user-1", [APIKeyPermission.USE_TOOLS]))
+    consume_code = AsyncMock(
+        return_value=("user-1", [APIKeyPermission.CONNECT_LOCAL_EXECUTOR])
+    )
     payload = {
         "grant_type": "authorization_code",
         "code": "authorization-code",
