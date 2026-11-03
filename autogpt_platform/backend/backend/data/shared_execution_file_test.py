@@ -1,5 +1,9 @@
 """Tests for SharedExecutionFile workspace URI extraction logic."""
 
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, Mock
+
+from backend.data.execution import shared_execution_file_access
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 
@@ -122,3 +126,34 @@ class TestExtractWorkspaceFileIds:
         assert extract_workspace_file_ids(content) == {
             "b5c4f6df-f043-4826-88a2-33c33389c17d"
         }
+
+
+async def test_a_file_download_needs_the_run_still_shared_under_that_token(
+    mocker,
+):
+    """An allowlist row left behind by an unshare, re-share or delete that
+    failed halfway, or by two that raced, must not authorise a download."""
+    # The run's share row is still there (and held for the download)...
+    tx = Mock(query_raw=AsyncMock(return_value=[{"id": "exec-1"}]))
+
+    @asynccontextmanager
+    async def transaction():
+        yield tx
+
+    mocker.patch("backend.data.execution.transaction", transaction)
+    find_first = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.data.execution.SharedExecutionFile.prisma",
+        return_value=Mock(find_first=find_first),
+    )
+
+    # ...but the allowlist row only counts while it's still shared that way.
+    async with shared_execution_file_access("token-1", "file-1") as file:
+        assert file is None
+
+    shared = find_first.await_args.kwargs["where"]["Execution"]["is"]
+    assert (shared["isShared"], shared["isDeleted"], shared["shareToken"]) == (
+        True,
+        False,
+        "token-1",
+    )

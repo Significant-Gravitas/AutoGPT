@@ -10,6 +10,7 @@ copilot worker reuses the exact route logic.
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.model import LibraryAgentPreset
@@ -140,6 +141,10 @@ class ListPresetsTool(BaseTool):
     @property
     def resource_access(self) -> ResourceAccess:
         return "view"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -290,6 +295,19 @@ class UpdatePresetTool(BaseTool):
         return "create"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # An active trigger starts runs, so turning one on, or giving one new
+        # inputs (re-registering its webhook), is a run. The graph isn't known
+        # here, so any new inputs count unless they also turn the preset off.
+        is_active = args.get("is_active")
+        if is_active is True or (args.get("inputs") and is_active is not False):
+            return [APIKeyPermission.RUN_AGENT]
+        return []
+
+    @property
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
@@ -418,6 +436,10 @@ class DeletePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_preset"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

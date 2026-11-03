@@ -30,8 +30,8 @@ from backend.integrations.credential_scope import (
     credential_scope,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.settings import BehaveAs, Settings
@@ -307,9 +307,13 @@ def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
 async def _valid_microsoft_365_copilot_credentials(
     user_id: str,
 ) -> list[Credentials]:
-    credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, ProviderName.MICROSOFT_365_COPILOT
-    )
+    credentials = [
+        credential
+        for provider in (ProviderName.MICROSOFT, ProviderName.MICROSOFT_365_COPILOT)
+        for credential in await credentials_manager.store.get_creds_by_provider(
+            user_id, provider
+        )
+    ]
     return [
         credential
         for credential in credentials
@@ -321,11 +325,8 @@ def _is_valid_microsoft_365_copilot_credentials(
     credentials: Credentials | None,
 ) -> bool:
     return (
-        isinstance(credentials, OAuth2Credentials)
-        and credentials.provider == ProviderName.MICROSOFT_365_COPILOT
-        and set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES).issubset(
-            credentials.scopes
-        )
+        is_microsoft_365_copilot_credential(credentials)
+        and isinstance(credentials, OAuth2Credentials)
         and _microsoft_365_copilot_token_usable(credentials)
     )
 

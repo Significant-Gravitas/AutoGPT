@@ -1,5 +1,6 @@
 """Tests for the execution routes."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
@@ -46,6 +47,39 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def allow_live_scope(mocker: pytest_mock.MockFixture):
+    """The live tenancy barriers read memberships from the database; these
+    tests pin the routes, not the barrier, so the scope is held open."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    mocker.patch("backend.api.live_auth.live_resource_permission_barrier", allowed)
+    mocker.patch(
+        "backend.api.features.graph_executions.routes"
+        ".live_resource_permission_barrier",
+        allowed,
+    )
+
+
+def _own_run(mocker: pytest_mock.MockFixture, **fields) -> Mock:
+    """The caller's run, found by the scoped lookup and again in its exact
+    workspace under the live barrier."""
+    run = Mock(graph_id="graph-1", team_id=None, outputs={}, **fields)
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=run),
+    )
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db"
+        ".get_graph_execution_exact_scope",
+        AsyncMock(return_value=run),
+    )
+    return run
 
 
 # The ten operations this module owns, with the tag list and auth posture each
@@ -311,25 +345,22 @@ def _paginated(*executions):
     )
 
 
-def test_list_all_executions_applies_the_activity_gate(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """The gate is what keeps flag-disabled activity summaries out of the
-    response; bypassing it leaks them to every caller."""
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db"
-        ".get_graph_executions_paginated",
-        AsyncMock(return_value=_paginated()),
+def test_list_all_executions_preserves_activity_and_owner_scope(mocker, test_user_id):
+    execution = execution_db.GraphExecutionMeta.model_construct(
+        id="exec-1",
+        stats=execution_db.GraphExecutionStats(
+            activity_status="Finished the report", correctness_score=0.9
+        ),
     )
-    gate = mocker.patch(
-        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
-        AsyncMock(return_value=[]),
+    query = mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_executions_paginated",
+        AsyncMock(return_value=_paginated(execution)),
     )
-
     response = client.get("/executions")
-
     assert response.status_code == 200
-    gate.assert_awaited_once()
+    assert response.json()[0]["stats"]["activity_status"] == "Finished the report"
+    assert query.await_args.kwargs["user_id"] == test_user_id
+    assert query.await_args.kwargs["organization_id"] == "test-org"
 
 
 def test_list_all_executions_is_not_scoped_to_a_graph(
@@ -341,10 +372,6 @@ def test_list_all_executions_is_not_scoped_to_a_graph(
         "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_executions_paginated",
         AsyncMock(return_value=_paginated()),
-    )
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
-        AsyncMock(return_value=[]),
     )
 
     client.get("/executions")
@@ -359,10 +386,6 @@ def test_list_graph_executions_forwards_pagination(
         "backend.api.features.graph_executions.routes.execution_db"
         ".get_graph_executions_paginated",
         AsyncMock(return_value=_paginated()),
-    )
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.hide_activity_summaries_if_disabled",
-        AsyncMock(return_value=[]),
     )
     mocker.patch(
         "backend.api.features.graph_executions.routes.get_user_onboarding",
@@ -381,8 +404,14 @@ def test_list_graph_executions_forwards_pagination(
 
 
 def test_delete_execution_returns_204(mocker: pytest_mock.MockFixture) -> None:
+    _own_run(mocker)
     deleted = mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db.delete_graph_execution",
+        AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db"
+        ".delete_shared_execution_files",
         AsyncMock(),
     )
 
@@ -390,6 +419,30 @@ def test_delete_execution_returns_204(mocker: pytest_mock.MockFixture) -> None:
 
     assert response.status_code == 204
     assert deleted.await_args.kwargs["graph_exec_id"] == "exec-1"
+    # Only the run in the workspace the request was checked against.
+    assert deleted.await_args.kwargs["organization_id"] == "test-org"
+    assert deleted.await_args.kwargs["exact_scope"] is True
+
+
+def test_deleting_an_execution_revokes_its_shared_file_downloads(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The public file download checks only the allowlist, so it has to go
+    with the run; the shared page already hides deleted runs."""
+    _own_run(mocker)
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db.delete_graph_execution",
+        AsyncMock(),
+    )
+    delete_files = mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(),
+    )
+
+    client.delete("/executions/exec-1")
+
+    delete_files.assert_awaited_once_with(execution_id="exec-1")
 
 
 def test_get_shared_execution_returns_404_for_an_unknown_token(
@@ -433,33 +486,24 @@ def test_get_graph_execution_rejects_a_graph_id_mismatch(
 def test_enable_sharing_clears_stale_allowlist_before_issuing_a_token(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Order matters: leaving old file records in place while a new token is
-    written would expose files the previous share allowed."""
-    calls: list[str] = []
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock(outputs={})),
-    )
-    mocker.patch(
+    """Leaving old file records in place while a new token is written would
+    expose files the previous share allowed, so one transaction replaces the
+    allowlist, the token and the share state together, in the run's exact
+    workspace."""
+    _own_run(mocker)
+    replace = mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
-        ".delete_shared_execution_files",
-        AsyncMock(side_effect=lambda **_: calls.append("delete")),
-    )
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db"
-        ".update_graph_execution_share_status",
-        AsyncMock(side_effect=lambda **_: calls.append("update")),
-    )
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db"
-        ".create_shared_execution_files",
-        AsyncMock(side_effect=lambda **_: calls.append("create")),
+        ".replace_execution_share",
+        AsyncMock(),
     )
 
     response = client.post("/graphs/graph-1/executions/exec-1/share")
 
     assert response.status_code == 200
-    assert calls == ["delete", "update", "create"]
+    kwargs = replace.await_args.kwargs
+    assert kwargs["is_shared"] is True
+    assert kwargs["share_token"] == response.json()["share_token"]
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("test-org", None)
     assert response.json()["share_url"].endswith(response.json()["share_token"])
 
 
@@ -468,18 +512,10 @@ def test_enable_sharing_maps_a_lost_execution_to_404(
 ) -> None:
     """The write enforces (id, user_id) at the DB layer, so a delete racing the
     pre-check must surface as 404 rather than a silent no-op."""
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock(outputs={})),
-    )
+    _own_run(mocker)
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
-        ".delete_shared_execution_files",
-        AsyncMock(),
-    )
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db"
-        ".update_graph_execution_share_status",
+        ".replace_execution_share",
         AsyncMock(side_effect=NotFoundError("gone")),
     )
 
@@ -505,24 +541,17 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """Revoking the token without clearing the allowlist would leave the files
-    reachable to anyone who kept the old link."""
-    mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock()),
-    )
-    delete_files = mocker.patch(
+    reachable to anyone who kept the old link; the one write that clears the
+    token clears the allowlist with it."""
+    _own_run(mocker)
+    replace = mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
-        ".delete_shared_execution_files",
-        AsyncMock(),
-    )
-    update = mocker.patch(
-        "backend.api.features.graph_executions.routes.execution_db"
-        ".update_graph_execution_share_status",
+        ".replace_execution_share",
         AsyncMock(),
     )
 
     response = client.delete("/graphs/graph-1/executions/exec-1/share")
 
     assert response.status_code == 204
-    delete_files.assert_awaited_once()
-    assert update.await_args.kwargs["is_shared"] is False
+    kwargs = replace.await_args.kwargs
+    assert (kwargs["is_shared"], kwargs["share_token"]) == (False, None)

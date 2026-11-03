@@ -7,7 +7,6 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import { analytics } from "@/services/analytics";
 
 interface Args {
   expertId: string;
@@ -33,7 +32,6 @@ export function useFireExpertDialog({
   const { mutate, isPending: isFiring } = useArchiveExpert({
     mutation: {
       onSuccess: async () => {
-        analytics.sendDatafastEvent("expert_fired", { expert_id: expertId });
         await Promise.all([
           invalidateExpertRosterQueries(queryClient),
           queryClient.invalidateQueries({

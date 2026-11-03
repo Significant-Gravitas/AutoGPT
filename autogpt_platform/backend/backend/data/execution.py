@@ -138,6 +138,9 @@ class ExecutionContext(BaseModel):
     # Org/team tenancy context
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+    # Set when the run is queued, never after: its charges go to its user's own
+    # wallet, as its org was their personal org. False bills organization_id.
+    bills_own_wallet: bool = False
 
     # Expert attribution: carried at runtime so billing can meter per-expert
     # spend and the executor can post run results into the expert's thread.
@@ -152,6 +155,12 @@ class ExecutionContext(BaseModel):
     # running own graph, CONSUMER-mode grants, marketplace/library, sub-graphs).
     credentials_owner_id: Optional[str] = None
     credentials_grant_id: Optional[str] = None
+    # The chat that started this run, whose approval gate answers its review
+    # pauses; None for any run no chat started.
+    approval_chat_id: Optional[str] = None
+    # The workflow's own sensitive_action_safe_mode, before a chat forced the
+    # pause on; None on a context that predates it.
+    graph_sensitive_action_safe_mode: Optional[bool] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -661,6 +670,7 @@ async def get_graph_executions(
     order_direction: Literal["asc", "desc"] = "desc",
     personal_only: bool = False,
     expert_id: Optional[str] = None,
+    deleted: bool = False,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -672,17 +682,22 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        organization_id: Only executions stored in this org. An exact match,
+            unlike in `get_graph_executions_paginated`, where it also lists the
+            org's executions the user can see
+        deleted: List the executions deleted from history instead of the
+            visible ones
     """
     where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
+        "isDeleted": deleted,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Scope by user_id and optionally team_id. Don't conflate either with
-    # organizationId — those are separate columns in the schema and a
+    # Scope by user_id and optionally team_id or organization_id. Don't
+    # conflate them: they are separate columns in the schema, and a
     # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
@@ -1757,6 +1772,11 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
     # When the node was queued and by what: ``graph_start`` for a node queued
     # before this executor picked the run up (an entry node, or one left
     # queued by an interrupted run), ``node_output`` for one queued by an

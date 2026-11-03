@@ -172,16 +172,27 @@ def test_denied_completion_lease_never_reads_outputs_or_queues_notification():
     db_client = MagicMock()
     db_client.acquire_live_resource_lease.return_value = None
 
-    with patch("backend.executor.manager.expert_posts.handle_expert_run_post") as post:
+    with (
+        patch("backend.executor.manager.expert_posts.handle_expert_run_post") as post,
+        patch(
+            "backend.executor.manager.activity_events.handle_run_completed"
+        ) as activity,
+        patch(
+            "backend.executor.manager.product_analytics.handle_run_finished"
+        ) as analytics,
+    ):
         result = _handle_completion_communications(
             db_client,
             _graph_execution(),
             ExecutionStatus.COMPLETED,
             GraphExecutionStats(),
+            MagicMock(),
         )
 
     assert result is False
     post.assert_not_called()
+    activity.assert_not_called()
+    analytics.assert_not_called()
 
 
 def _queued_node_execution() -> NodeExecutionEntry:

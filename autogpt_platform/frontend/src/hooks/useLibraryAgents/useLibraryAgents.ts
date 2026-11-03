@@ -38,12 +38,16 @@ export function useLibraryAgents() {
       request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
     });
 
-  const agents = agentsQueryData ? unpaginate(agentsQueryData, "agents") : [];
+  // Stable between renders, so consumers keyed on it (status maps, the
+  // execution event subscription) only recompute when the data changes.
+  const agents = useMemo(
+    () => (agentsQueryData ? unpaginate(agentsQueryData, "agents") : []),
+    [agentsQueryData],
+  );
 
   // Use agents.length as dependency to avoid recreating map unnecessarily
   const agentInfoMap = useMemo(
     () => buildAgentInfoMap(agents),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [agents.length, agents.map((a) => a.id).join(",")],
   );
 

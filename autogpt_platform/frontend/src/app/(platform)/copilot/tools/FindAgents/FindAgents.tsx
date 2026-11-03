@@ -82,7 +82,7 @@ export function FindAgentsTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 

@@ -35,7 +35,7 @@ export function ImagePreview({
     <>
       {!isLoaded ? <LoadingPlaceholder file={file} /> : null}
       {previewUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- the preview endpoint already sizes the image
         <img
           src={previewUrl}
           alt={file.name}

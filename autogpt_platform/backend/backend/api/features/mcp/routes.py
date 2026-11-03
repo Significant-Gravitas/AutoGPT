@@ -24,6 +24,7 @@ from backend.api.features.mcp.oauth_registration import (
     check_preregistered_endpoints,
     preregistered_client,
     preregistered_revocation_endpoint,
+    requested_scopes,
     requires_registered_client,
     select_client_auth_method,
 )
@@ -41,6 +42,7 @@ from backend.blocks.mcp.helpers import (
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.integrations.credential_lease import (
     CredentialLease,
@@ -62,7 +64,10 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 settings = Settings()
-router = fastapi.APIRouter(tags=["mcp"])
+# Every route here reaches a server the user names.
+router = fastapi.APIRouter(
+    tags=["mcp"], dependencies=[fastapi.Depends(enforce_payment_paywall)]
+)
 creds_manager = IntegrationCredentialsManager()
 
 # Verifying a token is best-effort; it must never outlast a user's patience.
@@ -161,6 +166,7 @@ async def discover_tools(
             authorization = mcp_authorization_header(stored_credential)
 
     client = MCPClient(request.server_url, authorization=authorization)
+    hostname = server_host(request.server_url)
 
     async def initialize_and_list_tools():
         init_result = await client.initialize()
@@ -178,7 +184,24 @@ async def discover_tools(
                 detail="This MCP server requires authentication. "
                 "Please provide a valid auth credential.",
             )
-        raise fastapi.HTTPException(status_code=502, detail=str(e))
+        if e.status_code == 429:
+            raise fastapi.HTTPException(
+                status_code=429,
+                detail=f"{hostname} is rate-limiting requests (HTTP 429). "
+                "Please try again shortly.",
+            )
+        # The error text carries the site's whole error page; keep only the status.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f"No MCP server answered at {hostname} (HTTP {e.status_code}). "
+            "Please check the URL.",
+        )
+    except HTTPServerError as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"{hostname} failed to answer (HTTP {e.status_code}). "
+            "Please try again later.",
+        )
     except MCPClientError as e:
         raise fastapi.HTTPException(status_code=502, detail=str(e))
     except Exception as e:
@@ -200,9 +223,7 @@ async def discover_tools(
             for t in tools
         ],
         server_name=(
-            init_result.get("serverInfo", {}).get("name")
-            or server_host(request.server_url)
-            or "MCP"
+            init_result.get("serverInfo", {}).get("name") or hostname or "MCP"
         ),
         protocol_version=init_result.get("protocolVersion"),
     )
@@ -271,19 +292,16 @@ async def mcp_oauth_login(
     server_url = normalize_mcp_url(request.server_url)
     frontend_base_url = settings.config.frontend_base_url
     catalog_entry = get_mcp_catalog_entry_for_url(server_url)
-    catalog_scopes: list[str] | None = None
-    if catalog_entry:
-        if "oauth" not in catalog_entry.mcp_server.auth_methods:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail={
-                    "code": NO_OAUTH_CODE,
-                    "message": f"{catalog_entry.display_name} uses "
-                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
-                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
-                },
-            )
-        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
+    if catalog_entry and "oauth" not in catalog_entry.mcp_server.auth_methods:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": f"{catalog_entry.display_name} uses "
+                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+            },
+        )
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -352,11 +370,10 @@ async def mcp_oauth_login(
     scopes = (
         request.scopes
         if request.scopes is not None
-        else (
-            catalog_scopes
-            if catalog_scopes is not None
-            else (protected_resource or {}).get("scopes_supported")
-            or metadata.get("scopes_supported", [])
+        else requested_scopes(
+            catalog_entry.mcp_server if catalog_entry else None,
+            protected_resource,
+            metadata,
         )
     )
     issuer = _validated_issuer(metadata, expected_issuer)
@@ -700,7 +717,7 @@ async def mcp_store_token(
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
     ``run_capability`` MCP calls will automatically pick up the credential via
-    ``_auto_lookup_credential``.
+    ``auto_lookup_mcp_credential``.
     """
     try:
         authorization = normalize_mcp_authorization(request.token.get_secret_value())

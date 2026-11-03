@@ -5,14 +5,27 @@ Everything goes out on a transactional stream, separate from marketing mail
 changelog are MailerLite's). Every message carries a plain-text MIME part built
 from the same data model. Product notifications carry one-click
 List-Unsubscribe headers; billing, auth and internal Ops mail do not.
+
+Each message is tagged with what it is (the notification type, ``auth`` or
+``owner_email``).
+Postmark echoes the tag in its delivery, open, click and bounce webhooks,
+which ``api/features/postmark`` turns into PostHog events. Every message also
+says whether Postmark tracks its opens and clicks, so the stream's own default
+never decides: notification mail follows ``postmark_track_opens_and_clicks``,
+and auth mail is never tracked, since its links carry sign-in tokens, nor is
+mail a user's run sends them, whose links are their own.
 """
 
+import asyncio
 import logging
+from typing import Any
 
 import httpx
 from postmarker.core import PostmarkClient
+from postmarker.exceptions import ClientError
 from postmarker.models.emails import EmailManager
 from prisma.enums import NotificationType
+from requests import RequestException
 
 from backend.data.notifications import (
     BaseNotificationData,
@@ -28,6 +41,13 @@ settings = Settings()
 
 # Bounds how long one send can hold a thread-pool worker.
 POSTMARK_TIMEOUT_SECONDS = 30
+# A sign-up waits on this lookup, so it gives up long before a send would.
+SUPPRESSION_LOOKUP_TIMEOUT_SECONDS = 2
+
+# Postmark tag for Better Auth's emails, which are not notifications.
+AUTH_EMAIL_TAG = "auth"
+# Postmark tag for SendEmailToMeBlock's emails to the account owner.
+OWNER_EMAIL_TAG = "owner_email"
 
 
 class TypedPostmarkClient(PostmarkClient):
@@ -49,11 +69,16 @@ class EmailSender:
                 # hung Postmark call would otherwise exhaust the pool.
                 timeout=POSTMARK_TIMEOUT_SECONDS,
             )
+            self.postmark_lookups = TypedPostmarkClient(
+                server_token=settings.secrets.postmark_server_api_token,
+                timeout=SUPPRESSION_LOOKUP_TIMEOUT_SECONDS,
+            )
         else:
             logger.warning(
                 "Postmark server API token not found, email sending disabled"
             )
             self.postmark = None
+            self.postmark_lookups = None
 
     async def send_notification(
         self,
@@ -88,6 +113,7 @@ class EmailSender:
         stream = get_delivery_stream(notification_type)
         await self._send(
             user_email=user_email,
+            tag=notification_type.value.lower(),
             sender=_sender_for(stream),
             reply_to=_reply_to_for(stream),
             subject=email.subject,
@@ -102,7 +128,10 @@ class EmailSender:
         """Send a one-off transactional email (e.g. Better Auth password-reset
         and verification links) with no notification templating or preference
         gating. Raises if the Postmark client is not configured so callers can
-        surface the failure instead of silently dropping an auth email."""
+        surface the failure instead of silently dropping an auth email.
+        Fake preview recipients are intentionally skipped."""
+        if _suppress_preview_email(user_email):
+            return
         if not self.postmark:
             raise RuntimeError("Postmark is not configured; cannot send email")
         self.postmark.emails.send(
@@ -112,11 +141,69 @@ class EmailSender:
             HtmlBody=body,
             TextBody=text_body,
             MessageStream=settings.config.postmark_transactional_stream,
+            Tag=AUTH_EMAIL_TAG,
+            # A reset or verification link holds a token; link tracking would
+            # route it through Postmark's redirect and into the click webhook.
+            **_tracking(False),
+        )
+
+    def is_suppressed(self, user_email: str) -> bool:
+        """Whether Postmark has marked this address inactive (a hard bounce,
+        spam complaint or manual suppression), so a send to it would be refused.
+        False when Postmark isn't configured or doesn't answer: the lookup must
+        never block a sign-up."""
+        if not self.postmark_lookups:
+            return False
+        stream = settings.config.postmark_transactional_stream
+        try:
+            found = self.postmark_lookups.call(
+                "GET",
+                f"message-streams/{stream}/suppressions/dump",
+                EmailAddress=user_email,
+            )
+        except (ClientError, RequestException, ValueError) as e:
+            logger.warning(f"Postmark suppression lookup failed: {type(e).__name__}")
+            return False
+        return any(
+            entry.get("EmailAddress", "").lower() == user_email.lower()
+            for entry in found.get("Suppressions", [])
+        )
+
+    async def send_owner_email(
+        self,
+        user_email: str,
+        email: RenderedEmail,
+        attachments: list[dict[str, str]],
+    ) -> None:
+        """Raises when Postmark is not configured: the run that asked for this
+        reports a failure instead of a send that never happened.
+
+        Sent through postmarker, whose ``ClientError`` (refused) and
+        ``RequestException`` (outcome unknown) the caller tells apart."""
+        if _suppress_preview_email(user_email):
+            return
+        if not self.postmark:
+            raise RuntimeError("Email sending isn't set up on this server.")
+        # postmarker's send is a blocking HTTP call; keep it off the event loop.
+        await asyncio.to_thread(
+            self.postmark.emails.send,
+            From=_sender_for(DeliveryStream.PRODUCT),
+            ReplyTo=_reply_to_for(DeliveryStream.PRODUCT),
+            To=user_email,
+            Subject=email.subject,
+            HtmlBody=email.html,
+            TextBody=email.text,
+            MessageStream=settings.config.postmark_transactional_stream,
+            Attachments=attachments,
+            Tag=OWNER_EMAIL_TAG,
+            # Its links are the user's own, and can carry their tokens.
+            **_tracking(False),
         )
 
     async def _send(
         self,
         user_email: str,
+        tag: str,
         sender: str,
         subject: str,
         html_body: str,
@@ -124,6 +211,12 @@ class EmailSender:
         headers: dict[str, str] | None,
         reply_to: str | None = None,
     ) -> None:
+        """Post one notification to Postmark. Raises when it can't be sent, so no
+        caller reports a message that never went. Over httpx rather than
+        postmarker's blocking client: a delivery cancelled mid-send (its
+        access revoked) stops the request too."""
+        if _suppress_preview_email(user_email):
+            return
         if not self.server_token:
             raise RuntimeError("Postmark is not configured; cannot send email")
         logger.debug("Sending email to %s with subject %s", user_email, subject)
@@ -134,6 +227,8 @@ class EmailSender:
             "HtmlBody": html_body,
             "TextBody": text_body,
             "MessageStream": settings.config.postmark_transactional_stream,
+            "Tag": tag,
+            **_tracking(settings.config.postmark_track_opens_and_clicks),
         }
         if reply_to:
             payload["ReplyTo"] = reply_to
@@ -164,6 +259,23 @@ class EmailSender:
         if self._http_client is not None:
             await self._http_client.aclose()
             self._http_client = None
+
+
+def _suppress_preview_email(user_email: str) -> bool:
+    """Preview accounts have fake addresses that would damage sender reputation."""
+    if not user_email.strip().lower().endswith("@previews.agpt.co"):
+        return False
+    logger.info("Skipping transactional email to the preview recipient domain")
+    return True
+
+
+def _tracking(enabled: bool) -> dict[str, Any]:
+    """Postmark's per-message tracking fields. Links are rewritten in the
+    HTML part only: a rewritten link in the plain-text part is a long opaque
+    redirect a reader can't check before following."""
+    if enabled:
+        return {"TrackOpens": True, "TrackLinks": "HtmlOnly"}
+    return {"TrackOpens": False, "TrackLinks": "None"}
 
 
 def _sender_for(stream: DeliveryStream) -> str:

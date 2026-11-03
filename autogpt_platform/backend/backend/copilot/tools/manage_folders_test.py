@@ -191,6 +191,8 @@ async def test_list_folders_tree_with_agents_includes_root(list_tool, session):
     assert result.tree is not None
     assert result.tree[0].agents is not None
     assert result.tree[0].agents[0].name == "Foldered"
+    # Root agents are listed in the chat's own organization and team, as are
+    # an External API call's in its key's.
     mock_lib.return_value.get_root_agent_summaries.assert_awaited_once_with(
         _TEST_USER_ID, session.organization_id, session.team_id
     )

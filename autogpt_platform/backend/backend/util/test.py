@@ -19,6 +19,10 @@ from backend.data.execution import (
     get_graph_execution,
 )
 from backend.data.model import _BaseCredentials
+from backend.data.tenancy import (
+    connect_live_transaction_lease_database,
+    disconnect_live_transaction_lease_database,
+)
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
@@ -31,8 +35,11 @@ class SpinTestServer:
         self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
-        self.scheduler = Scheduler(register_system_tasks=False)
+        self.scheduler = Scheduler(
+            register_system_tasks=False, throwaway_jobstores=True
+        )
         self.notif_manager = NotificationManager()
+        self._lease_database_owned = False
 
     @staticmethod
     def test_get_user_id():
@@ -47,6 +54,9 @@ class SpinTestServer:
         self.notif_manager.__enter__()
 
         await db.connect()
+        # The live-access leases hold their own client, which the API and the
+        # database manager connect at start-up; a test drives the same paths.
+        self._lease_database_owned = await connect_live_transaction_lease_database()
         await initialize_blocks()
         await create_default_user()
 
@@ -56,6 +66,8 @@ class SpinTestServer:
         try:
             await redis_client.disconnect_async()
         finally:
+            if self._lease_database_owned:
+                await disconnect_live_transaction_lease_database()
             await db.disconnect()
 
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)

@@ -1,16 +1,19 @@
 "use client";
 
+import { keepPreviousData } from "@tanstack/react-query";
 import {
   getGetV2ListFavoriteLibraryAgentsQueryKey,
   useGetV2ListFavoriteLibraryAgentsInfinite,
 } from "@/app/api/__generated__/endpoints/library/library";
-import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
+import {
+  getPaginatedTotalCount,
+  getPaginationNextPageNumber,
+  unpaginate,
+} from "@/app/api/helpers";
 import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
-import { useMemo } from "react";
-import { filterAgents } from "../components/LibraryAgentList/helpers";
 
 interface Props {
   searchTerm: string;
@@ -26,16 +29,19 @@ export function useFavoriteAgents({
   const params = {
     page: 1,
     page_size: 10,
+    search_term: searchTerm || undefined,
   };
   const {
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading: agentLoading,
+    isLoading,
+    isPlaceholderData,
   } = useGetV2ListFavoriteLibraryAgentsInfinite(params, {
     query: {
       getNextPageParam: getPaginationNextPageNumber,
+      placeholderData: keepPreviousData,
       queryKey: getTeamScopedQueryKey(
         getGetV2ListFavoriteLibraryAgentsQueryKey(params),
         organizationId,
@@ -45,21 +51,18 @@ export function useFavoriteAgents({
     request: getTenantRequestInit(organizationId, teamId),
   });
 
-  const allAgents = agentsQueryData
-    ? unpaginate(agentsQueryData, "agents")
-    : [];
+  const allAgents =
+    agentsQueryData && !isPlaceholderData
+      ? unpaginate(agentsQueryData, "agents")
+      : [];
+  const agentLoading = isLoading || isPlaceholderData;
 
-  const filteredAgents = useMemo(
-    () => filterAgents(allAgents, searchTerm),
-    [allAgents, searchTerm],
-  );
-
-  const agentCount = filteredAgents.length;
+  const agentCount = getPaginatedTotalCount(agentsQueryData);
 
   return {
-    allAgents: filteredAgents,
+    allAgents,
     agentLoading,
-    hasNextPage,
+    hasNextPage: hasNextPage && !isPlaceholderData,
     agentCount,
     isFetchingNextPage,
     fetchNextPage,

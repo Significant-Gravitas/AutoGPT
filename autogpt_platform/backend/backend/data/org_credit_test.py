@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.data import org_credit
 from backend.data.org_credit import (
     OrgCreditModel,
     assign_seat,
@@ -18,6 +19,13 @@ from backend.data.org_credit import (
     unassign_seat,
 )
 from backend.util.exceptions import InsufficientBalanceError
+
+
+@pytest.fixture(autouse=True)
+def credits_enabled(mocker):
+    """The ledger is only read and written with credits on; off, the org ledger
+    is never touched (``billing_disabled_test``)."""
+    mocker.patch.object(org_credit.settings.config, "enable_credit", True)
 
 
 @pytest.fixture(autouse=True)

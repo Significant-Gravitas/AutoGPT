@@ -16,6 +16,16 @@ from backend.blocks.autopilot import (
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.execution import ExecutionContext
 
+
+@pytest.fixture(autouse=True)
+def _live_workspace_access():
+    """The run's org/team is still live for its user; the checks that refuse
+    a revoked one are covered in autopilot_codex_test.py."""
+    client = MagicMock(has_live_resource_access=AsyncMock(return_value=True))
+    with patch("backend.blocks.autopilot.credit_db", return_value=client):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -55,6 +65,19 @@ class TestBuildAndValidatePermissions:
         assert isinstance(result, CopilotPermissions)
         assert result.tools == ["run_block", "web_fetch"]
         assert result.tools_exclude is True
+
+    async def test_providers_are_carried(self):
+        inp = _make_input(providers=["github"], providers_exclude=False)
+        result = await _build_and_validate_permissions(inp)
+        assert isinstance(result, CopilotPermissions)
+        assert result.providers == ["github"]
+        assert result.providers_exclude is False
+
+    async def test_an_unknown_provider_is_refused(self):
+        inp = _make_input(providers=["gitlab"])
+        result = await _build_and_validate_permissions(inp)
+        assert isinstance(result, str)
+        assert "gitlab" in result
 
     async def test_invalid_tool_rejected_by_pydantic(self):
         """Invalid tool names are now caught at Pydantic validation time

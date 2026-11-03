@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -35,6 +36,14 @@ interface Args {
    *  requested ones, so a re-auth cannot narrow what the user already had. */
   credentialID?: string;
   request?: RequestInit;
+  onError?: (error: unknown) => void;
+}
+
+/** Narrows or upgrades a single connect, for callers whose ask depends on
+ *  which button was pressed rather than on the hook's arguments. */
+interface ConnectRequest {
+  scopes?: string[];
+  credentialID?: string;
 }
 
 export function useOAuthConnect({
@@ -43,6 +52,7 @@ export function useOAuthConnect({
   scopes,
   credentialID,
   request,
+  onError,
 }: Args) {
   const queryClient = useQueryClient();
   const credentialsActions = useContext(CredentialsActionsContext);
@@ -66,7 +76,15 @@ export function useOAuthConnect({
     };
   }, []);
 
-  async function connect() {
+  function connect() {
+    return run();
+  }
+
+  function connectWith(connectRequest: ConnectRequest) {
+    return run(connectRequest);
+  }
+
+  async function run(connectRequest?: ConnectRequest) {
     // Ignore re-entry while a flow is in flight: a rapid double-click fires
     // again before the pending state re-renders the button, and a second
     // concurrent flow would overwrite preOpenedWindowRef/abortRef. State
@@ -91,8 +109,8 @@ export function useOAuthConnect({
       // a credential missing a required scope never satisfies the caller.
       const initiateResponse = await initiateLogin(
         provider,
-        scopes,
-        credentialID,
+        connectRequest?.scopes ?? scopes,
+        connectRequest?.credentialID ?? credentialID,
         // The list that produced the dead id is stale; refresh it now so a
         // cancelled popup does not make every later click pay the retry too.
         () => credentialsActions?.reload(),
@@ -171,6 +189,14 @@ export function useOAuthConnect({
         }
       }
       if (isUnmountedRef.current) return;
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
+      if (onError) {
+        onError(error);
+        return;
+      }
       toast({
         title: "OAuth connection failed",
         description: getOAuthErrorMessage(error),
@@ -182,7 +208,7 @@ export function useOAuthConnect({
     }
   }
 
-  return { connect, isPending };
+  return { connect, connectWith, isPending };
 }
 
 function snapshotRequest(request?: RequestInit): RequestInit {

@@ -12,7 +12,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === "dream-skill-learning-enabled" && mockSkillLearningEnabled,
+      flag === "SHOW_ORG_SETTINGS"
+        ? process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS === "true"
+        : flag === "dream-skill-learning-enabled" && mockSkillLearningEnabled,
   };
 });
 vi.mock("@/hooks/useIsBillingEnabled", () => ({

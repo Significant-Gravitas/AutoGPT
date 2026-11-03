@@ -8,22 +8,19 @@ export function PaywallHeader() {
     <div className="flex flex-col items-center gap-1 text-center">
       <Text
         variant="h3"
-        className="!text-[1.375rem] !leading-[1.6rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
+        className="!text-heading-sm !leading-6.5 md:!text-heading md:!leading-10"
       >
         Choose a plan to keep working
       </Text>
-      <Text variant="body" className="!text-zinc-500">
+      <Text variant="body" tone="muted">
         Your chats, workflows and files are saved.
       </Text>
       <Link
         href="/tour/chat?utm_source=platform_paywall"
         target="_blank"
-        className="mt-2 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
+        className="mt-2 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-accent-surface/60 px-4 py-1.5 text-sm text-foreground-body transition-colors hover:bg-brand/5"
       >
-        <Icon
-          icon={PlayCircleIcon}
-          className="size-5 shrink-0 text-violet-600"
-        />
+        <Icon icon={PlayCircleIcon} className="size-5 shrink-0 text-brand" />
         <span>Explore a quick demo</span>
       </Link>
     </div>

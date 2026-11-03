@@ -93,6 +93,8 @@ class FindSessionTool(BaseTool):
         for _ in range(_MAX_SCAN_PAGES):
             rows = await list_recent_chat_sessions(
                 user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 expert_id=expert_id.strip() or None,
                 status=status.strip() or None,
                 limit=_SCAN_LIMIT,
@@ -106,6 +108,8 @@ class FindSessionTool(BaseTool):
                 # keeps the invariant with the tool rather than with one call
                 # site.
                 if row.user_id == user_id
+                and (row.organization_id, row.team_id)
+                == (session.organization_id, session.team_id)
                 and row.session_id != session.session_id
                 and _matches_task(row, task.strip())
             )

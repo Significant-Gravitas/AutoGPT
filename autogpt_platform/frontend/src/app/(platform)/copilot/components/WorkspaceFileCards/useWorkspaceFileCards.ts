@@ -83,9 +83,8 @@ export function useWorkspaceFileCards(sessionId: string | null) {
       await deleteFile({ fileId: pendingDelete.item.id });
     } catch {
       // onError already toasted; swallow so the dialog closes either way.
-    } finally {
-      setPendingDelete(null);
     }
+    setPendingDelete(null);
   }
 
   async function handleDownloadAll() {
@@ -102,9 +101,8 @@ export function useWorkspaceFileCards(sessionId: string | null) {
       );
     } catch {
       toast({ title: "Download all failed", variant: "destructive" });
-    } finally {
-      setIsZipping(false);
     }
+    setIsZipping(false);
   }
 
   return {

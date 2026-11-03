@@ -24,7 +24,6 @@ import {
 } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { analytics } from "@/services/analytics";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getLibraryAgentHref } from "@/services/org-team/builder";
@@ -51,7 +50,8 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
-        className="bg-neutral-200 text-zinc-900 hover:bg-neutral-300 hover:text-zinc-800"
+        // oxlint-disable-next-line design-system/no-restyle -- a light button on the dark toast; no Button variant is light-on-dark
+        className="bg-surface-active text-foreground-strong hover:bg-border-strong hover:text-foreground-emphasis"
         href={libraryHref}
       >
         Open workflow
@@ -60,7 +60,8 @@ function UndoActions({
         variant="ghost"
         size="small"
         loading={isUndoing}
-        className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
+        // oxlint-disable-next-line design-system/no-restyle -- a quiet text button on the dark toast; no Button variant is light-on-dark
+        className="border-none text-surface-active hover:bg-transparent hover:text-foreground-subtle"
         onClick={async () => {
           setIsUndoing(true);
           try {
@@ -190,11 +191,6 @@ export function AddToLibraryButton({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
-      analytics.sendDatafastEvent("add_to_library", {
-        name: data.name,
-        id: data.id,
-      });
-
       const addedToast = toast({
         title: `Workflow ${agentName} added to your library.`,
         description: (
@@ -242,7 +238,8 @@ export function AddToLibraryButton({
 
   const buttonClassName =
     variant === "ghost"
-      ? `z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`
+      ? // oxlint-disable-next-line design-system/no-restyle -- the quiet Add on a card keeps no hover fill; no Button variant is a bare text button
+        `z-10 text-foreground-tertiary hover:border-transparent hover:bg-transparent hover:text-foreground-emphasis ${className ?? ""}`
       : className;
 
   // Solo users (no teams): original plain button, adds to their org context.

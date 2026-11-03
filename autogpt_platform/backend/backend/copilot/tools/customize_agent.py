@@ -4,6 +4,8 @@ import logging
 import uuid
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.data.tenancy import ResourceAccess
 
@@ -11,6 +13,7 @@ from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_sav
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
@@ -26,6 +29,22 @@ class CustomizeAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "customize_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            # READ_STORE permission not needed since we only use public marketplace data
+        ]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        # Sub-agents to embed are read from the caller's library.
+        if args.get("library_agent_ids"):
+            needed.append(APIKeyPermission.READ_LIBRARY)
+        return needed
 
     @property
     def description(self) -> str:
@@ -133,6 +152,7 @@ class CustomizeAgentTool(BaseTool):
             team_id=session.team_id,
             library_agents=library_agents,
             folder_id=folder_id,
+            external_caller=session.external_caller,
         )
         if user_id:
             return await install_saved_agent(user_id, session, saved)

@@ -11,6 +11,7 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
+from autogpt_libs.auth import get_user_id
 
 from backend.api.credential_scope import credential_user_id
 from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
@@ -18,6 +19,8 @@ from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[credential_user_id] = lambda: "test-user-id"
+# The router's paywall dependency reads the signed-in user from the token.
+app.dependency_overrides[get_user_id] = lambda: "test-user-id"
 
 HUBSPOT_PROTECTED_RESOURCE = {
     "resource": "https://mcp.hubspot.com",

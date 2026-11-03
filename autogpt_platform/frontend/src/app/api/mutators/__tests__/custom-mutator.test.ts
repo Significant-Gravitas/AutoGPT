@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
@@ -9,6 +9,7 @@ vi.mock("@/services/environment", () => ({
     isClientSide: vi.fn(),
     isServerSide: vi.fn(),
     getAGPTServerBaseUrl: vi.fn(() => "http://localhost:8006"),
+    getCookiebotCBID: vi.fn(() => ""),
   },
 }));
 
@@ -26,6 +27,10 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
   captureMessage: vi.fn(),
@@ -39,6 +44,7 @@ import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "@/services/org-team/headers";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import * as Sentry from "@sentry/nextjs";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
@@ -70,6 +76,20 @@ describe("customMutator — impersonation header", () => {
     const fetchCall = vi.mocked(fetch).mock.calls[0];
     const headers = fetchCall[1]?.headers as Record<string, string>;
     expect(headers[IMPERSONATION_HEADER_NAME]).toBe("impersonated-user-abc");
+  });
+
+  it("names the browser's PostHog session", async () => {
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    await customMutator("/test", { method: "GET" });
+
+    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers["X-PostHog-Session-Id"]).toBe("posthog-session-1");
   });
 
   it("does not add impersonation header when no impersonation active", async () => {
@@ -486,5 +506,66 @@ describe("customMutator — team scoping headers", () => {
       headers: { [TEAM_HEADER_NAME]: "" },
     });
     expect(TEAM_HEADER_NAME in sentHeaders()).toBe(false);
+  });
+});
+
+describe("customMutator — banned account", () => {
+  let replace: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    mockGetSystemHeaders.mockReturnValue({});
+    mockGetTraceData.mockReturnValue({});
+    replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    replace.mockRestore();
+  });
+
+  function respondWith(status: number, body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: "",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(body),
+      }),
+    );
+  }
+
+  it("signs the user out on the banned 403", async () => {
+    respondWith(403, {
+      detail: {
+        code: "account_banned",
+        message: "This account has been banned.",
+      },
+    });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account has been banned.",
+    );
+    expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
+  });
+
+  it.each([
+    ["another 403", 403, { detail: "Admin access required" }],
+    [
+      "the banned code on another status",
+      401,
+      { detail: { code: "account_banned" } },
+    ],
+  ])("leaves the user signed in on %s", async (_, status, body) => {
+    respondWith(status, body);
+
+    await expect(
+      customMutator("/api/foo", { method: "GET" }),
+    ).rejects.toBeDefined();
+    expect(replace).not.toHaveBeenCalled();
   });
 });

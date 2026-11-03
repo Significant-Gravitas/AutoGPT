@@ -22,14 +22,13 @@ const queueFollowUpMessage = vi.hoisted(() => vi.fn());
 const queueMessage = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useGetFlag: () => false,
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 vi.mock("nuqs", () => ({
   parseAsString: {},
@@ -66,9 +65,16 @@ vi.mock("../useExpertMap", async (importOriginal) => {
   };
 });
 
+// The open chat's saved scope, which its follow-ups are queued in.
+const SESSION_SCOPE = vi.hoisted(() => ({
+  organizationId: "org-1",
+  teamId: null,
+}));
+
 vi.mock("../useChatSession", () => ({
   useChatSession: () => ({
     sessionId: sessionState.sessionId,
+    sessionTenantScope: SESSION_SCOPE,
     setSessionId: vi.fn(),
     sessionLlmAuthProvider: "platform",
     sessionExpertId: null,
@@ -257,6 +263,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(queueFollowUpMessage).toHaveBeenCalledWith(
       "session-1",
       "After the essay, say PINEAPPLE",
+      SESSION_SCOPE,
     );
     expect(sendNewMessage).not.toHaveBeenCalled();
     expect(settled).toBe(false);

@@ -26,6 +26,7 @@ import inspect
 import sys
 import textwrap
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -175,6 +176,24 @@ class CreditStubs(pydantic.BaseModel):
     get_auto_top_up: AsyncMock
     set_auto_top_up: AsyncMock
     model: Mock
+
+
+@asynccontextmanager
+async def _live_access_held(*_args, **_kwargs):
+    yield True
+
+
+@pytest.fixture(autouse=True)
+def _live_access(monkeypatch):
+    """These tests check each route's permission rule; its live re-check of
+    the same permission reads the database, which a TestClient request would
+    reach from its own event loop on a client connected on the session's."""
+    for name in (
+        "live_org_permission_barrier",
+        "live_actor_org_permission_barrier",
+        "live_resource_permission_barrier",
+    ):
+        monkeypatch.setattr(f"backend.api.live_auth.{name}", _live_access_held)
 
 
 @pytest.fixture(autouse=True)

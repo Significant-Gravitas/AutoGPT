@@ -1,23 +1,34 @@
+import logging
 from typing import Annotated, Any
 
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
-from fastapi import APIRouter, Body, HTTPException, Path, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from prisma.enums import GrantCapability
-from starlette.status import HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from backend.api.features.experts import experts_db
 from backend.api.features.library import db as library_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import (
+    ResumeScheduledChatResponse,
     ScheduleCreationRequest,
     ScheduleUpdateRequest,
+    SetScheduledChatCadenceRequest,
 )
 from backend.api.live_auth import (
     requires_live_resource_permission as requires_resource_permission,
 )
 from backend.api.live_auth import resolve_write_team_id as _resolve_write_team_id
+from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.copilot.scheduled_chats import cadence_service, forget
+from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.grants import resolve_graph_grant
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
@@ -35,7 +46,9 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 
-# This router mounts at /api and keeps the section's full paths: its six routes
+logger = logging.getLogger(__name__)
+
+# This router mounts at /api and keeps the section's full paths: its routes
 # span two prefixes (/schedules and /graphs/{graph_id}/schedules), so a prefixed
 # mount would have to move one of them.
 router = APIRouter(dependencies=[Security(requires_user)])
@@ -47,7 +60,29 @@ async def _schedule_team_ids(user_id: str, ctx: RequestContext) -> list[str]:
     return await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
 
 
+async def _scheduled_chat_scopes(
+    user_id: str, ctx: RequestContext
+) -> dict[str, tuple[str | None, str | None]]:
+    """The caller's scheduled chats this workspace can see, by the key their
+    failure streaks use (a follow-up's schedule id, or a routine's id), with
+    the organization and team each one runs in. Paused jobs count: a streak's
+    pause is what stopped them."""
+    jobs = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id,
+        kind="copilot_turn",
+        organization_id=ctx.org_id,
+        team_ids=await _schedule_team_ids(user_id, ctx),
+        include_paused=True,
+    )
+    return {
+        job.routine_id or job.id: (job.organization_id or None, job.team_id)
+        for job in jobs
+        if isinstance(job, scheduler.CopilotTurnJobInfo)
+    }
+
+
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
 )
@@ -279,6 +314,162 @@ async def list_copilot_turn_schedules(
     ]
 
 
+@router.get(
+    path="/schedules/followups/paused",
+    summary="List scheduled chats paused after failing the same way",
+    operation_id="listPausedScheduledChats",
+)
+async def list_paused_scheduled_chats(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
+) -> list[scheduled_chats.PausedScheduledChat]:
+    """A paused job drops out of the follow-ups list above, so the chats a
+    failure streak paused are listed here, each once however many fire times
+    it has, with why and what Resume takes. Only the chats that run in this
+    workspace are listed."""
+    in_scope = await _scheduled_chat_scopes(user_id, ctx)
+    return [
+        chat
+        for chat in await scheduled_chats.list_paused_scheduled_chats(user_id)
+        if chat.schedule_key in in_scope
+    ]
+
+
+@router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
+    path="/schedules/followups/{schedule_key}/resume",
+    summary="Resume a scheduled chat paused after failing the same way",
+    operation_id="resumeScheduledChat",
+)
+async def resume_scheduled_chat(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> ResumeScheduledChatResponse:
+    scope = (await _scheduled_chat_scopes(user_id, ctx)).get(schedule_key)
+    if scope is None:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat is not paused.",
+        )
+    organization_id, team_id = scope
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "create"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(403, detail="Resource scope is inactive")
+        try:
+            resumed = await scheduled_chats.resume_scheduled_chat(user_id, schedule_key)
+        except Exception:
+            # The scheduler refused or the database blinked: the chat stays
+            # paused, so Resume can simply be tried again.
+            logger.exception("Could not resume scheduled chat %s", schedule_key)
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail="This scheduled chat could not be resumed just now. Try again.",
+            )
+    if not resumed:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat is not paused.",
+        )
+    return ResumeScheduledChatResponse(resumed=True)
+
+
+@router.get(
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="How often a scheduled chat runs, and how it could run less often",
+    operation_id="getScheduledChatCadence",
+)
+async def get_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    if schedule_key not in await _scheduled_chat_scopes(user_id, ctx):
+        raise _cadence_error(
+            cadence_service.CadenceNotFound(schedule_key), schedule_key
+        )
+    try:
+        return await cadence_service.get_cadence(user_id, schedule_key)
+    except Exception as e:
+        raise _cadence_error(e, schedule_key) from e
+
+
+@router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="Run a scheduled chat less often",
+    operation_id="setScheduledChatCadence",
+)
+async def set_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+    body: SetScheduledChatCadenceRequest,
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    scope = (await _scheduled_chat_scopes(user_id, ctx)).get(schedule_key)
+    if scope is None:
+        raise _cadence_error(
+            cadence_service.CadenceNotFound(schedule_key), schedule_key
+        )
+    organization_id, team_id = scope
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "create"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(403, detail="Resource scope is inactive")
+        try:
+            return await cadence_service.set_cadence(user_id, schedule_key, body.cron)
+        except Exception as e:
+            raise _cadence_error(e, schedule_key) from e
+
+
+def _cadence_error(error: Exception, schedule_key: str) -> HTTPException:
+    if isinstance(error, cadence_service.CadenceNotOffered):
+        return HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="That cadence is not one this scheduled chat can switch to.",
+        )
+    if isinstance(error, cadence_service.CadenceNotFound):
+        return HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat has no cadence to change.",
+        )
+    if isinstance(error, cadence_service.ScheduledChatPaused):
+        return HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail="This scheduled chat is paused. Resume it first.",
+        )
+    logger.exception("Could not change the cadence of scheduled chat %s", schedule_key)
+    return HTTPException(
+        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Its cadence could not be changed just now. Try again.",
+    )
+
+
 @router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
@@ -320,14 +511,48 @@ async def delete_graph_execution_schedule(
                 team_ids=target_team_ids,
             )
     except NotFoundError:
+        # Gone already, perhaps by a delete whose streak cleanup failed: a
+        # retry still clears the streak, or the chat stays listed as paused.
+        # One that is only outside this workspace still runs, so its streak
+        # stays with it.
+        if not await _schedule_exists(user_id, schedule_id):
+            await _forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
+    # A follow-up's failure streak is keyed by its schedule id.
+    await _forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
 
 
+async def _schedule_exists(user_id: str, schedule_id: str) -> bool:
+    """Whether the caller still has this schedule in any workspace."""
+    try:
+        await get_scheduler_client().get_execution_schedule(
+            schedule_id, user_id=user_id
+        )
+    except (NotFoundError, NotAuthorizedError):
+        return False
+    return True
+
+
+async def _forget_scheduled_chat(user_id: str, schedule_id: str) -> None:
+    """The schedule is gone whatever this does, so a failure is logged, not
+    answered: a 500 would say the delete failed. A streak left behind keeps
+    the chat listed as paused, and deleting it from there again clears it."""
+    try:
+        await forget.forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
+        )
+
+
 @router.patch(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/schedules/{schedule_id}",
     summary="Update execution schedule",
 )

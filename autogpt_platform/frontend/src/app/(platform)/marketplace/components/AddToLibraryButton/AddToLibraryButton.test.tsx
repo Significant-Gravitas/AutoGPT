@@ -326,7 +326,7 @@ describe("AddToLibraryButton", () => {
     await waitFor(() => expect(toastMocks.toast).toHaveBeenCalled());
     const addedToast = toastMocks.toast.mock.calls.find(
       ([options]) =>
-        options.title === "Agent Test Agent added to your library.",
+        options.title === "Workflow Test Agent added to your library.",
     )?.[0];
     expect(addedToast).toBeDefined();
     render(addedToast!.description);

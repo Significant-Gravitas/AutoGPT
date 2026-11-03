@@ -24,7 +24,6 @@ from backend.copilot.constants import (
 from backend.data import human_review
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.data.expert_spend import SpendWindow, get_spend, window_start
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -44,6 +43,9 @@ class SpendApprovalNeeded(BaseModel):
     spent: int
     threshold: int
     window: SpendWindow
+    # The expert's own scope, where its thread message is posted.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @property
     def period(self) -> str:
@@ -84,10 +86,10 @@ async def spend_approval_required(
 
     Like the weekly gate, the spend read is a snapshot: concurrent starts can
     each pass before any of them meters, bounded by their own cost."""
+    if not settings.config.enable_credit:
+        return None
     threshold = approval_threshold()
     if threshold is None:
-        return None
-    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
         return None
     window = approval_window()
     spent = await get_spend(expert_id, window)
@@ -109,6 +111,8 @@ async def spend_approval_required(
         spent=spent,
         threshold=threshold,
         window=window,
+        organization_id=expert.organizationId if expert else None,
+        team_id=expert.teamId if expert else None,
     )
 
 
@@ -223,6 +227,10 @@ def _review_payload(needed: SpendApprovalNeeded, block: str | None = None) -> di
 async def _post_thread_message(user_id: str, needed: SpendApprovalNeeded) -> None:
     """Once per expert per window, deduplicated by message id. Never raises —
     a failed post must not affect the park."""
+    if needed.organization_id is None:
+        # The thread lives in the expert's scope; without one there is
+        # nowhere to post, and the park itself already holds the run.
+        return
     bucket = window_start(needed.window).date().isoformat()
     message_id = str(
         uuid.uuid5(_POST_NAMESPACE, f"spend-approval:{needed.expert_id}:{bucket}")
@@ -238,6 +246,8 @@ async def _post_thread_message(user_id: str, needed: SpendApprovalNeeded) -> Non
             expert_id=needed.expert_id,
             content=content,
             message_id=message_id,
+            organization_id=needed.organization_id,
+            team_id=needed.team_id,
         )
     except Exception as e:
         logger.warning(

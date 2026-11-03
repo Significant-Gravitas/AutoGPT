@@ -7,10 +7,7 @@ from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 
-from backend.api.features.graph_executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-    hide_activity_summary_if_disabled,
-)
+from backend.api.features.graph_executions import sharing
 from backend.api.features.graph_executions.model import (
     ExecutionShareRequest,
     ExecutionShareResponse,
@@ -34,9 +31,6 @@ from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_toke
 from backend.data.tenancy import live_resource_permission_barrier
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import NotFoundError
-from backend.util.settings import Settings
-
-settings = Settings()
 
 # No router-level auth dependency: the two /public/shared routes are
 # deliberately unauthenticated, so each route keeps its own.
@@ -147,11 +141,7 @@ async def list_graphs_executions(
         team_id_restriction=ctx.team_id,
     )
 
-    # Apply feature flags to filter out disabled features
-    filtered_executions = await hide_activity_summaries_if_disabled(
-        paginated_result.executions, user_id
-    )
-    return filtered_executions
+    return paginated_result.executions
 
 
 @router.get(
@@ -224,21 +214,17 @@ async def list_graph_executions(
         team_id_restriction=ctx.team_id,
     )
 
-    # Apply feature flags to filter out disabled features
-    filtered_executions = await hide_activity_summaries_if_disabled(
-        paginated_result.executions, user_id
-    )
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId
         and onboarding.onboardingAgentExecutionId
-        in [exec.id for exec in filtered_executions]
+        in [exec.id for exec in paginated_result.executions]
         and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
     ):
         await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return execution_db.GraphExecutionsPaginated(
-        executions=filtered_executions, pagination=paginated_result.pagination
+        executions=paginated_result.executions, pagination=paginated_result.pagination
     )
 
 
@@ -280,8 +266,6 @@ async def get_graph_execution(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    # Apply feature flags to filter out disabled features
-    result = await hide_activity_summary_if_disabled(result, user_id)
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id
@@ -341,6 +325,9 @@ async def delete_graph_execution(
             team_id_restriction=candidate.team_id,
             exact_scope=True,
         )
+        # The public file download checks only the allowlist, which would
+        # otherwise outlive the run (the same revocation as the v2 API's).
+        await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
 
 @router.post(
@@ -401,10 +388,9 @@ async def enable_execution_sharing(
         except NotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
 
-    frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
-    share_url = f"{frontend_url}/share/{share_token}"
-
-    return ExecutionShareResponse(share_url=share_url, share_token=share_token)
+    return ExecutionShareResponse(
+        share_url=sharing.share_url(share_token), share_token=share_token
+    )
 
 
 @router.delete(

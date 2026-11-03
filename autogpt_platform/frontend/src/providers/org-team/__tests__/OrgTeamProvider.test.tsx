@@ -11,6 +11,12 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: useAuthMock,
 }));
 
+// The flag vendor has answered with no value: an unset env override then
+// means the flag's default, not a vendor that is still loading.
+vi.mock("@/services/feature-flags/flag-source", () => ({
+  useFlagSource: () => ({ value: undefined, resolved: true }),
+}));
+
 import OrgTeamProvider from "../OrgTeamProvider";
 
 // GET /api/orgs responds in snake_case — mocks must match the wire shape.

@@ -6,14 +6,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
+    Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    HostScopedCredentials,
     NodeExecutionStats,
     OAuth2Credentials,
+    UserPasswordCredentials,
 )
 from backend.executor.manager import execute_node
 from backend.integrations.providers import ProviderName
@@ -25,6 +29,21 @@ MixedCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.OPENAI, ProviderName.CODEX],
     Literal["api_key", "oauth2"],
 ]
+OpenAIKeyInput = CredentialsMetaInput[Literal[ProviderName.OPENAI], Literal["api_key"]]
+SMTPLoginInput = CredentialsMetaInput[
+    Literal[ProviderName.SMTP], Literal["user_password"]
+]
+HTTPHeadersInput = CredentialsMetaInput[
+    Literal[ProviderName.HTTP], Literal["host_scoped"]
+]
+OPENAI_KEY = APIKeyCredentials(id="cred-1", provider="openai", api_key=SecretStr("k"))
+
+
+def _processor(manager: MagicMock) -> SimpleNamespace:
+    """The execution processor ``execute_node`` takes its credentials manager
+    from; scoping that manager to the run's organization returns the stub."""
+    manager.scoped = MagicMock(return_value=manager)
+    return SimpleNamespace(creds_manager=manager)
 
 
 def _lease(credentials):
@@ -53,7 +72,7 @@ async def test_execute_node_injects_and_releases_credential_lease():
         async for item in execute_node(
             _node(block),
             _entry({"credentials": _credential_metadata("cred-1")}),
-            SimpleNamespace(creds_manager=manager),
+            _processor(manager),
         )
     ]
 
@@ -65,43 +84,107 @@ async def test_execute_node_injects_and_releases_credential_lease():
 
 
 @pytest.mark.asyncio
-async def test_execute_node_does_not_inject_runtime_lease_for_api_key():
-    credentials = APIKeyCredentials(
-        id="cred-1",
-        provider="openai",
-        api_key=SecretStr("secret"),
-    )
-    lease = _lease(credentials)
+@pytest.mark.parametrize(
+    ("credentials_input", "credentials"),
+    [
+        (OpenAIKeyInput, OPENAI_KEY),
+        (
+            SMTPLoginInput,
+            UserPasswordCredentials(
+                id="cred-1",
+                provider="smtp",
+                username=SecretStr("user"),
+                password=SecretStr("secret"),
+            ),
+        ),
+        (
+            HTTPHeadersInput,
+            HostScopedCredentials(
+                id="cred-1",
+                provider="http",
+                host="api.example.com",
+                headers={"Authorization": SecretStr("Bearer secret")},
+            ),
+        ),
+    ],
+    ids=["api_key", "user_password", "host_scoped"],
+)
+async def test_credentials_that_never_refresh_run_without_a_lease(
+    credentials_input: type[CredentialsMetaInput],
+    credentials: Credentials,
+):
+    # Nothing refreshes these while a block runs, so a lease would protect
+    # nothing; it would only make every other node on the same credential wait
+    # for this one, an Orchestrator's own tool calls included.
     manager = MagicMock()
-    manager.acquire_lease = AsyncMock(return_value=lease)
+    manager.get = AsyncMock(return_value=credentials)
+    manager.acquire_lease = AsyncMock()
     captured: dict[str, object] = {}
-    openai_credentials = CredentialsMetaInput[
-        Literal[ProviderName.OPENAI], Literal["api_key"]
-    ]
-    block = _block_with_credentials({"credentials": openai_credentials}, captured)
+    block = _block_with_credentials({"credentials": credentials_input}, captured)
 
     outputs = [
         item
         async for item in execute_node(
             _node(block),
-            _entry(
-                {
-                    "credentials": {
-                        "id": "cred-1",
-                        "provider": "openai",
-                        "type": "api_key",
-                        "title": None,
-                    }
-                }
-            ),
-            SimpleNamespace(creds_manager=manager),
+            _entry({"credentials": _metadata_of(credentials)}),
+            _processor(manager),
         )
     ]
 
     assert outputs == [("response", "ok")]
     assert captured["credentials"] is credentials
     assert "credential_leases" not in captured
-    lease.release.assert_awaited_once()
+    manager.get.assert_awaited_once_with("user-1", "cred-1")
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_oauth_credential_labelled_as_an_api_key_is_refused():
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=_codex_credentials("cred-1"))
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": MixedCredentialsInput}, captured)
+    mislabelled = {**_credential_metadata("cred-1"), "type": "api_key"}
+
+    with pytest.raises(ValueError, match="Credentials #cred-1 .* not found"):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": mislabelled}),
+                _processor(manager),
+            )
+        )
+
+    manager.acquire_lease.assert_not_awaited()
+    assert "credentials" not in captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field_has_default", [False, True])
+async def test_missing_api_key_fails_the_node_unless_the_field_has_a_default(
+    field_has_default: bool,
+):
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=None)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
+    block.input_schema.model_fields = {
+        "credentials": SimpleNamespace(default={} if field_has_default else None)
+    }
+    run = execute_node(
+        _node(block),
+        _entry({"credentials": _metadata_of(OPENAI_KEY)}),
+        _processor(manager),
+    )
+
+    if not field_has_default:
+        with pytest.raises(ValueError, match="Credentials #cred-1 .* not found"):
+            await anext(run)
+        return
+    assert [item async for item in run] == [("response", "ok")]
+    assert captured["input_data"]["credentials"] is None
+    assert "credentials" not in captured
 
 
 @pytest.mark.asyncio
@@ -128,7 +211,7 @@ async def test_execute_node_releases_first_lease_when_second_acquisition_fails()
             execute_node(
                 _node(block),
                 _entry(inputs),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -154,7 +237,7 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
         async for item in execute_node(
             _node(block),
             _entry({"codex_credentials": metadata}),
-            SimpleNamespace(creds_manager=manager),
+            _processor(manager),
         )
     ]
 
@@ -198,7 +281,7 @@ async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease()
                     {"credentials": _credential_metadata("consumer-injected")},
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         ]
 
@@ -239,7 +322,7 @@ async def test_revoked_owner_grant_fails_before_credential_access():
             execute_node(
                 _node(block, input_default={"credentials": owner_metadata}),
                 _entry({"credentials": owner_metadata}, execution_context=context),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -261,7 +344,7 @@ async def test_incomplete_owner_authorization_context_fails_closed():
                     {"credentials": _credential_metadata("owner-cred")},
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -298,7 +381,7 @@ async def test_owner_mode_rejects_user_controlled_code_before_credential_access(
                     {"credentials": _credential_metadata("owner-cred")},
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -340,7 +423,7 @@ async def test_owner_reference_only_credential_rejected_before_lookup():
                     {"codex_credentials": owner_metadata},
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -354,14 +437,9 @@ async def test_inactive_owner_reference_only_credential_stays_inactive_at_runtim
     manager.get = AsyncMock()
     manager.acquire_lease = AsyncMock()
     captured: dict[str, object] = {}
-    block = _block_with_credentials(
-        {"codex_credentials": CodexCredentialsInput},
-        captured,
-        reference_only_fields={"codex_credentials"},
-        credential_discriminators={
-            "codex_credentials": ("transport", {"codex": ProviderName.CODEX})
-        },
-    )
+    # "platform" is declared credential-free, so the attached owner
+    # reference is inactive for this run.
+    block = _discriminated_reference_block(captured)
     owner_metadata = _credential_metadata("stale-owner-cred")
     context = ExecutionContext(
         credentials_owner_id="owner-1",
@@ -391,7 +469,7 @@ async def test_inactive_owner_reference_only_credential_stays_inactive_at_runtim
                     },
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         ]
 
@@ -444,7 +522,7 @@ async def test_consumer_activating_owner_reference_only_credential_fails_closed(
                     },
                     execution_context=context,
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -525,7 +603,7 @@ async def test_platform_transport_ignores_attached_codex_credential(
             async for item in execute_node(
                 node,
                 _entry(inputs),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         ]
 
@@ -560,7 +638,7 @@ async def test_legacy_and_codex_transports_resolve_attached_codex_credential(
             async for item in execute_node(
                 _node(block),
                 _entry(inputs),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         ]
 
@@ -587,7 +665,7 @@ async def test_required_unmapped_credential_still_fails_closed():
                         "codex_credentials": _credential_metadata("cred-1"),
                     }
                 ),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -611,7 +689,7 @@ async def test_codex_credential_is_rejected_and_released_without_entitlement():
             execute_node(
                 _node(block),
                 _entry({"credentials": _credential_metadata("cred-1")}),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
@@ -644,13 +722,56 @@ async def test_credential_metadata_cannot_hide_authoritative_codex_provider():
             execute_node(
                 _node(block),
                 _entry({"credentials": disguised_metadata}),
-                SimpleNamespace(creds_manager=manager),
+                _processor(manager),
             )
         )
 
     gate.assert_not_awaited()
     lease.release.assert_awaited_once()
     assert "credentials" not in captured
+
+
+@pytest.mark.asyncio
+async def test_mcp_node_takes_the_run_credentials_from_its_input_mask():
+    credentials = OAuth2Credentials(
+        id="run-cred",
+        provider="mcp",
+        access_token=SecretStr("run-token"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+    lease = _lease(credentials)
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    block = MCPToolBlock()
+    node = _node(block)
+    node.input_default = {
+        "server_url": "https://mcp.example.com/mcp",
+        "selected_tool": "a_tool",
+        "tool_input_schema": {
+            "type": "object",
+            "properties": {"credentials": {"type": "string"}},
+        },
+        "credentials": {"id": "saved-cred", "provider": "mcp", "type": "oauth2"},
+    }
+    run_credentials = {"id": "run-cred", "provider": "mcp", "type": "oauth2"}
+
+    with patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool:
+        call_tool.return_value = "ok"
+        outputs = [
+            item
+            async for item in execute_node(
+                node,
+                _entry({"credentials": "a tool argument"}),
+                _processor(manager),
+                nodes_input_masks={"node-1": {"credentials": run_credentials}},
+            )
+        ]
+
+    assert outputs == [("result", "ok")]
+    manager.acquire_lease.assert_awaited_once_with("user-1", "run-cred")
+    assert call_tool.await_args is not None
+    assert call_tool.await_args.kwargs["authorization"] == "Bearer run-token"
 
 
 def _block_with_credentials(
@@ -698,17 +819,126 @@ def _block_with_credentials(
     return block
 
 
-def _node(block: MagicMock, *, input_default=None) -> MagicMock:
+def _node(block: MagicMock | MCPToolBlock, *, input_default=None) -> MagicMock:
     node = MagicMock()
     node.block = block
     node.input_default = input_default or {}
     return node
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("credentials_input", "credentials"),
+    [(CodexCredentialsInput, None), (OpenAIKeyInput, OPENAI_KEY)],
+    ids=["leased oauth", "api key"],
+)
+async def test_an_expert_run_refuses_a_credential_not_granted_to_it(
+    credentials_input: type[CredentialsMetaInput], credentials: Credentials | None
+):
+    # The grant is checked before any credential read or lease.
+    metadata = (
+        _metadata_of(credentials) if credentials else _credential_metadata("cred-1")
+    )
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=credentials)
+    manager.acquire_lease = AsyncMock()
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-other"])
+    block = _block_with_credentials({"credentials": credentials_input}, {})
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        pytest.raises(ValueError, match="not been granted to this expert"),
+    ):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry({"credentials": metadata}, expert_id="expert-1"),
+                _processor(manager),
+            )
+        )
+
+    db.expert_allowed_credential_ids.assert_awaited_once_with("user-1", "expert-1")
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expert_id", "granted", "system"),
+    [("expert-1", ["cred-1"], False), ("expert-1", [], True), (None, [], False)],
+    ids=["granted", "system credential", "personal run"],
+)
+async def test_a_granted_system_or_personal_credential_runs(
+    expert_id: str | None, granted: list[str], system: bool
+):
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=OPENAI_KEY)
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=granted)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        patch(
+            "backend.executor.manager.is_system_credential",
+            lambda credentials_id: system,
+        ),
+    ):
+        outputs = [
+            item
+            async for item in execute_node(
+                _node(block),
+                _entry({"credentials": _metadata_of(OPENAI_KEY)}, expert_id=expert_id),
+                _processor(manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    assert captured["credentials"] is OPENAI_KEY
+    if expert_id is None or system:
+        db.expert_allowed_credential_ids.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_expert_run_refuses_an_mcp_run_credential_not_granted_to_it():
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock()
+    db = MagicMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-other"])
+    block = MCPToolBlock()
+    node = _node(block)
+    node.input_default = {
+        "server_url": "https://mcp.example.com/mcp",
+        "selected_tool": "a_tool",
+    }
+    run_credentials = {"id": "run-cred", "provider": "mcp", "type": "oauth2"}
+
+    with (
+        patch("backend.executor.manager.experts_db", return_value=db),
+        patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
+        pytest.raises(ValueError, match="not been granted to this expert"),
+    ):
+        await anext(
+            execute_node(
+                node,
+                _entry({"credentials": run_credentials}, expert_id="expert-1"),
+                _processor(manager),
+                nodes_input_masks={"node-1": {"credentials": run_credentials}},
+            )
+        )
+
+    db.expert_allowed_credential_ids.assert_awaited_once_with("user-1", "expert-1")
+    manager.acquire_lease.assert_not_awaited()
+    call_tool.assert_not_awaited()
+
+
 def _entry(
     inputs: dict[str, object],
     *,
     execution_context: ExecutionContext | None = None,
+    expert_id: str | None = None,
 ) -> NodeExecutionEntry:
     return NodeExecutionEntry(
         user_id="user-1",
@@ -719,7 +949,7 @@ def _entry(
         node_id="node-1",
         block_id="block-1",
         inputs=inputs,
-        execution_context=execution_context or ExecutionContext(),
+        execution_context=execution_context or ExecutionContext(expert_id=expert_id),
     )
 
 
@@ -728,6 +958,15 @@ def _credential_metadata(credentials_id: str) -> dict[str, str | None]:
         "id": credentials_id,
         "provider": "codex",
         "type": "oauth2",
+        "title": None,
+    }
+
+
+def _metadata_of(credentials: Credentials) -> dict[str, str | None]:
+    return {
+        "id": credentials.id,
+        "provider": credentials.provider,
+        "type": credentials.type,
         "title": None,
     }
 

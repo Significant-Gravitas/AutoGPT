@@ -1,14 +1,13 @@
 """The collaboration rollout gates new subscriptions, not persisted execution work."""
 
 import json
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
-from backend.api import conn_manager, org_rollout, ws_api
+from backend.api import conn_manager, ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.model import WSMessage, WSMethod
 
@@ -16,9 +15,11 @@ from backend.api.model import WSMessage, WSMethod
 @pytest.fixture
 def subscriptions(monkeypatch, mocker):
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "false")
+    # The websocket server reads through the DatabaseManager (it has no Prisma),
+    # so the gate's default-team read and the execution lookup are patched there.
     default = mocker.patch.object(
-        org_rollout,
-        "get_user_default_team",
+        conn_manager,
+        "_user_default_team",
         AsyncMock(return_value=("personal", "default-team")),
     )
     manager = ConnectionManager()
@@ -27,7 +28,12 @@ def subscriptions(monkeypatch, mocker):
     )
     opened = mocker.patch.object(manager, "_open_subscription", AsyncMock())
     websocket = AsyncMock(spec=WebSocket)
-    meta = mocker.patch.object(conn_manager, "get_graph_execution_meta", AsyncMock())
+    meta = AsyncMock()
+    mocker.patch.object(
+        conn_manager,
+        "execution_db",
+        return_value=SimpleNamespace(get_graph_execution_meta=meta),
+    )
     return manager, websocket, meta, opened, live, default
 
 
@@ -77,7 +83,7 @@ async def test_disabled_rejects_shared_requested_or_resolved_scope(
     if kind == "execution":
         # This request has only an execution ID: the resource's saved scope
         # must be checked even though no org/team was supplied by the caller.
-        meta.assert_awaited_once_with("owner", "execution")
+        meta.assert_awaited_once_with(user_id="owner", execution_id="execution")
 
 
 @pytest.mark.parametrize("kind", ["execution", "graph"])
@@ -179,12 +185,6 @@ async def test_existing_shared_subscription_keeps_live_auth_after_flag_turns_off
     subscription = MagicMock()
     subscription.start = AsyncMock()
     mocker.patch.object(conn_manager, "_Subscription", return_value=subscription)
-
-    @asynccontextmanager
-    async def allowed(_scope):
-        yield True
-
-    mocker.patch.object(manager, "_execution_scope_barrier", allowed)
     forward = mocker.patch.object(manager, "_forward_exec_event", AsyncMock())
     await subscribe(subscriptions, "graph", "shared", "shared-team")
     on_message = subscription.start.await_args.args[0]

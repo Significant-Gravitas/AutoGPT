@@ -2694,7 +2694,10 @@ class TestPR16Transfers:
             status="SOURCE_APPROVED",
             source_approved_by=USER_ID,
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2705,7 +2708,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "SOURCE_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["sourceApprovedByUserId"] == USER_ID
         assert update_data["status"] == "SOURCE_APPROVED"
 
@@ -2720,7 +2725,10 @@ class TestPR16Transfers:
             status="TARGET_APPROVED",
             target_approved_by="user-target",
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2731,7 +2739,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "TARGET_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["targetApprovedByUserId"] == "user-target"
         assert update_data["status"] == "TARGET_APPROVED"
 
@@ -2740,14 +2750,14 @@ class TestPR16Transfers:
         pending = self._make_transfer_row(status="PENDING")
         self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
         self.mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
-        self.mock_prisma.transferrequest.update = AsyncMock()
+        self.mock_prisma.transferrequest.update_many = AsyncMock()
 
         from backend.api.features.transfers.db import approve_transfer
 
         with pytest.raises(ValueError, match="no longer active"):
             await approve_transfer("tr-1", USER_ID, "org-1")
 
-        self.mock_prisma.transferrequest.update.assert_not_awaited()
+        self.mock_prisma.transferrequest.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_transfer_moves_ownership(self):
@@ -2766,14 +2776,16 @@ class TestPR16Transfers:
             target_approved_by="user-target",
             completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=completed
+        )
         graph = MagicMock()
         graph.organizationId = "org-1"
         graph.version = 1
         graph.isActive = True
         self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
         self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
-        self.mock_prisma.agentgraph.update_many = AsyncMock()
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
         self.mock_prisma.agentgraphgrant.delete_many = AsyncMock(return_value=1)
         self.mock_prisma.libraryagent.update_many = AsyncMock(return_value=2)
@@ -2789,7 +2801,8 @@ class TestPR16Transfers:
 
         assert result.status == "COMPLETED"
         # Verify the resource was moved to target org, ALL versions, landing
-        # at org-home (teamId=None) so it's visible in the target org.
+        # at org-home (teamId=None) so it's visible in the target org, and
+        # only while the source org still owns it (#15271).
         self.mock_prisma.agentgraph.update_many.assert_called_once()
         move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
         assert move_call["data"]["organizationId"] == "org-2"
@@ -2828,6 +2841,13 @@ class TestPR16Transfers:
             kind="graph",
             include_paused=True,
         )
+        # Json columns must get SafeJson, not bare dicts (#15267).
+        from prisma import Json
+
+        assert self.mock_prisma.auditlog.create.call_count == 2
+        for call in self.mock_prisma.auditlog.create.call_args_list:
+            assert isinstance(call.kwargs["data"]["afterJson"], Json)
+            assert isinstance(call.kwargs["data"]["beforeJson"], Json)
 
     @pytest.mark.asyncio
     async def test_execute_transfer_rejects_paused_or_active_graph_schedule(self):
@@ -2865,7 +2885,7 @@ class TestPR16Transfers:
         self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
         self.mock_prisma.agentgraph.update_many = AsyncMock()
         self.mock_prisma.agentnode.count = AsyncMock(side_effect=[0, 1])
-        self.mock_prisma.transferrequest.update = AsyncMock()
+        self.mock_prisma.transferrequest.update_many = AsyncMock()
 
         from backend.api.features.transfers.db import execute_transfer
 
@@ -2879,7 +2899,46 @@ class TestPR16Transfers:
         assert incoming_filter["constantInput"]["path"] == ["graph_id"]
         assert incoming_filter["constantInput"]["equals"].data == GRAPH_ID
         self.mock_prisma.agentgraph.update_many.assert_not_awaited()
-        self.mock_prisma.transferrequest.update.assert_not_awaited()
+        self.mock_prisma.transferrequest.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_store_listing_move_is_scoped_to_source_org(self):
+        """A StoreListing move only matches while the source org owns it;
+        a zero-row move aborts and rejects the transfer (#15271)."""
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            resource_type="StoreListing",
+            resource_id="listing-1",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        listing = MagicMock()
+        listing.id = "listing-1"
+        listing.isDeleted = False
+        listing.owningOrgId = "org-1"
+        listing.agentGraphId = GRAPH_ID
+        self.mock_prisma.storelisting.find_unique = AsyncMock(return_value=listing)
+        self.mock_prisma.storelisting.find_first = AsyncMock(return_value=listing)
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=0)
+        graph = MagicMock(organizationId="org-1", version=1, isActive=True)
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.profile.find_unique = AsyncMock(return_value=MagicMock())
+        self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="no longer belongs"):
+            await execute_transfer(transfer_id="tr-1", user_id=USER_ID, org_id="org-1")
+
+        move_call = self.mock_prisma.storelisting.update_many.call_args.kwargs
+        assert move_call["where"] == {"id": "listing-1", "owningOrgId": "org-1"}
+        self.mock_prisma.auditlog.create.assert_not_called()
+        reject_call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert reject_call["data"] == {"status": "REJECTED"}
 
     @pytest.mark.asyncio
     async def test_execute_rejects_non_party_org(self):
@@ -2915,7 +2974,7 @@ class TestPR16Transfers:
         self.mock_prisma.orgmember.find_first = AsyncMock(
             side_effect=[live, live, None]
         )
-        self.mock_prisma.transferrequest.update = AsyncMock()
+        self.mock_prisma.transferrequest.update_many = AsyncMock()
 
         from backend.api.features.transfers.db import execute_transfer
 
@@ -2923,7 +2982,7 @@ class TestPR16Transfers:
             await execute_transfer("tr-1", USER_ID, "org-1")
 
         self.mock_prisma.agentgraph.update_many.assert_not_called()
-        self.mock_prisma.transferrequest.update.assert_not_awaited()
+        self.mock_prisma.transferrequest.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("dependency", ["expert", "preset", "webhook"])
@@ -2938,7 +2997,7 @@ class TestPR16Transfers:
         self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
         self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
         self.mock_prisma.agentgraph.update_many = AsyncMock()
-        self.mock_prisma.transferrequest.update = AsyncMock()
+        self.mock_prisma.transferrequest.update_many = AsyncMock()
         if dependency == "expert":
             self.mock_prisma.expertworkflow.count = AsyncMock(return_value=1)
             message = "active expert"
@@ -2955,7 +3014,7 @@ class TestPR16Transfers:
             await execute_transfer("tr-1", USER_ID, "org-1")
 
         self.mock_prisma.agentgraph.update_many.assert_not_awaited()
-        self.mock_prisma.transferrequest.update.assert_not_awaited()
+        self.mock_prisma.transferrequest.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_moves_listing_family_to_target_custodian(self):
@@ -2983,7 +3042,10 @@ class TestPR16Transfers:
             source_approved_by=USER_ID,
             target_approved_by="user-target",
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=completed
+        )
         self.mock_prisma.auditlog.create = AsyncMock()
 
         from backend.api.features.transfers.db import execute_transfer
@@ -3028,7 +3090,10 @@ class TestPR16Transfers:
         self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
 
         rejected = self._make_transfer_row(status="REJECTED")
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=rejected)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=rejected
+        )
 
         from backend.api.features.transfers.db import reject_transfer
 
@@ -3039,8 +3104,12 @@ class TestPR16Transfers:
         )
 
         assert result.status == "REJECTED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
-        assert update_data["status"] == "REJECTED"
+        call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert call["data"] == {"status": "REJECTED"}
+        # Conditional, so it can't overwrite a transfer that just completed.
+        assert call["where"]["status"] == {
+            "not_in": ["COMPLETED", "REJECTED", "CANCELLED"]
+        }
 
     @pytest.mark.asyncio
     async def test_list_transfers_returns_both_directions(self):
@@ -3797,12 +3866,7 @@ class TestReviewFindings:
 
         async def capture_update(*, where, data):
             update_capture.update(data)
-            result = self._make_transfer(
-                status=data.get("status", "SOURCE_APPROVED"),
-                sourceApprovedByUserId=USER_ID,
-                targetApprovedByUserId="user-target",
-            )
-            return result
+            return 1
 
         with (
             patch("backend.api.features.transfers.db.prisma") as mock_prisma,
@@ -3819,7 +3883,16 @@ class TestReviewFindings:
             mock_prisma.transferrequest.find_unique = AsyncMock(
                 return_value=source_approved
             )
-            mock_prisma.transferrequest.update = AsyncMock(side_effect=capture_update)
+            mock_prisma.transferrequest.update_many = AsyncMock(
+                side_effect=capture_update
+            )
+            mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+                side_effect=lambda **kwargs: self._make_transfer(
+                    status=update_capture.get("status", "SOURCE_APPROVED"),
+                    sourceApprovedByUserId=USER_ID,
+                    targetApprovedByUserId="user-target",
+                )
+            )
             mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
 
             from backend.api.features.transfers.db import approve_transfer

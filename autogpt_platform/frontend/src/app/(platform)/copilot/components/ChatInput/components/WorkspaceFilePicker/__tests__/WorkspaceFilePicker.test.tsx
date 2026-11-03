@@ -12,6 +12,7 @@ const mockFolders = vi.fn<() => { data?: { folders: unknown[] } }>(() => ({
   data: { folders: [] },
 }));
 vi.mock("@/app/api/__generated__/endpoints/workspace/workspace", () => ({
+  getListWorkspaceFoldersQueryKey: () => ["/api/workspace/folders"],
   listWorkspaceFiles: (...args: unknown[]) => mockListWorkspaceFiles(...args),
   useListWorkspaceFolders: () => mockFolders(),
 }));
@@ -46,8 +47,10 @@ describe("WorkspaceFilePicker", () => {
     );
 
     await screen.findByText("alpha.txt");
+    // The second argument pins the chat's org and team.
     expect(mockListWorkspaceFiles).toHaveBeenCalledWith(
       expect.objectContaining({ expert_id: "expert-a" }),
+      expect.objectContaining({ headers: expect.any(Object) }),
     );
   });
 
@@ -81,6 +84,7 @@ describe("WorkspaceFilePicker", () => {
     await waitFor(() => expect(screen.queryByText("alpha.txt")).toBeNull());
     expect(mockListWorkspaceFiles).toHaveBeenLastCalledWith(
       expect.objectContaining({ expert_id: "expert-b" }),
+      expect.objectContaining({ headers: expect.any(Object) }),
     );
   });
 

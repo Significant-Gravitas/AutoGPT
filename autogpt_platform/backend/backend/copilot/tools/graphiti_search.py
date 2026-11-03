@@ -2,31 +2,33 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
-from backend.copilot.graphiti._format import (
-    extract_episode_body,
-    extract_episode_body_raw,
-    extract_episode_timestamp,
-    extract_fact,
-    extract_temporal_validity,
-)
+from graphiti_core.edges import EntityEdge
+from graphiti_core.nodes import EpisodicNode
+
 from backend.copilot.graphiti.client import get_graphiti_client
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.lifecycle import (
     active_shared_search_filter,
     filter_active_shared_edges,
     filter_edges_by_scope,
 )
+from backend.copilot.graphiti.recall import recent_episodes, search_facts
+from backend.copilot.graphiti.recall_recheck import recheck
+from backend.copilot.graphiti.recall_render import episode_scope, render, render_episode
+from backend.copilot.graphiti.recall_stamp import record_recall
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.graphiti.scope_resolution import resolve_memory_scope
 from backend.copilot.graphiti.tiers import (
     MemoryTier,
     TierError,
+    TierTarget,
     merge_tiered,
     resolve_search_targets,
 )
 from backend.copilot.model import ChatSession
 from backend.data.tenancy import ResourceAccess
+from backend.util.background import spawn_background_task
 
 from .base import BaseTool
 from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
@@ -34,6 +36,8 @@ from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 _MAX_LIMIT = 50
+# Recent raw episodes returned next to the facts.
+_RECENT_EPISODES = 5
 
 
 def _search_config(limit: int):
@@ -119,12 +123,6 @@ class MemorySearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
-                session_id=session.session_id,
-            )
-
         if not query:
             return ErrorResponse(
                 message="A search query is required.",
@@ -144,6 +142,7 @@ class MemorySearchTool(BaseTool):
                 session_team_id=session.team_id,
                 expert_id=session.expert_id,
             )
+            personal_scope = await _personal_scope(user_id, session, targets)
         except TierError as exc:
             return ErrorResponse(message=exc.message, session_id=session.session_id)
         except ValueError:
@@ -161,60 +160,24 @@ class MemorySearchTool(BaseTool):
                 recent_episodes=[],
             )
 
-        now = datetime.now(timezone.utc)
-
-        async def _search_one(target):
-            client = await get_graphiti_client(target.group_id)
-            driver = getattr(client, "graph_driver", None) or getattr(
-                client, "driver", None
-            )
-            if target.tier == MemoryTier.personal:
-                edge_results, episodes = await asyncio.gather(
-                    client.search_(
-                        query=query,
-                        config=_search_config(limit),
-                        group_ids=[target.group_id],
-                    ),
-                    client.retrieve_episodes(
-                        reference_time=now,
-                        group_ids=[target.group_id],
-                        last_n=5,
-                    ),
-                )
-                edges = edge_results.edges if edge_results is not None else []
-                if scope:
-                    edges = await filter_edges_by_scope(
-                        target.group_id, edges, scope, driver=driver
-                    )
-                return edges, episodes
-            edge_results = await client.search_(
-                query=query,
-                config=_search_config(_MAX_LIMIT),
-                group_ids=[target.group_id],
-                search_filter=active_shared_search_filter(),
-            )
-            edges = edge_results.edges if edge_results is not None else []
-            active_edges = await filter_active_shared_edges(
-                target.group_id,
-                edges,
-                driver=driver,
-            )
-            if scope:
-                active_edges = await filter_edges_by_scope(
-                    target.group_id, active_edges, scope, driver=driver
-                )
-            return active_edges, []
-
         # Per-tier failures are non-fatal — a flaky shared graph must not
         # sink a personal search. Only surface "unavailable" when every
         # tier failed.
         results = await asyncio.gather(
-            *(_search_one(t) for t in targets), return_exceptions=True
+            *(
+                (
+                    _search_personal(personal_scope, query, limit, scope)
+                    if personal_scope is not None and target.tier == MemoryTier.personal
+                    else _search_shared(target, query, scope)
+                )
+                for target in targets
+            ),
+            return_exceptions=True,
         )
 
-        personal_edges: list = []
+        personal_edges: list[EntityEdge] = []
         personal_eps: list[str] = []
-        shared_edges: list[tuple[str | None, list]] = []
+        shared_edges: list[tuple[str | None, list[EntityEdge]]] = []
         shared_eps: list[tuple[str | None, list[str]]] = []
         any_ok = False
 
@@ -244,9 +207,14 @@ class MemorySearchTool(BaseTool):
             )
 
         merged_facts = merge_tiered(personal_edges, shared_edges, limit)
+        if personal_scope is not None:
+            # Only the personal facts shown count as recalled: they live in
+            # the personal graph, and shared-tier ratification is an admin's.
+            _count_hits(
+                personal_scope, [edge for edge, label in merged_facts if label is None]
+            )
         facts = [
-            f"{_label_prefix(label)}{_edge_to_fact_line(e)}"
-            for e, label in merged_facts
+            f"{_label_prefix(label)}{render(edge)}" for edge, label in merged_facts
         ]
 
         merged_eps = merge_tiered(personal_eps, shared_eps, limit)
@@ -281,64 +249,83 @@ class MemorySearchTool(BaseTool):
         )
 
 
+async def _personal_scope(
+    user_id: str, session: ChatSession, targets: list[TierTarget]
+) -> MemoryScope | None:
+    """The scope the personal tier is searched, rechecked and stamped in;
+    None when the search reads no personal tier."""
+    if not any(target.tier == MemoryTier.personal for target in targets):
+        return None
+    return await resolve_memory_scope(
+        user_id, session.expert_id, session.organization_id
+    )
+
+
+async def _search_personal(
+    memory_scope: MemoryScope, query: str, limit: int, scope: str
+) -> tuple[list[EntityEdge], list[EpisodicNode]]:
+    """Personal facts and recent episodes, read through the recall policy."""
+    edges, episodes = await asyncio.gather(
+        search_facts(memory_scope, query, limit=limit),
+        recent_episodes(memory_scope, _RECENT_EPISODES),
+    )
+    if scope and edges:
+        client = await get_graphiti_client(memory_scope.group_id)
+        edges = await filter_edges_by_scope(
+            memory_scope.group_id, edges, scope, driver=client.driver
+        )
+    # The last read before rendering: a forget that answered while the
+    # search ran is not shown (``recall_recheck.py``).
+    return await recheck(memory_scope, edges, episodes)
+
+
+async def _search_shared(
+    target: TierTarget, query: str, scope: str
+) -> tuple[list[EntityEdge], list[EpisodicNode]]:
+    """A shared tier's ratified, unretracted facts; shared tiers keep no
+    episodes for search."""
+    client = await get_graphiti_client(target.group_id)
+    edge_results = await client.search_(
+        query=query,
+        config=_search_config(_MAX_LIMIT),
+        group_ids=[target.group_id],
+        search_filter=active_shared_search_filter(),
+    )
+    edges = edge_results.edges if edge_results is not None else []
+    active_edges = await filter_active_shared_edges(
+        target.group_id, edges, driver=client.driver
+    )
+    if scope:
+        active_edges = await filter_edges_by_scope(
+            target.group_id, active_edges, scope, driver=client.driver
+        )
+    return active_edges, []
+
+
 def _label_prefix(label: str | None) -> str:
     """Render a provenance label as a bracketed prefix (empty for personal)."""
     return f"[{label}] " if label else ""
 
 
-def _edge_to_fact_line(e) -> str:
-    fact = extract_fact(e)
-    valid_from, valid_to = extract_temporal_validity(e)
-    return f"{fact} (valid: {valid_from} — {valid_to})"
+def _episode_lines(episodes: list[EpisodicNode], scope: str) -> list[str]:
+    """Render recent episodes. Scope hard-filter: when a scope is requested,
+    drop episodes whose MemoryEnvelope names a different one (plain
+    conversation counts as ``real:global``)."""
+    return [
+        render_episode(ep) for ep in episodes if not scope or episode_scope(ep) == scope
+    ]
 
 
-def _episode_lines(episodes, scope: str) -> list[str]:
-    """Format (and, when a scope is requested, hard-filter) recent episodes."""
-    if scope:
-        return _filter_episodes_by_scope(episodes, scope)
-    return _format_episodes(episodes)
+def _count_hits(memory_scope: MemoryScope, edges: list[EntityEdge]) -> None:
+    """Count the returned facts as used, so a tentative one can be ratified,
+    and stamp the recall on each (``recall_stamp.record_recall``).
 
-
-def _format_edges(edges) -> list[str]:
-    return [_edge_to_fact_line(e) for e in edges]
-
-
-def _format_episodes(episodes) -> list[str]:
-    results = []
-    for ep in episodes:
-        ts = extract_episode_timestamp(ep)
-        body = extract_episode_body(ep)
-        results.append(f"[{ts}] {body}")
-    return results
-
-
-def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
-    """Filter episodes by scope — hard filter on MemoryEnvelope JSON content.
-
-    Episodes that are plain conversation text (not JSON envelopes) are
-    included by default since they have no scope metadata and belong
-    to the implicit ``real:global`` scope.
-
-    Uses ``extract_episode_body_raw`` (no truncation) for JSON parsing
-    so that long MemoryEnvelope payloads are parsed correctly.
+    Detached, like warm context's hit hook: the answer never waits on Redis
+    or on the stamp.
     """
-    import json
-
-    results = []
-    for ep in episodes:
-        raw_body = extract_episode_body_raw(ep)
-        try:
-            data = json.loads(raw_body)
-            if not isinstance(data, dict):
-                raise TypeError("non-dict JSON")
-            ep_scope = data.get("scope", "real:global")
-            if ep_scope != scope:
-                continue
-        except (json.JSONDecodeError, TypeError):
-            # Not JSON or non-dict JSON — plain conversation episode, treat as real:global
-            if scope != "real:global":
-                continue
-        display_body = extract_episode_body(ep)
-        ts = extract_episode_timestamp(ep)
-        results.append(f"[{ts}] {display_body}")
-    return results
+    if not edges:
+        return
+    spawn_background_task(
+        record_recall(memory_scope, [edge.uuid for edge in edges]),
+        name=f"memory-search-hits-{memory_scope.owner_user_id[:12]}",
+    )

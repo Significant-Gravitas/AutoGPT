@@ -5,9 +5,9 @@ org's shared tiers while the hold buffer was on, and either:
 
 - **approve** — ratify the edge ``tentative`` → ``active`` by reusing the dream
   ratification status-flip (``_promote_if_tentative``); or
-- **reject** — soft-retract the edge by reusing ``memory_forget``'s supersede
-  path (``mark_edges_superseded``), which sets ``expired_at`` + an auditable
-  ``status``/``expiration_reason``.
+- **reject** — soft-retract the edge with the dream's guarded supersede write
+  (``guarded_writes.supersede_unless_recalled``), which sets ``expired_at`` + an
+  auditable ``status``/``expiration_reason`` on a fact that is still live.
 
 Scope is strictly the org group (``org_<id>``) plus every team group
 (``team_<id>``) of *this* org. Personal tiers (``user_<id>``) are never
@@ -23,10 +23,14 @@ from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.graphiti.client import derive_org_group_id, derive_team_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.guarded_writes import (
+    WriteOutcome,
+    supersede_unless_recalled,
+)
+from backend.copilot.graphiti.recall_stamp import RecallProtection
 from backend.copilot.graphiti.tiers import MemoryTier
-from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 from backend.data.db import prisma
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .memory_model import (
     ActiveMemoryListResponse,
@@ -269,7 +273,7 @@ async def approve_held_memory(
     group_id, tier, team_id = located
     driver = _open_driver(group_id)
     try:
-        applied = await _promote_if_tentative(
+        outcome = await _promote_if_tentative(
             driver, memory_id, actor_user_id=actor_user_id
         )
     finally:
@@ -277,7 +281,7 @@ async def approve_held_memory(
     return MemoryActionResult(
         id=memory_id,
         action="approve",
-        applied=applied,
+        applied=_applied(outcome, memory_id),
         tier=tier.value,
         team_id=team_id,
     )
@@ -286,7 +290,7 @@ async def approve_held_memory(
 async def reject_held_memory(
     org_id: str, memory_id: str, actor_user_id: str
 ) -> MemoryActionResult:
-    """Retract a held memory via memory_forget's soft-retract (supersede)."""
+    """Retract a held memory with the guarded supersede write."""
     located = await _locate_held_edge(org_id, memory_id)
     if located is None:
         raise NotFoundError(
@@ -295,20 +299,15 @@ async def reject_held_memory(
     group_id, tier, team_id = located
     driver = _open_driver(group_id)
     try:
-        succeeded, _failed = await mark_edges_superseded(
-            driver,
-            [memory_id],
-            reason=_REJECT_REASON,
-            new_status="superseded",
-            user_id=actor_user_id,
-            group_id=group_id,
+        [outcome] = await _supersede(
+            driver, memory_id, group_id, _REJECT_REASON, actor_user_id
         )
     finally:
         await driver.close()
     return MemoryActionResult(
         id=memory_id,
         action="reject",
-        applied=memory_id in succeeded,
+        applied=_applied(outcome, memory_id),
         tier=tier.value,
         team_id=team_id,
     )
@@ -325,20 +324,43 @@ async def revoke_active_memory(
     group_id, tier, team_id = located
     driver = _open_driver(group_id)
     try:
-        succeeded, _failed = await mark_edges_superseded(
-            driver,
-            [memory_id],
-            reason=_REVOKE_REASON,
-            new_status="superseded",
-            user_id=actor_user_id,
-            group_id=group_id,
+        [outcome] = await _supersede(
+            driver, memory_id, group_id, _REVOKE_REASON, actor_user_id
         )
     finally:
         await driver.close()
     return MemoryActionResult(
         id=memory_id,
         action="revoke",
-        applied=memory_id in succeeded,
+        applied=_applied(outcome, memory_id),
         tier=tier.value,
         team_id=team_id,
     )
+
+
+async def _supersede(
+    driver: AutoGPTFalkorDriver,
+    memory_id: str,
+    group_id: str,
+    reason: str,
+    actor_user_id: str,
+) -> list[WriteOutcome]:
+    """An admin's soft-retract: no recall protection, since the admin says the
+    fact is wrong, and only ever over a live fact of this group."""
+    return await supersede_unless_recalled(
+        driver,
+        [memory_id],
+        reason=reason,
+        new_status="superseded",
+        group_id=group_id,
+        protection=RecallProtection(),
+        user_id=actor_user_id,
+    )
+
+
+def _applied(outcome: WriteOutcome, memory_id: str) -> bool:
+    """Whether the write changed the memory. A write that raised may still
+    land, so its unknown outcome is an error to retry, never a no-op."""
+    if outcome is WriteOutcome.UNKNOWN:
+        raise DatabaseError(f"Memory {memory_id} may not have been updated; try again")
+    return outcome is WriteOutcome.CHANGED

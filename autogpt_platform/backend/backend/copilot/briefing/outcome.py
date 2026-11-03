@@ -70,6 +70,7 @@ def compose_run_outcome(
         ),
         schedule_id=execution.schedule_id,
         webhook_id=execution.webhook_id,
+        trigger_source=execution.trigger_source,
     )
 
 

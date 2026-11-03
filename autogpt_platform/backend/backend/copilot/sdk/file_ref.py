@@ -14,7 +14,7 @@ Protocol
     - ``workspace://<file_id>#<mime>`` — same, MIME hint is ignored for reads
     - ``workspace:///<path>`` — workspace file by virtual path
     - ``/absolute/local/path`` — ephemeral or sdk_cwd file (validated by
-      :func:`~backend.copilot.sdk.tool_adapter.is_allowed_local_path`)
+      :func:`~backend.copilot.context.resolve_allowed_local_path`)
     - Any absolute path that resolves inside the E2B sandbox
       (``/home/user/...``) when a sandbox is active
 
@@ -33,7 +33,6 @@ Examples
 
 import itertools
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -42,9 +41,10 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
-    is_allowed_local_path,
+    resolve_allowed_local_path,
     resolve_sandbox_path,
 )
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.util.file import parse_workspace_uri
 from backend.util.file_content_parser import (
@@ -96,6 +96,16 @@ class FileRef:
 # ---------------------------------------------------------------------------
 # Public API  (top-down: main functions first, helpers below)
 # ---------------------------------------------------------------------------
+
+
+def text_outside_file_refs(text: str) -> str | None:
+    """Return *text* with every ``@@agptfile:`` reference cut out.
+
+    Returns None when *text* is nothing but references, since the expanded
+    content then stands in for the whole text.
+    """
+    rest = _FILE_REF_RE.sub(" ", text)
+    return rest if rest.strip() else None
 
 
 def parse_file_ref(text: str) -> FileRef | None:
@@ -159,12 +169,12 @@ async def read_file_bytes(
             )
         return data
 
-    if is_allowed_local_path(plain, get_sdk_cwd()):
-        resolved = os.path.realpath(os.path.expanduser(plain))
+    resolved = resolve_allowed_local_path(plain, get_sdk_cwd())
+    if resolved is not None:
         try:
             # Read with a one-byte overshoot to detect files that exceed the limit
             # without a separate os.path.getsize call (avoids TOCTOU race).
-            with open(resolved, "rb") as fh:
+            with open(resolved, "rb", opener=open_no_follow) as fh:
                 data = fh.read(_MAX_BARE_REF_BYTES + 1)
             if len(data) > _MAX_BARE_REF_BYTES:
                 raise ValueError(

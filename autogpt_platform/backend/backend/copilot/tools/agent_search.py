@@ -15,6 +15,7 @@ from backend.copilot.tracking import track_library_check_outcome
 from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
+from .external_scope import in_tenant
 from .models import (
     AgentInfo,
     AgentsFoundResponse,
@@ -40,8 +41,14 @@ async def search_agents(
     include_graph: bool = False,
     organization_id: str | None = None,
     team_id: str | None = None,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
-    """Search for agents in marketplace or user library."""
+    """Search for agents in marketplace or user library.
+
+    Library results are the rows in exactly the ``organization_id`` /
+    ``team_id`` scope; ``tenant`` also confines them to one organization (see
+    ``external_scope``).
+    """
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
@@ -50,8 +57,9 @@ async def search_agents(
             session_id,
             user_id,
             include_graph,
-            organization_id,
-            team_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            tenant=tenant,
         )
 
 
@@ -124,6 +132,7 @@ async def _search_library(
     include_graph: bool = False,
     organization_id: str | None = None,
     team_id: str | None = None,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Search user's library agents by name/description.
 
@@ -150,7 +159,11 @@ async def _search_library(
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(
-                user_id, query, organization_id, team_id
+                user_id,
+                query,
+                tenant,
+                organization_id=organization_id,
+                team_id=team_id,
             )
             if agent:
                 agents.append(agent)
@@ -176,7 +189,7 @@ async def _search_library(
                 team_id_restriction=team_id,
             )
             for agent in results.agents:
-                if _is_exact_library_scope(agent, organization_id, team_id):
+                if _is_visible(agent, organization_id, team_id, tenant):
                     agents.append(_library_agent_to_info(agent))
     except NotFoundError:
         pass
@@ -371,6 +384,18 @@ def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
     )
 
 
+def _is_visible(
+    agent: LibraryAgent,
+    organization_id: str | None,
+    team_id: str | None,
+    tenant: str | None,
+) -> bool:
+    """In the chat's exact scope and, for an External API call, its tenant."""
+    return in_tenant(agent.organization_id, tenant) and _is_exact_library_scope(
+        agent, organization_id, team_id
+    )
+
+
 def _is_exact_library_scope(
     agent: LibraryAgent,
     organization_id: str | None,
@@ -402,6 +427,7 @@ async def search_library_for_creation(
     user_id: str | None,
     organization_id: str | None = None,
     team_id: str | None = None,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Hybrid (semantic + lexical) library search used by the create-agent
     similarity gate.
@@ -498,7 +524,11 @@ async def search_library_for_creation(
         )
 
     agents = await _load_and_format_matched_agents(
-        matches, user_id, organization_id, team_id
+        matches,
+        user_id,
+        tenant,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     agents = agents[:5]
 
@@ -550,6 +580,8 @@ async def search_library_for_creation(
 async def _load_and_format_matched_agents(
     matches: list[dict[str, Any]],
     user_id: str,
+    tenant: str | None = None,
+    *,
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> list[AgentInfo]:
@@ -570,8 +602,6 @@ async def _load_and_format_matched_agents(
                 organization_id=organization_id,
                 team_id_restriction=team_id,
             )
-            if not _is_exact_library_scope(library_agent, organization_id, team_id):
-                continue
         except NotFoundError:
             continue
         except DatabaseError:
@@ -583,6 +613,8 @@ async def _load_and_format_matched_agents(
             )
             continue
 
+        if not _is_visible(library_agent, organization_id, team_id, tenant):
+            continue
         info = _library_agent_to_info(library_agent)
         info.match_score = match.get("combined_score") or 0.0
         agents.append(info)
@@ -596,6 +628,7 @@ async def lookup_library_agent_by_id(
     include_graph: bool = False,
     organization_id: str | None = None,
     team_id: str | None = None,
+    tenant: str | None = None,
 ) -> ToolResponseBase:
     """Strict direct resolution of one library agent by id.
 
@@ -611,7 +644,11 @@ async def lookup_library_agent_by_id(
 
     try:
         agent = await _get_library_agent_by_id(
-            user_id, agent_id, organization_id, team_id
+            user_id,
+            agent_id,
+            tenant,
+            organization_id=organization_id,
+            team_id=team_id,
         )
     except DatabaseError as e:
         logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
@@ -661,6 +698,8 @@ async def lookup_library_agent_by_id(
 async def _get_library_agent_by_id(
     user_id: str,
     agent_id: str,
+    tenant: str | None = None,
+    *,
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> AgentInfo | None:
@@ -669,6 +708,9 @@ async def _get_library_agent_by_id(
     Tries multiple lookup strategies:
     1. First by graph_id (AgentGraph primary key)
     2. Then by library agent ID (LibraryAgent primary key)
+
+    An agent outside the exact ``organization_id`` / ``team_id`` scope or
+    outside ``tenant`` counts as not found.
     """
     lib_db = library_db()
 
@@ -680,7 +722,7 @@ async def _get_library_agent_by_id(
             team_id_restriction=team_id,
             exact_scope=True,
         )
-        if agent and _is_exact_library_scope(agent, organization_id, team_id):
+        if agent and _is_visible(agent, organization_id, team_id, tenant):
             return _library_agent_to_info(agent)
     except NotFoundError:
         pass
@@ -699,7 +741,7 @@ async def _get_library_agent_by_id(
             organization_id=organization_id,
             team_id_restriction=team_id,
         )
-        if agent and _is_exact_library_scope(agent, organization_id, team_id):
+        if agent and _is_visible(agent, organization_id, team_id, tenant):
             return _library_agent_to_info(agent)
     except NotFoundError:
         pass

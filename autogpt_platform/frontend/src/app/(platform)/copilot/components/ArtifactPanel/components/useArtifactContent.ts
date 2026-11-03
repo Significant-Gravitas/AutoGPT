@@ -5,6 +5,7 @@ import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { fetchArtifactResource } from "../artifactRequest";
+import { validatePDFBlob } from "./validatePDFBlob";
 
 // Cap on cached text artifacts. Long sessions with many large artifacts
 // would otherwise hold every opened one in memory.
@@ -256,8 +257,9 @@ export function useArtifactContent(
       setPdfUrl(null);
       fetchArtifactResponse(artifact)
         .then((res) => res.blob())
-        .then((blob) => {
-          objectUrl = URL.createObjectURL(blob);
+        .then(async (blob) => {
+          const pdfBlob = await validatePDFBlob(blob);
+          objectUrl = URL.createObjectURL(pdfBlob);
           if (cancelled) {
             URL.revokeObjectURL(objectUrl);
             objectUrl = null;

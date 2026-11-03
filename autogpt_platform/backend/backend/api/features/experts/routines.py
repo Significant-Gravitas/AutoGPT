@@ -46,15 +46,16 @@ from backend.api.features.experts.routine_jobs import (
     spread_cron,
 )
 from backend.api.features.experts.routine_scope import (
-    RoutineNotFoundError,
     personal_owner_where,
     personal_routine_scope,
     saved_personal_org,
     validate_personal_session,
 )
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
+from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,15 @@ async def get_routine(
     expert_id: str | None = None,
     organization_id: str | None = None,
 ) -> ExpertRoutine | None:
-    """Load trusted worker provenance, or an explicitly scoped owner's record."""
+    """Load one routine by id: trusted worker provenance, or an explicitly
+    scoped owner's record.
+
+    Unscoped (no ``user_id``) on purpose for the fire path: the caller is the
+    scheduler dispatching a job it already persisted, and the job's own
+    ``user_id`` is what every ownership check downstream runs against. A
+    caller acting for a user passes the owner and organization, which goes
+    through ``_owned_routine``.
+    """
     if user_id is not None:
         try:
             row = await _owned_routine(user_id, expert_id, routine_id, organization_id)
@@ -139,15 +148,6 @@ async def get_routine(
             where={"id": routine_id}
         )
     return await to_model(row) if row is not None else None
-
-
-class RoutineUnansweredAsksError(Exception):
-    """The routine still has questions nobody answered.
-
-    A seeded proposal names what it needs to know — which repo, which inbox,
-    what hour. Scheduling it before those are answered would run it against
-    guesses on somebody's account, every day, unattended.
-    """
 
 
 async def install_routines(
@@ -294,6 +294,15 @@ async def enable_routine(
     if saved_org is not None:
         await personal_routine_scope(user_id, saved_org, "create")
         await validate_personal_session(user_id, saved_org, pinned)
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -311,7 +320,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.
@@ -463,6 +472,17 @@ async def disable_routine(
     )
     if updated is None:
         raise RoutineNotFoundError(routine_id)
+    # Switched off is no longer paused for failing: its jobs are gone. The
+    # routine is off whatever this does, so a failure is logged, not raised;
+    # a streak left behind ends on its first run once switched back on.
+    try:
+        await forget_routine(user_id, row.id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of switched-off routine %s",
+            row.id,
+            exc_info=True,
+        )
     return await to_model(updated)
 
 

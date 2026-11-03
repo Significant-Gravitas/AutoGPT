@@ -21,11 +21,6 @@ async def server():  # type: ignore[override]
     return None
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    yield
-
-
 @pytest.fixture
 def baseline_io(
     monkeypatch: pytest.MonkeyPatch, baseline_offline: None
@@ -60,8 +55,8 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         ),
         "_build_system_prompt": ("System prompt", None),
         "build_turn_budget_block": "",
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
         "download_transcript": None,
     }.items():

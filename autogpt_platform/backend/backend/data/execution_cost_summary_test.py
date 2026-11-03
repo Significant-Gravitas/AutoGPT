@@ -7,7 +7,14 @@ from uuid import uuid4
 import pytest
 from prisma.enums import AgentExecutionStatus
 from prisma.errors import UniqueViolationError
-from prisma.models import AgentGraph, AgentGraphExecution, Expert, User
+from prisma.models import (
+    AgentGraph,
+    AgentGraphExecution,
+    Expert,
+    Organization,
+    OrgMember,
+    User,
+)
 
 from backend.data.execution_cost_summary import get_user_cost_summary
 from backend.util.json import SafeJson
@@ -27,6 +34,16 @@ async def _create_user(user_id: str) -> None:
         )
     except UniqueViolationError:
         pass
+
+
+async def _create_member_org(user_id: str) -> str:
+    org = await Organization.prisma().create(
+        data={"name": "Cost summary test", "slug": f"cost-summary-{uuid4()}"}
+    )
+    await OrgMember.prisma().create(
+        data={"orgId": org.id, "userId": user_id, "isOwner": True}
+    )
+    return org.id
 
 
 async def _create_graph(graph_id: str, user_id: str, name: str = "Test") -> None:
@@ -73,6 +90,7 @@ async def _create_run(
     is_dry_run: bool = False,
     created_at: datetime | None = None,
     expert_id: str | None = None,
+    organization_id: str | None = None,
 ) -> None:
     # `walltime` is the key the executor actually persists — it comes from
     # GraphExecutionStats.model_dump() in update_graph_execution_stats().
@@ -98,6 +116,7 @@ async def _create_run(
             "endedAt": started_at + timedelta(seconds=duration or 0),
             "stats": SafeJson(stats),
             **({"expertId": expert_id} if expert_id else {}),
+            **({"organizationId": organization_id} if organization_id else {}),
         }
     )
 
@@ -405,6 +424,47 @@ async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
         assert sum(row.cost_cents for row in summary.by_expert) == summary.total_cents
     finally:
         await _cleanup(user_id, [graph_id], expert_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_organization_counts_only_its_own_runs(
+    server: SpinTestServer,
+):
+    """Another organization's runs and untagged ones stay out, so no run is
+    counted in two organizations' spend; untagged runs count only without an
+    organization."""
+    user_id = f"cs-org-{uuid4()}"
+    graph_id = f"cs-g-o-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    # A run tagged with an organization needs its owner to be a member of it.
+    org_a, org_b = [await _create_member_org(user_id) for _ in range(2)]
+    try:
+        now = datetime.now(timezone.utc)
+        for organization_id, cost in ((org_a, 100), (org_b, 20), (None, 3)):
+            await _create_run(
+                run_id=f"run-{uuid4()}",
+                user_id=user_id,
+                graph_id=graph_id,
+                status=AgentExecutionStatus.COMPLETED,
+                cost_cents=cost,
+                started_at=now - timedelta(hours=1),
+                organization_id=organization_id,
+            )
+        window = {"since": now - timedelta(days=1), "until": now + timedelta(minutes=1)}
+
+        in_a = await get_user_cost_summary(
+            user_id=user_id, organization_id=org_a, **window
+        )
+        untagged = await get_user_cost_summary(user_id=user_id, **window)
+
+        assert (in_a.total_cents, in_a.run_count) == (100, 1)
+        assert [r.cost_cents for r in in_a.top_runs] == [100]
+        assert sum(day.cost_cents for day in in_a.daily) == 100
+        assert (untagged.total_cents, untagged.run_count) == (3, 1)
+    finally:
+        await _cleanup(user_id, [graph_id])
+        await Organization.prisma().delete_many(where={"id": {"in": [org_a, org_b]}})
 
 
 @pytest.mark.asyncio(loop_scope="session")

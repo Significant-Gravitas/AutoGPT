@@ -33,13 +33,16 @@ _USERNAME_RE = re.compile(r"box-[0-9a-f]{16}")
 class Owner:
     """*user_id* is who the box runs for, and is always audited.  Their
     credentials are swapped in only if the backend said so (*swaps*): it does
-    for CoPilot boxes, not for a block running a graph someone else wrote."""
+    for CoPilot boxes, not for a block running a graph someone else wrote.
+    *box* is the proxy credential the connection presented, which the backend
+    is told with every value it is asked for: its own record of that box is
+    what decides whether it gets one."""
 
     label: str
     user_id: Optional[str]
     sandbox_id: Optional[str]
     swaps: bool = False
-    organization_id: Optional[str] = None
+    box: str = ""
 
     @property
     def swap_user_id(self) -> Optional[str]:
@@ -82,5 +85,5 @@ class OwnerDirectory:
             sandbox_id=record.get("sandbox_id") or None,
             # Fail closed: only an explicit true.
             swaps=record.get("swaps") is True,
-            organization_id=record.get("organization_id") or None,
+            box=username,
         )

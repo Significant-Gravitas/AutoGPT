@@ -22,12 +22,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    """No-op — org tests don't create real graphs."""
-    yield
-
-
 @pytest.fixture(autouse=True)
 def mock_live_tenancy_boundaries(mocker, request):
     live_ctx = RequestContext(
@@ -83,7 +77,6 @@ def mock_live_tenancy_boundaries(mocker, request):
 
     cls_name = request.node.cls.__name__ if request.node.cls is not None else ""
     live_team_classes = {
-        "TestTeamManagementByTeamId",
         "TestTeamListVisibility",
         "TestTeamMembersVisibility",
     }

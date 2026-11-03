@@ -123,7 +123,10 @@ function SheetBody({
 
   if (sheet.isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-5">
+      <div
+        data-slot="skill-learning-sheet-loading"
+        className="flex flex-col gap-3 p-5"
+      >
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-24 w-full" />
       </div>
@@ -131,7 +134,7 @@ function SheetBody({
   }
   if (sheet.isError || !sheet.detail) {
     return (
-      <div className="p-5">
+      <div data-slot="skill-learning-sheet-error" className="p-5">
         <ErrorCard
           context="this skill's learning history"
           hint="We could not load learning details for this skill."
@@ -146,8 +149,12 @@ function SheetBody({
   const restorable = version ? canRestore(version, currentId) : false;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      data-slot="skill-learning-sheet-body"
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div
+        data-slot="skill-learning-sheet-scroll"
         className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
         ref={restoreScroll}
         onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
@@ -176,7 +183,10 @@ function SheetBody({
               ))}
             </TabsLineList>
             <TabsLineContent value="summary">
-              <div className="flex flex-col gap-4 pt-3">
+              <div
+                data-slot="skill-learning-sheet-summary-tab"
+                className="flex flex-col gap-4 pt-3"
+              >
                 {detail.open_decision ? (
                   <DecisionView
                     proposal={detail.open_decision}
@@ -202,7 +212,10 @@ function SheetBody({
               </div>
             </TabsLineContent>
             <TabsLineContent value="changes">
-              <div className="pt-3">
+              <div
+                data-slot="skill-learning-sheet-changes-tab"
+                className="pt-3"
+              >
                 <ChangesView
                   version={version}
                   versions={detail.versions ?? []}
@@ -211,7 +224,10 @@ function SheetBody({
               </div>
             </TabsLineContent>
             <TabsLineContent value="sources">
-              <div className="pt-3">
+              <div
+                data-slot="skill-learning-sheet-sources-tab"
+                className="pt-3"
+              >
                 <SourcesView
                   version={version}
                   isBusy={sheet.isBusy}
@@ -220,7 +236,10 @@ function SheetBody({
               </div>
             </TabsLineContent>
             <TabsLineContent value="history">
-              <div className="pt-3">
+              <div
+                data-slot="skill-learning-sheet-history-tab"
+                className="pt-3"
+              >
                 <HistoryView
                   versions={detail.versions ?? []}
                   currentVersionId={currentId}
@@ -237,7 +256,10 @@ function SheetBody({
         )}
       </div>
       {!editing && version && version.id !== currentId ? (
-        <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
+        <div
+          data-slot="skill-learning-sheet-footer"
+          className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3"
+        >
           <Button
             variant="primary"
             size="small"

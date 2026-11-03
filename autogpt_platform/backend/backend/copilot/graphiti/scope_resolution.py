@@ -23,6 +23,24 @@ async def resolve_memory_scope(
     return scope
 
 
+async def scope_for_key(
+    user_id: str, expert_id: str | None, scope_key: str
+) -> MemoryScope:
+    """The memory scope of *user_id* (and *expert_id*) whose ``scope_key`` is
+    *scope_key*: the owner's personal one, else the scope of the saved
+    organization the owner's memory was written in (``MemoryScopeRegistry``).
+    A record that names a scope only by its key (a ``DreamPass`` row) is
+    rebuilt this way, never as the owner's personal scope. Raises
+    ``ValueError`` for a key no scope of the owner has."""
+    scope = MemoryScope.build(user_id, expert_id)
+    if scope.scope_key == scope_key:
+        return scope
+    for registered in await memory_db().list_memory_scopes(user_id):
+        if registered.scope_key == scope_key and registered.expert_id == expert_id:
+            return registered
+    raise ValueError("No memory scope of its owner has this key")
+
+
 async def memory_organization_id(scope: MemoryScope) -> str:
     if scope.organization_id is not None:
         return scope.organization_id

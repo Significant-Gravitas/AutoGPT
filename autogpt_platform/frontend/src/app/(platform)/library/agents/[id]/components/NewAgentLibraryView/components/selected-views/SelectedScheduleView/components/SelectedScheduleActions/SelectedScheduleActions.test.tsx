@@ -1,7 +1,6 @@
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./useSelectedScheduleActions", () => ({
@@ -25,20 +24,21 @@ import { SelectedScheduleActions } from "./SelectedScheduleActions";
 const agent = { graph_id: "graph-1" } as LibraryAgent;
 const schedule = {
   id: "schedule-1",
+  name: "Morning digest",
   graph_id: "graph-1",
   graph_version: 1,
+  cron: "0 9 * * *",
 } as GraphExecutionJobInfo;
 
 function renderActions(canDelete: boolean) {
+  // The shared render supplies the query client the owner's edit dialog needs.
   return render(
-    <TooltipProvider>
-      <SelectedScheduleActions
-        agent={agent}
-        scheduleId={schedule.id}
-        schedule={schedule}
-        canDelete={canDelete}
-      />
-    </TooltipProvider>,
+    <SelectedScheduleActions
+      agent={agent}
+      scheduleId={schedule.id}
+      schedule={schedule}
+      canDelete={canDelete}
+    />,
   );
 }
 

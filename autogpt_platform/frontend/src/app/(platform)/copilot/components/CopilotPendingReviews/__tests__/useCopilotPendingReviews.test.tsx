@@ -40,8 +40,7 @@ describe("useCopilotPendingReviews", () => {
         useCopilotPendingReviews({
           organizationId: null,
           teamId: null,
-          graphExecId: "exec-1",
-          graphId: "graph-1",
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
         }),
       { wrapper },
     );
@@ -60,8 +59,7 @@ describe("useCopilotPendingReviews", () => {
         useCopilotPendingReviews({
           organizationId: null,
           teamId: null,
-          graphExecId: "exec-1",
-          graphId: "graph-1",
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
         }),
       { wrapper },
     );
@@ -89,8 +87,7 @@ describe("useCopilotPendingReviews", () => {
         useCopilotPendingReviews({
           organizationId: null,
           teamId: null,
-          graphExecId: "exec-1",
-          graphId: "graph-1",
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
         }),
       { wrapper },
     );
@@ -143,8 +140,7 @@ describe("useCopilotPendingReviews", () => {
         useCopilotPendingReviews({
           organizationId: null,
           teamId: null,
-          graphExecId: "exec-1",
-          graphId: "graph-1",
+          runs: [{ graphExecId: "exec-1", graphId: "graph-1" }],
         }),
       { wrapper },
     );

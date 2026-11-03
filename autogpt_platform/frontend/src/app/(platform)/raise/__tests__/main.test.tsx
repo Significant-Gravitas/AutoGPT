@@ -18,28 +18,6 @@ import {
   VOICE_SKIPPED_LABEL,
 } from "../helpers";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) => {
-      if (flag === "hire-experts") return setFlagStatusMock();
-      // The Hub is on here so the flow runs in the configuration production
-      // will be in: leaving it to the real hook disabled the listing query
-      // and left "Hub on and empty" — the case that drops the beat — untested.
-      if (flag === "skills-hub") return { enabled: true, ready: true };
-      return actual.useFlagStatus(flag as never);
-    },
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
@@ -58,7 +36,7 @@ vi.mock("@/services/experts/invalidate-experts", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -171,7 +149,7 @@ function seedAtSkills(
 beforeEach(() => {
   window.sessionStorage.clear();
   mockReducedMotion();
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+
   pushMock.mockClear();
   notFoundMock.mockClear();
   // One library skill is enough to keep the skills beat in the flow; with
@@ -220,14 +198,10 @@ test.each([null, "finance"])(
   },
 );
 
-test("calls notFound when the experts feature is disabled", () => {
-  setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
-
-  try {
-    renderRaise();
-  } catch {}
-
-  expect(notFoundMock).toHaveBeenCalled();
+test("opens expert creation without a rollout flag", async () => {
+  renderRaise();
+  expect(await screen.findByText(/name/i)).toBeDefined();
+  expect(notFoundMock).not.toHaveBeenCalled();
 });
 
 test("skips remaining kit steps, posts null budget and empty attachments, and opens copilot", async () => {
@@ -541,8 +515,6 @@ test("picking a weekly budget advances to marketplace workflows", async () => {
 
 test("drops the skills beat and raises from the marketplace step when there is nothing to add", async () => {
   let captured: unknown = null;
-  // The Hub is on for this file, so this is an empty catalogue plus an empty
-  // library — not a disabled flag.
   server.use(
     getListCopilotSkillsMockHandler([]),
     getCreateRaisedExpertMockHandler(async (info) => {

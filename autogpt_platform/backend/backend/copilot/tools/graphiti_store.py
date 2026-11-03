@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from backend.copilot.graphiti.client import derive_org_group_id, derive_team_group_id
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import (
     MAX_EPISODE_BODY_BYTES,
     enqueue_episode,
@@ -212,12 +211,6 @@ class MemoryStoreTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required to store memories.",
-                session_id=session.session_id,
-            )
-
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 

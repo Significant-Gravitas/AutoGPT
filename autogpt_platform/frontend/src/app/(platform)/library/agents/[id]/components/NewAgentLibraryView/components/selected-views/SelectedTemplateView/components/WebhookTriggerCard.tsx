@@ -38,10 +38,11 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               status === "active"
-                ? "bg-green-100 text-green-800"
+                ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : "bg-red-100 text-red-800"
+                  ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-800 #876A00 has no role; olive to orange-brown change deferred (see PR)
+                    "bg-warning-border text-yellow-800"
+                  : "bg-error-surface text-error-foreground"
             }`}
           >
             {status === "active"
@@ -53,7 +54,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
         </div>
 
         {!template.webhook_id ? (
-          <Text variant="body" className="text-red-600">
+          <Text variant="body" tone="danger">
             This trigger is not attached to a webhook. Use &quot;Set up
             trigger&quot; to fix this.
           </Text>
@@ -65,13 +66,14 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </Text>
             <div className="flex flex-col gap-1">
               <Text variant="body-medium">Webhook URL:</Text>
-              <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                <code className="ph-no-capture flex-1 select-all text-sm">
+              <div className="flex gap-2 rounded-md bg-surface-muted p-2">
+                <code className="ph-no-capture flex-1 text-sm select-all">
                   {webhook.url}
                 </code>
                 <Button
                   variant="outline"
                   size="icon"
+                  // oxlint-disable-next-line design-system/no-restyle -- a 28px round copy button; icon-xs would make it a rounded square
                   className="size-7 flex-none p-1"
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"
@@ -82,7 +84,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
             </div>
           </div>
         ) : (
-          <Text variant="body" className="text-muted-foreground">
+          <Text variant="body" tone="muted">
             This workflow trigger is{" "}
             {template.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."

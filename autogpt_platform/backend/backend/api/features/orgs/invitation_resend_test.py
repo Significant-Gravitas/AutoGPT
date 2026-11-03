@@ -13,8 +13,7 @@ from autogpt_libs.auth.models import RequestContext
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.orgs.invitation_routes import INVITATION_TTL_DAYS, org_router
-from backend.api.rest_api import handle_internal_http_error
-from backend.util.exceptions import NotFoundError
+from backend.api.utils.exceptions import add_exception_handlers
 
 USER_ID = "user-owner-1"
 OTHER_USER_ID = "user-member-2"
@@ -108,7 +107,7 @@ class TestInvitationResend:
         app.dependency_overrides[get_request_context] = lambda: ctx
         # Mirror the production mapping (rest_api.py) so these tests assert the
         # HTTP contract callers actually see rather than an opaque 500.
-        app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
+        add_exception_handlers(app)
         return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
     def test_resend_pending_rotates_token_and_extends_expiry(

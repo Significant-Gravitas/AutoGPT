@@ -10,10 +10,13 @@ import pytest_asyncio
 from prisma.enums import APIKeyPermission
 
 import backend.api.external.middleware as middleware_mod
+import backend.api.external.v1.integrations as integrations_mod
 import backend.api.external.v1.routes as routes_mod
 import backend.api.external.v1.tools as tools_mod
+import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tools.models import ExecutionStartedResponse
@@ -65,6 +68,10 @@ def live_resource_access(monkeypatch: pytest.MonkeyPatch):
         "backend.api.external.middleware.has_live_resource_access",
         AsyncMock(return_value=True),
     )
+    monkeypatch.setattr(
+        "backend.api.external.middleware.has_live_resource_permission",
+        AsyncMock(return_value=True),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +83,7 @@ def resource_barriers(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(routes_mod, "live_resource_access_barrier", allow)
     monkeypatch.setattr(routes_mod, "agent_graph_attachment_barrier", allow)
     monkeypatch.setattr(middleware_mod, "_live_authorization_principal", allow)
+    monkeypatch.setattr(integrations_mod, "live_resource_permission_barrier", allow)
 
 
 @pytest.fixture(autouse=True)
@@ -247,6 +255,71 @@ def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
 
     assert response.status_code == 403
     assert "disabled" in response.json()["detail"]
+
+
+def test_registry_blocks_needing_a_workflow_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The registry's own blocks are refused before they are charged or run."""
+    ran: list[str] = []
+
+    async def _record_run(self, _data, **_kwargs):
+        ran.append(self.name)
+        yield "result", "ok"
+
+    charge_mock = AsyncMock()
+    monkeypatch.setattr(routes_mod, "charge_for_direct_block_execution", charge_mock)
+
+    outcomes: dict[str, tuple[int, str]] = {}
+    for block_id, block_cls in backend.blocks.get_blocks().items():
+        block = block_cls()
+        if block.disabled or not is_graph_only_block(block):
+            continue
+        monkeypatch.setattr(block_cls, "execute", _record_run)
+        response = client.post(f"/blocks/{block_id}/execute", json={})
+        outcomes[block.name] = (response.status_code, response.json().get("detail"))
+
+    assert {
+        name: outcome
+        for name, outcome in outcomes.items()
+        if outcome[0] != 403 or "inside a workflow" not in str(outcome[1])
+    } == {}
+    assert {"AgentExecutorBlock", "AutoPilotBlock", "OrchestratorBlock"} <= set(
+        outcomes
+    )
+    charge_mock.assert_not_awaited()
+    assert not ran
+
+
+def test_execute_block_context_carries_key_org_and_team(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    """A team-restricted org key's block run carries that org and team, as
+    execute_graph's runs do."""
+
+    async def org_scoped_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=[APIKeyPermission.EXECUTE_BLOCK],
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-a",
+            team_id_restriction="team-a",
+        )
+
+    app.dependency_overrides[require_auth] = org_scoped_auth
+    captured: dict = {}
+    block = _stub_block(name="FreeBlock", capture=captured)
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 200, f"got {response.status_code}: {response.text}"
+    ctx = captured["execution_context"]
+    assert (ctx.organization_id, ctx.team_id) == ("org-a", "team-a")
 
 
 def test_unknown_block_returns_404(monkeypatch: pytest.MonkeyPatch):
@@ -631,3 +704,62 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
             "/blocks/00000000-0000-0000-0000-000000000001/execute",
             json={},
         )
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", None),
+        ("smtp", ""),
+        ("smtp", "smtp.example.com"),
+        ("smtp", "smtp://*.example.com"),
+        ("smtp", "postgresql://smtp.example.com"),
+        ("database", None),
+        ("database", "db.example.com:5432"),
+        ("database", "smtp://db.example.com"),
+    ],
+)
+def test_create_login_without_a_valid_scope_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str | None
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+    body = {"type": "user_password", "username": "u", "password": "p", "title": "t"}
+    if scope is not None:
+        body["scope"] = scope
+
+    response = client.post(f"/integrations/{provider}/credentials", json=body)
+
+    assert response.status_code == 400
+    create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "provider, scope",
+    [
+        ("smtp", "smtp://smtp.example.com:587"),
+        ("database", "postgresql://db.example.com:5432"),
+        ("database", "mysql://db.example.com"),
+    ],
+)
+def test_create_login_with_a_scope_stores_it(
+    monkeypatch: pytest.MonkeyPatch, provider: str, scope: str
+):
+    create = AsyncMock()
+    monkeypatch.setattr(integrations_mod.creds_manager, "create", create)
+
+    response = client.post(
+        f"/integrations/{provider}/credentials",
+        json={
+            "type": "user_password",
+            "username": "u",
+            "password": "p",
+            "title": "t",
+            "scope": scope,
+        },
+    )
+
+    assert response.status_code == 201
+    stored = create.await_args.args[1]
+    assert stored.provider == provider
+    assert stored.scope == scope

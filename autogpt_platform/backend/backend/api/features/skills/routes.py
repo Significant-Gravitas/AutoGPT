@@ -9,6 +9,7 @@ from autogpt_libs.auth import (
 )
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     Path,
     Query,
@@ -32,6 +33,7 @@ from backend.api.features.skills.model import (
     UploadCopilotSkillRequest,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
@@ -107,6 +109,7 @@ async def list_copilot_skills(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="",
     summary="Upload a copilot skill from a SKILL.md file",
     operation_id="uploadCopilotSkill",
@@ -153,6 +156,7 @@ async def upload_copilot_skill(
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/package",
     summary="Upload a copilot skill as a zipped package",
     operation_id="uploadCopilotSkillPackage",

@@ -165,9 +165,9 @@ async def test_public_endpoints_do_not_gain_auth_or_rollout_dependency(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method", ["require_api_key", "require_auth"])
+@pytest.mark.parametrize("header", ["X-API-Key", "Authorization"])
 async def test_scoped_api_key_cannot_reenable_shared_resources(
-    rollout_boundary, mocker, method
+    rollout_boundary, mocker, header
 ):
     app, _, _ = rollout_boundary
     auth = APIKeyInfo(
@@ -185,20 +185,17 @@ async def test_scoped_api_key_cannot_reenable_shared_resources(
     validate = mocker.patch.object(
         middleware, "validate_api_key", AsyncMock(return_value=auth)
     )
-    dependency = (
-        middleware.require_api_key
-        if method == "require_api_key"
-        else middleware.require_auth
-    )
 
     @app.get("/external")
-    async def external(principal=Security(dependency)):
+    async def external(principal=Security(middleware.require_auth)):
         return {"org": principal.organization_id}
 
+    # An API key also authenticates as a Bearer token (how MCP clients send it).
+    value = "test-key" if header == "X-API-Key" else "Bearer test-key"
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.get("/external", headers={"X-API-Key": "test-key"})
+        response = await client.get("/external", headers={header: value})
     assert response.status_code == 403
     validate.assert_awaited_once_with("test-key")
 
@@ -222,6 +219,27 @@ async def test_production_app_uses_boundary_before_resource_handler(
     assert response.status_code == 403
     assert "not enabled" in response.json()["detail"]
     auth.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_boundary_keeps_refusing_a_banned_account(auth_row):
+    """The boundary replaces get_request_context, so it must keep that
+    resolver's ban check rather than read the bare token."""
+    app = FastAPI()
+    org_rollout.install_org_rollout_boundary(app)
+    banned = auth_row("banned")
+    app.dependency_overrides[get_jwt_payload] = lambda: {"sub": banned}
+
+    @app.get("/resource")
+    async def resource(ctx: RequestContext = Security(get_request_context)):
+        return {"org": ctx.org_id}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/resource")
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "account_banned"
 
 
 @pytest.mark.asyncio

@@ -46,7 +46,7 @@ class TestCreateBillingPortalSession:
                 return_value=MagicMock(update=update),
             ),
         ):
-            url = await UserCredit.create_billing_portal_session("user-1")
+            url = await UserCredit().create_billing_portal_session("user-1")
 
         assert url is None
         customer_create.assert_not_awaited()
@@ -73,7 +73,7 @@ class TestCreateBillingPortalSession:
                 return_value=session,
             ) as portal_create,
         ):
-            url = await UserCredit.create_billing_portal_session("user-1")
+            url = await UserCredit().create_billing_portal_session("user-1")
 
         assert url == "https://billing.stripe.com/session/abc"
         customer_create.assert_not_awaited()

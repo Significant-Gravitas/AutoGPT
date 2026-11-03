@@ -2,22 +2,29 @@ import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import {
   type InfiniteData,
+  type QueryClient,
+  type QueryKey,
   useInfiniteQuery,
   useMutationState,
+  useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { shareSessionListData } from "./sessionListSharing";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
 // `refetchInterval` on a `useInfiniteQuery` refetches every loaded page, and
-// TanStack Query v5 removed `refetchPage` so we can't scope it to page 0.
-// Worst case is bounded by the user's session count (and the WebSocket
-// invalidations in `useCopilotNotifications` already handle the high-signal
-// completion events) — revisit by extracting a separate live-status query if
-// this ever becomes a real bandwidth concern.
+// TanStack Query v5 removed `refetchPage` so we can't scope it to page 0. So
+// the infinite query polls only while it holds a single page; once older
+// pages are loaded, `SESSION_LIST_FIRST_PAGE_QUERY_KEY` polls page 0 alone and
+// patches it into the cache. Older pages refresh on focus, on the WebSocket
+// invalidations in `useCopilotNotifications`, or when page 0's membership
+// changes (which shifts every later offset, so they all have to be refetched).
 export const SESSION_LIST_REFETCH_INTERVAL_MS = 10_000;
 
 // Fresh, paginated-cache key. The orval-generated key targets the non-infinite
@@ -31,6 +38,26 @@ export function getSessionListQueryKey(
 ) {
   return getTeamScopedQueryKey(SESSION_LIST_QUERY_KEY, organizationId, teamId);
 }
+
+/** The exact key of one scope's list, as `useSessionList` caches it. */
+export function getSessionListCacheKey(
+  organizationId: string | null | undefined,
+  teamId: string | null | undefined,
+  isTenantReady: boolean,
+) {
+  return [
+    ...getSessionListQueryKey(organizationId, teamId),
+    { isTenantReady },
+  ] as const;
+}
+
+// Outside `SESSION_LIST_QUERY_KEY`'s prefix, so invalidating the list does not
+// also re-run this poll.
+const SESSION_LIST_FIRST_PAGE_QUERY_KEY = [
+  "copilot",
+  "session-list-first-page",
+] as const;
+
 // Chats with a delete in flight stay out of every list, whatever a refetch
 // returns before the server has removed them.
 export const SESSION_DELETE_MUTATION_KEY = [
@@ -49,11 +76,14 @@ export function useSessionList({ enabled = true }: Args = {}) {
   const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
   const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
   const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
+  const queryClient = useQueryClient();
+  const listQueryKey = getSessionListCacheKey(
+    activeOrgID,
+    activeTeamID,
+    isTenantReady,
+  );
   const query = useInfiniteQuery({
-    queryKey: [
-      ...getSessionListQueryKey(activeOrgID, activeTeamID),
-      { isTenantReady },
-    ],
+    queryKey: getSessionListCacheKey(activeOrgID, activeTeamID, isTenantReady),
     queryFn: ({ pageParam }) =>
       getV2ListSessions(
         {
@@ -68,19 +98,77 @@ export function useSessionList({ enabled = true }: Args = {}) {
       const loaded = countLoadedSessions(allPages);
       return loaded < lastPage.data.total ? loaded : undefined;
     },
-    refetchInterval: SESSION_LIST_REFETCH_INTERVAL_MS,
+    structuralSharing: shareSessionListData,
+    refetchInterval: (listQuery) =>
+      hasOlderPages(listQuery.state.data)
+        ? false
+        : SESSION_LIST_REFETCH_INTERVAL_MS,
+    // With older pages loaded the poll only covers page 0, so a focus always
+    // refreshes every page, however recently page 0 was patched.
+    refetchOnWindowFocus: (listQuery) =>
+      hasOlderPages(listQuery.state.data) ? "always" : true,
     enabled: enabled && isTenantReady,
+  });
+  const isPollingFirstPage =
+    enabled && isTenantReady && hasOlderPages(query.data);
+  useQuery({
+    // Keyed on whether it polls, so the entry is created (and seeded from the
+    // list below) at the moment an older page lands, not at first mount.
+    queryKey: [
+      ...getTeamScopedQueryKey(
+        SESSION_LIST_FIRST_PAGE_QUERY_KEY,
+        activeOrgID,
+        activeTeamID,
+      ),
+      { isTenantReady },
+      isPollingFirstPage,
+    ],
+    queryFn: ({ client }) =>
+      refreshFirstPage(
+        client,
+        getSessionListCacheKey(activeOrgID, activeTeamID, isTenantReady),
+        getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
+      ),
+    enabled: isPollingFirstPage,
+    refetchInterval: SESSION_LIST_REFETCH_INTERVAL_MS,
+    // Seeded from the list itself, so loading an older page does not also
+    // re-request page 0 straight away; the first poll comes one interval on.
+    initialData: () => readFirstPage(queryClient, listQueryKey),
+    initialDataUpdatedAt: () =>
+      queryClient.getQueryState(listQueryKey)?.dataUpdatedAt,
+    staleTime: SESSION_LIST_REFETCH_INTERVAL_MS,
+    // The list's own mount and focus refetches already cover every page, so
+    // this query only ever fetches on its interval.
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    // Nothing reads this cache entry; the poll only patches the list.
+    notifyOnChangeProps: [],
   });
   const deletingIds = useMutationState({
     filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
     select: (mutation) => (mutation.state.variables as { id: string }).id,
   });
+  // `query.data` and `deletingIds` keep their identity while nothing in them
+  // changes (structural sharing), so a refetch that returns the same sessions
+  // hands the lists the same array and every memoised row skips its render.
+  // Kept with the compiler on: the recent-chats sidebar that reads this list
+  // is outside the compiled folders, and its row-render tests expect a
+  // refetch of the same sessions to leave every row alone.
+  const sessions = useMemo(
+    () =>
+      flattenSessions(query.data).filter(
+        (session) => !deletingIds.includes(session.id),
+      ),
+    [query.data, deletingIds],
+  );
 
   return {
-    sessions: flattenSessions(query.data).filter(
-      (session) => !deletingIds.includes(session.id),
-    ),
+    sessions,
     isLoading: query.isLoading,
+    /** The list came back; an empty `sessions` is then really empty. */
+    isListLoaded: query.isSuccess && query.data.pages[0]?.status === 200,
+    /** When the list last came back, so a caller can tell stale data apart. */
+    dataUpdatedAt: query.dataUpdatedAt,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,
@@ -92,6 +180,27 @@ export function flattenSessions(data: SessionListInfiniteData | undefined) {
   return data.pages.flatMap((page) =>
     page.status === 200 ? page.data.sessions : [],
   );
+}
+
+/**
+ * Puts a freshly fetched page 0 in place of the cached one, keeping the older
+ * pages. Returns `null` when page 0 no longer holds the same sessions in the
+ * same order (or `total` moved): every later offset has shifted then, so the
+ * caller must refetch all loaded pages instead.
+ */
+export function replaceFirstPage(
+  data: SessionListInfiniteData | undefined,
+  firstPage: SessionListPage,
+): SessionListInfiniteData | null {
+  const cached = data?.pages[0];
+  if (!data || !cached) return null;
+  if (cached.status !== 200 || firstPage.status !== 200) return null;
+  const before = cached.data.sessions;
+  const after = firstPage.data.sessions;
+  if (cached.data.total !== firstPage.data.total) return null;
+  if (before.length !== after.length) return null;
+  if (before.some((session, i) => session.id !== after[i].id)) return null;
+  return { ...data, pages: [firstPage, ...data.pages.slice(1)] };
 }
 
 export function removeSessionFromList(
@@ -126,16 +235,6 @@ export interface SessionGroup {
   sessions: SessionSummaryResponse[];
 }
 
-export interface SidebarSessions {
-  /** Rendered flat above the groups so the backend's pinned-first ordering
-   *  survives grouping. Empty unless headers are shown. */
-  pinned: SessionSummaryResponse[];
-  groups: SessionGroup[];
-  /** Headers only earn their space once there is an expert group to
-   *  distinguish from Otto. */
-  showHeaders: boolean;
-}
-
 export function groupSessionsByExpert(
   sessions: SessionSummaryResponse[],
 ): SessionGroup[] {
@@ -159,30 +258,64 @@ export function groupSessionsByExpert(
     });
 }
 
-export function groupSessionsForSidebar({
-  sessions,
-  floatPinned,
-}: {
-  sessions: SessionSummaryResponse[];
-  floatPinned: boolean;
-}): SidebarSessions {
-  const groups = groupSessionsByExpert(sessions);
-  // With a single group the list reads exactly as the API returned it, so
-  // adding headers (and lifting pinned chats out) would only be noise.
-  if (groups.length <= 1) return { pinned: [], groups, showHeaders: false };
+function hasOlderPages(data: SessionListInfiniteData | undefined) {
+  return (data?.pages.length ?? 0) > 1;
+}
 
-  const pinned = floatPinned
-    ? sessions.filter((session) => !!session.is_pinned)
-    : [];
-  if (pinned.length === 0) return { pinned, groups, showHeaders: true };
+function readFirstPage(queryClient: QueryClient, listQueryKey: QueryKey) {
+  return queryClient.getQueryData<SessionListInfiniteData>(listQueryKey)
+    ?.pages[0];
+}
 
-  return {
-    pinned,
-    groups: groupSessionsByExpert(
-      sessions.filter((session) => !session.is_pinned),
-    ),
-    showHeaders: true,
-  };
+async function refreshFirstPage(
+  queryClient: QueryClient,
+  listQueryKey: QueryKey,
+  requestInit: RequestInit,
+) {
+  const firstPageBefore = readFirstPage(queryClient, listQueryKey);
+  const firstPage = await getV2ListSessions(
+    {
+      limit: SESSION_LIST_PAGE_SIZE,
+      offset: 0,
+    },
+    requestInit,
+  );
+  // A list fetch still in flight (say "Load older chats") started from the
+  // old pages and would put the old page 0 back when it lands, so patch after
+  // it instead.
+  await settleListFetch(queryClient, listQueryKey);
+  // Page 0 changed while this poll was out (a refetch or an edit of the
+  // list), so it is at least as new as what this poll brought back. Sharing
+  // keeps page 0's object while its content is unchanged, so a fetch of an
+  // older page alone does not count.
+  if (readFirstPage(queryClient, listQueryKey) !== firstPageBefore) {
+    return firstPage;
+  }
+  const next = replaceFirstPage(
+    queryClient.getQueryData<SessionListInfiniteData>(listQueryKey),
+    firstPage,
+  );
+  if (next) {
+    // Keeps the list's own timestamp: the older pages were not fetched, so
+    // they must not start counting as fresh.
+    queryClient.setQueryData(listQueryKey, next, {
+      updatedAt: queryClient.getQueryState(listQueryKey)?.dataUpdatedAt,
+    });
+  } else {
+    await queryClient.invalidateQueries({ queryKey: listQueryKey });
+  }
+  return firstPage;
+}
+
+async function settleListFetch(
+  queryClient: QueryClient,
+  listQueryKey: QueryKey,
+) {
+  const listQuery = queryClient
+    .getQueryCache()
+    .find({ queryKey: listQueryKey, exact: true });
+  if (listQuery?.state.fetchStatus !== "fetching") return;
+  await listQuery.promise?.catch(() => undefined);
 }
 
 function countLoadedSessions(pages: SessionListPage[]) {

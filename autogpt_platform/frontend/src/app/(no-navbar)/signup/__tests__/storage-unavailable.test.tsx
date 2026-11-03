@@ -53,20 +53,27 @@ describe("/signup when localStorage is unavailable", () => {
   test("server-rendering the route reports nothing to Sentry", async () => {
     isServerSide.mockReturnValue(true);
     const { renderToString } = await import("react-dom/server");
+    // Imported after resetModules so it is the same React Query the provider
+    // reads its flag through; the app mounts it above OrgTeamProvider.
+    const { QueryClient, QueryClientProvider } = await import(
+      "@tanstack/react-query"
+    );
     const { default: OrgTeamProvider } = await import(
       "@/providers/org-team/OrgTeamProvider"
     );
     const { default: SignupPage } = await import("../page");
 
     const html = renderToString(
-      <OrgTeamProvider>
-        <SignupPage />
-      </OrgTeamProvider>,
+      <QueryClientProvider client={new QueryClient()}>
+        <OrgTeamProvider>
+          <SignupPage />
+        </OrgTeamProvider>
+      </QueryClientProvider>,
     );
 
     // /signup server-renders its loading shell until auth initialises in an
     // effect (#14281); the marketing panel is in both states.
-    expect(html).toContain("Run in minutes");
+    expect(html).toContain("A specialist for every job");
     expect(captureException).not.toHaveBeenCalled();
   }, 20_000);
 

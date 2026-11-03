@@ -3,11 +3,20 @@ dimensions against the expert's own style specification."""
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.anthropic_rate_card import compute_anthropic_cost_usd
-from backend.copilot.dream.llm import structured_completion
 from backend.copilot.expert_context import escape_prompt_xml_tags
+from backend.copilot.inference.complete import structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceJob,
+    InferenceScope,
+)
+from backend.copilot.inference.routing import resolve_route
+from backend.copilot.inference.trace import trace
 
 from .models import Judgement, Rubric, Usage
 
+# The eval runs outside any account; its judge traces go under this user.
+EVAL_USER_ID = "expert-style-eval"
 JUDGE_TIMEOUT_SECONDS = 60.0
 # Haiku ran out of room mid-JSON writing long evidence quotes on 5 of run A's
 # 270 calls; the prompt caps the quotes and this leaves headroom for the rest.
@@ -23,17 +32,18 @@ async def judge_response(
     prompt: str,
     response: str,
     model: str,
+    run_id: str,
 ) -> tuple[Judgement, Usage]:
-    completion = await structured_completion(
-        model=model,
-        messages=judge_messages(
-            expert, rubric, kind=kind, prompt=prompt, response=response
-        ),
-        response_model=Judgement,
-        temperature=0.0,
-        max_output_tokens=JUDGE_MAX_OUTPUT_TOKENS,
-        timeout_seconds=JUDGE_TIMEOUT_SECONDS,
-    )
+    ctx = judge_context(expert, model=model, run_id=run_id)
+    async with trace(ctx) as call:
+        completion = await structured_complete(
+            call.ctx,
+            judge_messages(expert, rubric, kind=kind, prompt=prompt, response=response),
+            Judgement,
+            temperature=0.0,
+            max_output_tokens=JUDGE_MAX_OUTPUT_TOKENS,
+        )
+        call.usage = completion.usage
     judgement = completion.value
     missing = {d.key for d in rubric.dimensions} - judgement.scores.keys()
     if missing:
@@ -50,6 +60,24 @@ async def judge_response(
         cache_creation_tokens=usage.cache_creation_tokens,
         cost_usd=usage.cost_usd,
     )
+
+
+def judge_context(expert: Expert, *, model: str, run_id: str) -> InferenceContext:
+    """One judge call: pinned to the eval's judge model, whose scores only
+    compare against a baseline judged by the same one, for the judged expert,
+    correlated by the eval run. Nothing is recorded to the cost log; the eval
+    reports its own spend."""
+    scope = InferenceScope(user_id=EVAL_USER_ID, expert_id=expert.id)
+    job = InferenceJob(
+        kind="eval_judge",
+        phase="style",
+        correlation_id=run_id,
+        latency_class="bounded",
+        tier="aux",
+        timeout_seconds=JUDGE_TIMEOUT_SECONDS,
+        pinned_model=model,
+    )
+    return InferenceContext(scope=scope, job=job, route=resolve_route(scope, job))
 
 
 def judge_messages(

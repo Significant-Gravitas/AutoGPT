@@ -1,25 +1,31 @@
+import { useQueries } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import {
+  getGetV2GetAnsweredReviewsWaitingToRunForChatSessionQueryKey,
+  getGetV2GetPendingReviewsForExecutionQueryKey,
+  getGetV2GetPendingReviewsForExecutionQueryOptions,
+  type getV2GetPendingReviewsForExecutionResponse,
+  useGetV2GetAnsweredReviewsWaitingToRunForChatSession,
+} from "@/app/api/__generated__/endpoints/executions/executions";
+import {
+  getGetV1GetExecutionDetailsQueryKey,
+  getGetV1GetExecutionDetailsQueryOptions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { okData } from "@/app/api/helpers";
 import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
-import { useEffect, useState } from "react";
-import {
-  getGetV1GetExecutionDetailsQueryKey,
-  useGetV1GetExecutionDetails,
-} from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { okData } from "@/app/api/helpers";
-import {
-  usePendingReviewsForChatSession,
-  usePendingReviewsForExecution,
-} from "@/hooks/usePendingReviews";
+import { usePendingReviewsForChatSession } from "@/hooks/usePendingReviews";
+import type { RunReviewTarget } from "../ChatMessagesContainer/helpers";
 
-// A run the chat started, or the chat's own queue.
+// The runs the chat started, or the chat's own queue.
 interface Args {
   organizationId: string | null;
   teamId: string | null;
-  graphExecId?: string;
-  graphId?: string;
+  runs?: RunReviewTarget[];
   chatSessionId?: string;
   // Off for the chat's own list: it polls only while it holds cards, and
   // fetches again whenever ``refetchKey`` changes (a new held call).
@@ -30,10 +36,10 @@ interface Args {
 const POLL_MS = 2000;
 // A run can go minutes before it pauses, so poll it slowly until it does.
 const PRE_REVIEW_POLL_MS = 5000;
+const NO_RUNS: RunReviewTarget[] = [];
 
 export function useCopilotPendingReviews({
-  graphExecId = "",
-  graphId,
+  runs = NO_RUNS,
   chatSessionId = "",
   pollWhileEmpty = true,
   refetchKey,
@@ -41,31 +47,71 @@ export function useCopilotPendingReviews({
   teamId,
 }: Args) {
   const [hasRows, setHasRows] = useState(false);
-  const isRun = !!graphId;
+  const request = getTenantRequestInit(organizationId, teamId);
   // A run's chat message never changes, so its live status decides polling.
-  const { data: execution, isFetched } = useGetV1GetExecutionDetails(
-    graphId ?? "",
-    graphExecId,
-    {
-      query: {
-        enabled: isRun,
-        queryKey: getTeamScopedQueryKey(
-          getGetV1GetExecutionDetailsQueryKey(graphId ?? "", graphExecId),
-          organizationId,
-          teamId,
-        ),
-        select: okData,
-        refetchInterval: (q) =>
-          q.state.status === "error"
+  const executions = useQueries({
+    queries: runs.map((run) =>
+      getGetV1GetExecutionDetailsQueryOptions(
+        run.graphId ?? "",
+        run.graphExecId,
+        {
+          query: {
+            enabled: !!run.graphId,
+            queryKey: getTeamScopedQueryKey(
+              getGetV1GetExecutionDetailsQueryKey(
+                run.graphId ?? "",
+                run.graphExecId,
+              ),
+              organizationId,
+              teamId,
+            ),
+            refetchInterval: (q) =>
+              q.state.status === "error"
+                ? PRE_REVIEW_POLL_MS
+                : pollInterval(readStatus(q.state.data)),
+          },
+          request,
+        },
+      ),
+    ),
+  });
+  const runReviews = useQueries({
+    queries: runs.map((run, i) => {
+      const isRun = !!run.graphId;
+      const status = readStatus(executions[i]?.data);
+      // Without the run's status, the reviews themselves are the only signal.
+      const statusUnavailable = isRun && !!executions[i]?.isFetched && !status;
+      const interval =
+        !isRun || status === AgentExecutionStatus.REVIEW
+          ? POLL_MS
+          : statusUnavailable
             ? PRE_REVIEW_POLL_MS
-            : pollInterval(readStatus(q.state.data)),
-      },
-      request: getTenantRequestInit(organizationId, teamId),
-    },
-  );
-  const status = execution?.status;
-  // Without the run's status, the reviews themselves are the only signal.
-  const statusUnavailable = isRun && isFetched && !status;
+            : false;
+      return getGetV2GetPendingReviewsForExecutionQueryOptions(
+        run.graphExecId,
+        {
+          query: {
+            // Keyed on the status too, so a run that moves on reads its reviews
+            // again. The scope comes first, so invalidating the scoped key
+            // still reaches every status.
+            queryKey: [
+              ...getTeamScopedQueryKey(
+                getGetV2GetPendingReviewsForExecutionQueryKey(run.graphExecId),
+                organizationId,
+                teamId,
+              ),
+              status ?? null,
+            ],
+            enabled:
+              !!run.graphExecId && (!isRun || !!status || statusUnavailable),
+            refetchInterval: interval,
+            refetchIntervalInBackground: !!interval,
+          },
+          request,
+        },
+      );
+    }),
+  });
 
   const forChat = usePendingReviewsForChatSession(
     chatSessionId,
@@ -76,35 +122,59 @@ export function useCopilotPendingReviews({
       refetchInterval: pollWhileEmpty || hasRows ? POLL_MS : false,
     },
   );
-  const forRun = usePendingReviewsForExecution(
-    graphExecId,
-    organizationId,
-    teamId,
-    {
-      enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
-      refetchInterval:
-        !isRun || status === AgentExecutionStatus.REVIEW
-          ? POLL_MS
-          : statusUnavailable
-            ? PRE_REVIEW_POLL_MS
-            : false,
-    },
-  );
-  const { pendingReviews, refetch } = chatSessionId ? forChat : forRun;
+  const runRows = mergeReviews(runReviews.map((query) => query.data));
+  const pendingReviews = chatSessionId ? forChat.pendingReviews : runRows;
+  // Fresh on every mount, never cached across one: the box seeds its receipts
+  // from the first answer, so a stale list would seed the wrong ones.
+  const { data: answeredReviews } =
+    useGetV2GetAnsweredReviewsWaitingToRunForChatSession(chatSessionId, {
+      query: {
+        enabled: !!chatSessionId,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetAnsweredReviewsWaitingToRunForChatSessionQueryKey(
+            chatSessionId,
+          ),
+          organizationId,
+          teamId,
+        ),
+        select: okData,
+        gcTime: 0,
+        refetchOnWindowFocus: false,
+      },
+      request,
+    });
 
   useEffect(() => {
     setHasRows(pendingReviews.length > 0);
   }, [pendingReviews.length]);
 
+  const refetchChat = forChat.refetch;
   useEffect(() => {
-    if (refetchKey !== undefined) refetch();
-  }, [refetchKey, refetch]);
+    if (refetchKey !== undefined) refetchChat();
+  }, [refetchKey, refetchChat]);
 
-  useEffect(() => {
-    if (status) refetch();
-  }, [status, refetch]);
+  async function refetch(): Promise<PendingHumanReviewModel[]> {
+    if (chatSessionId) return okData((await refetchChat()).data) ?? [];
+    const results = await Promise.all(
+      runReviews.map((query) => query.refetch()),
+    );
+    return mergeReviews(results.map((result) => result.data));
+  }
 
-  return { pendingReviews, refetch };
+  return { pendingReviews, answeredReviews, refetch };
+}
+
+// One list for all the runs, oldest first, as the chat's own list is.
+function mergeReviews(
+  responses: (getV2GetPendingReviewsForExecutionResponse | undefined)[],
+): PendingHumanReviewModel[] {
+  const byID = new Map<string, PendingHumanReviewModel>();
+  for (const response of responses) {
+    for (const row of okData(response) ?? []) byID.set(row.node_exec_id, row);
+  }
+  return [...byID.values()].sort(
+    (a, b) => +new Date(a.created_at) - +new Date(b.created_at),
+  );
 }
 
 function readStatus(raw: unknown) {

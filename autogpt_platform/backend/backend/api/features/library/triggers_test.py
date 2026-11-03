@@ -2,7 +2,7 @@
 the /presets routes and the copilot preset tools."""
 
 import contextlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -85,6 +85,24 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=Non
             f"{_PATH}.experts_db.resolve_expert_for_graph",
             new=AsyncMock(return_value=graph_expert),
         ),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _user_belongs_to_the_graphs_org():
+    """A trigger takes its graph's org/team when the user belongs to it.
+    Tests of someone else's graph patch this to give the user's own."""
+    with patch(
+        f"{_PATH}.resolve_member_tenancy",
+        new=AsyncMock(side_effect=lambda user_id, org_id, team_id: (org_id, team_id)),
+    ) as membership:
+        yield membership
+
+
+def _not_a_member():
+    return patch(
+        f"{_PATH}.resolve_member_tenancy",
+        new=AsyncMock(return_value=("own-org", "own-team")),
     )
 
 
@@ -512,6 +530,27 @@ async def test_webhook_setup_rejected_raises():
     create_mock.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_a_trigger_on_someone_elses_workflow_stays_in_the_users_org():
+    """The workflow can be in an org the user isn't in. A trigger they set up
+    on it, and the runs it fires, stay in their own."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=MagicMock(id="preset-1")
+    )
+    with (
+        _not_a_member() as membership,
+        p_graph,
+        p_creds,
+        p_create,
+        p_expert,
+        p_webhook as webhook_mock,
+    ):
+        await _setup()
+    membership.assert_awaited_once_with(_USER, "shared-org", "shared-team")
+    kwargs = webhook_mock.await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("own-org", "own-team")
+
+
 # ---- update_triggered_preset ----
 
 
@@ -642,6 +681,40 @@ async def test_update_prunes_new_webhook_when_preset_write_fails():
             )
 
     m["prune"].assert_awaited_once_with(_USER, "wh-new")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failing", ["update", "set_webhook"])
+@pytest.mark.parametrize("registered, pruned", [("wh-new", True), ("wh-old", False)])
+async def test_a_failed_update_prunes_only_the_webhook_it_registered(
+    failing, registered, pruned
+):
+    """The new webhook is attached last, so a failure before that would leave
+    it registered with the provider and attached to nothing."""
+    current = _preset(webhook_id="wh-old")
+    with _update_patches(current=current, webhook=MagicMock(id=registered)) as m:
+        m[failing].side_effect = RuntimeError("database down")
+        with pytest.raises(RuntimeError):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+    assert m["prune"].await_args_list == ([call(_USER, registered)] if pruned else [])
+
+
+@pytest.mark.asyncio
+async def test_reconfiguring_a_trigger_on_someone_elses_workflow_registers_it_in_the_users_org():
+    with _not_a_member(), _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+    kwargs = m["setup"].await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("own-org", "own-team")
 
 
 @pytest.mark.asyncio

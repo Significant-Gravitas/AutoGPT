@@ -12,7 +12,9 @@ from backend.data.tenancy import (
     get_user_team_ids,
     has_live_resource_access,
     live_agent_graph_access_barrier,
+    organization_filter,
     visibility_filter,
+    writable_organization_ids,
 )
 
 
@@ -586,3 +588,32 @@ async def test_graph_barrier_rechecks_graph_after_lock(mocker):
             "teamId": "team-1",
         }
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "personal, writable", [(True, {"org-1", None}), (False, {"org-1"})]
+)
+async def test_untagged_rows_are_writable_only_from_the_personal_org(
+    mocker, personal: bool, writable: set
+):
+    """They predate org tagging, and the backfill gives them the personal org."""
+    mock_prisma = MagicMock()
+    mock_prisma.orgmember.find_first = AsyncMock(
+        return_value=MagicMock() if personal else None
+    )
+    mocker.patch.object(tenancy, "prisma", mock_prisma)
+
+    assert await writable_organization_ids("u1", "org-1") == writable
+    where = mock_prisma.orgmember.find_first.call_args.kwargs["where"]
+    assert (where["userId"], where["orgId"]) == ("u1", "org-1")
+    assert where["Org"] == {"isPersonal": True, "deletedAt": None}
+
+
+def test_organization_filter_matches_untagged_rows_only_when_asked():
+    assert organization_filter({"org-1"}) == {
+        "OR": [{"organizationId": {"in": ["org-1"]}}]
+    }
+    assert organization_filter({"org-1", None}) == {
+        "OR": [{"organizationId": {"in": ["org-1"]}}, {"organizationId": None}]
+    }

@@ -18,14 +18,14 @@ export function BriefingByline({ briefing }: Props) {
         <Text variant="small-medium" as="span" tone="primary">
           {author.name}
         </Text>
-        <span aria-hidden="true" className="text-zinc-300">
+        <span aria-hidden="true" className="text-foreground-disabled">
           ·
         </span>
         <Text variant="small" as="span" tone="muted">
           {author.role}
         </Text>
       </div>
-      <Text variant="body" tone="secondary" className="text-pretty leading-5">
+      <Text variant="body" tone="secondary" className="leading-5 text-pretty">
         {narrative}
       </Text>
     </div>

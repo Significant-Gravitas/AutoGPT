@@ -26,7 +26,7 @@ from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.tenancy_urls import copilot_path
 
-from . import choices, sessions
+from . import choices, failures, sessions
 from .adapters.base import (
     FileAttachment,
     MessageContext,
@@ -41,8 +41,10 @@ from .bot_backend import (
     PlatformLinkRevokedError,
 )
 from .config import SESSION_TTL
-from .prompt import clamp_thread_name
-from .text import format_batch, iter_chunks, split_at_boundary
+from .options import TurnOptions
+from .prompt import PendingMessage, clamp_thread_name, format_batch
+from .setup_card_dedupe import claim_setup_card, release_setup_card, setup_card_key
+from .text import iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -147,16 +149,18 @@ class TurnStreamer:
 
     async def stream_batch(
         self,
-        batch: list[tuple[str, str, str]],
+        batch: list[PendingMessage],
         ctx: MessageContext,
         adapter: PlatformAdapter,
         target_id: str,
         file_ids: list[str] | None = None,
         session_id: str | None = None,
         turn: ChatTurnHandle | None = None,
+        options: TurnOptions | None = None,
     ) -> None:
         """Start a turn from ``batch`` and stream its reply here; with
         ``turn``, stream that one instead, which something else started."""
+        options = options or TurnOptions()
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
@@ -185,12 +189,16 @@ class TurnStreamer:
             nonlocal active_owner_user_id
             active_owner_user_id = user_id
 
+        async def _on_notice(notice: str) -> None:
+            await adapter.send_message(target_id, notice)
+
         flush_at = adapter.chunk_flush_at
         buffer = ""
         sent_any_content = False
         setup_prompt_sent = False
         finish_flushed = False
         empty_reply_sent = False
+        reply_suppressed = False
         clarification_prompt_sent = False
 
         async def _on_setup_required(
@@ -206,39 +214,37 @@ class TurnStreamer:
             # buffered workspace artifacts resolve instead of falling back to
             # the "no session" plain-text note.
             active_session_id = session_id
-            # Drain any pending text first so the link button doesn't render
-            # ahead of the message it belongs to.
-            if buffer.strip():
-                if await self._send_text_and_artifacts(
-                    adapter, target_id, buffer, ctx, session_id
-                ):
-                    sent_any_content = True
-                buffer = ""
-            sent_any_content = True
-            linked_session = await get_chat_session(session_id, active_owner_user_id)
-            session_url = copilot_session_url(
-                session_id,
-                linked_session.organization_id if linked_session else None,
-                linked_session.team_id if linked_session else None,
-            )
-            message = _setup_required_message(setup_output)
-            if session_url is None:
-                # No base URL configured — fall back to plain text since
-                # Discord rejects relative URLs on link buttons.
-                logger.warning(
-                    "No frontend/platform base URL configured; "
-                    "sending setup-required prompt without a button"
-                )
-                await adapter.send_message(
-                    target_id, message, mentionable_users=ctx.mentionable_users
-                )
+            card_key = setup_card_key(ctx.platform, target_id, session_id, setup_output)
+            card_token = uuid4().hex
+            if not await claim_setup_card(redis, card_key, card_token, target_id):
+                # The same card is already up in this conversation and its
+                # button opens the same session. Count it as shown so a turn
+                # whose only output was the card doesn't report "no response".
+                sent_any_content = True
                 return
-            await adapter.send_link(
-                target_id,
-                message,
-                link_label="Open AutoGPT",
-                link_url=session_url,
-            )
+            try:
+                # Drain any pending text first so the link button doesn't
+                # render ahead of the message it belongs to.
+                if buffer.strip():
+                    if await self._send_text_and_artifacts(
+                        adapter, target_id, buffer, ctx, session_id
+                    ):
+                        sent_any_content = True
+                    buffer = ""
+                sent_any_content = True
+                await _send_setup_card(
+                    adapter,
+                    target_id,
+                    ctx,
+                    session_id,
+                    setup_output,
+                    active_owner_user_id,
+                )
+            except BaseException:
+                # The card never reached the channel, so the claim must not
+                # stop the next turn from posting it.
+                await release_setup_card(redis, card_key, card_token)
+                raise
 
         async def _on_setup_dropped(
             session_id: str,
@@ -263,9 +269,18 @@ class TurnStreamer:
 
         async def _on_finish() -> None:
             nonlocal buffer, sent_any_content, finish_flushed, empty_reply_sent
+            nonlocal reply_suppressed
             if not sent_any_content and buffer.strip() == NO_REPLY:
+                # The model chose silence, as its system prompt allows. This
+                # is not the "didn't produce a response" case below: that is
+                # for a model that emitted nothing, and this one said so.
+                # Whole message only, and only when nothing was already
+                # flushed mid-stream, so a long reply that happens to contain
+                # the word is still delivered.
+                logger.info("Reply suppressed by NO_REPLY for target %s", target_id)
                 buffer = ""
                 finish_flushed = True
+                reply_suppressed = True
                 self._api.track_event(
                     platform=ctx.platform,
                     event_type="reply_suppressed",
@@ -353,12 +368,15 @@ class TurnStreamer:
                 chunks = self._api.stream_chat(
                     platform=ctx.platform,
                     platform_user_id=ctx.user_id,
-                    message=format_batch(batch, ctx.platform),
+                    message=format_batch(batch, ctx),
                     session_id=active_session_id,
                     platform_server_id=ctx.server_id,
                     file_ids=file_ids,
+                    expert_id=options.expert_id,
+                    model=options.model,
                     on_session_id=_on_session_id,
                     on_owner_user_id=_on_owner_user_id,
+                    on_notice=_on_notice,
                     on_setup_required=_on_setup_required,
                     on_setup_dropped=_on_setup_dropped,
                     on_clarification_needed=_on_clarification_needed,
@@ -397,36 +415,18 @@ class TurnStreamer:
             return
         except BotStreamError as exc:
             # Stream couldn't complete (timeout, subscribe fail, backend stream
-            # error). Track the specific kind, surface a generic message, and
-            # do NOT fire reply_sent below.
-            logger.warning(
-                "Stream failed for target %s: %s (%s)",
-                target_id,
-                exc,
-                exc.error_kind,
-            )
+            # error). Track the specific kind, tell the user what kind of
+            # failure it was, and do NOT fire reply_sent below.
             self._track_stream_error(ctx, exc.error_kind)
-            await adapter.send_message(
-                target_id,
-                "AutoGPT ran into an error. Try again in a moment.",
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
-        except NotFoundError:
-            logger.exception("Chat turn rejected")
+        except NotFoundError as exc:
             self._track_stream_error(ctx, "chat_turn_rejected")
-            await adapter.send_message(
-                target_id, "AutoGPT ran into an error. Try again later."
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
-        except Exception:
-            logger.exception(
-                "Unexpected error during streaming for target %s", target_id
-            )
+        except Exception as exc:
             self._track_stream_error(ctx, "stream_exception")
-            await adapter.send_message(
-                target_id,
-                "Something went wrong. Try again in a moment.",
-            )
+            await _send_failure(adapter, target_id, ctx, exc)
             return
         finally:
             typing_task.cancel()
@@ -442,7 +442,7 @@ class TurnStreamer:
                 "Stream ended without an authorized finish for %s", target_id
             )
             return
-        if empty_reply_sent:
+        if empty_reply_sent or reply_suppressed:
             return
 
         self._api.track_event(
@@ -687,6 +687,53 @@ class TurnStreamer:
             channel_type=ctx.channel_type,
             error_kind=error_kind,
         )
+
+
+async def _send_setup_card(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    session_id: str,
+    setup_output: dict[str, Any],
+    owner_user_id: str | None,
+) -> None:
+    # The button opens the session in its own organization and team.
+    linked_session = await get_chat_session(session_id, owner_user_id)
+    session_url = copilot_session_url(
+        session_id,
+        linked_session.organization_id if linked_session else None,
+        linked_session.team_id if linked_session else None,
+    )
+    message = _setup_required_message(setup_output)
+    if session_url is None:
+        # No base URL configured — fall back to plain text since
+        # Discord rejects relative URLs on link buttons.
+        logger.warning(
+            "No frontend/platform base URL configured; "
+            "sending setup-required prompt without a button"
+        )
+        await adapter.send_message(
+            target_id, message, mentionable_users=ctx.mentionable_users
+        )
+        return
+    await adapter.send_link(
+        target_id,
+        message,
+        link_label="Open AutoGPT",
+        link_url=session_url,
+    )
+
+
+async def _send_failure(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    exc: BaseException,
+) -> None:
+    category = failures.categorize(exc)
+    reference = failures.new_reference()
+    failures.report_failure(exc, category, reference, platform=ctx.platform)
+    await adapter.send_message(target_id, failures.failure_reply(category, reference))
 
 
 async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:

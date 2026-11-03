@@ -3,8 +3,9 @@ real held row (Postgres + Redis).
 
 A click answers the row and wakes the chat's next turn, which runs the call;
 the bot carries that turn's reply into the channel. Who may click is ``cards.ANSWER_POLICY``: anyone in the
-conversation, or only the linking owner. The card is opened from a member's
-message, so owner-only means the linking owner, not whoever was talking.
+conversation, or only the linking owner. Only the linking owner can talk to
+the bot in a linked server (``platform_linking.chat.resolve_owner``), so every
+card is opened from the owner's message.
 """
 
 import asyncio
@@ -17,9 +18,10 @@ import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview, PlatformLink
 
-from backend.copilot import stream_registry
+from backend.copilot import stream_registry, woken_turns
 from backend.copilot.active_turns import acquire_turn_slot
 from backend.copilot.bot import sessions as bot_sessions
+from backend.copilot.bot.adapters.base import MessageContext
 from backend.copilot.bot.adapters.discord import choice_ui as discord_ui
 from backend.copilot.bot.adapters.slack.adapter import SlackAdapter
 from backend.copilot.bot.adapters.teams.adapter import TeamsAdapter
@@ -27,7 +29,8 @@ from backend.copilot.bot.adapters.telegram.adapter import TelegramAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import CARD_KIND
 from backend.copilot.bot.handler import MessageHandler
-from backend.copilot.bot.text import format_batch
+from backend.copilot.bot.prompt import PendingMessage as BatchMessage
+from backend.copilot.bot.prompt import format_batch
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import channel as gate_channel
 from backend.copilot.gate import chat_rules, check_action, held, resolve_mode
@@ -41,6 +44,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamCheckpoint, StreamTextDelta
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
@@ -97,6 +101,11 @@ class _InProcessBot:
         client.resolve_server_link = AsyncMock(return_value=MagicMock(linked=True))
         client.answer_channel_card = AsyncMock(side_effect=cards.answer_card)
         client.start_chat_turn = AsyncMock(side_effect=bot_chat.start_chat_turn)
+        # The linking owner is the one talking, so the link's lease is theirs.
+        client.acquire_platform_link_lease = AsyncMock(return_value="lease-1")
+        client.release_platform_link_lease = AsyncMock(return_value=True)
+        client.is_platform_link_lease_active = AsyncMock(return_value=True)
+        client.is_platform_link_owner = AsyncMock(return_value=True)
         self.api = BotBackend.__new__(BotBackend)
         self.api._client = client
         self.api._analytics_tasks = set()
@@ -121,7 +130,10 @@ class _Executor:
         self.live = live
         self.running: tuple[str, str] | None = None
 
-    async def enqueue(self, **turn: Any) -> None:
+    async def dispatch_bot_turn(self, slot: Any, **turn: Any) -> None:
+        await stream_registry.create_session(
+            turn["session_id"], turn["user_id"], "chat_stream", "chat", turn["turn_id"]
+        )
         await self._finish(turn["session_id"], turn["turn_id"])
 
     async def dispatch(self, slot: Any, **turn: Any) -> None:
@@ -331,9 +343,24 @@ def dispatched():
         yield dispatch
 
 
+@pytest.fixture(autouse=True)
+def delayed_wake():
+    """A wake a channel answer puts off goes no further than the scheduler."""
+    client = MagicMock(schedule_held_wake=AsyncMock())
+    with patch(
+        "backend.copilot.gate.channel.get_scheduler_client", return_value=client
+    ):
+        yield client.schedule_held_wake
+
+
 @pytest.fixture
 def gate_on():
-    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)):
+    with (
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
+    ):
         yield
 
 
@@ -433,11 +460,12 @@ async def _held_card(
 ) -> tuple[ChatSession, str, ChannelCard]:
     session = await _linked_session(user_id, channel.platform)
     decision = await _hold(user_id, session, text, "call-1")
-    # Opened from a member's message: the card is still the owner's to answer.
+    # Only the linking owner talks to the bot in a server, so the card opens
+    # from their message; who may answer it is the policy's to say.
     card = await cards.open_card(
         Platform(channel.platform.upper()),
         channel.server_id,
-        channel.member,
+        channel.owner,
         session.session_id,
         decision.review_id,
     )
@@ -466,7 +494,10 @@ async def test_the_owners_approve_runs_the_call_in_the_channels_next_turn(
     assert ctx.follow is not None and ctx.follow.session_id == session.session_id
     assert ctx.user_id == linked.owner
     # That turn folds the answered card in, and the call runs as it was held.
-    [result] = await held.resolve_answered(test_user_id, session)
+    results: list[PendingMessage] = []
+    async for _update in held.resolve_answered(test_user_id, session, results.append):
+        pass
+    [result] = results
     assert post_tool.runs == [{"text": "hello"}]
     assert result.metadata["held_call"]["outcome"] == "approved"
 
@@ -662,6 +693,7 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     rules = [o for o in first.options if o not in ("Approve", "Reject")]
     platform = Platform(one_linked.platform.upper())
     judged_safe = AsyncMock(return_value=MagicMock(allowed=True))
+    judged_unsafe = AsyncMock(return_value=Judgement(allowed=False, reason="unsure"))
     redis = await get_redis_async()
     wider = [
         chat_rules._scoped_key(scope, test_user_id, None, _POST)
@@ -681,12 +713,16 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
                 ChatSession.new(user_id=test_user_id, dry_run=False)
             )
             again = {"text": f"again: {label}"}
+            judged_unsafe.reset_mock()
             with patch("backend.copilot.gate.supervise", judged_safe):
                 in_bot = await check_action(_POST, again, test_user_id, bot)
+            with patch("backend.copilot.gate.supervise", judged_unsafe):
                 in_web = await check_action(_POST, again, test_user_id, web)
 
             assert in_bot.allowed, label
+            # A chat post is judged in Auto: only a leaked rule skips the supervisor.
             assert not in_web.allowed, label
+            judged_unsafe.assert_awaited_once()
     finally:
         # A wider rule outlives the test and would ungate every later one.
         await redis.delete(*wider)
@@ -705,7 +741,7 @@ async def test_a_card_opens_only_for_a_row_its_own_conversation_raised(
         await cards.open_card(
             platform,
             one_linked.server_id,
-            one_linked.member,
+            one_linked.owner,
             other.session_id,
             review_id,
         )
@@ -715,7 +751,7 @@ async def test_a_card_opens_only_for_a_row_its_own_conversation_raised(
         await cards.open_card(
             platform,
             "unlinked-server",
-            one_linked.member,
+            one_linked.owner,
             session.session_id,
             review_id,
         )
@@ -748,7 +784,7 @@ async def test_a_held_read_card_quotes_the_passage_and_offers_release(
     card = await cards.open_card(
         Platform(one_linked.platform.upper()),
         one_linked.server_id,
-        one_linked.member,
+        one_linked.owner,
         session.session_id,
         read_review_id(
             session.session_id,
@@ -788,8 +824,23 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     checkpoint as the engines stream it, lands where the card was."""
     session, _, card = await _held_card(one_linked, test_user_id)
     request = format_batch(
-        [("Someone", one_linked.owner, "Post hello, then pause my weekly report")],
-        one_linked.platform,
+        [
+            BatchMessage(
+                username="Someone",
+                user_id=one_linked.owner,
+                text="Post hello, then pause my weekly report",
+            )
+        ],
+        MessageContext(
+            platform=one_linked.platform,
+            channel_type="thread",
+            server_id=None,
+            channel_id=str(_Discord.thread_id),
+            message_id="m-1",
+            user_id=one_linked.owner,
+            username="Someone",
+            text="Post hello, then pause my weekly report",
+        ),
     )
     await append_and_save_message(
         session.session_id, ChatMessage(role="user", content=request)
@@ -808,7 +859,7 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
         return queue
 
     with (
-        patch.object(bot_chat, "enqueue_copilot_turn", executor.enqueue),
+        patch.object(bot_chat, "dispatch_turn", executor.dispatch_bot_turn),
         patch("backend.copilot.gate.supervise", supervise),
         patch.object(stream_registry, "subscribe_to_turn", subscribe_and_tell),
     ):
@@ -885,6 +936,68 @@ async def test_cards_answered_mid_reply_are_carried_once_when_that_turn_ends(
     assert said == ["Posted both."]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_burst_of_clicks_starts_one_turn_after_the_last(
+    one_linked: _Channel, test_user_id, gate_on, dispatched, delayed_wake
+):
+    """Each click moves the chat's one delayed wake, which then carries every
+    answer so far and tells the turn what still waits."""
+    session, first_id, first = await _held_card(one_linked, test_user_id)
+    second = await _another_card(one_linked, test_user_id, session)
+    await _another_card(one_linked, test_user_id, session, "third")
+
+    for card in (first, second):
+        await one_linked.click(card, one_linked.owner)
+
+    assert await _status(first_id, test_user_id) == ReviewStatus.APPROVED
+    assert "✅ Post a message · Approved" in one_linked.shown()
+    dispatched.assert_not_awaited()
+    assert [c.args for c in delayed_wake.await_args_list] == [
+        (test_user_id, session.session_id, 3)
+    ] * 2
+
+    # What the scheduler runs when the delay is up.
+    await held.wake(test_user_id, session.session_id)
+
+    dispatched.assert_awaited_once()
+    assert dispatched.await_args.kwargs["message"].endswith(
+        "1 more still waits for my answer."
+    )
+    turn_id = dispatched.await_args.kwargs["turn_id"]
+    assert await woken_turns.turn_for(session.session_id, first_id) == turn_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_click_on_a_chats_last_card_starts_its_turn_at_once(
+    one_linked: _Channel, test_user_id, gate_on, dispatched, delayed_wake
+):
+    session, first_id, first = await _held_card(one_linked, test_user_id)
+    second = await _another_card(one_linked, test_user_id, session)
+    await one_linked.click(first, one_linked.owner)
+    delayed_wake.assert_awaited_once()
+
+    await one_linked.click(second, one_linked.owner)
+
+    delayed_wake.assert_awaited_once()
+    dispatched.assert_awaited_once()
+    assert dispatched.await_args.kwargs["message"] == held.WAKE_MESSAGE
+    turn_id = dispatched.await_args.kwargs["turn_id"]
+    assert await woken_turns.turn_for(session.session_id, first_id) == turn_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_click_whose_wake_cannot_be_delayed_starts_it_now(
+    one_linked: _Channel, test_user_id, gate_on, dispatched, delayed_wake
+):
+    session, _, first = await _held_card(one_linked, test_user_id)
+    await _another_card(one_linked, test_user_id, session)
+    delayed_wake.side_effect = ConnectionError("scheduler down")
+
+    await one_linked.click(first, one_linked.owner)
+
+    dispatched.assert_awaited_once()
+
+
 async def _bot_following(
     channel: _Channel, session: ChatSession, executor: _Executor, dispatched
 ) -> _InProcessBot:
@@ -901,13 +1014,13 @@ async def _bot_following(
 
 
 async def _another_card(
-    channel: _Channel, user_id: str, session: ChatSession
+    channel: _Channel, user_id: str, session: ChatSession, text: str = "again"
 ) -> ChannelCard:
-    decision = await _hold(user_id, session, "again", "call-2")
+    decision = await _hold(user_id, session, text, f"call-{text}")
     card = await cards.open_card(
         Platform(channel.platform.upper()),
         channel.server_id,
-        channel.member,
+        channel.owner,
         session.session_id,
         decision.review_id,
     )

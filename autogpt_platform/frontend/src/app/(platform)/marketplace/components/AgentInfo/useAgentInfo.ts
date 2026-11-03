@@ -2,7 +2,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
-import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
 import { useOrgTeamStore } from "@/services/org-team/store";
@@ -43,7 +42,7 @@ export const useAgentInfo = ({
     );
   };
 
-  const handleDownload = async (agentId: string, agentName: string) => {
+  const handleDownload = async (agentName: string) => {
     try {
       const { data: file } = await downloadAgent();
 
@@ -51,11 +50,6 @@ export const useAgentInfo = ({
         file as object,
         agentGraphExportFilename(file, agentName),
       );
-
-      analytics.sendDatafastEvent("download_agent", {
-        name: agentName,
-        id: agentId,
-      });
 
       toast({
         title: "Download Complete",

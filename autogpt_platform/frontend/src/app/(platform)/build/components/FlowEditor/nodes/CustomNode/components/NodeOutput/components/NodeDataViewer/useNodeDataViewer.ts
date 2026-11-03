@@ -1,7 +1,7 @@
 import { downloadOutputs } from "@/components/contextual/OutputRenderers/utils/download";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { beautifyString } from "@/lib/utils";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import {
   NodeDataType,
@@ -24,44 +24,39 @@ export const useNodeDataViewer = (
   executionResults?: NodeExecutionResult[],
   dataType?: NodeDataType,
 ) => {
-  const tenantScope = useBuilderTenantScope();
+  const { organizationId, teamId } = useBuilderTenantScope();
   const { toast } = useToast();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const dataArray = Array.isArray(data) ? data : [data];
+  // Every node with output renders up to three closed viewers, and each one
+  // re-renders with its node; only rebuild the items when their inputs change.
+  const dataArray = useMemo(
+    () => (Array.isArray(data) ? data : [data]),
+    [data],
+  );
 
-  const outputItems =
-    !dataArray || dataArray.length === 0
-      ? []
-      : createOutputItems(dataArray, tenantScope).map((item, index) => ({
-          ...item,
-          label: index === 0 ? beautifyString(pinName) : "",
-        }));
+  const outputItems = useMemo(
+    () =>
+      dataArray.length === 0
+        ? []
+        : createOutputItems(dataArray, { organizationId, teamId }).map(
+            (item, index) => ({
+              ...item,
+              label: index === 0 ? beautifyString(pinName) : "",
+            }),
+          ),
+    [dataArray, pinName, organizationId, teamId],
+  );
 
-  const groupedExecutions =
-    !executionResults || executionResults.length === 0
-      ? []
-      : [...executionResults].reverse().map((result) => {
-          const rawData = getExecutionData(
-            result,
-            dataType || "output",
-            pinName,
-          );
-          let dataArray: unknown[];
-          if (dataType === "input") {
-            dataArray =
-              rawData !== undefined && rawData !== null ? [rawData] : [];
-          } else {
-            dataArray = normalizeToArray(rawData);
-          }
-
-          const outputItems = createOutputItems(dataArray, tenantScope);
-          return {
-            execId: result.node_exec_id,
-            outputItems,
-          };
-        });
+  const groupedExecutions = useMemo(
+    () =>
+      groupExecutions(executionResults, pinName, dataType, {
+        organizationId,
+        teamId,
+      }),
+    [executionResults, pinName, dataType, organizationId, teamId],
+  );
 
   const totalGroupedItems = groupedExecutions.reduce(
     (total, execution) => total + execution.outputItems.length,
@@ -165,3 +160,26 @@ export const useNodeDataViewer = (
     copiedKey,
   };
 };
+
+function groupExecutions(
+  executionResults: NodeExecutionResult[] | undefined,
+  pinName: string,
+  dataType: NodeDataType | undefined,
+  scope: { organizationId: string | null; teamId: string | null },
+): GroupedExecution[] {
+  if (!executionResults || executionResults.length === 0) return [];
+  return [...executionResults].reverse().map((result) => {
+    const rawData = getExecutionData(result, dataType || "output", pinName);
+    let dataArray: unknown[];
+    if (dataType === "input") {
+      dataArray = rawData !== undefined && rawData !== null ? [rawData] : [];
+    } else {
+      dataArray = normalizeToArray(rawData);
+    }
+
+    return {
+      execId: result.node_exec_id,
+      outputItems: createOutputItems(dataArray, scope),
+    };
+  });
+}

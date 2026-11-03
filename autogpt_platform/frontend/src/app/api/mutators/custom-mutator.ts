@@ -5,8 +5,13 @@ import {
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
+import {
+  isAccountBannedResponse,
+  signOutBannedAccount,
+} from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
 import {
   getOrgContextHeaders,
@@ -104,6 +109,7 @@ export const customMutator = async <
     }
     Object.assign(headers, getSystemHeaders());
     Object.assign(headers, getDatafastAttribution());
+    Object.assign(headers, getPostHogSessionHeader());
     // Active org/team context — the backend scopes tenancy by these headers
     // (personal-org fallback when absent).
     Object.assign(headers, getOrgContextHeaders());
@@ -216,6 +222,9 @@ export const customMutator = async <
       logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
+      if (isAccountBannedResponse(response.status, responseData)) {
+        signOutBannedAccount();
+      }
     }
 
     throw new ApiError(errorMessage, response.status, responseData);

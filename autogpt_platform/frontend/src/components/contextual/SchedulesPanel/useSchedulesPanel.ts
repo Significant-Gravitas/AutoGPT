@@ -3,6 +3,8 @@ import {
   useListCopilotFollowupSchedules,
   getGetV1ListExecutionSchedulesForAUserQueryKey,
   getListCopilotFollowupSchedulesQueryKey,
+  getListPausedScheduledChatsQueryKey,
+  useListPausedScheduledChats,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -57,6 +59,20 @@ export function useSchedulesPanel() {
     },
     request: getTenantRequestInit(organizationId, teamId, isReady),
   });
+  // Scheduled chats paused after failing the same way: their jobs drop out
+  // of the followups list, so they are listed apart, with Resume.
+  const pausedQuery = useListPausedScheduledChats({
+    query: {
+      select: (res) => okData(res) ?? [],
+      enabled: isReady,
+      queryKey: getTeamScopedQueryKey(
+        getListPausedScheduledChatsQueryKey(),
+        organizationId,
+        teamId,
+      ),
+    },
+    request: getTenantRequestInit(organizationId, teamId, isReady),
+  });
 
   const copilotItems: ScheduleItem[] = (copilotQuery.data ?? []).map(
     (item) => ({ kind: "copilot_turn" as const, item }),
@@ -74,8 +90,12 @@ export function useSchedulesPanel() {
     (a, b) => nextRunMs(a.item) - nextRunMs(b.item),
   );
 
-  const isLoading = copilotQuery.isLoading || graphQuery.isLoading;
-  const fetchError = copilotQuery.error ?? graphQuery.error;
+  const paused = pausedQuery.data ?? [];
+  const isLoading =
+    copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
+  const fetchError =
+    copilotQuery.error ?? graphQuery.error ?? pausedQuery.error;
+  const hasContent = schedules.length > 0 || paused.length > 0;
 
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
@@ -83,11 +103,12 @@ export function useSchedulesPanel() {
     // reference it.
     followups: copilotQuery.data ?? [],
     schedules,
+    paused,
     isLoading,
-    // The two sources are independent — only hard-fail once both have
-    // settled and there is nothing to show; a partial failure keeps the
-    // loaded list visible and surfaces a non-blocking warning instead.
-    error: !isLoading && schedules.length === 0 ? fetchError : null,
-    partialError: !isLoading && schedules.length > 0 ? fetchError : null,
+    // The sources are independent — only hard-fail once all have settled
+    // and there is nothing to show; a partial failure keeps the loaded
+    // lists visible and surfaces a non-blocking warning instead.
+    error: !isLoading && !hasContent ? fetchError : null,
+    partialError: !isLoading && hasContent ? fetchError : null,
   };
 }

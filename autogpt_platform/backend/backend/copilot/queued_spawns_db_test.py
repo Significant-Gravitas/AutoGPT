@@ -200,6 +200,8 @@ async def test_two_children_queued_into_one_session_admit_one_node(user: "_User"
                     message=f"task {i}",
                     tool_call_id=f"sub:{spawner.session_id}",
                     tool_name="run_sub_session",
+                    organization_id=sub.organization_id,
+                    team_id=sub.team_id,
                     llm_auth_provider="platform",
                     llm_credential_id=None,
                     permissions=None,

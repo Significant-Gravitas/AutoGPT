@@ -23,6 +23,7 @@ from backend.data.skill_capacity import (
     skill_owner_folder,
 )
 from backend.data.workspace import WorkspaceFile, _workspace_scope_where
+from backend.data.workspace_internal import is_internal_workspace_file
 from backend.util.json import SafeJson
 
 
@@ -273,6 +274,9 @@ async def _swap_package_files(
                 "executionId": write.execution_id,
                 "scopeResolved": True,
                 "isUserGlobalConfig": write.user_global_config,
+                "isInternal": is_internal_workspace_file(
+                    name=file.name, path=file.path, metadata=file.metadata
+                ),
             }
         )
     return retired
@@ -388,6 +392,9 @@ async def _create_root(tx: Prisma, write: WorkspaceSkillWrite) -> UserWorkspaceF
             "executionId": write.execution_id,
             "scopeResolved": True,
             "isUserGlobalConfig": write.user_global_config,
+            "isInternal": is_internal_workspace_file(
+                name=write.name, path=write.path, metadata=write.metadata
+            ),
         }
     )
 

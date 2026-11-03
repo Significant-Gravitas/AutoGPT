@@ -4,8 +4,8 @@ from collections.abc import Iterator
 from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
+from starlette.routing import Mount
 
-from backend.api.external.fastapi_app import external_api
 from backend.api.rest_api import app
 
 
@@ -47,6 +47,10 @@ def _live_dependencies(
 ) -> Iterator[tuple[str, str, Dependant]]:
     for target_app in apps:
         for route in target_app.routes:
+            # The external API (and its v1 inside it) and v2 are mounted apps.
+            if isinstance(route, Mount) and isinstance(route.app, FastAPI):
+                yield from _live_dependencies(route.app)
+                continue
             if not isinstance(route, APIRoute):
                 continue
             for dependant in _walk_dependencies(route.dependant):
@@ -55,7 +59,7 @@ def _live_dependencies(
 
 
 def test_all_transaction_holding_dependencies_are_function_scoped() -> None:
-    live_dependencies = list(_live_dependencies(app, external_api))
+    live_dependencies = list(_live_dependencies(app))
     kind_counts = Counter(kind for _, kind, _ in live_dependencies)
     wrong_scope = [
         (path, kind, getattr(dependant.call, "__qualname__", ""), dependant.scope)

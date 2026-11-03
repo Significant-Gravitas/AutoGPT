@@ -37,6 +37,7 @@ import { ChainActionsContext } from "../../../../components/ToolChain/chainActio
 import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
 import { useCopilotTenantScope } from "../../../../CopilotTenantScopeContext";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   output: SetupRequirementsResponse;
@@ -45,6 +46,50 @@ interface Props {
    * Defaults to a generic "credentials connected, please retry" message.
    */
   retryInstruction?: string;
+}
+
+async function storeManualToken(
+  serverUrl: string,
+  token: string,
+  request: RequestInit,
+) {
+  // Probe before storing so a rejected credential never shows as Connected.
+  const probe = await postV2DiscoverAvailableToolsOnAnMcpServer(
+    {
+      server_url: serverUrl,
+      auth_token: token,
+    },
+    request,
+  );
+  if (probe.status !== 200) {
+    const probeDetail =
+      probe.data && typeof probe.data === "object" && "detail" in probe.data
+        ? probe.data.detail
+        : null;
+    throw new Error(
+      typeof probeDetail === "string"
+        ? probeDetail
+        : "This server did not accept the credential.",
+    );
+  }
+
+  const res = await postV2StoreABearerTokenForAnMcpServer(
+    {
+      server_url: serverUrl,
+      token,
+    },
+    request,
+  );
+  if (!(res.status >= 200 && res.status < 300)) {
+    const detail =
+      res.data && typeof res.data === "object" && "detail" in res.data
+        ? res.data.detail
+        : null;
+    throw new Error(
+      typeof detail === "string" ? detail : "Failed to store token",
+    );
+  }
+  return res.status === 200 ? res.data.id : undefined;
 }
 
 /**
@@ -229,18 +274,15 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       grantInFlight.current = true;
       setGranting(true);
       setGrantError(null);
-      let ok = false;
-      try {
-        ok = await grantToExpert(
-          queryClient,
-          expertGrant.expertId,
-          credentialId,
-          credentialsScope.request,
-        );
-      } finally {
+      const ok = await grantToExpert(
+        queryClient,
+        expertGrant.expertId,
+        credentialId,
+        credentialsScope.request,
+      ).finally(() => {
         grantInFlight.current = false;
         setGranting(false);
-      }
+      });
       if (!ok) {
         setFailedGrantId(credentialId);
         setGrantError(
@@ -266,12 +308,22 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setGrantError(null);
     setShowManualToken(false);
     setLoading(true);
+    await connectOAuth(signal).finally(() => {
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) setLoading(false);
+      }
+    });
+  }
+
+  async function connectOAuth(signal: AbortSignal) {
+    const exchange = allProviders?.mcp?.mcpOAuthCallback;
     try {
       const credential = await connectMCPOAuth({
         serverURL: serverUrl,
         signal,
         request: credentialsScope.request,
-        exchange: allProviders?.mcp?.mcpOAuthCallback,
+        exchange,
       });
       signal.throwIfAborted();
       if ("reason" in credential) {
@@ -296,11 +348,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           ? "OAuth sign-in timed out. Please try again."
           : message,
       );
-    } finally {
-      if (oauthRequest.current === controller) {
-        oauthRequest.current = null;
-        if (!signal.aborted) setLoading(false);
-      }
     }
   }
 
@@ -330,49 +377,18 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setError(null);
     setGrantError(null);
     try {
-      // Probe before storing so a rejected credential never shows as Connected.
-      const probe = await postV2DiscoverAvailableToolsOnAnMcpServer(
-        {
-          server_url: serverUrl,
-          auth_token: token,
-        },
+      const credentialId = await storeManualToken(
+        serverUrl,
+        token,
         credentialsScope.request,
       );
-      if (probe.status !== 200) {
-        const probeDetail =
-          probe.data && typeof probe.data === "object" && "detail" in probe.data
-            ? probe.data.detail
-            : null;
-        throw new Error(
-          typeof probeDetail === "string"
-            ? probeDetail
-            : "This server did not accept the credential.",
-        );
-      }
-
-      const res = await postV2StoreABearerTokenForAnMcpServer(
-        {
-          server_url: serverUrl,
-          token,
-        },
-        credentialsScope.request,
-      );
-      if (!(res.status >= 200 && res.status < 300)) {
-        const detail =
-          res.data && typeof res.data === "object" && "detail" in res.data
-            ? res.data.detail
-            : null;
-        throw new Error(
-          typeof detail === "string" ? detail : "Failed to store token",
-        );
-      }
       // Only clear the force-disconnect override AFTER the API confirms
       // the token was stored.  Clearing it before the await would let
       // ``liveHasCred=true`` (from an existing stale cred) re-render the
       // Connected pill while the request is still in flight, briefly
       // showing a false "Connected" state to the user.
       setForceDisconnected(false);
-      await finish(res.status === 200 ? res.data.id : undefined);
+      await finish(credentialId);
     } catch (e: unknown) {
       // Keep the force-disconnect override on so the not-connected
       // branch (error banner + manual-token input) stays visible — an
@@ -384,9 +400,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         (typeof err?.message === "string" ? err.message : null) ||
           "Failed to save token. Please try again.",
       );
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   const handleConnectRef = useRef(handleConnect);
@@ -404,7 +419,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // as the state machine driving that row's callbacks.
   useEffect(() => {
     if (!chainActions) return;
-    chainActions.register({
+    chainActions.register(actionId, {
       id: actionId,
       ready: connected,
       buildMessage: () => null,
@@ -457,7 +472,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // owns the error display.
     return (
       <div className="mt-2 grid gap-2">
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div className="rounded-lg border border-success/40 bg-success-surface px-3 py-2 text-sm text-success-foreground">
           Connected to {service}.{" "}
           <button
             type="button"
@@ -503,7 +518,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           <div
             role="alert"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mt-2 rounded-lg border border-error/30 bg-error-surface px-3 py-2 text-sm text-error-foreground"
           >
             {error ?? grantError}
           </div>
@@ -517,18 +532,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               disabled={loading}
               nameSuffix={service}
               className="grid gap-1"
-              labelClassName="text-xs font-medium text-gray-700"
+              labelClassName="text-xs font-medium text-foreground-body"
               selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
             />
-            <label
+            <Text
+              variant="small-medium-tight"
+              as="label"
+              tone="body"
               htmlFor={manualTokenInputId}
-              className="text-xs font-medium text-gray-700"
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
-            </label>
-            <p id={manualTokenHintId} className="text-xs text-gray-500">
+            </Text>
+            <Text variant="small-tight" tone="muted" id={manualTokenHintId}>
               {mcpAuthTokenHint(manualAuthScheme)}
-            </p>
+            </Text>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}

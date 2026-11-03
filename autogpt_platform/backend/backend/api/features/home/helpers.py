@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -96,20 +97,43 @@ AgentScopeMap = dict[AgentScopeKey | str, AgentRef]
 
 
 def agent_refs_by_graph(
-    experts: list[Expert], refs: list[LibraryAgentRef]
+    experts: list[Expert],
+    refs: list[LibraryAgentRef],
+    schedules: Sequence[GraphExecutionJobInfo] = (),
 ) -> AgentScopeMap:
-    agents: AgentScopeMap = {
-        (ref.graph_id, ref.organization_id, ref.team_id): AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name,
+    """What to call each graph's runs: by the exact (graph, org, team) a run
+    belongs to, and by graph alone for a lookup that has no scope."""
+    # A schedule keeps the name it was given, so its runs keep one even when the
+    # graph is in neither the library nor an expert's workflows. Older runs carry
+    # no schedule id, so a graph gets none unless all its schedules share one.
+    names_by_graph: defaultdict[str, set[str]] = defaultdict(set)
+    for schedule in schedules:
+        names_by_graph[schedule.graph_id].add(schedule.agent_name or "")
+    scheduled_names = {
+        graph_id: next(iter(names))
+        for graph_id, names in names_by_graph.items()
+        if len(names) == 1 and "" not in names
+    }
+    agents: AgentScopeMap = {}
+    for ref in refs:
+        agent = AgentRef(
+            name=ref.name or scheduled_names.get(ref.graph_id) or UNKNOWN_AGENT.name,
             library_agent_id=None if ref.is_deleted else ref.id,
             image_url=ref.image_url,
         )
-        for ref in refs
-    }
+        agents[(ref.graph_id, ref.organization_id, ref.team_id)] = agent
+        agents[ref.graph_id] = agent
+    for graph_id, name in scheduled_names.items():
+        agents.setdefault(graph_id, AgentRef(name=name, library_agent_id=None))
     for expert in experts:
         for workflow in expert.workflows:
-            if workflow.graph_id:
-                key = (workflow.graph_id, expert.organization_id, expert.team_id)
+            if not workflow.graph_id:
+                continue
+            # An expert names its own copy of the workflow, but only the
+            # library row carries the picture, so keep the one we found. The
+            # scoped entry builds only on its own scope's library row.
+            scoped = (workflow.graph_id, expert.organization_id, expert.team_id)
+            for key in (scoped, workflow.graph_id):
                 current = agents.get(key, UNKNOWN_AGENT)
                 agents[key] = AgentRef(
                     name=workflow.name or current.name,

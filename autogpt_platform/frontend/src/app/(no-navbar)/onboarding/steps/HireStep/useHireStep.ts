@@ -4,16 +4,19 @@ import type { ExpertRecommendations } from "@/app/api/__generated__/models/exper
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
-import { analytics } from "@/services/analytics";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useOnboardingWizardStore } from "../../store";
 import {
+  type ContinueVia,
+  hireStepActions,
   RECOMMENDATIONS_MAX_WAIT_MS,
   RECOMMENDATIONS_POLL_MS,
+  SKIP_ACTION,
 } from "./helpers";
+import { useHireAll } from "./useHireAll";
 
 export function useHireStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -22,6 +25,7 @@ export function useHireStep() {
   const queryClient = useQueryClient();
   const [hiringTemplateId, setHiringTemplateId] = useState<string | null>(null);
   const [gaveUpWaiting, setGaveUpWaiting] = useState(false);
+  const [excludedTemplateIds, setExcludedTemplateIds] = useState<string[]>([]);
   const reportedIds = useRef(new Set<string>());
   const waitStartedAt = useRef<number | null>(null);
 
@@ -43,6 +47,16 @@ export function useHireStep() {
   const isPending = !gaveUpWaiting && (!answered || !isReadyPerServer);
   const team: ExpertRecommendations | null =
     data?.status === 200 ? (data.data.team ?? null) : null;
+  const experts = team?.experts ?? [];
+  const { isHiringAll, hiringTemplateIds, failedTemplateIds, hireAll } =
+    useHireAll({ experts, onTeamHired: () => handleContinue("auto") });
+  const actions = hireStepActions({
+    experts,
+    hiredTemplateIds,
+    failedTemplateIds,
+    excludedTemplateIds,
+  });
+  const skip = isPending ? SKIP_ACTION : actions.skip;
 
   // The ceiling is absolute from the first pending render: a pending flip
   // (transient error, then a fresh poll) re-arms the timer with what is left
@@ -76,7 +90,7 @@ export function useHireStep() {
   const { mutateAsync: hireExpert } = useHireExpert();
 
   async function hire(expert: RecommendedExpert, position: number) {
-    if (hiringTemplateId !== null) return;
+    if (hiringTemplateId !== null || isHiringAll) return;
     trackBrainDump("expert_recommendation_clicked", {
       template_id: expert.template_id,
       position,
@@ -89,9 +103,6 @@ export function useHireStep() {
     try {
       await hireExpert({
         data: { template_id: expert.template_id, surface: "onboarding" },
-      });
-      analytics.sendDatafastEvent("hire_completed", {
-        template_id: expert.template_id,
       });
       markHired(expert.template_id);
       // Best effort: the roster is not on screen here, and a failed
@@ -108,10 +119,30 @@ export function useHireStep() {
     }
   }
 
-  function handleContinue() {
+  function toggleIncluded(templateId: string) {
+    setExcludedTemplateIds((ids) =>
+      ids.includes(templateId)
+        ? ids.filter((id) => id !== templateId)
+        : [...ids, templateId],
+    );
+  }
+
+  function handlePrimary() {
+    if (actions.batch.length > 0) void hireAll(actions.batch, actions.isRetry);
+    else handleContinue("continue");
+  }
+
+  function handleSecondary() {
+    if (skip) handleContinue(skip.via);
+  }
+
+  function handleContinue(via: ContinueVia) {
     trackBrainDump("hire_step_continued", {
-      hired: hiredTemplateIds.length,
-      recommended: team?.experts?.length ?? 0,
+      // From the store: the auto-advance runs in a closure older than the
+      // batch's hires.
+      hired: useOnboardingWizardStore.getState().hiredTemplateIds.length,
+      recommended: experts.length,
+      via,
     });
     nextStep();
   }
@@ -119,11 +150,20 @@ export function useHireStep() {
   return {
     team,
     isPending,
-    experts: team?.experts ?? [],
+    experts,
     raiseRole: team?.raise_suggestion?.role ?? null,
     hiredTemplateIds,
-    hiringTemplateId,
+    isHiringAll,
+    isCardHiring: hiringTemplateId !== null,
+    isHiringCard: (templateId: string) =>
+      hiringTemplateId === templateId || hiringTemplateIds.includes(templateId),
+    isIncluded: (templateId: string) =>
+      !excludedTemplateIds.includes(templateId),
+    primaryLabel: actions.primaryLabel,
+    secondaryLabel: skip?.label ?? null,
     hire,
-    handleContinue,
+    toggleIncluded,
+    handlePrimary,
+    handleSecondary,
   };
 }

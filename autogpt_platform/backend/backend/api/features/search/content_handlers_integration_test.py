@@ -26,7 +26,7 @@ from backend.util.test import retry_once_on_closed_loop
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_store_agent_handler_real_db():
+async def test_store_agent_handler_real_db(server):
     """Test StoreAgentHandler with real database queries."""
     handler = StoreAgentHandler()
 
@@ -58,7 +58,7 @@ async def test_store_agent_handler_real_db():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_block_handler_real_db():
+async def test_block_handler_real_db(server):
     """Test BlockHandler with real database queries."""
     handler = BlockHandler()
 
@@ -88,7 +88,7 @@ async def test_block_handler_real_db():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_documentation_handler_real_fs():
+async def test_documentation_handler_real_fs(server):
     """Test DocumentationHandler with real filesystem."""
     handler = DocumentationHandler()
 
@@ -118,7 +118,7 @@ async def test_documentation_handler_real_fs():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_embedding_stats_all_types():
+async def test_get_embedding_stats_all_types(server):
     """Test get_embedding_stats aggregates all content types."""
     stats = await get_embedding_stats()
 
@@ -142,7 +142,7 @@ async def test_get_embedding_stats_all_types():
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.search.embeddings.generate_embedding")
-async def test_ensure_content_embedding_blocks(mock_generate):
+async def test_ensure_content_embedding_blocks(mock_generate, server):
     """Test creating embeddings for blocks (mocked OpenAI)."""
     # Mock OpenAI to return fake embedding
     mock_generate.return_value = [0.1] * EMBEDDING_DIM
@@ -172,7 +172,7 @@ async def test_ensure_content_embedding_blocks(mock_generate):
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.search.embeddings.generate_embedding")
-async def test_backfill_all_content_types_dry_run(mock_generate):
+async def test_backfill_all_content_types_dry_run(mock_generate, server):
     """Test backfill_all_content_types processes all handlers in order."""
     # Mock OpenAI to return fake embedding
     mock_generate.return_value = [0.1] * EMBEDDING_DIM

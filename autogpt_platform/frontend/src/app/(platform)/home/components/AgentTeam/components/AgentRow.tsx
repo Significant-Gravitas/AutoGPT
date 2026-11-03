@@ -53,8 +53,7 @@ export function AgentRow({ agent }: Props) {
           <Text
             variant="small"
             tone="muted"
-            className="truncate tabular-nums leading-4"
-            unmask={false}
+            className="truncate leading-4 tabular-nums"
           >
             {secondLine}
           </Text>

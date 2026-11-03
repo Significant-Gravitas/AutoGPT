@@ -114,7 +114,13 @@ class MessageSessionTool(BaseTool):
         # Ownership before anything else, and not-found rather than forbidden:
         # a distinct refusal would let this tool probe for session ids.
         target = await get_chat_session_metadata(target_id)
-        if target is None or target.user_id != user_id:
+        if (
+            target is None
+            or target.user_id != user_id
+            # A chat in another organization or team is another workspace's.
+            or (target.organization_id, target.team_id)
+            != (session.organization_id, session.team_id)
+        ):
             return self._error(
                 f"No session {target_id} of yours. Use tool:find_session.", session
             )
@@ -136,6 +142,9 @@ class MessageSessionTool(BaseTool):
         provenance = sent_from_metadata(session)
         queued = await queue_user_message(
             session_id=target_id,
+            user_id=user_id,
+            organization_id=target.organization_id,
+            team_id=target.team_id,
             message=payload,
             require_turn_in_flight=True,
             metadata=provenance,
@@ -154,7 +163,12 @@ class MessageSessionTool(BaseTool):
         # page context and model choice) would be replaced by this message's.
         if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
             await queue_user_message(
-                session_id=target.session_id, message=payload, metadata=provenance
+                session_id=target.session_id,
+                user_id=user_id,
+                organization_id=target.organization_id,
+                team_id=target.team_id,
+                message=payload,
+                metadata=provenance,
             )
             return SessionMessageResponse(
                 message=f"Queued for session {target.session_id}'s next turn.",
@@ -192,6 +206,8 @@ class MessageSessionTool(BaseTool):
                 session_id=target_id,
                 message=payload,
                 message_metadata=provenance,
+                organization_id=target.organization_id,
+                team_id=target.team_id,
                 llm_auth_provider=target.metadata.llm_auth_provider,
                 llm_credential_id=target.metadata.llm_credential_id,
                 permissions=(

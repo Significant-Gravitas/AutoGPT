@@ -1,43 +1,32 @@
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
-from typing import Annotated, Any, List
+from typing import Annotated, List
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Query, Security, status
-from prisma.enums import ReviewStatus
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 
 from backend.api.live_auth import live_dependency
-from backend.copilot.constants import (
-    is_copilot_synthetic_id,
-    parse_node_id_from_exec_id,
-)
-from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
-from backend.copilot.gate.held import subject_keys as held_subject_keys
+from backend.copilot.constants import legacy_chat_session_id
+from backend.copilot.gate.held import answered_cards as held_answered_cards
 from backend.copilot.gate.held import wake as wake_for_held_calls
+from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import (
-    ExecutionContext,
     ExecutionStatus,
     get_graph_execution_exact_scope,
     get_graph_execution_meta,
-    get_node_executions,
 )
-from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
-    create_auto_approval_record,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
-    process_all_reviews_for_execution,
 )
-from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.data.tenancy import get_user_team_ids, live_resource_access_barrier
-from backend.data.user import get_user_by_id
-from backend.data.workspace import get_or_create_workspace
-from backend.executor.utils import add_graph_execution
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
+from .service import process_reviews
 
 logger = logging.getLogger(__name__)
 
@@ -46,37 +35,6 @@ router = APIRouter(
     tags=["v2", "executions", "review"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
-
-
-async def _resolve_node_ids(
-    node_exec_ids: list[str],
-    graph_exec_id: str | None,
-) -> dict[str, str]:
-    """Resolve node_exec_id -> node_id for auto-approval records.
-
-    A chat review's id encodes its node id as "{node_id}:{random}"; graph
-    executions look up node_id from NodeExecution records.
-    """
-    if not node_exec_ids:
-        return {}
-
-    if graph_exec_id is None:
-        return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
-
-    node_execs = await get_node_executions(
-        graph_exec_id=graph_exec_id, include_exec_data=False
-    )
-    node_exec_map = {ne.node_exec_id: ne.node_id for ne in node_execs}
-
-    result = {}
-    for neid in node_exec_ids:
-        if neid in node_exec_map:
-            result[neid] = node_exec_map[neid]
-        else:
-            logger.error(
-                f"Failed to resolve node_id for {neid}: Node execution not found."
-            )
-    return result
 
 
 @router.get(
@@ -191,55 +149,40 @@ async def list_pending_reviews_for_execution(
         Reviews with invalid status are excluded with warning logs.
     """
 
-    # Verify user owns the graph execution before returning reviews
-    # (CoPilot synthetic IDs don't have graph execution records)
-    if not is_copilot_synthetic_id(graph_exec_id):
-        candidate = await get_graph_execution_meta(
-            user_id=user_id,
-            execution_id=graph_exec_id,
-            organization_id=ctx.org_id,
-            team_id_restriction=ctx.team_id,
+    # Clients built before chat reviews had their own route ask for a chat
+    # under its old synthetic id.
+    if session_id := legacy_chat_session_id(graph_exec_id):
+        return await _list_pending_chat_reviews(session_id, user_id, ctx)
+
+    candidate = await get_graph_execution_meta(
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
+    )
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
         )
-        if not candidate:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
-        organization_id, team_id = candidate.organization_id, candidate.team_id
-    else:
-        candidates = await get_pending_reviews_for_execution(graph_exec_id, user_id)
-        scopes = {(review.organization_id, review.team_id) for review in candidates}
-        if len(scopes) != 1:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
-        organization_id, team_id = next(iter(scopes))
-        if organization_id != ctx.org_id or (
-            ctx.team_id is not None and team_id != ctx.team_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
+    organization_id, team_id = candidate.organization_id, candidate.team_id
 
     async with live_resource_access_barrier(
         user_id, organization_id, team_id, "view"
     ) as allowed:
         if not allowed:
             raise HTTPException(status_code=403, detail="Resource scope is inactive")
-        if not is_copilot_synthetic_id(graph_exec_id):
-            current = await get_graph_execution_exact_scope(
-                user_id,
-                graph_exec_id,
-                organization_id,
-                team_id,
+        current = await get_graph_execution_exact_scope(
+            user_id,
+            graph_exec_id,
+            organization_id,
+            team_id,
+        )
+        if current is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
             )
-            if current is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Graph execution #{graph_exec_id} not found",
-                )
         return await get_pending_reviews_for_execution(
             graph_exec_id,
             user_id,
@@ -255,6 +198,7 @@ async def list_pending_reviews_for_execution(
     response_model=List[PendingHumanReviewModel],
     responses={
         200: {"description": "List of pending reviews for the chat session"},
+        404: {"description": "Chat session not found in this workspace"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -270,9 +214,82 @@ async def list_pending_reviews_for_chat_session(
     Only the caller's own reviews are returned, so another user's chat session
     id yields an empty list.
     """
-    return await list_pending_reviews_for_execution(
-        f"copilot-session-{chat_session_id}", user_id, ctx
-    )
+    return await _list_pending_chat_reviews(chat_session_id, user_id, ctx)
+
+
+@router.get(
+    "/session/{chat_session_id}/answered",
+    summary="Get Answered Reviews Waiting to Run for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+)
+async def list_answered_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
+) -> List[PendingHumanReviewModel]:
+    """The chat's answered cards whose calls have not run yet, oldest first, so
+    its box still shows them as answered, with Close and continue, after a reload."""
+    session = await _chat_session_in_scope(chat_session_id, user_id, ctx)
+    if session is None:
+        return []
+    async with live_resource_access_barrier(
+        user_id, session.organization_id, session.team_id, "view"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        return [
+            row
+            for row in await held_answered_cards(user_id, chat_session_id)
+            if (row.organization_id, row.team_id)
+            == (session.organization_id, session.team_id)
+        ]
+
+
+async def _list_pending_chat_reviews(
+    chat_session_id: str,
+    user_id: str,
+    ctx: autogpt_auth_lib.RequestContext,
+) -> List[PendingHumanReviewModel]:
+    session = await _chat_session_in_scope(chat_session_id, user_id, ctx)
+    if session is None:
+        return []
+    async with live_resource_access_barrier(
+        user_id, session.organization_id, session.team_id, "view"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        return await get_pending_reviews_for_chat_session(
+            chat_session_id,
+            user_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            enforce_scope=True,
+        )
+
+
+async def _chat_session_in_scope(
+    chat_session_id: str,
+    user_id: str,
+    ctx: autogpt_auth_lib.RequestContext,
+) -> ChatSessionInfo | None:
+    """The caller's chat, or None when they have no chat by that id.
+
+    A chat of theirs that lives in another organization or team than the
+    request's is not found here, like any other resource outside the scope.
+    """
+    session = await get_chat_session_metadata(chat_session_id, user_id)
+    if session is None:
+        return None
+    if session.organization_id != ctx.org_id or (
+        ctx.team_id is not None and session.team_id != ctx.team_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session #{chat_session_id} not found",
+        )
+    return session
 
 
 async def _live_review_action_dependency(
@@ -342,6 +359,10 @@ async def _live_review_action_dependency(
         ):
             raise HTTPException(status_code=404, detail="Review not found")
         if not is_copilot:
+            if graph_exec_id is None:
+                # A review is anchored to a run or a chat; one with neither
+                # cannot be decided here.
+                raise HTTPException(status_code=404, detail="Review not found")
             graph_exec_meta = await get_graph_execution_exact_scope(
                 user_id,
                 graph_exec_id,
@@ -367,7 +388,11 @@ async def _live_review_action_dependency(
         yield current
 
 
-@router.post("/action", response_model=ReviewResponse)
+@router.post(
+    "/action",
+    response_model=ReviewResponse,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def process_review_action(
     request: ReviewRequest,
     reviews_map: Annotated[
@@ -377,189 +402,60 @@ async def process_review_action(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ReviewResponse:
     """Process reviews with approve or reject actions."""
-
-    scopes = {
-        (review.graph_exec_id, review.session_id) for review in reviews_map.values()
-    }
-    graph_exec_id, chat_session_id = next(iter(scopes))
-
-    # Build review decisions map and track which reviews requested auto-approval
-    # Auto-approved reviews use original data (no modifications allowed)
-    review_decisions = {}
-    auto_approve_requests = {}  # Map node_exec_id -> auto_approve_future flag
-
-    for review in request.reviews:
-        review_status = (
-            ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
-        )
-        # If this review requested auto-approval, don't allow data modifications
-        reviewed_data = None if review.auto_approve_future else review.reviewed_data
-        review_decisions[review.node_exec_id] = (
-            review_status,
-            reviewed_data,
-            review.message,
-        )
-        auto_approve_requests[review.node_exec_id] = review.auto_approve_future
-
-    # Read before the answer lands: a turn it wakes claims the held calls.
-    chat_rule_keys = (
-        await held_subject_keys(
-            chat_session_id, [r.node_exec_id for r in request.reviews if r.chat_rule]
-        )
-        if chat_session_id is not None
-        else {}
+    # The dependency holds every review to the one workspace it checked live.
+    scope = next(iter(reviews_map.values()))
+    outcome = await process_reviews(
+        user_id,
+        request.reviews,
+        organization_id=scope.organization_id,
+        team_id=scope.team_id,
+        wait_for_other_cards=request.wait_for_other_cards,
     )
 
-    # Process all reviews
-    updated_reviews = await process_all_reviews_for_execution(
-        user_id=user_id,
-        review_decisions=review_decisions,
-    )
-
-    # Create auto-approval records for approved reviews that requested it
-    # Deduplicate by node_id to avoid race conditions when multiple reviews
-    # for the same node are processed in parallel
-    async def create_auto_approval_for_node(
-        node_id: str, review_result
-    ) -> tuple[str, bool]:
-        """
-        Create auto-approval record for a node.
-        Returns (node_id, success) tuple for tracking failures.
-        """
-        try:
-            await create_auto_approval_record(
-                user_id=user_id,
-                node_id=node_id,
-                payload=review_result.payload,
-                graph_exec_id=review_result.graph_exec_id,
-                graph_id=review_result.graph_id,
-                graph_version=review_result.graph_version,
-                chat_session_id=review_result.session_id,
-            )
-            return (node_id, True)
-        except Exception as e:
-            logger.error(
-                f"Failed to create auto-approval record for node {node_id}",
-                exc_info=e,
-            )
-            return (node_id, False)
-
-    # Collect node_exec_ids that need auto-approval and resolve their node_ids
-    node_exec_ids_needing_auto_approval = [
-        node_exec_id
-        for node_exec_id, review_result in updated_reviews.items()
-        if review_result.status == ReviewStatus.APPROVED
-        and auto_approve_requests.get(node_exec_id, False)
-    ]
-
-    node_id_map = await _resolve_node_ids(
-        node_exec_ids_needing_auto_approval, graph_exec_id
-    )
-
-    # Deduplicate by node_id — one auto-approval per node
-    nodes_needing_auto_approval: dict[str, Any] = {}
-    for node_exec_id in node_exec_ids_needing_auto_approval:
-        node_id = node_id_map.get(node_exec_id)
-        if node_id and node_id not in nodes_needing_auto_approval:
-            nodes_needing_auto_approval[node_id] = updated_reviews[node_exec_id]
-
-    # Execute all auto-approval creations in parallel (deduplicated by node_id)
-    auto_approval_results = await asyncio.gather(
-        *[
-            create_auto_approval_for_node(node_id, review_result)
-            for node_id, review_result in nodes_needing_auto_approval.items()
-        ],
-        return_exceptions=True,
-    )
-
-    # Count auto-approval failures
-    auto_approval_failed_count = 0
-    for result in auto_approval_results:
-        if isinstance(result, Exception):
-            auto_approval_failed_count += 1
-            logger.error(
-                f"Unexpected exception during auto-approval creation: {result}"
-            )
-        elif isinstance(result, tuple) and len(result) == 2 and not result[1]:
-            auto_approval_failed_count += 1
-
-    # Count results
-    approved_count = sum(
-        1
-        for review in updated_reviews.values()
-        if review.status == ReviewStatus.APPROVED
-    )
-    rejected_count = sum(
-        1
-        for review in updated_reviews.values()
-        if review.status == ReviewStatus.REJECTED
-    )
-
-    if chat_session_id is not None and chat_rule_keys:
-        await set_chat_rules(
-            chat_session_id,
-            user_id,
-            updated_reviews,
-            {review.node_exec_id: review.chat_rule for review in request.reviews},
-            chat_rule_keys,
-            {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
-        )
-
-    # A held call finishes on its own: the answer starts the chat's next turn.
-    if chat_session_id is not None and updated_reviews:
-        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
-
-    # Resume graph execution only for real graph executions (not CoPilot)
-    # CoPilot sessions are resumed by the LLM retrying run_block with review_id
-    if graph_exec_id is not None and updated_reviews.should_resume:
-        first_review = next(iter(updated_reviews.values()))
-
-        try:
-            user = await get_user_by_id(user_id)
-            settings = await get_graph_settings(
-                user_id=user_id,
-                graph_id=first_review.graph_id,
-                graph_version=first_review.graph_version,
-                organization_id=first_review.organization_id,
-                team_id=first_review.team_id,
-            )
-
-            user_timezone = (
-                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-            )
-
-            workspace = await get_or_create_workspace(user_id)
-
-            execution_context = ExecutionContext(
-                human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
-                sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                user_timezone=user_timezone,
-                workspace_id=workspace.id,
-                organization_id=first_review.organization_id,
-                team_id=first_review.team_id,
-            )
-
-            await add_graph_execution(
-                graph_id=first_review.graph_id,
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                execution_context=execution_context,
-            )
-            logger.info(f"Resumed execution {graph_exec_id}")
-        except Exception as e:
-            logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
-
-    # Build error message if auto-approvals failed
     error_message = None
-    if auto_approval_failed_count > 0:
+    if outcome.auto_approval_failed_count:
         error_message = (
-            f"{auto_approval_failed_count} auto-approval setting(s) could not be saved. "
-            f"You may need to manually approve these reviews in future executions."
+            f"{outcome.auto_approval_failed_count} auto-approval setting(s) could "
+            f"not be saved. You may need to manually approve these reviews in "
+            f"future executions."
         )
 
     return ReviewResponse(
-        approved_count=approved_count,
-        rejected_count=rejected_count,
-        failed_count=auto_approval_failed_count,
+        approved_count=outcome.approved_count,
+        rejected_count=outcome.rejected_count,
+        failed_count=outcome.auto_approval_failed_count,
         error=error_message,
+        awaiting_other_cards=outcome.awaiting_other_cards,
     )
+
+
+@router.post(
+    "/session/{chat_session_id}/continue",
+    summary="Continue Chat With Answered Reviews",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
+async def continue_with_answered_reviews(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+            autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+        )
+    ),
+) -> None:
+    """Start the chat's turn with the cards answered so far; the rest stay open
+    and the turn is told how many still wait."""
+    session = await _chat_session_in_scope(chat_session_id, user_id, ctx)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session #{chat_session_id} not found",
+        )
+    async with live_resource_access_barrier(
+        user_id, session.organization_id, session.team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        await wake_for_held_calls(user_id, chat_session_id)

@@ -23,7 +23,6 @@ from backend.blocks.llm import LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
-from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.text import split_camelcase
 
@@ -213,10 +212,11 @@ async def update_search(
     team_id_restriction: str | None = None,
 ) -> str:
     """
-    Upsert a search request for the user and return the search ID.
+    Update the user's search entry with ``search.search_id``, or create one when
+    that id is missing or not the user's, and return the entry's ID.
     """
     if search.search_id:
-        # Update existing search
+        # Only the caller's entry in the workspace the search runs in.
         updated = await prisma.models.BuilderSearchHistory.prisma().update_many(
             where={
                 "id": search.search_id,
@@ -230,22 +230,19 @@ async def update_search(
                 "byCreator": search.by_creator or [],
             },
         )
-        if updated != 1:
-            raise NotFoundError(f"Search #{search.search_id} not found")
-        return search.search_id
-    else:
-        # Create new search
-        new_search = await prisma.models.BuilderSearchHistory.prisma().create(
-            data={
-                "userId": user_id,
-                "searchQuery": search.search_query or "",
-                "filter": search.filter or [],  # type: ignore
-                "byCreator": search.by_creator or [],
-                **({"organizationId": organization_id} if organization_id else {}),
-                **({"teamId": team_id_restriction} if team_id_restriction else {}),
-            }
-        )
-        return new_search.id
+        if updated:
+            return search.search_id
+    new_search = await prisma.models.BuilderSearchHistory.prisma().create(
+        data={
+            "userId": user_id,
+            "searchQuery": search.search_query or "",
+            "filter": search.filter or [],  # type: ignore
+            "byCreator": search.by_creator or [],
+            **({"organizationId": organization_id} if organization_id else {}),
+            **({"teamId": team_id_restriction} if team_id_restriction else {}),
+        }
+    )
+    return new_search.id
 
 
 async def get_recent_searches(

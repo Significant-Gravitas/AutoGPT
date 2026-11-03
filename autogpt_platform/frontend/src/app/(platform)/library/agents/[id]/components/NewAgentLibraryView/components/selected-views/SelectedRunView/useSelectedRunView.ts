@@ -45,7 +45,6 @@ export function useSelectedRunView(agent: LibraryAgent, runId: string) {
           return 1500;
         return false;
       },
-      refetchIntervalInBackground: true,
       refetchOnWindowFocus: false,
     },
   });

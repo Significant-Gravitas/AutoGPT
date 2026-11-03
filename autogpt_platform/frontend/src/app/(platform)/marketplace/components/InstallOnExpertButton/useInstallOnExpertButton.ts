@@ -1,15 +1,13 @@
 import { useListExperts } from "@/services/experts/scoped-queries";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 
 export function useInstallOnExpertButton() {
-  const hireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { isLoggedIn } = useAuth();
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const canFetchExperts = Boolean(hireExpertsEnabled) && isLoggedIn;
+  const canFetchExperts = isLoggedIn;
 
   const expertsQuery = useListExperts({
     query: {

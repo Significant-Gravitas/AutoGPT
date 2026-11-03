@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { SubscriptionTier } from "@/app/api/__generated__/models/subscriptionTier";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -83,6 +84,10 @@ export function RateLimitResetDialog({
   // leads instead.
   const waitTitle =
     wait && model.isTopTier ? budgetOutTitle(wait.window) : null;
+  // Relative to the clock, so read on every render rather than cached.
+  const resetSentence = useReadEveryRender(() =>
+    wait ? budgetResetSentence(wait) : null,
+  );
   const payment = formatPaymentDue(model.payment);
   const fallbackTitle =
     failureWindow === "trial"
@@ -104,14 +109,14 @@ export function RateLimitResetDialog({
       variant="compact"
       title={
         <div className="pr-6">
-          <Text variant="small" className="mb-2 !text-xs !text-zinc-500">
+          <Text tone="muted" variant="small-tight" className="mb-2">
             {checking
               ? "Checking your allowance"
               : unavailable
                 ? "Usage temporarily unavailable"
                 : copy.eyebrow}
           </Text>
-          <Text as="span" variant="h3" className="!text-[26px] !leading-8">
+          <Text as="span" variant="h3" className="!leading-8">
             {checking
               ? "One moment. Your work is saved."
               : unavailable
@@ -130,16 +135,12 @@ export function RateLimitResetDialog({
     >
       <Dialog.Content>
         {checking ? (
-          <Text
-            variant="body"
-            role="status"
-            className="!text-sm !text-zinc-500"
-          >
+          <Text tone="muted" variant="body" role="status" className="!text-sm">
             Refreshing your plan and usage…
           </Text>
         ) : unavailable ? (
           <div className="space-y-5">
-            <Text variant="body" className="!text-sm !leading-6 !text-zinc-500">
+            <Text tone="muted" variant="body" className="!text-sm !leading-6">
               Your work is saved. Try again to check your allowance before
               continuing.
             </Text>
@@ -148,11 +149,11 @@ export function RateLimitResetDialog({
         ) : (
           <>
             <Text
+              tone="muted"
               variant="body"
-              unmask={!payment}
-              className="mb-5 !text-sm !leading-6 !text-zinc-500"
+              className="mb-5 !text-sm !leading-6"
             >
-              {waitTitle && wait ? budgetResetSentence(wait) : copy.description}
+              {waitTitle && wait ? resetSentence : copy.description}
             </Text>
             {copy.trialSpent && (
               <div className="mb-5">
@@ -191,10 +192,10 @@ export function RateLimitResetDialog({
                 </Button>
               ))}
             {isBillingEnabled && model.isTopTier && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-base p-4">
                 <div>
                   <Text variant="small-medium">Need more capacity?</Text>
-                  <Text variant="small" className="mt-1 !text-zinc-500">
+                  <Text tone="muted" variant="small" className="mt-1">
                     We’ll help find the right fit.
                   </Text>
                 </div>

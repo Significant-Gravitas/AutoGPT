@@ -39,27 +39,28 @@ export function CopilotLibrarySummary() {
 
   return (
     <div
-      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 pt-3"
+      className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator pt-3"
       data-testid="copilot-library-summary"
     >
-      <Text variant="small" className="!text-zinc-500">
+      <Text variant="small" tone="muted">
         Skills and follow-ups
       </Text>
       {showSkills ? (
         <Link
           href="/library/skills"
-          className="text-sm text-violet-700 hover:underline"
+          className="text-sm text-accent-strong hover:underline"
           data-testid="copilot-library-skills-link"
         >
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
         </Link>
       ) : null}
       {showSkills && showFollowups ? (
-        <span className="text-zinc-300">•</span>
+        <span className="text-foreground-disabled">•</span>
       ) : null}
       {showFollowups ? (
         <Link
           href="/library/followups"
+          // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
           className="text-sm text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >

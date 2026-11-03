@@ -1,11 +1,15 @@
 """CoPilot tools for workspace file operations."""
 
+import asyncio
 import base64
 import logging
 import mimetypes
 import os
 from collections import deque
 from typing import Any, Optional
+
+from prisma.enums import APIKeyPermission
+from pydantic import Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
@@ -14,9 +18,22 @@ from backend.copilot.context import (
     get_workspace_manager,
     is_allowed_local_path,
     looks_like_sdk_tool_result_path,
+    resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.google_data_redaction import GOOGLE_DATA_METADATA_KEY
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_image import (
+    BINARY_IMAGE_READ_GUIDANCE,
+    IMAGE_EXTENSIONS,
+    IMAGE_MIME_TYPES,
+    IMAGE_READ_DESCRIPTION,
+    IMAGE_TOO_LARGE_MESSAGE,
+    MAX_IMAGE_BYTES,
+    ImageReadError,
+    prepare_image,
+)
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
     save_to_workdir,
@@ -29,7 +46,8 @@ from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
+from .external_scope import error_detail
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -128,7 +146,7 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
     if isinstance(validated, ErrorResponse):
         return validated
     try:
-        with open(validated, "rb") as f:
+        with open(validated, "rb", opener=open_no_follow) as f:
             return f.read()
     except FileNotFoundError:
         return ErrorResponse(
@@ -150,8 +168,6 @@ _TEXT_MIME_PREFIXES = (
     "application/x-python",
     "application/x-sh",
 )
-
-_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
 def _is_text_mime(mime_type: str) -> bool:
@@ -211,6 +227,30 @@ class WorkspaceFileContentResponse(ToolResponseBase):
 
 _MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# The most characters one ranged read of a workspace file returns.
+_MAX_RANGE_CHARS = 1_000_000
+
+# How far into a file an External API caller's ranged reads reach. Reaching a
+# character means reading every byte before it, so without a bound a deep
+# offset loads a whole file for a one-character answer. The REST download
+# serves the whole file.
+_MAX_EXTERNAL_RANGE_END = 1_000_000
+
+# The most text one External API ranged read returns: its base64 has to fit in
+# the 100,000 characters a tool result keeps, or the slice would come back cut.
+_MAX_EXTERNAL_RANGE_BYTES = 60_000
+# Base64 and metadata must stay below the 45K tool-output persistence threshold.
+_MAX_INTERNAL_RANGE_BYTES = 30_000
+
+
+def _fit_utf8(text: str, max_bytes: int) -> str:
+    """The longest start of *text* whose UTF-8 is at most *max_bytes* long."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    # A character cut in two is dropped whole.
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
 
 def _read_local_tool_result(
     path: str,
@@ -225,22 +265,19 @@ def _read_local_tool_result(
     ``read_workspace_file`` with an SDK tool-result path that only exists on
     the host filesystem, not in cloud workspace storage.
 
-    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    Defence-in-depth: validates *path* via :func:`resolve_allowed_local_path`
     regardless of what the caller has already checked.
     """
-    # TOCTOU: path validated then opened separately. Acceptable because
-    # the tool-results directory is server-controlled, not user-writable.
-    expanded = os.path.realpath(os.path.expanduser(path))
-    # Defence-in-depth: re-check with resolved path (caller checked raw path).
-    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+    expanded = resolve_allowed_local_path(path, sdk_cwd or get_sdk_cwd())
+    if expanded is None:
         return ErrorResponse(
             message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
         )
     try:
-        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
-        # Pre-read size check prevents loading files far above the cap;
-        # the remaining TOCTOU gap is acceptable for server-controlled paths.
-        file_size = os.path.getsize(expanded)
+        # The 10 MB cap bounds memory: read one byte past it, never the whole file.
+        with open(expanded, "rb", opener=open_no_follow) as fh:
+            raw = fh.read(_MAX_LOCAL_TOOL_RESULT_BYTES + 1)
+        file_size = len(raw)
         if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
             return ErrorResponse(
                 message=(f"File too large: {os.path.basename(path)}"),
@@ -249,8 +286,6 @@ def _read_local_tool_result(
 
         # Detect binary files: try strict UTF-8 first, fall back to
         # base64-encoding the raw bytes for binary content.
-        with open(expanded, "rb") as fh:
-            raw = fh.read()
         try:
             text_content = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -271,7 +306,7 @@ def _read_local_tool_result(
         end = (
             char_offset + char_length if char_length is not None else len(text_content)
         )
-        slice_text = text_content[char_offset:end]
+        slice_text = _fit_utf8(text_content[char_offset:end], _MAX_INTERNAL_RANGE_BYTES)
     except FileNotFoundError:
         return ErrorResponse(
             message=f"File not found: {os.path.basename(path)}", session_id=session_id
@@ -309,6 +344,10 @@ class WorkspaceFileMetadataResponse(ToolResponseBase):
     preview: str | None = None  # First 500 chars for text files
 
 
+# What write_workspace_file stamps on every file it writes.
+AGENT_CREATED_METADATA = {"origin": "agent-created"}
+
+
 class WorkspaceWriteResponse(ToolResponseBase):
     """Response after writing a file to workspace."""
 
@@ -323,6 +362,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # Otto's own working file (e.g. build_state.json), as the write marked it.
+    # For the activity log only; neither the model nor the client sees it.
+    is_internal: bool = Field(default=False, exclude=True)
 
 
 class WorkspaceDeleteResponse(ToolResponseBase):
@@ -341,13 +383,16 @@ class ListWorkspaceFilesTool(BaseTool):
         return "list_workspace_files"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
+
+    @property
     def description(self) -> str:
         return (
-            "List persistent workspace files, with the folders at that level. "
-            "Files uploaded on the Files page sit at the workspace root or in "
-            "a folder; pass folder_id to list one, then read a file with "
-            "read_workspace_file. For ephemeral session files, use SDK "
-            "Glob/Read instead."
+            "List workspace storage (the user's uploads and saved files, none "
+            "on the sandbox disk) with the folders at that level. Files-page "
+            "uploads sit at the root or in a folder; pass folder_id to list "
+            "one, then read a file with read_workspace_file."
         )
 
     @property
@@ -490,6 +535,17 @@ class ListWorkspaceFilesTool(BaseTool):
                     "list them with folder_id."
                 )
             lines.append(f"Total size: {total_size:,} bytes")
+            # A routine or a new chat starts with no files of its own, so an
+            # empty current-chat listing reads as "the user's file is gone".
+            if not include_all_sessions and folder_id is None:
+                lines.append(
+                    "Only this chat's files are listed. For files the user "
+                    "uploaded or saved elsewhere, "
+                    "list again with include_all_sessions=true. In expert chats, "
+                    "this covers the expert's own and delegated chats and the "
+                    "Files page, not unrelated chats. Open those files in Otto "
+                    "or put them on the Files page."
+                )
 
             return WorkspaceFileListResponse(
                 files=file_infos,
@@ -505,8 +561,8 @@ class ListWorkspaceFilesTool(BaseTool):
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to list workspace files: {e}",
-                error=str(e),
+                message=f"Failed to list workspace files: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -553,7 +609,10 @@ def _folder_subtree(
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
+    # ``save_to_path`` copies the file into the sandbox.
+    writes_files = True
+
+    MAX_INLINE_SIZE_BYTES = 32 * 1024
     PREVIEW_SIZE = 500
 
     @property
@@ -561,15 +620,22 @@ class ReadWorkspaceFileTool(BaseTool):
         return "read_workspace_file"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_FILES]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "save_to_path")
+
+    @property
     def description(self) -> str:
         return (
-            "Read a file from persistent workspace. Specify file_id or path. "
-            "Small text/image files return inline; large/binary return metadata+URL. "
-            "Use save_to_path to copy to working dir for processing. "
-            "Use offset/length for paginated reads. "
-            "Paths resolve in the current session; use /sessions/<id>/... or "
-            "file_id to reach elsewhere. An expert chat reads its own "
-            "conversations, ones it delegated, and the user's files."
+            "Read workspace file_id or path. Small text is inline; other files return metadata+URL. "
+            + IMAGE_READ_DESCRIPTION
+            + "save_to_path copies for processing; offset/length paginate text. "
+            "Paths are session-relative; use /sessions/<id>/... or file_id elsewhere. "
+            "Expert chats can read their own/delegated conversations and the user's files."
         )
 
     @property
@@ -599,7 +665,7 @@ class ReadWorkspaceFileTool(BaseTool):
                 },
                 "length": {
                     "type": "integer",
-                    "description": "Max characters to return for paginated reads.",
+                    "description": "Max characters to return per read (at most 1,000,000).",
                 },
             },
             "required": [],  # At least one of file_id or path must be provided
@@ -681,6 +747,9 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            # A saved Google block output, read back, is still Google data.
+            google_data = file_info.metadata.get(GOOGLE_DATA_METADATA_KEY) is True
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -690,17 +759,89 @@ class ReadWorkspaceFileTool(BaseTool):
                     return result
                 save_to_path = result
 
-            # Ranged read: return a character slice directly.
-            if char_offset > 0 or char_length is not None:
-                raw = cached_content or await manager.read_file_by_id(target_file_id)
-                text = raw.decode("utf-8", errors="replace")
-                total_chars = len(text)
-                end = (
-                    char_offset + char_length
-                    if char_length is not None
-                    else total_chars
+            is_image = (
+                file_info.mime_type in IMAGE_MIME_TYPES
+                or os.path.splitext(file_info.name)[1].lower() in IMAGE_EXTENSIONS
+            )
+            if is_image and (char_offset > 0 or char_length is not None):
+                return ErrorResponse(
+                    message="Image not shown: offset/length only apply to text. Read the whole image.",
+                    session_id=session_id,
+                ).from_outside()
+            if is_image and not force_download_url:
+                try:
+                    if file_info.size_bytes > MAX_IMAGE_BYTES:
+                        raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
+                    image = await asyncio.to_thread(
+                        prepare_image,
+                        (
+                            cached_content
+                            if cached_content is not None
+                            else await manager.read_file_by_id(target_file_id)
+                        ),
+                    )
+                except ImageReadError as exc:
+                    return ErrorResponse(
+                        message=str(exc)
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    ).from_outside()
+                return (
+                    WorkspaceFileMetadataResponse(
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        path=file_info.path,
+                        mime_type=image.mime_type,
+                        size_bytes=file_info.size_bytes,
+                        download_url=f"workspace://{target_file_id}",
+                        message=f"Viewed {file_info.name} as an image (first frame only)."
+                        + (f" Also saved to {save_to_path}." if save_to_path else ""),
+                        session_id=session_id,
+                    )
+                    .with_image(image)
+                    .with_google_data(google_data)
                 )
+
+            # Ranged read: return a character slice directly. A slice is at
+            # most _MAX_RANGE_CHARS long, and only the bytes it can reach are
+            # read (UTF-8 is at most four bytes a character), so a large file
+            # is neither loaded nor decoded whole.
+            if char_offset > 0 or char_length is not None:
+                end = char_offset + min(
+                    _MAX_RANGE_CHARS if char_length is None else max(0, char_length),
+                    _MAX_RANGE_CHARS,
+                )
+                if session.external_caller:
+                    if char_offset >= _MAX_EXTERNAL_RANGE_END:
+                        return ErrorResponse(
+                            message=(
+                                "Ranged reads reach the first "
+                                f"{_MAX_EXTERNAL_RANGE_END:,} characters of a "
+                                "file. Download the file for the rest."
+                            ),
+                            session_id=session_id,
+                        )
+                    # What fits in _MAX_EXTERNAL_RANGE_BYTES is at most that
+                    # many characters, so no byte past them is needed.
+                    end = min(
+                        end,
+                        _MAX_EXTERNAL_RANGE_END,
+                        char_offset + _MAX_EXTERNAL_RANGE_BYTES,
+                    )
+                else:
+                    end = min(end, char_offset + _MAX_INTERNAL_RANGE_BYTES)
+                raw = cached_content or await manager.read_file_head_by_id(
+                    target_file_id, 4 * end
+                )
+                text = raw[: 4 * end].decode("utf-8", errors="replace")
                 slice_text = text[char_offset:end]
+                max_bytes = (
+                    _MAX_EXTERNAL_RANGE_BYTES
+                    if session.external_caller
+                    else _MAX_INTERNAL_RANGE_BYTES
+                )
+                slice_text = _fit_utf8(slice_text, max_bytes)
+                per_read = f"{max_bytes:,} bytes"
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -712,18 +853,16 @@ class ReadWorkspaceFileTool(BaseTool):
                     message=(
                         f"Read chars {char_offset}–"
                         f"{char_offset + len(slice_text)} "
-                        f"of {total_chars:,} total "
-                        f"from {file_info.name}"
+                        f"of {file_info.name} ({file_info.size_bytes:,} bytes); "
+                        f"at most {per_read} per read"
                     ),
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
-            is_image = file_info.mime_type in _IMAGE_MIME_TYPES
 
-            # Inline content for small text/image files
-            if is_small and (is_text or is_image) and not force_download_url:
+            if is_small and is_text and not force_download_url:
                 content = cached_content or await manager.read_file_by_id(
                     target_file_id
                 )
@@ -741,14 +880,14 @@ class ReadWorkspaceFileTool(BaseTool):
                     content_base64=base64.b64encode(content).decode("utf-8"),
                     message=msg,
                     session_id=session_id,
-                )
+                ).with_google_data(google_data)
 
             # Metadata + download URL for large/binary files
             preview: str | None = None
             if is_text:
                 try:
-                    raw = cached_content or await manager.read_file_by_id(
-                        target_file_id
+                    raw = cached_content or await manager.read_file_head_by_id(
+                        target_file_id, self.PREVIEW_SIZE + 1
                     )
                     preview = raw[: self.PREVIEW_SIZE].decode("utf-8", errors="replace")
                     if len(raw) > self.PREVIEW_SIZE:
@@ -763,19 +902,32 @@ class ReadWorkspaceFileTool(BaseTool):
             if save_to_path:
                 msg += f" — saved to {save_to_path}"
             else:
+                msg += " — use save_to_path to copy this file to the working directory for processing"
+            if (
+                file_info.mime_type == "application/pdf"
+                or file_info.mime_type.startswith("video/")
+            ):
+                msg += ". " + BINARY_IMAGE_READ_GUIDANCE
+            elif file_info.mime_type.startswith("image/") and not is_image:
                 msg += (
-                    " — use read_workspace_file with this file_id to retrieve content"
+                    ". Image not shown: convert it to PNG/JPEG/GIF/WebP, then read it."
                 )
-            return WorkspaceFileMetadataResponse(
-                file_id=file_info.id,
-                name=file_info.name,
-                path=file_info.path,
-                mime_type=file_info.mime_type,
-                size_bytes=file_info.size_bytes,
-                download_url=f"workspace://{target_file_id}",
-                preview=preview,
-                message=msg,
-                session_id=session_id,
+            return (
+                WorkspaceFileMetadataResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type=file_info.mime_type,
+                    size_bytes=file_info.size_bytes,
+                    download_url=f"workspace://{target_file_id}",
+                    preview=preview,
+                    message=msg,
+                    session_id=session_id,
+                )
+                .from_outside(
+                    file_info.name, file_info.path, file_info.mime_type, preview
+                )
+                .with_google_data(google_data)
             )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
@@ -786,8 +938,8 @@ class ReadWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to read workspace file: {e}",
-                error=str(e),
+                message=f"Failed to read workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -833,9 +985,20 @@ def _path_under_skills_registry(path: str | None) -> bool:
 class WriteWorkspaceFileTool(BaseTool):
     """Tool for writing files to workspace."""
 
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "write_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # The working directory is the chat's sandbox; an external caller has none.
+        return parameters_without(self.parameters, "source_path")
 
     @property
     def description(self) -> str:
@@ -899,7 +1062,8 @@ class WriteWorkspaceFileTool(BaseTool):
         result: ToolResponseBase,
         **kwargs,
     ) -> ActivityEventDraft | None:
-        if not isinstance(result, WorkspaceWriteResponse):
+        # A working file is Otto's bookkeeping, not work delivered.
+        if not isinstance(result, WorkspaceWriteResponse) or result.is_internal:
             return None
         return ActivityEventDraft(
             category="FILE",
@@ -996,7 +1160,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 path=path,
                 mime_type=mime_type,
                 overwrite=overwrite,
-                metadata={"origin": "agent-created"},
+                metadata=AGENT_CREATED_METADATA,
             )
 
             # Build informative source label and message.
@@ -1045,13 +1209,23 @@ class WriteWorkspaceFileTool(BaseTool):
                 content_preview=preview,
                 message=msg,
                 session_id=session_id,
+                is_internal=rec.is_internal,
             )
         except VirusDetectedError as e:
             logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
             return ErrorResponse(message=str(e), session_id=session_id)
         except VirusScanError as e:
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
-            return ErrorResponse(message=str(e), session_id=session_id)
+            # "Virus scanning failed: " plus the scanner client's text, which
+            # can name its host.
+            return ErrorResponse(
+                message=(
+                    "Virus scanning failed: an internal error"
+                    if session.external_caller
+                    else str(e)
+                ),
+                session_id=session_id,
+            )
         except WorkspaceAccessDeniedError as e:
             return ErrorResponse(
                 message=str(e), error="access_denied", session_id=session_id
@@ -1060,7 +1234,7 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use tool:list_workspace_files to find candidates, then "
+                    " Use list_workspace_files to find candidates, then "
                     "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
@@ -1068,8 +1242,8 @@ class WriteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to write workspace file: {e}",
-                error=str(e),
+                message=f"Failed to write workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )
 
@@ -1077,9 +1251,15 @@ class WriteWorkspaceFileTool(BaseTool):
 class DeleteWorkspaceFileTool(BaseTool):
     """Tool for deleting files from workspace."""
 
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "delete_workspace_file"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_FILES]
 
     @property
     def description(self) -> str:
@@ -1188,7 +1368,7 @@ class DeleteWorkspaceFileTool(BaseTool):
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to delete workspace file: {e}",
-                error=str(e),
+                message=f"Failed to delete workspace file: {error_detail(e, session)}",
+                error=error_detail(e, session),
                 session_id=session_id,
             )

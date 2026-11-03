@@ -9,7 +9,13 @@ from backend.data.expert_spend import window_start
 from backend.util.settings import Config
 
 NEEDED = sa.SpendApprovalNeeded(
-    expert_id="e-1", expert_name="Ada", spent=250, threshold=250, window="week"
+    expert_id="e-1",
+    expert_name="Ada",
+    spent=250,
+    threshold=250,
+    window="week",
+    organization_id="org",
+    team_id="team",
 )
 
 
@@ -19,12 +25,12 @@ def _arm(
     spent: int,
     threshold: int | None = 250,
     window: str = "week",
-    flag: bool = True,
+    billing_enabled: bool = True,
     approved: bool = False,
 ):
     mocker.patch.object(sa, "approval_threshold", return_value=threshold)
     mocker.patch.object(sa, "approval_window", return_value=window)
-    mocker.patch.object(sa, "is_feature_enabled", AsyncMock(return_value=flag))
+    mocker.patch.object(sa.settings.config, "enable_credit", billing_enabled)
     get_spend = mocker.patch.object(sa, "get_spend", AsyncMock(return_value=spent))
     reviews = MagicMock(
         find_first=AsyncMock(return_value=MagicMock() if approved else None)
@@ -34,6 +40,8 @@ def _arm(
     )
     expert = MagicMock()
     expert.name = "Ada"
+    expert.organizationId = "org"
+    expert.teamId = "team"
     mocker.patch.object(
         prisma.models.Expert,
         "prisma",
@@ -51,9 +59,13 @@ async def test_check_fires_at_the_threshold_not_below(mocker, spent, expected) -
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("threshold,flag", [(None, True), (250, False)])
-async def test_disabled_check_reads_no_spend(mocker, threshold, flag) -> None:
-    get_spend, _ = _arm(mocker, spent=1_000, threshold=threshold, flag=flag)
+@pytest.mark.parametrize("threshold,billing_enabled", [(None, True), (250, False)])
+async def test_disabled_check_reads_no_spend(
+    mocker, threshold, billing_enabled
+) -> None:
+    get_spend, _ = _arm(
+        mocker, spent=1_000, threshold=threshold, billing_enabled=billing_enabled
+    )
 
     assert await sa.spend_approval_required("owner", "e-1") is None
     get_spend.assert_not_awaited()
@@ -133,6 +145,30 @@ async def test_park_opens_a_review_on_the_run_and_sets_review_status(mocker) -> 
         graph_exec_id="exec-9", status=sa.ExecutionStatus.REVIEW
     )
     assert post.await_args.kwargs["expert_id"] == "e-1"
+    # The message lands in the expert's own thread, in the expert's scope.
+    assert post.await_args.kwargs["organization_id"] == "org"
+    assert post.await_args.kwargs["team_id"] == "team"
+
+
+@pytest.mark.asyncio
+async def test_park_without_an_expert_scope_holds_the_run_and_posts_nothing(
+    mocker,
+) -> None:
+    create, status, post = _park_mocks(mocker)
+
+    await sa.park_execution_for_spend_approval(
+        user_id="owner",
+        graph_exec_id="exec-9",
+        graph_id="graph",
+        graph_version=3,
+        needed=NEEDED.model_copy(update={"organization_id": None, "team_id": None}),
+        organization_id="org",
+        team_id="team",
+    )
+
+    create.assert_awaited_once()
+    status.assert_awaited_once()
+    post.assert_not_awaited()
 
 
 @pytest.mark.asyncio

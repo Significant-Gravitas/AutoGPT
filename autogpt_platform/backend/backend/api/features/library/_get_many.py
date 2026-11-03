@@ -9,7 +9,7 @@ import backend.data.graph as graph_db
 from backend.data.includes import library_agent_include
 
 from ._schedule_info import _fetch_schedule_info
-from .db import _fetch_execution_counts, _fetch_marketplace_details
+from .db import _fetch_execution_counts, _fetch_store_listing, _library_agent_scope_key
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +45,10 @@ async def get_library_agents_by_ids(
     )
     limit = asyncio.Semaphore(_DETAIL_LOAD_CONCURRENCY)
     schedule_info, execution_counts, details = await asyncio.gather(
-        _fetch_schedule_info(user_id),
-        # The include loads only the latest few executions; cards show the total.
-        _fetch_execution_counts(user_id, [row.agentGraphId for row in rows]),
+        _fetch_schedule_info(user_id, exact_scope=True),
+        # The include loads only the latest few executions; cards show the
+        # total, counted per graph version and tenant scope.
+        _fetch_execution_counts(user_id, rows),
         asyncio.gather(*(_load_details(row, limit) for row in rows)),
     )
 
@@ -60,9 +61,10 @@ async def get_library_agents_by_ids(
                 detail.row,
                 sub_graphs=detail.sub_graphs,
                 store_listing=detail.store_listing,
-                profile=detail.profile,
                 schedule_info=schedule_info,
-                execution_count_override=execution_counts.get(detail.row.agentGraphId),
+                execution_count_override=execution_counts.get(
+                    _library_agent_scope_key(detail.row)
+                ),
             )
         except Exception as e:
             logger.error(f"Error parsing LibraryAgent #{detail.row.id}: {e}")
@@ -72,7 +74,6 @@ async def get_library_agents_by_ids(
 class _AgentDetails(BaseModel):
     row: prisma.models.LibraryAgent
     store_listing: prisma.models.StoreListing | None
-    profile: prisma.models.Profile | None
     sub_graphs: list[prisma.models.AgentGraph]
 
 
@@ -83,13 +84,11 @@ async def _load_details(
         return None
     try:
         async with limit:
-            (store_listing, profile), sub_graphs = await asyncio.gather(
-                _fetch_marketplace_details(row.AgentGraph.id),
+            store_listing, sub_graphs = await asyncio.gather(
+                _fetch_store_listing(row.AgentGraph.id),
                 graph_db.get_sub_graphs(row.AgentGraph),
             )
     except Exception as e:
         logger.error(f"Error loading LibraryAgent #{row.id}: {e}")
         return None
-    return _AgentDetails(
-        row=row, store_listing=store_listing, profile=profile, sub_graphs=sub_graphs
-    )
+    return _AgentDetails(row=row, store_listing=store_listing, sub_graphs=sub_graphs)

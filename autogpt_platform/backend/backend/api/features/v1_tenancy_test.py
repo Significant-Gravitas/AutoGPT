@@ -1,4 +1,3 @@
-from backend.api import live_auth
 from contextlib import asynccontextmanager
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock
@@ -12,21 +11,17 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 from prisma.enums import APIKeyStatus
 
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.live_auth import resolve_write_team_id as _resolve_write_team_id
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.graph import GraphModel
 from backend.executor.scheduler import GraphExecutionJobInfo
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 
+from .api_keys import routes as api_keys_module
 from .blocks import routes as blocks_module
 from .graph_executions import routes as graph_executions_module
 from .graphs import routes as graphs_module
 from .schedules import routes as schedules_module
-from .api_keys import routes as api_keys_module
-from backend.api.live_auth import resolve_write_team_id as _resolve_write_team_id
-
-
-
 
 app = fastapi.FastAPI()
 app.include_router(blocks_module.router)
@@ -34,9 +29,8 @@ app.include_router(graph_executions_module.router)
 app.include_router(graphs_module.router)
 app.include_router(schedules_module.router)
 app.include_router(api_keys_module.router, prefix="/api-keys")
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
-
 
 
 TEAM_ID = "team-abc"
@@ -76,9 +70,7 @@ def mock_shared_cache(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(
-    mock_jwt_user, mock_shared_cache, test_user_id, monkeypatch
-):
+def setup_app_auth(mock_jwt_user, mock_shared_cache, test_user_id, monkeypatch):
     """Setup auth overrides for all tests in this module"""
     # Existing org/team action tests opt in; dedicated rollout tests cover off.
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
@@ -86,7 +78,6 @@ def setup_app_auth(
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
     from autogpt_libs.auth.models import RequestContext
-
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
@@ -116,8 +107,17 @@ def setup_app_auth(
     async def allow_resource_action(*_args, **_kwargs):
         yield True
 
-    for module in (blocks_module, graph_executions_module, graphs_module, schedules_module, api_keys_module):
-        for name in ("live_resource_permission_barrier", "live_agent_graph_access_barrier"):
+    for module in (
+        blocks_module,
+        graph_executions_module,
+        graphs_module,
+        schedules_module,
+        api_keys_module,
+    ):
+        for name in (
+            "live_resource_permission_barrier",
+            "live_agent_graph_access_barrier",
+        ):
             if hasattr(module, name):
                 monkeypatch.setattr(module, name, allow_resource_action)
     monkeypatch.setattr(graphs_module, "_live_graph_mutation", allow_graph_mutation)
@@ -148,13 +148,16 @@ def test_execute_graph_block_rechecks_live_permission_before_charge(
     block.execute = AsyncMock()
     mocker.patch("backend.api.features.blocks.routes.get_block", return_value=block)
     mocker.patch(
-        "backend.api.features.blocks.routes.get_user_by_id", return_value=Mock(timezone="UTC")
+        "backend.api.features.blocks.routes.get_user_by_id",
+        return_value=Mock(timezone="UTC"),
     )
     charge = mocker.patch(
         "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution",
         new_callable=AsyncMock,
     )
-    mocker.patch("backend.api.features.blocks.routes.live_resource_permission_barrier", denied)
+    mocker.patch(
+        "backend.api.features.blocks.routes.live_resource_permission_barrier", denied
+    )
 
     response = client.post("/blocks/test-block/execute", json={})
 
@@ -188,13 +191,16 @@ def test_execute_graph_block_holds_live_permission_through_provider_iteration(
     block.execute = execute
     mocker.patch("backend.api.features.blocks.routes.get_block", return_value=block)
     mocker.patch(
-        "backend.api.features.blocks.routes.get_user_by_id", return_value=Mock(timezone="UTC")
+        "backend.api.features.blocks.routes.get_user_by_id",
+        return_value=Mock(timezone="UTC"),
     )
     mocker.patch(
         "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution",
         side_effect=charge,
     )
-    mocker.patch("backend.api.features.blocks.routes.live_resource_permission_barrier", barrier)
+    mocker.patch(
+        "backend.api.features.blocks.routes.live_resource_permission_barrier", barrier
+    )
 
     response = client.post("/blocks/test-block/execute", json={})
 
@@ -224,8 +230,12 @@ async def test_enable_execution_sharing_rejects_revoked_target_team(
         yield False
 
     replace = AsyncMock()
-    monkeypatch.setattr(graph_executions_module, "live_resource_permission_barrier", denied)
-    monkeypatch.setattr(graph_executions_module.execution_db, "replace_execution_share", replace)
+    monkeypatch.setattr(
+        graph_executions_module, "live_resource_permission_barrier", denied
+    )
+    monkeypatch.setattr(
+        graph_executions_module.execution_db, "replace_execution_share", replace
+    )
 
     with pytest.raises(HTTPException) as exc:
         await graph_executions_module.enable_execution_sharing(
@@ -274,9 +284,13 @@ async def test_enable_execution_sharing_holds_exact_target_team_barrier(
     async def mutate(**_kwargs):
         assert active is True
 
-    monkeypatch.setattr(graph_executions_module, "live_resource_permission_barrier", barrier)
+    monkeypatch.setattr(
+        graph_executions_module, "live_resource_permission_barrier", barrier
+    )
     replace = AsyncMock(side_effect=mutate)
-    monkeypatch.setattr(graph_executions_module.execution_db, "replace_execution_share", replace)
+    monkeypatch.setattr(
+        graph_executions_module.execution_db, "replace_execution_share", replace
+    )
 
     response = await graph_executions_module.enable_execution_sharing(
         "graph-1",
@@ -308,8 +322,12 @@ async def test_delete_execution_rejects_revoked_target_team(
         yield False
 
     delete = AsyncMock()
-    monkeypatch.setattr(graph_executions_module, "live_resource_permission_barrier", denied)
-    monkeypatch.setattr(graph_executions_module.execution_db, "delete_graph_execution", delete)
+    monkeypatch.setattr(
+        graph_executions_module, "live_resource_permission_barrier", denied
+    )
+    monkeypatch.setattr(
+        graph_executions_module.execution_db, "delete_graph_execution", delete
+    )
 
     with pytest.raises(HTTPException) as exc:
         await graph_executions_module.delete_graph_execution(
@@ -335,7 +353,8 @@ def _saved_graph_model(user_id: str) -> GraphModel:
 def _mock_graph_create_pipeline(mocker: pytest_mock.MockFixture, saved: GraphModel):
     """Stub the create pipeline so only team stamping is under test."""
     mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.make_graph_model", return_value=Mock()
+        "backend.api.features.graphs.routes.graph_db.make_graph_model",
+        return_value=Mock(),
     )
     mocker.patch(
         "backend.api.features.graphs.routes.before_graph_activate",
@@ -346,7 +365,8 @@ def _mock_graph_create_pipeline(mocker: pytest_mock.MockFixture, saved: GraphMod
         new=AsyncMock(return_value=saved),
     )
     create_lib_agent_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.create_library_agent", new=AsyncMock()
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(),
     )
     return create_graph_mock, create_lib_agent_mock
 
@@ -452,6 +472,11 @@ def _mock_update_graph_pipeline(
         "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
         new=AsyncMock(return_value=[existing]),
     )
+    # The caller owns the graph ID, so the save adds a version, not a fork.
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.graph_owner_id",
+        new=AsyncMock(return_value=saved.user_id),
+    )
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.make_graph_model",
         return_value=Mock(is_active=new_version_active),
@@ -465,7 +490,9 @@ def _mock_update_graph_pipeline(
             "backend.api.features.graphs.routes.graph_db.set_graph_active_version",
             new=AsyncMock(),
         )
-        mocker.patch("backend.api.features.graphs.routes.on_graph_deactivate", new=AsyncMock())
+        mocker.patch(
+            "backend.api.features.graphs.routes.on_graph_deactivate", new=AsyncMock()
+        )
     create_graph_mock = mocker.patch(
         "backend.api.features.graphs.routes.graph_db.create_graph",
         new=AsyncMock(
@@ -569,7 +596,7 @@ def test_update_graph_syncs_library_agent_tenancy(
         new_version_active=True,
     )
     sync_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.graphs.routes.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
     mocker.patch(
@@ -604,14 +631,22 @@ def _mock_schedule_create_pipeline(
     mocker: pytest_mock.MockFixture, graph: Mock, user_id: str
 ):
     mocker.patch(
-        "backend.api.features.schedules.routes.graph_db.get_graph", new=AsyncMock(return_value=graph)
+        "backend.api.features.schedules.routes.graph_db.get_graph",
+        new=AsyncMock(return_value=graph),
     )
-    mocker.patch("backend.api.features.schedules.routes.complete_onboarding_step", new=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.complete_onboarding_step",
+        new=AsyncMock(),
+    )
     mocker.patch(
         "backend.api.features.schedules.routes.experts_db.resolve_expert_for_graph",
         new=AsyncMock(return_value=None),
     )
-    mocker.patch.object(schedules_module.library_db, "get_library_agent_by_graph_id", AsyncMock(return_value=Mock(id="installed")))
+    mocker.patch.object(
+        schedules_module.library_db,
+        "get_library_agent_by_graph_id",
+        AsyncMock(return_value=Mock(id="installed")),
+    )
     add_schedule_mock = AsyncMock(
         return_value=GraphExecutionJobInfo(
             id="schedule-1",
@@ -838,7 +873,8 @@ def test_create_api_key_rejects_non_member_team(
 ) -> None:
     """Scoping a key to a team the caller isn't in -> 400, no key minted."""
     create_mock = mocker.patch(
-        "backend.api.features.api_keys.routes.api_key_db.create_api_key", new=AsyncMock()
+        "backend.api.features.api_keys.routes.api_key_db.create_api_key",
+        new=AsyncMock(),
     )
     mocker.patch(
         "backend.api.live_auth.get_user_team_ids",
@@ -860,7 +896,8 @@ def test_create_api_key_rejects_empty_team_id(
     rejected rather than falling through to the request-context team."""
     _override_ctx_team("test-team")
     create_mock = mocker.patch(
-        "backend.api.features.api_keys.routes.api_key_db.create_api_key", new=AsyncMock()
+        "backend.api.features.api_keys.routes.api_key_db.create_api_key",
+        new=AsyncMock(),
     )
     mocker.patch(
         "backend.api.live_auth.get_user_team_ids",
@@ -966,7 +1003,8 @@ def test_create_api_key_rejects_ctx_team_user_not_member(
     re-validated and rejected with 400 — no key minted."""
     _override_ctx_team("test-team")
     create_mock = mocker.patch(
-        "backend.api.features.api_keys.routes.api_key_db.create_api_key", new=AsyncMock()
+        "backend.api.features.api_keys.routes.api_key_db.create_api_key",
+        new=AsyncMock(),
     )
     mocker.patch(
         "backend.api.live_auth.get_user_team_ids",

@@ -84,6 +84,12 @@ async def _lock_invitation_admin(
         raise HTTPException(403, detail="Organization admin access was revoked")
 
 
+PERSONAL_ORG_INVITE_REFUSED = (
+    "A personal organization has a single member. Create a team "
+    "organization to invite people."
+)
+
+
 # --- Org-scoped invitation endpoints (under /api/orgs/{org_id}/invitations) ---
 
 org_router = APIRouter()
@@ -123,6 +129,11 @@ async def _create_invitation_locked(
                 user_id,
                 preliminary_target.id if preliminary_target is not None else None,
             )
+            org = await tx.organization.find_unique(where={"id": org_id})
+            if org is not None and org.isPersonal:
+                # A personal organization bills only its owner, so a member
+                # could join it but never run anything there.
+                raise HTTPException(409, detail=PERSONAL_ORG_INVITE_REFUSED)
             target_user = await tx.user.find_first(
                 where={"email": {"equals": email, "mode": "insensitive"}}
             )
@@ -155,7 +166,11 @@ async def _create_invitation_locked(
 
             if request.team_ids:
                 teams = await tx.team.find_many(where={"id": {"in": request.team_ids}})
-                valid_ids = {team.id for team in teams if team.orgId == org_id}
+                valid_ids = {
+                    team.id
+                    for team in teams
+                    if team.orgId == org_id and team.archivedAt is None
+                }
                 invalid = [team for team in request.team_ids if team not in valid_ids]
                 if invalid:
                     raise HTTPException(
@@ -359,7 +374,9 @@ async def accept_invitation(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict:
     await require_org_collaboration(user_id)
-    invitation = await prisma.orginvitation.find_unique(where={"token": token})
+    invitation = await prisma.orginvitation.find_unique(
+        where={"token": token}, include={"Org": True}
+    )
     if invitation is None:
         raise NotFoundError("Invitation not found")
     if invitation.acceptedAt is not None:
@@ -368,6 +385,9 @@ async def accept_invitation(
         raise HTTPException(400, detail="Invitation has been revoked")
     if invitation.expiresAt < datetime.now(timezone.utc):
         raise HTTPException(400, detail="Invitation has expired")
+
+    if invitation.Org is None or invitation.Org.deletedAt is not None:
+        raise NotFoundError("Invitation not found")
 
     # Verify the accepting user's email matches the invitation
     accepting_user = await prisma.user.find_unique(where={"id": user_id})
@@ -438,10 +458,25 @@ async def accept_invitation(
                 client=tx,
             )
         continue_accept = not already_member
-        if continue_accept and any(
-            team_id not in active_team_ids for team_id in invitation.teamIds
-        ):
-            raise HTTPException(409, detail="An invited workspace is no longer active")
+        # A team archived or deleted between invite and accept is skipped, not
+        # fatal, but never silently: the member ends up without the team access
+        # the invite promised, which support needs to be able to trace.
+        skipped_team_ids = (
+            [
+                team_id
+                for team_id in invitation.teamIds
+                if team_id not in active_team_ids
+            ]
+            if continue_accept
+            else []
+        )
+        for team_id in skipped_team_ids:
+            logger.warning(
+                "Invitation accept: team %s in org %s is archived or gone; "
+                "skipping it",
+                team_id,
+                invitation.orgId,
+            )
 
         claimed = (
             await tx.orginvitation.update_many(
@@ -523,7 +558,9 @@ async def decline_invitation(
     token: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> None:
-    invitation = await prisma.orginvitation.find_unique(where={"token": token})
+    invitation = await prisma.orginvitation.find_unique(
+        where={"token": token}, include={"Org": True}
+    )
     if invitation is None:
         raise NotFoundError("Invitation not found")
 
@@ -534,6 +571,9 @@ async def decline_invitation(
         raise HTTPException(400, detail="Invitation already revoked")
     if invitation.expiresAt < datetime.now(timezone.utc):
         raise HTTPException(400, detail="Invitation has expired")
+
+    if invitation.Org is None or invitation.Org.deletedAt is not None:
+        raise NotFoundError("Invitation not found")
 
     # Verify the declining user's email matches the invitation
     declining_user = await prisma.user.find_unique(where={"id": user_id})
@@ -576,10 +616,11 @@ async def list_pending_for_user(
 
     invitations = await prisma.orginvitation.find_many(
         where={
-            "email": user.email,
+            "email": user.email.lower(),
             "acceptedAt": None,
             "revokedAt": None,
             "expiresAt": {"gt": datetime.now(timezone.utc)},
+            "Org": {"is": {"deletedAt": None}},
         },
         include={"Org": True},
         order={"createdAt": "desc"},

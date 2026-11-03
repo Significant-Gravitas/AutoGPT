@@ -11,13 +11,26 @@ import {
   removeSessionFromList,
 } from "./useSessionList";
 
+/**
+ * Session deletion flow: reads the pending `sessionToDelete` from the store,
+ * closes the dialog as soon as the user confirms, leaves the chat if it is
+ * the open one (with its `expertId`, so the expert's latest-thread adoption
+ * cannot select it again), and fires the delete mutation. `useSessionList`
+ * hides the chat while the mutation is pending. On success it is dropped from
+ * the cached list; on error the chat shows again and a toast is shown.
+ *
+ * Consumed by the app sidebar's recent-chats list so it can render its own
+ * `DeleteChatDialog` without duplicating the mutation wiring.
+ */
 export function useSessionDeletion() {
   const queryClient = useQueryClient();
   const [{ sessionId }, setChatParams] = useQueryStates({
     sessionId: parseAsString,
     expertId: parseAsString,
   });
-  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
+  const sessionToDelete = useCopilotUIStore((s) => s.sessionToDelete);
+  const setSessionToDelete = useCopilotUIStore((s) => s.setSessionToDelete);
+
   const { mutate: deleteSession, isPending: isDeleting } = useMutation({
     mutationKey: SESSION_DELETE_MUTATION_KEY,
     mutationFn: (target: DeleteTarget) =>

@@ -6,7 +6,7 @@ import React from "react";
 
 interface Props {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   descriptionTitle?: string;
   icon?: React.ReactNode;
   selected?: boolean;
@@ -30,8 +30,8 @@ export function SidebarItemCard({
   return (
     <div
       className={cn(
-        "w-full cursor-pointer rounded-large border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
-        selected ? "border-slate-800 ring-slate-800" : undefined,
+        "w-full cursor-pointer rounded-large border border-border-base bg-surface p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-surface-muted/50",
+        selected ? "border-action ring-action" : undefined,
       )}
       onClick={onClick}
       data-testid={testID}
@@ -39,16 +39,14 @@ export function SidebarItemCard({
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}
         <div className="flex min-w-0 flex-1 flex-col items-start justify-between gap-0">
-          <Text
-            variant="body-medium"
-            className="block w-full truncate text-ellipsis"
-          >
+          <Text variant="body-medium" className="block w-full">
             {title}
           </Text>
           <div className="flex w-full min-w-0 items-center gap-2">
             <Text
-              variant="body"
-              className="min-w-0 flex-1 truncate leading-tight !text-zinc-500"
+              variant="body-tight"
+              tone="muted"
+              className="min-w-0 flex-1 truncate"
               title={descriptionTitle}
             >
               {description}

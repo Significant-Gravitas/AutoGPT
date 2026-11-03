@@ -1,4 +1,5 @@
 import {
+  getGetMyBusinessUnderstandingQueryKey,
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
   getListMyExpertMemoryFactsQueryKey,
@@ -25,7 +26,7 @@ import {
   RECENT_FACTS_LIMIT,
 } from "./helpers";
 
-export function useMemoryPage(memoryEnabled = true) {
+export function useMemoryPage() {
   // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
   // the link opens on that expert. Read once — the dropdown owns it after.
   const [scopeExpertID, setScopeExpertID] = useState<string | null>(
@@ -40,8 +41,6 @@ export function useMemoryPage(memoryEnabled = true) {
     return ["organization-memory", organizationID, ...key];
   }
 
-  // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
-  // manageable here even if the hiring UI is dark.
   const expertsQuery = useListExperts(undefined, undefined, {
     organizationId: organizationID,
     teamId: null,
@@ -68,7 +67,7 @@ export function useMemoryPage(memoryEnabled = true) {
         queryKey: scopedKey(
           getListMyMemoryFactsQueryKey({ limit: RECENT_FACTS_LIMIT }),
         ),
-        enabled: isLoaded && memoryEnabled && scopeExpertID === null,
+        enabled: isLoaded && scopeExpertID === null,
       },
       request,
     },
@@ -83,7 +82,7 @@ export function useMemoryPage(memoryEnabled = true) {
             limit: RECENT_FACTS_LIMIT,
           }),
         ),
-        enabled: isLoaded && memoryEnabled && scopeExpertID !== null,
+        enabled: isLoaded && scopeExpertID !== null,
       },
       request,
     },
@@ -95,7 +94,7 @@ export function useMemoryPage(memoryEnabled = true) {
   const accountOverview = useGetMyMemoryOverview({
     query: {
       queryKey: scopedKey(getGetMyMemoryOverviewQueryKey()),
-      enabled: isLoaded && memoryEnabled && scopeExpertID === null,
+      enabled: isLoaded && scopeExpertID === null,
     },
     request,
   });
@@ -104,7 +103,7 @@ export function useMemoryPage(memoryEnabled = true) {
       queryKey: scopedKey(
         getGetMyExpertMemoryOverviewQueryKey(scopeExpertID ?? ""),
       ),
-      enabled: isLoaded && memoryEnabled && scopeExpertID !== null,
+      enabled: isLoaded && scopeExpertID !== null,
     },
     request,
   });
@@ -120,6 +119,9 @@ export function useMemoryPage(memoryEnabled = true) {
       });
       queryClient.invalidateQueries({
         queryKey: scopedKey(getGetMyMemoryOverviewQueryKey()),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetMyBusinessUnderstandingQueryKey(),
       });
       return;
     }

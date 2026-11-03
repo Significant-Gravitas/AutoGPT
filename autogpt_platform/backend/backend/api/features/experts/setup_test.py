@@ -61,6 +61,15 @@ def _arrange(
     fields: dict,
     required_inputs: list[str] | None = None,
 ) -> None:
+    # The owner's own workspace, live: setup lists what that workspace needs.
+    mocker.patch.object(
+        setup,
+        "get_user_default_team",
+        new=AsyncMock(return_value=("org-owner", "team-owner")),
+    )
+    mocker.patch.object(
+        setup, "has_live_resource_access", new=AsyncMock(return_value=True)
+    )
     expert_client = mocker.MagicMock()
     expert_client.find_many = AsyncMock(return_value=experts)
     mocker.patch.object(

@@ -112,7 +112,10 @@ async def get_preset(
     "/presets",
     summary="Create a new preset",
     description="Create a new preset for the current user.",
-    dependencies=[live_dependency(require_live_library_create)],
+    dependencies=[
+        Depends(enforce_payment_paywall),
+        live_dependency(require_live_library_create),
+    ],
 )
 async def create_preset(
     preset: (
@@ -158,7 +161,10 @@ async def create_preset(
 
 @router.post(
     "/presets/setup-trigger",
-    dependencies=[live_dependency(require_live_library_create)],
+    dependencies=[
+        Depends(enforce_payment_paywall),
+        live_dependency(require_live_library_create),
+    ],
 )
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
@@ -214,7 +220,10 @@ async def setup_trigger(
     "/presets/{preset_id}",
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
-    dependencies=[live_dependency(require_live_library_create)],
+    dependencies=[
+        Depends(enforce_payment_paywall),
+        live_dependency(require_live_library_create),
+    ],
 )
 async def update_preset(
     preset_id: str,

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import _get_provider_oauth_handler, router
@@ -123,6 +124,10 @@ def setup_auth():
     from backend.api.credential_scope import credential_user_id
 
     app.dependency_overrides[credential_user_id] = (
+        lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+    )
+    # The routes' paywall dependency reads the signed-in user from the token.
+    app.dependency_overrides[get_user_id] = (
         lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
     )
     yield
@@ -324,6 +329,73 @@ class TestCreateCredentialNoSecretInResponse:
 
         assert resp.status_code == 403
         mock_mgr.create.assert_not_called()
+
+
+class TestCreateScopedUserPasswordCredential:
+    """smtp and database logins are created with a valid scope for their
+    provider; other logins take none."""
+
+    @staticmethod
+    def _create(provider: str, **extra: str):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                f"/{provider}/credentials",
+                json={
+                    "provider": provider,
+                    "type": "user_password",
+                    "title": "My login",
+                    "username": "user",
+                    "password": "pass",
+                    **extra,
+                },
+            )
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "provider,extra",
+        [
+            ("smtp", {}),
+            ("database", {}),
+            ("smtp", {"scope": ""}),
+            ("smtp", {"scope": "smtp.example.com:587"}),
+            ("database", {"scope": "smtp://db.example.com"}),
+            ("smtp", {"scope": "smtp://*.example.com"}),
+            ("webshare_proxy", {"scope": "smtp://smtp.example.com"}),
+        ],
+    )
+    def test_missing_empty_or_malformed_scope_rejected(
+        self, provider: str, extra: dict[str, str]
+    ):
+        resp, create = self._create(provider, **extra)
+        assert resp.status_code == 400
+        create.assert_not_called()
+
+    def test_out_of_range_port_refused_in_terms_of_the_server(self):
+        resp, create = self._create("smtp", scope="smtp://smtp.example.com:99999")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Enter a valid server, like smtp.example.com or smtp.example.com:587 "
+            "(port 1-65535)"
+        )
+        create.assert_not_called()
+
+    def test_login_with_scope_stored_and_returned(self):
+        resp, create = self._create("database", scope="mysql://db.example.com:3306")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] == "mysql://db.example.com:3306"
+        assert resp.json()["host"] is None
+        assert create.call_args.args[1].scope == "mysql://db.example.com:3306"
+
+    def test_fixed_host_provider_login_needs_no_scope(self):
+        resp, _ = self._create("webshare_proxy")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] is None
 
 
 class TestManagedCredentials:
@@ -929,7 +1001,10 @@ class TestWebhookPingOwnership:
 
         assert resp.status_code == 200
         assert resp.json() is True
-        mock_creds.acquire_lease.assert_awaited_once_with(JWT_USER_ID, "cred-456")
+        # A webhook registered on a platform key still pings (allow_sdk_default).
+        mock_creds.acquire_lease.assert_awaited_once_with(
+            JWT_USER_ID, "cred-456", allow_sdk_default=True
+        )
         webhook_manager.trigger_ping.assert_awaited_once()
         lease.release.assert_awaited_once()
 
@@ -1101,6 +1176,49 @@ class TestDeviceAuthEndpoints:
         assert kwargs["expires_in_seconds"] > 600
         assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
 
+    def test_initiate_binds_the_code_to_the_connection_it_upgrades(self):
+        """A code that adds permissions to a connection must come back to it.
+
+        Without the binding, whoever signs in on the code's page becomes a
+        separate connection, which the panel then switches to.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+        upgrade = AsyncMock(return_value=["userinfo:read", "already:granted"])
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
+                "backend.api.features.integrations.router._prepare_scope_upgrade",
+                upgrade,
+            ),
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate"
+                "?scopes=userinfo:read&credential_id=cred-1"
+            )
+
+        assert response.status_code == 200
+        assert upgrade.await_args.args[1:] == (
+            ProviderName(self.PROVIDER),
+            "cred-1",
+            ["userinfo:read"],
+        )
+        handler.initiate_device_auth.assert_awaited_once_with(
+            ["userinfo:read", "already:granted"]
+        )
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["credential_id"] == "cred-1"
+
     def test_initiate_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
         handler.handle_default_scopes.return_value = []
@@ -1169,7 +1287,9 @@ class TestDeviceAuthEndpoints:
 
         mock_mgr.store.consume_state_token.assert_not_awaited()
 
-    def test_poll_race_loser_does_not_create_a_second_credential(self):
+    def test_poll_race_loser_does_not_create_a_second_credential(
+        self, resume_after_reconnect: MagicMock
+    ):
         """Two polls can both see an approval; only the one that consumes wins.
 
         `consume_state_token` returning None means another poll already handled
@@ -1228,6 +1348,7 @@ class TestDeviceAuthEndpoints:
         assert response.json()["status"] == "approved"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
+        resume_after_reconnect.assert_not_called()
 
     def test_poll_does_not_leak_upstream_error_text(self):
         handler = MagicMock()
@@ -1248,7 +1369,9 @@ class TestDeviceAuthEndpoints:
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
 
-    def test_poll_stores_the_credential_on_the_winning_approval(self):
+    def test_poll_stores_the_credential_on_the_winning_approval(
+        self, resume_after_reconnect: MagicMock
+    ):
         """The primary success path: consume wins, credential is stored.
 
         Every other approved-status test here makes `consume_state_token`
@@ -1308,6 +1431,8 @@ class TestDeviceAuthEndpoints:
         assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
         # And no secret rides along in the response.
         assert "do-not-leak" not in response.text
+        # Only the winner resumes the scheduled chats this connect fixes.
+        resume_after_reconnect.assert_called_once_with(JWT_USER_ID, "stripe_link")
 
     def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
         """A caller with no backend User row raises a Prisma RecordNotFound in

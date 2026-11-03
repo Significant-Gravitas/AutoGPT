@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, it } from "vitest";
 import {
   atResetRefusal,
+  holdsMessage,
   isJoinedSendTooLong,
   returnToDraft,
   SCHEDULE_FAILED_TITLE,
@@ -87,5 +88,20 @@ describe("sendAtResetFailureTitle", () => {
     expect(sendAtResetFailureTitle(new Error("409"))).toBe(
       SCHEDULE_FAILED_TITLE,
     );
+  });
+});
+
+describe("holdsMessage", () => {
+  it("finds a message alone or joined anywhere in the send waiting", () => {
+    expect(holdsMessage("Draft", "Draft")).toBe(true);
+    expect(holdsMessage("Draft\n\nLater", "Draft")).toBe(true);
+    expect(holdsMessage("Earlier\n\nDraft", "Draft")).toBe(true);
+    expect(holdsMessage("Earlier\n\nDraft\n\nLater", "Draft")).toBe(true);
+  });
+
+  it("doesn't take a message that only starts the same for it", () => {
+    expect(holdsMessage("Draft the post", "Draft")).toBe(false);
+    expect(holdsMessage("Earlier\n\nDraft the post", "Draft")).toBe(false);
+    expect(holdsMessage("", "Draft")).toBe(false);
   });
 });

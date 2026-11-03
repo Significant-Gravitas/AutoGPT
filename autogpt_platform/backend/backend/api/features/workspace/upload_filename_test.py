@@ -1,10 +1,12 @@
 import io
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.workspace.routes import router
@@ -17,7 +19,23 @@ def client(mock_jwt_user):
     app = fastapi.FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     return fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def live_workspace_scope(mocker):
+    """The caller's organization and team stay live for the whole upload."""
+
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(*args, **kwargs):
+        yield Guard()
+
+    mocker.patch("backend.util.workspace.live_resource_lease", new=lease)
 
 
 @pytest.fixture
@@ -27,14 +45,15 @@ def workspace(mocker):
         id="ws-001", user_id="test-user-id", created_at=now, updated_at=now
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_or_create_workspace",
+        "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=workspace,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size", return_value=0
+        "backend.api.features.workspace.service.get_workspace_total_size",
+        return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
         return_value=250 * 1024 * 1024,
     )
     return workspace
@@ -91,7 +110,7 @@ def test_upload_storage_error_hides_exception_details(client, workspace, mocker)
         side_effect=OSError(36, "File name too long", secret)
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager", return_value=manager
+        "backend.api.features.workspace.service.WorkspaceManager", return_value=manager
     )
 
     response = client.post(
@@ -108,7 +127,7 @@ def test_upload_conflict_retains_useful_message(client, workspace, mocker):
     manager = MagicMock()
     manager.write_file = AsyncMock(side_effect=ValueError("File already exists"))
     mocker.patch(
-        "backend.api.features.workspace.routes.WorkspaceManager", return_value=manager
+        "backend.api.features.workspace.service.WorkspaceManager", return_value=manager
     )
 
     response = client.post(

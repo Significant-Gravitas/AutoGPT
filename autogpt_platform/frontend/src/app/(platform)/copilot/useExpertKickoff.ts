@@ -4,17 +4,17 @@ import {
   useGetV2ListChatTransports,
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useRef, useState } from "react";
 import {
   clearKickoffPending,
   getKickoffStatus,
   markKickoffDone,
   markKickoffPending,
-  type KickoffAttemptToken,
   withKickoffLock,
+  type KickoffAttemptToken,
 } from "./expertKickoff";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 
 interface Args {
   organizationId?: string | null;
@@ -48,7 +48,6 @@ export function useExpertKickoff({
   onKickoff,
   onSettled,
 }: Args) {
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const firedRef = useRef(false);
   const settledRef = useRef(false);
   const attemptTokenRef = useRef<KickoffAttemptToken | null>(null);
@@ -56,13 +55,13 @@ export function useExpertKickoff({
     userId: string;
     expertId: string;
   } | null>(null);
-  const isArmed = isExpertsEnabled && kickoff && !!userId && !!expertId;
+  const isArmed = kickoff && !!userId && !!expertId;
   const wantsSession = isArmed && !sessionId && !!expertId;
+  const kickoffStatus = useReadEveryRender(() =>
+    userId && expertId ? getKickoffStatus(userId, expertId) : null,
+  );
   const wantsCreatePath =
-    wantsSession &&
-    !!userId &&
-    !!expertId &&
-    getKickoffStatus(userId, expertId) === "idle";
+    wantsSession && !!userId && !!expertId && kickoffStatus === "idle";
 
   const transportsScope = useOrgConnectionScope("transports", organizationId);
   const sessionsQuery = useGetV2ListSessions(
@@ -77,10 +76,7 @@ export function useExpertKickoff({
         enabled: wantsSession,
         refetchOnWindowFocus: false,
         refetchInterval:
-          wantsSession &&
-          userId &&
-          expertId &&
-          getKickoffStatus(userId, expertId) === "pending"
+          wantsSession && userId && expertId && kickoffStatus === "pending"
             ? 1_000
             : false,
       },
@@ -111,26 +107,31 @@ export function useExpertKickoff({
     if (kickoffAttemptToken) attemptTokenRef.current = kickoffAttemptToken;
   }, [kickoffAttemptToken]);
 
-  const settleKickoff = useRef(() => {
+  const [settleKickoff] = useState(() => () => {
     if (settledRef.current) return;
     settledRef.current = true;
     onSettledRef.current();
-  }).current;
+  });
 
-  const fireKickoff = useRef(
-    async (ownerId: string, id: string, attemptToken: KickoffAttemptToken) => {
-      try {
-        await onKickoffRef.current(id, attemptToken);
-      } catch {
-        clearKickoffPending(ownerId, id, attemptToken);
-        firedRef.current = false;
-        setFailedKickoff({ userId: ownerId, expertId: id });
-        settleKickoff();
-      }
-    },
-  ).current;
+  const [fireKickoff] = useState(
+    () =>
+      async (
+        ownerId: string,
+        id: string,
+        attemptToken: KickoffAttemptToken,
+      ) => {
+        try {
+          await onKickoffRef.current(id, attemptToken);
+        } catch {
+          clearKickoffPending(ownerId, id, attemptToken);
+          firedRef.current = false;
+          setFailedKickoff({ userId: ownerId, expertId: id });
+          settleKickoff();
+        }
+      },
+  );
 
-  const beginKickoff = useRef((ownerId: string, id: string) => {
+  const [beginKickoff] = useState(() => (ownerId: string, id: string) => {
     if (firedRef.current) return;
     firedRef.current = true;
     void withKickoffLock(ownerId, id, async () => {
@@ -146,7 +147,7 @@ export function useExpertKickoff({
       setFailedKickoff({ userId: ownerId, expertId: id });
       settleKickoff();
     });
-  }).current;
+  });
 
   useEffect(() => {
     if (!isArmed || !userId || !expertId) return;
@@ -218,13 +219,12 @@ export function useExpertKickoff({
 
   return {
     isKickoffStarting:
-      isExpertsEnabled &&
       kickoff &&
       !!userId &&
       !!expertId &&
       !(
         failedKickoff?.userId === userId && failedKickoff.expertId === expertId
       ) &&
-      getKickoffStatus(userId, expertId) !== "done",
+      kickoffStatus !== "done",
   };
 }

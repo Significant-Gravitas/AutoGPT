@@ -4,9 +4,8 @@ when the cluster is unreachable."""
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -43,11 +42,10 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _allow_live_execution_scope(monkeypatch):
-    @asynccontextmanager
     async def _allow(_self, _scope):
-        yield True
+        return True
 
-    monkeypatch.setattr(ConnectionManager, "_execution_scope_barrier", _allow)
+    monkeypatch.setattr(ConnectionManager, "_execution_scope_is_live", _allow)
 
 
 def _meta(user_id: str, graph_id: str, graph_exec_id: str) -> GraphExecutionMeta:
@@ -139,11 +137,15 @@ async def test_two_clients_get_independent_ssubscribes_on_right_shards(
     exec_a = f"exec-a-{uuid4().hex[:8]}"
     exec_b = f"exec-b-{uuid4().hex[:8]}"
 
-    # Stub Prisma lookup so tests don't need a DB.
-    async def _fake_meta(_uid, gex_id):
-        return _meta(user_id, graph_a if gex_id == exec_a else graph_b, gex_id)
+    # Stub the run lookup so tests don't need a DB.
+    async def _fake_meta(*, user_id: str, execution_id: str):
+        graph_id = graph_a if execution_id == exec_a else graph_b
+        return _meta(user_id, graph_id, execution_id)
 
-    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    monkeypatch.setattr(
+        "backend.api.conn_manager.execution_db",
+        lambda: MagicMock(get_graph_execution_meta=_fake_meta),
+    )
 
     cm = ConnectionManager()
     ws_a: AsyncMock = AsyncMock(spec=WebSocket)
@@ -214,16 +216,19 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
     graph_id = f"graph-{uuid4().hex[:8]}"
     exec_id = f"exec-{uuid4().hex[:8]}"
 
-    async def _fake_meta(_uid, gex_id):
-        return _meta(user_id, graph_id, gex_id)
+    async def _fake_meta(*, user_id: str, execution_id: str):
+        return _meta(user_id, graph_id, execution_id)
 
     async def _fake_exact(_uid, gex_id, _organization_id, _team_id):
         return _meta(user_id, graph_id, gex_id)
 
-    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
     monkeypatch.setattr(
         "backend.api.conn_manager.get_graph_execution_exact_scope",
         _fake_exact,
+    )
+    monkeypatch.setattr(
+        "backend.api.conn_manager.execution_db",
+        lambda: MagicMock(get_graph_execution_meta=_fake_meta),
     )
 
     cm = ConnectionManager()
@@ -291,10 +296,13 @@ async def test_disconnect_unsubscribes_and_drops_future_publishes(monkeypatch) -
     graph_id = f"graph-{uuid4().hex[:8]}"
     exec_id = f"exec-{uuid4().hex[:8]}"
 
-    async def _fake_meta(_uid, gex_id):
-        return _meta(user_id, graph_id, gex_id)
+    async def _fake_meta(*, user_id: str, execution_id: str):
+        return _meta(user_id, graph_id, execution_id)
 
-    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    monkeypatch.setattr(
+        "backend.api.conn_manager.execution_db",
+        lambda: MagicMock(get_graph_execution_meta=_fake_meta),
+    )
 
     cm = ConnectionManager()
     ws: AsyncMock = AsyncMock(spec=WebSocket)
@@ -358,10 +366,13 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
     exec_id = f"exec-{uuid4().hex[:8]}"
     n_events = 100
 
-    async def _fake_meta(_uid, gex_id):
-        return _meta(user_id, graph_id, gex_id)
+    async def _fake_meta(*, user_id: str, execution_id: str):
+        return _meta(user_id, graph_id, execution_id)
 
-    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    monkeypatch.setattr(
+        "backend.api.conn_manager.execution_db",
+        lambda: MagicMock(get_graph_execution_meta=_fake_meta),
+    )
 
     cm = ConnectionManager()
     ws: AsyncMock = AsyncMock(spec=WebSocket)

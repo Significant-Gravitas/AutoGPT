@@ -348,7 +348,8 @@ class TestApproveReject:
         from backend.api.features.orgs import memory_db
 
         locate_driver = _driver_with_rows([{"uuid": MEM_ID}])
-        retract_driver = _driver_with_rows([{"uuid": MEM_ID}])
+        # The guarded supersede reports whether a recall spared the fact.
+        retract_driver = _driver_with_rows([{"uuid": MEM_ID, "spared": False}])
         mocker.patch(
             "backend.api.features.orgs.memory_db._open_driver",
             side_effect=[locate_driver, retract_driver],

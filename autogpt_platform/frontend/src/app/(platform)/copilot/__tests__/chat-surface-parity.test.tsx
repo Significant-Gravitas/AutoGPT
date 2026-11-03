@@ -101,6 +101,7 @@ const OTHER_SURFACES: Surface[] = [
           status="ready"
           error={undefined}
           queuedMessages={[]}
+          isTurnSettling={false}
           onSend={async () => {}}
           onStop={vi.fn()}
           onRetry={vi.fn()}
@@ -122,6 +123,7 @@ const OTHER_SURFACES: Surface[] = [
         stop: vi.fn(),
         onSend: vi.fn(),
         queuedMessages: [],
+        isTurnSettling: false,
         isBootstrapping: false,
         revertTargetVersion: null,
         handleRevert: vi.fn(),
@@ -129,6 +131,7 @@ const OTHER_SURFACES: Surface[] = [
         bootstrapError: null,
         retryBind: vi.fn(),
         retryBootstrap: vi.fn(),
+        tenantScope: { organizationId: null, teamId: null, isReady: true },
       } as unknown as ReturnType<typeof useBuilderChatPanel>);
       render(<BuilderChatPanel />);
     },
@@ -147,6 +150,7 @@ const OTHER_SURFACES: Surface[] = [
         onSend: vi.fn(),
         onActionSend: vi.fn(),
         queuedMessages: [],
+        isTurnSettling: false,
         isResolvingSession: false,
         isLoadingSession: false,
         isCreating: false,

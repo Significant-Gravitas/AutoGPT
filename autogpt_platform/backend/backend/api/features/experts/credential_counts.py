@@ -24,20 +24,27 @@ async def expert_credential_providers(
             await _seed_if_needed(user_id, expert)
 
     await asyncio.gather(*(seed(expert) for expert in owned))
-    grants, credentials = await asyncio.gather(
+    # Credentials belong to an organization, so each expert's grants resolve
+    # only against its own organization's credentials.
+    org_ids = list(dict.fromkeys(expert.organizationId for expert in owned))
+    grants, org_credentials = await asyncio.gather(
         prisma.models.ExpertCredential.prisma().find_many(
             where={"expertId": {"in": [expert.id for expert in owned]}},
             # Grant order is what "first-seen" means for the card's logos.
             order=[{"createdAt": "asc"}, {"id": "asc"}],
         ),
-        _user_credentials(user_id),
+        asyncio.gather(*(_user_credentials(user_id, org_id) for org_id in org_ids)),
     )
     # One service icon id per grant: the provider slug for a block
     # credential, the catalog icon for an MCP one.
-    icon_by_id = {credential.id: _icon_for(credential) for credential in credentials}
+    icons_by_org = {
+        org_id: {credential.id: _icon_for(credential) for credential in credentials}
+        for org_id, credentials in zip(org_ids, org_credentials)
+    }
+    org_by_expert = {expert.id: expert.organizationId for expert in owned}
     providers: dict[str, list[str]] = {}
     for grant in grants:
-        icon = icon_by_id.get(grant.credentialId)
+        icon = icons_by_org[org_by_expert[grant.expertId]].get(grant.credentialId)
         if icon is not None:
             providers.setdefault(grant.expertId, []).append(icon)
     return providers

@@ -68,6 +68,8 @@ def _post_run_result(
     if not context or not context.organization_id:
         logger.warning("Skipping expert run post without tenant scope")
         return
+    organization_id = context.organization_id
+    team_id = context.team_id
     # The key is captured once at admission and reused for release — a UTC
     # midnight rollover between the two must not decrement the new day's
     # counter (which would mint extra slots).
@@ -91,8 +93,8 @@ def _post_run_result(
         library_agent_id = db_client.get_library_agent_id_by_graph_id(
             graph_exec.user_id,
             graph_exec.graph_id,
-            graph_exec.execution_context.organization_id,
-            graph_exec.execution_context.team_id,
+            organization_id,
+            team_id,
         )
         content = build_expert_run_message(
             agent_name=agent_name,
@@ -100,8 +102,8 @@ def _post_run_result(
             summary=exec_stats.activity_status,
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
-            organization_id=graph_exec.execution_context.organization_id,
-            team_id=graph_exec.execution_context.team_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         output_type: OutputType
         output_key: str | None
@@ -113,8 +115,8 @@ def _post_run_result(
             user_id=graph_exec.user_id,
             expert_id=expert_id,
             content=content,
-            organization_id=graph_exec.execution_context.organization_id,
-            team_id=graph_exec.execution_context.team_id,
+            organization_id=organization_id,
+            team_id=team_id,
             message_id=str(
                 uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")
             ),
@@ -127,8 +129,8 @@ def _post_run_result(
                 "status": "completed" if succeeded else "failed",
                 "output_type": output_type,
                 "output_key": output_key,
-                "organization_id": graph_exec.execution_context.organization_id,
-                "team_id": graph_exec.execution_context.team_id,
+                "organization_id": organization_id,
+                "team_id": team_id,
             },
         )
     except Exception:

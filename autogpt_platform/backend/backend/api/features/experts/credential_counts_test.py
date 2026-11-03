@@ -52,13 +52,62 @@ async def test_lists_live_credential_providers_in_one_owner_scoped_batch():
     for call in seed.await_args_list:
         assert call.args[0] == "owner-1"
         assert call.args[1].ownerUserId == "owner-1"
-    credentials.assert_awaited_once_with("owner-1")
+    credentials.assert_awaited_once_with("owner-1", None)
     # A fixed order is what makes "first-seen" mean the same thing on every
     # load, so the card's logos do not reshuffle.
     grant_query.assert_awaited_once_with(
         where={"expertId": {"in": ["expert-1", "expert-2"]}},
         order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
+
+
+@pytest.mark.asyncio
+async def test_a_grant_resolves_only_against_its_experts_organization():
+    experts = [
+        prisma.models.Expert.model_construct(
+            id="expert-a", ownerUserId="owner-1", organizationId="org-a"
+        ),
+        prisma.models.Expert.model_construct(
+            id="expert-b", ownerUserId="owner-1", organizationId="org-b"
+        ),
+    ]
+    credentials_by_org = {
+        "org-a": [SimpleNamespace(id="cred-a", provider="github")],
+        "org-b": [SimpleNamespace(id="cred-b", provider="notion")],
+    }
+
+    async def org_credentials(user_id: str, organization_id: str | None):
+        assert user_id == "owner-1"
+        return credentials_by_org[organization_id or ""]
+
+    grants = [
+        SimpleNamespace(expertId="expert-a", credentialId="cred-a"),
+        # A grant naming the other organization's credential shows nothing.
+        SimpleNamespace(expertId="expert-a", credentialId="cred-b"),
+        SimpleNamespace(expertId="expert-b", credentialId="cred-b"),
+    ]
+    with (
+        patch.object(credential_counts, "_seed_if_needed", new=AsyncMock()),
+        patch.object(
+            credential_counts,
+            "_user_credentials",
+            new=AsyncMock(side_effect=org_credentials),
+        ) as credentials,
+        patch.object(
+            prisma.models.ExpertCredential,
+            "prisma",
+            return_value=SimpleNamespace(find_many=AsyncMock(return_value=grants)),
+        ),
+    ):
+        providers = await credential_counts.expert_credential_providers(
+            "owner-1", experts
+        )
+
+    assert providers == {"expert-a": ["github"], "expert-b": ["notion"]}
+    assert sorted(call.args for call in credentials.await_args_list) == [
+        ("owner-1", "org-a"),
+        ("owner-1", "org-b"),
+    ]
 
 
 @pytest.mark.asyncio

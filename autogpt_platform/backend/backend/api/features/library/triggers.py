@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from backend.api.features.experts import experts_db
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -140,6 +141,12 @@ async def _setup_triggered_preset_locked(
         ):
             raise NotFoundError(f"Expert #{expert_id} not found")
         organization_id, team_id = expert_scope
+    elif organization_id is None:
+        # Like a preset: the graph's org/team where the user belongs to it,
+        # their own otherwise.
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
 
     # A Marketplace fallback returns the publisher's GraphModel. Tenant IDs
     # alone cannot identify ownership for personal resources because both the
@@ -293,7 +300,7 @@ async def _update_triggered_preset_locked(
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found")
 
-    trigger_inputs_updated, new_webhook = False, None
+    new_webhook = None
     if inputs is not None and credentials is not None:
         graph = await get_graph(
             current.graph_id,
@@ -314,9 +321,10 @@ async def _update_triggered_preset_locked(
                     not_found_message=f"Preset #{preset_id} not found",
                 )
             else:
-                organization_id, team_id = (
-                    current.organization_id,
-                    current.team_id,
+                # The preset's org/team where the user still belongs to it, their
+                # own otherwise (which the scoped preset write below refuses).
+                organization_id, team_id = await resolve_member_tenancy(
+                    user_id, current.organization_id, current.team_id
                 )
             trigger_config_with_credentials = {
                 **inputs,
@@ -335,7 +343,6 @@ async def _update_triggered_preset_locked(
                 organization_id=organization_id,
                 team_id=team_id,
             )
-            trigger_inputs_updated = True
             if not new_webhook:
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
@@ -354,23 +361,24 @@ async def _update_triggered_preset_locked(
             team_id=team_id,
             enforce_team_scope=enforce_team_scope,
         )
-
-        if trigger_inputs_updated:
-            new_webhook_id = new_webhook.id if new_webhook else None
+        if new_webhook:
             updated = await db.set_preset_webhook(
                 user_id,
                 preset_id,
-                new_webhook_id,
+                new_webhook.id,
                 organization_id,
                 team_id,
                 enforce_team_scope,
             )
-            if current.webhook_id and current.webhook_id != new_webhook_id:
-                await _prune_dangling_webhook(user_id, current.webhook_id)
     except Exception:
+        # Until it is attached, a webhook registered for this update is orphaned.
         if new_webhook and new_webhook.id != current.webhook_id:
             await _prune_dangling_webhook(user_id, new_webhook.id)
         raise
+
+    # Clean up the old webhook if it's no longer referenced.
+    if new_webhook and current.webhook_id and current.webhook_id != new_webhook.id:
+        await _prune_dangling_webhook(user_id, current.webhook_id)
 
     return updated
 

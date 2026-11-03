@@ -13,6 +13,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -89,6 +90,7 @@ class ExaCodeContextBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExaCodeContextBlock.Input,
             output_schema=ExaCodeContextBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -2,11 +2,13 @@ import io
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 from PIL import Image
 from pydantic import SecretStr
 
 from backend.api.features.store import image_gen
+from backend.blocks.ideogram import IdeogramModelBlock
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -22,32 +24,63 @@ def graph() -> SimpleNamespace:
     )
 
 
+def _provider_jpeg() -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", (16, 12), "red").save(output, format="JPEG")
+    return output.getvalue()
+
+
+@pytest.fixture
+def providers(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Mock, AsyncMock]:
+    """Both providers stubbed at their boundary, answering a JPEG, plus the
+    daily cap's counter. Returns the Ideogram and Replicate calls and the
+    counter."""
+    ideogram = AsyncMock(return_value="https://ideogram.example/image.jpg")
+    replicate = Mock(return_value="https://replicate.example/image.jpg")
+    monkeypatch.setattr(IdeogramModelBlock, "run_once", ideogram)
+    monkeypatch.setattr(
+        image_gen, "ReplicateClient", Mock(return_value=Mock(run=replicate))
+    )
+    download = AsyncMock(return_value=httpx.Response(200, content=_provider_jpeg()))
+    monkeypatch.setattr(image_gen, "Requests", Mock(return_value=Mock(get=download)))
+    counter = AsyncMock(return_value=1)
+    monkeypatch.setattr(image_gen, "get_redis_async", AsyncMock())
+    monkeypatch.setattr(image_gen, "incr_with_ttl", counter)
+    return ideogram, replicate, counter
+
+
+def _configure_providers(
+    monkeypatch: pytest.MonkeyPatch, use_v2: bool, api_key: str
+) -> None:
+    monkeypatch.setattr(
+        image_gen.settings.config, "use_agent_image_generation_v2", use_v2
+    )
+    monkeypatch.setattr(image_gen.settings.secrets, "replicate_api_key", api_key)
+    monkeypatch.setattr(image_gen.ideogram_credentials, "api_key", SecretStr(api_key))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("use_v2", [False, True])
 async def test_missing_provider_configuration_uses_local_image(
     monkeypatch: pytest.MonkeyPatch,
     graph: SimpleNamespace,
+    providers: tuple[AsyncMock, Mock, AsyncMock],
     use_v2: bool,
 ) -> None:
-    monkeypatch.setattr(
-        image_gen.settings.config, "use_agent_image_generation_v2", use_v2
-    )
-    monkeypatch.setattr(image_gen.settings.secrets, "replicate_api_key", "")
-    monkeypatch.setattr(image_gen.ideogram_credentials, "api_key", SecretStr(""))
+    ideogram, replicate, counter = providers
+    _configure_providers(monkeypatch, use_v2, api_key="")
     local_image = io.BytesIO(b"local-image")
     generate_local = Mock(return_value=local_image)
-    generate_v1 = AsyncMock()
-    generate_v2 = AsyncMock()
     monkeypatch.setattr(image_gen, "generate_local_agent_image", generate_local)
-    monkeypatch.setattr(image_gen, "generate_agent_image_v1", generate_v1)
-    monkeypatch.setattr(image_gen, "generate_agent_image_v2", generate_v2)
 
-    result = await image_gen.generate_agent_image(graph)  # type: ignore[arg-type]
+    result = await image_gen.generate_agent_image(graph, "user-1")  # type: ignore[arg-type]
 
     assert result is local_image
     generate_local.assert_called_once_with(graph)
-    generate_v1.assert_not_awaited()
-    generate_v2.assert_not_awaited()
+    ideogram.assert_not_awaited()
+    replicate.assert_not_called()
+    # Drawing locally spends no provider key, so it leaves the daily cap alone.
+    counter.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -55,33 +88,25 @@ async def test_missing_provider_configuration_uses_local_image(
 async def test_configured_provider_is_used_without_local_fallback(
     monkeypatch: pytest.MonkeyPatch,
     graph: SimpleNamespace,
+    providers: tuple[AsyncMock, Mock, AsyncMock],
     use_v2: bool,
 ) -> None:
-    monkeypatch.setattr(
-        image_gen.settings.config, "use_agent_image_generation_v2", use_v2
-    )
-    monkeypatch.setattr(image_gen.settings.secrets, "replicate_api_key", "configured")
-    monkeypatch.setattr(
-        image_gen.ideogram_credentials, "api_key", SecretStr("configured")
-    )
-    provider_image = io.BytesIO(b"provider-image")
+    ideogram, replicate, counter = providers
+    _configure_providers(monkeypatch, use_v2, api_key="configured")
     generate_local = Mock()
-    generate_v1 = AsyncMock(return_value=provider_image)
-    generate_v2 = AsyncMock(return_value=provider_image)
     monkeypatch.setattr(image_gen, "generate_local_agent_image", generate_local)
-    monkeypatch.setattr(image_gen, "generate_agent_image_v1", generate_v1)
-    monkeypatch.setattr(image_gen, "generate_agent_image_v2", generate_v2)
 
-    result = await image_gen.generate_agent_image(graph)  # type: ignore[arg-type]
+    result = await image_gen.generate_agent_image(graph, "user-1")  # type: ignore[arg-type]
 
-    assert result is provider_image
+    assert result.getvalue() == _provider_jpeg()
     generate_local.assert_not_called()
+    counter.assert_awaited_once()
     if use_v2:
-        generate_v2.assert_awaited_once_with(graph=graph)
-        generate_v1.assert_not_awaited()
+        ideogram.assert_awaited_once()
+        replicate.assert_not_called()
     else:
-        generate_v1.assert_awaited_once_with(agent=graph)
-        generate_v2.assert_not_awaited()
+        replicate.assert_called_once()
+        ideogram.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -89,31 +114,18 @@ async def test_configured_provider_is_used_without_local_fallback(
 async def test_configured_provider_failure_does_not_use_local_fallback(
     monkeypatch: pytest.MonkeyPatch,
     graph: SimpleNamespace,
+    providers: tuple[AsyncMock, Mock, AsyncMock],
     use_v2: bool,
 ) -> None:
-    monkeypatch.setattr(
-        image_gen.settings.config, "use_agent_image_generation_v2", use_v2
-    )
-    monkeypatch.setattr(image_gen.settings.secrets, "replicate_api_key", "configured")
-    monkeypatch.setattr(
-        image_gen.ideogram_credentials, "api_key", SecretStr("configured")
-    )
+    ideogram, replicate, _ = providers
+    _configure_providers(monkeypatch, use_v2, api_key="configured")
     generate_local = Mock()
-    provider_error = RuntimeError("provider unavailable")
     monkeypatch.setattr(image_gen, "generate_local_agent_image", generate_local)
-    monkeypatch.setattr(
-        image_gen,
-        "generate_agent_image_v1",
-        AsyncMock(side_effect=provider_error),
-    )
-    monkeypatch.setattr(
-        image_gen,
-        "generate_agent_image_v2",
-        AsyncMock(side_effect=provider_error),
-    )
+    ideogram.side_effect = RuntimeError("provider unavailable")
+    replicate.side_effect = RuntimeError("provider unavailable")
 
     with pytest.raises(RuntimeError, match="provider unavailable"):
-        await image_gen.generate_agent_image(graph)  # type: ignore[arg-type]
+        await image_gen.generate_agent_image(graph, "user-1")  # type: ignore[arg-type]
 
     generate_local.assert_not_called()
 

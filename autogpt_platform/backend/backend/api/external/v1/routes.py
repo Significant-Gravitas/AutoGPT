@@ -18,6 +18,7 @@ from backend.api.external.middleware import (
     require_auth,
     require_permission,
 )
+from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -119,6 +120,13 @@ async def _execute_graph_block_live(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+    # The blocks CoPilot won't run standalone need a workflow around them here too;
+    # one shared predicate keeps the two boundaries from drifting apart.
+    if is_graph_only_block(obj):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Block #{block_id} can only run inside a workflow.",
+        )
 
     user = await user_db.get_user_by_id(auth.user_id)
     if not user:
@@ -134,8 +142,8 @@ async def _execute_graph_block_live(
         ) from e
 
     # Direct block execution has no graph; build a minimal ExecutionContext
-    # carrying the caller's identity + timezone so blocks that depend on
-    # those (e.g. time blocks) get correct data.
+    # carrying the caller's identity, the key's org/team scope and the
+    # timezone, so blocks that depend on those get correct data.
     execution_context = ExecutionContext(
         user_id=auth.user_id,
         user_timezone=get_user_timezone_or_utc(user.timezone),
@@ -414,7 +422,7 @@ async def get_store_agents(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    agents = await store_cache._get_cached_store_agents(
+    agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -448,7 +456,7 @@ async def get_store_agent(
     """
     username = urllib.parse.unquote(username).lower()
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name
     )
     return agent
@@ -486,7 +494,7 @@ async def get_store_creators(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -515,5 +523,5 @@ async def get_store_creator(
         CreatorDetails: Detailed information about the creator
     """
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator

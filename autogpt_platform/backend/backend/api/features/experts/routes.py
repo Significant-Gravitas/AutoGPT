@@ -3,7 +3,7 @@ import logging
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from autogpt_libs.auth import RequestContext, get_request_context
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, Depends, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import avatar_routes
@@ -47,6 +47,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLockError
 from backend.util.exceptions import NotFoundError
@@ -217,6 +218,7 @@ async def hire_expert(
 
 @router.post(
     "/raise",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="create_raised_expert",
     responses={
         404: {"description": "Attachment not found or unavailable"},
@@ -430,6 +432,7 @@ async def get_expert_computer(
 
 @router.post(
     "/{expert_id}/computer/desktop",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="postV2StartExpertDesktop",
     responses={
         404: {"description": "Expert not found"},
@@ -502,6 +505,7 @@ async def list_expert_credentials(
 
 @router.post(
     "/{expert_id}/credentials",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="grant_expert_credentials",
     responses={
         404: {"description": "Expert not found"},
@@ -562,6 +566,7 @@ async def update_expert_soul(
 
 @router.put(
     "/{expert_id}/skills",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="update_expert_skills",
     responses={
         400: {"description": "A marketplace skill is both attached and removed"},
@@ -662,6 +667,7 @@ async def update_expert_mode(
 
 @router.post(
     "/{expert_id}/workflows",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="install_expert_workflow",
     responses={404: {"description": "Expert or workflow not found"}},
 )
@@ -728,6 +734,7 @@ async def get_expert_detach_preview(
 
 @router.post(
     "/{expert_id}/schedules/resume",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="resume_expert_schedules",
     responses={404: {"description": "Expert not found"}},
 )

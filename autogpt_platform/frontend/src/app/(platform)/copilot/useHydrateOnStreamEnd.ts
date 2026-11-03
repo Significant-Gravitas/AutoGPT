@@ -33,13 +33,8 @@ function retainOlderHistory(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  let oldestHydratedSeq: number | null = null;
-  for (const message of hydrated) {
-    oldestHydratedSeq = extractDbSequence(message);
-    if (oldestHydratedSeq !== null) break;
-  }
-  if (oldestHydratedSeq === null) return hydrated;
-  const windowStart = oldestHydratedSeq;
+  const windowStart = firstSequence(hydrated);
+  if (windowStart === null) return hydrated;
 
   const windowStartIndex = prev.findIndex((message) => {
     const seq = extractDbSequence(message);
@@ -72,10 +67,7 @@ function preservePromotedUserBubbles(
   prev: UIMessage[],
   hydrated: UIMessage[],
 ): UIMessage[] {
-  const promoted = prev.filter(
-    (m) =>
-      typeof m.id === "string" && m.id.startsWith(PROMOTED_BUBBLE_ID_PREFIX),
-  );
+  const promoted = prev.filter(isPromotedBubble);
   if (promoted.length === 0) return hydrated;
 
   const hydratedUserText = hydrated
@@ -91,6 +83,91 @@ function preservePromotedUserBubbles(
   if (orphans.length === 0) return hydrated;
 
   return [...hydrated, ...orphans];
+}
+
+/**
+ * Keep a send the backend took but has not written yet (a follow-up queued
+ * behind a stopped turn's teardown, SECRT-2843) until a user row with its text
+ * lands after the row it was sent behind; each row answers for one bubble.
+ * A bubble whose row may lie before the refetched window is left to it.
+ */
+function preserveUnpersistedUserBubbles(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+  windowStart: number | null,
+): UIMessage[] {
+  // With no stored row drawn yet, nothing says which sends the backend took;
+  // a first send refused before it was saved is one of them.
+  if (!prev.some((message) => extractDbSequence(message) !== null))
+    return hydrated;
+  const bubbles = localUserBubbles(prev);
+  const claimed = new Set<number>();
+  // A promoted bubble's row is its own, so a later bubble with the same text
+  // cannot take it.
+  for (const bubble of bubbles.filter((b) => isPromotedBubble(b.message))) {
+    const rowIndex = findUnclaimedUserRow(hydrated, claimed, bubble);
+    if (rowIndex !== -1) claimed.add(rowIndex);
+  }
+  const orphans: UIMessage[] = [];
+  for (const bubble of bubbles.filter((b) => !isPromotedBubble(b.message))) {
+    const rowIndex = findUnclaimedUserRow(hydrated, claimed, bubble);
+    if (rowIndex !== -1) claimed.add(rowIndex);
+    else if (windowStart === null || bubble.sentAfter >= windowStart - 1)
+      orphans.push(bubble.message);
+  }
+  if (orphans.length === 0) return hydrated;
+  return [...hydrated, ...orphans];
+}
+
+interface LocalBubble {
+  message: UIMessage;
+  text: string;
+  /** Sequence of the last stored row before it; -1 when there is none. */
+  sentAfter: number;
+}
+
+function localUserBubbles(prev: UIMessage[]): LocalBubble[] {
+  const bubbles: LocalBubble[] = [];
+  let sentAfter = -1;
+  for (const message of prev) {
+    const seq = extractDbSequence(message);
+    if (seq !== null) {
+      sentAfter = seq;
+      continue;
+    }
+    const text = message.role === "user" ? getMessageText(message) : "";
+    if (text) bubbles.push({ message, text, sentAfter });
+  }
+  return bubbles;
+}
+
+function findUnclaimedUserRow(
+  hydrated: UIMessage[],
+  claimed: Set<number>,
+  { text, sentAfter }: LocalBubble,
+): number {
+  return hydrated.findIndex(
+    (row, index) =>
+      !claimed.has(index) &&
+      row.role === "user" &&
+      (extractDbSequence(row) ?? -1) > sentAfter &&
+      getMessageText(row).includes(text),
+  );
+}
+
+function firstSequence(messages: UIMessage[]): number | null {
+  for (const message of messages) {
+    const seq = extractDbSequence(message);
+    if (seq !== null) return seq;
+  }
+  return null;
+}
+
+function isPromotedBubble(message: UIMessage): boolean {
+  return (
+    typeof message.id === "string" &&
+    message.id.startsWith(PROMOTED_BUBBLE_ID_PREFIX)
+  );
 }
 
 /**
@@ -197,6 +274,9 @@ export function useHydrateOnStreamEnd({
   const prevStatusRef = useRef(status);
   const needsForceHydrateRef = useRef(false);
   const staleRefAtStreamEnd = useRef<typeof hydratedMessages | null>(null);
+  // A stream that failed since the last replace may have been refused before
+  // its send was saved, even when a retry ended cleanly after it.
+  const streamFailedSinceReplaceRef = useRef(false);
 
   // Arm the force-hydrate flag the moment the stream transitions to idle.
   useEffect(() => {
@@ -208,6 +288,7 @@ export function useHydrateOnStreamEnd({
     if (wasActive && isNowIdle) {
       needsForceHydrateRef.current = true;
       staleRefAtStreamEnd.current = hydratedMessages ?? null;
+      if (status === "error") streamFailedSinceReplaceRef.current = true;
     }
   }, [status, hydratedMessages]);
 
@@ -270,17 +351,26 @@ export function useHydrateOnStreamEnd({
       // session refetch — either way this effect re-fires and the replace
       // lands once the backend goes idle, so no timeout fallback is needed.
       if (hasActiveStream) return;
-      setMessages((prev) =>
-        preservePromotedUserBubbles(
+      const sendsWereTaken = !streamFailedSinceReplaceRef.current;
+      setMessages((prev) => {
+        const replaced = preservePromotedUserBubbles(
           prev,
           preserveStoppedAssistantMessage(
             prev,
             retainOlderHistory(prev, finalized),
           ),
-        ),
-      );
+        );
+        return sendsWereTaken
+          ? preserveUnpersistedUserBubbles(
+              prev,
+              replaced,
+              firstSequence(finalized),
+            )
+          : replaced;
+      });
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
+      streamFailedSinceReplaceRef.current = false;
       return;
     }
 

@@ -12,7 +12,6 @@ import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
@@ -97,12 +96,6 @@ export function useSelectedScheduleActions({
       });
 
       const newRunID = okData(res)?.id;
-      if (newRunID) {
-        trackAgentRunGoal(
-          { id: schedule.graph_id, name: agent.name },
-          "library",
-        );
-      }
 
       await queryClient.invalidateQueries({
         queryKey: getTeamScopedQueryKey(

@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AccountMenuOrgList } from "../AccountMenuOrgList";
 
@@ -133,13 +133,36 @@ describe("AccountMenuOrgList", () => {
     expect(screen.queryByText(PRIVATE_TEAM.name)).toBeNull();
   });
 
-  it("switching org updates the active org in the store", async () => {
+  it("switching org updates the active org in the store and resets the active team", async () => {
     seedStore();
     render(<AccountMenuOrgList />);
 
     await userEvent.click(screen.getByText(PERSONAL_ORG.name));
 
     expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+    expect(useOrgTeamStore.getState().activeTeamID).toBeNull();
+  });
+
+  it("tells the parent menu to close after an org is picked", async () => {
+    const onSelect = vi.fn();
+    seedStore();
+    render(<AccountMenuOrgList onSelect={onSelect} />);
+
+    await userEvent.click(screen.getByText(PERSONAL_ORG.name));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-selecting the already-active org leaves state untouched", async () => {
+    seedStore();
+    render(<AccountMenuOrgList />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: new RegExp(COMPANY_ORG.name) }),
+    );
+
+    expect(useOrgTeamStore.getState().activeOrgID).toBe(COMPANY_ORG.id);
+    expect(useOrgTeamStore.getState().activeTeamID).toBe(DEFAULT_TEAM.id);
   });
 
   it("opens the create-organization dialog when the create button is clicked", async () => {

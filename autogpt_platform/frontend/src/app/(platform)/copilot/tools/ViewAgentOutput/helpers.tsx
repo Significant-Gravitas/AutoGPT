@@ -136,10 +136,10 @@ export function ToolIcon({
       size={14}
       className={
         isError
-          ? "text-red-500"
+          ? "text-error"
           : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
+            ? "text-foreground-tertiary"
+            : "text-foreground-subtle"
       }
     />
   );

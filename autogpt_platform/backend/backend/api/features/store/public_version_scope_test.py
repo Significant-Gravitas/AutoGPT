@@ -263,7 +263,8 @@ async def test_graph_metadata_route_passes_authenticated_creator(mocker) -> None
         "version-1", user_id="creator-1"
     )
 
-    assert result is graph
+    # The outline is the shared copy, without the publisher's account ids.
+    assert result is graph.shared_copy.return_value
     get_available_graph.assert_awaited_once_with("version-1", user_id="creator-1")
 
 

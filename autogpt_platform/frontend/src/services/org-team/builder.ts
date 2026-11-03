@@ -52,10 +52,26 @@ export function getCopilotHref(
   organizationId: string | null,
   teamId: string | null,
 ): string {
+  return `/copilot?${getSessionParams(sessionId, organizationId, teamId)}`;
+}
+
+export function getHomeSessionHref(
+  sessionId: string,
+  organizationId: string | null,
+  teamId: string | null,
+): string {
+  return `/home?${getSessionParams(sessionId, organizationId, teamId)}`;
+}
+
+function getSessionParams(
+  sessionId: string,
+  organizationId: string | null,
+  teamId: string | null,
+): string {
   const params = new URLSearchParams({ sessionId });
   params.set("organizationId", organizationId ?? PERSONAL_ORGANIZATION);
   params.set("teamId", teamId ?? ORGANIZATION_HOME);
-  return `/copilot?${params.toString()}`;
+  return params.toString();
 }
 
 export function getLibraryAgentHref(

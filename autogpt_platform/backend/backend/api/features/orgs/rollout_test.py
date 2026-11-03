@@ -5,11 +5,7 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 from backend.api.features.orgs import invitation_routes, rollout, routes
-from backend.api.features.orgs.model import (
-    AddMemberRequest,
-    CreateInvitationRequest,
-    CreateOrgRequest,
-)
+from backend.api.features.orgs.model import CreateInvitationRequest, CreateOrgRequest
 from backend.util.feature_flag import Flag
 
 
@@ -29,7 +25,7 @@ def owner_context():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "operation", ["create", "convert", "add_member", "invite", "resend", "accept"]
+    "operation", ["create", "convert", "invite", "resend", "accept"]
 )
 async def test_disabled_rollout_blocks_collaboration_before_database_access(
     operation, monkeypatch, mocker
@@ -47,9 +43,6 @@ async def test_disabled_rollout_blocks_collaboration_before_database_access(
     elif operation == "convert":
         mocker.patch.object(routes.org_db, "convert_personal_org", blocked)
         call = routes.convert_org("org", ctx)
-    elif operation == "add_member":
-        mocker.patch.object(routes.org_db, "add_org_member", blocked)
-        call = routes.add_member("org", AddMemberRequest(user_id="recipient"), ctx)
     elif operation == "invite":
         mocker.patch.object(invitation_routes, "_create_invitation_locked", blocked)
         call = invitation_routes.create_invitation(
@@ -103,21 +96,6 @@ async def test_rollout_uses_existing_literal_flag_key_and_defaults_closed(mocker
     assert error.value.status_code == 403
     assert Flag.SHOW_ORG_SETTINGS.value == "SHOW_ORG_SETTINGS"
     check.assert_awaited_once_with(Flag.SHOW_ORG_SETTINGS, "owner", default=False)
-
-
-@pytest.mark.asyncio
-async def test_direct_add_requires_recipient_to_be_in_the_rollout(mocker):
-    check = mocker.patch.object(
-        rollout, "is_feature_enabled", AsyncMock(side_effect=[True, False])
-    )
-    add = mocker.patch.object(routes.org_db, "add_org_member", AsyncMock())
-    with pytest.raises(HTTPException) as error:
-        await routes.add_member(
-            "org", AddMemberRequest(user_id="recipient"), owner_context()
-        )
-    assert error.value.status_code == 403
-    assert [call.args[1] for call in check.await_args_list] == ["owner", "recipient"]
-    add.assert_not_awaited()
 
 
 @pytest.mark.asyncio

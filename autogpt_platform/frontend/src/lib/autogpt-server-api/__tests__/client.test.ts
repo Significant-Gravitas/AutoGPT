@@ -1,5 +1,5 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
@@ -234,6 +234,77 @@ describe("BackendAPI tenant scope", () => {
     expect(requestHeaders.get(ORG_HEADER_NAME)).toBe("org-a");
     expect(requestHeaders.get(TEAM_HEADER_NAME)).toBe("team-a");
   });
+});
+
+describe("BackendAPI on a banned account", () => {
+  const banned = JSON.stringify({
+    detail: {
+      code: "account_banned",
+      message: "This account has been banned.",
+    },
+  });
+  let replace: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(banned, {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    [
+      "a request",
+      (api: BackendAPI) => (api as any)._makeClientRequest("GET", "/x"),
+    ],
+    [
+      "an upload",
+      (api: BackendAPI) =>
+        (api as any)._uploadFile("/upload", new File(["x"], "x.txt")),
+    ],
+    [
+      "an upload with progress",
+      (api: BackendAPI) => api.uploadFile(new File(["x"], "x.txt")),
+    ],
+  ])("signs the user out when %s is refused", async (_, call) => {
+    vi.stubGlobal("XMLHttpRequest", RefusedXHR);
+
+    await expect(
+      call(new BackendAPI("http://test", "ws://test")),
+    ).rejects.toThrow();
+
+    expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
+  });
+
+  class RefusedXHR {
+    status = 403;
+    responseText = banned;
+    withCredentials = false;
+    upload = { addEventListener() {} };
+    private onLoad: (() => void) | undefined;
+
+    addEventListener(type: string, listener: () => void) {
+      if (type === "load") this.onLoad = listener;
+    }
+
+    open() {}
+
+    setRequestHeader() {}
+
+    send() {
+      this.onLoad?.();
+    }
+  }
 });
 
 describe("BackendAPI WebSocket failure logging", () => {

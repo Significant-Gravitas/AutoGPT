@@ -288,7 +288,7 @@ async def test_acquire_refreshes_before_taking_the_long_lived_lock(mocker):
 
     assert acquired is credentials
     assert acquired_lock is lock
-    get.assert_awaited_once_with("user-a", "cred-id")
+    get.assert_awaited_once_with("user-a", "cred-id", allow_sdk_default=False)
     stored.assert_awaited_once_with("user-a", "cred-id")
     acquire_lock.assert_awaited_once()
 

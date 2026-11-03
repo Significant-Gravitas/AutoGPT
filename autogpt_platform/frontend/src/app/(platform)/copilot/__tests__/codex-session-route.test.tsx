@@ -15,6 +15,8 @@ import { useChatSession } from "../useChatSession";
 
 const testState = vi.hoisted(() => ({
   transports: [] as ChatTransportResponse[] | null,
+  // What the inventory request still in flight answers with.
+  arrivingTransports: null as ChatTransportResponse[] | null,
   transportError: false,
   queryOptions: vi.fn(),
   toast: vi.fn(),
@@ -37,6 +39,15 @@ vi.mock(
               ? undefined
               : { status: 200, data: { transports: testState.transports } },
           isError: testState.transportError,
+          refetch: async () => ({
+            data:
+              testState.arrivingTransports === null
+                ? undefined
+                : {
+                    status: 200,
+                    data: { transports: testState.arrivingTransports },
+                  },
+          }),
         };
       },
     };
@@ -125,6 +136,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers();
   testState.transports = [];
+  testState.arrivingTransports = null;
   testState.transportError = false;
   testState.queryOptions.mockClear();
   testState.toast.mockClear();
@@ -159,7 +171,10 @@ describe("useChatSession transport route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({ llm_auth_provider: "platform" });
+      expect(getRequestBody()).toEqual({
+        llm_auth_provider: "platform",
+        session_id: expect.any(String),
+      });
     });
   });
 
@@ -178,6 +193,7 @@ describe("useChatSession transport route", () => {
       expect(getRequestBody()).toEqual({
         llm_auth_provider: "codex",
         llm_credential_id: "codex-credential-1",
+        session_id: expect.any(String),
       });
     });
   });
@@ -190,7 +206,10 @@ describe("useChatSession transport route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
 
     await waitFor(() => {
-      expect(getRequestBody()).toEqual({ llm_auth_provider: "platform" });
+      expect(getRequestBody()).toEqual({
+        llm_auth_provider: "platform",
+        session_id: expect.any(String),
+      });
     });
   });
 
@@ -208,6 +227,7 @@ describe("useChatSession transport route", () => {
       expect(getRequestBody()).toEqual({
         llm_auth_provider: "codex",
         llm_credential_id: "codex-credential-1",
+        session_id: expect.any(String),
       });
     });
   });
@@ -230,7 +250,19 @@ describe("useChatSession transport route", () => {
     expect(getRequestBody()).toBeUndefined();
   });
 
-  it("blocks while the transport inventory is loading", async () => {
+  it("waits for a transport inventory still loading, then creates the session", async () => {
+    testState.transports = null;
+    testState.arrivingTransports = [hostedPlatform];
+    const getRequestBody = captureCreateRequest();
+    render(<SessionHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
+
+    await waitFor(() => expect(getRequestBody()).toBeDefined());
+    expect(testState.toast).not.toHaveBeenCalled();
+  });
+
+  it("blocks when the transport inventory never arrives", async () => {
     testState.transports = null;
     const getRequestBody = captureCreateRequest();
     render(<SessionHarness />);
@@ -239,9 +271,7 @@ describe("useChatSession transport route", () => {
 
     await waitFor(() => {
       expect(testState.toast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "AI connections are still loading",
-        }),
+        expect.objectContaining({ title: "Could not check AI connections" }),
       );
     });
     expect(getRequestBody()).toBeUndefined();

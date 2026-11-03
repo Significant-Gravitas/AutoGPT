@@ -13,6 +13,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import sentry_sdk
+from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -71,6 +72,10 @@ def setup_auth():
     from backend.api.credential_scope import credential_user_id
 
     app.dependency_overrides[credential_user_id] = (
+        lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+    )
+    # The routes' paywall dependency reads the signed-in user from the token.
+    app.dependency_overrides[get_user_id] = (
         lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
     )
     yield

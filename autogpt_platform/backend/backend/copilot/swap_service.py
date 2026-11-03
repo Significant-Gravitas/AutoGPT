@@ -54,6 +54,6 @@ class SwapCredentialService(AppService):
 
     @expose
     async def resolve_swap_credential(
-        self, user_id: str, name: str, host: str, organization_id: str | None = None
+        self, user_id: str, name: str, host: str, box: str
     ) -> Optional[SwapCredential]:
-        return await resolve_swap_credential(user_id, name, host, organization_id)
+        return await resolve_swap_credential(user_id, name, host, box)

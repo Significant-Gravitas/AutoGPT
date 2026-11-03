@@ -30,7 +30,6 @@ export const settingsNavItems: SettingsNavItem[] = [
     label: "Memory",
     href: "/settings/memory",
     Icon: BrainIcon,
-    flag: Flag.GRAPHITI_MEMORY,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {

@@ -109,7 +109,7 @@ describe("ShareChatDialog", () => {
     );
 
     const toggle = await screen.findByRole("switch", {
-      name: /share agent runs from this chat/i,
+      name: /share workflow runs from this chat/i,
     });
     await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
     expect(toggle.getAttribute("aria-checked")).toBe("true");

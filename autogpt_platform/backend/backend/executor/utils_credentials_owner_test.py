@@ -112,7 +112,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         creds.provider = "prov"
         creds.type = "api_key"
         store = MagicMock()
-        store.get_creds_by_id = AsyncMock(return_value=creds)
+        store.get_all_creds = AsyncMock(return_value=[creds])
         mocker.patch(
             "backend.executor.utils.get_integration_credentials_store",
             return_value=store,
@@ -144,9 +144,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert errors == {}
-        mock_store.get_creds_by_id.assert_awaited_once_with(
-            "consumer-1", "owner-cred-1"
-        )
+        mock_store.get_all_creds.assert_awaited_once_with("consumer-1")
 
     @pytest.mark.asyncio
     async def test_owner_mode_resolves_graph_reference_against_owner_store(
@@ -160,7 +158,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
 
         assert errors == {}
         # The graph's baked reference resolves against the OWNER, not consumer.
-        mock_store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+        mock_store.get_all_creds.assert_awaited_once_with("owner-1")
 
     @pytest.mark.asyncio
     async def test_owner_mode_ignores_consumer_supplied_mask(self, mock_store):
@@ -179,12 +177,12 @@ class TestValidateNodeInputCredentialsOwnerMode:
 
         await _validate_node_input_credentials(graph, "consumer-1", masks, "owner-1")
 
-        mock_store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+        mock_store.get_all_creds.assert_awaited_once_with("owner-1")
 
     @pytest.mark.asyncio
     async def test_owner_credential_missing_records_error(self, mocker):
         store = MagicMock()
-        store.get_creds_by_id = AsyncMock(return_value=None)  # owner cred gone
+        store.get_all_creds = AsyncMock(return_value=[])  # owner cred gone
         mocker.patch(
             "backend.executor.utils.get_integration_credentials_store",
             return_value=store,
@@ -199,7 +197,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         # never a silent pass that would fall back to the consumer at runtime.
         assert "n1" in errors
         assert "credentials" in errors["n1"]
-        store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+        store.get_all_creds.assert_awaited_once_with("owner-1")
 
     @pytest.mark.asyncio
     async def test_optional_configured_owner_credential_is_validated(self, mock_store):
@@ -221,7 +219,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert errors == {}
-        mock_store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+        mock_store.get_all_creds.assert_awaited_once_with("owner-1")
 
     @pytest.mark.asyncio
     async def test_reference_only_owner_credential_fails_closed(self, mock_store):
@@ -247,7 +245,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert "runtime-managed credential references" in errors["n1"]["credentials"]
-        mock_store.get_creds_by_id.assert_not_awaited()
+        mock_store.get_all_creds.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_inactive_discriminated_owner_credential_stays_inactive(
@@ -276,7 +274,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert errors == {}
-        mock_store.get_creds_by_id.assert_not_awaited()
+        mock_store.get_all_creds.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_consumer_activating_discriminated_owner_reference_fails_closed(
@@ -308,7 +306,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert "runtime-managed credential references" in errors["n1"]["credentials"]
-        mock_store.get_creds_by_id.assert_not_awaited()
+        mock_store.get_all_creds.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_auto_credentials_are_bound_to_their_picker_field(self, mocker):
@@ -335,10 +333,14 @@ class TestValidateNodeInputCredentialsOwnerMode:
             schema=schema,
         )
         graph = MagicMock(nodes=[node])
-        owner_creds = MagicMock(provider="google")
-        consumer_creds = MagicMock(provider="google")
+        owner_creds = MagicMock(provider="google", id="shared-id")
+        consumer_creds = MagicMock(provider="google", id="shared-id")
         store = MagicMock()
-        store.get_creds_by_id = AsyncMock(side_effect=[owner_creds, consumer_creds])
+        store.get_all_creds = AsyncMock(
+            side_effect=lambda user_id: [
+                owner_creds if user_id == "owner-1" else consumer_creds
+            ]
+        )
         mocker.patch(
             "backend.executor.utils.get_integration_credentials_store",
             return_value=store,
@@ -357,7 +359,7 @@ class TestValidateNodeInputCredentialsOwnerMode:
         )
 
         assert errors == {}
-        assert store.get_creds_by_id.await_args_list == [
-            call("owner-1", "shared-id"),
-            call("consumer-1", "shared-id"),
+        assert store.get_all_creds.await_args_list == [
+            call("owner-1"),
+            call("consumer-1"),
         ]

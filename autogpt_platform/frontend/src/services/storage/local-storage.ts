@@ -2,6 +2,8 @@ import { createSafeStorage } from "./safe-storage";
 
 export enum Key {
   LOGOUT = "supabase-logout",
+  IMPERSONATION_CLEARED = "impersonation-cleared",
+  IMPERSONATION_CHANGED = "impersonation-changed",
   WEBSOCKET_DISCONNECT_INTENT = "websocket-disconnect-intent",
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",

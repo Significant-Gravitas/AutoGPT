@@ -1,4 +1,5 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Input } from "@/components/atoms/Input/Input";
@@ -22,13 +23,13 @@ type AgentUploadTabProps = {
 export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
-      <p className="mb-4 text-sm text-neutral-500">
+      <Text variant="body-tight" tone="muted" className="mb-4">
         Upload a previously exported AutoGPT workflow file (.json).
-      </p>
+      </Text>
       <Form
         form={upload.form}
         onSubmit={upload.onSubmit}
-        className="flex flex-col justify-center gap-0 px-1"
+        className="mx-1 flex flex-col justify-center"
       >
         <FormField
           control={upload.form.control}
@@ -40,7 +41,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   {...field}
                   id={field.name}
                   label="Workflow name"
-                  className="w-full rounded-[10px]"
+                  className="w-full"
                 />
               </FormControl>
               <FormMessage />
@@ -58,7 +59,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   id={field.name}
                   label="Workflow description"
                   type="textarea"
-                  className="w-full rounded-[10px]"
+                  className="w-full"
                 />
               </FormControl>
               <FormMessage />
@@ -79,7 +80,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   placeholder="Workflow file"
                   maxFileSize={10 * 1024 * 1024}
                   showStorageNote={false}
-                  className="mb-8 mt-4"
+                  className="mt-4 mb-8"
                 />
               </FormControl>
               <FormMessage />
@@ -102,7 +103,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
         >
           {upload.isUploading ? (
             <div className="flex items-center gap-2">
-              <LoadingSpinner size="small" className="text-white" />
+              <LoadingSpinner size="small" />
               <span>Uploading...</span>
             </div>
           ) : (

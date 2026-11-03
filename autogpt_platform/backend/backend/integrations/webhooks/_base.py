@@ -75,16 +75,21 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             # (its provider registration wouldn't fire the requested events).
             and set(events).issubset(set(legacy.events))
         ):
-            if organization_id is None and team_id is None:
-                return legacy
-            adopted = await integrations.adopt_dangling_legacy_webhook(
-                legacy.id,
-                user_id=user_id,
-                organization_id=organization_id,
-                team_id=team_id,
-            )
-            if adopted is not None:
-                return adopted
+            if organization_id is None:
+                # A team never exists outside an organization, so an unscoped
+                # request reuses the legacy row and a team without one adopts
+                # nothing.
+                if team_id is None:
+                    return legacy
+            else:
+                adopted = await integrations.adopt_dangling_legacy_webhook(
+                    legacy.id,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+                if adopted is not None:
+                    return adopted
 
         return await self._create_webhook(
             user_id=user_id,

@@ -22,6 +22,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
 from ._schedule_info import _fetch_schedule_info
+from .exceptions import LibraryAgentInAnotherOrganizationError
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ async def resolve_graph_model_for_library(
     user_id: str,
     *,
     admin: bool,
+    tx: prisma.Prisma | None = None,
 ) -> GraphModel:
     """Resolve the graph for an already-validated marketplace version.
 
@@ -86,18 +88,19 @@ async def resolve_graph_model_for_library(
     """
     ag = _require_graph(store_listing_version)
 
-    graph_model = (
-        await graph_db.get_graph_as_admin(
-            graph_id=ag.id, version=ag.version, user_id=user_id
+    if admin:
+        graph_model = await graph_db.get_graph_as_admin(
+            graph_id=ag.id, version=ag.version, user_id=user_id, client=tx
         )
-        if admin
-        else await graph_db.get_graph(
+    elif tx is None:
+        graph_model = await graph_db.get_graph(
             graph_id=ag.id,
             version=ag.version,
             user_id=user_id,
             skip_access_check=True,
         )
-    )
+    else:
+        graph_model = await graph_db.get_graph_at_version(ag.id, ag.version, client=tx)
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
     return graph_model
@@ -152,7 +155,14 @@ async def restore_existing_library_agent(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> library_model.LibraryAgent | None:
-    """Restore and return an existing library entry without loading its graph."""
+    """Restore and return an existing library entry without loading its graph.
+
+    The entry is looked up in the exact organization/team scope the add
+    targets (the user's default team without ``organization_id``), so an
+    entry in another scope is never restored or re-tagged. One whose
+    organization tag disagrees with that scope is left alone and
+    ``LibraryAgentInAnotherOrganizationError`` raised.
+    """
     ag = _require_graph(store_listing_version)
     if organization_id is None:
         organization_id, team_id = await resolve_default_tenancy(user_id)
@@ -170,6 +180,13 @@ async def restore_existing_library_agent(
     existing = await client.find_unique(where=where)
     if existing is None:
         return None
+    if organization_id is not None and existing.organizationId not in (
+        None,
+        organization_id,
+    ):
+        raise LibraryAgentInAnotherOrganizationError(
+            "This agent is already in your library in another organization"
+        )
 
     tenancy_update = (
         {"organizationId": organization_id, "teamId": team_id}
@@ -216,11 +233,17 @@ async def add_graph_to_library(
     atomic with the caller's other writes; catching a uniqueness error inside
     PostgreSQL's transaction would leave that transaction aborted.
     """
-    settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
+    settings_json = SafeJson(GraphSettings().model_dump())
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
     marketplace = _marketplace_metadata(store_listing_version)
+    # Only an explicit tenancy re-tags an existing entry; the default one
+    # merely picks the scope to add to.
+    explicit_tenancy = organization_id is not None
+    # A transactional caller resolves the tenancy before its transaction.
+    if tx is None and not explicit_tenancy:
+        organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data, update_data = await _library_agent_payloads(
         graph_model,
         user_id,
@@ -228,6 +251,7 @@ async def add_graph_to_library(
         marketplace,
         organization_id=organization_id,
         team_id=team_id,
+        retag=explicit_tenancy,
     )
 
     if tx is not None:
@@ -261,10 +285,15 @@ async def _library_agent_payloads(
     *,
     organization_id: str | None = None,
     team_id: str | None = None,
+    retag: bool = False,
 ) -> tuple[dict, dict]:
-    explicit_tenancy = organization_id is not None
-    if not explicit_tenancy:
-        organization_id, team_id = await resolve_default_tenancy(user_id)
+    """Create/update payloads for the entry in the given organization/team.
+
+    The tenancy is resolved by the caller (``add_graph_to_library`` for its
+    non-transactional path, the transaction's owner otherwise), so nothing
+    here reads outside a caller's transaction. ``retag`` also writes it onto
+    an existing entry.
+    """
     create_data = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {
@@ -291,11 +320,7 @@ async def _library_agent_payloads(
         "name": marketplace["name"],
         "description": marketplace["description"],
         "imageUrl": marketplace["imageUrl"],
-        **(
-            {"organizationId": organization_id, "teamId": team_id}
-            if explicit_tenancy
-            else {}
-        ),
+        **({"organizationId": organization_id, "teamId": team_id} if retag else {}),
     }
     return create_data, update_data
 

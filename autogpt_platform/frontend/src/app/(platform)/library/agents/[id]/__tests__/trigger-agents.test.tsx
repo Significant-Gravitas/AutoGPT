@@ -43,6 +43,7 @@ import { PRESETS_PAGE_SIZE } from "../components/NewAgentLibraryView/hooks/useAg
 import { SidebarRunsList } from "../components/NewAgentLibraryView/components/sidebar/SidebarRunsList/SidebarRunsList";
 import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { getTeamScopedQueryKey } from "@/components/contextual/TeamPicker/helpers";
 
 const PARENT_ID = "parent-agent-id";
 const PARENT_GRAPH_ID = "parent-graph-id";
@@ -254,8 +255,12 @@ describe("Library agent view — trigger agents", () => {
       defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
     });
     const onCountsChange = vi.fn();
-    const schedulesKey =
-      getGetV1ListExecutionSchedulesForAGraphQueryKey(PARENT_GRAPH_ID);
+    // The sidebar keys its queries by the workflow's organization and team.
+    const schedulesKey = getTeamScopedQueryKey(
+      getGetV1ListExecutionSchedulesForAGraphQueryKey(PARENT_GRAPH_ID),
+      null,
+      null,
+    );
     server.use(
       ...baseHandlers(),
       emptyPresetsHandler,
@@ -269,6 +274,8 @@ describe("Library agent view — trigger agents", () => {
         agent={getGetV2GetLibraryAgentResponseMock({
           id: PARENT_ID,
           graph_id: PARENT_GRAPH_ID,
+          organization_id: null,
+          team_id: null,
         })}
         onSelectRun={vi.fn()}
         onCountsChange={onCountsChange}
@@ -446,7 +453,8 @@ describe("Library agent view — trigger agents", () => {
     );
 
     // Wait until the trigger detail view is fully rendered
-    await screen.findByText("Remove Me");
+    // The name shows in the sidebar and in the detail view.
+    await screen.findAllByText("Remove Me");
 
     // Side panel has "Remove trigger" icon button
     const removeButton = await screen.findByRole("button", {
@@ -525,7 +533,8 @@ describe("Library agent view — trigger agents", () => {
     // is the path under test (not the side panel).
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
 
-    await screen.findByText("Dropdown Victim");
+    // The name shows in the sidebar and in the detail view.
+    await screen.findAllByText("Dropdown Victim");
 
     // Open the trigger-agent row's dropdown. Other rows may also have
     // "More actions" buttons (webhook triggers) but we only have one
@@ -579,7 +588,8 @@ describe("Library agent view — trigger agents", () => {
       `activeTab=triggers&activeItem=${TRIGGER_ID}`,
     );
 
-    await screen.findByText("Error Case");
+    // The name shows in the sidebar and in the detail view.
+    await screen.findAllByText("Error Case");
 
     const removeButton = await screen.findByRole("button", {
       name: /remove trigger/i,

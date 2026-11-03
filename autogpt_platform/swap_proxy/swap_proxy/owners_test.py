@@ -45,7 +45,7 @@ async def authenticate(raw: Any, username: str = USERNAME, secret: str = SECRET)
 async def test_the_right_secret_for_a_minted_username_is_its_owner():
     reader = Reader(record())
     owner = await OwnerDirectory(reader).authenticate(USERNAME, SECRET)
-    assert owner == Owner("session:s-a", "user-a", "sb-1", swaps=True)
+    assert owner == Owner("session:s-a", "user-a", "sb-1", swaps=True, box=USERNAME)
     assert owner is not None and owner.swap_user_id == "user-a"
     assert reader.asked == [CREDENTIAL_KEY_PREFIX + USERNAME]
 
@@ -134,10 +134,3 @@ async def test_an_owner_without_a_user_has_nobody_to_swap_for():
     assert owner is not None and owner.swaps is True
     assert owner.user_id is None and owner.sandbox_id is None
     assert owner.swap_user_id is None
-
-
-async def test_saved_organization_is_part_of_authenticated_owner():
-    owner = await authenticate(record(organization_id="org-a"))
-    assert owner is not None and owner.organization_id == "org-a"
-    legacy = await authenticate(record())
-    assert legacy is not None and legacy.organization_id is None

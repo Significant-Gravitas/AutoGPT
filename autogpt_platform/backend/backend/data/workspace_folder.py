@@ -125,9 +125,13 @@ async def _get_folder_record(
     workspace_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    *,
+    client: Prisma | None,
 ) -> "UserWorkspaceFolder":
-    """Fetch a workspace-scoped folder record or raise NotFoundError."""
-    folder = await UserWorkspaceFolder.prisma().find_first(
+    """Fetch a workspace-scoped folder record or raise NotFoundError.
+
+    Inside a transaction, pass the transaction as *client*."""
+    folder = await UserWorkspaceFolder.prisma(client).find_first(
         where={
             "id": folder_id,
             "workspaceId": workspace_id,
@@ -175,7 +179,11 @@ async def get_folder(
 ) -> WorkspaceFolder:
     """Get a single folder by ID, scoped to the workspace."""
     folder = await _get_folder_record(
-        folder_id, workspace_id, organization_id=organization_id, team_id=team_id
+        folder_id,
+        workspace_id,
+        organization_id=organization_id,
+        team_id=team_id,
+        client=None,
     )
     count = await _file_count(
         workspace_id, folder_id, organization_id=organization_id, team_id=team_id
@@ -219,8 +227,10 @@ async def create_folder(
                 workspace_id,
                 organization_id=organization_id,
                 team_id=team_id,
+                client=tx,
             )
         if await _name_taken(
+            tx,
             workspace_id,
             name,
             parent_id,
@@ -239,6 +249,7 @@ async def create_folder(
 
 
 async def _name_taken(
+    tx: Prisma,
     workspace_id: str,
     name: str,
     parent_id: Optional[str],
@@ -262,7 +273,7 @@ async def _name_taken(
     }
     if exclude_folder_id is not None:
         where["id"] = {"not": exclude_folder_id}
-    return await UserWorkspaceFolder.prisma().find_first(where=where) is not None
+    return await UserWorkspaceFolder.prisma(tx).find_first(where=where) is not None
 
 
 async def update_folder(
@@ -331,7 +342,11 @@ async def apply_folder_update(
             await _lock_workspace_hierarchy(tx, workspace_id)
 
         folder = await _get_folder_record(
-            folder_id, workspace_id, organization_id=organization_id, team_id=team_id
+            folder_id,
+            workspace_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            client=tx,
         )
         destination = parent_id if moving else folder.parentId
 
@@ -341,8 +356,10 @@ async def apply_folder_update(
                 workspace_id,
                 organization_id=organization_id,
                 team_id=team_id,
+                client=tx,
             )
             if folder_id in await _ancestor_ids(
+                tx,
                 workspace_id,
                 destination,
                 organization_id=organization_id,
@@ -353,6 +370,7 @@ async def apply_folder_update(
                 )
 
         if (moving or name is not None) and await _name_taken(
+            tx,
             workspace_id,
             folder.name if name is None else name,
             destination,
@@ -412,6 +430,7 @@ async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
 
 
 async def _ancestor_ids(
+    tx: Prisma,
     workspace_id: str,
     folder_id: str,
     organization_id: str | None = None,
@@ -423,7 +442,7 @@ async def _ancestor_ids(
     """
     by_id = {
         f.id: f
-        for f in await UserWorkspaceFolder.prisma().find_many(
+        for f in await UserWorkspaceFolder.prisma(tx).find_many(
             where={
                 "workspaceId": workspace_id,
                 "isDeleted": False,
@@ -461,10 +480,18 @@ async def delete_folder(
     async with transaction() as tx:
         await _lock_workspace_hierarchy(tx, workspace_id)
         await _get_folder_record(
-            folder_id, workspace_id, organization_id=organization_id, team_id=team_id
+            folder_id,
+            workspace_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            client=tx,
         )
         doomed = await _subtree_ids(
-            workspace_id, folder_id, organization_id=organization_id, team_id=team_id
+            tx,
+            workspace_id,
+            folder_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         await UserWorkspaceFile.prisma(tx).update_many(
@@ -495,6 +522,7 @@ async def delete_folder(
 
 
 async def _subtree_ids(
+    tx: Prisma,
     workspace_id: str,
     folder_id: str,
     organization_id: str | None = None,
@@ -508,7 +536,7 @@ async def _subtree_ids(
     to reach the whole subtree.
     """
     children: dict[Optional[str], list[str]] = {}
-    for f in await UserWorkspaceFolder.prisma().find_many(
+    for f in await UserWorkspaceFolder.prisma(tx).find_many(
         where={
             "workspaceId": workspace_id,
             "isDeleted": False,
@@ -585,7 +613,11 @@ async def bulk_move_files_to_folder(
     # folderId is set directly; the FK only checks existence, not ownership.
     if folder_id:
         await _get_folder_record(
-            folder_id, workspace_id, organization_id=organization_id, team_id=team_id
+            folder_id,
+            workspace_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            client=None,
         )
 
     if not file_ids:

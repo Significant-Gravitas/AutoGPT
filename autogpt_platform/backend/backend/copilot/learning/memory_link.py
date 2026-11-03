@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import enqueue_episode
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
@@ -54,7 +53,7 @@ async def link_version_to_memory(
 ) -> bool:
     """Best-effort; returns whether an episode was queued. Never raises."""
     try:
-        if version.user_id != user_id or not await is_enabled_for_user(user_id):
+        if version.user_id != user_id:
             return False
         envelope = build_reference_envelope(version)
         # ``dream_`` name prefix: the dream pass must not treat our own

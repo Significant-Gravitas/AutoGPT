@@ -1,17 +1,21 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import cast
+from typing import Optional, cast
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
-from fastapi import HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.params import Depends as DependsParameter
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
+from pydantic import BaseModel, ConfigDict
+from starlette.types import Scope
 
+from backend.api.features.orgs import db as org_db
 from backend.api.live_auth import live_dependency
 from backend.api.org_rollout import require_personal_scope_without_collaboration
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
@@ -21,6 +25,7 @@ from backend.data.auth.oauth import (
     InvalidTokenError,
     OAuthAccessTokenInfo,
     OAuthApplicationInfo,
+    is_access_token,
     validate_access_token,
 )
 from backend.data.db import prisma
@@ -30,9 +35,12 @@ from backend.data.tenancy import (
     has_live_resource_permission,
     live_request_transaction,
 )
+from backend.data.user import is_user_banned
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
+
+_REQUEST_AUTH = "external_api_auth"
 
 
 def _auth_error(detail: str, status_code: int = status.HTTP_401_UNAUTHORIZED):
@@ -117,7 +125,7 @@ async def _live_authorization_principal(
         yield
 
 
-async def _scope_api_key(api_key: APIKeyInfo) -> APIKeyInfo:
+async def _scope_api_key(api_key: APIAuthorizationInfo) -> APIAuthorizationInfo:
     if api_key.organization_id is not None:
         await require_personal_scope_without_collaboration(
             api_key.user_id, api_key.organization_id, api_key.team_id_restriction
@@ -128,9 +136,7 @@ async def _scope_api_key(api_key: APIKeyInfo) -> APIKeyInfo:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="API key has an invalid workspace scope",
         )
-    from backend.api.features.orgs.db import get_user_default_team
-
-    organization_id, team_id = await get_user_default_team(api_key.user_id)
+    organization_id, team_id = await org_db.get_user_default_team(api_key.user_id)
     if organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -145,8 +151,8 @@ async def _scope_api_key(api_key: APIKeyInfo) -> APIKeyInfo:
 
 
 async def _scope_oauth_token(
-    token: OAuthAccessTokenInfo, application: OAuthApplicationInfo
-) -> OAuthAccessTokenInfo:
+    token: APIAuthorizationInfo, application: OAuthApplicationInfo
+) -> APIAuthorizationInfo:
     organization_id = application.organization_id
     team_id = application.team_id_restriction
     if organization_id is None:
@@ -155,9 +161,7 @@ async def _scope_oauth_token(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="OAuth application has an invalid workspace scope",
             )
-        from backend.api.features.orgs.db import get_user_default_team
-
-        organization_id, team_id = await get_user_default_team(token.user_id)
+        organization_id, team_id = await org_db.get_user_default_team(token.user_id)
     if organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -175,39 +179,113 @@ async def _scope_oauth_token(
     )
 
 
-async def require_api_key(api_key: str | None = Security(api_key_header)) -> APIKeyInfo:
-    """Middleware for API key authentication only"""
-    if api_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key"
-        )
+class VerifiedCredential(BaseModel):
+    """What this request's credential verified as: who, or rejected."""
 
-    api_key_obj = await validate_api_key(api_key)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    if not api_key_obj:
+    credential: Optional[str]
+    auth: Optional[APIAuthorizationInfo] = None
+    rejection: Optional[HTTPException] = None
+
+
+class _VerifiedPrincipal(BaseModel):
+    """A verified credential, with the OAuth application a token was issued to."""
+
+    auth: APIAuthorizationInfo
+    application: OAuthApplicationInfo | None = None
+
+
+async def resolve_auth_info(
+    api_key: str | None = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+) -> APIAuthorizationInfo | None:
+    """
+    Resolve authentication from API key or Bearer token headers.
+
+    Returns the auth info if valid credentials are provided, or None if no
+    credentials are present. Raises HTTPException on *invalid* credentials.
+    The credential is not pinned to a tenant here: v1 does that in
+    `require_auth`, v2 in its own tenancy resolution.
+    """
+    principal = await _verify_principal(api_key, bearer)
+    return principal.auth if principal is not None else None
+
+
+async def _verify_principal(
+    api_key: str | None, bearer: HTTPAuthorizationCredentials | None
+) -> _VerifiedPrincipal | None:
+    if api_key is not None:
+        api_key_info = await validate_api_key(api_key)
+        if api_key_info:
+            await _refuse_banned_owner(api_key_info)
+            return _VerifiedPrincipal(auth=api_key_info)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
-    return await _scope_api_key(api_key_obj)
+    if bearer is not None:
+        # MCP clients can only send credentials as a Bearer token, so an API key
+        # arrives here too; without this the request resolves to anonymous and
+        # gets the per-IP rate limit. Order matches v2's MCP TokenVerifier.
+        if not is_access_token(bearer.credentials) and (
+            api_key_info := await validate_api_key(bearer.credentials)
+        ):
+            await _refuse_banned_owner(api_key_info)
+            return _VerifiedPrincipal(auth=api_key_info)
+
+        try:
+            token_info, application = await validate_access_token(bearer.credentials)
+        except (InvalidClientError, InvalidTokenError) as e:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await _refuse_banned_owner(token_info)
+        return _VerifiedPrincipal(auth=token_info, application=application)
+
+    return None
 
 
-async def require_access_token(
-    bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
-) -> OAuthAccessTokenInfo:
-    """Middleware for OAuth access token authentication only"""
-    if bearer is None:
+async def resolve_request_auth(
+    scope: Scope,
+    api_key: str | None,
+    bearer: HTTPAuthorizationCredentials | None,
+) -> APIAuthorizationInfo | None:
+    """`resolve_auth_info`, verified at most once per request.
+
+    v2's rate limiter and route dependency both need the caller, and an API key
+    costs a Scrypt hash per check. A rejection is remembered too, so an invalid
+    key costs one hash, not two; an error that isn't a rejection (the database
+    unreachable) is not, so the route's own check tries again. The result is
+    kept with the credential it was for, and only reused for that credential.
+    """
+    credential = (
+        api_key if api_key is not None else bearer.credentials if bearer else None
+    )
+    state = scope.setdefault("state", {})
+    verified = state.get(_REQUEST_AUTH)
+    if not isinstance(verified, VerifiedCredential) or (
+        verified.credential != credential
+    ):
+        try:
+            verified = VerifiedCredential(
+                credential=credential,
+                auth=await resolve_auth_info(api_key=api_key, bearer=bearer),
+            )
+        except HTTPException as rejection:
+            verified = VerifiedCredential(credential=credential, rejection=rejection)
+        state[_REQUEST_AUTH] = verified
+    if verified.rejection is not None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
+            status_code=verified.rejection.status_code,
+            detail=verified.rejection.detail,
+            headers=verified.rejection.headers,
         )
+    return verified.auth
 
-    try:
-        token_info, application = await validate_access_token(bearer.credentials)
-    except (InvalidClientError, InvalidTokenError) as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
-    return await _scope_oauth_token(token_info, application)
+def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
+    """What this request's credential already verified as, if it was checked."""
+    verified = scope.get("state", {}).get(_REQUEST_AUTH)
+    return verified if isinstance(verified, VerifiedCredential) else None
 
 
 async def require_auth(
@@ -215,37 +293,37 @@ async def require_auth(
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
 ) -> APIAuthorizationInfo:
     """
-    Unified authentication middleware supporting both API keys and OAuth tokens.
+    Unified authentication dependency that requires valid credentials.
 
-    Supports two authentication methods, which are checked in order:
-    1. X-API-Key header (existing API key authentication)
-    2. Authorization: Bearer <token> header (OAuth access token)
-
-    Returns:
-        APIAuthorizationInfo: base class of both APIKeyInfo and OAuthAccessTokenInfo.
+    Accepts an API key (`X-API-Key`, or sent as a Bearer token) or an OAuth
+    access token, rejects requests with no credentials, and pins the
+    credential to the organization and team it acts in: an OAuth token to its
+    application's scope, a credential minted before organizations to its
+    owner's personal organization. An explicitly shared scope must pass the org
+    rollout gate.
     """
-    # Try API key first
-    if api_key is not None:
-        api_key_info = await validate_api_key(api_key)
-        if api_key_info:
-            return await _scope_api_key(api_key_info)
+    principal = await _verify_principal(api_key, bearer)
+    if principal is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication. Provide API key or access token.",
+        )
+    if principal.application is not None:
+        return await _scope_oauth_token(principal.auth, principal.application)
+    return await _scope_api_key(principal.auth)
+
+
+async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:
+    if await owner_is_banned(auth):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_BANNED_DETAIL
         )
 
-    # Try OAuth bearer token
-    if bearer is not None:
-        try:
-            token_info, application = await validate_access_token(bearer.credentials)
-            return await _scope_oauth_token(token_info, application)
-        except (InvalidClientError, InvalidTokenError) as e:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
-    # No credentials provided
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing authentication. Provide API key or access token.",
-    )
+async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
+    """Whether the account a credential belongs to is banned; for verifiers that
+    resolve credentials outside `resolve_auth_info`, such as v2's MCP server."""
+    return await is_user_banned(auth.user_id)
 
 
 def permission_dependency(*permissions: APIKeyPermission) -> DependsParameter:
@@ -256,7 +334,9 @@ def permission_dependency(*permissions: APIKeyPermission) -> DependsParameter:
     """
 
     async def check_permissions(
-        auth: APIAuthorizationInfo = Security(require_auth),
+        auth: APIAuthorizationInfo = Security(
+            require_auth, scopes=[p.value for p in permissions]
+        ),
     ) -> AsyncIterator[APIAuthorizationInfo]:
         missing = [p for p in permissions if p not in auth.scopes]
         if missing:
@@ -337,3 +417,15 @@ def _resource_access_for_permissions(
     ):
         return "view"
     return None
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints secured with `require_auth` (v1) or
+    v2's tenancy dependencies.
+    """
+    from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(
+        app, [api_key_header.scheme_name, bearer_auth.scheme_name]
+    )

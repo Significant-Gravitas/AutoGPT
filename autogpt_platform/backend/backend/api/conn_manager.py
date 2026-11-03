@@ -2,11 +2,9 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Awaitable, Callable, Dict, Optional, Set
 
-from autogpt_libs.auth.permissions import OrgAction, TeamAction
+from autogpt_libs.auth.permissions import TeamAction
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis as AsyncRedis
@@ -16,20 +14,19 @@ from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
 from backend.api.org_rollout import require_personal_scope_without_collaboration
+from backend.data import db
 from backend.data import redis_client as redis
+from backend.data import tenancy
+from backend.data.db_accessors import execution_db, orgs_db
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
+    GraphExecutionMeta,
     exec_channel,
-    get_graph_execution_exact_scope,
-    get_graph_execution_meta,
     graph_all_channel,
 )
 from backend.data.notification_bus import NotificationEvent
-from backend.data.tenancy import (
-    agent_graph_attachment_barrier,
-    live_resource_permission_barrier,
-)
+from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -77,7 +74,41 @@ class _ExecutionSubscriptionScope(BaseModel):
     team_id: str | None
     graph_id: str
     execution_id: str | None
+    # VIEW_EXECUTIONS or VIEW_AGENTS; both are the "view" resource access.
     team_action: TeamAction
+
+
+# The websocket server connects no Prisma client (it is given no database URL),
+# so every read below goes through the DatabaseManager, as `execution_db()` does.
+
+
+def _tenancy_db():
+    if db.is_connected():
+        return tenancy
+    return get_database_manager_async_client()
+
+
+async def get_graph_execution_exact_scope(
+    user_id: str,
+    execution_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> GraphExecutionMeta | None:
+    """The user's execution, only if it is in exactly this org and team."""
+    execution = await execution_db().get_graph_execution_meta(
+        user_id=user_id, execution_id=execution_id
+    )
+    if (
+        execution is None
+        or execution.organization_id != organization_id
+        or execution.team_id != team_id
+    ):
+        return None
+    return execution
+
+
+async def _user_default_team(user_id: str) -> tuple[str | None, str | None]:
+    return await orgs_db().get_user_default_team(user_id)
 
 
 def _is_moved_error(exc: BaseException) -> bool:
@@ -271,7 +302,9 @@ class ConnectionManager:
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str:
         # Hash-tagged channel needs graph_id; resolve once per subscribe.
-        meta = await get_graph_execution_meta(user_id, graph_exec_id)
+        meta = await execution_db().get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
         if meta is None:
             raise ValueError(
                 f"graph_exec #{graph_exec_id} not found for user #{user_id}"
@@ -292,7 +325,10 @@ class ConnectionManager:
             raise ValueError("Access denied")
         if scope.organization_id is not None or scope.team_id is not None:
             await require_personal_scope_without_collaboration(
-                user_id, scope.organization_id, scope.team_id
+                user_id,
+                scope.organization_id,
+                scope.team_id,
+                default_team=_user_default_team,
             )
         await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
@@ -327,7 +363,7 @@ class ConnectionManager:
         # exact-scope filter still excludes every org/team execution from them.
         if organization_id is not None or team_id is not None:
             await require_personal_scope_without_collaboration(
-                user_id, organization_id, team_id
+                user_id, organization_id, team_id, default_team=_user_default_team
             )
         await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
@@ -369,19 +405,17 @@ class ConnectionManager:
         sub = _Subscription(full_channel)
 
         async def on_message(data: Optional[bytes | str]) -> None:
+            # Checked on every event, so a revoked membership or role ends the
+            # stream at its next event.
             if not await self._execution_scope_is_live(scope):
                 await self._close_revoked_execution_websocket(websocket)
                 return
-            async with self._execution_scope_barrier(scope) as allowed:
-                if not allowed:
-                    await self._close_revoked_execution_websocket(websocket)
-                    return
-                await self._forward_exec_event(
-                    websocket,
-                    channel_key,
-                    data,
-                    required_scope=scope,
-                )
+            await self._forward_exec_event(
+                websocket,
+                channel_key,
+                data,
+                required_scope=scope,
+            )
 
         await sub.start(on_message)
         per_ws[channel_key] = sub
@@ -403,37 +437,25 @@ class ConnectionManager:
         self,
         scope: _ExecutionSubscriptionScope,
     ) -> bool:
-        async with self._execution_scope_barrier(scope) as allowed:
-            return allowed
-
-    @asynccontextmanager
-    async def _execution_scope_barrier(
-        self,
-        scope: _ExecutionSubscriptionScope,
-    ) -> AsyncIterator[bool]:
-        async with live_resource_permission_barrier(
+        """Whether the subscriber may still see what this scope streams: a live
+        membership and role in its org and team, and, for one execution, that
+        execution still in exactly that scope."""
+        if (
+            scope.organization_id is not None
+            and not await _tenancy_db().has_live_resource_access(
+                scope.user_id, scope.organization_id, scope.team_id, "view"
+            )
+        ):
+            return False
+        if scope.execution_id is None:
+            return True
+        execution = await get_graph_execution_exact_scope(
             scope.user_id,
+            scope.execution_id,
             scope.organization_id,
             scope.team_id,
-            OrgAction.VIEW_RESOURCES,
-            scope.team_action,
-        ) as allowed:
-            if not allowed:
-                yield False
-                return
-            async with agent_graph_attachment_barrier(scope.graph_id):
-                if scope.execution_id is not None:
-                    execution = await get_graph_execution_exact_scope(
-                        scope.user_id,
-                        scope.execution_id,
-                        scope.organization_id,
-                        scope.team_id,
-                    )
-                    yield (
-                        execution is not None and execution.graph_id == scope.graph_id
-                    )
-                    return
-                yield True
+        )
+        return execution is not None and execution.graph_id == scope.graph_id
 
     async def _close_subscription(
         self, websocket: WebSocket, channel_key: str

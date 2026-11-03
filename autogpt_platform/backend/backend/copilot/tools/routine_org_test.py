@@ -38,9 +38,6 @@ async def test_personal_prompt_uses_saved_org(monkeypatch):
     monkeypatch.setattr(
         expert_context, "experts_db", lambda: SimpleNamespace(list_routines=listing)
     )
-    monkeypatch.setattr(
-        expert_context, "is_feature_enabled", AsyncMock(return_value=True)
-    )
     monkeypatch.setattr(expert_context, "_team_context", AsyncMock(return_value=""))
     await expert_context.build_expert_context(
         "owner", None, organization_id="business-a"

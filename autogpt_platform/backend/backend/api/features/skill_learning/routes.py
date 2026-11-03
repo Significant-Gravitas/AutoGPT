@@ -12,7 +12,7 @@ from typing import Annotated
 
 import autogpt_libs.auth as autogpt_auth_lib
 from autogpt_libs.auth import RequestContext, get_request_context
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 
 from backend.api.features.experts import experts_db
 from backend.api.features.skill_learning.models import (
@@ -52,6 +52,7 @@ from backend.copilot.learning.owner_actions import (
 )
 from backend.copilot.learning.publish import PublishOutcome
 from backend.copilot.learning.revocation import invalidate_versions_for_source
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import invalidate_skills_index_cache
 from backend.data import skill_learning as learning_data
 from backend.data import skill_reviews as reviews_data
@@ -326,7 +327,11 @@ async def update_policy(
     )
 
 
-@router.post("/skills/{name}/edit", operation_id="edit_learned_skill")
+@router.post(
+    "/skills/{name}/edit",
+    operation_id="edit_learned_skill",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def edit_skill(
     name: Annotated[str, _NAME_PATH],
     body: EditSkillRequest,
@@ -358,7 +363,11 @@ async def edit_skill(
     return await _with_version(_action_result(outcome, user_id), outcome, user_id)
 
 
-@router.post("/skills/{name}/restore", operation_id="restore_learned_skill_version")
+@router.post(
+    "/skills/{name}/restore",
+    operation_id="restore_learned_skill_version",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def restore(
     name: Annotated[str, _NAME_PATH],
     body: RestoreVersionRequest,
@@ -387,6 +396,7 @@ async def restore(
 
 @router.post(
     "/skills/{name}/decisions/{version_id}",
+    dependencies=[Depends(enforce_payment_paywall)],
     operation_id="decide_skill_learning_proposal",
 )
 async def decide(
@@ -501,7 +511,11 @@ async def exclude_source(
     )
 
 
-@router.post("/run", operation_id="run_skill_learning_now")
+@router.post(
+    "/run",
+    operation_id="run_skill_learning_now",
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def run_now(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: RequestContext = Security(get_request_context),

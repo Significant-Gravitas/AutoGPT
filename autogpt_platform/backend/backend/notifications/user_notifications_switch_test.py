@@ -16,6 +16,7 @@ from prisma.enums import NotificationType
 
 from backend.notifications import email as email_module
 from backend.notifications import notifications as delivery
+from backend.notifications.conftest import user_event
 from backend.util.settings import Config
 
 USER_FAMILIES = [t for t in NotificationType if t is not NotificationType.OPS]
@@ -30,7 +31,7 @@ def _manager(sender: AsyncMock) -> delivery.NotificationManager:
 
 
 def _event(notification_type: NotificationType) -> SimpleNamespace:
-    return SimpleNamespace(type=notification_type, user_id="user-1", data=MagicMock())
+    return user_event(notification_type)
 
 
 # `raising=False` so that on a build without the switch these fail on what was

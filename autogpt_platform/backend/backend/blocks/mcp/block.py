@@ -20,11 +20,9 @@ from backend.blocks._base import (
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
-    auto_lookup_mcp_credential,
     mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
-    release_mcp_credential_leases,
 )
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
@@ -33,12 +31,8 @@ from backend.data.model import (
     OAuth2Credentials,
     SchemaField,
 )
-from backend.integrations.credential_lease import (
-    CredentialLease,
-    run_with_credential_lease_guard,
-)
 from backend.integrations.providers import ProviderName
-from backend.util.json import validate_with_jsonschema
+from backend.util.request import HTTPClientError
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +43,7 @@ TEST_CREDENTIALS = OAuth2Credentials(
     refresh_token=SecretStr("mock-refresh"),
     scopes=[],
     title="Mock MCP credential",
+    metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
 )
 TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
@@ -127,12 +122,9 @@ class MCPToolBlock(Block):
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            """Validate tool_arguments against the tool's input schema."""
-            tool_schema = cls.get_input_schema(data)
-            if not tool_schema:
-                return None
-            tool_arguments = data.get("tool_arguments", {})
-            return validate_with_jsonschema(tool_schema, tool_arguments)
+            # `data` holds the flattened `tool_arguments` (see validate_exec), never
+            # the node's `tool_input_schema`; the MCP server validates its arguments.
+            return None
 
     class Output(BlockSchemaOutput):
         result: Any = SchemaField(description="The result returned by the MCP tool")
@@ -188,33 +180,20 @@ class MCPToolBlock(Block):
             result = await client.call_tool(
                 tool_name, arguments, input_schema=input_schema
             )
-
-            if result.is_error:
-                error_text = ""
-                for item in result.content:
-                    if item.get("type") == "text":
-                        error_text += item.get("text", "")
-                raise MCPClientError(
-                    f"MCP tool '{tool_name}' returned an error: "
-                    f"{error_text or 'Unknown error'}"
-                )
-
-            return parse_mcp_content(result.content)
         finally:
             await client.close()
 
-    @staticmethod
-    async def _auto_lookup_credential(
-        user_id: str,
-        server_url: str,
-        lease_sink: list[CredentialLease],
-    ) -> "OAuth2Credentials | None":
-        """Auto-lookup stored MCP credential for a server URL.
+        if result.is_error:
+            error_text = ""
+            for item in result.content:
+                if item.get("type") == "text":
+                    error_text += item.get("text", "")
+            raise MCPClientError(
+                f"MCP tool '{tool_name}' returned an error: "
+                f"{error_text or 'Unknown error'}"
+            )
 
-        Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
-        The caller should pass a normalized URL.
-        """
-        return await auto_lookup_mcp_credential(user_id, server_url, lease_sink)
+        return parse_mcp_content(result.content, result.structured_content)
 
     async def run(
         self,
@@ -249,35 +228,45 @@ class MCPToolBlock(Block):
                 )
                 return
 
-        # If no credentials were injected by the executor (e.g. legacy nodes
-        # that don't have the credentials field set), try to auto-lookup
-        # the stored MCP credential for this server URL.
-        mcp_leases: list[CredentialLease] = []
-        if credentials is None:
-            credentials = await self._auto_lookup_credential(
-                user_id,
-                normalize_mcp_url(input_data.server_url),
-                mcp_leases,
+        # Only the credential selected for this node or run is used, and only at
+        # the server it was connected for.
+        if credentials and normalize_mcp_url(
+            (credentials.metadata or {}).get("mcp_server_url") or ""
+        ) != normalize_mcp_url(input_data.server_url):
+            yield (
+                "error",
+                (
+                    "The selected credentials were connected for a different MCP "
+                    "server. Select credentials for this server and run again."
+                ),
             )
+            return
 
         authorization = mcp_authorization_header(credentials) if credentials else None
 
         try:
-            result = await run_with_credential_lease_guard(
-                self._call_mcp_tool(
-                    server_url=input_data.server_url,
-                    tool_name=input_data.selected_tool,
-                    arguments=input_data.tool_arguments,
-                    authorization=authorization,
-                    input_schema=input_data.tool_input_schema or None,
-                ),
-                mcp_leases,
+            result = await self._call_mcp_tool(
+                server_url=input_data.server_url,
+                tool_name=input_data.selected_tool,
+                arguments=input_data.tool_arguments,
+                authorization=authorization,
+                input_schema=input_data.tool_input_schema or None,
             )
             yield "result", result
         except MCPClientError as e:
             yield "error", str(e)
+        except HTTPClientError as e:
+            if credentials is None and e.status_code in (401, 403):
+                yield (
+                    "error",
+                    (
+                        "This MCP server requires credentials. Select credentials "
+                        "for this server and run again."
+                    ),
+                )
+                return
+            logger.exception("MCP tool call failed")
+            yield "error", f"MCP tool call failed: {e}"
         except Exception as e:
             logger.exception(f"MCP tool call failed: {e}")
             yield "error", f"MCP tool call failed: {str(e)}"
-        finally:
-            await release_mcp_credential_leases(mcp_leases)

@@ -365,7 +365,7 @@ export function useLibraryAgentList({
         select: okData,
         enabled: !!selectedFolderId && isTenantReady,
         queryKey: getTeamScopedQueryKey(
-          getGetV2GetFolderQueryKey(selectedFolderId ?? undefined),
+          getGetV2GetFolderQueryKey(selectedFolderId ?? ""),
           queryOrganizationId,
           queryTeamId,
         ),

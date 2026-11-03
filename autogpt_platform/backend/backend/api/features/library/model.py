@@ -16,7 +16,7 @@ from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
 
 
 class LibraryAgentStatus(str, Enum):
@@ -261,7 +261,6 @@ class LibraryAgent(pydantic.BaseModel):
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[
             dict[str | tuple[str, int, str | None, str | None], str]
@@ -362,19 +361,25 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        marketplace_listing_data = None
-        if store_listing and store_listing.ActiveVersion and profile:
-            creator_data = MarketplaceListingCreator(
-                name=profile.name,
-                id=profile.id,
-                slug=profile.username,
-            )
-            marketplace_listing_data = MarketplaceListing(
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
                 id=store_listing.id,
-                name=store_listing.ActiveVersion.name,
+                name=active_listing.name,
                 slug=store_listing.slug,
-                creator=creator_data,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
             )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
 
         schedule_scope_key = (
             agent.agentGraphId,
@@ -437,7 +442,7 @@ class LibraryAgent(pydantic.BaseModel):
             is_scheduled=next_scheduled_run is not None,
             next_scheduled_run=next_scheduled_run,
             settings=parse_settings(agent.settings),
-            marketplace_listing=marketplace_listing_data,
+            marketplace_listing=marketplace_listing_info,
             store_listing_version_id=store_listing_version_id,
         )
 
@@ -572,27 +577,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
     webhook_id: Optional[str] = None
-    webhook: "Webhook | None"
+    webhook: "WebhookWithoutSecrets | None"
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
     expert_id: Optional[str] = None
 
-    @pydantic.field_serializer("webhook")
-    def _redact_webhook_signing_material(
-        self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
-    ):
-        # Never expose a webhook's signing secret / provider webhook id to API
-        # clients; callers only need the ingress URL and non-sensitive metadata.
-        if webhook is None:
-            return None
-        return webhook.model_dump(
-            mode=info.mode, exclude={"secret", "provider_webhook_id"}
-        )
-
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
@@ -627,7 +620,11 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             organization_id=preset.organizationId,
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                WebhookWithoutSecrets.from_db(preset.Webhook)
+                if preset.Webhook
+                else None
+            ),
             expert_id=preset.expertId,
         )
 

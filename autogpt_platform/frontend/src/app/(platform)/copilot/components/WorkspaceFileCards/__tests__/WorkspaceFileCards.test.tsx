@@ -115,6 +115,10 @@ function activityMessages(): UIMessage[] {
 
 beforeEach(() => {
   server.use(getListWorkspaceFilesMockHandler200(listResponse()));
+  // The chat page sets the open chat's saved scope; the files load in it.
+  useCopilotUIStore.setState({
+    artifactTenantScope: { organizationId: null, teamId: null },
+  });
 });
 
 afterEach(() => {

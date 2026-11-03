@@ -5,10 +5,12 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import execution_db, library_db
 from backend.data.execution import (
@@ -20,7 +22,7 @@ from backend.data.execution import (
 from backend.data.tenancy import ResourceAccess
 from backend.util.tenancy_urls import library_agent_path
 
-from .base import BaseTool
+from .base import BaseTool, parameters_without
 from .execution_utils import (
     TERMINAL_STATUSES,
     NodeFailureSummary,
@@ -28,6 +30,7 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
+from .external_scope import external_tenant, in_tenant
 from .models import (
     AgentOutputResponse,
     ErrorResponse,
@@ -114,9 +117,25 @@ def parse_time_expression(
         return None, None
 
 
-def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
-    """Personal AutoPilot sees every run; an expert only runs it started."""
-    return expert_id is None or execution.expert_id == expert_id
+def _run_visible(
+    execution: GraphExecutionMeta, expert_id: str | None, tenant: str | None = None
+) -> bool:
+    """Personal AutoPilot sees every run; an expert only runs it started.
+
+    An External API call sees only runs in its organization.
+    """
+    return (expert_id is None or execution.expert_id == expert_id) and in_tenant(
+        execution.organization_id, tenant
+    )
+
+
+def _in_exact_scope(
+    row: LibraryAgent | GraphExecutionMeta,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    """Whether a workflow or run belongs to exactly the chat's org and team."""
+    return (row.organization_id, row.team_id) == (organization_id, team_id)
 
 
 class AgentOutputTool(BaseTool):
@@ -127,6 +146,16 @@ class AgentOutputTool(BaseTool):
     @property
     def name(self) -> str:
         return "view_agent_output"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_RUN]
+
+    @property
+    def external_parameters(self) -> dict[str, Any]:
+        # An external caller polls instead: each wait holds the request and an
+        # event-bus connection open for as long as the run takes.
+        return parameters_without(self.parameters, "wait_if_running")
 
     @property
     def description(self) -> str:
@@ -194,12 +223,17 @@ class AgentOutputTool(BaseTool):
         agent_name: str | None,
         library_agent_id: str | None,
         store_slug: str | None,
-        organization_id: str | None,
-        team_id: str | None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        tenant: str | None = None,
+        external_caller: bool = False,
     ) -> tuple[LibraryAgent | None, str | None]:
         """
         Resolve agent from provided identifiers.
         Returns (library_agent, error_message).
+
+        Agents outside the exact ``organization_id`` / ``team_id`` scope or
+        outside ``tenant`` count as not found.
         """
         lib_db = library_db()
 
@@ -212,15 +246,16 @@ class AgentOutputTool(BaseTool):
                     organization_id=organization_id,
                     team_id_restriction=team_id,
                 )
-                if (agent.organization_id, agent.team_id) == (
-                    organization_id,
-                    team_id,
-                ):
-                    return agent, None
-                return None, f"Library agent '{library_agent_id}' not found"
             except Exception as e:
                 logger.warning(f"Failed to get library agent by ID: {e}")
+                agent = None
+            if (
+                agent is None
+                or not in_tenant(agent.organization_id, tenant)
+                or not _in_exact_scope(agent, organization_id, team_id)
+            ):
                 return None, f"Library workflow '{library_agent_id}' not found"
+            return agent, None
 
         # Priority 2: Store slug (username/agent-name)
         if store_slug and "/" in store_slug:
@@ -237,9 +272,10 @@ class AgentOutputTool(BaseTool):
                 team_id_restriction=team_id,
                 exact_scope=True,
             )
-            if not agent or (agent.organization_id, agent.team_id) != (
-                organization_id,
-                team_id,
+            if (
+                not agent
+                or not in_tenant(agent.organization_id, tenant)
+                or not _in_exact_scope(agent, organization_id, team_id)
             ):
                 return (
                     None,
@@ -261,8 +297,8 @@ class AgentOutputTool(BaseTool):
                 agents = [
                     agent
                     for agent in response.agents
-                    if (agent.organization_id, agent.team_id)
-                    == (organization_id, team_id)
+                    if in_tenant(agent.organization_id, tenant)
+                    and _in_exact_scope(agent, organization_id, team_id)
                 ]
                 if not agents:
                     return (
@@ -274,7 +310,10 @@ class AgentOutputTool(BaseTool):
                 return agents[0], None
             except Exception as e:
                 logger.error(f"Error searching library agents: {e}")
-                return None, f"Error searching for workflow: {e}"
+                # AutoPilot's model reads the text to recover; an External
+                # API client gets none, as `error_detail` gives it none.
+                detail = "an internal error" if external_caller else str(e)
+                return None, f"Error searching for workflow: {detail}"
 
         return (
             None,
@@ -293,6 +332,7 @@ class AgentOutputTool(BaseTool):
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
+        tenant: str | None = None,
     ) -> tuple[
         GraphExecution | GraphExecutionWithNodes | None,
         list[GraphExecutionMeta],
@@ -306,6 +346,7 @@ class AgentOutputTool(BaseTool):
             include_running: If True, also look for running/queued executions (for waiting)
             include_node_executions: If True, include node-by-node execution details
             expert_id: Only runs this expert started; None sees every run.
+            tenant: Only runs in this organization; None sees every run.
         """
         exec_db = execution_db()
 
@@ -320,12 +361,8 @@ class AgentOutputTool(BaseTool):
             )
             if (
                 not execution
-                or not _run_visible(execution, expert_id)
-                or (
-                    execution.organization_id,
-                    execution.team_id,
-                )
-                != (organization_id, team_id)
+                or not _run_visible(execution, expert_id, tenant)
+                or not _in_exact_scope(execution, organization_id, team_id)
             ):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
@@ -359,8 +396,8 @@ class AgentOutputTool(BaseTool):
         executions = [
             execution
             for execution in executions
-            if (execution.organization_id, execution.team_id)
-            == (organization_id, team_id)
+            if in_tenant(execution.organization_id, tenant)
+            and _in_exact_scope(execution, organization_id, team_id)
         ]
 
         if not executions:
@@ -393,8 +430,10 @@ class AgentOutputTool(BaseTool):
         execution: GraphExecution | GraphExecutionWithNodes | None,
         available_executions: list[GraphExecutionMeta],
         session_id: str | None,
+        card_chat: str | None = None,
     ) -> AgentOutputResponse:
-        """Build the response based on execution data."""
+        """Build the response based on execution data. ``card_chat``: the chat
+        whose approval card a parked run waits on."""
         library_agent_link = library_agent_path(
             agent.id,
             agent.organization_id,
@@ -474,7 +513,8 @@ class AgentOutputTool(BaseTool):
             message = f"Execution for workflow '{agent.name}' was terminated"
         elif execution.status == ExecutionStatus.REVIEW:
             message = (
-                f"Execution for workflow '{agent.name}' is awaiting human review. "
+                f"Execution for workflow '{agent.name}' "
+                f"{awaiting_whom(card_chat, session_id)}. "
                 "The user needs to approve it before it can continue."
             )
         elif execution.status in (
@@ -519,6 +559,7 @@ class AgentOutputTool(BaseTool):
         defined in the Pydantic model.
         """
         session_id = session.session_id
+        tenant = external_tenant(session)
 
         # Parse and validate input
         try:
@@ -563,22 +604,20 @@ class AgentOutputTool(BaseTool):
             and not input_data.store_slug
         ):
             # Fetch execution directly to get graph_id
+            # The exact-scope check below holds it to the chat's org and team.
             execution = await execution_db().get_graph_execution(
                 user_id=user_id,
                 execution_id=input_data.execution_id,
                 include_node_executions=input_data.show_execution_details,
                 organization_id=session.organization_id,
                 team_id_restriction=session.team_id,
-                exact_scope=True,
             )
             if (
                 not execution
-                or not _run_visible(execution, session.expert_id)
-                or (
-                    execution.organization_id,
-                    execution.team_id,
+                or not _run_visible(execution, session.expert_id, tenant)
+                or not _in_exact_scope(
+                    execution, session.organization_id, session.team_id
                 )
-                != (session.organization_id, session.team_id)
             ):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
@@ -594,9 +633,10 @@ class AgentOutputTool(BaseTool):
                 team_id_restriction=session.team_id,
                 exact_scope=True,
             )
-            if not agent or (agent.organization_id, agent.team_id) != (
-                session.organization_id,
-                session.team_id,
+            if (
+                not agent
+                or not in_tenant(agent.organization_id, tenant)
+                or not _in_exact_scope(agent, session.organization_id, session.team_id)
             ):
                 return NoResultsResponse(
                     message=(
@@ -609,7 +649,13 @@ class AgentOutputTool(BaseTool):
                     ],
                 ).from_outside()
 
-            return self._build_response(agent, execution, [], session_id)
+            return self._build_response(
+                agent,
+                execution,
+                [],
+                session_id,
+                await _card_chat(user_id, execution),
+            )
 
         # Resolve agent from identifiers
         agent, error = await self._resolve_agent(
@@ -619,6 +665,8 @@ class AgentOutputTool(BaseTool):
             store_slug=input_data.store_slug or None,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            tenant=tenant,
+            external_caller=session.external_caller,
         )
 
         if error or not agent:
@@ -640,6 +688,7 @@ class AgentOutputTool(BaseTool):
         # Fetch execution(s) - include running if we're going to wait
         execution, available_executions, exec_error = await self._get_execution(
             expert_id=session.expert_id,
+            tenant=tenant,
             user_id=user_id,
             graph_id=agent.graph_id,
             execution_id=input_data.execution_id or None,
@@ -672,4 +721,18 @@ class AgentOutputTool(BaseTool):
                 team_id=session.team_id,
             )
 
-        return self._build_response(agent, execution, available_executions, session_id)
+        return self._build_response(
+            agent,
+            execution,
+            available_executions,
+            session_id,
+            await _card_chat(user_id, execution),
+        )
+
+
+async def _card_chat(
+    user_id: str, execution: GraphExecution | GraphExecutionWithNodes | None
+) -> str | None:
+    if execution is None or execution.status != ExecutionStatus.REVIEW:
+        return None
+    return await card_chat_for_run(user_id, execution.id)

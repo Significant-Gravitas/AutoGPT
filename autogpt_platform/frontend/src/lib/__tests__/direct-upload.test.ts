@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+
 import {
   getFileSizeError,
   OAUTH_LOGO_MAX_SIZE_MB,
@@ -22,11 +24,18 @@ beforeEach(() => {
   getServerBaseUrlMock.mockReturnValue("http://backend.test");
 });
 
-vi.mock("@/services/environment", () => ({
-  environment: {
-    getAGPTServerBaseUrl: getServerBaseUrlMock,
-  },
-}));
+// Spread the real environment: the request path reaches the org-team store,
+// which asks whether it runs on the server when it loads.
+vi.mock("@/services/environment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/environment")>();
+  return {
+    environment: {
+      ...actual.environment,
+      getAGPTServerBaseUrl: getServerBaseUrlMock,
+    },
+  };
+});
 
 interface FakeResponse {
   ok: boolean;
@@ -137,6 +146,21 @@ describe("uploadSubmissionMediaDirect", () => {
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       "File too large. Maximum size is 50MB",
     );
+  });
+
+  it("keeps the status, so a missing plan reads as one", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 402,
+      text: () => JSON.stringify({ detail: "A subscription is required." }),
+    });
+
+    const error = await uploadSubmissionMediaDirect(makeFile(10)).catch(
+      (e: unknown) => e,
+    );
+
+    expect(isPaywallError(error)).toBe(true);
+    expect((error as Error).message).toBe("A subscription is required.");
   });
 });
 

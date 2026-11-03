@@ -9,9 +9,15 @@ import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
+import { useShallow } from "zustand/react/shallow";
 
 export const useBlockMenuSidebar = () => {
-  const { defaultState, setDefaultState } = useBlockMenuStore();
+  const { defaultState, setDefaultState } = useBlockMenuStore(
+    useShallow((state) => ({
+      defaultState: state.defaultState,
+      setDefaultState: state.setDefaultState,
+    })),
+  );
   const tenantScope = useBuilderTenantScope();
 
   const { data, isLoading, isError, error } = useGetV2GetBuilderItemCounts({

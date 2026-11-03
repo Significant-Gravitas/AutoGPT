@@ -7,6 +7,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import { getWorkspaceDownloadHref } from "@/services/org-team/workspace";
 import { resetNavigation } from "./navigation-mock";
 import { http, HttpResponse } from "msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
@@ -16,16 +17,6 @@ import {
   getListWorkspaceFoldersMockHandler,
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ARTIFACTS_PAGE: "artifacts-page",
-    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
 
 vi.mock("next/navigation", async () => {
   const { navigationMock } = await import("./navigation-mock");
@@ -94,10 +85,12 @@ async function openViewer() {
   return screen.findByTestId("file-viewer");
 }
 
+// Downloads go through the scoped download route, in the file's own scope
+// (these files are personal: no organization, org-home team).
 function expectDownloadLink(viewer: HTMLElement, fileId: string) {
   const link = within(viewer).getByRole("link", { name: /download/i });
   expect(link.getAttribute("href")).toBe(
-    `/api/proxy/api/workspace/files/${fileId}/download`,
+    getWorkspaceDownloadHref(fileId, null, null),
   );
 }
 

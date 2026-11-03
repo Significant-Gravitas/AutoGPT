@@ -4,6 +4,7 @@ import {
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
 import Link from "next/link";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   getGetV2GetLibraryAgentByGraphIdQueryKey,
   useGetV2GetLibraryAgentByGraphId,
@@ -47,7 +48,7 @@ export const TriggerAgentBanner = () => {
   );
 
   return (
-    <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none rounded-xlarge">
+    <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 rounded-xlarge select-none">
       <AlertTitle>You are building a Trigger Workflow</AlertTitle>
       <AlertDescription>
         Your workflow will listen for its trigger and will run when the time is
@@ -66,7 +67,9 @@ export const TriggerAgentBanner = () => {
           }
           className="underline"
         >
-          Workflow Library
+          <Text variant="body-tight" as="span" tone="inherit">
+            Workflow Library
+          </Text>
         </Link>
         .
       </AlertDescription>

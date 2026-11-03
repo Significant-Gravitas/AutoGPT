@@ -108,6 +108,30 @@ class TestFindSessionScoping:
         listed = {s.session_id for s in result.sessions}
         assert "theirs" not in listed
 
+    async def test_only_the_callers_workspace_is_queried_or_listed(self) -> None:
+        """A chat finds only chats in its own organization and team."""
+        caller = _session().model_copy(
+            update={"organization_id": "org-a", "team_id": "team-a"}
+        )
+        same = _info("same").model_copy(
+            update={"organization_id": "org-a", "team_id": "team-a"}
+        )
+        other_org = _info("other-org").model_copy(
+            update={"organization_id": "org-b", "team_id": "team-b"}
+        )
+        other_team = _info("other-team").model_copy(
+            update={"organization_id": "org-a", "team_id": "team-c"}
+        )
+        with patch(
+            f"{_FIND}.list_recent_chat_sessions",
+            new=AsyncMock(return_value=[same, other_org, other_team]),
+        ) as lister:
+            result = await FindSessionTool()._execute(OWNER, caller)
+        assert lister.await_args.kwargs["organization_id"] == "org-a"
+        assert lister.await_args.kwargs["team_id"] == "team-a"
+        assert isinstance(result, SessionListResponse)
+        assert [s.session_id for s in result.sessions] == ["same"]
+
     async def test_the_calling_session_is_not_listed(self) -> None:
         rows = [_info(CALLER_SESSION), _info("other")]
         with patch(
@@ -596,6 +620,25 @@ class TestMessageSessionGuards:
             with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
                 result = await MessageSessionTool()._execute(
                     OWNER, _session(), session_id=TARGET_SESSION, message="hi"
+                )
+        assert isinstance(result, ErrorResponse)
+        assert "No session" in (result.error or result.message or "")
+        deliver.assert_not_awaited()
+
+    async def test_a_session_in_another_workspace_reads_as_not_found(self) -> None:
+        """The same user's chat in another organization is another workspace's."""
+        caller = _session().model_copy(
+            update={"organization_id": "org-a", "team_id": "team-a"}
+        )
+        elsewhere = _info(TARGET_SESSION).model_copy(
+            update={"organization_id": "org-b", "team_id": "team-b"}
+        )
+        with patch(
+            f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=elsewhere)
+        ):
+            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+                result = await MessageSessionTool()._execute(
+                    OWNER, caller, session_id=TARGET_SESSION, message="hi"
                 )
         assert isinstance(result, ErrorResponse)
         assert "No session" in (result.error or result.message or "")

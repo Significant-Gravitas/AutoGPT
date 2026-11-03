@@ -105,6 +105,11 @@ async def get_user_cost_summary(
     `include_by_expert` is opt-in because the expert rollup is its own query
     over the same rows: callers that never render per-expert spend would
     otherwise pay for a scan they throw away.
+
+    `organization_id` is an exact match: only that organization's runs
+    count, never another organization's or untagged ones, so a run is never
+    counted in two organizations' spend; without one, only untagged runs
+    count. `team_id_restriction` narrows the runs to one team.
     """
     # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
     # this function is callable directly and an unbounded LIMIT would scan

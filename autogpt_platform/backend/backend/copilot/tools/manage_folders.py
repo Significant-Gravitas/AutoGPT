@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
@@ -9,6 +11,7 @@ from backend.data.db_accessors import library_db
 from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import (
     AgentsMovedToFolderResponse,
     ErrorResponse,
@@ -88,6 +91,10 @@ class CreateFolderTool(BaseTool):
         return "create_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Create a library folder. Use parent_id to nest inside another folder."
 
@@ -161,7 +168,7 @@ class CreateFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to create folder: {e}",
+                message=f"Failed to create folder: {error_detail(e, session)}",
                 error="create_folder_failed",
                 session_id=session_id,
             )
@@ -179,6 +186,10 @@ class ListFoldersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_folders"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -284,7 +295,7 @@ class ListFoldersTool(BaseTool):
                 )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to list folders: {e}",
+                message=f"Failed to list folders: {error_detail(e, session)}",
                 error="list_folders_failed",
                 session_id=session_id,
             )
@@ -296,6 +307,10 @@ class UpdateFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "update_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -370,7 +385,7 @@ class UpdateFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to update folder: {e}",
+                message=f"Failed to update folder: {error_detail(e, session)}",
                 error="update_folder_failed",
                 session_id=session_id,
             )
@@ -388,6 +403,10 @@ class MoveFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "move_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -451,7 +470,7 @@ class MoveFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move folder: {e}",
+                message=f"Failed to move folder: {error_detail(e, session)}",
                 error="move_folder_failed",
                 session_id=session_id,
             )
@@ -471,6 +490,10 @@ class DeleteFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -527,7 +550,7 @@ class DeleteFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to delete folder: {e}",
+                message=f"Failed to delete folder: {error_detail(e, session)}",
                 error="delete_folder_failed",
                 session_id=session_id,
             )
@@ -545,6 +568,10 @@ class MoveAgentsToFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "move_agents_to_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -609,7 +636,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move workflows: {e}",
+                message=f"Failed to move workflows: {error_detail(e, session)}",
                 error="move_agents_failed",
                 session_id=session_id,
             )

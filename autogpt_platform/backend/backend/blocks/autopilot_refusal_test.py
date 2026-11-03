@@ -12,6 +12,7 @@ either. The waiter reports that as ``refused`` with the not-started pause,
 which the block turns into an out-of-budget error that skips recovery.
 """
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,6 +27,30 @@ from backend.blocks.autopilot import (
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.turn_pause import TurnPause
 from backend.data.execution import ExecutionContext
+
+
+class _PassthroughLeaseGuard:
+    async def run(self, action):
+        return await action
+
+
+@asynccontextmanager
+async def _allow_live_resource_lease(*_args, **_kwargs):
+    yield _PassthroughLeaseGuard()
+
+
+@pytest.fixture(autouse=True)
+def _live_workspace_access():
+    """The run's org/team is still live for its user; the checks that refuse
+    a revoked one are covered in autopilot_codex_test.py."""
+    client = MagicMock(has_live_resource_access=AsyncMock(return_value=True))
+    with (
+        patch("backend.blocks.autopilot.credit_db", return_value=client),
+        patch(
+            "backend.blocks.autopilot.live_resource_lease", _allow_live_resource_lease
+        ),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -98,7 +123,7 @@ def _waited(outcome: str, result: SessionResult):
 
 
 _OUT_OF_TODAY_MESSAGE = (
-    "Out of AutoPilot budget: your plan's AutoPilot allowance is used up, and "
+    "Out of budget: your plan's allowance is used up, and "
     "your credit balance doesn't cover a run (it needs at least $0.50). Add "
     "credits at https://platform.agpt.co/profile/credits to run it on credits. "
     "The allowance resets 2026-10-12 00:00 UTC."
@@ -133,7 +158,7 @@ async def test_a_spent_trial_says_its_allowance_is_used_up(frontend):
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
     assert str(raised.value) == (
-        "Out of AutoPilot budget: the trial's AutoPilot allowance is used up, and "
+        "Out of budget: the trial's allowance is used up, and "
         "your credit balance doesn't cover a run (it needs at least $0.50). Add "
         "credits at https://platform.agpt.co/profile/credits to run it on credits."
     )
@@ -151,7 +176,7 @@ async def test_where_credits_cant_pay_the_refusal_doesnt_send_the_user_to_top_up
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
     assert str(raised.value) == (
-        "Out of AutoPilot budget: your plan's AutoPilot allowance is used up. "
+        "Out of budget: your plan's allowance is used up. "
         "The allowance resets 2026-10-12 00:00 UTC."
     )
 
@@ -164,6 +189,7 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
     session.metadata.llm_credential_id = None
     session.organization_id = "org-1"
     session.team_id = "team-1"
+    session.expert_id = None
     enqueue = AsyncMock()
 
     with (
@@ -172,7 +198,16 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
         ),
         patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
     ):
-        await _enqueue_for_recovery("sess-1", "user-1", "do the thing", dry_run=False)
+        # The run's own scope, which the session must still be in.
+        await _enqueue_for_recovery(
+            "sess-1",
+            "user-1",
+            "do the thing",
+            dry_run=False,
+            organization_id="org-1",
+            team_id="team-1",
+            expert_id=None,
+        )
 
     enqueue.assert_awaited_once()
     assert enqueue.await_args.kwargs["tool_name"] == "autopilot_block"

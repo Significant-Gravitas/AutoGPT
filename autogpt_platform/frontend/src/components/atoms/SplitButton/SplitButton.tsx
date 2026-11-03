@@ -58,7 +58,10 @@ export function SplitButton({
   buttonClassName,
 }: Props) {
   return (
-    <div className={cn("inline-flex items-stretch", className)}>
+    <div
+      data-slot="split-button"
+      className={cn("inline-flex items-stretch", className)}
+    >
       <Button
         variant={variant}
         size={size}

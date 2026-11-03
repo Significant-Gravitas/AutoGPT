@@ -16,15 +16,14 @@ from .scope import MemoryScope
 
 
 @pytest.fixture(autouse=True)
-def _stub_dream_registration(mocker):
-    """_enqueue_payload fires ensure_dream_system_scheduled fire-and-forget for
-    every first-seen user. Unmocked it runs a REAL Prisma timezone lookup on
-    this test's function-scoped event loop whenever an earlier test already
-    connected Prisma, leaving a pool connection bound to a dead loop that
-    later kills a session-loop test with "Event loop is closed"."""
-    mocker.patch(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled",
-        AsyncMock(return_value=None),
+def stub_dream_registration(mocker) -> AsyncMock:
+    """_enqueue_payload fires ensure_scope_scheduled fire-and-forget for
+    every first-seen memory group. Unmocked it runs a REAL Prisma timezone
+    lookup on this test's function-scoped event loop whenever an earlier test
+    already connected Prisma, leaving a pool connection bound to a dead loop
+    that later kills a session-loop test with "Event loop is closed"."""
+    return mocker.patch.object(
+        ingest, "ensure_scope_scheduled", AsyncMock(return_value={})
     )
 
 
@@ -43,9 +42,9 @@ def private_memory_access(monkeypatch):
 
 
 def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
-    async def enqueue(_user_id: str, _group_id: str, payload: dict, **_kwargs) -> bool:
+    async def enqueue(scope: MemoryScope, payload: dict, **_kwargs) -> bool:
         try:
-            payload["_actor_user_id"] = _user_id
+            payload["_actor_user_id"] = scope.owner_user_id
             queue.put_nowait(payload)
         except asyncio.QueueFull:
             return False
@@ -232,6 +231,16 @@ class TestIngestionCompletion:
         c.complete_one()
         assert await c.wait(0.01) is True
 
+    def test_pending_is_what_was_neither_written_dropped_nor_failed(self) -> None:
+        """Apart from the drain: an episode finished by the worker is not
+        written unless graphiti saved it."""
+        c = ingest.IngestionCompletion()
+        for _ in range(4):
+            c.register()
+        c.written, c.dropped_forgotten, c.failed = 1, 1, 1
+
+        assert c.pending == 1
+
 
 class TestWaitForIngestion:
     """``wait_for_ingestion`` — the drain barrier dream-pass apply uses so
@@ -358,10 +367,77 @@ class TestEnqueueConversationTurn:
                 expert_id="expert-1",
             )
 
-        expert_group = MemoryScope.for_expert("user-1", "expert-1").group_id
+        expert_scope = MemoryScope.for_expert("user-1", "expert-1")
         enqueue_mock.assert_awaited_once()
-        assert enqueue_mock.await_args.args[:2] == ("user-1", expert_group)
-        assert queue.get_nowait()["group_id"] == expert_group
+        assert enqueue_mock.await_args.args[0] == expert_scope
+        assert queue.get_nowait()["group_id"] == expert_scope.group_id
+
+    @pytest.mark.asyncio
+    async def test_bot_header_is_not_ingested_as_the_users_words(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        with (
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(queue)),
+            patch.object(
+                ingest,
+                "resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="user-1",
+                session_id="session-1",
+                user_msg=(
+                    '[Discord DM · message from "Alice" (Discord user ID: 1)'
+                    " · post here with target='dm']\nI like tea"
+                ),
+                bridge_origin=True,
+            )
+
+        assert queue.get_nowait()["episode_body"] == "Alice: I like tea"
+
+    @pytest.mark.asyncio
+    async def test_server_messages_keep_their_sender_not_the_owner(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        with (
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(queue)),
+            patch.object(
+                ingest,
+                "resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="owner-1",
+                session_id="session-1",
+                user_msg=(
+                    '[Discord · you were @mentioned · message from "Bob" (Discord user ID: 2)'
+                    ' · post here with channel="2"]\nI work at Acme'
+                ),
+                bridge_origin=True,
+            )
+
+        assert queue.get_nowait()["episode_body"] == "Bob: I work at Acme"
+
+    @pytest.mark.asyncio
+    async def test_a_typed_header_on_the_web_does_not_change_the_speaker(self) -> None:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        message = '[Discord · message from "Mallory" (Discord user ID: 2)]\nhi'
+        with (
+            patch.object(ingest, "_enqueue_payload", new=_enqueue_mock(queue)),
+            patch.object(
+                ingest,
+                "resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            await ingest.enqueue_conversation_turn(
+                user_id="user-1", session_id="session-1", user_msg=message
+            )
+
+        assert queue.get_nowait()["episode_body"] == f"Alice: {message}"
 
 
 class TestMemoryGroupQueueIsolation:
@@ -370,8 +446,11 @@ class TestMemoryGroupQueueIsolation:
         group_id = "org-shared"
         processed: list[str] = []
 
-        async def process(actor_user_id: str, _group_id: str, _payload: dict) -> None:
+        async def process(
+            actor_user_id: str, _group_id: str, _payload: dict, **_kwargs
+        ) -> bool:
             processed.append(actor_user_id)
+            return False
 
         with patch.object(
             ingest,
@@ -379,10 +458,14 @@ class TestMemoryGroupQueueIsolation:
             side_effect=process,
         ):
             assert await ingest._enqueue_payload(
-                "admin-user", group_id, {"group_id": group_id}, schedule_dreams=False
+                MemoryScope.for_user("admin-user"),
+                {"group_id": group_id},
+                shared_group_id=group_id,
             )
             assert await ingest._enqueue_payload(
-                "member-user", group_id, {"group_id": group_id}, schedule_dreams=False
+                MemoryScope.for_user("member-user"),
+                {"group_id": group_id},
+                shared_group_id=group_id,
             )
             state = ingest._get_loop_state()
             await asyncio.wait_for(state.group_queues[group_id].join(), timeout=1)
@@ -396,15 +479,12 @@ class TestMemoryGroupQueueIsolation:
 
     @pytest.mark.asyncio
     async def test_same_user_experts_get_distinct_workers(self) -> None:
-        first_group = "expert_first"
-        second_group = "expert_second"
+        first = MemoryScope.for_expert("user-1", "first")
+        second = MemoryScope.for_expert("user-1", "second")
+        first_group, second_group = first.group_id, second.group_id
         with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
-            await ingest._enqueue_payload(
-                "user-1", first_group, {"group_id": first_group}
-            )
-            await ingest._enqueue_payload(
-                "user-1", second_group, {"group_id": second_group}
-            )
+            await ingest._enqueue_payload(first, {"group_id": first_group})
+            await ingest._enqueue_payload(second, {"group_id": second_group})
             state = ingest._get_loop_state()
 
             assert (
@@ -418,21 +498,80 @@ class TestMemoryGroupQueueIsolation:
 
     @pytest.mark.asyncio
     async def test_existing_queue_without_worker_is_restarted(self) -> None:
-        group_id = "expert_stale_worker"
+        scope = MemoryScope.for_expert("user-1", "stale-worker")
+        group_id = scope.group_id
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
         state = ingest._get_loop_state()
         state.group_queues[group_id] = queue
 
         worker_mock = AsyncMock()
         with patch.object(ingest, "_ingestion_worker", new=worker_mock):
-            assert await ingest._enqueue_payload(
-                "user-1", group_id, {"group_id": group_id}
-            )
+            assert await ingest._enqueue_payload(scope, {"group_id": group_id})
             worker = state.group_workers[group_id]
             await worker
 
         worker_mock.assert_awaited_once_with(group_id, queue)
         assert queue.get_nowait()["group_id"] == group_id
+
+
+class TestDreamScheduleRegistration:
+    @pytest.mark.asyncio
+    async def test_first_write_per_group_registers_that_groups_own_scope(
+        self, stub_dream_registration: AsyncMock
+    ) -> None:
+        """An expert group registers the expert's crons, not the account's,
+        and only on its first write in this process."""
+        expert = MemoryScope.for_expert("user-1", "expert-1")
+        account = MemoryScope.for_user("user-1")
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await ingest._enqueue_payload(expert, {"group_id": expert.group_id})
+            await ingest._enqueue_payload(expert, {"group_id": expert.group_id})
+            await ingest._enqueue_payload(account, {"group_id": account.group_id})
+            state = ingest._get_loop_state()
+            await asyncio.gather(*state.group_workers.values(), return_exceptions=True)
+
+        registered = [c.args[0] for c in stub_dream_registration.call_args_list]
+        assert registered == [expert, account]
+
+    @pytest.mark.asyncio
+    async def test_a_returning_queue_registers_again_but_never_twice_at_once(
+        self, monkeypatch
+    ) -> None:
+        """A group's queue retires after idling and comes back on the next
+        write, which registers the scope again; while a registration is
+        still in flight, the returning queue does not start another."""
+        release = asyncio.Event()
+        calls: list[MemoryScope] = []
+
+        async def ensure(scope: MemoryScope) -> dict:
+            calls.append(scope)
+            await release.wait()
+            return {}
+
+        monkeypatch.setattr(ingest, "ensure_scope_scheduled", ensure)
+        scope = MemoryScope.for_user("user-1")
+        state = ingest._get_loop_state()
+
+        async def write_after_retirement() -> None:
+            state.group_queues.pop(scope.group_id, None)
+            state.group_workers.pop(scope.group_id, None)
+            assert await ingest._enqueue_payload(scope, {"group_id": scope.group_id})
+            await asyncio.sleep(0)
+
+        with patch.object(ingest, "_ingestion_worker", new_callable=AsyncMock):
+            await write_after_retirement()
+            in_flight = state.registrations[scope.group_id]
+            await write_after_retirement()
+            assert calls == [scope]
+
+            release.set()
+            await in_flight
+            await asyncio.sleep(0)
+            assert scope.group_id not in state.registrations
+
+            await write_after_retirement()
+            assert calls == [scope, scope]
+            await state.registrations[scope.group_id]
 
 
 class TestQueueFullScenario:
@@ -529,11 +668,11 @@ class TestEnqueueEpisode:
             )
 
         assert result is True
-        assert enqueue_mock.await_args.args[:2] == (
-            "user-1",
-            MemoryScope.for_expert("user-1", "expert-1").group_id,
-        )
-        assert enqueue_mock.await_args.kwargs["schedule_dreams"] is True
+        scope = MemoryScope.for_expert("user-1", "expert-1")
+        assert enqueue_mock.await_args.args[0] == scope
+        assert enqueue_mock.await_args.args[1]["group_id"] == scope.group_id
+        # A personal write goes to the scope's own graph, which schedules it.
+        assert enqueue_mock.await_args.kwargs["shared_group_id"] is None
 
     @pytest.mark.asyncio
     async def test_shared_episode_uses_explicit_group_without_dreams(self) -> None:
@@ -554,8 +693,10 @@ class TestEnqueueEpisode:
             )
 
         assert result is True
-        assert enqueue_mock.await_args.args[:2] == ("user-1", "team_team-1")
-        payload = enqueue_mock.await_args.args[2]
+        assert enqueue_mock.await_args.args[0] == MemoryScope.for_expert(
+            "user-1", "expert-1"
+        )
+        payload = enqueue_mock.await_args.args[1]
         assert payload["group_id"] == "team_team-1"
         assert payload["_edge_metadata"] is metadata
         assert payload["_completion"] is completion
@@ -563,7 +704,8 @@ class TestEnqueueEpisode:
             "organization_id": "org-1",
             "team_id": "team-1",
         }
-        assert enqueue_mock.await_args.kwargs["schedule_dreams"] is False
+        # A shared tier's graph, which schedules no dream curation.
+        assert enqueue_mock.await_args.kwargs["shared_group_id"] == "team_team-1"
 
 
 class TestSharedIngestionLiveBarrier:
@@ -673,7 +815,7 @@ class TestSharedIngestionLiveBarrier:
             assert await ingest.enqueue_episode(
                 scope, "sess1", name="test_ep", episode_body="hello"
             )
-        assert enqueue_mock.await_args.args[:2] == ("abc", scope.group_id)
+        assert enqueue_mock.await_args.args[0] == scope
         assert q.get_nowait()["group_id"] == scope.group_id
 
     @pytest.mark.asyncio
@@ -769,8 +911,12 @@ class TestDerivedFindingLane:
             # Should have 2 items: user episode + derived finding
             assert q.qsize() == 2
 
-        q.get_nowait()
+        user_payload = q.get_nowait()
         finding_payload = q.get_nowait()
+        # Only the user's own words promote the tentative facts they state:
+        # the finding is the assistant's, on probation like a dream proposal.
+        assert user_payload["_restatement"] is True
+        assert "_restatement" not in finding_payload
         # CUSTOM_EXTRACTION_INSTRUCTIONS tells the extractor to always make an
         # entity of the envelope's "user"; a null one leaves the finding with
         # nothing to attach to.
@@ -866,10 +1012,14 @@ class TestWorkerIdleTimeout:
                 ),
             ):
                 assert await ingest._enqueue_payload(
-                    user_id, group_id, payload("first"), schedule_dreams=False
+                    MemoryScope.for_user(user_id),
+                    payload("first"),
+                    shared_group_id=group_id,
                 )
                 assert await ingest._enqueue_payload(
-                    user_id, group_id, payload("second"), schedule_dreams=False
+                    MemoryScope.for_user(user_id),
+                    payload("second"),
+                    shared_group_id=group_id,
                 )
                 queue = ingest._get_loop_state().group_queues[group_id]
                 await asyncio.wait_for(queue.join(), timeout=1)
@@ -933,8 +1083,7 @@ class TestWorkerIdleTimeout:
         try:
             enqueue_task = asyncio.create_task(
                 ingest._enqueue_payload(
-                    user_id,
-                    group_id,
+                    MemoryScope.for_user(user_id),
                     {
                         "name": "racing-episode",
                         "episode_body": "hello",
@@ -991,8 +1140,7 @@ class TestWorkerIdleTimeout:
             await asyncio.sleep(0)
             enqueue_task = asyncio.create_task(
                 ingest._enqueue_payload(
-                    user_id,
-                    group_id,
+                    MemoryScope.for_user(user_id),
                     {
                         "name": "cancellation-race-episode",
                         "episode_body": "hello",
@@ -1198,6 +1346,8 @@ class TestEnqueueEpisodeEdgeMetadata:
             assert payload["_edge_metadata"] is None
             # Non-scoped-drain writes carry no completion tracker.
             assert payload["_completion"] is None
+            # Memory-store calls and dream writes are no user's restatement.
+            assert "_restatement" not in payload
 
     @pytest.mark.asyncio
     async def test_completion_rides_payload_sidecar(self) -> None:

@@ -1,0 +1,55 @@
+"use client";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import type { QuestionAnswer } from "../../../tools/clarifying-questions";
+import { getAnswerSummary, type ExpertOnboardingStep } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
+
+interface Props {
+  steps: ExpertOnboardingStep[];
+  answers: Record<string, QuestionAnswer>;
+  labelId: string;
+  onEdit: (index: number) => void;
+}
+
+/** The step before Send: every answer on one screen, each a way back to its
+ *  question, since sending is the one move the user can't take back. */
+export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
+  return (
+    <div className="flex flex-col gap-4">
+      <span
+        id={labelId}
+        className="text-base leading-snug font-medium text-foreground-strong sm:text-lg"
+      >
+        Check your answers
+      </span>
+      <ul aria-labelledby={labelId} className="flex flex-col gap-2">
+        {steps.map((step, index) => (
+          <li key={step.keyword}>
+            <button
+              type="button"
+              onClick={() => onEdit(index)}
+              className="group flex w-full items-start gap-3 rounded-md bg-surface-muted px-3 py-2.5 text-left ring-1 ring-separator transition-colors outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-offset-1 [@media(hover:none)]:min-h-11"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="sr-only">Change your answer to </span>
+                <Text variant="body-tight" as="span" tone="muted">
+                  {step.question}
+                </Text>
+                <span className="text-base break-words text-foreground-strong sm:text-body-md">
+                  {getAnswerSummary(answers[step.keyword]) || "No answer yet"}
+                </span>
+              </span>
+              <Icon
+                icon={PencilEdit02Icon}
+                size={16}
+                className="mt-0.5 shrink-0 text-foreground-subtle transition-colors group-hover:text-foreground-secondary"
+              />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

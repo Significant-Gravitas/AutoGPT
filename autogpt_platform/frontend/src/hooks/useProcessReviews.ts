@@ -44,6 +44,7 @@ export function useProcessReviews({
   async function processReviews(
     items: ReviewItem[],
     scopes: ReviewScope[],
+    { waitForOtherCards = false }: { waitForOtherCards?: boolean } = {},
   ): Promise<postV2ProcessReviewActionResponse> {
     const actions = items.map((item): ScopedReviewAction => {
       const scope = scopes.find(
@@ -73,7 +74,10 @@ export function useProcessReviews({
       const responses = await Promise.all(
         [...groups.values()].map((group) =>
           postV2ProcessReviewAction(
-            { reviews: group.map((action) => action.item) },
+            {
+              reviews: group.map((action) => action.item),
+              ...(waitForOtherCards ? { wait_for_other_cards: true } : {}),
+            },
             getTenantRequestInit(group[0].organizationId, group[0].teamId),
           ),
         ),
@@ -107,6 +111,10 @@ export function useProcessReviews({
               .map((response) => response.data.error)
               .filter(Boolean)
               .join("; ") || undefined,
+          // A turn follows once any scope's answers start one.
+          awaiting_other_cards: successful.every(
+            (response) => response.data.awaiting_other_cards === true,
+          ),
         },
       };
     } finally {

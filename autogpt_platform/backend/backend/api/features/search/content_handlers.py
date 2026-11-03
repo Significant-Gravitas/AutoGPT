@@ -338,13 +338,15 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
     if not block.name:
         logger.warning(f"Block {block_id} has no name — using block_id as fallback")
     display_name = split_camelcase(block.name) if block.name else ""
+    # Sorted: a set iterates in hash-seed order, and the stale check compares text.
+    categories = sorted(str(cat.value) for cat in block.categories)
     parts = []
     if display_name:
         parts.append(display_name)
     if block.description:
         parts.append(block.description)
-    if block.categories:
-        parts.append(" ".join(str(cat.value) for cat in block.categories))
+    if categories:
+        parts.append(" ".join(categories))
 
     # Add input schema field descriptions
     parts += [
@@ -354,10 +356,6 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
     ]
 
     searchable_text = " ".join(parts)
-
-    categories_list = (
-        [cat.value for cat in block.categories] if block.categories else []
-    )
 
     # Extract provider names from credentials fields
     credentials_info = block.input_schema.get_credentials_fields_info()
@@ -380,7 +378,7 @@ def _build_block_content_item(block_id: str, block: AnyBlockSchema) -> ContentIt
         searchable_text=searchable_text,
         metadata={
             "name": display_name or block.name or block_id,
-            "categories": categories_list,
+            "categories": categories,
             "providers": provider_names,
             "has_llm_model_field": has_llm_model_field,
             "is_integration": is_integration,
@@ -882,6 +880,7 @@ class WorkspaceFileHandler(ContentHandler):
               AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
               AND uce."userId" = uw."userId"
             WHERE uwf."isDeleted" = false
+              AND uwf."isInternal" = false
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -913,7 +912,7 @@ class WorkspaceFileHandler(ContentHandler):
             """
             SELECT COUNT(*) as count
             FROM {schema_prefix}"UserWorkspaceFile"
-            WHERE "isDeleted" = false
+            WHERE "isDeleted" = false AND "isInternal" = false
             """
         )
         total = total_result[0]["count"] if total_result else 0
@@ -927,7 +926,7 @@ class WorkspaceFileHandler(ContentHandler):
               ON uce."contentId" = uwf.id
               AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
               AND uce."userId" = uw."userId"
-            WHERE uwf."isDeleted" = false
+            WHERE uwf."isDeleted" = false AND uwf."isInternal" = false
             """
         )
         with_embeddings = with_result[0]["count"] if with_result else 0
@@ -939,13 +938,14 @@ class WorkspaceFileHandler(ContentHandler):
         }
 
     async def get_valid_content_ids(self) -> set[str]:
-        # Mirrors ``get_missing_items``: a soft-deleted file's embedding
-        # is orphaned and should be cleaned up.
+        # Mirrors ``get_missing_items``: a soft-deleted file's embedding is
+        # orphaned and should be cleaned up, and so is an internal file's,
+        # embedded before Otto's working files were marked.
         rows = await query_raw_with_schema(
             """
             SELECT id
             FROM {schema_prefix}"UserWorkspaceFile"
-            WHERE "isDeleted" = false
+            WHERE "isDeleted" = false AND "isInternal" = false
             """,
         )
         return {row["id"] for row in rows}

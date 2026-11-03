@@ -217,11 +217,14 @@ async def _create_user_with_loop_retry(user_data: dict) -> None:
 
     See ``retry_once_on_closed_loop`` for why this guard exists and when it
     can be removed.
+
+    Uncached on purpose: the cached lookup is shared through Redis for five
+    minutes, so on a fresh database it can return a user without writing the row.
     """
-    from backend.data.user import get_or_create_user
+    from backend.data.user import get_or_create_user_with_status
     from backend.util.test import retry_once_on_closed_loop
 
-    await retry_once_on_closed_loop(lambda: get_or_create_user(user_data))
+    await retry_once_on_closed_loop(lambda: get_or_create_user_with_status(user_data))
 
 
 @pytest.fixture

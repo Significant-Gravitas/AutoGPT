@@ -9,6 +9,8 @@ import {
   OutputActions,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 import React, { useMemo } from "react";
 
 type OutputsRecord = Record<string, Array<unknown>>;
@@ -18,6 +20,7 @@ interface RunOutputsProps {
   shareToken?: string;
   organizationId?: string | null;
   teamId?: string | null;
+  hiddenFromReplay?: boolean;
 }
 
 export function RunOutputs({
@@ -25,6 +28,7 @@ export function RunOutputs({
   shareToken,
   organizationId,
   teamId,
+  hiddenFromReplay = false,
 }: RunOutputsProps) {
   const items = useMemo(() => {
     const list: Array<{
@@ -92,12 +96,19 @@ export function RunOutputs({
   }, [organizationId, outputs, shareToken, teamId]);
 
   if (!items.length) {
-    return <div className="text-neutral-600">No output from this run.</div>;
+    return (
+      <div className="text-foreground-secondary">No output from this run.</div>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="absolute right-3 top-3 z-10">
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        hiddenFromReplay && HIDDEN_FROM_REPLAY,
+      )}
+    >
+      <div className="absolute top-3 right-3 z-10">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,

@@ -35,6 +35,7 @@ export function CreateAPIKeyForm({
   isReady,
 }: Props) {
   return (
+    // oxlint-disable-next-line design-system/no-restyle -- the key form stacks its fields with a 4px inset for focus rings
     <Form form={form} onSubmit={onSubmit} className="flex flex-col gap-4 px-1">
       <FormField
         control={form.control}

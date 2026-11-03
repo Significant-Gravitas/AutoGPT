@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.schedule_visibility import (
@@ -11,13 +12,14 @@ from backend.api.features.schedule_visibility import (
 )
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
-from backend.data.db_accessors import library_db
+from backend.data.db_accessors import library_db, scheduled_chats_db
 from backend.data.tenancy import ResourceAccess
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import BaseTool
+from .external_scope import external_tenant, in_tenant
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -26,15 +28,17 @@ logger = logging.getLogger(__name__)
 def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
-    """Personal AutoPilot manages every schedule on the account; an expert
-    only its own. Neither sees a chat's resume or send at the budget reset:
-    the user set those from the chat, and cancels them there."""
+    """A schedule is managed only in its own organization and team: Otto
+    manages every one there, an expert only its own, and an External API call
+    only its organization's. None of them sees a chat's resume or send at the
+    budget reset: the user set those from the chat, and cancels them there."""
     if isinstance(job, CopilotTurnJobInfo) and job.purpose != "followup":
         return False
     return (
         (job.organization_id or None) == session.organization_id
         and job.team_id == session.team_id
         and (session.expert_id is None or job.expert_id == session.expert_id)
+        and in_tenant(job.organization_id or None, external_tenant(session))
     )
 
 
@@ -154,6 +158,10 @@ class ListSchedulesTool(BaseTool):
         return "view"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
@@ -263,6 +271,10 @@ class DeleteScheduleTool(BaseTool):
         return "delete_schedule"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "Delete a scheduled job (agent run or copilot follow-up) by "
@@ -358,10 +370,27 @@ class DeleteScheduleTool(BaseTool):
                 session_id=session_id,
             )
 
+        await _forget_streak(user_id, schedule_id)
         return ScheduleDeletedResponse(
             message=f"Schedule {schedule_id} deleted.",
             schedule_id=schedule_id,
             session_id=session_id,
+        )
+
+
+async def _forget_streak(user_id: str, schedule_id: str) -> None:
+    """A follow-up's failure streak is keyed by its schedule id: kept, a
+    paused one would stay listed with a Resume, and its alert up. The schedule
+    is gone either way, so a failure is logged, not answered, as the delete
+    route does. The executor has no Prisma of its own, so through the
+    DatabaseManager."""
+    try:
+        await scheduled_chats_db().forget_scheduled_chat(user_id, schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not clear the failure streak of deleted schedule %s",
+            schedule_id,
+            exc_info=True,
         )
 
 

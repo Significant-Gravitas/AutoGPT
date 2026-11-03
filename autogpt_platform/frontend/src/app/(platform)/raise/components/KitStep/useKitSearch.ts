@@ -11,7 +11,6 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 import {
   combineSearchHits,
@@ -34,8 +33,8 @@ export function useKitSearch(scope: KitSearchScope) {
   const trimmed = debouncedQuery.trim();
   const hasQuery = trimmed.length > 0;
   const isWorkflowScope = scope === "marketplace";
-  const hub = useFlagStatus(Flag.SKILLS_HUB);
-  const searchHubSkills = !isWorkflowScope && hub.ready && hub.enabled;
+
+  const searchHubSkills = !isWorkflowScope;
 
   const hubQuery = useGetV2ListMarketplaceSkills(
     { search_query: trimmed, page_size: MAX_SEARCH_RESULTS },

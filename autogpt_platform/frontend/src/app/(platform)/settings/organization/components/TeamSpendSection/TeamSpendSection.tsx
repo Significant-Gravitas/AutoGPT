@@ -88,7 +88,7 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatSpend(bucket.total_spent)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-500">
+                  <td className="px-3 py-2 text-right text-zinc-500 tabular-nums">
                     {bucket.transaction_count}
                   </td>
                 </tr>

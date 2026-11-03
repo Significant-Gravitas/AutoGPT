@@ -5,6 +5,7 @@ to avoid creating blocking portals that can corrupt pytest-asyncio's session eve
 """
 
 import asyncio
+from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -12,6 +13,8 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
+from autogpt_libs.auth import get_user_id
+from multidict import CIMultiDict, CIMultiDictProxy
 from pydantic import SecretStr
 
 from backend.api.credential_scope import credential_user_id
@@ -19,11 +22,13 @@ from backend.api.features.mcp.oauth_registration import preregistered_client
 from backend.api.features.mcp.routes import NO_OAUTH_CODE, router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
-from backend.util.request import HTTPClientError, HTTPServerError
+from backend.util.request import HTTPClientError, HTTPServerError, Response
 
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[credential_user_id] = lambda: "test-user-id"
+# The router's paywall dependency reads the signed-in user from the token.
+app.dependency_overrides[get_user_id] = lambda: "test-user-id"
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -283,6 +288,36 @@ class TestDiscoverTools:
         assert "requires authentication" in response.json()["detail"]
         instance.close.assert_awaited_once()
 
+    @pytest.mark.parametrize(
+        "remote_status, expected_status", [(404, 400), (429, 429), (503, 502)]
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_discover_tools_never_shows_the_remote_error_page(
+        self, client, remote_status, expected_status
+    ):
+        # Only the HTTP layer is faked, so the real client's era fallback
+        # produces the exception the route has to map.
+        with (
+            patch("backend.blocks.mcp.client.Requests") as MockRequests,
+            patch(
+                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            MockRequests.return_value.post = AsyncMock(
+                return_value=_website_error_page(remote_status)
+            )
+            response = await client.post(
+                "/discover-tools",
+                json={"server_url": "https://blog.example.com/mcp"},
+            )
+
+        detail = response.json()["detail"]
+        assert response.status_code == expected_status
+        assert f"HTTP {remote_status}" in detail
+        assert "<!doctype" not in detail.lower()
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_missing_url(self, client):
         response = await client.post("/discover-tools", json={})
@@ -320,7 +355,7 @@ class TestOAuthLogin:
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
-                "client_secret": "registered-secret",
+                "client_secret": "registered-secret",  # pragma: allowlist secret
             }
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-token-123", "code-challenge-abc")
@@ -1066,7 +1101,7 @@ class TestOAuthCallback:
                 "authorize_url": "https://auth.sentry.io/authorize",
                 "token_url": "https://auth.sentry.io/token",
                 "client_id": "test-client-id",
-                "client_secret": "test-secret",
+                "client_secret": "test-secret",  # pragma: allowlist secret
                 "server_url": "https://mcp.sentry.dev/mcp",
             }
             mock_state.scopes = ["openid"]
@@ -1750,3 +1785,14 @@ class TestSSRFValidation:
 
         assert response.status_code == 400
         assert "blocked loopback" in response.json()["detail"].lower()
+
+
+def _website_error_page(status: int) -> Response:
+    """What a website answers at a URL that is not an MCP endpoint."""
+    page = Response.__new__(Response)
+    page.status = status
+    page.reason = HTTPStatus(status).phrase
+    page.headers = CIMultiDictProxy(CIMultiDict({"content-type": "text/html"}))
+    page.url = "https://blog.example.com/mcp"
+    page.content = b"<!doctype html><title>Page not found</title><p>Sorry.</p>"
+    return page

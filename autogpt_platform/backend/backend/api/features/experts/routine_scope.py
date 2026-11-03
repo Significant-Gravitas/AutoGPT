@@ -6,9 +6,9 @@ import prisma.types
 from backend.data.memory_scope import get_personal_memory_organization
 from backend.data.tenancy import ResourceAccess, has_live_resource_access
 
-
-class RoutineNotFoundError(Exception):
-    """No such routine in the owner's organization."""
+# One class for a missing routine everywhere, so the RPC layer answers it at
+# once instead of retrying, and the API maps it to a 404.
+from backend.util.exceptions import RoutineNotFoundError
 
 
 async def personal_routine_scope(

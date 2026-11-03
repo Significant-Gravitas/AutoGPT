@@ -183,9 +183,11 @@ async def prune_webhook_with_credential_lease(
     if not webhook.credentials_id:
         return await manager.prune_webhook_if_dangling(user_id, webhook.id, None)
     try:
+        # A webhook registered earlier on a platform key must still deregister.
         lease = await credentials_manager.scoped(webhook.organization_id).acquire_lease(
             user_id,
             webhook.credentials_id,
+            allow_sdk_default=True,
         )
     except ValueError:
         return False

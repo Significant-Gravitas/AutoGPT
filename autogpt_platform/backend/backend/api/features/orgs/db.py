@@ -14,6 +14,7 @@ from backend.data.db import (
     prisma,
     transaction,
 )
+from backend.data.org_credit import forget_personal_org_owner
 from backend.data.org_migration import (
     _sanitize_slug,
     _soft_delete_blocking_orphan,
@@ -322,10 +323,61 @@ async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]
         return None, None
 
 
+async def resolve_member_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """The org/team for something ``user_id`` creates or runs, given the ones
+    it would inherit.
+
+    A preset, a trigger or a run takes the org and team of what it comes from
+    (its workflow, preset or parent run), which needn't be an org the user is
+    in. As for a request, the pair is kept only if the user is an active
+    member of the org and, when one is given, the team, checked the way
+    ``get_request_context`` checks them, and is otherwise replaced by the
+    user's own default. Unlike a request, a team
+    the user isn't on doesn't fall back to the org's home: everyone in the org
+    sees that, and what was made for a team mustn't spread to the whole org.
+    Nothing to inherit stays ``(None, None)``.
+    """
+    if not organization_id:
+        return None, None
+    if await _is_active_member(user_id, organization_id, team_id):
+        return organization_id, team_id
+    return await resolve_default_tenancy(user_id)
+
+
+async def _is_active_member(
+    user_id: str, organization_id: str, team_id: str | None
+) -> bool:
+    org_member = await prisma.orgmember.find_unique(
+        where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
+        include={"Org": True},
+    )
+    if (
+        org_member is None
+        or org_member.status != "ACTIVE"
+        or (org_member.Org is not None and org_member.Org.deletedAt is not None)
+    ):
+        return False
+    if not team_id:
+        return True
+    team_member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
+        include={"Team": True},
+    )
+    return (
+        team_member is not None
+        and team_member.status == "ACTIVE"
+        and team_member.Team is not None
+        and team_member.Team.orgId == organization_id
+    )
+
+
 async def _create_personal_org_for_user(
     user_id: str,
     slug_base: str,
     display_name: str,
+    replaces_org_id: str | None = None,
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
@@ -334,7 +386,9 @@ async def _create_personal_org_for_user(
     Used here by conversion (spawning a new personal org when the old one
     becomes a team org).
     """
-    org = await create_personal_org(user_id, slug_base, display_name)
+    org = await create_personal_org(
+        user_id, slug_base, display_name, replaces_org_id=replaces_org_id
+    )
     return OrgResponse.from_db(org, member_count=1)
 
 
@@ -565,9 +619,12 @@ async def delete_org(org_id: str, actor_user_id: str | None = None) -> None:
         if org.deletedAt is not None:
             raise ValueError("Organization is already deleted")
 
-        await tx.organization.update(
-            where={"id": org_id},
-            data={"deletedAt": datetime.now(timezone.utc)},
+        now = datetime.now(timezone.utc)
+        await tx.organization.update(where={"id": org_id}, data={"deletedAt": now})
+        # A deleted org's pending invitations can no longer be accepted.
+        await tx.orginvitation.update_many(
+            where={"orgId": org_id, "acceptedAt": None, "revokedAt": None},
+            data={"revokedAt": now},
         )
 
 
@@ -575,11 +632,16 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
     """Convert a personal org to a team org.
 
     Creates a new personal org for the user so they always have one.
-    Existing resources (agents, credits, store listings) stay in the
-    team org — that's the point of converting.
+    Existing resources (agents, store listings) stay in the team org —
+    that's the point of converting. The team org's balance starts at zero;
+    the user keeps their own credits.
 
-    If new personal org creation fails, the conversion is rolled back.
+    The old org becomes a team org in the transaction that creates the new
+    personal org, so a failure leaves it untouched.
     """
+    # Authorize under the live org lock; the flip itself happens in the
+    # transaction that creates the new personal org (``replaces_org_id``),
+    # which refuses an org that is no longer personal.
     async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
         await _lock_authorized_org_action(tx, org_id, user_id, OrgAction.DELETE_ORG)
         org = await tx.organization.find_unique(where={"id": org_id})
@@ -587,33 +649,19 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
             raise NotFoundError(f"Organization {org_id} not found")
         if not org.isPersonal:
             raise ValueError("Organization is already a team org")
-        await tx.organization.update(
-            where={"id": org_id},
-            data={"isPersonal": False},
-        )
 
-    try:
-        slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
-        user = await prisma.user.find_unique(where={"id": user_id})
-        display_name = user.name if user and user.name else org.name
+    slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
+    user = await prisma.user.find_unique(where={"id": user_id})
+    display_name = user.name if user and user.name else org.name
 
-        await _create_personal_org_for_user(
-            user_id=user_id,
-            slug_base=slug_base,
-            display_name=display_name,
-        )
-    except Exception:
-        logger.exception(
-            f"Failed to create new personal org for user {user_id} during "
-            f"conversion of org {org_id} — rolling back"
-        )
-        async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
-            await lock_live_org_scope(tx, org_id)
-            await tx.organization.update(
-                where={"id": org_id},
-                data={"isPersonal": True},
-            )
-        raise
+    await _create_personal_org_for_user(
+        user_id=user_id,
+        slug_base=slug_base,
+        display_name=display_name,
+        replaces_org_id=org_id,
+    )
+    # New runs bill the team org's balance now, not after the cached minute.
+    forget_personal_org_owner(org_id)
 
     return await get_org(org_id)
 

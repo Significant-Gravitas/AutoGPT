@@ -41,7 +41,7 @@ export function APIKeyRow({
   return (
     <div
       data-selected={selected}
-      className="flex items-center justify-between py-4 pl-3 pr-5 transition-colors data-[selected=true]:bg-zinc-100"
+      className="flex items-center justify-between py-4 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         <button
@@ -50,10 +50,10 @@ export function APIKeyRow({
           aria-checked={selected}
           aria-label={`Select ${apiKey.name}`}
           onClick={onToggleSelected}
-          className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
+          className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-action ${
             selected
-              ? "text-zinc-800 hover:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-700"
+              ? "text-foreground-emphasis hover:text-foreground-strong"
+              : "text-foreground-tertiary hover:text-foreground-body"
           }`}
         >
           {selected ? (
@@ -64,7 +64,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -74,7 +74,7 @@ export function APIKeyRow({
                     type="button"
                     aria-label={`View details for ${apiKey.name}`}
                     onClick={() => setInfoOpen(true)}
-                    className="shrink-0 rounded text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+                    className="shrink-0 rounded text-foreground-tertiary transition-colors hover:text-foreground-body focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
                   >
                     <Icon icon={InformationCircleIcon} size={16} />
                   </button>
@@ -85,14 +85,10 @@ export function APIKeyRow({
             <TeamBadge teamId={apiKey.team_id_restriction} />
           </div>
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <Text variant="label" as="span" className="text-zinc-700">
+            <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text
-              variant="small"
-              as="span"
-              className="leading-[20px] text-zinc-500"
-            >
+            <Text variant="small-loose" as="span" tone="muted">
               {lastUsedLabel}
             </Text>
           </div>
@@ -103,7 +99,7 @@ export function APIKeyRow({
         type="button"
         aria-label={`Delete ${apiKey.name}`}
         onClick={onDelete}
-        className="shrink-0 rounded text-zinc-500 transition-colors hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
+        className="shrink-0 rounded text-foreground-tertiary transition-colors hover:text-foreground-body focus:outline-none focus-visible:ring-2 focus-visible:ring-action"
       >
         <Icon icon={Delete02Icon} size={20} />
       </button>

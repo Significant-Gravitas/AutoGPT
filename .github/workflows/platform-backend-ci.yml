@@ -66,15 +66,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -132,15 +132,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py3.12-libs-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload test report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: autogpt-libs-test-report
           path: autogpt_platform/autogpt_libs/junit-autogpt-libs.xml
@@ -188,15 +188,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -280,9 +280,10 @@ jobs:
       # FalkorDB backs the Graphiti knowledge graph the copilot uses for
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
-      # ``GraphitiConfig`` defaults (``localhost:6380``,
-      # password=``local-dev-password`` from backend/.env.default) work
-      # unchanged. ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
+      # ``GraphitiConfig`` defaults (``localhost:6380``) work unchanged. The
+      # password is derived from the run, like the broker login below, and
+      # the job's ``GRAPHITI_FALKORDB_PASSWORD`` gives the tests the same one.
+      # ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
       # image's documented way to set the bearer; mirrors the entrypoint
       # the compose stack writes. Integration tests in
       # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
@@ -292,17 +293,17 @@ jobs:
       # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
       # an unauthenticated PING.
-      # Pinned to a concrete release (unlike the local compose ``:latest``)
-      # so an upstream FalkorDB push can't start failing CI on unrelated
-      # PRs; bump deliberately alongside the compose stack.
+      # Pinned to the release the cloud runs (``serviceVersion`` in the infra
+      # repo's FalkorDB chart): older releases refuse Cypher newer ones run.
+      # Bump every FalkorDB pin together with that chart (OPEN-3746, #16224).
       falkordb:
-        image: falkordb/falkordb:v4.18.9
+        image: falkordb/falkordb:v4.12.5
         ports:
           - 6380:6379
         env:
-          REDIS_ARGS: "--requirepass local-dev-password"
+          REDIS_ARGS: "--requirepass ci-${{ github.run_id }}-${{ github.run_attempt }}"
         options: >-
-          --health-cmd "redis-cli -a local-dev-password ping || exit 1"
+          --health-cmd "redis-cli -a ci-${{ github.run_id }}-${{ github.run_attempt }} ping || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
@@ -310,7 +311,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           # Full ref history is needed so the "Install Poetry" step below can
@@ -329,7 +330,7 @@ jobs:
         # repo. The shards read it from SKILLS_CATALOG_PATH so no test
         # resolves `main` through the GitHub API: runners share one
         # unauthenticated rate limit and hit 403s under load.
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
           path: skills-catalog
@@ -509,12 +510,12 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -570,6 +571,7 @@ jobs:
         run: |
           echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
           echo "UNSUBSCRIBE_SECRET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
+          echo "INTERNAL_API_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Test shard
         shell: bash
@@ -627,7 +629,7 @@ jobs:
 
       - name: Upload test and coverage reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}
           path: |
@@ -637,7 +639,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
@@ -652,13 +654,12 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
       SKILLS_CATALOG_TOKEN: ${{ github.token }}
-      # We know these are here, don't report this as a security vulnerability
-      # This is used as the default credential for the entire system's RabbitMQ instance
-      # If you want to replace this, you can do so by making our entire system generate
-      # new credentials for each local user and update the environment variables in
-      # the backend service, docker composes, and examples
+      # The job's own broker login and FalkorDB password. Service containers
+      # start before any step can generate a value, so both are derived from
+      # the run instead, with the same expression the services above use.
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
-      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+      RABBITMQ_DEFAULT_PASS: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      GRAPHITI_FALKORDB_PASSWORD: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
 
   validate-skip-policy:
     name: Validate backend skip policy
@@ -674,7 +675,7 @@ jobs:
         working-directory: .
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false

@@ -88,6 +88,7 @@ async def test_refresh_token_concurrent_rotation_mints_one_family(mocker):
     model = mocker.patch.object(oauth, "PrismaOAuthRefreshToken")
     model.prisma.return_value = delegate
     mocker.patch.object(oauth, "transaction", _transaction_factory())
+    mocker.patch.object(oauth, "is_user_banned", AsyncMock(return_value=False))
     create_access = mocker.patch.object(
         oauth, "create_access_token", AsyncMock(return_value=MagicMock())
     )

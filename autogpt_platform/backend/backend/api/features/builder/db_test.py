@@ -15,7 +15,6 @@ import pytest
 import backend.api.features.builder.db as db
 from backend.api.features.builder.model import SearchEntry
 from backend.blocks._base import BlockInfo, BlockType
-from backend.util.exceptions import NotFoundError
 from backend.util.text import split_camelcase
 
 
@@ -381,17 +380,28 @@ def test_block_searchable_text_includes_field_descriptions():
 
 @pytest.mark.asyncio
 async def test_update_search_requires_exact_owner_and_org(mocker) -> None:
-    client = MagicMock(update_many=AsyncMock(return_value=0))
+    """An id from another user or workspace never updates that row; the caller
+    gets an entry of their own in this workspace instead."""
+    client = MagicMock(
+        update_many=AsyncMock(return_value=0),
+        create=AsyncMock(return_value=MagicMock(id="new-search")),
+    )
     mocker.patch("prisma.models.BuilderSearchHistory.prisma", return_value=client)
 
-    with pytest.raises(NotFoundError, match="Search #foreign-search not found"):
-        await db.update_search(
-            "user-1",
-            SearchEntry(search_query="agents", search_id="foreign-search"),
-            organization_id="org-1",
-            team_id_restriction="team-1",
-        )
+    returned = await db.update_search(
+        "user-1",
+        SearchEntry(search_query="agents", search_id="foreign-search"),
+        organization_id="org-1",
+        team_id_restriction="team-1",
+    )
 
+    assert returned == "new-search"
+    created = client.create.await_args.kwargs["data"]
+    assert (created["userId"], created["organizationId"], created["teamId"]) == (
+        "user-1",
+        "org-1",
+        "team-1",
+    )
     client.update_many.assert_awaited_once_with(
         where={
             "id": "foreign-search",
