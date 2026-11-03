@@ -4110,3 +4110,39 @@ async def test_retry_keeps_persisted_skill_in_sdk_query_and_upload(
     assert session.messages[original_rows - 1].content == expanded
     assert sum(m.role == "user" for m in session.messages) == (1 if first_turn else 2)
     resolve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fresh_first_turn_command_reaches_the_sdk_query():
+    from backend.copilot.skill_invocation import InvocableSkill
+    from backend.copilot.tools.skills import ParsedSkill
+
+    helper = TestFirstTurnWarmContextIsEphemeral()
+    queries = []
+    found = InvocableSkill(
+        skill=ParsedSkill(name="report", description="Report", body="Write $0"),
+        is_default=True,
+    )
+    await helper._run(
+        helper._first_turn("/report weekly"),
+        TestFollowUpWarmContextCallSite._clients(queries),
+        first_block=None,
+        refresh=helper._no_refresh,
+        extra=[
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(return_value=found)),
+            ),
+        ],
+    )
+    assert len(queries) == 1
+    assert queries[0].count("<skill_invocation>") == 1
+    assert queries[0].count("</skill_invocation>") == 1
+    block = (
+        queries[0].split("<skill_invocation>", 1)[1].split("</skill_invocation>", 1)[0]
+    )
+    assert "Write weekly" in block
