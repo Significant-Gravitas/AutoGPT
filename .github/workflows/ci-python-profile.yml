@@ -1,0 +1,55 @@
+name: Profile backend startup and coverage
+on:
+  push:
+    branches: [codex/ci-python-startup-profile-20261103-1657]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  profile:
+    name: Profile Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    defaults:
+      run:
+        working-directory: autogpt_platform/backend
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/backend
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/backend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py${{ matrix.python }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+      - name: Install Poetry
+        run: |
+          version=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$version python3 -
+      - name: Install pinned dependencies
+        run: poetry install
+      - name: Generate Prisma client
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+      - name: Profile generated Prisma import
+        run: poetry run python ../../.github/scripts/profile_ci_python.py prisma
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 41673952967
+          name: backend-test-reports-py${{ matrix.python }}-util-executor-3
+          path: ${{ runner.temp }}/python-profile
+      - name: Profile coverage report from completed tests
+        run: poetry run python ../../.github/scripts/profile_ci_python.py coverage
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: python-profile-${{ matrix.python }}
+          path: ${{ runner.temp }}/python-profile
+          retention-days: 3
