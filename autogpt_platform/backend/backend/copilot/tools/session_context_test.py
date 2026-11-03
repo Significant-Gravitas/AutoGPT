@@ -357,7 +357,7 @@ def test_malformed_nested_session_context_fully_consumed():
 
 
 # ---------------------------------------------------------------------------
-# COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch — default-on; LD-off
+# COPILOT_SCHEDULED_FOLLOWUPS PostHog kill-switch — default-on; flag-off
 # must collapse ``<session_context>`` to the bare session_id line AND skip
 # the scheduler RPC entirely (cost half of the kill-switch).
 # ---------------------------------------------------------------------------

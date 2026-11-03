@@ -36,11 +36,7 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
 
       <div className="mt-5 border-t border-separator pt-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground-strong">
-          <Icon
-            icon={Coins01Icon}
-            size={16}
-            className="text-foreground-tertiary"
-          />
+          <Icon icon={Coins01Icon} size={16} tone="muted" />
           Included with your plan
         </h2>
         <p className="mt-1.5 text-sm leading-6 text-foreground-secondary">
@@ -66,8 +62,8 @@ function Perk({
       <Icon
         icon={icon}
         size={16}
-        // TODO(tokens): no exact role: text-emerald-600 #059669
-        className="mt-0.5 shrink-0 text-emerald-600"
+        tone="success"
+        className="mt-0.5 shrink-0"
         aria-hidden
       />
       <span>{children}</span>

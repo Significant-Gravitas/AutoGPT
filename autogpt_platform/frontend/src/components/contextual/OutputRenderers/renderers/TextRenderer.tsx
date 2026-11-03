@@ -21,10 +21,7 @@ function renderText(
   const textValue = String(value);
 
   return (
-    <p
-      // TODO(tokens): no exact role for text-neutral-700 #404040
-      className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700"
-    >
+    <p className="resize-none overflow-x-auto border-none text-sm break-words whitespace-pre-wrap text-foreground-body">
       {textValue}
     </p>
   );

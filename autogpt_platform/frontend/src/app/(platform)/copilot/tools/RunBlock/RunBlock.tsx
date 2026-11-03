@@ -27,6 +27,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import type { RunBlockInput } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunBlockToolPart {
   type: string;
@@ -99,10 +100,10 @@ export function RunBlockTool({ part }: Props) {
       </div>
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-error">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
-        </p>
+        </Text>
       )}
 
       {setupRequirementsOutput && (

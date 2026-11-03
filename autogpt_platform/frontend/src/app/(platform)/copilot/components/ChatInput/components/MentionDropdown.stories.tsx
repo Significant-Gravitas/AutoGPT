@@ -46,7 +46,7 @@ function AccountMentionComposer({ expertId }: Props) {
             variant="large-loose"
             tone="primary"
             data-testid="sent-message"
-            className="max-w-full whitespace-pre-wrap rounded-3xl bg-surface-hover px-4 py-2.5"
+            className="max-w-full rounded-3xl bg-surface-hover px-4 py-2.5 whitespace-pre-wrap"
           >
             <CredentialMentionMarkdown>{sent}</CredentialMentionMarkdown>
           </Text>
@@ -73,7 +73,7 @@ function AccountMentionComposer({ expertId }: Props) {
           onCancel={mentions.cancelConnect}
           onConnected={mentions.resumeAfterConnect}
         />
-        <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pb-3.5 pt-3 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+        <InputGroup className="flex-col gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:ring-0">
           {attachments.map((name) => (
             <Text
               key={name}

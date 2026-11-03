@@ -617,13 +617,15 @@ def stored(mocker: pytest_mock.MockFixture) -> AsyncMock:
 
     @asynccontextmanager
     async def no_transaction():
-        yield None
+        yield AsyncMock()
 
     client = AsyncMock()
     mocker.patch("backend.api.features.library.db.transaction", no_transaction)
     mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=client)
+    row_client = AsyncMock()
+    row_client.count.return_value = 0
     mocker.patch.object(
-        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=row_client
     )
     mocker.patch.object(LibraryAgentPreset, "from_db", return_value=_preset())
     return client

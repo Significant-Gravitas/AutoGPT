@@ -242,9 +242,9 @@ function CelebrationDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-purple-50">
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-accent-surface">
       <Confetti ref={confettiRef} manualstart />
-      <h1 className="font-poppins text-7xl font-medium tracking-tighter text-purple-700">
+      <h1 className="font-poppins text-7xl font-medium tracking-tighter text-accent-strong">
         Congrats!
       </h1>
       <p className="text-lg text-brand">AutoGPT purple-themed celebration</p>
@@ -280,9 +280,9 @@ function StarsDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-purple-100">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-accent-surface">
       <Confetti ref={confettiRef} manualstart />
-      <p className="text-sm text-purple-400">Large star-shaped confetti</p>
+      <p className="text-sm text-brand">Large star-shaped confetti</p>
       <button
         onClick={fireStars}
         className="rounded-lg bg-brand-hover px-8 py-3 text-base font-medium text-action-foreground shadow-md transition-colors hover:bg-purple-700 active:scale-95"

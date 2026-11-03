@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { Text } from "@/components/atoms/Text/Text";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -64,17 +65,17 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={Robot01Icon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={Robot01Icon} size={15} tone="secondary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+                <Text
+                  variant="body-sm-medium-inherit"
+                  tone="emphasis"
+                  className="min-w-0 truncate"
+                >
                   {str(agent, "name", "agent_name") ?? inline(agent)}
-                </p>
+                </Text>
                 {str(agent, "creator") && (
                   <span className="shrink-0 truncate text-caption-sm leading-inherit text-foreground-subtle">
                     by {str(agent, "creator")}
@@ -82,9 +83,9 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 )}
               </div>
               {subtitle && (
-                <p className="truncate text-xs text-foreground-tertiary">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {subtitle}
-                </p>
+                </Text>
               )}
               {(runs !== null || rating !== null) && (
                 <div className="mt-1 flex items-center gap-2.5 text-caption-sm leading-inherit text-foreground-subtle">
@@ -96,12 +97,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                   )}
                   {rating !== null && (
                     <span className="flex items-center gap-1">
-                      <Icon
-                        icon={StarIcon}
-                        size={10}
-                        // TODO(tokens): no exact role for text-amber-400
-                        className="text-amber-400"
-                      />
+                      <Icon icon={StarIcon} size={10} tone="warning-bright" />
                       {rating.toFixed(1)}
                     </span>
                   )}
@@ -128,15 +124,15 @@ export function AgentSavedCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
-      <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="emphasis"
+        className="min-w-0 flex-1 truncate"
+      >
         {name}
-      </p>
+      </Text>
       {typeof version === "number" && (
         <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           v{version}
@@ -163,20 +159,20 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           {name}
-        </p>
+        </Text>
         {str(output, "description", "message") && (
-          <p className="truncate text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="truncate">
             {str(output, "description", "message")}
-          </p>
+          </Text>
         )}
       </div>
       {count !== null && (
@@ -211,14 +207,18 @@ export function SubSessionCard({
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
-        <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {name}
           {role && (
             <span className="ml-1.5 font-normal text-foreground-subtle">
               {role}
             </span>
           )}
-        </p>
+        </Text>
         {elapsed !== null && (
           <span className="shrink-0 text-caption-sm leading-inherit text-foreground-subtle">
             {elapsed >= 60

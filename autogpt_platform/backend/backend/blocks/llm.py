@@ -7,7 +7,7 @@ import math
 import re
 import time
 from abc import ABC
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from enum import Enum
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
@@ -28,6 +28,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL as DEFAULT_LLM_MODEL
 from backend.data.llm_registry.llm_models import (
     LEGACY_MODEL_MAPPINGS as LEGACY_MODEL_MAPPINGS,
@@ -271,6 +272,8 @@ async def llm_call(
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
     execution_context: "ExecutionContext | None" = None,
+    *,
+    on_abandoned: Callable[[NodeExecutionStats], object] | None,
 ) -> LLMResponse:
     """Block-side LLM entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely.
@@ -279,7 +282,13 @@ async def llm_call(
     classified for spend alerting (#14292), including callers that never reach
     the block retry loop. Copilot and dream call the provider layer directly and
     raise no spend alert; they carry no execution context to attribute one to.
+
+    ``on_abandoned`` receives the estimated usage of a request that reached
+    the provider and was then cancelled, which never gets a reply to read
+    usage from: see ``abandoned_call_stats``. Blocks pass their
+    ``merge_stats``; ``None`` is for callers with no node to bill.
     """
+    sent_input_tokens: list[int] = []
     started = time.monotonic()
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
@@ -298,12 +307,17 @@ async def llm_call(
                     ollama_host=ollama_host,
                     parallel_tool_calls=parallel_tool_calls,
                     compress_prompt_to_fit=compress_prompt_to_fit,
+                    on_request_sent=sent_input_tokens.append,
                 ),
                 # Same budget as the provider layer, but this one starts before
                 # prompt compression, so it always fires first for block callers;
                 # the provider deadline is there for callers that skip this seam.
                 timeout=LLM_REQUEST_TIMEOUT_SECONDS,
             )
+        except asyncio.CancelledError:
+            if on_abandoned is not None and sent_input_tokens:
+                on_abandoned(abandoned_call_stats(sent_input_tokens[-1]))
+            raise
         # SDK-native timeouts never reach the wait_for, so both are caught here
         # to keep this the single place that reports burned spend.
         except (
@@ -338,6 +352,14 @@ async def llm_call(
             raise
 
 
+def abandoned_call_stats(estimated_input_tokens: int) -> NodeExecutionStats:
+    """The usage of a request that reached the provider and was cancelled
+    before its reply: the estimated input tokens, as no reply reports the real
+    count, with the output unknown. They are kept apart from the reported
+    usage, since only a run ended by a stop request is billed for them."""
+    return NodeExecutionStats(abandoned_input_token_count=estimated_input_tokens)
+
+
 def _is_platform_credential(credentials: APIKeyCredentials | None) -> bool:
     """A key the platform pays for, as opposed to one the user brought.
 
@@ -357,6 +379,7 @@ async def _llm_call(
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
+    on_request_sent: Callable[[int], None] | None = None,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -369,6 +392,8 @@ async def _llm_call(
         max_tokens: The maximum number of tokens to generate in the chat completion.
         tools: The tools to use in the chat completion.
         ollama_host: The host for ollama to use.
+        on_request_sent: Called with the estimated input tokens just before
+            the request goes to the provider.
 
     Returns:
         LLMResponse object containing:
@@ -434,6 +459,8 @@ async def _llm_call(
     # shape (caller), ``NodeExecutionStats`` (caller).
     from backend.util.llm.providers import ProviderResponse, call_provider
 
+    if on_request_sent is not None:
+        on_request_sent(estimated_input_tokens)
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
@@ -481,6 +508,17 @@ class AIBlockBase(Block, ABC):
     def merge_llm_stats(self, block: "AIBlockBase"):
         self.merge_stats(block.execution_stats)
         self.prompt = block.prompt
+
+    async def run_inner_block(
+        self, block: "AIBlockBase", input_data: Any, output: str, **kwargs
+    ) -> Any:
+        """``block.run_once`` on this block's behalf, keeping the inner
+        block's usage as this block's whether it returns, fails or is
+        stopped."""
+        try:
+            return await block.run_once(input_data, output, **kwargs)
+        finally:
+            self.merge_llm_stats(block)
 
 
 class AIStructuredResponseGeneratorBlock(AIBlockBase):
@@ -625,6 +663,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
             execution_context=execution_context,
+            on_abandoned=self.merge_stats,
         )
 
     async def run(
@@ -824,13 +863,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # A judgement on the prompt itself, like the user errors below.
                     refusal = e
                     break
-                is_user_error = (
+                # Invalid models cannot recover on retry; other 400s can still
+                # use the context-length recovery below.
+                invalid_model_error = is_invalid_model_error(e)
+                is_user_error = invalid_model_error or (
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
                 if is_user_error:
-                    logger.warning(f"Error calling LLM: {e}")
-                    error_feedback_message = f"Error calling LLM: {e}"
+                    error_feedback_message = format_llm_error_message(
+                        e, llm_model, is_invalid_model=invalid_model_error
+                    )
+                    logger.warning(error_feedback_message)
                     break
                 # The SDKs' own timeout types do NOT subclass builtin
                 # TimeoutError, so they must be named explicitly or a
@@ -853,7 +897,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
-                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    # Zero means "use the model cap" downstream, undoing the reduction.
+                    input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
                     logger.debug(
                         f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
                     )
@@ -1131,13 +1176,13 @@ class AITextGeneratorBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response["response"]
 
     async def run(
@@ -1309,13 +1354,13 @@ class AITextSummarizerBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response
 
     async def _summarize_chunk(
@@ -1395,7 +1440,8 @@ class AITextSummarizerBlock(AIBlockBase):
         else:
             # If combined summaries are still too long, recursively summarize
             block = AITextSummarizerBlock()
-            return await block.run_once(
+            return await self.run_inner_block(
+                block,
                 AITextSummarizerBlock.Input(
                     text=combined_text,
                     credentials=input_data.credentials,
@@ -1486,13 +1532,13 @@ class AIConversationBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(
+        response = await self.run_inner_block(
+            block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(block)
         return response
 
     async def run(
@@ -1644,13 +1690,13 @@ class AIListGeneratorBlock(AIBlockBase):
         execution_context: "ExecutionContext | None" = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        response = await llm_block.run_once(
+        response = await self.run_inner_block(
+            llm_block,
             input_data,
             "response",
             credentials=credentials,
             execution_context=execution_context,
         )
-        self.merge_llm_stats(llm_block)
         return response
 
     async def run(

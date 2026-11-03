@@ -538,10 +538,15 @@ async def close_browser_daemon(session_name: str) -> bool:
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
-    """Shut down the local agent-browser daemon and clean up stored state.
+    """Clean up a deleted session's stored browser state, and close its
+    browser if this process runs one.
 
     Deletes ``._browser_state.json`` from workspace storage so cookies and
     other credentials do not linger after the session is deleted.
+
+    The daemon is closed only for a session in ``_touched_sessions``. For any
+    other session, ``close`` would start a daemon and launch Chromium just to
+    shut them down again.
 
     Best-effort: errors are logged but never raised.
     """
@@ -563,6 +568,8 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
                 exc_info=True,
             )
 
+    if session_name not in _touched_sessions:
+        return
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:

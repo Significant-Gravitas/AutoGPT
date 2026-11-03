@@ -38,10 +38,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT ? isBillingEnabled : false,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: isBillingEnabled,
+    isResolved: true,
+  }),
+}));
 
 function setupCredits(args: {
   credits: number;

@@ -16,6 +16,7 @@ import type { CopilotLlmModel } from "../../../../store";
 import { isComposingEvent } from "@/lib/keyboard";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { Swap } from "./Swap";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Segment {
   tier: CopilotLlmModel;
@@ -79,8 +80,7 @@ export function TierToggle({
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
       className={cn(
-        // TODO(tokens): no exact role for divide-neutral-200
-        "divide-y divide-neutral-200",
+        "divide-y divide-border-base",
         advancedUpgrade && "divide-y-0",
       )}
     >
@@ -110,12 +110,18 @@ export function TierToggle({
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-foreground-tertiary"
+              tone="muted"
+              className="flex-none"
             />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-foreground-strong">
+              <Text
+                variant="body-medium-tight"
+                as="span"
+                tone="primary"
+                className="truncate"
+              >
                 {segment.name ?? segment.label}
-              </span>
+              </Text>
               {segment.model && (
                 <span className="text-sm leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
@@ -126,8 +132,9 @@ export function TierToggle({
               icon={Tick02Icon}
               size={16}
               aria-hidden
+              motion="opacity"
               className={cn(
-                "flex-none text-primary transition-opacity",
+                "flex-none text-primary",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
@@ -162,12 +169,18 @@ function LockedSegment({ segment }: { segment: Segment }) {
           icon={LockIcon}
           size={14}
           aria-hidden
-          className="mt-[3px] flex-none text-foreground-subtle"
+          tone="subtle"
+          className="mt-[3px] flex-none"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground-tertiary">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {segment.name ?? segment.label}
-          </span>
+          </Text>
           {segment.model && (
             <span className="text-sm leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
@@ -186,7 +199,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           href={segment.lock.href}
           // Indented past the lock glyph so it lines up under the reason it
           // answers, the way it reads when it follows that sentence inline.
-          className="ml-6 mt-1 w-fit text-caption-sm font-medium leading-inherit text-foreground-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+          className="mt-1 ml-6 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
         >
           See plans
         </Link>
