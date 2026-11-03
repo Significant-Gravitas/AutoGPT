@@ -5,6 +5,9 @@ on:
     branches: [master, dev]
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
+      - ".github/ci-projects.json"
+      - ".github/scripts/ci_affected.py"
+      - ".github/scripts/test_ci_affected.py"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_cobertura.py"
@@ -17,22 +20,9 @@ on:
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
-  pull_request:
-    paths:
-      - ".github/workflows/platform-frontend-ci.yml"
-      - ".github/scripts/validate_junit.py"
-      - ".github/scripts/test_validate_junit.py"
-      - ".github/scripts/validate_cobertura.py"
-      - ".github/scripts/test_validate_cobertura.py"
-      - ".github/scripts/test_frontend_cobertura_contract.py"
-      - ".github/scripts/run_unittest_junit.py"
-      - "autogpt_platform/frontend/**"
-      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
-      - "autogpt_platform/backend/schema.prisma"
-      - "autogpt_platform/backend/Dockerfile"
-      - "autogpt_platform/docker-compose.yml"
-      - "autogpt_platform/docker-compose.platform.yml"
-  merge_group:
+  workflow_call:
+  schedule:
+    - cron: "23 7 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -45,6 +35,38 @@ defaults:
     working-directory: autogpt_platform/frontend
 
 jobs:
+  validate-required:
+    name: Validate required frontend checks and shard reports
+    if: always()
+    needs: [lint, tooltip-browser, integration_test]
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Reject skipped or failed required checks
+        run: python3 .github/scripts/ci_affected.py jobs --required-jobs lint tooltip-browser integration_test
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: frontend-integration-shard-*-of-4
+          path: frontend-shard-reports
+      - name: Require passing tests and coverage from every shard
+        run: |
+          for shard in 1 2 3 4; do
+            report="frontend-shard-reports/frontend-integration-shard-${shard}-of-4"
+            python3 .github/scripts/validate_junit.py --require-no-skips "$report/junit.xml"
+            python3 .github/scripts/validate_cobertura.py "$report/coverage/cobertura-coverage.xml"
+          done
+
   tooltip-browser:
     # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
     runs-on: ubuntu-24.04

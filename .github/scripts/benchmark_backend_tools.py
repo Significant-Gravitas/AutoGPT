@@ -154,24 +154,34 @@ class Benchmark:
             "uv-venv", ["uv", "venv", "--python", sys.executable, str(self.uv_env)]
         )
         target = str(self.uv_env / "bin/python")
+        activated = {
+            "VIRTUAL_ENV": str(self.uv_env),
+            "POETRY_VIRTUALENVS_IN_PROJECT": "false",
+            "PATH": f"{self.uv_env / 'bin'}{os.pathsep}{os.environ['PATH']}",
+        }
         for temperature in ("cold", "warm"):
             self.run(
                 f"uv-sync-{temperature}",
                 ["uv", "pip", "sync", "--python", target, str(requirements)],
             )
             self.run(
+                f"uv-poetry-target-{temperature}",
+                ["poetry", "env", "info", "--path"],
+                environment=activated,
+            )
+            selected = (
+                (self.output / f"uv-poetry-target-{temperature}.log")
+                .read_text()
+                .strip()
+            )
+            if Path(selected).resolve() != self.uv_env.resolve():
+                raise RuntimeError(
+                    "Poetry selected the wrong environment for root registration"
+                )
+            self.run(
                 f"uv-root-{temperature}",
-                [
-                    "uv",
-                    "pip",
-                    "install",
-                    "--python",
-                    target,
-                    "--no-deps",
-                    "--no-build-isolation",
-                    "--editable",
-                    ".",
-                ],
+                ["poetry", "install", "--only-root", "--no-interaction"],
+                environment=activated,
             )
         for name, python in (
             ("poetry", self.backend / ".venv/bin/python"),

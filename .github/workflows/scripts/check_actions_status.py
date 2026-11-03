@@ -21,6 +21,7 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 ADVISORY_CHECK_RUNS = {
     "copilot-pull-request-reviewer",
     "end-to-end tests (journeys)",
+    "journeys / end-to-end tests (journeys)",
 }
 
 

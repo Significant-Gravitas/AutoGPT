@@ -6,6 +6,9 @@ on:
     branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/ci-projects.json"
+      - ".github/scripts/ci_affected.py"
+      - ".github/scripts/test_ci_affected.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - ".github/workflows/scripts/check_actions_status.py"
       - ".github/workflows/scripts/test_check_actions_status.py"
@@ -24,29 +27,9 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
-  pull_request:
-    branches: [master, dev, release-*]
-    paths:
-      - ".github/workflows/platform-backend-ci.yml"
-      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
-      - ".github/workflows/scripts/check_actions_status.py"
-      - ".github/workflows/scripts/test_check_actions_status.py"
-      - ".github/scripts/docker-pull-with-retry.sh"
-      - ".github/scripts/validate_junit.py"
-      - ".github/scripts/test_validate_junit.py"
-      - ".github/scripts/validate_backend_skips.py"
-      - ".github/scripts/test_validate_backend_skips.py"
-      - ".github/scripts/backend_test_shard.py"
-      - ".github/scripts/test_backend_test_shard.py"
-      - ".github/scripts/backend_shard_*.py"
-      - ".github/scripts/test_backend_shard_weights.py"
-      - ".github/scripts/backend-test-durations.json"
-      - ".github/scripts/update_backend_test_durations.py"
-      - ".github/scripts/backend-allowed-skips.json"
-      - "autogpt_platform/backend/**"
-      - "autogpt_platform/autogpt_libs/**"
-      - "autogpt_platform/frontend/public/integrations/**"
-  merge_group:
+  workflow_call:
+  schedule:
+    - cron: "23 7 * * *"
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the
   # automatic push/pull_request runs are skipped) but you still want to run the

@@ -1,0 +1,100 @@
+name: AutoGPT Platform CI
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Select affected platform projects
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.verify.outputs.backend }}
+      frontend: ${{ steps.verify.outputs.frontend }}
+      fullstack: ${{ steps.verify.outputs.fullstack }}
+      selection: ${{ steps.verify.outputs.selection }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          filter: blob:none
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Lint CI selection helpers
+        run: |
+          version=$(python3 .github/workflows/scripts/get_package_version_from_lockfile.py ruff autogpt_platform/backend/poetry.lock)
+          pipx run --spec "ruff==$version" ruff check --select E4,E7,E9,F,I \
+            .github/scripts/ci_affected.py .github/scripts/test_ci_affected.py
+      - name: Test selection with deliberately hidden and renamed changes
+        run: python3 -m unittest discover -s .github/scripts -p test_ci_affected.py
+      - name: Select affected projects
+        run: python3 .github/scripts/ci_affected.py plan --plan "$RUNNER_TEMP/ci-selection.json"
+      - name: Independently verify selection against Git
+        id: verify
+        run: python3 .github/scripts/ci_affected.py verify --plan "$RUNNER_TEMP/ci-selection.json"
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/platform-backend-ci.yml
+    secrets: inherit
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/platform-frontend-ci.yml
+    secrets: inherit
+
+  fullstack:
+    needs: changes
+    if: needs.changes.outputs.fullstack == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/platform-fullstack-ci.yml
+    with:
+      e2e_suite: smoke
+    secrets: inherit
+
+  journeys:
+    needs: changes
+    if: needs.changes.outputs.fullstack == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/platform-fullstack-ci.yml
+    with:
+      e2e_suite: journeys
+    secrets: inherit
+
+  required:
+    name: Validate affected platform CI
+    if: always()
+    needs: [changes, backend, frontend, fullstack]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          filter: blob:none
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject missing, failed, cancelled or incorrectly skipped suites
+        run: python3 .github/scripts/ci_affected.py gate
+        env:
+          CI_SELECTION: ${{ needs.changes.outputs.selection || '{}' }}
+          CI_RESULTS: ${{ toJSON(needs) }}

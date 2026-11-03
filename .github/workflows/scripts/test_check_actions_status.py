@@ -164,6 +164,17 @@ class ProcessCheckRunsTests(unittest.TestCase):
         self.assertEqual(process_check_runs([journeys]), (False, True))
         self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
 
+    def test_reusable_workflow_keeps_only_journeys_advisory(self):
+        journeys = {
+            "id": 9,
+            "name": "journeys / end-to-end tests (journeys)",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        smoke = {**journeys, "id": 10, "name": "fullstack / end-to-end tests (smoke)"}
+        self.assertEqual(process_check_runs([journeys]), (False, True))
+        self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
+
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
 

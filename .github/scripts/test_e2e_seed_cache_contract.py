@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -45,8 +46,18 @@ def _step(workflow: str, name: str) -> str:
 
 def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
     e2e_job = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
-    leg = e2e_job.split(f"- suite: {suite}\n", 1)[1].split("- suite:", 1)[0]
-    return dict(re.findall(r"^\s+(\w+): (\S+)$", leg, re.MULTILINE))
+    candidates = [
+        json.loads(value) for value in re.findall(r"'(\[\{[^\n]+\}\])'", e2e_job)
+    ]
+    assert len(candidates) == 3, "smoke, journeys and standalone matrices are required"
+    assert (
+        candidates[0] + candidates[1] == candidates[2]
+    ), "standalone and called suites must match"
+    leg = next(row for row in candidates[2] if row["suite"] == suite)
+    return {
+        name: value if isinstance(value, str) else json.dumps(value)
+        for name, value in leg.items()
+    }
 
 
 def _e2e_step_names(workflow: str) -> list[str]:

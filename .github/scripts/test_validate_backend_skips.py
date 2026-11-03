@@ -9,7 +9,6 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 
 import yaml
-
 from backend_test_shard import SHARDS
 from validate_backend_skips import main
 from validate_junit import load_skip_policy
@@ -336,6 +335,14 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
 
     def test_new_helper_and_test_changes_trigger_backend_ci(self):
         events = self.workflow["on"] if "on" in self.workflow else self.workflow[True]
-        for event in ("push", "pull_request"):
-            for name in ("validate_backend_skips.py", "test_validate_backend_skips.py"):
-                self.assertIn(f".github/scripts/{name}", events[event]["paths"])
+        for name in ("validate_backend_skips.py", "test_validate_backend_skips.py"):
+            self.assertIn(f".github/scripts/{name}", events["push"]["paths"])
+        self.assertIn("workflow_call", events)
+        router = yaml.safe_load((self.github / "workflows/platform-ci.yml").read_text())
+        triggers = router.get("on", router.get(True))
+        self.assertIsNone(triggers["pull_request"])
+        self.assertIsNone(triggers["merge_group"])
+        self.assertEqual(
+            router["jobs"]["backend"]["uses"],
+            "./.github/workflows/platform-backend-ci.yml",
+        )
