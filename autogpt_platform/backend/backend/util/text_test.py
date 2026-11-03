@@ -11,6 +11,7 @@ import pytest
 from markupsafe import Markup
 
 from backend.util import text
+from backend.util.mock import MockObject
 from backend.util.text import (
     MAX_FORMAT_FIELD_SIZE,
     MAX_RENDER_OUTPUT,
@@ -858,6 +859,15 @@ async def test_markup_and_nested_values_reach_the_worker_intact():
         "{{ m }}{{ d.l[1].k }}{{ d.l[0] + t[1] }}", values
     )
     assert rendered == "<b>x</b>&lt;3"
+
+
+@pytest.mark.asyncio
+async def test_an_attribute_pin_value_reaches_the_worker(fmt: TextFormatter):
+    # What a graph's `_@_` pin builds, which the render pickles to its worker
+    value = MockObject(attr="x")
+    assert await fmt.format_string("{{ v.attr }}|{{ v.missing }}", {"v": value}) == (
+        "x|None"
+    )
 
 
 @pytest.mark.asyncio
