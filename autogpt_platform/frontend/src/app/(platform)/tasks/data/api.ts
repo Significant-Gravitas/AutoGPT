@@ -60,7 +60,8 @@ function toQuery(filters: TaskFilters) {
     params.set("status", filters.status.join(","));
     params.set("include_hidden", "true");
   }
-  if (filters.priority?.length) params.set("priority", filters.priority.join(","));
+  if (filters.priority?.length)
+    params.set("priority", filters.priority.join(","));
   if (filters.assignee_ids?.length === 1)
     params.set("assignee_id", filters.assignee_ids[0]);
   if (filters.due) params.set("due", filters.due);
@@ -80,7 +81,9 @@ export const tasksApi = {
       const all = r.tasks.map(toTask);
       const tasks =
         filters.assignee_ids && filters.assignee_ids.length > 1
-          ? all.filter((t) => filters.assignee_ids!.includes(t.assignee?.id ?? ""))
+          ? all.filter((t) =>
+              filters.assignee_ids!.includes(t.assignee?.id ?? ""),
+            )
           : all;
       return { tasks, counts: toTaskCounts(r.counts, all) };
     }),
@@ -93,7 +96,9 @@ export const tasksApi = {
       const tasks = r.tasks.map(toTask);
       // The API filters by one assignee; narrow to several here.
       return filters.assignee_ids && filters.assignee_ids.length > 1
-        ? tasks.filter((t) => filters.assignee_ids!.includes(t.assignee?.id ?? ""))
+        ? tasks.filter((t) =>
+            filters.assignee_ids!.includes(t.assignee?.id ?? ""),
+          )
         : tasks;
     }),
   needsYou: () =>
@@ -117,6 +122,10 @@ export const tasksApi = {
   update: (id: string, input: UpdateTaskInput) =>
     call<unknown>(`/api/tasks/${id}`, json("PATCH", input), () =>
       mockApi.update(id, input),
+    ).then(toTask),
+  start: (id: string) =>
+    call<unknown>(`/api/tasks/${id}/start`, json("POST", {}), () =>
+      mockApi.update(id, { status: "in_progress" }),
     ).then(toTask),
   comment: (id: string, body: string) =>
     call<unknown>(`/api/tasks/${id}/comments`, json("POST", { body }), () =>

@@ -94,6 +94,14 @@ export function useUpdateTask() {
   });
 }
 
+export function useStartTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => tasksApi.start(id),
+    onSuccess: () => invalidateTasks(queryClient),
+  });
+}
+
 export function useCommentOnTask() {
   const queryClient = useQueryClient();
   return useMutation({
