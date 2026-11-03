@@ -33,6 +33,7 @@ from backend.executor.direct_block_execution import (
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
+    credentials_direct_execution_cannot_supply,
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
@@ -120,6 +121,12 @@ async def execute_graph_block(
         raise HTTPException(
             status_code=403,
             detail=f"Block #{block_id} can only run inside a workflow.",
+        )
+    if needed := credentials_direct_execution_cannot_supply(obj):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Block #{block_id} needs credentials ({', '.join(needed)}), "
+            "so it can only run inside a workflow.",
         )
 
     user = await user_db.get_user_by_id(auth.user_id)

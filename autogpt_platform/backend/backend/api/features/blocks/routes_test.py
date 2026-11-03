@@ -16,6 +16,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -318,6 +319,32 @@ def test_execute_graph_block_charges_when_cost_positive(
     assert metadata.block == "PaidBlock"
     assert metadata.input == cost_filter
     assert metadata.reason == "Direct internal block execution of PaidBlock"
+
+
+def test_a_block_that_needs_credentials_is_refused_before_it_is_charged(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Only the graph executor resolves stored credentials, so this route answers
+    422 rather than charging for a run that dies on the missing argument."""
+    block = ExecuteCodeBlock()
+    mocker.patch("backend.api.features.blocks.routes.get_block", return_value=block)
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+    mocker.patch(
+        "backend.api.features.blocks.routes.get_user_by_id", return_value=mock_user
+    )
+    mocker.patch("backend.executor.utils.block_usage_cost", return_value=(5, {}))
+    mock_credit_model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json=block.test_input)
+
+    assert response.status_code == 422, response.text
+    assert "inside a workflow" in response.json()["detail"]
+    mock_credit_model.spend_credits.assert_not_awaited()
 
 
 def test_execute_graph_block_returns_402_on_insufficient_balance(
