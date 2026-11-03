@@ -81,7 +81,7 @@ function SessionRecordWorkflow({ sessionID }: Props) {
             aria-live="polite"
             tone="success-strong"
           >
-            Recording reviewed. Ask Copilot to generate the skill.
+            Recording reviewed. Ask Otto to generate the skill.
           </Text>
           <Button variant="secondary" size="small" onClick={flow.reset}>
             Record another

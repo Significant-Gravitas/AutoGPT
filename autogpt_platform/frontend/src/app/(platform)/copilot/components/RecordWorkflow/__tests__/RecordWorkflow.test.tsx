@@ -140,7 +140,7 @@ describe("RecordWorkflow", () => {
     );
     expect(
       await screen.findByText(
-        /recording reviewed. ask copilot to generate the skill/i,
+        /recording reviewed. ask otto to generate the skill/i,
       ),
     ).toBeDefined();
   });

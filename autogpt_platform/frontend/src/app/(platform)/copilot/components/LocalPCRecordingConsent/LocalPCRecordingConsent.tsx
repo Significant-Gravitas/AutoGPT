@@ -56,7 +56,7 @@ export function LocalPCRecordingConsent({
           <Text variant="body" tone="emphasis">
             Your computer doesn&apos;t have a local model that can read these
             screenshots, so later skill generation needs cloud processing
-            through this AutoGPT deployment. If you ask Copilot to generate the
+            through this AutoGPT deployment. If you ask Otto to generate the
             skill, the raw screen images from this recording go to the servers
             configured for this deployment, a capable model reads them to write
             the skill, and your deployment&apos;s data policy and configured
