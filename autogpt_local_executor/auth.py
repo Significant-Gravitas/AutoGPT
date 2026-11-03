@@ -14,6 +14,7 @@ import base64
 import hashlib
 import json
 import secrets
+import time
 import urllib.parse
 import webbrowser
 from dataclasses import asdict, dataclass
@@ -27,6 +28,8 @@ from .config import ShimConfig, _validate_platform_endpoint
 KEYCHAIN_SERVICE = "autogpt-local-executor"
 KEYCHAIN_ACCESS_TOKEN_KEY = "access_token"
 KEYCHAIN_REFRESH_TOKEN_KEY = "refresh_token"
+# How long `autogpt-shim auth` waits for the browser to come back.
+CALLBACK_TIMEOUT_SECONDS = 300.0
 
 
 class CredentialScopeError(ValueError):
@@ -326,16 +329,30 @@ class OAuthFlow:
         for port in range(first_port, first_port + 12):
             try:
                 server = HTTPServer(("127.0.0.1", port), CallbackHandler)
-                server.timeout = 300
                 return server, auth_code, oauth_error, port
             except OSError:
                 continue
         raise RuntimeError(f"Could not bind OAuth callback on ports {first_port}-{first_port + 11}")
 
     @staticmethod
-    def _wait_for_callback(server: HTTPServer, auth_code: list[str], oauth_error: list[str]) -> str:
+    def _wait_for_callback(
+        server: HTTPServer,
+        auth_code: list[str],
+        oauth_error: list[str],
+        *,
+        timeout: float = CALLBACK_TIMEOUT_SECONDS,
+    ) -> str:
+        """Serve requests until the redirect to /callback arrives or `timeout`
+        passes. A request for another path, such as a browser fetching
+        /favicon.ico, does not end the wait."""
+        deadline = time.monotonic() + timeout
         try:
-            server.handle_request()
+            while not auth_code and not oauth_error:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                server.timeout = remaining
+                server.handle_request()
         finally:
             server.server_close()
 
