@@ -74,6 +74,37 @@ describe("useSignInProvider", () => {
     expect(lookups).toBe(1);
   });
 
+  it("lets onboarding go on 5 seconds in, however the retry goes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let lookups = 0;
+    const released = new Promise<void>((resolve) => {
+      releaseLookups = resolve;
+    });
+    server.use(
+      http.get("*/api/auth/sign-in-providers", async () => {
+        lookups += 1;
+        if (lookups === 1) {
+          // Fails late in the lookup's time, so its retry starts near the end.
+          await new Promise((resolve) => setTimeout(resolve, 3500));
+          return HttpResponse.json({}, { status: 503 });
+        }
+        const reply = released.then(() =>
+          HttpResponse.json({ providers: ["microsoft"] }),
+        );
+        heldLookups.push(reply);
+        return reply;
+      }),
+    );
+    const { result } = renderLookup();
+
+    for (let second = 0; second < 6; second += 1) {
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+    }
+
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.provider).toBeNull();
+  });
+
   it("tries once more after a lookup that fails quickly", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let lookups = 0;

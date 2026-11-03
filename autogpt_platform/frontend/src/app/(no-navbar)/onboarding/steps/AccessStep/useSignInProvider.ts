@@ -8,10 +8,8 @@ export function useSignInProvider(enabled: boolean) {
     queryFn: listSignInProviders,
     enabled,
     staleTime: Infinity,
-    // One more try after a quick failure. A lookup that timed out would only
-    // wait as long again, so onboarding waits at most the one timeout.
-    retry: (failureCount, error) =>
-      failureCount < 1 && !(error instanceof LookupTimeout),
+    // listSignInProviders retries within its own deadline.
+    retry: false,
   });
   return {
     provider: providers.data?.find((id) => id in ACCESS_PROVIDERS) ?? null,
@@ -20,27 +18,45 @@ export function useSignInProvider(enabled: boolean) {
   };
 }
 
-// As long as the feature flags the wizard also waits on.
+// As long as the feature flags the wizard also waits on, for the whole lookup.
 const LOOKUP_TIMEOUT_MS = 5000;
-
-class LookupTimeout extends Error {}
+const RETRY_DELAY_MS = 1000;
 
 async function listSignInProviders(): Promise<string[]> {
-  // A lookup that hangs has to fail like one that errors, or onboarding
-  // waits on it.
-  const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), LOOKUP_TIMEOUT_MS);
+  // One deadline for the lookup and its retry together: a lookup that hangs
+  // has to fail like one that errors, or onboarding waits on it.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), LOOKUP_TIMEOUT_MS);
   try {
-    const response = await fetch("/api/auth/sign-in-providers", {
-      signal: timeout.signal,
-    });
-    if (!response.ok) throw new Error("Could not list sign-in providers");
-    const { providers } = (await response.json()) as { providers: string[] };
-    return providers;
+    return await requestSignInProviders(deadline.signal);
   } catch (error) {
-    if (timeout.signal.aborted) throw new LookupTimeout();
-    throw error;
+    // A lookup that timed out would only hang again.
+    if (deadline.signal.aborted) throw error;
+    // One more try after a quick failure, in what is left of the time.
+    await waitUnlessAborted(RETRY_DELAY_MS, deadline.signal);
+    return await requestSignInProviders(deadline.signal);
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function requestSignInProviders(signal: AbortSignal): Promise<string[]> {
+  const response = await fetch("/api/auth/sign-in-providers", { signal });
+  if (!response.ok) throw new Error("Could not list sign-in providers");
+  const { providers } = (await response.json()) as { providers: string[] };
+  return providers;
+}
+
+function waitUnlessAborted(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
 }
