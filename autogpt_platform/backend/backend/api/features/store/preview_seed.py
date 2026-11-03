@@ -44,6 +44,7 @@ from backend.data.block import initialize_blocks
 from backend.data.db import execute_raw_with_schema
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.org_migration import ensure_personal_org
+from backend.util.settings import AppEnvironment, Settings
 
 from . import db as store_db
 from . import model as store_model
@@ -82,6 +83,10 @@ WORKFLOW_BLOCKS = (
 
 APPROVAL_COMMENT = "Approved for the preview marketplace."
 SEED_NOTE = "Seeded by seed-preview-marketplace."
+
+
+class SeedRefused(RuntimeError):
+    """Synthetic data must never reach this environment."""
 
 
 class SeedSummary(BaseModel):
@@ -126,6 +131,8 @@ def reviewer_keys(listing: SeedListing) -> list[str]:
 
 
 async def seed_marketplace() -> SeedSummary:
+    if Settings().config.app_env == AppEnvironment.PRODUCTION:
+        raise SeedRefused("refusing to seed synthetic data into production")
     summary = SeedSummary()
     await _ensure_workflow_blocks()
 

@@ -17,9 +17,8 @@ import json
 import logging
 import sys
 
-from backend.api.features.store.preview_seed import seed_marketplace
+from backend.api.features.store.preview_seed import SeedRefused, seed_marketplace
 from backend.data import db as database
-from backend.util.settings import AppEnvironment, Settings
 
 _DESCRIPTION = "Seed a small synthetic marketplace into this environment."
 
@@ -33,12 +32,12 @@ def main() -> None:
 
 
 async def _run() -> int:
-    if Settings().config.app_env == AppEnvironment.PRODUCTION:
-        print("error: refusing to seed synthetic data into production", file=sys.stderr)
-        return 2
     await database.connect()
     try:
         summary = await seed_marketplace()
+    except SeedRefused as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     finally:
         await database.disconnect()
     print(json.dumps(summary.model_dump(), indent=2))

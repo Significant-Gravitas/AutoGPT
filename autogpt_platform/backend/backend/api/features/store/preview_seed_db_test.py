@@ -153,6 +153,10 @@ async def test_skills_list_and_open_by_slug(seeded):
     assert skill.body.startswith("# ")
 
 
+# The tests from here on change the seeded state, so they stay after every
+# test that reads it.
+
+
 async def test_a_listing_rejected_since_stays_rejected(seeded):
     listing = LISTINGS[1]
     row = await prisma.models.StoreListing.prisma().find_unique_or_raise(
