@@ -44,6 +44,13 @@ _LLM_STREAM_MAX_FRAMES = 64
 _LLM_STREAM_MAX_FRAME_BYTES = 64 * 1024
 _LLM_STREAM_MAX_CONCURRENT = 4
 
+# The longest the companion runs one command. HELLO_ACK sends it, and the
+# companion keeps the smaller of this and its own setting.
+COMMAND_TIMEOUT_SECONDS = 30
+# Time the companion needs to stop a command that ran out of time and send back
+# what it printed.
+_COMMAND_RESULT_GRACE_SECONDS = 10.0
+
 
 # In-flight-on-disconnect semantics — see PROTOCOL.md
 # "In-flight semantics on disconnect". Ops in this set are repeat-safe at the
@@ -1447,8 +1454,16 @@ class _CommandsProxy:
             payload["timeout_seconds"] = timeout
         if envs:
             payload["env"] = envs
+        # Wait out the companion's own deadline: a command that ran out of time
+        # still has to be stopped and reported, and an RPC that gave up first
+        # would report a plain timeout as an unconfirmed side effect.
+        deadline = min(timeout or COMMAND_TIMEOUT_SECONDS, COMMAND_TIMEOUT_SECONDS)
         try:
-            resp = await self._shim._rpc("EXECUTE_COMMAND", payload)
+            resp = await self._shim._rpc(
+                "EXECUTE_COMMAND",
+                payload,
+                timeout=deadline + _COMMAND_RESULT_GRACE_SECONDS,
+            )
         except OpUnconfirmedError as exc:
             raise RuntimeError(
                 _translate_unconfirmed(

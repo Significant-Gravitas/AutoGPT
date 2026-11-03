@@ -25,7 +25,11 @@ from backend.copilot.tools.local_pc_metrics import (
 )
 from backend.copilot.tools.local_pc_relay import get_local_pc_relay
 from backend.copilot.tools.local_pc_relay_protocol import machine_scope_id
-from backend.copilot.tools.local_pc_shim import ShimHello, get_shim_manager
+from backend.copilot.tools.local_pc_shim import (
+    COMMAND_TIMEOUT_SECONDS,
+    ShimHello,
+    get_shim_manager,
+)
 from backend.data.auth.oauth import introspect_token
 
 logger = logging.getLogger(__name__)
@@ -36,7 +40,6 @@ LOCAL_EXECUTOR_PROTOCOL_VERSION = "1.1"
 MAX_HELLO_BYTES = 64 * 1024
 HELLO_TIMEOUT_SECONDS = 10.0
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
-COMMAND_TIMEOUT_SECONDS = 30
 MAX_CONCURRENT_REQUESTS = 4
 SERVER_SUPPORTED_CAPABILITIES = frozenset(
     {

@@ -12,6 +12,7 @@ import pytest
 from .local_pc_relay_protocol import RelayPresence
 from .local_pc_shim import (
     _IDEMPOTENT_OPS,
+    COMMAND_TIMEOUT_SECONDS,
     LocalPCShim,
     OpUnconfirmedError,
     ShimComputerUseError,
@@ -677,6 +678,29 @@ class TestCommandsRunE2BKwargs:
         payload = shim._rpc.await_args.args[1]
         assert payload["timeout_seconds"] == 5
         assert "timeout" not in payload
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        ("requested", "deadline"),
+        [
+            (5, 5),
+            (None, COMMAND_TIMEOUT_SECONDS),
+            (120, COMMAND_TIMEOUT_SECONDS),
+        ],
+    )
+    async def test_rpc_outlasts_the_companions_command_deadline(
+        self, requested: int | None, deadline: int
+    ):
+        """The companion stops a command at the smaller of the requested
+        timeout and the HELLO_ACK cap, then still has to report it. An RPC that
+        gave up at that moment would turn every timed-out command into an
+        unconfirmed side effect."""
+        shim = _make_shim_with_rpc(
+            {"payload": {"stdout": "", "stderr": "", "exit_code": 0}}
+        )
+        await shim.commands.run("sleep 1", timeout=requested)
+        rpc_timeout = shim._rpc.await_args.kwargs["timeout"]
+        assert deadline < rpc_timeout <= deadline + 30
 
 
 class TestLocalPCShimHelloAttributes:
