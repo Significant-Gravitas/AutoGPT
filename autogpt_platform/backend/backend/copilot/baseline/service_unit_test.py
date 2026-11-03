@@ -155,14 +155,12 @@ async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
             session,
             "session-1",
             "private prompt",
-            "private response",
         )
 
     enqueue_mock.assert_awaited_once_with(
         "user-1",
         "session-1",
         "private prompt",
-        assistant_msg="private response",
         expert_id="expert-1",
         bridge_origin=False,
     )

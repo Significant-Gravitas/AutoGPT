@@ -1,7 +1,6 @@
 """Tests for Graphiti ingestion queue and worker logic."""
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -697,12 +696,9 @@ class TestEnqueueEpisode:
             assert item["source"] == EpisodeType.json
 
 
-class TestDerivedFindingLane:
+class TestConversationTurnIngestion:
     @pytest.mark.asyncio
-    async def test_finding_worthy_message_enqueues_two_episodes(self) -> None:
-        """A substantive assistant message should enqueue both the user
-        episode and a derived-finding episode."""
-        long_msg = "The analysis reveals significant growth patterns " + "x" * 200
+    async def test_a_turn_saves_only_the_users_words(self) -> None:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
         enqueue_mock = _enqueue_mock(q)
 
@@ -718,61 +714,13 @@ class TestDerivedFindingLane:
                 user_id="abc",
                 session_id="sess1",
                 user_msg="tell me about growth",
-                assistant_msg=long_msg,
             )
-            # Should have 2 items: user episode + derived finding
-            assert q.qsize() == 2
 
-        user_payload = q.get_nowait()
-        finding_payload = q.get_nowait()
-        # Only the user's own words promote the tentative facts they state:
-        # the finding is the assistant's, on probation like a dream proposal.
-        assert user_payload["_restatement"] is True
-        assert "_restatement" not in finding_payload
-        # CUSTOM_EXTRACTION_INSTRUCTIONS tells the extractor to always make an
-        # entity of the envelope's "user"; a null one leaves the finding with
-        # nothing to attach to.
-        assert json.loads(finding_payload["episode_body"])["user"] == "Alice"
-
-    @pytest.mark.asyncio
-    async def test_short_assistant_msg_skips_finding(self) -> None:
-        q: asyncio.Queue = asyncio.Queue(maxsize=100)
-        enqueue_mock = _enqueue_mock(q)
-        with (
-            patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
-            patch(
-                "backend.copilot.graphiti.ingest.resolve_user_name",
-                new_callable=AsyncMock,
-                return_value="Alice",
-            ),
-        ):
-            await ingest.enqueue_conversation_turn(
-                user_id="abc",
-                session_id="sess1",
-                user_msg="hi",
-                assistant_msg="ok",
-            )
-            # Only 1 item: the user episode (no finding for short msg)
-            assert q.qsize() == 1
-
-
-class TestDerivedFindingDistillation:
-    """_is_finding_worthy and _distill_finding gate derived-finding creation."""
-
-    def test_short_message_not_finding_worthy(self) -> None:
-        assert ingest._is_finding_worthy("ok") is False
-
-    def test_chatter_prefix_not_finding_worthy(self) -> None:
-        assert ingest._is_finding_worthy("done " + "x" * 200) is False
-
-    def test_long_substantive_message_is_finding_worthy(self) -> None:
-        msg = "The quarterly revenue analysis shows a 15% increase " + "x" * 200
-        assert ingest._is_finding_worthy(msg) is True
-
-    def test_distill_finding_truncates_to_500(self) -> None:
-        result = ingest._distill_finding("x" * 600)
-        assert result is not None
-        assert len(result) == 503  # 500 + "..."
+        assert q.qsize() == 1
+        payload = q.get_nowait()
+        assert payload["name"] == "conversation_sess1"
+        assert payload["episode_body"] == "Alice: tell me about growth"
+        assert payload["_restatement"] is True
 
 
 class TestWorkerIdleTimeout:

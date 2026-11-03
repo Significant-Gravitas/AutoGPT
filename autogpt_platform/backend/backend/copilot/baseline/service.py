@@ -1828,13 +1828,11 @@ async def _enqueue_graphiti_turn(
     session: ChatSession,
     session_id: str,
     message: str,
-    assistant_msg: str,
 ) -> None:
     await enqueue_conversation_turn(
         user_id,
         session_id,
         message,
-        assistant_msg=assistant_msg,
         expert_id=session.expert_id,
         bridge_origin=session.metadata.source_platform is not None,
     )
@@ -3108,16 +3106,12 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            # Pass only the final assistant reply (after stripping tool-loop
-            # chatter) so derived-finding distillation sees the substantive
-            # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
                 _enqueue_graphiti_turn(
                     user_id,
                     session,
                     session_id,
                     message,
-                    final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)

@@ -25,7 +25,7 @@ from backend.util.background import spawn_background_task
 
 from . import marked_write
 from .client import ensure_indices_once, get_graphiti_client
-from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .memory_model import MemoryStatus
 from .recall_citations import Citations, rests_on_a_forget
 from .recall_ingest import previous_episode_uuids
 from .scope import MemoryScope
@@ -487,7 +487,7 @@ async def _promote_restated(client: Graphiti, result: AddEpisodeResults) -> None
     """Promote each tentative fact a user's chat turn states, new or merged
     into, to ``active`` with a ``ratified_at`` stamp (the ratification
     loop's promotion, ``dream.ratification``). Tentative is probation for
-    what the system inferred, a dream proposal or an assistant's finding,
+    what the system inferred, such as a dream proposal,
     and the user saying it ends it; their own statement is not put on
     probation because graphiti's model labelled it tentative. Only the facts
     whose ``episodes`` include the turn's: the ones graphiti invalidated are
@@ -646,7 +646,6 @@ async def enqueue_conversation_turn(
     user_id: str,
     session_id: str,
     user_msg: str,
-    assistant_msg: str = "",
     expert_id: str | None = None,
     *,
     bridge_origin: bool = False,
@@ -657,9 +656,8 @@ async def enqueue_conversation_turn(
     ``add_episode()`` call (which triggers LLM entity extraction)
     runs in a background worker task.
 
-    If ``assistant_msg`` is provided and contains substantive findings
-    (not just acknowledgments), a separate derived-finding episode is
-    queued with ``source_kind=assistant_derived`` and ``status=tentative``.
+    Only the user's words are ingested. What the assistant concluded is
+    saved by its own ``memory_store`` call, never from its reply.
     """
     if not user_id:
         return
@@ -710,33 +708,6 @@ async def enqueue_conversation_turn(
             user_id[:12],
         )
         return
-
-    # --- Derived-finding lane ---
-    # If the assistant response is substantive, distill it into a
-    # structured finding with tentative status.
-    if assistant_msg and _is_finding_worthy(assistant_msg):
-        finding = _distill_finding(assistant_msg)
-        if finding:
-            envelope = MemoryEnvelope(
-                user=user_display_name,
-                content=finding,
-                source_kind=SourceKind.assistant_derived,
-                memory_kind=MemoryKind.finding,
-                status=MemoryStatus.tentative,
-                provenance=f"session:{session_id}",
-            )
-            await _enqueue_payload(
-                scope,
-                {
-                    "name": f"finding_{session_id}",
-                    "episode_body": envelope.model_dump_json(),
-                    "source": EpisodeType.json,
-                    "source_description": f"Assistant-derived finding in session {session_id}",
-                    "reference_time": datetime.now(timezone.utc),
-                    "group_id": group_id,
-                    "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
-                },
-            )
 
 
 async def enqueue_episode(
@@ -932,58 +903,3 @@ async def resolve_user_name(user_id: str) -> str:
     except Exception:
         logger.debug("Could not resolve user name for %s", user_id[:12])
     return "User"
-
-
-# --- Derived-finding distillation ---
-
-# Phrases that indicate workflow chatter, not substantive findings.
-_CHATTER_PREFIXES = (
-    "done",
-    "got it",
-    "sure, i",
-    "sure!",
-    "ok",
-    "okay",
-    "i've created",
-    "i've updated",
-    "i've sent",
-    "i'll ",
-    "let me ",
-    "a sign-in button",
-    "please click",
-)
-
-# Minimum length for an assistant message to be considered finding-worthy.
-_MIN_FINDING_LENGTH = 150
-
-
-def _is_finding_worthy(assistant_msg: str) -> bool:
-    """Heuristic gate: is this assistant response worth distilling into a finding?
-
-    Skips short acknowledgments, workflow chatter, and UI prompts.
-    Only passes through responses that likely contain substantive
-    factual content (research results, analysis, conclusions).
-    """
-    if len(assistant_msg) < _MIN_FINDING_LENGTH:
-        return False
-
-    lower = assistant_msg.lower().strip()
-    for prefix in _CHATTER_PREFIXES:
-        if lower.startswith(prefix):
-            return False
-
-    return True
-
-
-def _distill_finding(assistant_msg: str) -> str | None:
-    """Extract the core finding from an assistant response.
-
-    For now, uses a simple truncation approach. Phase 3+ could use
-    a lightweight LLM call for proper distillation.
-    """
-    # Take the first 500 chars as the finding content.
-    # Strip markdown formatting artifacts.
-    content = assistant_msg.strip()
-    if len(content) > 500:
-        content = content[:500] + "..."
-    return content if content else None
