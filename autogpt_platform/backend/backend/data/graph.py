@@ -2,9 +2,21 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    Optional,
+    Self,
+    cast,
+    get_args,
+)
 
+from prisma import Prisma
 from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
@@ -31,14 +43,21 @@ from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    GraphValidationError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
+from backend.util.text import split_camelcase
 
 from .block import BlockInput
-from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import is_tool_pin, sanitize_pin_name
+from .db import BaseDbModel, execute_raw_with_schema, transaction
+from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -63,22 +82,6 @@ class GraphSettings(BaseModel):
     ] = False
     builder_chat_session_id: str | None = None
 
-    @classmethod
-    def from_graph(
-        cls,
-        graph: "GraphModel",
-        hitl_safe_mode: bool | None = None,
-        sensitive_action_safe_mode: bool = False,
-        builder_chat_session_id: str | None = None,
-    ) -> "GraphSettings":
-        if hitl_safe_mode is None:
-            hitl_safe_mode = True
-        return cls(
-            human_in_the_loop_safe_mode=hitl_safe_mode,
-            sensitive_action_safe_mode=sensitive_action_safe_mode,
-            builder_chat_session_id=builder_chat_session_id,
-        )
-
 
 class Link(BaseDbModel):
     source_id: str
@@ -98,8 +101,27 @@ class Link(BaseDbModel):
             is_static=link.isStatic,
         )
 
+    @property
+    def ends(self) -> tuple[str, str, str, str]:
+        """The two pins the link connects; links with the same ends are
+        duplicates of each other."""
+        return (self.source_id, self.source_name, self.sink_id, self.sink_name)
+
     def __hash__(self):
-        return hash((self.source_id, self.sink_id, self.source_name, self.sink_name))
+        return hash(
+            (self.id, self.source_id, self.sink_id, self.source_name, self.sink_name)
+        )
+
+
+def dedupe_links(links: Iterable[Link]) -> list[Link]:
+    """Keeps the first link for each pair of ends, in order; it is static if
+    any of its duplicates is."""
+    unique: dict[tuple[str, str, str, str], Link] = {}
+    for link in links:
+        kept = unique.setdefault(link.ends, link)
+        if link.is_static and not kept.is_static:
+            unique[link.ends] = kept.model_copy(update={"is_static": True})
+    return list(unique.values())
 
 
 class Node(BaseDbModel):
@@ -132,6 +154,46 @@ class Node(BaseDbModel):
             return _UnknownBlockBase(self.block_id)
         return block
 
+    def stripped_for_export(self) -> Self:
+        """
+        Returns a copy of the node with non-transferable input values removed:
+        - fields the block schema declares as a `CredentialsMetaInput`
+          (point at the original owner's credentials store; importers must
+          wire up their own)
+        - fields the block schema marks with `secret: true` via
+          `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
+        - a sub-agent node's `user_id`, which `reassign_ids` stamps with the
+          owner's id on save and stamps again with the importer's. It is
+          blanked rather than removed: the field is required, and the agent
+          generator validates an edited copy before its save stamps the id.
+        """
+        stripped_node = self.model_copy(deep=True)
+
+        if self.block_id == AgentExecutorBlock().id:
+            stripped_node.input_default["user_id"] = ""
+
+        if stripped_node.input_default:
+            for field_name in self.block.input_schema.get_credentials_fields():
+                stripped_node.input_default.pop(field_name, None)
+
+            schema_props = self.block.input_schema.jsonschema().get("properties", {})
+            for field_name, field_schema in schema_props.items():
+                if (
+                    isinstance(field_schema, dict)
+                    and field_schema.get("secret", False) is True
+                ):
+                    stripped_node.input_default.pop(field_name, None)
+
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
+        return stripped_node
+
 
 class NodeModel(Node):
     graph_id: str
@@ -151,8 +213,10 @@ class NodeModel(Node):
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
         )
-        obj.input_links = [Link.from_db(link) for link in node.Input or []]
-        obj.output_links = [Link.from_db(link) for link in node.Output or []]
+        obj.input_links = dedupe_links(Link.from_db(link) for link in node.Input or [])
+        obj.output_links = dedupe_links(
+            Link.from_db(link) for link in node.Output or []
+        )
         if for_export:
             return obj.stripped_for_export()
         return obj
@@ -160,33 +224,53 @@ class NodeModel(Node):
     def is_triggered_by_event_type(self, event_type: str) -> bool:
         return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
-    def stripped_for_export(self) -> "NodeModel":
-        """
-        Returns a copy of the node model with non-transferable references removed:
-        - fields the block schema declares as a `CredentialsMetaInput`
-          (point at the original owner's credentials store; importers must
-          wire up their own)
-        - fields the block schema marks with `secret: true` via
-          `SchemaField(secret=True)` (block-author-declared sensitive values)
-        - `webhook_id` (points at the original owner's webhook subscription)
-        """
-        stripped_node = self.model_copy(deep=True)
-
-        if stripped_node.input_default:
-            for field_name in self.block.input_schema.get_credentials_fields():
-                stripped_node.input_default.pop(field_name, None)
-
-            schema_props = self.block.input_schema.jsonschema().get("properties", {})
-            for field_name, field_schema in schema_props.items():
-                if (
-                    isinstance(field_schema, dict)
-                    and field_schema.get("secret", False) is True
-                ):
-                    stripped_node.input_default.pop(field_name, None)
-
+    def stripped_for_export(self) -> Self:
+        """`Node.stripped_for_export`, and also drops `webhook_id` (points at
+        the original owner's webhook subscription)."""
+        stripped_node = super().stripped_for_export()
         stripped_node.webhook_id = None
-
         return stripped_node
+
+
+def _auto_credentials_field_names(node: Node) -> list[str]:
+    """Inputs of the node's block that hold a picked file: the auto-credentials
+    picker fields its schema declares, plus any input typed as a file carrying
+    `_credentials_id`. The second covers the default of an agent's Google Drive
+    file input, whose picker is only declared per node."""
+    if get_block(node.block_id) is None:
+        # The block was removed, so no schema says which inputs are pickers.
+        # Treat any value that embeds a `_credentials_id` as one, so a picked
+        # file doesn't slip through exports and non-owner reads.
+        return [
+            field_name
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
+    input_schema = node.block.input_schema
+    declared = [
+        info["field_name"]
+        for info in input_schema.get_auto_credentials_fields().values()
+    ]
+    typed = [
+        field_name
+        for field_name, field in input_schema.model_fields.items()
+        if field_name not in declared and _holds_picked_file(field.annotation)
+    ]
+    return declared + typed
+
+
+def _holds_picked_file(annotation: Any) -> bool:
+    """Whether a field of this type holds a picked file: a model with a
+    `_credentials_id` field, like GoogleDriveFile, or an Optional of one."""
+    return any(
+        isinstance(candidate, type)
+        and issubclass(candidate, BaseModel)
+        and any(
+            field.alias == "_credentials_id"
+            for field in candidate.model_fields.values()
+        )
+        for candidate in (annotation, *get_args(annotation))
+    )
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -258,7 +342,7 @@ class BaseGraph(GraphBaseMeta):
     @property
     def has_sensitive_action(self) -> bool:
         return any(
-            node.block_id for node in self.nodes if node.block.is_sensitive_action
+            node.block_id for node in self.nodes if node.block.is_irreversible_action
         )
 
     @property
@@ -308,6 +392,10 @@ class BaseGraph(GraphBaseMeta):
     ) -> dict[str, Any]:
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
+            # An input or output without a name isn't part of the graph's
+            # interface yet; validate_graph reports the missing name.
+            if not str(input_default.get("name") or "").strip():
+                continue
             try:
                 schema_fields.append(type_class.model_construct(**input_default))
             except Exception as e:
@@ -344,6 +432,22 @@ class GraphTriggerInfo(BaseModel):
         description="Input schema for the trigger block"
     )
     credentials_input_name: Optional[str]
+
+
+def unknown_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Names in `inputs` that a graph's `input_schema` has no input for."""
+    return sorted(inputs.keys() - input_schema.get("properties", {}).keys())
+
+
+def missing_inputs(
+    input_schema: dict[str, Any], inputs: Mapping[str, Any]
+) -> list[str]:
+    """Required inputs of a graph's `input_schema` that `inputs` omits or sets to null."""
+    return sorted(
+        name for name in input_schema.get("required", []) if inputs.get(name) is None
+    )
 
 
 class Graph(BaseGraph):
@@ -457,27 +561,7 @@ class GraphModel(Graph, GraphMeta):
             f"{graph_credentials_inputs}"
         )
 
-        # Warn if same-provider credentials inputs can't be combined (= bad UX)
-        graph_cred_fields = list(graph_credentials_inputs.values())
-        for i, (field, keys, _) in enumerate(graph_cred_fields):
-            for other_field, other_keys, _ in list(graph_cred_fields)[i + 1 :]:
-                if field.provider != other_field.provider:
-                    continue
-                if ProviderName.HTTP in field.provider:
-                    continue
-                # MCP credentials are intentionally split by server URL
-                if ProviderName.MCP in field.provider:
-                    continue
-
-                # If this happens, that means a block implementation probably needs
-                # to be updated.
-                logger.warning(
-                    "Multiple combined credentials fields "
-                    f"for provider {field.provider} "
-                    f"on graph #{self.id} ({self.name}); "
-                    f"fields: {field} <> {other_field};"
-                    f"keys: {keys} <> {other_keys}."
-                )
+        self._warn_uncombined_credentials_inputs(graph_credentials_inputs)
 
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
@@ -559,6 +643,42 @@ class GraphModel(Graph, GraphMeta):
             "properties": properties,
             "required": required_fields,
         }
+
+    def _warn_uncombined_credentials_inputs(
+        self,
+        graph_credentials_inputs: dict[
+            str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]
+        ],
+    ) -> None:
+        """Warn if same-provider credentials inputs can't be combined (= bad UX).
+
+        Inputs are grouped by provider, and each provider with more than one
+        input is warned about once.
+        """
+        by_provider: defaultdict[
+            frozenset, list[tuple[CredentialsFieldInfo, set[tuple[str, str]]]]
+        ] = defaultdict(list)
+        for field, keys, _ in graph_credentials_inputs.values():
+            by_provider[field.provider].append((field, keys))
+
+        for provider, fields in by_provider.items():
+            if len(fields) < 2:
+                continue
+            if ProviderName.HTTP in provider:
+                continue
+            # MCP credentials are intentionally split by server URL
+            if ProviderName.MCP in provider:
+                continue
+
+            # If this happens, that means a block implementation probably needs
+            # to be updated.
+            logger.warning(
+                "Multiple combined credentials fields "
+                f"for provider {provider} "
+                f"on graph #{self.id} ({self.name}); "
+                f"fields: {' <> '.join(str(field) for field, _ in fields)}; "
+                f"keys: {' <> '.join(str(keys) for _, keys in fields)}."
+            )
 
     def aggregate_credentials_inputs(
         self,
@@ -721,21 +841,13 @@ class GraphModel(Graph, GraphMeta):
             if not v[0].is_auto_credential
         }
 
-    @property
-    def auto_credentials_inputs(
-        self,
-    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]], bool]]:
-        """Credentials embedded in file fields (_credentials_id), resolved at execution time."""
-        return {
-            k: v
-            for k, v in self.aggregate_credentials_inputs().items()
-            if v[0].is_auto_credential
-        }
-
-    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
+    def reassign_ids(
+        self, user_id: str, reassign_graph_id: bool = False
+    ) -> dict[str, str]:
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
+        Returns each new node ID mapped to the node ID it replaced.
         """
         if reassign_graph_id:
             graph_id_map = {
@@ -745,16 +857,17 @@ class GraphModel(Graph, GraphMeta):
         else:
             graph_id_map = {}
 
-        self._reassign_ids(self, user_id, graph_id_map)
+        replaced_node_ids = self._reassign_ids(self, user_id, graph_id_map)
         for sub_graph in self.sub_graphs:
-            self._reassign_ids(sub_graph, user_id, graph_id_map)
+            replaced_node_ids |= self._reassign_ids(sub_graph, user_id, graph_id_map)
+        return replaced_node_ids
 
     @staticmethod
     def _reassign_ids(
         graph: BaseGraph,
         user_id: str,
         graph_id_map: dict[str, str],
-    ):
+    ) -> dict[str, str]:
         # Reassign Graph ID
         if graph.id in graph_id_map:
             graph.id = graph_id_map[graph.id]
@@ -782,20 +895,45 @@ class GraphModel(Graph, GraphMeta):
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-        # Clear auto-credentials references (e.g., _credentials_id in
-        # GoogleDriveFile fields) so the new user must re-authenticate
-        # with their own account. We null the entire field rather than
-        # just the _credentials_id key — a partial object (e.g. a bare
-        # {"id": "...", "name": "..."} left over after stripping) would
-        # be rejected by the auto-credentials validator added below,
-        # breaking fork_graph() for agents that previously had a
-        # picker-selected Drive file.
-        for node in graph.nodes:
-            if not node.input_default:
-                continue
-            for key, value in list(node.input_default.items()):
-                if isinstance(value, dict) and "_credentials_id" in value:
-                    node.input_default[key] = None
+        return {new_id: old_id for old_id, new_id in id_map.items()}
+
+    def clear_auto_credentials(
+        self, keep_ids: Container[str] = frozenset()
+    ) -> list[tuple[Node, str, Any]]:
+        """
+        Null every picked file (see `auto_credentials_refs`) whose embedded
+        `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
+        and return the cleared ones in the shape `auto_credentials_refs` uses.
+
+        A save keeps the saving user's own (see `before_graph_activate`), and a
+        read by someone who doesn't own the graph keeps none (see `get_graph`).
+        Exports, forks and copies strip picked files in
+        `NodeModel.stripped_for_export`. The whole field is nulled, not just the
+        key, because a file object without a `_credentials_id` is rejected by
+        the auto-credentials check in `_validate_graph`.
+        """
+        cleared = [
+            (node, field_name, credentials_id)
+            for node, field_name, credentials_id in self.auto_credentials_refs()
+            if not (isinstance(credentials_id, str) and credentials_id in keep_ids)
+        ]
+        for node, field_name, _ in cleared:
+            node.input_default[field_name] = None
+        return cleared
+
+    def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
+        """Files picked into auto-credentials inputs (e.g. a GoogleDriveFile), in
+        this graph and its sub-graphs, as (node, input name, embedded
+        `_credentials_id`). Other inputs are left alone even when they happen to
+        hold a `_credentials_id` key."""
+        return [
+            (node, field_name, value["_credentials_id"])
+            for graph in (self, *self.sub_graphs)
+            for node in graph.nodes
+            for field_name in _auto_credentials_field_names(node)
+            if isinstance(value := node.input_default.get(field_name), dict)
+            and "_credentials_id" in value
+        ]
 
     def validate_graph(
         self,
@@ -820,10 +958,9 @@ class GraphModel(Graph, GraphMeta):
             graph, for_run, nodes_input_masks
         )
         if errors:
-            # Just raise the first error for backward compatibility
-            first_error = next(iter(errors.values()))
-            first_field_error = next(iter(first_error.values()))
-            raise ValueError(first_field_error)
+            raise GraphValidationError(
+                _describe_node_errors(graph, errors), node_errors=errors
+            )
 
     def validate_graph_get_errors(
         self,
@@ -888,14 +1025,18 @@ class GraphModel(Graph, GraphMeta):
 
             if block.disabled:
                 raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in graphs"
+                    f"Block {node.block_id} is disabled and cannot be used in workflows"
                 )
 
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize_pin_name(name) for name in node.input_default]
+                [
+                    sanitize_pin_name(name)
+                    for name, value in node.input_default.items()
+                    if not _is_blank_io_name(block, name, value)
+                ]
                 + [
                     sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
@@ -1023,10 +1164,10 @@ class GraphModel(Graph, GraphMeta):
                 if picker_format == "google-drive-picker":
                     remediation = (
                         f"Add an AgentGoogleDriveFileInputBlock node to the "
-                        f"graph and link its 'result' output to "
+                        f"workflow and link its 'result' output to "
                         f"{field_name!r} instead. That block renders a "
                         f"Google Drive picker at run time so whoever runs "
-                        f"the agent supplies their own credentials via the "
+                        f"the workflow supplies their own credentials via the "
                         f"picked file."
                     )
                 else:
@@ -1036,7 +1177,7 @@ class GraphModel(Graph, GraphMeta):
                         f"This field expects a picker-populated object "
                         f"containing a '_credentials_id'. Wire the matching "
                         f"input block for this provider into {field_name!r} "
-                        f"so whoever runs the agent supplies their own "
+                        f"so whoever runs the workflow supplies their own "
                         f"credentials at run time."
                     )
 
@@ -1194,12 +1335,10 @@ class GraphModel(Graph, GraphMeta):
             organization_id=graph.organizationId if not for_export else None,
             team_id=graph.teamId if not for_export else None,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
-            links=list(
-                {
-                    Link.from_db(link)
-                    for node in graph.Nodes or []
-                    for link in (node.Input or []) + (node.Output or [])
-                }
+            links=dedupe_links(
+                Link.from_db(link)
+                for node in graph.Nodes or []
+                for link in (node.Input or []) + (node.Output or [])
             ),
             sub_graphs=[
                 GraphModel.from_db(sub_graph, for_export)
@@ -1215,6 +1354,75 @@ class GraphModel(Graph, GraphMeta):
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
 
+    def shared_copy(self) -> Self:
+        """A copy safe to show someone who doesn't own this graph.
+
+        Every node, sub-graphs' included, is stripped the way an export strips
+        it (`stripped_for_export`), and the owner's identity is blanked, as
+        `from_db(..., for_export=True)` does. It works on an already-loaded
+        model, so a route can decide by ownership once it knows the owner.
+        Internal callers that act on the owner's behalf (presets, triggers, the
+        executor) keep reading the full graph.
+        """
+        return self.model_copy(
+            update={
+                "user_id": "",
+                "organization_id": None,
+                "team_id": None,
+                "nodes": [node.stripped_for_export() for node in self.nodes],
+                # Sub-graphs serialize without their owner's ids only because
+                # they are typed `BaseGraph`, which has no such fields.
+                "sub_graphs": [
+                    sub_graph.model_copy(
+                        update={
+                            "nodes": [
+                                node.stripped_for_export() for node in sub_graph.nodes
+                            ]
+                        }
+                    )
+                    for sub_graph in self.sub_graphs
+                ],
+            }
+        )
+
+
+def _describe_node_errors(
+    graph: BaseGraph, node_errors: Mapping[str, Mapping[str, str]]
+) -> str:
+    """The first problem in the builder's words, e.g. "Agent Output › Name:
+    This field is required", and how many more there are."""
+    nodes = {node.id: node for node in graph.nodes}
+    problems = [
+        f"{_node_title(nodes[node_id])} › {_field_title(nodes[node_id], field)}: "
+        f"{error}"
+        for node_id, field_errors in node_errors.items()
+        for field, error in field_errors.items()
+    ]
+    if len(problems) > 1:
+        return f"{problems[0]} (and {len(problems) - 1} more)"
+    return problems[0]
+
+
+def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
+    """An input or output named "" has no name, and the graph's interface needs
+    one; one wired in from a link still counts."""
+    return (
+        field == "name"
+        and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+        and not str(value or "").strip()
+    )
+
+
+def _node_title(node: Node) -> str:
+    if customized_name := node.metadata.get("customized_name"):
+        return str(customized_name)
+    return split_camelcase(node.block.name.removesuffix("Block"))
+
+
+def _field_title(node: Node, field: str) -> str:
+    properties = node.block.input_schema.jsonschema().get("properties", {})
+    return properties.get(field, {}).get("title") or field
+
 
 class GraphModelWithoutNodes(GraphModel):
     """
@@ -1229,13 +1437,6 @@ class GraphModelWithoutNodes(GraphModel):
     links: list[Link] = Field(default_factory=list, exclude=True)
 
     sub_graphs: list[BaseGraph] = Field(default_factory=list, exclude=True)
-
-
-class GraphsPaginated(BaseModel):
-    """Response schema for paginated graphs."""
-
-    graphs: list[GraphMeta]
-    pagination: Pagination
 
 
 # --------------------- CRUD functions --------------------- #
@@ -1272,7 +1473,7 @@ async def list_graphs_paginated(
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
     organization_id: str | None = None,
-) -> GraphsPaginated:
+) -> tuple[list[GraphMeta], Pagination]:
     """
     Retrieves paginated graph metadata objects.
 
@@ -1287,7 +1488,8 @@ async def list_graphs_paginated(
             personal ownership.
 
     Returns:
-        GraphsPaginated: Paginated list of graph metadata.
+        list[GraphMeta]: List of graph info objects.
+        Pagination: Pagination information.
     """
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
@@ -1296,7 +1498,7 @@ async def list_graphs_paginated(
             visibility_filter(user_id, organization_id, team_ids),
         )
     else:
-        where_clause = {"userId": user_id}
+        where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
@@ -1317,14 +1519,11 @@ async def list_graphs_paginated(
 
     graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 
-    return GraphsPaginated(
-        graphs=graph_models,
-        pagination=Pagination(
-            total_items=total_count,
-            total_pages=total_pages,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return graph_models, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
     )
 
 
@@ -1434,13 +1633,19 @@ async def get_graph(
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
-        return GraphModel.from_db(
+        graph_model = GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
             for_export=for_export,
         )
+    else:
+        graph_model = GraphModel.from_db(graph, for_export)
 
-    return GraphModel.from_db(graph, for_export)
+    if user_id is not None and not skip_access_check and graph.userId != user_id:
+        # Only the owner sees the files they picked and the credentials
+        # embedded in them. Marketplace readers and teammates pick their own.
+        graph_model.clear_auto_credentials()
+    return graph_model
 
 
 # PENDING is included so admin review can open a not-yet-approved submission
@@ -1513,11 +1718,27 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
         order={"agentGraphVersion": "desc"},
     )
 
-    return {
+    graphs = {
         listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
         for listing in store_listings
         if listing.AgentGraph
     }
+    for graph in graphs.values():
+        # Public reads never carry the publisher's picked files.
+        graph.clear_auto_credentials()
+    return graphs
+
+
+async def get_graph_at_version(
+    graph_id: str, version: int, *, client: Prisma | None
+) -> GraphModel | None:
+    """The graph at exactly *version*, with no access check: `get_graph` with
+    `skip_access_check=True`, on *client*. Not exposed over RPC."""
+    graph = await AgentGraph.prisma(client).find_first(
+        where={"id": graph_id, "version": version},
+        include=AGENT_GRAPH_INCLUDE,
+    )
+    return GraphModel.from_db(graph) if graph else None
 
 
 async def get_graph_as_admin(
@@ -1525,6 +1746,7 @@ async def get_graph_as_admin(
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    client: Prisma | None = None,
 ) -> GraphModel | None:
     """
     Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
@@ -1541,7 +1763,7 @@ async def get_graph_as_admin(
     if version is not None:
         where_clause["version"] = version
 
-    graph = await AgentGraph.prisma().find_first(
+    graph = await AgentGraph.prisma(client).find_first(
         where=where_clause,
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
@@ -1553,7 +1775,7 @@ async def get_graph_as_admin(
         return None
 
     if for_export:
-        sub_graphs = await get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph, client=client)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -1563,64 +1785,106 @@ async def get_graph_as_admin(
     return GraphModel.from_db(graph, for_export)
 
 
-async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
-    """
-    Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
-    This call involves a DB fetch in batch, breadth-first, per-level of graph depth.
-    On each DB fetch we will only fetch the sub-graphs that are not already in the list.
-    """
-    sub_graphs = {graph.id: graph}
-    search_graphs = [graph]
-    agent_block_id = AgentExecutorBlock().id
+async def get_sub_graphs(
+    graph: AgentGraph, client: Prisma | None = None
+) -> list[AgentGraph]:
+    """All sub-graphs of a given graph, recursively, flattened into a list."""
+    [sub_graphs] = await get_sub_graphs_of_each([graph], client=client)
+    return sub_graphs
 
-    while search_graphs:
-        sub_graph_ids = [
-            (graph_id, graph_version)
-            for graph in search_graphs
-            for node in graph.Nodes or []
-            if (
-                node.AgentBlock
-                and node.AgentBlock.id == agent_block_id
-                and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
-                and (
-                    graph_version := cast(
-                        int, dict(node.constantInput).get("graph_version")
-                    )
+
+async def get_sub_graphs_of_each(
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
+) -> list[list[AgentGraph]]:
+    """
+    Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
+    Fetched breadth-first with one DB query per level of depth for all `graphs`
+    together, so a sub-graph they share (e.g. across versions) is fetched once.
+    """
+    agent_block_id = AgentExecutorBlock().id
+    fetched: dict[tuple[str, int, str], AgentGraph | None] = {}
+    found = [{graph.id: graph} for graph in graphs]
+    frontiers = [[graph] for graph in graphs]
+
+    while any(frontiers):
+        refs = [
+            [
+                # A sub-graph counts only if the root graph's owner owns it
+                (graph_id, graph_version, root.userId)
+                for graph in frontier
+                for graph_id, graph_version in _sub_graph_refs(graph, agent_block_id)
+            ]
+            for root, frontier in zip(graphs, frontiers)
+        ]
+        if missing := {ref for level in refs for ref in level} - fetched.keys():
+            fetched.update(dict.fromkeys(missing))
+            rows = await AgentGraph.prisma(client).find_many(
+                where={
+                    "OR": [
+                        {"id": graph_id, "version": graph_version, "userId": user_id}
+                        for graph_id, graph_version, user_id in missing
+                    ]
+                },
+                include=AGENT_GRAPH_INCLUDE,
+            )
+            fetched.update({(row.id, row.version, row.userId): row for row in rows})
+
+        for i, level in enumerate(refs):
+            # Walk every version a level references, as get_sub_graphs always
+            # has; the result still keeps one graph per id.
+            frontiers[i] = list(
+                {
+                    ref: graph
+                    for ref in level
+                    if (graph := fetched[ref]) and graph.id not in found[i]
+                }.values()
+            )
+            found[i].update({graph.id: graph for graph in frontiers[i]})
+
+    return [
+        [g for g in sub_graphs.values() if g.id != root.id]
+        for root, sub_graphs in zip(graphs, found)
+    ]
+
+
+def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, int]]:
+    return [
+        (graph_id, graph_version)
+        for node in graph.Nodes or []
+        if (
+            node.agentBlockId == agent_block_id
+            and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
+            and (
+                graph_version := cast(
+                    int, dict(node.constantInput).get("graph_version")
                 )
             )
-        ]
-        if not sub_graph_ids:
-            break
-
-        graphs = await AgentGraph.prisma().find_many(
-            where={
-                "OR": [
-                    {
-                        "id": graph_id,
-                        "version": graph_version,
-                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                    }
-                    for graph_id, graph_version in sub_graph_ids
-                ]
-            },
-            include=AGENT_GRAPH_INCLUDE,
         )
-
-        search_graphs = [graph for graph in graphs if graph.id not in sub_graphs]
-        sub_graphs.update({graph.id: graph for graph in search_graphs})
-
-    return [g for g in sub_graphs.values() if g.id != graph.id]
+    ]
 
 
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
-    links = await AgentNodeLink.prisma().find_many(
-        where={"agentNodeSourceId": node_id},
-        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},
+    """Each distinct outgoing link of the node, paired with its sink node.
+
+    Every sink node is read once, however many links lead to it, and without
+    its own links, which no caller needs.
+    """
+    links = dedupe_links(
+        Link.from_db(link)
+        for link in await AgentNodeLink.prisma().find_many(
+            where={"agentNodeSourceId": node_id}
+        )
     )
+    if not links:
+        return []
+    sink_nodes = {
+        node.id: NodeModel.from_db(node)
+        for node in await AgentNode.prisma().find_many(
+            where={"id": {"in": list({link.sink_id for link in links})}}
+        )
+    }
     return [
-        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
-        for link in links
-        if link.AgentNodeSink
+        (link, sink_nodes[link.sink_id]) for link in links if link.sink_id in sink_nodes
     ]
 
 
@@ -1649,13 +1913,111 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
+async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]:
+    """The user and organization of each of a graph's versions, None standing
+    for an untagged one. Every owner's versions count."""
+    versions = await AgentGraph.prisma().find_many(where={"id": graph_id})
+    return {(version.userId, version.organizationId) for version in versions}
+
+
+async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> bool:
+    """Whether *user_id* saved this version of the graph."""
+    return (
+        await AgentGraph.prisma().count(
+            where={"id": graph_id, "version": version, "userId": user_id}
+        )
+        > 0
+    )
+
+
+async def assert_graph_within(
+    graph_id: str, user_id: str, organization_ids: Collection[str | None]
+) -> None:
+    """Refuse to change a graph unless every version of it is *user_id*'s and
+    in *organization_ids*.
+
+    A version saved or activated on it becomes the active one for all of its
+    versions, and moves the library entries and webhook presets that follow
+    the graph. On a graph that reaches another organization it would change
+    what that organization runs; on one a colleague has added a version to,
+    it would deactivate theirs with the caller's credentials.
+    """
+    owners = await get_graph_version_owners(graph_id)
+    if any(
+        owner != user_id or organization_id not in organization_ids
+        for owner, organization_id in owners
+    ):
+        raise NotAuthorizedError(
+            f"Graph #{graph_id} has versions by another user or in another "
+            "organization; change it as its owner, with a credential for the "
+            "organization it belongs to"
+        )
+
+
 async def get_graph_all_versions(
     graph_id: str,
     user_id: str,
     limit: int = MAX_GRAPH_VERSIONS_FETCH,
     team_id: str | None = None,
     organization_id: str | None = None,
+    include_subgraphs: bool = False,
+    offset: int = 0,
 ) -> list[GraphModel]:
+    graph_versions = await AgentGraph.prisma().find_many(
+        where=await _graph_versions_where(graph_id, user_id, team_id, organization_id),
+        order={"version": "desc"},
+        include=AGENT_GRAPH_INCLUDE,
+        take=limit,
+        skip=offset,
+    )
+
+    if not graph_versions:
+        return []
+
+    sub_graphs = (
+        await get_sub_graphs_of_each(graph_versions)
+        if include_subgraphs
+        else [None] * len(graph_versions)
+    )
+    versions = [
+        GraphModel.from_db(graph, sub_graphs=subs)
+        for graph, subs in zip(graph_versions, sub_graphs)
+    ]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
+
+
+async def get_active_graph_version(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int | None:
+    """The version marked active. `get_graph(version=None)` returns the newest."""
+    graph = await AgentGraph.prisma().find_first(
+        where={
+            **await _graph_versions_where(graph_id, user_id, None, organization_id),
+            "isActive": True,
+        },
+    )
+    return graph.version if graph else None
+
+
+async def count_graph_versions(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    return await AgentGraph.prisma().count(
+        where=await _graph_versions_where(graph_id, user_id, None, organization_id)
+    )
+
+
+async def _graph_versions_where(
+    graph_id: str,
+    user_id: str,
+    team_id: str | None,
+    organization_id: str | None,
+) -> AgentGraphWhereInput:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
     if organization_id is not None:
         # Same membership predicate as get_graph/list_graphs — NOT a raw
@@ -1672,18 +2034,7 @@ async def get_graph_all_versions(
         where_clause["teamId"] = team_id
     else:
         where_clause["userId"] = user_id
-
-    graph_versions = await AgentGraph.prisma().find_many(
-        where=where_clause,
-        order={"version": "desc"},
-        include=AGENT_GRAPH_INCLUDE,
-        take=limit,
-    )
-
-    if not graph_versions:
-        return []
-
-    return [GraphModel.from_db(graph) for graph in graph_versions]
+    return where_clause
 
 
 async def delete_graph(
@@ -1822,14 +2173,14 @@ async def validate_graph_execution_permissions(
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
-            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            f"You do not have access to workflow #{graph_id} v{graph_version}: "
             "it is not owned by you, not in your library as a submitted "
             "version, and not available in the Marketplace"
         )
     elif not (
         version_readable_from_library or owner_has_live_library_entry or is_sub_graph
     ):
-        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
+        raise GraphNotInLibraryError(f"Workflow #{graph_id} is not in your library")
 
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
@@ -1969,28 +2320,37 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
-
-    # Auto-increment version for any graph entry (parent or sub-graph) whose
-    # (id, version) already exists.  This prevents UniqueViolationError when
-    # the copilot re-saves an agent that already exists at the requested version.
-    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
-    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
     for g in graphs:
-        existing = await AgentGraph.prisma(tx).find_first(
+        g.links = dedupe_links(g.links)
+
+    # Reject unsafe dynamic pin names before anything is written, so no save
+    # path (route, fork, copy, copilot) can persist one. The use-site guards in
+    # dynamic_fields stay the backstop for names already in the DB.
+    for g in graphs:
+        for node in g.nodes:
+            for pin_name in node.input_default:
+                assert_safe_pin_name(pin_name)
+        for link in g.links:
+            assert_safe_pin_name(link.source_name)
+            assert_safe_pin_name(link.sink_name)
+
+    # A graph ID has one owner: refuse anyone else's, and number the version
+    # after the latest stored one.
+    for g in graphs:
+        owner_id = await graph_owner_id(g.id, tx)
+        if owner_id is not None and owner_id != user_id:
+            raise NotFoundError(f"Workflow #{g.id} not found")
+
+        latest = await AgentGraph.prisma(tx).find_first(
             where={"id": g.id},
             order={"version": "desc"},
         )
-        if existing and existing.version >= g.version:
-            old_version = g.version
-            g.version = existing.version + 1
+        if latest and (next_version := latest.version + 1) != g.version:
             logger.warning(
-                "Auto-incremented graph %s version from %d to %d "
-                "(version %d already exists)",
-                g.id,
-                old_version,
-                g.version,
-                existing.version,
+                f"Saving graph {g.id} as v{next_version} rather than the "
+                f"requested v{g.version}: its latest version is v{latest.version}"
             )
+            g.version = next_version
 
     await AgentGraph.prisma(tx).create_many(
         data=[
@@ -2043,6 +2403,14 @@ async def __create_graph(
     )
 
 
+async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:
+    """The owner of the graph ID's first version, or None when it has none."""
+    first_version = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph_id}, order={"version": "asc"}
+    )
+    return first_version.userId if first_version else None
+
+
 # ------------------------ UTILITIES ------------------------ #
 
 
@@ -2071,83 +2439,6 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
             for creatable_node in creatable_graph.nodes
         ],
     )
-
-
-async def fix_llm_provider_credentials():
-    """Fix node credentials with provider `llm`"""
-    from backend.integrations.credentials_store import IntegrationCredentialsStore
-
-    from .user import get_user_integrations
-
-    store = IntegrationCredentialsStore()
-
-    broken_nodes = []
-    try:
-        broken_nodes = await query_raw_with_schema(
-            """
-            SELECT    graph."userId"       user_id,
-                  node.id              node_id,
-                  node."constantInput" node_preset_input
-            FROM      {schema_prefix}"AgentNode"  node
-            LEFT JOIN {schema_prefix}"AgentGraph" graph
-            ON        node."agentGraphId" = graph.id
-            WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
-            ORDER BY  graph."userId";
-            """
-        )
-        logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
-    except Exception as e:
-        logger.error(f"Error fixing LLM credential inputs: {e}")
-
-    user_id: str = ""
-    user_integrations = None
-    for node in broken_nodes:
-        if node["user_id"] != user_id:
-            # Save queries by only fetching once per user
-            user_id = node["user_id"]
-            user_integrations = await get_user_integrations(user_id)
-        elif not user_integrations:
-            raise RuntimeError(f"Impossible state while processing node {node}")
-
-        node_id: str = node["node_id"]
-        node_preset_input: dict = node["node_preset_input"]
-        credentials_meta: dict = node_preset_input["credentials"]
-
-        credentials = next(
-            (
-                c
-                for c in user_integrations.credentials
-                if c.id == credentials_meta["id"]
-            ),
-            None,
-        )
-        if not credentials:
-            continue
-        if credentials.type != "api_key":
-            logger.warning(
-                f"User {user_id} credentials {credentials.id} with provider 'llm' "
-                f"has invalid type '{credentials.type}'"
-            )
-            continue
-
-        api_key = credentials.api_key.get_secret_value()
-        if api_key.startswith("sk-ant-api03-"):
-            credentials.provider = credentials_meta["provider"] = "anthropic"
-        elif api_key.startswith("sk-"):
-            credentials.provider = credentials_meta["provider"] = "openai"
-        elif api_key.startswith("gsk_"):
-            credentials.provider = credentials_meta["provider"] = "groq"
-        else:
-            logger.warning(
-                f"Could not identify provider from key prefix {api_key[:13]}*****"
-            )
-            continue
-
-        await store.update_creds(user_id, credentials)
-        await AgentNode.prisma().update(
-            where={"id": node_id},
-            data={"constantInput": SafeJson(node_preset_input)},
-        )
 
 
 def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:

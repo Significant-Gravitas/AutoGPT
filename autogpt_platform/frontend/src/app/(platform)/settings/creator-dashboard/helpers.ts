@@ -109,26 +109,30 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.DRAFT]: {
     label: "Draft",
     Icon: Clock01Icon,
-    pillClass: "bg-zinc-100 text-zinc-700 ring-1 ring-inset ring-zinc-200",
-    dotClass: "bg-zinc-400",
+    pillClass:
+      "bg-surface-hover text-foreground-body ring-1 ring-inset ring-border-base",
+    dotClass: "bg-foreground-subtle",
   },
   [SubmissionStatus.PENDING]: {
     label: "In review",
     Icon: Clock01Icon,
-    pillClass: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
-    dotClass: "bg-amber-500",
+    pillClass:
+      "bg-warning-surface text-warning-foreground ring-1 ring-inset ring-warning-border",
+    dotClass: "bg-warning",
   },
   [SubmissionStatus.APPROVED]: {
     label: "Approved",
     Icon: CheckmarkCircle02Icon,
     pillClass:
-      "bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200",
-    dotClass: "bg-emerald-500",
+      "bg-success-surface text-success-foreground ring-1 ring-inset ring-success/30",
+    dotClass: "bg-success",
   },
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
     Icon: UnavailableIcon,
+    // oxlint-disable-next-line design-system/no-raw-colors -- rose "Needs changes" pill kept until the rose -> error hue change is approved
     pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
+    // oxlint-disable-next-line design-system/no-raw-colors -- rose dot matches the pill above
     dotClass: "bg-rose-500",
   },
 };

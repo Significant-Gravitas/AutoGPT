@@ -1,8 +1,14 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotModal } from "../../../../useCopilotModal";
 import { MAX_ATTACHMENTS } from "../../../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "../ComposerPlusMenu";
+import { VoiceIcon } from "@hugeicons/core-free-icons";
 
 let mockWorkspaceFilesFlag = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -27,6 +33,37 @@ function openMenu() {
 }
 
 describe("ComposerPlusMenu", () => {
+  it.each([true, false])(
+    "respects the disabled state of an extra item: %s",
+    async (disabled) => {
+      const onStart = vi.fn();
+      render(
+        <ComposerPlusMenu
+          onFilesSelected={vi.fn()}
+          extraItems={[
+            {
+              key: "voice",
+              label: "Voice mode",
+              icon: VoiceIcon,
+              onSelect: onStart,
+              disabled,
+            },
+          ]}
+        />,
+      );
+      openMenu();
+
+      const item = await screen.findByRole("menuitem", { name: "Voice mode" });
+      expect(item.getAttribute("aria-disabled")).toBe(disabled ? "true" : null);
+      fireEvent.click(item);
+      if (disabled) {
+        fireEvent.keyDown(item, { key: "Enter" });
+        fireEvent.keyDown(item, { key: " " });
+      }
+      expect(onStart).toHaveBeenCalledTimes(disabled ? 0 : 1);
+    },
+  );
+
   it("lists the four actions in fixed order", async () => {
     render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
     openMenu();
@@ -177,5 +214,71 @@ describe("ComposerPlusMenu", () => {
     expect(
       screen.queryByRole("menuitem", { name: /use file from workspace/i }),
     ).toBeNull();
+  });
+});
+
+describe("ComposerPlusMenu camera capture", () => {
+  function stubCoarsePointer(matches: boolean) {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(pointer: coarse)" && matches,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("offers Take photo right after Attach file on touch devices", async () => {
+    stubCoarsePointer(true);
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
+    openMenu();
+
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.slice(0, 2).map((item) => item.textContent)).toEqual([
+      "Attach file",
+      "Take photo",
+    ]);
+  });
+
+  it("hides Take photo when the primary pointer is not touch", async () => {
+    stubCoarsePointer(false);
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} />);
+    openMenu();
+
+    await screen.findAllByRole("menuitem");
+    expect(screen.queryByRole("menuitem", { name: /take photo/i })).toBeNull();
+  });
+
+  it("uses a rear-camera image input and hands captured photos over", async () => {
+    stubCoarsePointer(true);
+    const onFilesSelected = vi.fn();
+    render(<ComposerPlusMenu onFilesSelected={onFilesSelected} />);
+
+    const input = screen.getByTestId("composer-camera-input");
+    expect(input.getAttribute("capture")).toBe("environment");
+    expect(input.getAttribute("accept")).toBe("image/*");
+
+    const photo = new File(["x"], "image.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [photo] } });
+
+    await waitFor(() => expect(onFilesSelected).toHaveBeenCalledTimes(1));
+    const [files] = onFilesSelected.mock.calls[0];
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toMatch(/^photo-.*\.jpg$/);
+  });
+
+  it("disables Take photo at the attachment cap", async () => {
+    stubCoarsePointer(true);
+    render(<ComposerPlusMenu onFilesSelected={vi.fn()} isAtCap />);
+    openMenu();
+
+    const item = await screen.findByRole("menuitem", { name: /take photo/i });
+    expect(item.getAttribute("data-disabled")).not.toBeNull();
   });
 });

@@ -17,7 +17,9 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertWorkflowRef,
 )
-from backend.api.features.experts.seed import ROSTER, RosterEntry
+from backend.api.features.experts.roster import load_roster
+from backend.api.features.experts.roster_types import RosterEntry
+from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
@@ -48,10 +50,8 @@ BASELINE_PATH = STYLE_DIR / "baseline.json"
 # runs under, the judge's own prompt, and the rules that decide which rows are
 # scored at all.
 HARNESS_MODULES = ("generation.py", "runner.py", "scorer.py")
-# The state every scored turn is sent in. An expert exists only because
-# hire-experts was on when it was hired, so that is the state its writing is
-# measured in; turning the flag off afterwards leaves a session this check
-# does not cover, which the baseline records rather than implies.
+# Historical score files record this field; authenticated expert sessions
+# always have delegation available.
 DELEGATION_ENABLED = True
 
 
@@ -63,10 +63,12 @@ class RoutedModel(BaseModel):
 
 
 def roster_experts(names: list[str] | None = None) -> list[Expert]:
+    """The catalog roster as hired copies. Reads ``SKILLS_CATALOG_PATH`` or
+    downloads the configured catalog ref into the local cache."""
     wanted = {n.lower() for n in names} if names else None
     return [
         roster_expert(entry)
-        for entry in ROSTER
+        for entry in load_roster(catalog_checkout().root)
         if wanted is None or entry["name"].lower() in wanted
     ]
 
@@ -123,10 +125,7 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
         # eval fixture has no account. ``<standing_work>`` is static text every
         # Otto turn carries, so leaving it out here would make this check pass
         # while production and the harness disagreed.
-        return (
-            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
-            + render_account_standing_work_block()
-        )
+        return render_team_context(roster) + render_account_standing_work_block()
     # ``<expert_computer>`` is only rendered when E2B actually backs the
     # sandbox, so it is empty wherever E2B is unconfigured — which is why its
     # absence here went unnoticed: CI has no E2B and both sides read "".
@@ -135,7 +134,6 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
         + render_expert_computer_block()
         + render_team_context(
             roster,
-            delegation_enabled=DELEGATION_ENABLED,
             exclude_expert_id=expert.id,
         )
     )
@@ -144,11 +142,11 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
 def chat_system_prompt(expert: Expert | None) -> str:
     """The SDK engine's system prompt for an expert session (the assembly in
     ``sdk/service.py``) with the flags such a session has on in production:
-    cloud sandbox, hire-experts, memory. ``None`` is plain Otto."""
+    cloud sandbox and memory. ``None`` is plain Otto."""
     suffix = render_expert_identity_suffix(expert) if expert else ""
     return (
         CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True)
+        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
         + (get_delegation_supplement() if DELEGATION_ENABLED else "")
         + get_expert_oversight_supplement(
             experts_enabled=DELEGATION_ENABLED,

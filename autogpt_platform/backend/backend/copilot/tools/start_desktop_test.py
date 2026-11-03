@@ -84,7 +84,7 @@ async def _run(tool, box: _Box, *, user_id, session):
     with redis_p, get_p, cls_p, computer_cfg as ccfg, tool_cfg as tcfg:
         tcfg.active_e2b_api_key = "e2b_test_key"
         ccfg.e2b_sandbox_timeout = 420
-        ccfg.e2b_sandbox_template = "agpt-desktop-1x2"
+        ccfg.e2b_sandbox_template = "agpt-desktop-1x2-cfc276e0"
         ccfg.e2b_sandbox_on_timeout = "pause"
         return await tool._execute(user_id=user_id, session=session)
 
@@ -126,8 +126,11 @@ class TestStartDesktop:
             f"copilot:e2b:sandbox:{session.session_id}"
         )
         assert kwargs["volume_mounts"] == {WORKSPACE_PATH: user_volume_name(_USER)}
-        assert kwargs["template"] == "agpt-desktop-1x2"
+        assert kwargs["template"] == "agpt-desktop-1x2-cfc276e0"
         assert kwargs["count_turn"] is False
+        # The turn's own ceiling (none here), never KEEP: a box this creates
+        # must not get every provider in a restricted turn.
+        assert kwargs["providers"] is None
         assert kwargs["user_id"] == _USER
         assert kwargs["session_id"] == session.session_id
         box.desktop.ensure_display.assert_awaited_once()
@@ -140,6 +143,29 @@ class TestStartDesktop:
         assert "Screen is on" in result.message
         assert "same machine" in result.message
         assert WORKSPACE_PATH in result.message
+        # browser_* runs outside the box, so it is never on this screen.
+        assert "DISPLAY=:0" in result.message
+        assert "browser_* tools run elsewhere" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_restricted_turn_opens_the_desktop_under_its_ceiling(self):
+        from backend.copilot.context import _current_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        box = _Box()
+        token = _current_permissions.set(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        try:
+            await _run(
+                StartDesktopTool(),
+                box,
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+            )
+        finally:
+            _current_permissions.reset(token)
+        assert box.get_box.await_args.kwargs["providers"] == ()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_stored_result_carries_the_owner_link_not_the_password(self):

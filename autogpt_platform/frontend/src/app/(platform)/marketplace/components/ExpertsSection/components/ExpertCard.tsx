@@ -1,3 +1,8 @@
+import {
+  expertPastel,
+  getCategoryHex,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -10,7 +15,6 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
@@ -25,52 +29,60 @@ const NAMED_SKILLS = 3;
 interface Props {
   expert: ExpertTemplate;
   isHired: boolean;
+  category?: string | null;
 }
 
 /** The whole card opens the expert's own page, through a link stretched
  *  behind its contents: a card that is itself a link cannot hold the hire
  *  button, since an anchor may not contain one. */
-export function ExpertCard({ expert, isHired }: Props) {
+export function ExpertCard({ expert, isHired, category }: Props) {
+  const selectedCategory =
+    category && expert.categories?.includes(category) ? category : undefined;
+  // The expert's own visual family, whatever filter the shelf is under: the
+  // same Maria under Marketing and under Content.
+  const topicColor = getExpertTopicHex({
+    avatarUrl: expert.avatar_url,
+    categories: expert.categories,
+    role: expert.role,
+  });
   const skills = expert.bundled_skills ?? [];
   const named = skills.slice(0, NAMED_SKILLS);
   const restSkills = skills.slice(NAMED_SKILLS);
   // The area an expert works in, in the same chip the filters use — the row
   // above the shelf and the card below it name the same thing.
-  const area =
-    expert.categories?.[0] ??
-    (expert.job_title ? undefined : getExpertRoleLabel(expert.role));
+  const area = selectedCategory ?? expert.categories?.[0];
   const areaAccent = getCategoryAccent(area);
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+    >
       <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]",
-          areaAccent.accent.band,
-        )}
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
+        // oxlint-disable-next-line design-system/no-inline-styles -- the card band is tinted at runtime with the expert's own colour
+        style={{ backgroundColor: expertPastel(topicColor) }}
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
-        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
       >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={88}
-          className="rounded-full ring-4 ring-white"
+          backgroundColor={topicColor}
+          // oxlint-disable-next-line design-system/no-restyle -- the card portrait's frame; ExpertAvatar has no framed size
+          className="rounded-full border border-border-base ring-4 ring-surface"
         />
 
         <div>
           <ExpertIdentityDetails
             name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
             nameAlign="baseline"
-            nameAccessory={
-              expert.job_title ? (
-                <span className="min-w-0 truncate text-sm text-zinc-500">
-                  {expert.job_title}
-                </span>
-              ) : undefined
-            }
+            areaColor={getCategoryHex(area)}
           />
           {area ? <CategoryTag category={area} className="mt-2" /> : null}
           <ExpertTagline tagline={expert.tagline} compact />
@@ -78,7 +90,7 @@ export function ExpertCard({ expert, isHired }: Props) {
 
         {skills.length > 0 ? (
           <div>
-            <div className="mb-1 text-sm text-zinc-500">Skills:</div>
+            <div className="mb-1 text-sm text-foreground-tertiary">Skills:</div>
             <div className="flex flex-col items-start">
               {named.map((skill) => (
                 <span
@@ -92,7 +104,9 @@ export function ExpertCard({ expert, isHired }: Props) {
                   <Icon
                     icon={areaAccent.icon ?? Book04Icon}
                     size={12}
-                    className={cn("shrink-0", areaAccent.accent.icon)}
+                    className="shrink-0"
+                    // oxlint-disable-next-line design-system/no-inline-styles -- the skill glyph wears the expert's own colour, known only at runtime
+                    style={{ color: topicColor }}
                     aria-hidden
                   />
                   <span className="truncate">{skill.title}</span>
@@ -106,7 +120,7 @@ export function ExpertCard({ expert, isHired }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
+                        "h-6 cursor-default border-transparent px-0 text-foreground-tertiary outline-none focus-visible:ring-2 focus-visible:ring-brand",
                       )}
                     >
                       +{restSkills.length} skills
@@ -128,18 +142,19 @@ export function ExpertCard({ expert, isHired }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-end pt-2">
-          <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+          <span className="flex items-center gap-1.5 text-base font-medium text-foreground-subtle transition-colors duration-200 group-hover:text-foreground-strong">
             View
             <Icon
               icon={ArrowRight02Icon}
               size={16}
               aria-hidden
+              // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
               className="transition-transform duration-200 group-hover:translate-x-0.5"
             />
           </span>
         </div>
       </Link>
-      <div className="absolute right-5 top-5 z-10">
+      <div className="absolute top-5 right-5 z-10">
         <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>

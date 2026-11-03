@@ -9,9 +9,13 @@ account.
 
 from apscheduler.triggers.cron import CronTrigger
 
-from backend.api.features.experts import seed
 from backend.api.features.experts.routine_jobs import spread_cron
-from backend.api.features.experts.routines import _session_mode
+from backend.api.features.experts.routines import (
+    UNREADABLE_PIN,
+    _credential_pins,
+    _session_mode,
+)
+from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
@@ -74,24 +78,24 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
 VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
 
 
-def test_roster_routines_are_declared():
+def test_roster_routines_are_declared(real_roster):
     assert {
         (entry["name"], routine["key"])
-        for entry in seed.ROSTER
+        for entry in real_roster
         for routine in entry["routines"]
     } == EXPECTED_ROSTER_ROUTINES
 
 
-def test_roster_routine_keys_are_unique_per_expert():
+def test_roster_routine_keys_are_unique_per_expert(real_roster):
     """``ExpertRoutine`` is unique on (expertId, key), so a duplicate key would
     make the second row silently overwrite the first at seed time."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         keys = [routine["key"] for routine in entry["routines"]]
         assert len(keys) == len(set(keys)), entry["name"]
 
 
-def test_roster_routines_ship_a_cadence_and_a_valid_mode():
-    for entry in seed.ROSTER:
+def test_roster_routines_ship_a_cadence_and_a_valid_mode(real_roster):
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["crons"], (entry["name"], routine["key"])
             assert routine["session_mode"] in VALID_SESSION_MODES, (
@@ -100,10 +104,10 @@ def test_roster_routines_ship_a_cadence_and_a_valid_mode():
             )
 
 
-def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
+def test_roster_routine_crons_resolve_to_something_apscheduler_accepts(real_roster):
     """A malformed cron — or an ``H`` nobody resolved — would only surface when
     somebody switched the routine on, which is the worst place to find out."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for index, cron in enumerate(routine["crons"]):
                 assert len(cron.split()) == 5, (entry["name"], routine["key"], cron)
@@ -111,11 +115,11 @@ def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
                 CronTrigger.from_crontab(resolved, timezone="UTC")
 
 
-def test_roster_routines_spread_their_hour():
+def test_roster_routines_spread_their_hour(real_roster):
     """Every one of these is "at its scheduled hour" from its source package, so
     the minute is an artefact of writing it on the hour. Left literal, the five
     that say 9am would land on one account together."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for cron in routine["crons"]:
                 assert cron.startswith("H "), (entry["name"], routine["key"], cron)
@@ -221,19 +225,19 @@ def test_an_ungranted_routine_does_not_get_a_shell():
     assert "bash_exec" not in routine_disabled_tools(granted=True)
 
 
-def test_roster_routines_ask_before_they_run():
+def test_roster_routines_ask_before_they_run(real_roster):
     """Every seeded routine is a proposal written for everybody, so each one has
     to name what it needs from this owner. A routine with no asks would schedule
     straight off the template, against guesses, unattended."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["asks"], (entry["name"], routine["key"])
 
 
-def test_roster_routines_ask_for_a_timezone():
+def test_roster_routines_ask_for_a_timezone(real_roster):
     """Crons resolve in the owner's timezone and the suggested hour is a guess,
     so every routine has to settle when it actually runs."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             asks = " ".join(routine["asks"]).lower()
             assert "timezone" in asks, (entry["name"], routine["key"])
@@ -255,3 +259,55 @@ def test_an_unknown_session_mode_falls_back_to_thread():
     thread — the mode that keeps its memory — not fail a call the owner already
     agreed to."""
     assert _session_mode("here").value == "THREAD"
+
+
+def test_a_routines_stored_pins_load_and_an_unreadable_one_still_pins():
+    pins = _credential_pins(
+        {"exa": {"id": "exa-new", "title": "Work"}, "github": "not a pin"}
+    )
+    assert pins == {
+        "exa": CredentialPin(id="exa-new", title="Work"),
+        "github": UNREADABLE_PIN,
+    }
+    assert _credential_pins(None) == {}
+
+
+async def test_an_unreadable_pin_stops_the_step_instead_of_switching_accounts():
+    # Dropping the pin would run the step on whichever GitHub account came
+    # first, the silent switch a pin exists to prevent.
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from pydantic import SecretStr
+
+    from backend.copilot.credential_selection import set_turn_credential_pins
+    from backend.copilot.tools.helpers import unattended_missing_credentials_error
+    from backend.copilot.tools.utils import keep_to_pins
+    from backend.data.model import APIKeyCredentials
+
+    saved = [
+        APIKeyCredentials(
+            id=name, provider="github", title=name, api_key=SecretStr("k")
+        )
+        for name in ("personal", "work")
+    ]
+
+    async def turn():
+        set_turn_credential_pins(_credential_pins({"github": {"title": "no id"}}))
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=saved),
+        ):
+            error = await unattended_missing_credentials_error(
+                "Block 'Create PR'",
+                {"credentials": {"provider": "github", "types": ["api_key"]}},
+                "s1",
+                "test-user",
+                None,
+            )
+        return keep_to_pins(saved), error
+
+    usable, error = await asyncio.create_task(turn())
+    assert usable == []
+    assert error.error == "pinned_credential_missing"
+    assert UNREADABLE_PIN.title in error.message

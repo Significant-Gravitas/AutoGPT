@@ -117,7 +117,7 @@ describe("AgentDetailsCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /proceed/i }));
     expect(onSend).toHaveBeenCalledWith(
-      'Run the agent "Summariser" with placeholder/example values so I can test it.',
+      'Run the workflow "Summariser" with placeholder/example values so I can test it.',
     );
   });
 
@@ -133,7 +133,7 @@ describe("AgentDetailsCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /proceed/i }));
 
     expect(onSend).toHaveBeenCalledWith(
-      'Run the agent "Topic Agent" with these inputs: {\n  "topic": "weather"\n}',
+      'Run the workflow "Topic Agent" with these inputs: {\n  "topic": "weather"\n}',
     );
   });
 });

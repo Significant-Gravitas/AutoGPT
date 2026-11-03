@@ -86,6 +86,14 @@ poetry run pytest path/to/test.py --snapshot-update
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 
+### Tests That Don't Flake
+
+- **No tight bounds on elapsed time** — assert the outcome, and bound real time only with ~10× margin or through a clock the test advances, because a full garbage collection on a CI runner can take seconds.
+- **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
+- **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
+- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
+- **Test a race by forcing the bad order** — to prove two concurrent calls can't both pass a check-then-act (both read "unclaimed", then both claim), patch the call the check makes so each task then waits on a shared `asyncio.Barrier(2)` before acting, with a timeout, since correct code blocks the second task. `asyncio.gather` alone switches tasks only where they await, so one task can check and act before the other checks, and the test passes with the bug still there.
+
 ### Test-Driven Development (TDD)
 
 When fixing a bug or adding a feature, write the test **before** the implementation:
@@ -130,9 +138,11 @@ Key models (defined in `schema.prisma`):
 
 Model definitions, costs, and AutoPilot routing are catalog-as-code in `backend/data/llm_registry/catalog.py` — edit the file, open a PR (catalog-only diffs may ride `hotfix/*`→`master` for incident-speed changes). The catalog is the single source: metadata and billing dicts are derived from it at import. A block-selectable model additionally needs one `LLMModel` name line in `backend/data/llm_registry/llm_models.py` (an import-time check enforces the pairing); copilot-only models need just the catalog entry. Retire a model with a catalog PR (`is_enabled: False`) plus `python -m backend.data.llm_registry.retire <slug> --replacement <slug> --yes` to migrate existing graph nodes (dry-run by default, revertable). Full reference: [Managing LLM Models](@../../docs/platform/contributing/managing-llm-models.md).
 
-### Adding or changing a roster expert
+### Adding or changing a roster expert, or a marketplace skill
 
-The seeded expert roster is `ROSTER` in `backend/api/features/experts/seed.py`. The expert style eval (`backend/copilot/eval/style/`) scores what each expert would write against its own style spec and reads the result against a stored `baseline.json`. One artefact is required when you edit the roster, and one is recommended. The required one is a reference fixture, `backend/copilot/eval/style/fixtures/<name>.json`, holding 27 prompts across every kind — copy a sibling and rewrite it; this costs nothing. The recommended one is a regenerated baseline: `poetry run expert-style-eval --write-baseline`, a paid run against the live models at roughly $1-2 per expert (the twenty-four-expert run on 2026-09-18 cost $26.89, recorded as `cost_usd` in the file). It takes the whole roster and refuses `--experts`/`--kinds`, because a filtered run would store part of the set under a whole-set fingerprint. Start with `poetry run expert-style-eval --dry-run`, which names the fingerprint components that moved and makes no calls -- that is where roster drift should be noticed, because no test asserts the baseline covers the current roster. Such an assertion used to exist and was removed: every expert's context embeds the rest of the roster as teammates, so adding or renaming one moves all of their fingerprints, which turned any roster edit into a full paid rescore of everyone, growing with the roster. Regenerating also moves the per-expert scored counts — turns that hit the round cap are stored as errors — so the count `runner_test.py` pins for Max needs updating to match the new file.
+Both live in the public `Significant-Gravitas/skills-catalog` repo, not here: `skills/<slug>/` holds each skill package, `experts/<key>.yml` holds each roster template (persona, voice, day-one rows, preloads, routines and the ordered skills it bundles), and `release.json` binds every file to a hash (`python tools/release.py refresh` there after an edit). Every deploy of this backend runs `poetry run publish-skills-catalog` right after `prisma migrate deploy`, which publishes the catalog's `main`: changed packages get a new immutable, content-addressed `SkillListingVersion`, templates are upserted by `Expert.templateKey`, and users' installed copies catch up lazily on their next turn (an unedited copy is replaced, an edited one is three-way merged with the user's side winning conflicts; see `backend/copilot/tools/skills.py`). Locally: `make load-store-agents` then `make publish-skills`, or point `SKILLS_CATALOG_PATH` at a checkout.
+
+The expert style eval (`backend/copilot/eval/style/`) reads the roster from that catalog (`SKILLS_CATALOG_PATH`, or a cached download of `main`) and scores what each expert would write against its own style spec, read against a stored `baseline.json`. One artefact is required when you edit the roster, and one is recommended. The required one is a reference fixture, `backend/copilot/eval/style/fixtures/<name>.json`, holding 27 prompts across every kind — copy a sibling and rewrite it; this costs nothing. The recommended one is a regenerated baseline: `poetry run expert-style-eval --write-baseline`, a paid run against the live models at roughly $1-2 per expert (the twenty-four-expert run on 2026-09-18 cost $26.89, recorded as `cost_usd` in the file). It takes the whole roster and refuses `--experts`/`--kinds`, because a filtered run would store part of the set under a whole-set fingerprint. Start with `poetry run expert-style-eval --dry-run`, which names the fingerprint components that moved and makes no calls -- that is where roster drift should be noticed, because no test asserts the baseline covers the current roster. Such an assertion used to exist and was removed: every expert's context embeds the rest of the roster as teammates, so adding or renaming one moves all of their fingerprints, which turned any roster edit into a full paid rescore of everyone, growing with the roster. Regenerating also moves the per-expert scored counts — turns that hit the round cap are stored as errors — so the count `runner_test.py` pins for Max needs updating to match the new file.
 
 ### Adding a new block
 
@@ -214,7 +224,7 @@ yield "image_url", result_url
 
 ## Workspace & Media Files
 
-**Read [Workspace & Media Architecture](../../docs/platform/workspace-media-architecture.md) when:**
+**Read [Workspace & Media Architecture](../../docs/engineering/workspace-media-architecture.md) when:**
 - Working on CoPilot file upload/download features
 - Building blocks that handle `MediaFileType` inputs/outputs
 - Modifying `WorkspaceManager` or `store_media_file()`

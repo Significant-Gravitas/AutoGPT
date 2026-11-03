@@ -25,7 +25,7 @@ async function AdminMarketplaceDashboard({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Marketplace Management</h1>
-            <p className="text-gray-500">
+            <p className="text-foreground-tertiary">
               Unified view for marketplace management and approval history
             </p>
           </div>

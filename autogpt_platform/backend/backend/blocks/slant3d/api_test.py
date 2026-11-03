@@ -137,7 +137,7 @@ async def test_create_drafts_then_processes_order():
         ("POST", "orders"),
         ("POST", "orders/SLANT_123"),
     ]
-    assert block.is_sensitive_action
+    assert block.is_irreversible_action
 
 
 @pytest.mark.parametrize(

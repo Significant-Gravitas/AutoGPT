@@ -12,11 +12,6 @@ import {
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ScheduleActionsDropdown } from "./ScheduleActionsDropdown";
 
-const sendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent },
-}));
-
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -46,12 +41,11 @@ const schedule = {
 
 afterEach(() => {
   toastMock.mockClear();
-  sendDatafastEvent.mockClear();
   server.resetHandlers();
 });
 
 describe("ScheduleActionsDropdown", () => {
-  test("Run now records a run_agent goal from the library surface", async () => {
+  test("Run now hands the new run on", async () => {
     server.use(
       getPostV1ExecuteGraphAgentMockHandler({
         id: "run-1",
@@ -76,11 +70,6 @@ describe("ScheduleActionsDropdown", () => {
 
     await waitFor(() => {
       expect(onRunCreated).toHaveBeenCalledWith("run-1");
-    });
-    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-xyz",
-      name: "My agent",
-      surface: "library",
     });
   });
 });

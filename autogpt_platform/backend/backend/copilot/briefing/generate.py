@@ -11,7 +11,8 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.copilot.rate_limit import is_user_paywalled
+from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.db_accessors import (
     execution_db,
     experts_db,
@@ -20,9 +21,10 @@ from backend.data.db_accessors import (
     user_db,
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.data.user import is_user_banned
 from backend.util.clients import get_database_manager_async_client
-from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -101,20 +103,21 @@ def compose_briefing(
     # every later LLM turn of that session. The renderer points the overflow
     # at the needs-attention list.
     for review in reviews[:_MAX_DECISION_ITEMS]:
-        if review.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
-            session_id = review.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
-            link = f"/copilot?sessionId={quote(session_id)}"
+        if review.session_id:
+            link = f"/copilot?sessionId={quote(review.session_id)}"
         else:
-            info = agent_info_by_graph_id.get(review.graph_id)
+            info = agent_info_by_graph_id.get(review.graph_id or "")
             link = (
-                run_link(info.library_agent_id if info else None, review.graph_exec_id)
+                run_link(
+                    info.library_agent_id if info else None, review.graph_exec_id or ""
+                )
                 or _LIBRARY_LINK
             )
         # _enrich_pending_reviews already resolved expert attribution on the
         # review model (including copilot-session reviews and executions older
         # than the 24h window); the local lookup only backfills gaps.
         fallback = experts_by_id.get(
-            review.expert_id or expert_id_by_exec.get(review.graph_exec_id) or ""
+            review.expert_id or expert_id_by_exec.get(review.graph_exec_id or "") or ""
         )
         decision_items.append(
             BriefingDecisionItem(
@@ -221,7 +224,9 @@ async def _compose_fresh_briefing(
     # Resolve only the graphs actually referenced, rather than paging the
     # library: paging it would drop the very agent being briefed for a user
     # with >100 agents, leaving an unlinkable "Agent" row.
-    graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
+    graph_ids = list(
+        {e.graph_id for e in executions} | {r.graph_id for r in reviews if r.graph_id}
+    )
     refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
     agent_info: dict[str, AgentInfo] = {
         ref.graph_id: AgentInfo(ref.name or DEFAULT_AGENT_NAME, ref.id) for ref in refs
@@ -241,29 +246,21 @@ async def _compose_fresh_briefing(
     # Written here, once, rather than at render time: the thread post and the
     # home card must show the same paragraph, and home must not pay for an LLM
     # call on every poll. `None` on failure — the briefing ships either way.
-    #
-    # Gated at the point of generation, not just of display: the narrative is
-    # AI-written text derived from the run summaries `AI_ACTIVITY_STATUS`
-    # governs, so a flag-off user must neither be billed for it nor see it in
-    # the thread — home's `without_summaries` only covers the card.
-    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return content
-    return content.model_copy(
-        update={"narrative": await compose_narrative(user_id, content)}
-    )
+    try:
+        narrative = await compose_narrative(user_id, content)
+    except UsageActivationUnavailable:
+        logger.warning(
+            "Briefing narrative usage attribution unavailable for %s", user_id[:8]
+        )
+        narrative = None
+    return content.model_copy(update={"narrative": narrative})
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
-    enabled, authoritative = await evaluate_feature_flag(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    )
-    if not enabled:
-        # Only a flag that actually evaluated may unregister the cron (see
-        # ``execute_morning_briefing``). A failed read yields False too, and
-        # would delete every user's schedule on one bad boot or DB blip.
-        if not authoritative:
-            return {"status": "skipped", "reason": "flag_unavailable"}
-        return {"status": "skipped", "reason": "flag_disabled"}
+    if await is_user_banned(user_id):
+        return {"status": "skipped", "reason": "banned"}
+    if await is_user_paywalled(user_id):
+        return {"status": "skipped", "reason": "paywalled"}
 
     user = await user_db().get_user_by_id(user_id)
     tz_name = get_user_timezone_or_utc(user.timezone)
@@ -291,7 +288,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 await client.mark_briefing_delivered(user_id, record.id)
             emit_funnel_event(
                 user_id,
-                "briefing_generated",
+                PostHogEvent.BRIEFING_GENERATED,
                 {"run_count": 0, "decision_count": 0, "has_content": False},
                 (
                     f"briefing_generated:{record.id}"
@@ -313,7 +310,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             )
         emit_funnel_event(
             user_id,
-            "briefing_generated",
+            PostHogEvent.BRIEFING_GENERATED,
             {
                 "run_count": content.completed_total + content.failed_total,
                 "decision_count": content.decision_total,
@@ -333,11 +330,12 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
         content=render_briefing_markdown(content),
         message_id=message_id,
         metadata={"kind": "morning_briefing", "briefing_id": record.id},
+        title=f"Morning briefing — {briefing_date.isoformat()}",
     )
     await client.mark_briefing_delivered(user_id, record.id)
     emit_funnel_event(
         user_id,
-        "briefing_delivered",
+        PostHogEvent.BRIEFING_DELIVERED,
         {"briefing_id": record.id},
         f"briefing_delivered:{record.id}",
     )

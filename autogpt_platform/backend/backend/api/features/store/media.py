@@ -1,29 +1,21 @@
 import logging
-import os
-import uuid
 
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.util.settings import Settings
+from backend.util.gcs_utils import is_not_found_error
+from backend.util.settings import Config, Settings
 from backend.util.virus_scanner import scan_content_safe
 
 from . import exceptions as store_exceptions
-from . import local_media
+from . import local_media, submission_media
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-CONTENT_TYPE_EXTENSIONS = {
-    "image/jpeg": ".jpeg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-    "video/mp4": ".mp4",
-    "video/webm": ".webm",
-}
+MAX_PRIVATE_IMAGE_FILE_SIZE = submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES
 
 
 async def check_media_exists(user_id: str, filename: str) -> str | None:
@@ -38,32 +30,48 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     Returns:
         str | None: URL of the blob if it exists, None otherwise
     """
-    settings = Settings()
-    if not settings.config.media_gcs_bucket_name:
+    config = Settings().config
+    bucket_name = config.resolved_private_user_data_bucket
+    if not bucket_name:
         return await local_media.check_media_exists(user_id, filename)
+    try:
+        safe_user_id = local_media.validate_path_component(user_id)
+        safe_filename = local_media.validate_path_component(filename)
+    except ValueError:
+        return None
+    content_type = local_media.content_type_for_filename(safe_filename)
+    if content_type is None:
+        return None
+    safe_filename = local_media.stored_filename(safe_filename, content_type, True)
 
     async with async_storage.Storage() as async_client:
-        bucket_name = settings.config.media_gcs_bucket_name
-
-        # Check images
-        image_path = f"users/{user_id}/images/{filename}"
+        image_path = f"users/{safe_user_id}/images/{safe_filename}"
         try:
             await async_client.download_metadata(bucket_name, image_path)
-            # If we get here, the file exists - construct public URL
-            return f"https://storage.googleapis.com/{bucket_name}/{image_path}"
-        except Exception:
-            # File doesn't exist, continue to check videos
-            pass
+            return _stored_media_url(
+                _serves_private_urls(config),
+                bucket_name,
+                safe_user_id,
+                "images",
+                safe_filename,
+            )
+        except Exception as error:
+            if not _is_missing_media_error(error):
+                raise
 
-        # Check videos
-        video_path = f"users/{user_id}/videos/{filename}"
+        video_path = f"users/{safe_user_id}/videos/{safe_filename}"
         try:
             await async_client.download_metadata(bucket_name, video_path)
-            # If we get here, the file exists - construct public URL
-            return f"https://storage.googleapis.com/{bucket_name}/{video_path}"
-        except Exception:
-            # File doesn't exist
-            pass
+            return _stored_media_url(
+                _serves_private_urls(config),
+                bucket_name,
+                safe_user_id,
+                "videos",
+                safe_filename,
+            )
+        except Exception as error:
+            if not _is_missing_media_error(error):
+                raise
 
         return None
 
@@ -82,61 +90,84 @@ async def upload_media(
         logger.error(f"Error reading file content: {str(e)}")
         raise store_exceptions.FileReadError("Failed to read file content") from e
 
-    # Detect actual content type from file signature/magic bytes
-    # Trust the file signature over the declared content-type header
-    detected_content_type: str | None = None
+    content_type = file.content_type
+    if content_type is None:
+        content_type = "image/jpeg"
 
-    # Check image file signatures
-    if content.startswith(b"\xff\xd8\xff"):  # JPEG
-        detected_content_type = "image/jpeg"
-    elif content.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
-        detected_content_type = "image/png"
-    elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
-        detected_content_type = "image/gif"
-    elif (
-        content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP"
-    ):  # WebP
-        detected_content_type = "image/webp"
-    # Check video file signatures
-    elif len(content) >= 8 and content[4:8] == b"ftyp":  # MP4
-        detected_content_type = "video/mp4"
-    elif content.startswith(b"\x1a\x45\xdf\xa3"):  # WebM
-        detected_content_type = "video/webm"
+    # Validate file signature/magic bytes
+    if content_type in ALLOWED_IMAGE_TYPES:
+        # Check image file signatures
+        if content.startswith(b"\xff\xd8\xff"):  # JPEG
+            if content_type != "image/jpeg":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
+            if content_type != "image/png":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
+            if content_type != "image/gif":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":  # WebP
+            if content_type != "image/webp":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        else:
+            raise store_exceptions.InvalidFileTypeError("Invalid image file signature")
 
-    # If we detected a valid type, use it; otherwise reject the file
-    if detected_content_type is None:
-        raise store_exceptions.InvalidFileTypeError(
-            "Could not detect a valid image or video file signature. "
-            "Supported formats: JPEG, PNG, GIF, WebP, MP4, WebM"
-        )
+    elif content_type in ALLOWED_VIDEO_TYPES:
+        # Check video file signatures
+        if content.startswith(b"\x00\x00\x00") and (content[4:8] == b"ftyp"):  # MP4
+            if content_type != "video/mp4":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        elif content.startswith(b"\x1a\x45\xdf\xa3"):  # WebM
+            if content_type != "video/webm":
+                raise store_exceptions.InvalidFileTypeError(
+                    "File signature does not match content type"
+                )
+        else:
+            raise store_exceptions.InvalidFileTypeError("Invalid video file signature")
 
-    # Log if we're auto-correcting a mismatched content-type
-    if file.content_type != detected_content_type:
-        logger.warning(
-            f"Auto-correcting content-type from '{file.content_type}' to "
-            f"'{detected_content_type}' based on file signature"
-        )
-
-    # Use the detected content type going forward
-    content_type = detected_content_type
-
-    settings = Settings()
-    use_local_storage = not settings.config.media_gcs_bucket_name
+    config = Settings().config
+    bucket_name = config.resolved_private_user_data_bucket
+    use_local_storage = not bucket_name
+    private_media_proxy_enabled = _serves_private_urls(config)
 
     try:
-        # content_type is already validated from file signature detection above
+        # Validate file type
+        if (
+            content_type not in ALLOWED_IMAGE_TYPES
+            and content_type not in ALLOWED_VIDEO_TYPES
+        ):
+            logger.warning(f"Invalid file type attempted: {content_type}")
+            raise store_exceptions.InvalidFileTypeError(
+                f"File type not supported. Must be jpeg, png, gif, webp, mp4 or webm. Content type: {content_type}"
+            )
 
         # Validate file size
         file_size = 0
         chunk_size = 8192  # 8KB chunks
+        max_file_size = (
+            MAX_PRIVATE_IMAGE_FILE_SIZE
+            if private_media_proxy_enabled and content_type in ALLOWED_IMAGE_TYPES
+            else MAX_FILE_SIZE
+        )
+        max_file_size_mb = max_file_size // (1024 * 1024)
 
         try:
             while chunk := await file.read(chunk_size):
                 file_size += len(chunk)
-                if file_size > MAX_FILE_SIZE:
+                if file_size > max_file_size:
                     logger.warning(f"File size too large: {file_size} bytes")
                     raise store_exceptions.FileSizeTooLargeError(
-                        "File too large. Maximum size is 50MB"
+                        f"File too large. Maximum size is {max_file_size_mb}MB"
                     )
         except store_exceptions.FileSizeTooLargeError:
             raise
@@ -157,40 +188,26 @@ async def upload_media(
         # Reset file pointer
         await file.seek(0)
 
-        # Generate unique filename
-        filename = file.filename or ""
-        file_base = os.path.splitext(filename)[0]
-        file_ext = CONTENT_TYPE_EXTENSIONS[content_type]
-        if use_file_name and not is_avatar:
-            unique_filename = f"{file_base}{file_ext}" if file_base else file_ext
-        else:
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-
-        # Construct storage path
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
+        unique_filename = local_media.stored_filename(
+            file.filename or "", content_type, use_file_name and not is_avatar
+        )
 
         if use_local_storage:
-            unique_filename = local_media.stored_filename(
-                unique_filename, content_type, use_file_name and not is_avatar
-            )
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
             return await local_media.store_media(
                 user_id, media_type, unique_filename, file_bytes
             )
 
-        storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
+        storage_path = submission_media.object_path(
+            user_id, media_type, unique_filename
+        )
 
         try:
             async with async_storage.Storage() as async_client:
-                bucket_name = settings.config.media_gcs_bucket_name
-
                 file_bytes = await file.read()
                 await scan_content_safe(file_bytes, filename=unique_filename)
-
-                public_url = (
-                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
-                )
 
                 # Upload using pure async client
                 await async_client.upload(
@@ -198,7 +215,13 @@ async def upload_media(
                 )
 
                 logger.info(f"Successfully uploaded file to: {storage_path}")
-                return public_url
+                return _stored_media_url(
+                    _serves_private_urls(config),
+                    bucket_name,
+                    user_id,
+                    media_type,
+                    unique_filename,
+                )
 
         except fastapi.HTTPException:
             raise
@@ -215,3 +238,28 @@ async def upload_media(
         raise store_exceptions.MediaUploadError(
             "Unexpected error during media upload"
         ) from e
+
+
+def _serves_private_urls(config: Config) -> bool:
+    """Only the legacy single-bucket setup still hands out direct GCS URLs."""
+    private_bucket = config.resolved_private_user_data_bucket
+    return bool(
+        private_bucket and private_bucket != config.resolved_public_site_media_bucket
+    )
+
+
+def _stored_media_url(
+    buckets_are_split: bool,
+    bucket_name: str,
+    user_id: str,
+    media_type: str,
+    filename: str,
+) -> str:
+    if buckets_are_split:
+        return submission_media.url(user_id, media_type, filename)
+    object_path = submission_media.object_path(user_id, media_type, filename)
+    return f"https://storage.googleapis.com/{bucket_name}/{object_path}"
+
+
+def _is_missing_media_error(error: Exception) -> bool:
+    return isinstance(error, FileNotFoundError) or is_not_found_error(error)

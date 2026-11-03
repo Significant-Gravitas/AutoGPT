@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanel } from "../ContextPanel";
 
@@ -22,13 +23,20 @@ beforeEach(() => {
     }),
   );
   useCopilotUIStore.setState((s) => ({
+    contextPanelExpert: null,
     artifactPanel: {
       ...s.artifactPanel,
       isOpen: true,
       activeArtifact: null,
       activeTab: "artifacts",
+      mode: "artifact",
+      isComputerOpen: false,
     },
   }));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("ContextPanel", () => {
@@ -40,13 +48,34 @@ describe("ContextPanel", () => {
     expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
   });
 
-  test("leaves a files tab alone and stays undocked so the files card owns it", async () => {
+  test("docks for the files tab and lists the chat's files", async () => {
     useCopilotUIStore.setState((s) => ({
       artifactPanel: { ...s.artifactPanel, activeTab: "files" },
     }));
     const { container } = render(<ContextPanel sessionId="session-1" />);
-    expect(container.querySelector("[data-context-panel]")).toBeNull();
-    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(screen.getByRole("heading", { name: "Files" })).toBeDefined();
+    expect(await screen.findByText("No files yet")).toBeDefined();
+  });
+
+  test("docks for the integrations tab with the expert's integrations", async () => {
+    server.use(getListExpertCredentialsMockHandler([]));
+    useCopilotUIStore.setState((s) => ({
+      contextPanelExpert: { id: "expert-maria", name: "Maria" },
+      artifactPanel: { ...s.artifactPanel, activeTab: "integrations" },
+    }));
+    render(<ContextPanel sessionId="session-1" />);
+
+    expect(screen.getByRole("heading", { name: "Integrations" })).toBeDefined();
+    expect(await screen.findByText("No integrations yet")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Add integration" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open Maria's page" }),
+    ).toBeDefined();
   });
 
   test("hides itself while an artifact is previewing (artifact takes over the region)", () => {
@@ -91,17 +120,35 @@ describe("ContextPanel", () => {
     expect(container.querySelector("[data-context-panel]")).toBeNull();
   });
 
-  test("mobile: keeps the sheet closed for the files tab (the inline files card owns it)", () => {
+  test("mobile: opens the sheet on the files tab", async () => {
     useCopilotUIStore.setState((s) => ({
       artifactPanel: { ...s.artifactPanel, activeTab: "files" },
     }));
     render(<ContextPanel sessionId="session-1" mobile />);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Files" })).toBeDefined();
   });
 
   test("mobile: opens the sheet on the artifacts tab", async () => {
     render(<ContextPanel sessionId="session-1" mobile />);
     expect(await screen.findByRole("dialog")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Artifacts" })).toBeDefined();
+  });
+
+  test("mobile: the sheet describes its tab to screen readers", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+
+    expect(
+      await screen.findByRole("dialog", {
+        description: "Files from this chat.",
+      }),
+    ).toBeDefined();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Missing `Description`"),
+    );
   });
 });

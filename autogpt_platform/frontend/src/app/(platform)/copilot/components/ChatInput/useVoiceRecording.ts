@@ -1,14 +1,11 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import React, {
-  KeyboardEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { isKey } from "@/lib/keyboard";
+import { isMicrophonePermissionDenied } from "@/lib/microphone";
+import { isTouchDevice } from "@/lib/platform";
+import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { downloadRecording } from "../../voice/downloadRecording";
+import { focusComposer } from "./helpers";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -48,14 +45,13 @@ export function useVoiceRecording({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const isRecordingRef = useRef(false);
 
   const [isSupported, setIsSupported] = useState(false);
   // Sending the draft as transcription context ships with the brain-dump
   // experience (Path B records a dump on top of Otto's intro text).
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
-  isBrainDumpEnabledRef.current = isBrainDumpEnabled;
+
   const valueRef = useRef(value);
 
   useEffect(() => {
@@ -68,70 +64,70 @@ export function useVoiceRecording({
     );
   }, []);
 
-  const clearTimer = useCallback(() => {
+  function clearTimer() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  }, []);
+  }
 
-  const cleanup = useCallback(() => {
+  function cleanup() {
     clearTimer();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      setAudioStream(null);
     }
     mediaRecorderRef.current = null;
     chunksRef.current = [];
     setElapsedTime(0);
-  }, [clearTimer]);
+  }
 
-  const handleTranscription = useCallback(
-    (text: string) => {
-      setValue((prev) => {
-        const trimmedPrev = prev.trim();
-        if (trimmedPrev) {
-          return `${trimmedPrev} ${text}`;
-        }
-        return text;
+  function handleTranscription(text: string) {
+    setValue((prev) => {
+      const trimmedPrev = prev.trim();
+      if (trimmedPrev) {
+        return `${trimmedPrev} ${text}`;
+      }
+      return text;
+    });
+  }
+
+  async function transcribeAudio(audioBlob: Blob) {
+    const attempt = attemptRef.current;
+    setIsTranscribing(true);
+    setError(null);
+    // The previous failure stays on screen through a retry: clearing it here
+    // would blink the row away and back, and take the Retry button with it.
+
+    async function transcribe() {
+      const formData = new FormData();
+      formData.append("audio", audioBlob);
+      const draft = valueRef.current.trim();
+      if (draft) {
+        formData.append("context", draft);
+      }
+
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
       });
-    },
-    [setValue],
-  );
 
-  const transcribeAudio = useCallback(
-    async (audioBlob: Blob) => {
-      const attempt = attemptRef.current;
-      setIsTranscribing(true);
-      setError(null);
-      // The previous failure stays on screen through a retry: clearing it here
-      // would blink the row away and back, and take the Retry button with it.
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Transcription failed");
+      }
 
-      try {
-        const formData = new FormData();
-        formData.append("audio", audioBlob);
-        const draft = valueRef.current.trim();
-        if (isBrainDumpEnabledRef.current && draft) {
-          formData.append("context", draft);
-        }
+      const data = await response.json();
+      if (data.text) {
+        handleTranscription(data.text);
+      }
+      setTranscriptionError(null);
+      setFailedRecording(null);
+    }
 
-        const response = await fetch("/api/transcribe", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || "Transcription failed");
-        }
-
-        const data = await response.json();
-        if (data.text) {
-          handleTranscription(data.text);
-        }
-        setTranscriptionError(null);
-        setFailedRecording(null);
-      } catch (err) {
+    await transcribe()
+      .catch((err) => {
         console.error("Transcription error:", err);
         // Dismissed while this was in flight: the user is done with this
         // recording, so the failure has nobody to tell. The success path is
@@ -144,12 +140,11 @@ export function useVoiceRecording({
             : "Transcription failed";
         setTranscriptionError(message);
         setFailedRecording(audioBlob);
-      } finally {
+      })
+      .finally(() => {
         setIsTranscribing(false);
-      }
-    },
-    [handleTranscription, inputId],
-  );
+      });
+  }
 
   /** Re-sends the recording that failed, byte for byte. */
   function retryTranscription() {
@@ -167,16 +162,16 @@ export function useVoiceRecording({
     setFailedRecording(null);
   }
 
-  const stopRecording = useCallback(() => {
+  function stopRecording() {
     if (mediaRecorderRef.current && isRecordingRef.current) {
       mediaRecorderRef.current.stop();
       isRecordingRef.current = false;
       setIsRecording(false);
       clearTimer();
     }
-  }, [clearTimer]);
+  }
 
-  const startRecording = useCallback(async () => {
+  async function startRecording() {
     if (disabled || isRecordingRef.current || isTranscribing) return;
 
     setError(null);
@@ -185,11 +180,10 @@ export function useVoiceRecording({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setAudioStream(stream);
 
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/mp4",
+        mimeType: pickRecordingMimeType(),
       });
 
       mediaRecorderRef.current = mediaRecorder;
@@ -209,6 +203,7 @@ export function useVoiceRecording({
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
+          setAudioStream(null);
         }
 
         if (audioBlob.size > 0) {
@@ -240,22 +235,22 @@ export function useVoiceRecording({
       }, 100);
     } catch (err) {
       console.error("Failed to start recording:", err);
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
+      if (isMicrophonePermissionDenied(err)) {
         setError("Microphone permission denied");
       } else {
         setError("Failed to access microphone");
       }
       cleanup();
     }
-  }, [disabled, isTranscribing, stopRecording, transcribeAudio, cleanup]);
+  }
 
-  const toggleRecording = useCallback(() => {
+  function toggleRecording() {
     if (isRecording) {
       stopRecording();
     } else {
       startRecording();
     }
-  }, [isRecording, startRecording, stopRecording]);
+  }
 
   const { toast } = useToast();
 
@@ -269,41 +264,38 @@ export function useVoiceRecording({
     }
   }, [error, toast]);
 
+  // Puts the caret back once the words land; focus on mount is useChatInput's.
+  // Not on a phone: there focus opens the keyboard over the thread.
+  const wasTranscribingRef = useRef(false);
   useEffect(() => {
-    if (!isTranscribing && inputId) {
-      const inputElement = document.getElementById(inputId);
-      if (inputElement) {
-        inputElement.focus();
-      }
-    }
+    const hasFinished = wasTranscribingRef.current && !isTranscribing;
+    wasTranscribingRef.current = isTranscribing;
+    if (hasFinished && inputId && !isTouchDevice()) focusComposer(inputId);
   }, [isTranscribing, inputId]);
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Allow space to toggle recording (start when empty, stop when recording)
-      if (isKey(event, " ") && !isTranscribing) {
-        if (isRecordingRef.current) {
-          // Stop recording on space
-          event.preventDefault();
-          stopRecording();
-          return;
-        } else if (!value.trim() && !isStreaming) {
-          // Start recording on space when input is empty and not streaming
-          // (mirrors the visual disabled state of the mic button during streaming)
-          event.preventDefault();
-          void startRecording();
-          return;
-        }
-      }
-      // Block all key events when recording (except space handled above)
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    // Allow space to toggle recording (start when empty, stop when recording)
+    if (isKey(event, " ") && !isTranscribing) {
       if (isRecordingRef.current) {
+        // Stop recording on space
         event.preventDefault();
+        stopRecording();
+        return;
+      } else if (!value.trim() && !isStreaming) {
+        // Start recording on space when input is empty and not streaming
+        // (mirrors the visual disabled state of the mic button during streaming)
+        event.preventDefault();
+        void startRecording();
         return;
       }
-      // Let PromptInputTextarea handle remaining keys (Enter → submit, etc.)
-    },
-    [value, isTranscribing, isStreaming, stopRecording, startRecording],
-  );
+    }
+    // Block all key events when recording (except space handled above)
+    if (isRecordingRef.current) {
+      event.preventDefault();
+      return;
+    }
+    // Let PromptInputTextarea handle remaining keys (Enter → submit, etc.)
+  }
 
   const showMicButton = isSupported;
   // Don't include isRecording in disabled state - we need key events to work
@@ -312,12 +304,14 @@ export function useVoiceRecording({
   // while a stream is in-flight; the stop button handles the streaming state.
   const isInputDisabled = disabled || isTranscribing;
 
-  // Cleanup on unmount
+  // Cleanup on unmount. Through a stable callback, so a new `cleanup` does not
+  // re-run the effect and stop the recording.
+  const cleanupOnUnmount = useStableCallback(cleanup);
   useEffect(() => {
     return () => {
-      cleanup();
+      cleanupOnUnmount();
     };
-  }, [cleanup]);
+  }, [cleanupOnUnmount]);
 
   return {
     isRecording,
@@ -336,6 +330,12 @@ export function useVoiceRecording({
     handleKeyDown,
     showMicButton,
     isInputDisabled,
-    audioStream: streamRef.current,
+    audioStream,
   };
+}
+
+function pickRecordingMimeType() {
+  return MediaRecorder.isTypeSupported("audio/webm")
+    ? "audio/webm"
+    : "audio/mp4";
 }

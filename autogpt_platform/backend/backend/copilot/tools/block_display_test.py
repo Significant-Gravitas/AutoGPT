@@ -6,7 +6,6 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.blocks._base import BlockType
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import tool_display_context
 from backend.copilot.tools.continue_run_block import ContinueRunBlockTool
@@ -166,7 +165,7 @@ async def test_unavailable_continuation_does_not_emit_a_name(unavailable: str):
     if unavailable == "review_missing":
         database.get_reviews_by_node_exec_ids.return_value = {}
     elif unavailable == "wrong_session":
-        review.graph_exec_id = "another-session"
+        review.session_id = "another-session"
     elif unavailable in ("waiting", "rejected"):
         review.status = (
             ReviewStatus.WAITING if unavailable == "waiting" else ReviewStatus.REJECTED
@@ -226,11 +225,12 @@ def _review_database(session: ChatSession, review_id: str) -> MagicMock:
     database.get_reviews_by_node_exec_ids = AsyncMock(
         return_value={
             review_id: MagicMock(
-                graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
+                session_id=session.session_id,
                 status=ReviewStatus.APPROVED,
                 payload={},
             )
         }
     )
+    database.claim_approved_review = AsyncMock(return_value=True)
     database.delete_review_by_node_exec_id = AsyncMock()
     return database

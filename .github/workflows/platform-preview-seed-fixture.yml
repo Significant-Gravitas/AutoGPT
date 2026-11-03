@@ -89,7 +89,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Always bake dev: schedule/dispatch runs execute from the DEFAULT
           # branch (master), which would otherwise silently bake master's
@@ -105,12 +105,12 @@ jobs:
         run: echo "ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Set up Python dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -150,6 +150,20 @@ jobs:
             echo "::warning title=seed-soft-failure::load-store-agents seeder failed; continuing without it."
             exit 0
           }
+
+      # The marketplace skills and expert roster come from the public skills
+      # catalog, the same way a deploy publishes them after migrations. Store
+      # assets were loaded just above, so the roster's preload workflows
+      # resolve; --skip-missing-preloads keeps the bake going if that step
+      # was the one that soft-failed.
+      - name: "Seed: skills catalog (best-effort)"
+        run: |
+          timeout 600 poetry run publish-skills-catalog --skip-missing-preloads || {
+            echo "::warning title=seed-soft-failure::skills catalog publish failed or timed out; continuing without marketplace skills and roster experts."
+            exit 0
+          }
+        env:
+          SKILLS_CATALOG_TOKEN: ${{ github.token }}
 
       - name: "Seed: e2e_test_data (best-effort)"
         run: |

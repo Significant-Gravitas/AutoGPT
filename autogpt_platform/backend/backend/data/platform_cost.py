@@ -35,6 +35,7 @@ def usd_to_microdollars(cost_usd: float | None) -> int | None:
 class PlatformCostEntry(BaseModel):
     user_id: str
     graph_exec_id: str | None = None
+    chat_session_id: str | None = None
     node_exec_id: str | None = None
     graph_id: str | None = None
     node_id: str | None = None
@@ -53,6 +54,8 @@ class PlatformCostEntry(BaseModel):
     tracking_type: str | None = None
     tracking_amount: float | None = None
     metadata: dict[str, Any] | None = None
+    # The expert a background call ran for; None for the account's own spend.
+    expert_id: str | None = None
 
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
@@ -60,6 +63,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
         data=PlatformCostLogCreateInput(
             userId=entry.user_id,
             graphExecId=entry.graph_exec_id,
+            chatSessionId=entry.chat_session_id,
             nodeExecId=entry.node_exec_id,
             graphId=entry.graph_id,
             nodeId=entry.node_id,
@@ -80,6 +84,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
             trackingType=entry.tracking_type,
             trackingAmount=entry.tracking_amount,
             metadata=SafeJson(entry.metadata or {}),
+            expertId=entry.expert_id,
         )
     )
 
@@ -167,6 +172,7 @@ class CostLogRow(BaseModel):
     user_id: str | None = None
     email: str | None = None
     graph_exec_id: str | None = None
+    chat_session_id: str | None = None
     node_exec_id: str | None = None
     block_name: str
     provider: str
@@ -858,7 +864,7 @@ async def get_platform_cost_logs(
             created_at=r.createdAt,
             user_id=r.userId,
             email=_mask_email(r.User.email if r.User else None),
-            graph_exec_id=r.graphExecId,
+            **_run_or_chat(r),
             node_exec_id=r.nodeExecId,
             block_name=r.blockName or "",
             provider=r.provider,
@@ -1079,7 +1085,7 @@ async def get_platform_cost_logs_for_export(
             created_at=r.createdAt,
             user_id=r.userId,
             email=_mask_email(r.User.email if r.User else None),
-            graph_exec_id=r.graphExecId,
+            **_run_or_chat(r),
             node_exec_id=r.nodeExecId,
             block_name=r.blockName or "",
             provider=r.provider,
@@ -1102,6 +1108,20 @@ async def get_platform_cost_logs_for_export(
 # Helpers kept for backward-compatibility with existing tests.
 # New code should not use these — use _build_prisma_where instead.
 # ---------------------------------------------------------------------------
+
+
+def _run_or_chat(row: Any) -> dict[str, str | None]:
+    """A row's graph execution or chat. Chat rows written before
+    ``chatSessionId`` existed carry the chat in ``graphExecId``."""
+    if row.chatSessionId or row.blockId != _COPILOT_BLOCK_ID:
+        return {"graph_exec_id": row.graphExecId, "chat_session_id": row.chatSessionId}
+    if _md_str(row, "source") == "dream_pass":
+        return {"graph_exec_id": row.graphExecId, "chat_session_id": None}
+    return {"graph_exec_id": None, "chat_session_id": row.graphExecId}
+
+
+# The block id AutoPilot's own model usage is logged under (token_tracking).
+_COPILOT_BLOCK_ID = "copilot"
 
 
 def _build_where(

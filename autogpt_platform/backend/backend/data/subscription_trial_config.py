@@ -5,19 +5,20 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Literal
 
-from pydantic import (
-    AwareDatetime,
-    BaseModel,
-    ConfigDict,
-    Field,
-    ValidationError,
-    model_validator,
-)
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
 from backend.util.country import country_code
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
+
+# The flag controls trial eligibility and commercial terms; usage is one
+# lifetime budget, spendable at any pace. Periodic limits must not subdivide it.
+FREE_TRIAL_COST_LIMITS = {
+    "daily_cost_limit": 100_000_000,
+    "weekly_cost_limit": 20_000_000,
+    "total_cost_limit": 20_000_000,
+}
 
 
 class TrialOffer(BaseModel):
@@ -38,12 +39,6 @@ class TrialOffer(BaseModel):
     # ending the trials already running: the cap is only ever consulted when
     # a new seat is taken, never to revoke a seat already held.
     max_active_trials: int | None = Field(default=None, ge=0, strict=True)
-
-    @model_validator(mode="after")
-    def ordered_limits(self) -> "TrialOffer":
-        if not self.daily_cost_limit <= self.weekly_cost_limit <= self.total_cost_limit:
-            raise ValueError("Trial limits must satisfy daily <= weekly <= total")
-        return self
 
     def is_eligible(
         self,
@@ -111,7 +106,7 @@ async def get_trial_offer(
         if not isinstance(raw, dict) or "version" not in raw:
             logger.debug("No card-required trial offer configured")
             return None
-        return TrialOffer.model_validate(raw)
+        return TrialOffer.model_validate(raw).model_copy(update=FREE_TRIAL_COST_LIMITS)
     except (ValidationError, ValueError, TypeError):
         logger.error("Invalid card-required-trial-offer; refusing trial enrollment")
         return None

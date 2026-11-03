@@ -3,25 +3,23 @@ import { Text } from "@/components/atoms/Text/Text";
 import { formatHeaderDate, getHomeStatusLine } from "../../helpers";
 
 interface Props {
-  greeting: string;
-  name: string;
   dashboard: HomeDashboardResponse;
 }
 
-export function HomeHeader({ greeting, name, dashboard }: Props) {
+export function HomeHeader({ dashboard }: Props) {
   const date = formatHeaderDate(dashboard.generated_at, dashboard.timezone);
   const status = getHomeStatusLine(dashboard);
 
   return (
-    <header className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
+    <header className="flex items-end justify-between gap-6 px-1 pt-1 pb-5">
       <div className="min-w-0">
         <Text
           variant="lead-semibold"
-          as="h1"
+          as="h2"
           tone="primary"
-          className="text-pretty tracking-[-0.01em]"
+          className="tracking-title text-pretty"
         >
-          {greeting}, {name}
+          Your recap
         </Text>
         <Text variant="body" tone="primary" className="mt-0.5 text-pretty">
           {status.split(/(\d+)/).map((part, index) =>

@@ -7,6 +7,7 @@ import { isConsentManagerConfigured } from "@/services/consent/consent";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
+import { BrowserNotificationsCard } from "./components/BrowserNotificationsCard/BrowserNotificationsCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
 import { CookieSettingsCard } from "./components/CookieSettingsCard/CookieSettingsCard";
@@ -38,6 +39,7 @@ export default function SettingsPreferencesPage() {
   } = usePreferencesPage();
 
   const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
+  const browserCardIndex = showNotifications ? 3 : 2;
 
   if (isError) {
     return (
@@ -79,7 +81,11 @@ export default function SettingsPreferencesPage() {
         />
       ) : null}
 
-      {isConsentManagerConfigured() ? <CookieSettingsCard index={3} /> : null}
+      <BrowserNotificationsCard index={browserCardIndex} />
+
+      {isConsentManagerConfigured() ? (
+        <CookieSettingsCard index={browserCardIndex + 1} />
+      ) : null}
 
       <SaveBar
         visible={dirty}

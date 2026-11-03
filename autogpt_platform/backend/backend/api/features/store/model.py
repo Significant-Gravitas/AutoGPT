@@ -1,6 +1,6 @@
 import datetime
 import enum
-from typing import TYPE_CHECKING, List, Self
+from typing import TYPE_CHECKING, Annotated, List, Self
 
 import prisma.enums
 import pydantic
@@ -11,6 +11,25 @@ from .categories import validate_canonical_categories
 
 if TYPE_CHECKING:
     import prisma.models
+
+
+SUB_HEADING_MAX_LENGTH = 100
+
+# Surfaced as a one-line card subtitle, so it must be a short CTA rather than a
+# description; whitespace-only is stripped to "" and rejected as empty.
+SubHeading = Annotated[
+    str,
+    pydantic.StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=SUB_HEADING_MAX_LENGTH
+    ),
+    pydantic.Field(
+        description=(
+            "Short call-to-action line describing what the agent does for the "
+            "user, e.g. 'Find decision-makers at any company in seconds'. "
+            f"Required; max {SUB_HEADING_MAX_LENGTH} characters."
+        ),
+    ),
+]
 
 
 class ChangelogEntry(pydantic.BaseModel):
@@ -131,19 +150,24 @@ class StoreAgentDetails(pydantic.BaseModel):
         )
 
 
-class Profile(pydantic.BaseModel):
+class ProfileUpdateRequest(pydantic.BaseModel):
     """Marketplace user profile (only attributes that the user can update)"""
+
+    username: str | None = None
+    name: str | None = None
+    description: str | None = None
+    avatar_url: str | None = None
+    links: list[str] | None = None
+
+
+class ProfileDetails(pydantic.BaseModel):
+    """Marketplace user profile (including read-only fields)"""
 
     username: str
     name: str
     description: str
     avatar_url: str | None
     links: list[str]
-
-
-class ProfileDetails(Profile):
-    """Marketplace user profile (including read-only fields)"""
-
     is_featured: bool
 
     @classmethod
@@ -318,7 +342,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     )
     slug: str
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []
@@ -335,7 +359,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []
@@ -395,7 +419,7 @@ class StoreReview(pydantic.BaseModel):
 
 class StoreReviewCreate(pydantic.BaseModel):
     store_listing_version_id: str
-    score: int
+    score: int = pydantic.Field(ge=1, le=5, description="Star rating, 1 to 5")
     comments: str | None = None
 
 

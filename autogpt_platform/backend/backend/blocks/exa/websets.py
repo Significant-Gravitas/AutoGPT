@@ -26,11 +26,13 @@ from exa_py.websets.types import (
 )
 from pydantic import Field
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BaseModel,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -250,12 +252,14 @@ class ExaCreateWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetBlock.Input,
             output_schema=ExaCreateWebsetBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
 
+        refuse_platform_credentials(self, credentials)
         exa = Exa(credentials.api_key.get_secret_value())
 
         entity = None
@@ -471,11 +475,13 @@ class ExaCreateOrFindWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateOrFindWebsetBlock.Input,
             output_schema=ExaCreateOrFindWebsetBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         import httpx
 
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
@@ -548,11 +554,13 @@ class ExaUpdateWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateWebsetBlock.Input,
             output_schema=ExaUpdateWebsetBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         payload = {}
@@ -617,11 +625,13 @@ class ExaListWebsetsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetsBlock.Input,
             output_schema=ExaListWebsetsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         response = await aexa.websets.list(
@@ -679,11 +689,13 @@ class ExaGetWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetBlock.Input,
             output_schema=ExaGetWebsetBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_webset = await aexa.websets.get(id=input_data.webset_id)
@@ -752,11 +764,14 @@ class ExaDeleteWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteWebsetBlock.Input,
             output_schema=ExaDeleteWebsetBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_webset = await aexa.websets.delete(id=input_data.webset_id)
@@ -803,11 +818,13 @@ class ExaCancelWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetBlock.Input,
             output_schema=ExaCancelWebsetBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         canceled_webset = await aexa.websets.cancel(id=input_data.webset_id)
@@ -961,6 +978,7 @@ class ExaPreviewWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaPreviewWebsetBlock.Input,
             output_schema=ExaPreviewWebsetBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1058,11 +1076,13 @@ class ExaWebsetStatusBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetStatusBlock.Input,
             output_schema=ExaWebsetStatusBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         webset = await aexa.websets.get(id=input_data.webset_id)
@@ -1193,11 +1213,13 @@ class ExaWebsetSummaryBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetSummaryBlock.Input,
             output_schema=ExaWebsetSummaryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         webset = await aexa.websets.get(id=input_data.webset_id)
@@ -1371,11 +1393,13 @@ class ExaWebsetReadyCheckBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.LOGIC},
             input_schema=ExaWebsetReadyCheckBlock.Input,
             output_schema=ExaWebsetReadyCheckBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get webset details

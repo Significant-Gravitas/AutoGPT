@@ -1,6 +1,5 @@
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
-import { ExpertPill } from "./ExpertPill";
 import { ExpertSection } from "./ExpertSection";
 
 interface Props {
@@ -16,13 +15,22 @@ export function ExpertAccess({ name, providers }: Props) {
       title={`Services ${name} can work with`}
       description={`${name} will ask you to connect these the first time they are needed — nothing is shared until you do.`}
     >
-      <ul className="flex flex-wrap gap-2">
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {providers.map((provider) => (
-          <ExpertPill
+          <li
             key={provider}
-            icon={<IntegrationLogo provider={provider} />}
-            label={formatProviderName(provider)}
-          />
+            className="flex min-w-0 items-center gap-3 rounded-2xl bg-surface p-3 smooth-shadow-ring-sm"
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border-base bg-gradient-to-b from-surface to-surface-muted"
+            >
+              <IntegrationLogo provider={provider} size={22} />
+            </span>
+            <span className="min-w-0 text-sm leading-5 font-medium break-words text-foreground-emphasis">
+              {formatProviderName(provider)}
+            </span>
+          </li>
         ))}
       </ul>
     </ExpertSection>

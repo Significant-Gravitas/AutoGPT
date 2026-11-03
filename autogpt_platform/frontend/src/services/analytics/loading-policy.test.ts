@@ -8,7 +8,6 @@ function consent(overrides: Partial<ConsentState> = {}): ConsentState {
 
 const production = {
   host: "platform.agpt.co",
-  pathname: "/marketplace",
   isLocal: false,
   isConsentManaged: true,
 };
@@ -92,7 +91,6 @@ describe("resolveAnalyticsLoading", () => {
   it("loads the Google tag locally only with analytics consent", () => {
     const local = {
       host: "localhost:3000",
-      pathname: "/",
       isLocal: true,
       isConsentManaged: true,
     };
@@ -115,36 +113,5 @@ describe("resolveAnalyticsLoading", () => {
     });
 
     expect(result.dataFast).toBe(true);
-  });
-
-  it("loads DataFast on the public tour without consent", () => {
-    const result = resolveAnalyticsLoading({
-      ...production,
-      pathname: "/tour/chat",
-      consent: consent(),
-    });
-
-    expect(result.dataFast).toBe(true);
-  });
-
-  it("keeps DataFast off the tour when no banner is configured", () => {
-    const result = resolveAnalyticsLoading({
-      ...production,
-      pathname: "/tour",
-      isConsentManaged: false,
-      consent: consent(),
-    });
-
-    expect(result).toEqual({ googleTag: false, dataFast: false });
-  });
-
-  it("does not treat /tourism as the tour", () => {
-    const result = resolveAnalyticsLoading({
-      ...production,
-      pathname: "/tourism",
-      consent: consent(),
-    });
-
-    expect(result.dataFast).toBe(false);
   });
 });

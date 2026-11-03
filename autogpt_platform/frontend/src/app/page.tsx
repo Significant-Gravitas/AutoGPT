@@ -8,7 +8,7 @@ export default function Page() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/copilot");
+    router.replace("/home");
   }, [router]);
 
   return <LoadingSpinner size="large" cover />;
