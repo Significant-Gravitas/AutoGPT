@@ -357,13 +357,8 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 
 class InputMismatchError(ValueError):
-    """The node has every input it needs, but a value can't be used: it can't
-    be converted to its input's type, or it doesn't match the input's schema.
-
-    Unlike a missing input, more data arriving later won't fix this, so the
-    node should fail rather than wait. ``data`` is the resolved input, which
-    is what the node is queued with to fail with this error.
-    """
+    """A value the node can't use; unlike missing input, waiting won't fix it.
+    ``data`` is the resolved input the node is queued with to fail."""
 
     def __init__(self, message: str, data: BlockInput):
         super().__init__(message)
@@ -388,9 +383,8 @@ def validate_exec(
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
         raise_on_mismatch: When True, a value that can't be converted or
-            doesn't match the schema raises ``InputMismatchError`` instead of
-            being returned as an error, so the caller can tell it apart from
-            input that is still missing.
+            doesn't match the schema raises ``InputMismatchError``, so the
+            caller can tell it apart from missing input.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -423,10 +417,9 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
-    # Coerce non-matching data types to the expected input schema. A value that
-    # can't be converted is reported only after the missing-input check, so a
-    # node still missing input keeps waiting. Coercing first still matters:
-    # some blocks' missing-input checks read the converted values.
+    # Coerce first: some blocks' missing-input checks read the converted values.
+    # A value that can't be converted is reported after that check, so a node
+    # still missing input keeps waiting.
     conversion_error: str | None = None
     try:
         coerce_inputs_to_schema(data, schema)
@@ -442,22 +435,26 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
+    # A value that can't be converted fails dry runs too, so the builder learns
+    # the wiring is wrong.
+    if conversion_error:
+        error_message = f"{error_prefix} {conversion_error}"
+        if raise_on_mismatch:
+            raise InputMismatchError(error_message, data)
+        logger.warning(error_message)
+        return None, error_message
+
     # Last validation: Validate the input values against the schema.
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
-    # A value that can't be converted is tolerated there for the same reason.
     if not dry_run:
-        if error := conversion_error or schema.get_mismatch_error(data):
-            # A required input that arrived as None is present, so it isn't
-            # missing, but the schema check reports it as a required property.
-            if empty := sorted(
-                name
-                for name in schema.get_required_fields()
-                if name in data and data[name] is None
-            ):
-                error = f"required input {empty} received no value"
+        if error := schema.get_mismatch_error(data):
             error_message = f"{error_prefix} {error}"
-            if raise_on_mismatch:
+            # A required input that arrived as None is skipped, as before, not
+            # failed: None is sometimes sent on purpose.
+            if raise_on_mismatch and not any(
+                data.get(name, "") is None for name in schema.get_required_fields()
+            ):
                 raise InputMismatchError(error_message, data)
             logger.warning(error_message)
             return None, error_message

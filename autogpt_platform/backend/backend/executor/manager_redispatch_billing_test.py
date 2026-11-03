@@ -18,6 +18,7 @@ import pytest
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.helpers.review import HITLReviewHelper
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import (
     ExecutionContext,
@@ -142,8 +143,8 @@ def harness(processor: ExecutionProcessor):
     sync_db.get_node_executions.side_effect = lambda _id, statuses: (
         [row] if row.status in statuses else []
     )
-    sync_db.has_pending_reviews_for_graph_exec.side_effect = (
-        lambda _id: row.status == ExecutionStatus.REVIEW
+    sync_db.has_pending_reviews_for_graph_exec.side_effect = lambda _id: (
+        row.status == ExecutionStatus.REVIEW
     )
 
     async_db = MagicMock()
@@ -197,7 +198,9 @@ def harness(processor: ExecutionProcessor):
         def price(costs: list[BlockCost]) -> None:
             BLOCK_COSTS[StoreValueBlock] = costs
 
-        yield SimpleNamespace(wallet=wallet, row=row, dispatch=dispatch, price=price)
+        yield SimpleNamespace(
+            wallet=wallet, row=row, dispatch=dispatch, price=price, sync_db=sync_db
+        )
 
     if original_costs is None:
         BLOCK_COSTS.pop(StoreValueBlock, None)
@@ -248,23 +251,48 @@ def _fails_on_its_input(row: NodeRow):
 
     async def run(*, stats: NodeExecutionStats, **_):
         row.status = ExecutionStatus.FAILED
-        stats.error = ValueError("Input `input` can't take the value")
+        stats.error = ValueError("Input `model` can't take the value")
         return TimingInfo(cpu_time=0.0, wall_time=0.0), ExecutionStatus.FAILED
 
     return run
 
 
-@pytest.mark.parametrize("costs", [PER_RUN, USAGE_PRICED], ids=["per-run", "usage"])
-def test_a_node_queued_to_fail_on_its_input_is_not_billed(harness, costs):
-    """An upstream output gave the node a value it can't use, so it was queued
-    only to fail with the input error (SECRT-1258). The marker is in-memory and
-    rides on the entry the dispatcher takes off the queue."""
-    harness.price(costs)
-    harness.row.entry.input_error = "Input `input` can't take the value"
+@pytest.mark.parametrize(
+    "model, block_run, billed",
+    [
+        pytest.param("not-a-model", _fails_on_its_input, 0, id="bad value"),
+        pytest.param("gpt-4o", _runs, PER_RUN_PRICE, id="usable value"),
+    ],
+)
+def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
+    harness, model, block_run, billed
+):
+    """The node was queued only to fail on a value it can't use (SECRT-1258).
+    Its in-memory marker is gone after a restart, so the rebuilt queue derives
+    it again from the stored input."""
+    block = AITextGeneratorBlock()
+    harness.row.entry = harness.row.entry.model_copy(
+        update={
+            "block_id": block.id,
+            "inputs": {
+                "credentials": {"id": "c", "provider": "openai", "type": "api_key"},
+                "model": model,
+                "prompt": "hi",
+            },
+        }
+    )
+    harness.sync_db.get_node.return_value = Node(id="node-1", block_id=block.id)
+    original_costs = BLOCK_COSTS.get(AITextGeneratorBlock)
+    BLOCK_COSTS[AITextGeneratorBlock] = PER_RUN
+    try:
+        harness.dispatch(block_run(harness.row))
+    finally:
+        if original_costs is None:
+            BLOCK_COSTS.pop(AITextGeneratorBlock, None)
+        else:
+            BLOCK_COSTS[AITextGeneratorBlock] = original_costs
 
-    harness.dispatch(_fails_on_its_input(harness.row))
-
-    assert harness.wallet.spent == []
+    assert harness.wallet.total == billed, harness.wallet.spent
 
 
 async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():

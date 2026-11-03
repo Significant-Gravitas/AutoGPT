@@ -1612,9 +1612,8 @@ class NodeExecutionEntry(BaseModel):
     queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
         default=None, exclude=True
     )
-    # Set when an upstream output gave the node a value it can't use: the node
-    # is queued only to fail with this input error, so it isn't billed. In-memory
-    # only, like the fields above.
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
     input_error: Optional[str] = Field(default=None, exclude=True)
 
 

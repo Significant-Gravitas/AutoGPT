@@ -353,8 +353,32 @@ def _drop_unused_credentials(node: Node, inputs: BlockInput) -> None:
             field_info.discriminator,
             node.input_default.get(field_info.discriminator),
         )
-        if not field_info.requires_credentials(discriminator_value):
+        try:
+            unused = not field_info.requires_credentials(discriminator_value)
+        except TypeError:  # an unhashable linked value: validation reports it
+            continue
+        if unused:
             inputs[field_name] = None
+
+
+def _validate_queued_input(
+    node: Node, data: BlockInput, dry_run: bool, resolve_input: bool = True
+) -> tuple[BlockInput | None, str, str | None]:
+    """Validate a node's input as `execute_node` will: returns the data to
+    queue, the message, and the input error the node is queued to fail with.
+    Missing input returns no data, so the node keeps waiting."""
+    _drop_unused_credentials(node, data)
+    try:
+        valid, msg = validate_exec(
+            node,
+            data,
+            resolve_input=resolve_input,
+            dry_run=dry_run,
+            raise_on_mismatch=True,
+        )
+    except InputMismatchError as e:
+        return e.data, str(e), str(e)
+    return valid, msg, None
 
 
 async def execute_node(
@@ -785,31 +809,6 @@ async def _enqueue_next_nodes(
             input_error=input_error,
         )
 
-    def validate_next_input(
-        next_node: Node, data: BlockInput
-    ) -> tuple[BlockInput | None, str, str | None]:
-        """Validate the input of a node that may be ready to run.
-
-        Returns the data to queue, the validation message, and the input error
-        the node is queued to fail with. Missing input returns no data, so the
-        node keeps waiting. A value that can't be converted or used still
-        returns data: the node is queued, and its own validation in
-        `execute_node` fails it with the error, rather than leaving it skipped
-        while the run completes.
-        """
-        # As `execute_node` does, so a node it would run isn't marked to fail.
-        _drop_unused_credentials(next_node, data)
-        try:
-            valid, msg = validate_exec(
-                next_node,
-                data,
-                dry_run=execution_context.dry_run,
-                raise_on_mismatch=True,
-            )
-        except InputMismatchError as e:
-            return e.data, str(e), str(e)
-        return valid, msg, None
-
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         try:
             return await _register_next_executions(node_link)
@@ -867,8 +866,8 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg, input_error = validate_next_input(
-                next_node, next_node_input
+            next_node_input, validation_msg, input_error = _validate_queued_input(
+                next_node, next_node_input, execution_context.dry_run
             )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
@@ -915,7 +914,9 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg, ierror = validate_next_input(next_node, idata)
+                idata, msg, ierror = _validate_queued_input(
+                    next_node, idata, execution_context.dry_run
+                )
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
@@ -1522,6 +1523,23 @@ class ExecutionProcessor:
                 # no caller requeues a TERMINATED run.
                 if node_exec.status in BILLED_REDISPATCH_STATUSES:
                     node_entry.redispatched_from = node_exec.status
+                # The in-memory input-error marker is lost on a restart, so a
+                # node queued to fail would be charged; derive it again.
+                elif (
+                    node_exec.status == ExecutionStatus.QUEUED
+                    and not graph_exec.execution_context.dry_run
+                ):
+                    try:
+                        _, _, node_entry.input_error = _validate_queued_input(
+                            db_client.get_node(node_entry.node_id),
+                            dict(node_entry.inputs),
+                            dry_run=False,
+                            resolve_input=False,
+                        )
+                    except Exception as e:
+                        log_metadata.warning(
+                            f"Could not recheck the input of {node_entry.node_exec_id}: {e}"
+                        )
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)

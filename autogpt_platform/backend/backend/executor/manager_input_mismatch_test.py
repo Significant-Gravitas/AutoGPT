@@ -87,11 +87,24 @@ def test_a_value_that_cannot_be_converted_raises_when_asked():
     assert raised.value.data["credentials"] == _CREDENTIALS
 
 
-def test_a_required_input_that_arrives_empty_is_an_input_error():
-    """Present but None: the node can't be completed later, so it fails with
-    an error that says so rather than waiting forever."""
-    with pytest.raises(InputMismatchError, match=r"\['prompt'\] received no value"):
-        validate_exec(_llm_node("prompt"), {"prompt": None}, raise_on_mismatch=True)
+def test_a_long_bad_value_is_cut_short_in_the_error():
+    value = "x" * 200
+
+    _, error = validate_exec(
+        _llm_node("model", "prompt"), {"model": value, "prompt": "hi"}
+    )
+
+    assert "..." in error and value not in error
+
+
+def test_a_required_input_that_arrives_as_none_is_skipped_as_before():
+    """None is sometimes sent on purpose, so it doesn't fail the node."""
+    data, error = validate_exec(
+        _llm_node("prompt"), {"prompt": None}, raise_on_mismatch=True
+    )
+
+    assert data is None
+    assert "prompt" in error
 
 
 def test_a_value_that_does_not_match_the_schema_raises_when_asked():
@@ -125,51 +138,47 @@ def test_missing_input_is_reported_before_a_bad_value(
     assert expected in error
 
 
-def test_a_node_waiting_for_a_tool_output_keeps_waiting():
-    """The Orchestrator's missing-input check reads its conversation history,
-    so it runs on the converted value: here a JSON string with a tool call
-    that has no output yet."""
+@pytest.mark.parametrize(
+    "extra",
+    [{}, {"model": _BAD_MODEL}],
+    ids=["usable input", "with a bad value"],
+)
+def test_a_node_waiting_for_a_tool_output_keeps_waiting(extra: dict[str, Any]):
+    """The Orchestrator's missing-input check reads the converted conversation
+    history, also when another value can't be converted: here a JSON string
+    with a tool call that has no output yet."""
     block = OrchestratorBlock()
     node = Node(block_id=block.id, input_default={"prompt": "hi"})
     history = '[{"role": "assistant", "tool_calls": [{"id": "call-1"}]}]'
 
     data, error = validate_exec(
-        node, {"conversation_history": history}, raise_on_mismatch=True
+        node, {**extra, "conversation_history": history}, raise_on_mismatch=True
     )
 
     assert data is None
     assert "last_tool_output" in error
 
 
-def test_a_node_waiting_for_a_tool_output_keeps_waiting_with_a_bad_value():
-    """The rest of the input is still converted after a value that can't be,
-    so the missing-input check reads the converted history."""
-    block = OrchestratorBlock()
-    node = Node(block_id=block.id, input_default={"prompt": "hi"})
-    history = '[{"role": "assistant", "tool_calls": [{"id": "call-1"}]}]'
-
-    data, error = validate_exec(
-        node,
-        {"model": _BAD_MODEL, "conversation_history": history},
-        raise_on_mismatch=True,
-    )
-
-    assert data is None
-    assert "last_tool_output" in error
+def test_a_dry_run_fails_on_a_value_it_cannot_convert():
+    """A dry run checks the graph is wired right, so it reports the bad value."""
+    with pytest.raises(InputMismatchError, match="`model`"):
+        validate_exec(
+            _llm_node("model", "prompt"),
+            {"model": _BAD_MODEL, "prompt": "hi"},
+            dry_run=True,
+            raise_on_mismatch=True,
+        )
 
 
-def test_a_dry_run_tolerates_a_value_it_cannot_convert():
-    """A dry run simulates the block, so like a schema mismatch, a value that
-    can't be converted doesn't fail it."""
+def test_a_dry_run_still_tolerates_a_schema_mismatch():
     data, _ = validate_exec(
-        _llm_node("model", "prompt"),
-        {"model": _BAD_MODEL, "prompt": "hi"},
+        _llm_node("prompt", "credentials"),
+        {"prompt": "hi", "credentials": "not-credentials"},
         dry_run=True,
         raise_on_mismatch=True,
     )
 
     assert data is not None
-    assert data["model"] == _BAD_MODEL
 
 
 def test_a_list_into_a_text_input_is_still_converted():
@@ -285,6 +294,31 @@ async def test_unused_credentials_do_not_mark_a_node_to_fail():
 
     assert len(queued) == 1
     assert queued[0].input_error is None
+
+
+@pytest.mark.asyncio
+async def test_an_unhashable_auth_value_is_queued_to_fail():
+    """Credential clean-up can't look a list up, so it leaves the value for
+    validation to report instead of dropping the node."""
+    block = AnySearchBlock()
+    target = Node(
+        id="llm-node",
+        block_id=block.id,
+        input_default={"query": "news"},
+        input_links=[
+            Link(
+                source_id="source-node",
+                sink_id="llm-node",
+                source_name="auth_out",
+                sink_name="auth",
+            )
+        ],
+    )
+
+    queued = await _route(target, [("auth_out", ["anonymous"])], _db_client(target))
+
+    assert len(queued) == 1
+    assert queued[0].input_error and "`auth`" in queued[0].input_error
 
 
 @pytest.mark.asyncio

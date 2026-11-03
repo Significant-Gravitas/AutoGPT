@@ -885,6 +885,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Graphs
     get_graph_metadata = _(d.get_graph_metadata)
+    get_node = _(d.get_node)
 
     # Credits
     spend_credits = _(d.spend_credits)
