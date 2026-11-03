@@ -11,6 +11,12 @@ permissions:
 
 jobs:
   migrate:
+    # Every published release in this repository starts this workflow, and
+    # not all of them are the platform's (the rolling preview-seed-fixture,
+    # and Local PC companion releases to come). Only a platform release
+    # deploys production; publish-skills and trigger need this job, so they
+    # are skipped with it.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'autogpt-platform-')
     environment: production
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
