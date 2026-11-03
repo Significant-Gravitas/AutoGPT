@@ -363,11 +363,7 @@ class IntegrationCredentialsStore:
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            if len(persisted) >= MAX_CREDENTIALS_PER_USER:
-                raise InvalidInputError(
-                    f"An account holds at most {MAX_CREDENTIALS_PER_USER} "
-                    "credentials; delete one before connecting another"
-                )
+            _check_credential_count(persisted)
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
@@ -521,6 +517,8 @@ class IntegrationCredentialsStore:
             ]
             if any(credential.is_managed for credential in matching):
                 raise ValueError("Cannot replace a managed credential")
+            if not matching:
+                _check_credential_count(persisted)
 
             replacement = credentials
             compatible = next(
@@ -814,6 +812,14 @@ def check_storable_size(item: Credentials | OAuthState, *, allowance: int = 0) -
         raise InvalidInputError(
             f"{type(item).__name__} is too large: at most "
             f"{limit} bytes are allowed, got {item_bytes}"
+        )
+
+
+def _check_credential_count(persisted: list[Credentials]) -> None:
+    if len(persisted) >= MAX_CREDENTIALS_PER_USER:
+        raise InvalidInputError(
+            f"An account holds at most {MAX_CREDENTIALS_PER_USER} "
+            "credentials; delete one before connecting another"
         )
 
 

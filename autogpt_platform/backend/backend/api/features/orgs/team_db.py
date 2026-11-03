@@ -26,33 +26,48 @@ async def create_team(
     join_policy: str = "OPEN",
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
-    existing = await prisma.team.count(where={"orgId": org_id, "archivedAt": None})
-    if existing >= MAX_TEAMS_PER_ORG:
+    async with transaction() as tx:
+        await _check_team_count(tx, org_id)
+        ws = await tx.team.create(
+            data={
+                "name": name,
+                "orgId": org_id,
+                "description": description,
+                "joinPolicy": join_policy,
+                "createdByUserId": user_id,
+            }
+        )
+
+        # Creator becomes admin
+        await tx.teammember.create(
+            data={
+                "teamId": ws.id,
+                "userId": user_id,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
+
+    return TeamResponse.from_db(ws, member_count=1)
+
+
+async def _check_team_count(tx: Prisma, org_id: str) -> None:
+    """Refuse a workspace past `MAX_TEAMS_PER_ORG`; the transaction's first call.
+
+    The lock makes concurrent creates count one after another, which needs
+    READ COMMITTED.
+    """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"org-teams:{org_id}",
+    )
+    if await tx.team.count(where={"orgId": org_id, "archivedAt": None}) >= (
+        MAX_TEAMS_PER_ORG
+    ):
         raise ValueError(
             f"An organization holds at most {MAX_TEAMS_PER_ORG} workspaces"
         )
-
-    ws = await prisma.team.create(
-        data={
-            "name": name,
-            "orgId": org_id,
-            "description": description,
-            "joinPolicy": join_policy,
-            "createdByUserId": user_id,
-        }
-    )
-
-    # Creator becomes admin
-    await prisma.teammember.create(
-        data={
-            "teamId": ws.id,
-            "userId": user_id,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
-
-    return TeamResponse.from_db(ws, member_count=1)
 
 
 async def list_teams(org_id: str, user_id: str) -> list[TeamResponse]:

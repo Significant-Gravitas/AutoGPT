@@ -16,6 +16,7 @@ from backend.integrations.credentials_store import (
     MAX_STORED_ITEM_BYTES,
     IntegrationCredentialsStore,
     check_storable_size,
+    stored_size,
 )
 from backend.util.exceptions import InvalidInputError
 
@@ -40,7 +41,11 @@ def _state(expires_at: datetime) -> OAuthState:
 
 
 def test_an_item_at_the_size_bound_is_accepted():
-    check_storable_size(_credentials())
+    base = stored_size(_credentials(metadata={"pad": ""}))
+    at_bound = _credentials(metadata={"pad": "x" * (MAX_STORED_ITEM_BYTES - base)})
+
+    assert stored_size(at_bound) == MAX_STORED_ITEM_BYTES
+    check_storable_size(at_bound)
 
 
 def test_an_item_over_the_size_bound_is_refused():
@@ -98,6 +103,40 @@ async def test_a_user_below_the_count_bound_can_add_one(store, mocker):
 
     written = store._set_user_integration_creds.await_args.args[1]
     assert [c.id for c in written][-1] == "the-last-one"
+
+
+@pytest.mark.asyncio
+async def test_an_upsert_adding_a_provider_at_the_count_bound_is_refused(store, mocker):
+    held = [_credentials(id=f"id-{i}") for i in range(MAX_CREDENTIALS_PER_USER)]
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=held),
+    )
+
+    with pytest.raises(InvalidInputError, match="at most"):
+        await store.upsert_single_provider_creds(
+            "user-1", _credentials(provider="linear")
+        )
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_upsert_replacing_a_provider_at_the_count_bound_goes_through(
+    store, mocker
+):
+    held = [_credentials(id=f"id-{i}") for i in range(MAX_CREDENTIALS_PER_USER - 1)]
+    held.append(_credentials(id="linear-1", provider="linear"))
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=held),
+    )
+
+    await store.upsert_single_provider_creds("user-1", _credentials(provider="linear"))
+
+    written = store._set_user_integration_creds.await_args.args[1]
+    assert len(written) == MAX_CREDENTIALS_PER_USER
 
 
 @pytest.mark.asyncio

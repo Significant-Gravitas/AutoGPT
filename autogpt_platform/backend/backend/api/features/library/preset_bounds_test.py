@@ -99,8 +99,16 @@ async def test_creating_a_preset_refuses_an_oversized_name():
         await create_preset("user-1", preset)
 
 
+class _ReachedTheCountCheck(Exception):
+    pass
+
+
 @pytest.mark.asyncio
-async def test_creating_a_preset_named_after_a_long_graph_is_accepted():
+async def test_creating_a_preset_named_after_a_long_graph_is_accepted(mocker):
+    mocker.patch(
+        "backend.api.features.library.db.check_preset_count",
+        side_effect=_ReachedTheCountCheck,
+    )
     preset = LibraryAgentPresetCreatable(
         graph_id="g-1",
         graph_version=1,
@@ -110,12 +118,9 @@ async def test_creating_a_preset_named_after_a_long_graph_is_accepted():
         description="y" * GRAPH_TEXT_MAX_LENGTHS["description"],
     )
 
-    # Past the text check it reaches the first query, which is how this test
-    # tells "accepted" from "refused".
-    with pytest.raises(Exception) as caught:
+    # The count check is the next step, so reaching it means the text passed.
+    with pytest.raises(_ReachedTheCountCheck):
         await create_preset("user-1", preset)
-
-    assert "too long" not in str(caught.value)
 
 
 @pytest.mark.asyncio

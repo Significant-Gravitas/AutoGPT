@@ -4,7 +4,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
+from prisma.types import OrgMemberWhereInput
 
 from backend.data.db import prisma, transaction
 from backend.data.org_credit import forget_personal_org_owner
@@ -281,16 +283,6 @@ async def create_org(
     Raises:
         ValueError: If the slug is already taken by another org or alias.
     """
-    # Bounded at the create, because the listing has no page to truncate.
-    # Counts memberships, which is what the listing returns.
-    memberships = await prisma.orgmember.count(
-        where={"userId": user_id, "status": "ACTIVE", "Org": {"deletedAt": None}}
-    )
-    if memberships >= MAX_ORGS_PER_USER:
-        raise ValueError(
-            f"An account belongs to at most {MAX_ORGS_PER_USER} organizations"
-        )
-
     existing_org = await prisma.organization.find_unique(where={"slug": slug})
     if existing_org:
         raise ValueError(f"Slug '{slug}' is already in use")
@@ -303,6 +295,7 @@ async def create_org(
     # One transaction: a failure partway must not leave an org without its
     # default workspace, owner membership, profile, seat, or balance row.
     async with transaction() as tx:
+        await _check_membership_count(tx, user_id)
         org = await tx.organization.create(
             data={
                 "name": name,
@@ -537,17 +530,19 @@ async def add_org_member(
             "Cannot add a member to a personal organization. Convert it first."
         )
 
-    member = await prisma.orgmember.create(
-        data={
-            "orgId": org_id,
-            "userId": user_id,
-            "isAdmin": is_admin,
-            "isBillingManager": is_billing_manager,
-            "status": "ACTIVE",
-            "invitedByUserId": invited_by,
-        },
-        include={"User": True},
-    )
+    async with transaction() as tx:
+        await _check_membership_count(tx, user_id, joining_org_id=org_id)
+        member = await tx.orgmember.create(
+            data={
+                "orgId": org_id,
+                "userId": user_id,
+                "isAdmin": is_admin,
+                "isBillingManager": is_billing_manager,
+                "status": "ACTIVE",
+                "invitedByUserId": invited_by,
+            },
+            include={"User": True},
+        )
 
     default_ws = await prisma.team.find_first(
         where={"orgId": org_id, "isDefault": True}
@@ -565,6 +560,33 @@ async def add_org_member(
         )
 
     return OrgMemberResponse.from_db(member)
+
+
+async def _check_membership_count(
+    tx: Prisma, user_id: str, *, joining_org_id: str | None = None
+) -> None:
+    """Refuse a membership past `MAX_ORGS_PER_USER`; the transaction's first call.
+
+    Bounded at the write, because the listing has no page to truncate. The lock
+    makes concurrent adds count one after another, which needs READ COMMITTED.
+    """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"org-memberships:{user_id}",
+    )
+    where: OrgMemberWhereInput = {
+        "userId": user_id,
+        "status": "ACTIVE",
+        "Org": {"deletedAt": None},
+    }
+    if joining_org_id:
+        # Re-joining the same org stays the unique violation callers expect.
+        where["orgId"] = {"not": joining_org_id}
+    if await tx.orgmember.count(where=where) >= MAX_ORGS_PER_USER:
+        raise ValueError(
+            f"An account belongs to at most {MAX_ORGS_PER_USER} organizations"
+        )
 
 
 async def update_org_member(

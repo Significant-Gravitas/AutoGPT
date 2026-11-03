@@ -103,7 +103,7 @@ async def setup_triggered_preset(
     # rollback below covers a write that fails for another reason.
     db.check_preset_text(name, description)
     db.check_preset_inputs(
-        {**trigger_config_with_credentials, **agent_credentials, "payload": None}
+        {"payload": None, **trigger_config_with_credentials, **agent_credentials}
     )
     await db.check_preset_count(user_id)
 
@@ -180,6 +180,8 @@ async def update_triggered_preset(
 
     new_webhook = None
     if inputs is not None and credentials is not None:
+        # Refused before anything is registered with the provider.
+        db.check_preset_text(name, description)
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
         )
@@ -210,7 +212,7 @@ async def update_triggered_preset(
             # What update_preset stores — inputs plus EVERY credential, not
             # only the trigger node's — plus webhook ingress's `payload`, so a
             # preset saved at the bound can still start a run.
-            db.check_preset_inputs({**inputs, **credentials, "payload": None})
+            db.check_preset_inputs({"payload": None, **inputs, **credentials})
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,

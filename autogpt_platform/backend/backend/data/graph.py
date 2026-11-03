@@ -2271,7 +2271,7 @@ async def fork_graph(
     # Set forked from ID and version as itself as it's about ot be copied
     graph.forked_from_id = graph.id
     graph.forked_from_version = graph.version
-    graph.name = f"{graph.name} (copy)"
+    graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
@@ -2285,6 +2285,12 @@ async def fork_graph(
         )
 
     return graph
+
+
+def fork_name(name: str) -> str:
+    """The fork's name, shortened so the suffix fits the saved-name bound."""
+    suffix = " (copy)"
+    return name[: GRAPH_TEXT_MAX_LENGTHS["name"] - len(suffix)] + suffix
 
 
 async def copy_graph(

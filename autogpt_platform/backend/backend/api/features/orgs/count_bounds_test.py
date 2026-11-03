@@ -1,9 +1,11 @@
-"""How many orgs and workspaces one account can create is bounded.
+"""How many orgs an account belongs to, and workspaces an org holds, is bounded.
 
-Bounded at the create, because `GET /api/orgs` and the workspace listing have
-no page to truncate: a `take` there would hide rows from their owner.
+Bounded at the write, because `GET /api/orgs` and the workspace listing have
+no page to truncate: a `take` there would hide rows from their owner. The
+concurrent cases are in `org_count_bounds_db_test.py`, on a real database.
 """
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,49 +16,81 @@ from backend.api.features.orgs.db import MAX_ORGS_PER_USER
 from backend.api.features.orgs.team_db import MAX_TEAMS_PER_ORG
 
 
+class _Written(Exception):
+    pass
+
+
 @pytest.fixture
-def orgs_client(mocker):
+def tx(mocker):
+    tx = MagicMock()
+    tx.execute_raw = AsyncMock()
+    tx.orgmember.count = AsyncMock(return_value=0)
+    tx.orgmember.create = AsyncMock(side_effect=_Written)
+    tx.organization.create = AsyncMock(side_effect=_Written)
+    tx.team.count = AsyncMock(return_value=0)
+    tx.team.create = AsyncMock(side_effect=_Written)
+
+    @asynccontextmanager
+    async def transaction():
+        yield tx
+
+    mocker.patch.object(orgs_db, "transaction", transaction)
+    mocker.patch.object(team_db, "transaction", transaction)
     client = MagicMock()
     client.organization.find_unique = AsyncMock(return_value=None)
+    client.organization.find_first = AsyncMock(return_value=None)
     client.organizationalias.find_unique = AsyncMock(return_value=None)
-    client.orgmember.count = AsyncMock(return_value=0)
     mocker.patch.object(orgs_db, "prisma", client)
-    return client
-
-
-@pytest.fixture
-def teams_client(mocker):
-    client = MagicMock()
-    client.team.count = AsyncMock(return_value=0)
-    client.team.create = AsyncMock()
-    mocker.patch.object(team_db, "prisma", client)
-    return client
+    return tx
 
 
 @pytest.mark.asyncio
-async def test_an_account_at_the_org_bound_cannot_create_another(orgs_client):
-    orgs_client.orgmember.count.return_value = MAX_ORGS_PER_USER
+async def test_an_account_at_the_org_bound_cannot_create_another(tx):
+    tx.orgmember.count.return_value = MAX_ORGS_PER_USER
 
     with pytest.raises(ValueError, match="at most 50 organizations"):
         await orgs_db.create_org("a name", "a-slug", "user-1")
-    orgs_client.organization.find_unique.assert_not_awaited()
+    tx.organization.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_an_account_below_the_org_bound_gets_past_the_check(orgs_client):
-    orgs_client.orgmember.count.return_value = MAX_ORGS_PER_USER - 1
-    orgs_client.organization.find_unique.return_value = object()
+async def test_an_account_below_the_org_bound_creates_one(tx):
+    tx.orgmember.count.return_value = MAX_ORGS_PER_USER - 1
 
-    # The next check is the slug one, which is how this test tells "past the
-    # count check" from "refused by it".
-    with pytest.raises(ValueError, match="already in use"):
+    with pytest.raises(_Written):
         await orgs_db.create_org("a name", "a-slug", "user-1")
 
 
 @pytest.mark.asyncio
-async def test_an_org_at_the_workspace_bound_cannot_create_another(teams_client):
-    teams_client.team.count.return_value = MAX_TEAMS_PER_ORG
+async def test_an_account_at_the_org_bound_cannot_join_another(tx):
+    """An accepted invitation adds the membership through `add_org_member`."""
+    tx.orgmember.count.return_value = MAX_ORGS_PER_USER
+
+    with pytest.raises(ValueError, match="at most 50 organizations"):
+        await orgs_db.add_org_member("org-1", "user-1")
+    tx.orgmember.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_account_below_the_org_bound_joins_one(tx):
+    tx.orgmember.count.return_value = MAX_ORGS_PER_USER - 1
+
+    with pytest.raises(_Written):
+        await orgs_db.add_org_member("org-1", "user-1")
+
+
+@pytest.mark.asyncio
+async def test_an_org_at_the_workspace_bound_cannot_create_another(tx):
+    tx.team.count.return_value = MAX_TEAMS_PER_ORG
 
     with pytest.raises(ValueError, match="at most 500 workspaces"):
         await team_db.create_team("org-1", "a name", "user-1")
-    teams_client.team.create.assert_not_awaited()
+    tx.team.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_org_below_the_workspace_bound_creates_one(tx):
+    tx.team.count.return_value = MAX_TEAMS_PER_ORG - 1
+
+    with pytest.raises(_Written):
+        await team_db.create_team("org-1", "a name", "user-1")

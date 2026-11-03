@@ -617,6 +617,46 @@ async def test_an_update_filled_to_the_bound_registers_no_webhook():
 
 
 @pytest.mark.asyncio
+async def test_an_update_with_an_oversized_name_registers_no_webhook():
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="Preset name is too long"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+                name="x" * (db.MAX_PRESET_NAME_LENGTH + 1),
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_with_an_oversized_payload_registers_no_webhook():
+    """A `payload` the caller sends is what is stored, so it is what is measured."""
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="inputs hold at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_setup_with_an_oversized_payload_registers_no_webhook():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_expert, p_create, p_webhook as webhook_mock:
+        with pytest.raises(InvalidInputError, match="inputs hold at most"):
+            await _setup(
+                trigger_config={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)}
+            )
+    webhook_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_rename_only_skips_webhook():
     with _update_patches(current=_preset(webhook_id="wh-old")) as m:
         await update_triggered_preset(

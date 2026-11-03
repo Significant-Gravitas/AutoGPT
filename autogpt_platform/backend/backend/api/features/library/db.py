@@ -1006,7 +1006,7 @@ async def fork_graph_in_library(
     )
     graph.forked_from_id = graph.id
     graph.forked_from_version = forked_from_version
-    graph.name = f"{graph.name} (copy)"
+    graph.name = graph_db.fork_name(graph.name)
     return await create_graph_in_library(
         graph, user_id, organization_id=organization_id, team_id=team_id
     )
