@@ -950,6 +950,52 @@ class TestBaselineCostExtraction:
         assert state.turn_completion_tokens == 500
 
     @pytest.mark.asyncio
+    async def test_direct_haiku_cost_uses_each_requests_full_prompt(self):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=150_000,
+                        completion_tokens=2_000,
+                        cached_tokens=120_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+                _make_stream_mock(
+                    _make_usage_chunk(
+                        prompt_tokens=50_000,
+                        completion_tokens=1_000,
+                        cached_tokens=20_000,
+                        cache_creation_input_tokens=10_000,
+                    )
+                ),
+            ]
+        )
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", False),
+            patch("backend.copilot.baseline.service.config.use_local", False),
+            patch(
+                "backend.copilot.baseline.service.config.baseline_prompt_cache_ttl",
+                "1h",
+            ),
+        ):
+            for expected in (0.031, 0.0357):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+                assert state.cost_usd == pytest.approx(expected)
+        assert state.turn_prompt_tokens == 200_000
+        assert state.turn_completion_tokens == 3_000
+
+    @pytest.mark.asyncio
     async def test_invalid_cost_string_leaves_cost_none(self):
         """A non-numeric cost value is rejected without raising."""
         state = _BaselineStreamState(model="gpt-4o-mini")
