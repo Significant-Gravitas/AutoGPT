@@ -13,6 +13,7 @@ import prisma.models
 import pytest
 
 from backend.api.features.orgs.db import get_user_default_team
+from backend.data.graph import create_graph, make_graph_model
 
 from . import db as store_db
 from . import model as store_model
@@ -190,15 +191,19 @@ async def test_a_listing_rejected_since_stays_rejected(seeded):
     await _assert_live(listing)
 
 
+def _owner_id(listing) -> str:
+    return preview_seed.seed_user_id(
+        next(c for c in CREATORS if c.key == listing.creator)
+    )
+
+
 async def _resubmit(
-    listing, changes_summary: str = preview_seed.SEED_NOTE
+    listing, changes_summary: str = preview_seed.SEED_NOTE, graph_version: int = 1
 ) -> store_model.StoreSubmission:
     """Drop the listing and submit it again: by default as a seed run that
     stopped right after submitting would have left it."""
     graph_id = preview_seed.seed_graph_id(listing)
-    owner_id = preview_seed.seed_user_id(
-        next(c for c in CREATORS if c.key == listing.creator)
-    )
+    owner_id = _owner_id(listing)
     await prisma.models.StoreListing.prisma().delete_many(
         where={"agentGraphId": graph_id}
     )
@@ -206,7 +211,7 @@ async def _resubmit(
     return await store_db.create_store_submission(
         user_id=owner_id,
         graph_id=graph_id,
-        graph_version=1,
+        graph_version=graph_version,
         slug=listing.slug,
         name=listing.name,
         sub_heading=listing.sub_heading,
@@ -277,6 +282,51 @@ async def test_someone_elses_pending_submission_waits_for_a_real_review(seeded):
     # Put it back, so the module's other tests see the marketplace as seeded.
     await prisma.models.StoreListing.prisma().delete_many(
         where={"agentGraphId": preview_seed.seed_graph_id(listing)}
+    )
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        await preview_seed.seed_marketplace()
+    await _assert_live(listing)
+
+
+async def _save_an_edited_version(listing) -> int:
+    """Save the listing's workflow again, as its creator editing it in the
+    builder would: a new version of the same graph."""
+    owner_id = _owner_id(listing)
+    org_id, team_id = await get_user_default_team(owner_id)
+    graph = preview_seed.build_graph(listing)
+    graph.version = 2
+    edited = make_graph_model(graph, owner_id)
+    edited.reassign_ids(user_id=owner_id, reassign_graph_id=False)
+    created = await create_graph(
+        edited, owner_id, organization_id=org_id, team_id=team_id
+    )
+    return created.version
+
+
+async def test_a_submission_of_an_edited_workflow_waits_even_with_the_seeds_note(
+    seeded,
+):
+    listing = LISTINGS[5]
+    graph_id = preview_seed.seed_graph_id(listing)
+    edited_version = await _save_an_edited_version(listing)
+    # The publish form keeps the previous submission's note.
+    submission = await _resubmit(listing, graph_version=edited_version)
+
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        summary = await preview_seed.seed_marketplace()
+
+    assert summary.listings[listing.slug] == "existing"
+    version = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+        where={"id": submission.listing_version_id}
+    )
+    assert version.submissionStatus == prisma.enums.SubmissionStatus.PENDING
+
+    # Put it back, so the module's other tests see the marketplace as seeded.
+    await prisma.models.StoreListing.prisma().delete_many(
+        where={"agentGraphId": graph_id}
+    )
+    await prisma.models.AgentGraph.prisma().delete(
+        where={"graphVersionId": {"id": graph_id, "version": edited_version}}
     )
     with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
         await preview_seed.seed_marketplace()

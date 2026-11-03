@@ -391,7 +391,11 @@ async def _ensure_listing(
         where={"agentGraphId": graph_id}, include={"Versions": True}
     )
     if existing is not None:
-        pending = _unreviewed_pending(existing.Versions or [])
+        # Only a submission of the seed's own workflow version: one of a later
+        # version is someone's edit, even when its form kept the seed's note.
+        pending = _unreviewed_pending(
+            v for v in existing.Versions or [] if v.agentGraphVersion == graph_version
+        )
         # An earlier run stopped after submitting, or partway through the
         # approval: it points the listing at the version before marking the
         # version approved. Either way the version is still pending.
