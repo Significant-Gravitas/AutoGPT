@@ -18,20 +18,16 @@ export function FilesEmptyState() {
           key="image"
           icon={Image01Icon}
           size={22}
+          // oxlint-disable-next-line design-system/no-raw-colors -- cyan illustration accent; info is blue, a hue change deferred
           className="text-sky-500"
         />,
         <Icon
           key="table"
           icon={Table01Icon}
           size={22}
-          className="text-emerald-500"
+          className="text-success"
         />,
-        <Icon
-          key="doc"
-          icon={File02Icon}
-          size={22}
-          className="text-violet-500"
-        />,
+        <Icon key="doc" icon={File02Icon} size={22} className="text-brand" />,
       ]}
       title="No files yet"
       description="Files you attach and documents Otto creates in this chat will show up here."

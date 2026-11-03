@@ -33,6 +33,7 @@ from backend.copilot.pending_messages import (
     release_client_message,
     stash_pending_for_persist,
 )
+from backend.copilot.tool_image import ToolImage
 
 # ── Fake Redis ──────────────────────────────────────────────────────
 
@@ -119,12 +120,17 @@ class _FakeRedis:
         script: str,
         numkeys: int,
         key: str,
-        expected: str,
-        new: str,
-        ttl_seconds: int,
-        or_missing: str,
-    ) -> int:
-        """``string_compare_and_set``, the only script these tests reach."""
+        *args: Any,
+    ) -> int | list[str | bytes]:
+        if "LRANGE" in script:
+            current = self.lists.get(key, [])[: len(args)]
+            decoded = [
+                item.decode() if isinstance(item, bytes) else item for item in current
+            ]
+            if decoded != list(args):
+                return []
+            return await self.lpop(key, len(args)) or []
+        expected, new, ttl_seconds, or_missing = args
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0
@@ -729,6 +735,80 @@ async def test_drain_and_format_for_injection_swallows_redis_error(
 @pytest.mark.asyncio
 async def test_drain_and_format_for_injection_missing_session_id() -> None:
     assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
+
+
+async def test_text_hook_leaves_image_and_later_messages_in_order(fake_redis):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    for message in [
+        PendingMessage(content="before"),
+        image,
+        PendingMessage(content="after"),
+    ]:
+        await push_pending_message("images", message)
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    remaining = await drain_pending_messages("images")
+    assert [message.content for message in remaining] == ["Approved image", "after"]
+    assert remaining[0].model_image == image.model_image
+
+
+@pytest.mark.parametrize("malformed", ["not JSON", '{"model_image":"invalid"}'])
+async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
+    fake_redis, malformed
+):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    before = PendingMessage(content="before")
+    after = PendingMessage(content="after")
+    await fake_redis.rpush(
+        pm_module._buffer_key("images"),
+        malformed,
+        before.model_dump_json(),
+        image.model_dump_json(),
+        after.model_dump_json(),
+    )
+
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await peek_pending_count("images") == 2
+    assert await drain_pending_for_persist("images") == [before]
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert await drain_pending_messages("images") == [image, after]
+
+
+async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
+    await push_pending_message("images", PendingMessage(content="before"))
+    monkeypatch.setattr(
+        fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
+    )
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "before"
+    ]
+
+
+async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
+    fake_redis, monkeypatch
+):
+    await push_pending_message("images", PendingMessage(content="before"))
+    original_eval = fake_redis.eval
+
+    async def concurrent_drain(script, numkeys, key, *args):
+        await fake_redis.lpop(key, 1)
+        await push_pending_message("images", PendingMessage(content="new"))
+        return await original_eval(script, numkeys, key, *args)
+
+    monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "new"
+    ]
 
 
 # ── Cluster-slot colocation regression ───────────────────────────────

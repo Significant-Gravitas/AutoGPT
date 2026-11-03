@@ -220,6 +220,9 @@ describe("Expert approval mode", () => {
         name: "Run Maria unsupervised by default?",
       }),
     ).toBeDefined();
+    expect(
+      screen.getByText(/^Maria will not ask before anything in new chats\./),
+    ).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(

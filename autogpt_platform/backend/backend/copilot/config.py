@@ -173,7 +173,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
 # - 'extended_thinking': route to the Claude Agent SDK path with the default
 #   (opus) model.
 # ``None`` means "no override"; the server falls back to the Claude Code
-# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+# subscription flag → the COPILOT_SDK flag → config.use_claude_agent_sdk.
 CopilotMode = Literal["fast", "extended_thinking"]
 
 # Per-request model tier set by the frontend model toggle.
@@ -313,6 +313,14 @@ class ChatConfig(BaseSettings):
         default=2.0,
         description="Timeout for one Jev call; expiry falls through to the LLM.",
     )
+    read_screen_shadow_sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Share of chats whose reads the read screen's shadow mode "
+        "(``copilot-read-screen`` = shadow) judges and records, 0 to 1. Picked "
+        "per chat, so a sampled chat is recorded whole.",
+    )
     content_judge_timeout_s: float = Field(
         default=15.0,
         description="Hard timeout for one content-judge call on an outside "
@@ -418,15 +426,15 @@ class ChatConfig(BaseSettings):
     # User.subscriptionTier DB column and resolved inside
     # get_global_rate_limits().
     #
-    # These defaults act as the ceiling when LaunchDarkly is unreachable;
+    # These defaults act as the ceiling when PostHog is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     #
     # A negative value disables that window's cap. Self-hosted distributions
     # (the single-container image and the unraid template) export -1 for both
     # because the operator pays the model provider directly and, without
-    # LaunchDarkly, every account resolves to NO_TIER → BASIC multiplier and
+    # PostHog, every account resolves to NO_TIER → BASIC multiplier and
     # would otherwise inherit these cloud ceilings. The defaults here stay
-    # positive so a LaunchDarkly outage on cloud never removes the cap.
+    # positive so a PostHog outage on cloud never removes the cap.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
@@ -767,7 +775,7 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="agpt-desktop-1x2-004d6e73",
+        default="agpt-desktop-1x2-cfc276e0",
         description="E2B sandbox template for copilot sessions. The default is our "
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "

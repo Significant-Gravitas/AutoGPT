@@ -5,6 +5,7 @@ import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   onConnect: () => void;
@@ -27,19 +28,24 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
       aria-label="Connect a ChatGPT subscription"
       disabled={isConnecting}
       onClick={onConnect}
-      className="h-auto min-h-14 w-full justify-start gap-3 whitespace-normal rounded-lg px-3 py-2 text-left"
+      className="h-auto min-h-14 w-full justify-start gap-3 rounded-lg px-3 py-2 text-left whitespace-normal"
     >
       <IntegrationLogo provider="openai" size={20} />
-      <span className="min-w-0 flex-1 text-sm font-medium text-zinc-900">
+      <Text
+        variant="body-medium-tight"
+        as="span"
+        tone="primary"
+        className="min-w-0 flex-1"
+      >
         <span className="block">ChatGPT subscription</span>
-        <span className="mt-1 block text-[11px] font-normal text-zinc-600">
+        <span className="mt-1 block text-caption-sm leading-inherit font-normal text-foreground-secondary">
           Connect your existing account
         </span>
-      </span>
+      </Text>
       <span
         role={isConnecting ? "status" : undefined}
         aria-label={isConnecting ? "Connecting ChatGPT" : undefined}
-        className="flex size-7 flex-none items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500"
+        className="flex size-7 flex-none items-center justify-center rounded-lg border border-border-base bg-surface text-foreground-tertiary"
       >
         <Icon
           icon={isConnecting ? Loading03Icon : PlusSignIcon}

@@ -22,7 +22,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-from ._utils import github_repo_path
+from ._utils import github_repo_path, normalize_repo_path
 
 
 class GithubListTagsBlock(Block):
@@ -126,6 +126,24 @@ class GithubListTagsBlock(Block):
             yield "tag", tag
 
 
+async def _graphql_repository(
+    api: Requests, query: str, variables: dict, owner: str, repo: str
+) -> dict:
+    """POST a GraphQL query and return `data.repository`, or raise a clear error."""
+    response = await api.post(
+        "https://api.github.com/graphql",
+        json={"query": query, "variables": variables},
+    )
+    body = response.json()
+    repository = (body.get("data") or {}).get("repository")
+    if body.get("errors") or repository is None:
+        errors = body.get("errors") or [{"message": "repository not found"}]
+        raise ValueError(
+            f"GitHub GraphQL error for {owner}/{repo}: {errors[0].get('message')}"
+        )
+    return repository
+
+
 class GithubListDiscussionsBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -226,8 +244,7 @@ class GithubListDiscussionsBlock(Block):
     ) -> list[Output.DiscussionItem]:
         api = get_api(credentials)
         # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
-        repo_path = github_repo_path(input_data.repo_url)
-        owner, repo = repo_path.split("/")
+        owner, repo = normalize_repo_path(input_data.repo_url).split("/")
         query = """
         query(
             $owner: String!, $repo: String!, $num: Int!, $after: String,
@@ -280,11 +297,9 @@ class GithubListDiscussionsBlock(Block):
 
         discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = []
         while len(discussions) < limit:
-            response = await api.post(
-                "https://api.github.com/graphql",
-                json={"query": query, "variables": variables},
-            )
-            data = response.json()["data"]["repository"]["discussions"]
+            data = (await _graphql_repository(api, query, variables, owner, repo))[
+                "discussions"
+            ]
             discussions.extend(
                 {"title": discussion["title"], "url": discussion["url"]}
                 for discussion in data["nodes"]
@@ -310,13 +325,10 @@ class GithubListDiscussionsBlock(Block):
             }
         }
         """
-        response = await api.post(
-            "https://api.github.com/graphql",
-            json={"query": query, "variables": {"owner": owner, "repo": repo}},
+        repository = await _graphql_repository(
+            api, query, {"owner": owner, "repo": repo}, owner, repo
         )
-        categories = response.json()["data"]["repository"]["discussionCategories"][
-            "nodes"
-        ]
+        categories = repository["discussionCategories"]["nodes"]
         for category in categories:
             if category["name"].lower() == category_name.lower():
                 return category["id"]

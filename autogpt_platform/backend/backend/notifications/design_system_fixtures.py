@@ -100,7 +100,7 @@ def _lifecycle() -> list[EmailScenario]:
         (
             NotificationType.PAYMENT_FINAL_NOTICE,
             PaymentFinalNoticeData(
-                **common, amount_display="$50.00", pauses_label="10 Oct 2026"
+                **common, amount_display="$50.00", last_attempt_label="24 Oct 2026"
             ),
         ),
         (
@@ -137,6 +137,7 @@ def _trials() -> list[EmailScenario]:
                 plan=PLAN,
                 kind=kind,
                 ends_label="10 Oct 2026",
+                started_label="12 Oct 2026" if kind == "converted" else None,
                 onboarding_credit_amount=300,
                 offer_version="example-offer",
             ),

@@ -67,10 +67,6 @@ def _make_patches():
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
         ("os.makedirs", {}),
         (
-            f"{_SVC}.propagate_attributes",
-            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
-        ),
-        (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
@@ -79,6 +75,10 @@ def _make_patches():
             dict(
                 side_effect=AssertionError("Provider construction is outside this test")
             ),
+        ),
+        (
+            f"{_SVC}.require_verbatim_prompts_cli",
+            dict(return_value="/opt/claude/claude"),
         ),
         (f"{_SVC}.create_copilot_mcp_server", dict(new=mcp_server_mock)),
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
@@ -120,7 +120,6 @@ def _make_patches():
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
-        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
             f"{_SVC}.resolve_turn_budget",
             dict(

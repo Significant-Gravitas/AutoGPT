@@ -91,16 +91,16 @@ export function SkillPage({ slug }: Props) {
 
       <header>
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-          <span className="inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-            <Icon
-              icon={BookOpen01Icon}
-              size={32}
-              className={accent.icon}
-              aria-hidden
-            />
+          <span
+            className={cn(
+              "inline-flex h-18 w-18 shrink-0 items-center justify-center rounded-2xl bg-surface shadow-sm ring-1 ring-foreground-base/5",
+              accent.icon,
+            )}
+          >
+            <Icon icon={BookOpen01Icon} size={32} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
+            <h1 className="text-heading leading-8 font-semibold tracking-heading text-foreground-strong">
               {title}
             </h1>
             {icon && skill.categories[0] ? (
@@ -127,11 +127,11 @@ export function SkillPage({ slug }: Props) {
           />
         </div>
 
-        <p className="mt-5 max-w-[60ch] text-[17px] leading-7 text-zinc-600">
+        <p className="mt-5 max-w-[60ch] text-body-lg leading-7 text-foreground-secondary">
           {skill.description}
         </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-zinc-600">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm leading-inherit text-foreground-secondary">
           <span className="inline-flex items-center gap-1.5">
             <Avatar className="h-5 w-5">
               {skill.creator_avatar ? (
@@ -166,7 +166,7 @@ export function SkillPage({ slug }: Props) {
                     href={skill.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
+                    className="underline decoration-foreground-disabled underline-offset-2 hover:text-foreground-strong"
                   >
                     {skill.source_repo}
                   </a>
@@ -199,7 +199,7 @@ export function SkillPage({ slug }: Props) {
         ) : null}
       </header>
 
-      <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
+      <div className="mt-8 flex flex-col gap-10 border-t border-border-base pt-8">
         <ExpertSection
           title="Instructions"
           description={
@@ -238,7 +238,7 @@ export function SkillPage({ slug }: Props) {
               {skill.triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm font-medium text-zinc-600"
+                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-sm font-medium text-foreground-secondary"
                 >
                   {trigger}
                 </span>
@@ -280,7 +280,7 @@ function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#skills"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+      className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
       data-testid="skill-back-to-marketplace"
     >
       <Icon icon={ArrowLeft02Icon} size={14} aria-hidden />
@@ -304,7 +304,7 @@ function SkillPageSkeleton() {
       </div>
       <Skeleton className="mt-5 h-6 w-4/5" />
       <Skeleton className="mt-3 h-4 w-3/5" />
-      <div className="mt-8 space-y-3 border-t border-zinc-200 pt-8">
+      <div className="mt-8 space-y-3 border-t border-border-base pt-8">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-2/3" />

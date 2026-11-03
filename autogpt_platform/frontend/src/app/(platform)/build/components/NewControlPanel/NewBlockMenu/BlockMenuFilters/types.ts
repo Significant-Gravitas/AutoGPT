@@ -1,5 +1,5 @@
-import { SearchEntryFilterAnyOfItem } from "@/app/api/__generated__/models/searchEntryFilterAnyOfItem";
+import type { SearchEntry } from "@/app/api/__generated__/models/searchEntry";
 
-export type CategoryKey = SearchEntryFilterAnyOfItem;
+export type CategoryKey = NonNullable<SearchEntry["filter"]>[number];
 
 export type CategoryCounts = Record<CategoryKey, number>;

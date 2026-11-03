@@ -120,7 +120,8 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice(
     mock_cancel.assert_awaited_once_with("sub_trial", invoice_now=False, prorate=False)
     reconcile.assert_awaited_once_with(ended_trial)
     billing_boundaries.tx.user.update.assert_awaited_once_with(
-        where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.MAX}
+        where={"id": "user-1"},
+        data={"subscriptionTier": SubscriptionTier.MAX, "subscriptionEndedAt": None},
     )
     assert events == ["publish", "tier:MAX", "cancel:sub_trial"]
 

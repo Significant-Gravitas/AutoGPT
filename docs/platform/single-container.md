@@ -525,13 +525,15 @@ receive `BETTER_AUTH_SECRET`, configured `AUTH_*` social-login client secrets,
 and optional OpenAI, transcription, and legacy-JWT values because the Next.js
 server uses them. Those values remain server-side and are not baked into the
 browser bundle. The frontend does not receive the PostgreSQL superuser password,
-RabbitMQ or Valkey passwords, the FalkorDB password, or encryption keys.
+RabbitMQ or Valkey passwords, the FalkorDB password, the internal service key,
+or encryption keys.
 
-Generated database, queue, cache, memory, encryption, authentication, and
-signing secrets are created on first boot and stored in
+Generated database, queue, cache, memory, encryption, authentication,
+signing, and internal service secrets are created on first boot and stored in
 `/data/config/runtime.env` as `root:root` mode `0600`. Reusing the named volume
 reuses those secrets. Supplying a different value for a persisted secret on a
-later boot fails instead of silently rotating it.
+later boot fails instead of silently rotating it. A volume created before the
+internal service key existed gets one the first time a newer image starts.
 
 ### Suspected secret exposure
 
@@ -551,7 +553,8 @@ Treat the host environment file, `/data`, backups, and unredacted diagnostic
 output as secret-bearing material.
 
 Only port `3000` should be published. Internal AppService RPC is bound to the
-container's loopback interface, and Valkey traffic requires authentication.
+container's loopback interface and requires the internal service key, and
+Valkey traffic requires authentication.
 On Linux, Docker-managed forwarding can bypass firewall policy expressed only
 through tools such as UFW. The loopback address in
 `--publish 127.0.0.1:3000:3000` is the exposure control; changing it to a

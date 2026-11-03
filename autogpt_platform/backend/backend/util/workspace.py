@@ -24,6 +24,7 @@ from backend.data.db_accessors import (
 )
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace import WorkspaceFile
+from backend.data.workspace_internal import is_internal_workspace_file
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
     SHARED_ROOTS,
@@ -251,6 +252,21 @@ class WorkspaceManager:
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
 
+    async def read_file_head_by_id(self, file_id: str, max_bytes: int) -> bytes:
+        """Read at most ``max_bytes`` from the start of a file, by file ID.
+
+        For a preview or a slice near the start, so a large file is not
+        loaded whole. Authorized exactly as ``read_file_by_id``.
+        """
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is None:
+            raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
+
+        storage = await get_workspace_storage()
+        return await storage.retrieve_partial(file.storage_path, max_bytes)
+
     async def write_file(
         self,
         content: bytes,
@@ -273,7 +289,9 @@ class WorkspaceManager:
             path: Virtual path (defaults to "/{filename}", session-scoped if session_id set)
             mime_type: MIME type (auto-detected if not provided)
             overwrite: Whether to overwrite existing file at path
-            metadata: Optional metadata dict (e.g., origin tracking)
+            metadata: Optional metadata dict (e.g., origin tracking). A
+                ``purpose`` of ``tool-output`` or ``working-file`` marks the
+                file as Otto's own; see ``is_internal_workspace_file``.
             scanned_checksums: SHA-256s of bytes the server has already
                 scanned clean; content hashing to one of them is not scanned
                 again. Never pass hashes a client supplied.
@@ -309,6 +327,9 @@ class WorkspaceManager:
         # Resolve path with session prefix
         path = self._resolve_path(path)
         self._authorize_path(path, write=True)
+        is_internal = is_internal_workspace_file(
+            name=filename, path=path, metadata=metadata
+        )
 
         # Enforce per-user workspace storage quota (tier-based).
         # For overwrites, subtract the existing file's size so replacing a file
@@ -385,6 +406,7 @@ class WorkspaceManager:
                     size_bytes=len(content),
                     checksum=checksum,
                     metadata=metadata,
+                    is_internal=is_internal,
                 )
             except UniqueViolationError:
                 if retries > 0:
@@ -464,7 +486,10 @@ class WorkspaceManager:
 
         # Fire-and-forget: index this file in the hybrid-search store so
         # the user can find it from /search/global by name. No-ops cheaply
-        # when the existing embedding's text is unchanged.
+        # when the existing embedding's text is unchanged. Otto's own working
+        # files are not the user's to find.
+        if file.is_internal:
+            return file
         try:
             from backend.api.features.workspace.embeddings import (
                 schedule_workspace_file_embedding,
@@ -539,8 +564,12 @@ class WorkspaceManager:
             f"Wrote skill package {publication.file.path} ({len(stored)} files, "
             f"{len(removed)} removed) to workspace {self.workspace_id}"
         )
+        # Package files are the skills registry's, not the user's to find.
         for blob in stored:
-            self._schedule_embedding(blob.file_id, blob.name, blob.path)
+            if not is_internal_workspace_file(
+                name=blob.name, path=blob.path, metadata=blob.metadata
+            ):
+                self._schedule_embedding(blob.file_id, blob.name, blob.path)
         return publication.file
 
     async def _discard_unpublished(
@@ -686,6 +715,7 @@ class WorkspaceManager:
         root_only: bool = False,
         allowed_path_prefixes: Optional[list[str]] = None,
         include_user_files: bool = False,
+        include_internal: bool = True,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -721,6 +751,8 @@ class WorkspaceManager:
             include_user_files: Also list the owner's own files. A scoped
                 manager takes this from its scope instead
                 (see :meth:`_include_user_files`).
+            include_internal: Whether to list Otto's own working files. Lists
+                the user sees pass ``False``.
 
         Returns:
             List of WorkspaceFile instances
@@ -748,6 +780,7 @@ class WorkspaceManager:
             root_only=root_only,
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
+            include_internal=include_internal,
         )
 
     async def delete_file(self, file_id: str) -> bool:

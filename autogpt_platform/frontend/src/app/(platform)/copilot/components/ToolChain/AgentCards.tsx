@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { Text } from "@/components/atoms/Text/Text";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -43,7 +44,7 @@ function CardLink({ href, label }: CardLinkProps) {
     <Link
       href={href}
       aria-label={label}
-      className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+      className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
     >
       <Icon icon={LinkSquare01Icon} size={14} />
     </Link>
@@ -63,25 +64,35 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             key={resultItemKey(agent, i)}
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-              <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+              <Icon
+                icon={Robot01Icon}
+                size={15}
+                className="text-foreground-secondary"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-[13px] font-medium text-zinc-800">
+                <Text
+                  variant="body-sm-medium-inherit"
+                  tone="emphasis"
+                  className="min-w-0 truncate"
+                >
                   {str(agent, "name", "agent_name") ?? inline(agent)}
-                </p>
+                </Text>
                 {str(agent, "creator") && (
-                  <span className="shrink-0 truncate text-[11px] text-zinc-400">
+                  <span className="shrink-0 truncate text-caption-sm leading-inherit text-foreground-subtle">
                     by {str(agent, "creator")}
                   </span>
                 )}
               </div>
               {subtitle && (
-                <p className="truncate text-xs text-zinc-500">{subtitle}</p>
+                <Text variant="small-tight" tone="muted" className="truncate">
+                  {subtitle}
+                </Text>
               )}
               {(runs !== null || rating !== null) && (
-                <div className="mt-1 flex items-center gap-2.5 text-[11px] text-zinc-400">
+                <div className="mt-1 flex items-center gap-2.5 text-caption-sm leading-inherit text-foreground-subtle">
                   {runs !== null && (
                     <span className="flex items-center gap-1">
                       <Icon icon={PlayIcon} size={10} />
@@ -93,7 +104,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                       <Icon
                         icon={StarIcon}
                         size={10}
-                        className="text-amber-400"
+                        className="text-warning"
                       />
                       {rating.toFixed(1)}
                     </span>
@@ -120,14 +131,22 @@ export function AgentSavedCard({ output }: OutputCardProps) {
   const builderLink = str(output, "agent_page_link");
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={Robot01Icon}
+          size={15}
+          className="text-foreground-secondary"
+        />
       </div>
-      <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="emphasis"
+        className="min-w-0 flex-1 truncate"
+      >
         {name}
-      </p>
+      </Text>
       {typeof version === "number" && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           v{version}
         </span>
       )}
@@ -135,7 +154,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
         <Link
           href={builderLink}
           aria-label="Open in builder"
-          className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
         >
           <Icon icon={WrenchIcon} size={14} />
         </Link>
@@ -151,19 +170,29 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
     typeof output.node_count === "number" ? output.node_count : null;
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
+        <Icon
+          icon={Robot01Icon}
+          size={15}
+          className="text-foreground-secondary"
+        />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
+          {name}
+        </Text>
         {str(output, "description", "message") && (
-          <p className="truncate text-xs text-zinc-500">
+          <Text variant="small-tight" tone="muted" className="truncate">
             {str(output, "description", "message")}
-          </p>
+          </Text>
         )}
       </div>
       {count !== null && (
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           {count} block{count === 1 ? "" : "s"}
         </span>
       )}
@@ -194,14 +223,20 @@ export function SubSessionCard({
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {name}
           {role && (
-            <span className="ml-1.5 font-normal text-zinc-400">{role}</span>
+            <span className="ml-1.5 font-normal text-foreground-subtle">
+              {role}
+            </span>
           )}
-        </p>
+        </Text>
         {elapsed !== null && (
-          <span className="shrink-0 text-[11px] text-zinc-400">
+          <span className="shrink-0 text-caption-sm leading-inherit text-foreground-subtle">
             {elapsed >= 60
               ? `${Math.floor(elapsed / 60)}m ${Math.round(elapsed % 60)}s`
               : `${Math.round(elapsed)}s`}
@@ -211,7 +246,7 @@ export function SubSessionCard({
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-foreground-tertiary">
           {response}
         </p>
       )}
