@@ -1,3 +1,5 @@
+import math
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
@@ -20,6 +22,49 @@ class ComparisonOperator(Enum):
     LESS_THAN = "<"
     GREATER_THAN_OR_EQUAL = ">="
     LESS_THAN_OR_EQUAL = "<="
+
+
+def _normalize_operand(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    # int() first: float() keeps only 53 bits, so big integer strings would round.
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    if not math.isfinite(number):
+        return number
+    # float() has no fractional bits at |x| >= 2**53, so is_integer() is
+    # always True there. Use Decimal to keep whole values exact and to
+    # keep fractions distinct from their integer part.
+    try:
+        decimal = Decimal(text)
+    except InvalidOperation:
+        return number
+    if decimal == decimal.to_integral_value():
+        if abs(decimal) >= 2**53:
+            return int(decimal)
+        return number
+    if abs(number) >= 2**53:
+        return decimal
+    return number
+
+
+def _passthrough(raw: Any, value: Any) -> Any:
+    # Block outputs are serialized with orjson, which rejects ints outside
+    # the 64-bit range and does not encode Decimal; emit the float such
+    # inputs produced before.
+    if isinstance(value, Decimal):
+        return float(value)
+    out_of_range = isinstance(value, int) and not -(2**63) <= value < 2**64
+    if isinstance(raw, str) and out_of_range:
+        return float(raw.strip())
+    return value
 
 
 class ConditionBlock(Block):
@@ -82,22 +127,16 @@ class ConditionBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
+        value1 = _normalize_operand(input_data.value1)
+        value2 = _normalize_operand(input_data.value2)
 
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
-
-        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value2
+        passthrough = _passthrough(input_data.value1, value1)
+        yes_value = (
+            input_data.yes_value if input_data.yes_value is not None else passthrough
+        )
+        no_value = (
+            input_data.no_value if input_data.no_value is not None else passthrough
+        )
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
