@@ -920,6 +920,8 @@ def test_patterns_from_input_go_through_compile_user_regex():
         ("import re\nre.search(re.escape(input_data.word), text)", True, False),
         ("import re\nre.search(input_data.pattern, text)", False, False),
         ("import re\np = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\nif x:\n    q = input_data.p\np = q\nre.search(p, t)", True, True),
+        ("import re, html\nre.search(html.escape(input_data.p), t)", True, True),
         ("import re\nre.search(pattern=input_data.pattern, string=t)", True, True),
         ("import regex\nregex.compile(pattern=pattern)", False, True),
         ("from regex import compile as c\nc(pattern)", False, True),
@@ -979,10 +981,19 @@ def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int
 
 def _names_holding_input(tree: ast.Module) -> set[str]:
     names = {"input_data"}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and _reads_input_unescaped(node.value, names):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-    return names
+    assigns = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)]
+    # ast.walk reaches a nested assignment after the shallower ones that read it.
+    while True:
+        added = {
+            target.id
+            for node in assigns
+            if _reads_input_unescaped(node.value, names)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        } - names
+        if not added:
+            return names
+        names |= added
 
 
 def _reads_input_unescaped(node: ast.AST, inputs: set[str]) -> bool:
@@ -990,6 +1001,8 @@ def _reads_input_unescaped(node: ast.AST, inputs: set[str]) -> bool:
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "escape"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
     ):
         return False
     if isinstance(node, ast.Name) and node.id in inputs:
