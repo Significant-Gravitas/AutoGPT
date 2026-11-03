@@ -668,7 +668,7 @@ class CoPilotProcessor:
                     pause = await refusal_for(entry.user_id)
                     if pause is not None:
                         # Billed to the tenancy the turn runs under (as
-                        # streamed below), as the graph's other blocks are.
+                        # streamed below), decided when the turn starts.
                         is_expert_session = session.expert_id is not None
                         credit_turn = await bill_to_credits(
                             user_id=entry.user_id,
@@ -797,7 +797,7 @@ class CoPilotProcessor:
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
-                # Choose service based on LaunchDarkly flag.
+                # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
                 config = ChatConfig()
 

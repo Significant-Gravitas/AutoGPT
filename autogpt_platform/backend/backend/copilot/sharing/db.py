@@ -7,6 +7,7 @@ viewer can drill into the underlying agent run; the cascade rules are
 encoded here (see :func:`disable_chat_session_share`).
 """
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -487,16 +488,18 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     # live state of the chat — sharing is live, not snapshot-at-enable
     # (see the share-modal warning text), so the numbers under the
     # toggle ARE the numbers that will be visible the moment the
-    # owner clicks "Enable sharing".
+    # owner clicks "Enable sharing".  Read only once the row proved the
+    # session is the user's.  The messages are counted first, so a message
+    # landing meanwhile can only add to what the two scans find, never be
+    # counted with its runs and files left out; the scans run side by side.
     message_count = await PrismaChatMessage.prisma().count(
         where={"sessionId": session_id},
     )
-    linked_run_count = len(
-        await _collect_execution_ids_from_messages(session_id=session_id)
+    linked_run_ids, file_count = await asyncio.gather(
+        _collect_execution_ids_from_messages(session_id=session_id),
+        _count_referenced_workspace_files(session_id=session_id, user_id=user_id),
     )
-    file_count = await _count_referenced_workspace_files(
-        session_id=session_id, user_id=user_id
-    )
+    linked_run_count = len(linked_run_ids)
 
     return ChatShareState(
         is_shared=row.isShared,
@@ -733,7 +736,7 @@ async def _build_shared_execution_file_allowlist(
             "NodeExecutions": {
                 "include": {
                     "Input": True,
-                    "Node": {"include": {"AgentBlock": True}},
+                    "Node": True,
                 }
             }
         },

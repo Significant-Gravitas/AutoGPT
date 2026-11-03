@@ -83,7 +83,8 @@ export function TourStepCard({
           variant="ghost"
           size="xs"
           onClick={onSkip}
-          className="-ml-2.5 text-foreground-secondary"
+          tone="secondary"
+          className="-ml-2.5"
         >
           {isLastStep ? "Close" : "Skip tour"}
         </Button>
@@ -139,12 +140,7 @@ function StepProgress({ stepNumber, stepCount }: StepProgressProps) {
           />
         ))}
       </div>
-      <Text
-        variant="small"
-        tone="secondary"
-        className="tabular-nums"
-        dir="auto"
-      >
+      <Text variant="small" tone="secondary" tabular dir="auto">
         {stepNumber} of {stepCount}
       </Text>
     </div>

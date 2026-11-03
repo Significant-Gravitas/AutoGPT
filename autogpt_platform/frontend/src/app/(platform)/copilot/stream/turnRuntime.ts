@@ -33,6 +33,7 @@ import {
   newTurnSegment,
   persistedRows,
   promptFloor,
+  lastReplySequence,
   reconcileTurn,
   tailEndSequence,
   turnRows,
@@ -131,7 +132,9 @@ export interface RuntimeDeps {
 export interface RuntimeHandlers {
   /** A turn's error entry or a refused send, with the provider failure sent before it. */
   onError?: (error: Error, providerFailure: unknown) => void;
-  onTurnEnd?: () => void;
+  /** `expired`: the stream went away before the turn's finish or error, so
+   *  the stored view stood in for it. */
+  onTurnEnd?: (turn: { expired: boolean }) => void;
 }
 
 export type SendInput =
@@ -832,7 +835,7 @@ export class TurnRuntime {
     this.updateTurn(key, (seg) => ({ ...seg, ended: true }));
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.();
+    this.handlers.onTurnEnd?.({ expired: false });
     const seg = this.segmentByKey(key);
     if (seg?.kind !== "turn") return;
     const continuation =
@@ -1012,7 +1015,7 @@ export class TurnRuntime {
     });
     this.resetFailures();
     this.emitNow();
-    this.handlers.onTurnEnd?.();
+    this.handlers.onTurnEnd?.({ expired: true });
     this.observe(view);
   }
 
@@ -1064,8 +1067,19 @@ export class TurnRuntime {
     if (!persisted) return;
     // The session GET returns a window; a turn starting before it waits.
     const windowStart = rows[0]?.sequence ?? Infinity;
-    if (view.has_more_messages !== false && windowStart > persisted.start)
+    if (view.has_more_messages !== false && windowStart > persisted.start) {
+      const ownUserTexts = new Set(
+        seg.log.rows.filter((r) => r.role === "user").map((r) => r.content),
+      );
+      const sequence = lastReplySequence(persisted.raw, ownUserTexts);
+      // A turn whose rows left the window keeps the id it already learned.
+      if (sequence !== null && sequence !== seg.lastReplySequence)
+        this.updateTurn(seg.key, (s) => ({
+          ...s,
+          lastReplySequence: sequence,
+        }));
       return;
+    }
     const drift = diffRows(seg.log.rows, persisted.rows);
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {

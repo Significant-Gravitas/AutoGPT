@@ -497,7 +497,7 @@ You don't need to wrap components in error boundaries manually unless you need c
 
 ## 🚩 Feature Flags
 
-- By default the browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
+- The browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
 - Use the helper APIs under `src/services/feature-flags`
 
 Check a flag in a client component:
@@ -530,11 +530,7 @@ Adding new flags:
 
 1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
 2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
-3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
-   - `launchdarkly`: LaunchDarkly
-   - `posthog`: PostHog
-   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
-   - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
+3. Create the flag in each environment's PostHog project; the backend evaluates it there and serves it through `/api/feature-flags`
 
 ---
 

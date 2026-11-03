@@ -21,7 +21,8 @@ export function AnsweredQuestions({ items }: Props) {
           <Icon
             icon={MessageQuestionIcon}
             size={14}
-            className="mt-0.5 shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="mt-0.5 shrink-0"
           />
           <div className="min-w-0">
             <p className="text-body-sm leading-inherit text-foreground-tertiary">
