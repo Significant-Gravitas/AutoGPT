@@ -87,7 +87,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
@@ -436,10 +436,7 @@ async def preview_tier_upgrade(
     request: SubscriptionUpgradePreviewRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionUpgradePreview:
-    enabled, _ = await evaluate_feature_flag(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
-    if not enabled:
+    if not is_platform_payment_enabled():
         raise HTTPException(422, "Subscription upgrades are unavailable.")
     try:
         return await preview_subscription_upgrade(user_id, request)
@@ -536,46 +533,17 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled, payment_flag_authoritative = await evaluate_feature_flag(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
-
     target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
     # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
     # cancel_at_period_end=True lets the webhook flip the DB tier. No active
-    # sub (admin-granted or never-paid) or payment disabled → DB flip.
-    # NO_TIER is never priceable, so this branch always fires for cancel
-    # requests regardless of LD config.
+    # sub (admin-granted or never-paid) → DB flip. Runs with payment off too,
+    # since a subscription from when it was on keeps billing until cancelled.
     if tier == SubscriptionTier.NO_TIER:
-        if payment_enabled:
-            try:
-                had_subscription = await cancel_stripe_subscription(user_id)
-            except stripe.StripeError as e:
-                logger.exception(
-                    "Stripe error cancelling subscription for user %s: %s",
-                    user_id,
-                    e,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail=(
-                        "Unable to cancel your subscription right now. "
-                        "Please try again or contact support."
-                    ),
-                )
-            if not had_subscription:
-                # No Stripe subscription drove this change (admin-granted or
-                # never-paid).
-                await set_subscription_tier(user_id, tier)
-            return await get_subscription_status(user_id)
-        if not payment_flag_authoritative:
-            # An unreadable flag reads False exactly like payment being off, and
-            # the DB flip below would strand a still-billing Stripe subscription.
-            logger.error(
-                f"Refusing to cancel subscription for user {user_id}: "
-                f"{Flag.ENABLE_PLATFORM_PAYMENT} could not be evaluated"
-            )
+        try:
+            had_subscription = await cancel_stripe_subscription(user_id)
+        except stripe.StripeError:
+            logger.exception(f"Stripe error cancelling subscription for user {user_id}")
             raise HTTPException(
                 status_code=502,
                 detail=(
@@ -583,10 +551,13 @@ async def update_subscription_tier(
                     "Please try again or contact support."
                 ),
             )
-        await set_subscription_tier(user_id, tier)
+        if not had_subscription:
+            # No Stripe subscription drove this change (admin-granted or
+            # never-paid).
+            await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
-    if not payment_enabled:
+    if not is_platform_payment_enabled():
         raise HTTPException(
             status_code=422,
             detail=f"Subscription not available for tier {tier.value}",
