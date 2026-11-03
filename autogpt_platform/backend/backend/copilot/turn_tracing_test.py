@@ -167,7 +167,7 @@ def test_a_persons_turn_carries_no_load_test_property(capture: MagicMock):
     assert "load_test" not in capture.call_args.args[2]
 
 
-def test_a_load_test_turn_that_fails_before_its_engine_is_still_tagged():
+def test_marking_a_load_test_account_tags_its_turn():
     span = MagicMock()
     from backend.copilot.turn_tracing import TurnTrace
 

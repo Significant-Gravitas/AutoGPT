@@ -61,6 +61,7 @@ from backend.copilot.response_model import (
 from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
+from backend.copilot.turn_tracing import TurnTrace
 from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.model import OAuth2Credentials
 from backend.data.pro_activation import UsageActivationState
@@ -2195,5 +2196,11 @@ class TestExecuteAsyncLoadTestAccounts:
     async def test_a_scripted_account_never_falls_through_to_a_real_model(
         self,
     ) -> None:
-        with pytest.raises(RuntimeError, match="load_test_model_url_unset"):
+        with (
+            patch.object(TurnTrace, "load_test_account", autospec=True) as tagged,
+            pytest.raises(RuntimeError, match="load_test_model_url_unset"),
+        ):
             await self._engines_run("scripted", model_url="")
+
+        # Tagged before the check fails it.
+        assert [call.args[1] for call in tagged.call_args_list] == ["scripted"]

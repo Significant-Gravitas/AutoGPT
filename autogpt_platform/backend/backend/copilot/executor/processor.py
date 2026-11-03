@@ -622,6 +622,15 @@ class CoPilotProcessor:
         try:
             from backend.copilot.model import get_chat_session
 
+            # Known before anything can end the turn, so a load-test
+            # account's turn is told apart from people's however it ends.
+            config = ChatConfig()
+            load_test: LoadTestEngine | None = None
+            if not config.test_mode:
+                load_test = await load_test_engine(entry.user_id, config)
+                if load_test is not None:
+                    turn.load_test_account(load_test)
+
             # Every copilot turn starts here, whatever queued it.
             if entry.user_id and await is_user_banned(entry.user_id):
                 log.info("Turn not started: the account is banned")
@@ -708,7 +717,6 @@ class CoPilotProcessor:
                 # their trial, so the rest of the setup reads both again.
                 trial_reads.forget()
 
-            load_test: LoadTestEngine | None = None
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
                 from backend.integrations.codex.credential_codec import (
@@ -802,12 +810,6 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_session_route_mismatch")
                 # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
-                config = ChatConfig()
-                if not config.test_mode:
-                    load_test = await load_test_engine(entry.user_id, config)
-                    if load_test is not None:
-                        turn.load_test_account(load_test)
-
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
