@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.context import resolve_executor_path
-from backend.copilot.sdk.e2b_file_tools import _handle_grep
+from backend.copilot.sdk.e2b_file_tools import _handle_glob, _handle_grep
 from backend.copilot.sdk.local_pc_file_tools import (
     describe_workspace,
     is_local_pc,
@@ -279,3 +279,35 @@ class TestLocalPCGrep:
 
         assert result["isError"] is True
         assert "timed out" in _text(result)
+
+
+class TestLocalPCGlob:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("truncated", [True, False])
+    async def test_a_capped_listing_says_more_matches_exist(
+        self, monkeypatch: pytest.MonkeyPatch, truncated: bool
+    ):
+        """The companion stops a recursive listing at its entry cap; a model
+        reading only the list would take it as every match."""
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(
+            return_value={
+                "type": "FILE_LIST_RESULT",
+                "payload": {
+                    "entries": [
+                        {"path": "/Users/test/ws/a.py", "is_file": True},
+                        {"path": "/Users/test/ws/pkg", "is_file": False},
+                    ],
+                    "truncated": truncated,
+                },
+            }
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_glob({"pattern": "*.py"})
+
+        text = _text(result)
+        assert text.startswith('[\n  "/Users/test/ws/a.py"\n]')
+        assert ("more matches exist" in text) is truncated

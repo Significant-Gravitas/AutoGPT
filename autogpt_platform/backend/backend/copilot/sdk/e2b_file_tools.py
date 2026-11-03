@@ -761,12 +761,22 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     if is_local_pc(sandbox):
         try:
             resp = await list_via_shim(
-                sandbox, search_dir, glob=pattern, recursive=True, max_entries=500
+                sandbox,
+                search_dir,
+                glob=pattern,
+                recursive=True,
+                max_entries=_GLOB_MAX_ENTRIES,
             )
         except OSError as exc:
             return _mcp(f"Glob failed: {exc}", error=True)
         files = [e.get("path", "") for e in resp.get("entries", []) if e.get("is_file")]
-        return _mcp(json.dumps(files, indent=2), outside=tuple(files))
+        text = json.dumps(files, indent=2)
+        if resp.get("truncated"):
+            text += (
+                f"\n\n[The listing stopped at {_GLOB_MAX_ENTRIES} entries, so "
+                "more matches exist. Narrow the path or the pattern to see them.]"
+            )
+        return _mcp(text, outside=tuple(files))
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
@@ -778,6 +788,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(json.dumps(files, indent=2), outside=tuple(files))
 
 
+_GLOB_MAX_ENTRIES = 500
 _GREP_TIMEOUT_SECONDS = 15
 _GREP_ERROR_CHARS = 1_000
 
