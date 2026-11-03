@@ -58,6 +58,7 @@ def main():
                         "-c",
                         "pyproject.toml",
                         str(target),
+                        "backend/util/architecture_scan_test.py",
                         "--cov=backend",
                         "--cov-branch",
                         "--cov-report=",
@@ -136,6 +137,8 @@ with tempfile.TemporaryDirectory() as directory:
         if results["baseline"]["cases"] != results["candidate"]["cases"]:
             raise RuntimeError("Architecture case inventories differ")
         (output / "comparison.json").write_text(json.dumps(results, indent=2))
+        compact = {label: {"seconds": value["seconds"], "cases": len(value["cases"])} for label, value in results.items()}
+        print("::notice title=architecture-regression-comparison::" + json.dumps(compact))
         print(
             json.dumps(
                 {

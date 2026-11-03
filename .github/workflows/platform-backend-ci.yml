@@ -2,6 +2,8 @@ name: Architecture source prefilter comparison
 run-name: Compare architecture source filtering
 
 on:
+  push:
+    branches: [codex/ci-architecture-cache-20261103-1619]
   workflow_dispatch:
     inputs:
       test_layout:
@@ -23,7 +25,7 @@ defaults:
 
 jobs:
   test:
-    name: Architecture source comparison (${{ matrix.order }})
+    name: Architecture source regressions (${{ matrix.python-version }})
     permissions:
       contents: read
     # Each Python leg splits the eight fixture groups into 31 whole-file
@@ -34,10 +36,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.12", "3.13"]
         partition: [2]
         test-shard: [util-executor]
-        order: [baseline-first, candidate-first]
+        order: [baseline-first]
     runs-on: ubuntu-latest
 
     services:
@@ -428,7 +430,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: architecture-comparison-${{ matrix.order }}
+          name: architecture-comparison-${{ matrix.order }}-${{ matrix.python-version }}
           path: ${{ runner.temp }}/architecture-comparison
           include-hidden-files: true
           if-no-files-found: error
@@ -448,4 +450,3 @@ jobs:
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
       RABBITMQ_DEFAULT_PASS: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
       GRAPHITI_FALKORDB_PASSWORD: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
-
