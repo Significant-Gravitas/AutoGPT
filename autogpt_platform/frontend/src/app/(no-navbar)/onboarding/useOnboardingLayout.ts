@@ -1,3 +1,4 @@
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useSignInProvider } from "./steps/AccessStep/useSignInProvider";
@@ -16,27 +17,37 @@ export function useOnboardingLayout({
   isUserLoading: boolean;
   trialConfirmation: { ready: boolean; active: boolean | undefined };
 }) {
-  const payment = useFlagStatus(Flag.ENABLE_PLATFORM_PAYMENT);
+  const payment = usePlatformPayment();
   const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
   const signIn = useSignInProvider(isLoggedIn);
 
-  const flagsReady = payment.ready;
-  // Resolved once per account: flag changes must not reorder an active wizard.
-  // Payment and placement resolve apart, so a checkout return is confirmed
-  // without waiting on the sign-in lookup.
+  const flagsReady = payment.isResolved;
+  // A failed read is laid out as off but not frozen, so a later success still
+  // counts. The step placement follows the same rule, since the paywall moves
+  // the access step.
+  const paymentKnown = flagsReady && !payment.isError;
+  const placementReady = stepOrder.ready && signIn.isReady && !isUserLoading;
+  const readPlacement = () => ({
+    order: resolveStepOrder(stepOrder.enabled, {
+      paywall: payment.isPaymentEnabled,
+    }),
+    hasAccess: signIn.provider !== null,
+  });
+  // Resolved once per account: a setting or flag change must not reorder an
+  // active wizard. Payment and placement resolve apart, so a checkout return
+  // is confirmed without waiting on the sign-in lookup.
   const hasPayment = useFrozenPerUser(
     userID,
-    flagsReady && !isUserLoading,
-    () => payment.enabled,
+    paymentKnown && !isUserLoading,
+    () => payment.isPaymentEnabled,
   );
-  const placement = useFrozenPerUser(
+  const frozenPlacement = useFrozenPerUser(
     userID,
-    flagsReady && stepOrder.ready && signIn.isReady && !isUserLoading,
-    () => ({
-      order: resolveStepOrder(stepOrder.enabled, { paywall: payment.enabled }),
-      hasAccess: signIn.provider !== null,
-    }),
+    paymentKnown && placementReady,
+    readPlacement,
   );
+  const placement =
+    frozenPlacement ?? (flagsReady && placementReady ? readPlacement() : null);
   const paidConfirmation = usePaidCheckoutStatus(
     userID,
     !!hasPayment && !environment.isLocal(),

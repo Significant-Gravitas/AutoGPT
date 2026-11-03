@@ -83,10 +83,6 @@ function getPostHogCredentials() {
   };
 }
 
-function getLaunchDarklyClientId() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-}
-
 function getGAMeasurementID() {
   return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 }
@@ -179,13 +175,6 @@ function isSentryEnabled() {
   return Boolean(getSentryDSN());
 }
 
-function areFeatureFlagsEnabled() {
-  return (
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
-    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
-  );
-}
-
 function isPostHogEnabled() {
   const inCloud = isCloud();
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -204,7 +193,6 @@ export const environment = {
   getAGPTWsServerUrl,
   getRevision,
   getPostHogCredentials,
-  getLaunchDarklyClientId,
   getGAMeasurementID,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
@@ -226,5 +214,4 @@ export const environment = {
   isVercelPreview,
   isSentryEnabled,
   isPostHogEnabled,
-  areFeatureFlagsEnabled,
 };

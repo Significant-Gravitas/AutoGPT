@@ -119,14 +119,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <Icon icon={CheckListIcon} size={14} className="text-foreground-subtle" />
-  );
+  return <Icon icon={CheckListIcon} size={14} tone="subtle" />;
 }
 
 export function AccordionIcon() {
@@ -140,7 +138,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CheckmarkCircle02Icon}
           size={18}
-          className="text-success"
+          tone="success"
           aria-label="completed"
         />
       );
@@ -149,7 +147,8 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={Loading03Icon}
           size={18}
-          className="animate-spin text-info"
+          spin
+          tone="info"
           aria-label="in progress"
         />
       );
@@ -158,7 +157,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CancelCircleIcon}
           size={18}
-          className="text-error"
+          tone="error"
           aria-label="failed"
         />
       );
@@ -167,7 +166,7 @@ export function StepStatusIcon({ status }: { status: string }) {
         <Icon
           icon={CircleDashedIcon}
           size={18}
-          className="text-foreground-subtle"
+          tone="subtle"
           aria-label="pending"
         />
       );

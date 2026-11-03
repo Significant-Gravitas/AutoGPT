@@ -25,18 +25,19 @@ export function CostsBreakdown({ agents }: Props) {
     <section className="mt-6 flex flex-col gap-4">
       <Button
         variant="ghost"
-        size="small"
+        size="inline"
+        tone="emphasis"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a bare text toggle
-        className="w-fit gap-1 px-0 text-foreground-emphasis hover:bg-transparent"
+        // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a bare text toggle with no hover fill and a 4px gap
+        className="h-9 w-fit gap-1 hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
         <Icon
           icon={ArrowDown01Icon}
           size={14}
-          // oxlint-disable-next-line design-system/no-restyle -- the chevron animates its rotation
-          className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          motion="transform"
+          className={isExpanded ? "rotate-180" : undefined}
         />
       </Button>
 

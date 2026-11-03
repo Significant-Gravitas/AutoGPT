@@ -99,7 +99,7 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
         )
 
     assert result is mock_graph_model
-    mock_get_sub.assert_awaited_once_with(mock_graph)
+    mock_get_sub.assert_awaited_once_with(mock_graph, client=None)
     mock_from_db.assert_called_once_with(
         graph=mock_graph,
         sub_graphs=[mock_sub_graph],
@@ -267,7 +267,7 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
     mock_admin.assert_awaited_once_with(
-        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID, client=None
     )
     mock_regular.assert_not_awaited()
 

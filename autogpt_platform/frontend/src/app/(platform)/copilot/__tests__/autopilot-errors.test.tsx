@@ -65,15 +65,17 @@ const streamPath = vi.hoisted(() => ({ runtime: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
-    flag === "copilot-stream-runtime"
-      ? streamPath.runtime
-      : flag === "ENABLE_PLATFORM_PAYMENT"
-        ? flagState.billing
-        : false,
+    flag === "copilot-stream-runtime" ? streamPath.runtime : false,
+}));
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: flagState.billing,
+    isResolved: true,
+  }),
 }));
 
 beforeEach(() => {

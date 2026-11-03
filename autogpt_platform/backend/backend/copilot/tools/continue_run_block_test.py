@@ -148,6 +148,7 @@ class TestContinueRunBlock:
         mock_db.get_reviews_by_node_exec_ids = AsyncMock(
             return_value={review_id: review}
         )
+        mock_db.claim_approved_review = AsyncMock(return_value=True)
         mock_db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
 
         with (
