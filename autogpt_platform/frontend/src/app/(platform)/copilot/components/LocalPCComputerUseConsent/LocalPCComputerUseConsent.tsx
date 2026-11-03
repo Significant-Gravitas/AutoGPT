@@ -125,7 +125,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
 
   return (
     <Dialog
-      title="Claude is requesting computer access"
+      title="Otto is requesting computer access"
       styling={{ maxWidth: "32rem", minWidth: "auto" }}
       controlled={{ isOpen: true, set: async () => {} }}
     >
@@ -137,7 +137,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
             </div>
             <div className="flex flex-col gap-2">
               <Text variant="body-medium" tone="primary">
-                For this chat session, Claude can:
+                For this chat session, Otto can:
               </Text>
               <ul className="ml-4 list-disc text-sm text-foreground-body">
                 {computerUseFeatures.has("screenshot") ? (

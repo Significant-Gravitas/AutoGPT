@@ -97,7 +97,7 @@ describe("LocalPCComputerUseConsent", () => {
 
       await waitFor(() => expect(requested).toHaveBeenCalledOnce());
       expect(
-        screen.queryByText(/claude is requesting computer access/i),
+        screen.queryByText(/otto is requesting computer access/i),
       ).toBeNull();
     },
   );
@@ -111,6 +111,9 @@ describe("LocalPCComputerUseConsent", () => {
     );
 
     render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
+    expect(
+      await screen.findByText("Otto is requesting computer access"),
+    ).toBeDefined();
     fireEvent.click(
       await screen.findByRole("button", { name: "Not this time" }),
     );

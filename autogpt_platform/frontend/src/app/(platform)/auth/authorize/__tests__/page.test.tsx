@@ -120,6 +120,32 @@ describe("AuthorizePage", () => {
     expect(window.location.href).toBe(PAGE);
   });
 
+  test("shows why returning to the app failed from the invalid-scopes screen", async () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        client_id: "client-1",
+        redirect_uri: REGISTERED,
+        scope: "EXECUTE_GRAPH",
+        state: "state-1",
+        code_challenge: "challenge",
+      }),
+    );
+    serveAppInfo();
+    server.use(
+      http.post("/api/proxy/api/oauth/authorize/deny", () =>
+        HttpResponse.json({ detail: "Invalid redirect_uri" }, { status: 400 }),
+      ),
+    );
+
+    render(<AuthorizePage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Return to Application" }),
+    );
+
+    expect(await screen.findByText("Invalid redirect_uri")).toBeDefined();
+    expect(window.location.href).toBe(PAGE);
+  });
+
   test("encodes the client id in the app-info request", async () => {
     let requested: URL | undefined;
     openWith(REGISTERED, "client#1");

@@ -203,9 +203,16 @@ export default function AuthorizePage() {
             hint="Please contact the administrator of the app that sent you here."
             isOurProblem={false}
           />
+          {authorizeError && (
+            <ErrorCard
+              context="authorization"
+              responseError={{ message: authorizeError }}
+            />
+          )}
           <Button
             variant="secondary"
             onClick={handleDeny}
+            disabled={isAuthorizing}
             className="mt-4 w-full"
           >
             Return to Application
