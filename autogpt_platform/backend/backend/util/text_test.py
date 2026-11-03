@@ -6,7 +6,7 @@ from time import monotonic
 
 import jinja2
 import pytest
-from markupsafe import escape
+from markupsafe import Markup, escape
 
 from backend.util import text
 from backend.util.text import (
@@ -321,6 +321,10 @@ AFTER_IT_IS_BUILT = "rendering exceeded"
 # inside the per-tag length cap
 _LIST_LITERAL = "[" + ",".join(["1"] * 1000) + "]"
 _DICT_LITERAL = "{" + ",".join(f"'k{i}':1" for i in range(500)) + "}"
+# Items the loop supplies, so each pass really does build another tuple
+_LOOP_TUPLE = "(" + ",".join(["i"] * 1000) + ")"
+# One Python keeps a single object for, so no pass builds anything
+_CONST_TUPLE = "(" + ",".join(["1"] * 626) + ")"
 
 
 def _rebuilt_every_iteration(literal: str) -> str:
@@ -456,17 +460,10 @@ OVERSIZED_TEMPLATES = {
         AFTER_IT_IS_BUILT,
     ),
     "a tuple of loop values rebuilt every iteration": (
-        _rebuilt_every_iteration(
-            "(i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i)"
-        ),
+        _rebuilt_every_iteration(_LOOP_TUPLE),
         AFTER_IT_IS_BUILT,
     ),
-    "a tuple literal rebuilt every iteration": (
-        _rebuilt_every_iteration(
-            "(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)"
-        ),
-        AFTER_IT_IS_BUILT,
-    ),
+    "a control-character string emitted whole": ("{{ [v] }}", AFTER_IT_IS_BUILT),
     "the % operator without a precision": (
         THIRTY_MEGABYTES + "{{ '%s' % a }}",
         BEFORE_IT_ALLOCATES,
@@ -539,7 +536,11 @@ OVERSIZED_TEMPLATES = {
 
 
 # The one case whose list arrives from the caller rather than the template
-OVERSIZED_VALUES = {"a filter over a caller's list": {"l": ["x" * 10_000] * 6_000}}
+OVERSIZED_VALUES = {
+    "a filter over a caller's list": {"l": ["x" * 10_000] * 6_000},
+    # `repr` renders each of these as four characters, so the text is 4x
+    "a control-character string emitted whole": {"v": "\x00" * 16_000_000},
+}
 
 
 @pytest.mark.parametrize(
@@ -742,12 +743,69 @@ def test_every_entry_of_a_dict_is_charged(entries: int):
 
 @pytest.mark.asyncio
 async def test_a_replace_is_sized_before_escaping_builds_its_operand():
-    # Escaping the value is itself an allocation, so it is sized first
+    # A markup argument makes `do_replace` escape the text, and escaping it
+    # is itself an allocation, so it is sized before it is built
     value = "&" * (MAX_RENDER_BYTES // 4)
     with pytest.raises(ValueError, match=BEFORE_IT_ALLOCATES):
         await TextFormatter(autoescape=True).format_string(
-            "{{ v|replace('x', 'y') }}", {"v": value}
+            "{{ v|replace('amp'|safe, 'y') }}", {"v": value}
         )
+
+
+@pytest.mark.asyncio
+async def test_a_constant_tuple_in_a_loop_is_not_charged_each_pass(
+    fmt: TextFormatter,
+):
+    # Python keeps one object for a tuple of constants, so no pass of the
+    # loop builds another and no pass is charged for one
+    template = (
+        "{% for i in range(10000) %}" f"{{% set t = {_CONST_TUPLE} %}}" "{% endfor %}ok"
+    )
+    assert await fmt.format_string(template) == "ok"
+
+
+@pytest.mark.parametrize(
+    ("template", "values"),
+    [
+        ("{{ v|replace('&', '') }}", {"v": "&" * 12_000_000}),
+        ("{{ v|replace('x', m) }}", {"v": "x", "m": Markup("&" * 11_000_000)}),
+    ],
+    ids=["a replace that does not escape", "a markup replacement"],
+)
+@pytest.mark.asyncio
+async def test_a_replace_is_priced_for_the_escaping_it_actually_does(
+    template: str, values: dict
+):
+    # `do_replace` escapes the text only where one of its arguments is
+    # markup, and `escape` leaves a markup argument as it is
+    await TextFormatter(autoescape=True).format_string(template, values)
+
+
+def test_prose_in_a_container_is_not_priced_as_escaped_control_characters():
+    # A newline grows by one under `repr`, not by four, or a multi-line
+    # prompt would be charged several times what it renders
+    prose = ["a line of perfectly ordinary prose\n" * 1000]
+    assert text._text_size(prose) <= len(str(prose)) * 1.1
+
+
+def test_a_join_measures_a_repeated_reference_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    walks = 0
+    walk = text._walk_text_size
+
+    def counted(value, escaped, measured):
+        nonlocal walks
+        walks += 1
+        return walk(value, escaped, measured)
+
+    monkeypatch.setattr(text, "_walk_text_size", counted)
+    # Distinct containers, so walking the structure again is not free
+    inner = [["q"] * 50 for _ in range(50)]
+    text._bounded_join_input([inner] * 100, ",", _RenderBudget(MAX_RENDER_BYTES, None))
+    # The structure is walked once and the other references read the memo,
+    # rather than every reference walking all of it again
+    assert walks < 50 * 51 * 100 / 10
 
 
 def test_a_container_of_strings_is_charged_for_the_quotes_it_renders_them_in():

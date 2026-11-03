@@ -396,14 +396,18 @@ def _value_size(value: Any) -> int:
 _REFERENCE_BYTES = 8
 
 
-def _text_size(value: Any, escaped: bool = False) -> int:
+def _text_size(
+    value: Any, escaped: bool = False, measured: dict[int, int] | None = None
+) -> int:
     """About how many characters ``value`` renders as.
 
     A container renders as its items' text, not as the references it holds,
     which is what `_value_size` measures, so the walk goes all the way down.
-    ``escaped`` adds what autoescaping that text would grow it by.
+    ``escaped`` adds what autoescaping that text would grow it by. Several
+    values measured against one budget check share one ``measured``, or a
+    structure they both reach is walked once for each of them.
     """
-    return _walk_text_size(value, escaped, {})
+    return _walk_text_size(value, escaped, {} if measured is None else measured)
 
 
 def _walk_text_size(value: Any, escaped: bool, measured: dict[int, int]) -> int:
@@ -442,12 +446,33 @@ def _walk_items(value: Any, escaped: bool, measured: dict[int, int]) -> int:
     quoted = 12 if escaped else 4
 
     def rendered(item: Any) -> int:
-        beside = quoted if isinstance(item, (str, bytes, bytearray)) else 2
-        return _walk_text_size(item, escaped, measured) + beside
+        if not isinstance(item, (str, bytes, bytearray)):
+            return _walk_text_size(item, escaped, measured) + 2
+        return _walk_text_size(item, escaped, measured) + quoted + _repr_growth(item)
 
     if isinstance(value, dict):
         return sum(rendered(k) + rendered(v) for k, v in value.items())
     return sum(rendered(i) for i in value)
+
+
+def _repr_growth(value: Any) -> int:
+    """How many characters ``repr`` adds inside a string's own quotes.
+
+    A backslash and the delimiter it picks are escaped, and an unprintable
+    character becomes an escape of its own; only a string that holds one
+    pays for the scan that counts them. Exact for text that is ASCII.
+    """
+    if not isinstance(value, str):
+        return 0
+    apostrophes = value.count("'")
+    grown = value.count("\\") + (apostrophes if '"' in value else 0)
+    if value.isprintable():
+        return grown
+    return grown + sum(g * value.count(c) for c, g in _UNPRINTABLE_GROWTH.items())
+
+
+# What `repr` adds for each unprintable ASCII character, read from `repr`
+_UNPRINTABLE_GROWTH = {c: len(repr(c)) - 3 for c in map(chr, [*range(0x20), 0x7F])}
 
 
 def _escaped_growth(value: Any) -> int:
@@ -536,16 +561,18 @@ class _BudgetedCodeGenerator(CodeGenerator):
 
     def visit_Tuple(self, node: Tuple, frame: Frame) -> None:
         # A tuple being assigned to is a target, and a call around it would
-        # not be one
-        if node.ctx == "store":
+        # not be one; one of constants is a literal Python keeps a single
+        # object for, so no pass of a loop rebuilds it
+        if node.ctx == "store" or all(isinstance(i, Const) for i in node.items):
             super().visit_Tuple(node, frame)
         else:
             self._charged_literal(super().visit_Tuple, node, frame)
 
     def visit_Const(self, node: Const, frame: Frame) -> None:
         # Jinja folds a list or dict of constants to one Const, and emits it
-        # as a literal that the line rebuilds every time it runs
-        if isinstance(node.value, (list, dict, tuple)):
+        # as a literal that the line rebuilds every time it runs. A tuple of
+        # constants is not rebuilt: Python keeps one object for it.
+        if isinstance(node.value, (list, dict)):
             self._charged_literal(super().visit_Const, node, frame)
         else:
             super().visit_Const(node, frame)
@@ -944,7 +971,7 @@ def _check_replace_filter(
     if old is _ABSENT or new is _ABSENT:
         return
     count = _own_arg(own, kwargs, 3, "count", None)
-    if passed.autoescape and not hasattr(own[0], "__html__"):
+    if passed.autoescape and _replace_escapes(own[0], old, new):
         budget.check(_text_size(own[0], True))
     value, old, new = _replace_operands(passed.autoescape, own[0], old, new)
     _check_replace_sizes(value, old, new, count, budget)
@@ -961,13 +988,15 @@ def _replace_operands(autoescape: bool, value: Any, old: Any, new: Any) -> tuple
     """
     if not autoescape:
         return str(value), str(old), str(new)
-    if hasattr(old, "__html__") or (
-        hasattr(new, "__html__") and not hasattr(value, "__html__")
-    ):
-        value = escape(value)
-    else:
-        value = soft_str(value)
+    value = escape(value) if _replace_escapes(value, old, new) else soft_str(value)
     return value, soft_str(old), soft_str(new)
+
+
+def _replace_escapes(value: Any, old: Any, new: Any) -> bool:
+    """Whether ``do_replace`` escapes the text before it searches it."""
+    return hasattr(old, "__html__") or (
+        hasattr(new, "__html__") and not hasattr(value, "__html__")
+    )
 
 
 def _check_wordwrap_filter(
@@ -1083,8 +1112,9 @@ def _bounded_join_input(value: Any, separator: Any, budget: _RenderBudget) -> An
     if not isinstance(value, Collection):
         # A sync iterable the join would consume anyway, so it can be listed
         value = budget.charge(list(value))
+    measured: dict[int, int] = {}
     separators = _text_size(separator) * len(value)
-    budget.check(sum(map(_text_size, value)) + separators)
+    budget.check(sum(_text_size(v, False, measured) for v in value) + separators)
     return value
 
 
@@ -1103,7 +1133,10 @@ def _check_replace_sizes(
 ) -> None:
     if isinstance(value, Markup):
         # Markup.replace escapes its arguments before it searches or inserts
-        budget.check(_text_size(old, True) + _text_size(new, True))
+        budget.check(
+            _text_size(old, not hasattr(old, "__html__"))
+            + _text_size(new, not hasattr(new, "__html__"))
+        )
         old, new = escape(old), escape(new)
     occurrences = value.count(old) if old else len(value) + 1
     if _is_plain_int(count) and 0 <= count < occurrences:
