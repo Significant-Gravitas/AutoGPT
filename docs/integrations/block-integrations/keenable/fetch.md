@@ -36,6 +36,8 @@ The block calls `GET https://api.keenable.ai/v1/fetch?url=...&live=true` (or the
 **Read a search hit**: pass a URL from Keenable Search to this block to get the full page as markdown for summarisation.
 
 **Monitor a page**: fetch a pricing or changelog page on a schedule and compare it with the previous run.
+
+**Cite a source**: fetch a page's markdown and title to quote it accurately in a report.
 <!-- END MANUAL -->
 
 ---

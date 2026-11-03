@@ -142,5 +142,18 @@ class KeenableSearchBlock(Block):
         if results:
             yield "result", results[0]
         yield "context", "\n\n".join(
-            f"[{r.title}]({r.url})\n{r.snippet}" for r in results
+            f"[{_escape_link_text(r.title)}]({_escape_link_url(r.url)})\n{r.snippet}"
+            for r in results
         )
+
+
+def _escape_link_text(text: str) -> str:
+    """Escape characters that would end or nest a Markdown link label."""
+    for ch in ("\\", "[", "]"):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
+def _escape_link_url(url: str) -> str:
+    """Percent-encode characters that would end a Markdown link destination."""
+    return url.replace(" ", "%20").replace("(", "%28").replace(")", "%29")

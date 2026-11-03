@@ -105,7 +105,7 @@ class KeenableFetchBlock(Block):
             data = await self._fetch(credentials, input_data.url, input_data.max_chars)
             url = data.get("url") or input_data.url
             title = data.get("title") or ""
-            content = data.get("content") or ""
+            content = data.get("content")
             if not all(isinstance(v, str) for v in (url, title, content)):
                 raise ValueError("malformed fetch response fields")
         except Exception as e:
@@ -118,4 +118,14 @@ class KeenableFetchBlock(Block):
         yield "url", url
         yield "title", title
         yield "content", content
-        yield "truncated", KEENABLE_TRUNCATION_MARKER in content
+        yield "truncated", _is_truncated(content)
+
+
+def _is_truncated(content: str) -> bool:
+    """Whether Keenable cut the page at max_chars.
+
+    Keenable appends its truncation notice at the very end of the content, so
+    only the tail is checked; the same words quoted inside a page don't count.
+    """
+    tail = content.rstrip()[-len(KEENABLE_TRUNCATION_MARKER) - 120 :]
+    return KEENABLE_TRUNCATION_MARKER in tail

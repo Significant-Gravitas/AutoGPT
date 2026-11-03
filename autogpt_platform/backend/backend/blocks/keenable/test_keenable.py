@@ -136,27 +136,27 @@ async def test_search_block_anonymous_ignores_selected_credentials_and_sends_fil
             "results": [{"title": "A", "url": "https://a.test", "snippet": "excerpt"}]
         }
 
-    block._search = fake_search  # type: ignore[method-assign]
-    out = await _collect(
-        block,
-        {
-            "auth": KeenableAuth.ANONYMOUS.value,
+    with mock.patch.object(block, "_search", fake_search):
+        out = await _collect(
+            block,
+            {
+                "auth": KeenableAuth.ANONYMOUS.value,
+                "query": "q",
+                "max_results": 3,
+                "site": "a.test",
+                "published_after": "7d",
+            },
+            credentials=TEST_CREDENTIALS,
+        )
+        assert seen["credentials"] is None
+        assert seen["payload"] == {
             "query": "q",
             "max_results": 3,
             "site": "a.test",
             "published_after": "7d",
-        },
-        credentials=TEST_CREDENTIALS,
-    )
-    assert seen["credentials"] is None
-    assert seen["payload"] == {
-        "query": "q",
-        "max_results": 3,
-        "site": "a.test",
-        "published_after": "7d",
-    }
-    assert out["result"].url == "https://a.test"
-    assert out["context"] == "[A](https://a.test)\nexcerpt"
+        }
+        assert out["result"].url == "https://a.test"
+        assert out["context"] == "[A](https://a.test)\nexcerpt"
 
 
 @pytest.mark.asyncio
@@ -166,8 +166,10 @@ async def test_search_block_wraps_upstream_errors():
     async def boom(*args, **kwargs):
         raise ValueError("Keenable search request failed with HTTP 429")
 
-    block._search = boom  # type: ignore[method-assign]
-    with pytest.raises(BlockExecutionError, match="HTTP 429"):
+    with (
+        mock.patch.object(block, "_search", boom),
+        pytest.raises(BlockExecutionError, match="HTTP 429"),
+    ):
         await _collect(block, {"query": "q"})
 
 
@@ -184,10 +186,10 @@ async def test_fetch_block_reports_truncation():
             "content": "# T\n\n..._This content has been truncated to stay below 100 characters_...",
         }
 
-    block._fetch = fake_fetch  # type: ignore[method-assign]
-    out = await _collect(block, {"url": "https://a.test", "max_chars": 100})
-    assert out["title"] == "T"
-    assert out["truncated"] is True
+    with mock.patch.object(block, "_fetch", fake_fetch):
+        out = await _collect(block, {"url": "https://a.test", "max_chars": 100})
+        assert out["title"] == "T"
+        assert out["truncated"] is True
 
 
 @pytest.mark.asyncio
@@ -197,6 +199,56 @@ async def test_fetch_block_rejects_malformed_fields():
     async def fake_fetch(*args, **kwargs):
         return {"url": "https://a.test", "title": 1, "content": "x"}
 
-    block._fetch = fake_fetch  # type: ignore[method-assign]
-    with pytest.raises(BlockExecutionError, match="malformed"):
+    with (
+        mock.patch.object(block, "_fetch", fake_fetch),
+        pytest.raises(BlockExecutionError, match="malformed"),
+    ):
         await _collect(block, {"url": "https://a.test"})
+
+
+@pytest.mark.asyncio
+async def test_fetch_block_ignores_marker_text_quoted_inside_the_page():
+    block = KeenableFetchBlock()
+
+    async def fake_fetch(*args, **kwargs):
+        return {
+            "url": "https://a.test",
+            "title": "T",
+            "content": "_This content has been truncated_ is a phrase.\n\n" + "x" * 500,
+        }
+
+    with mock.patch.object(block, "_fetch", fake_fetch):
+        out = await _collect(block, {"url": "https://a.test"})
+    assert out["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_block_rejects_missing_content():
+    block = KeenableFetchBlock()
+
+    async def fake_fetch(*args, **kwargs):
+        return {"url": "https://a.test", "title": "T"}
+
+    with (
+        mock.patch.object(block, "_fetch", fake_fetch),
+        pytest.raises(BlockExecutionError, match="malformed"),
+    ):
+        await _collect(block, {"url": "https://a.test"})
+
+
+@pytest.mark.asyncio
+async def test_search_block_escapes_markdown_links():
+    block = KeenableSearchBlock()
+
+    async def fake_search(credentials, payload):
+        return {
+            "results": [
+                {"title": "A [b]", "url": "https://a.test/x(1)", "snippet": "s"}
+            ]
+        }
+
+    with mock.patch.object(block, "_search", fake_search):
+        out = await _collect(
+            block, {"auth": KeenableAuth.ANONYMOUS.value, "query": "q"}
+        )
+    assert out["context"] == "[A \\[b\\]](https://a.test/x%281%29)\ns"
