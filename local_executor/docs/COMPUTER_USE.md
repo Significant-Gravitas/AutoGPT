@@ -299,10 +299,12 @@ trips IME/autocomplete on web forms.
 3. **Opt-in restore via `preserve_clipboard: true`.** When the platform
    explicitly asks, the shim snapshots the clipboard before pasting and
    restores it afterwards — **but skips the restore if the OS
-   `changeCount` / clipboard-sequence-number advanced between snapshot
-   and restore.** A bumped sequence number means the user (or another
-   app) copied something during the paste, and clobbering that with the
-   pre-paste snapshot would lose their action. The restored contents
+   `changeCount` / clipboard-sequence-number changed after the shim's
+   own write.** A changed number means the user (or another app) copied
+   something during the paste, and clobbering that with the pre-paste
+   snapshot would lose their action. The comparison is with the number
+   the shim's write left, since one write can advance it by more than
+   one (Windows counts `EmptyClipboard` and `SetClipboardData`). The restored contents
    are still the user's: they are not recorded as a shim write, so a
    writeback-only `CLIPBOARD_READ` refuses them. The restore puts back
    plain text only, so a clipboard holding anything else (an image, rich

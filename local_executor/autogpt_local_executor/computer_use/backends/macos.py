@@ -1005,21 +1005,18 @@ class MacOSBackend(ComputerUseBackend):
         snapshot: tuple[str | None, int | None] | None = None
         if preserve_clipboard:
             snapshot = self._read_pasteboard_text()
-        self._write_pasteboard_text(text)
+        written_count = self._write_pasteboard_text(text)
         # Re-record writeback so the inner read sees us as the writer.
-        self.clipboard_writeback.record_write(text)
+        self.clipboard_writeback.record_write(text, sequence=written_count)
         pyautogui.hotkey("command", "v")
         if preserve_clipboard and snapshot is not None:
-            previous, prev_seq = snapshot
+            previous = snapshot[0]
             time.sleep(0.05)  # let the paste consume the clipboard
-            current, current_seq = self._read_pasteboard_text()
-            # Skip restore if changeCount advanced past our written
-            # value (means user copied during the paste).
-            if previous is not None and prev_seq is not None and current_seq is not None:
-                # We wrote once after snapshot → seq advanced by 1.
-                # Anything beyond that means a third party wrote since.
-                if current_seq > prev_seq + 1:
-                    return
+            _, current_count = self._read_pasteboard_text()
+            # Restore only if nothing has changed the pasteboard since our
+            # write (a changed changeCount means the user copied during the
+            # paste). Compare with what our write left, not the snapshot.
+            if previous is not None and current_count == written_count:
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
                 try:
