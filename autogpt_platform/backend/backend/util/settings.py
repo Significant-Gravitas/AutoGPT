@@ -134,7 +134,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description=(
             "How many of an executor's graph workers one user's top-level runs "
-            "may hold at once; always kept below `num_graph_workers`."
+            "may hold at once; kept below `num_graph_workers` when that is 2 or "
+            "more, and 1 when it is 1."
         ),
     )
 

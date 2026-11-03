@@ -391,6 +391,20 @@ async def test_enable_routine_schedules_each_distinct_cron_once():
     assert schedules.await_args.kwargs["crons"] == ["0 9 * * *", "0 13 * * *"]
 
 
+async def test_enable_routine_schedules_a_repeated_spread_cron_once():
+    schedules = AsyncMock(side_effect=_StopAfterScheduling)
+    with (
+        patch(f"{_ROUTINES}._owned_routine", AsyncMock(return_value=_row())),
+        patch(f"{_ROUTINES}.get_user_by_id", AsyncMock(return_value=None)),
+        patch(f"{_ROUTINES}.create_routine_schedules", schedules),
+    ):
+        with pytest.raises(_StopAfterScheduling):
+            await enable_routine(
+                "user-1", None, "routine-1", crons=["H 9 * * 1", "H 9 * * 1"]
+            )
+    assert len(schedules.await_args.kwargs["crons"]) == 1
+
+
 async def test_enable_routine_names_the_jobs_its_new_times_replace():
     # The replacements are created before the old jobs are deleted, so without
     # this the owner would be at the schedule limit against itself.

@@ -8,7 +8,10 @@ import pytest
 from backend.data.execution import ExecutionContext, GraphExecutionEntry
 from backend.executor import manager as manager_module
 from backend.executor.manager import ExecutionManager
-from backend.executor.utils import GRAPH_EXECUTION_DELAY_ROUTING_KEY
+from backend.executor.utils import (
+    GRAPH_EXECUTION_DELAY_ROUTING_KEY,
+    GRAPH_EXECUTION_EXCHANGE,
+)
 
 
 @pytest.fixture
@@ -89,6 +92,7 @@ def test_a_run_refused_for_want_of_a_worker_waits_in_the_delay_queue(manager):
     # after which the broker dead-letters it back onto the run queue.
     (published,) = manager.run_client.publish_message.call_args_list
     assert published.kwargs["routing_key"] == GRAPH_EXECUTION_DELAY_ROUTING_KEY
+    assert published.kwargs["exchange"] == GRAPH_EXECUTION_EXCHANGE
     assert published.kwargs["properties"].expiration == str(
         manager_module.settings.config.graph_run_requeue_delay_seconds * 1000
     )
@@ -108,6 +112,18 @@ def test_a_run_over_the_per_graph_limit_waits_in_the_delay_queue(manager):
     assert published.kwargs["routing_key"] == GRAPH_EXECUTION_DELAY_ROUTING_KEY
 
 
+def test_a_run_finishing_while_the_share_is_counted_leaves_admission_working(
+    manager,
+):
+    for run in ("a1", "a2"):
+        _deliver(manager, user="alice", run=run)
+    manager._root_run_owners["a2"] = _OwnerWhoseRunFinishesMidCount(manager, "a1")
+
+    _deliver(manager, user="bob", run="b1")
+
+    assert "b1" in manager.active_graph_runs
+
+
 def _deliver(
     manager: ExecutionManager, *, user: str, run: str, root: str | None = None
 ) -> None:
@@ -123,3 +139,20 @@ def _deliver(
     manager._handle_run_message(
         MagicMock(), MagicMock(), MagicMock(), entry.model_dump_json().encode()
     )
+
+
+class _OwnerWhoseRunFinishesMidCount(str):
+    """Drops another run's owner when compared, as a worker thread's
+    done-callback can while the consumer thread counts the share."""
+
+    def __new__(cls, manager: ExecutionManager, finishing_run: str):
+        owner = super().__new__(cls, "alice")
+        owner.manager = manager
+        owner.finishing_run = finishing_run
+        return owner
+
+    def __eq__(self, other):
+        self.manager._root_run_owners.pop(self.finishing_run, None)
+        return str.__eq__(self, other)
+
+    __hash__ = str.__hash__

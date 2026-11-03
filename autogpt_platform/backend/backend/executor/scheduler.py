@@ -3403,8 +3403,11 @@ class Scheduler(AppService):
                 include_paused=True,
             )
         replaced = set(replaces or ())
+        # What the index holds: a briefing or memory job names its user too.
         return sum(
-            job.kwargs.get("user_id") == user_id and job.id not in replaced
+            job.kwargs.get("user_id") == user_id
+            and job.id not in replaced
+            and _job_to_info(job) is not None
             for job in jobs
         )
 

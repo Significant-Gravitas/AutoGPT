@@ -88,6 +88,18 @@ def test_replacing_a_schedule_under_its_own_id_is_allowed_at_the_limit(
     full_scheduler.scheduler.add_job.assert_called_once()
 
 
+def test_the_owners_briefing_job_does_not_count_when_the_index_is_not_ready(
+    full_scheduler: Scheduler,
+):
+    # The index holds only listable schedules, so the scan must count the same.
+    full_scheduler._schedule_index_ready = False
+    _held(full_scheduler).pop()
+    _held(full_scheduler).append(_mock_job({"user_id": "u1"}))
+
+    _persist(full_scheduler, _args("new", "u1"))
+    full_scheduler.scheduler.add_job.assert_called_once()
+
+
 def test_another_users_schedules_do_not_count_against_the_limit(
     full_scheduler: Scheduler,
 ):

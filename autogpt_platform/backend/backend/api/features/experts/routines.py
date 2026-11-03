@@ -234,10 +234,11 @@ async def enable_routine(
     # has no idea what it means.
     _check_cron_count(source_crons)
     # Each distinct cron is one scheduler job; a repeated one adds a job, not a run.
+    # Repeats collapse before ``H`` resolves, which picks a minute per position.
     resolved_crons = list(
         dict.fromkeys(
             spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
-            for index, cron in enumerate(source_crons)
+            for index, cron in enumerate(dict.fromkeys(source_crons))
         )
     )
     if bool(resolved_crons) == (resolved_run_at is not None):

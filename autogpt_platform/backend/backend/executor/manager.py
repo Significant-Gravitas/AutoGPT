@@ -2276,7 +2276,8 @@ class ExecutionManager(AppProcess):
         share = max(
             1, min(settings.config.max_graph_workers_per_user, self.pool_size - 1)
         )
-        held = sum(owner == user_id for owner in self._root_run_owners.values())
+        # Counted on a snapshot: a run's done-callback can drop an owner mid-count.
+        held = list(self._root_run_owners.values()).count(user_id)
         return held < share
 
     def _update_prompt_metrics(self):
