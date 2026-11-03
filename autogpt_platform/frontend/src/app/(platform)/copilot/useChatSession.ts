@@ -7,7 +7,6 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
-import type { CreateSessionRequestExecutionTarget } from "@/app/api/__generated__/models/createSessionRequestExecutionTarget";
 import type { PublicChatSessionMetadata } from "@/app/api/__generated__/models/publicChatSessionMetadata";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import {
@@ -60,12 +59,16 @@ interface UseChatSessionOptions {
   adoptLatestExpertThread?: boolean;
 }
 
+type ExecutionTargetRequest = NonNullable<
+  CreateSessionRequest["execution_target"]
+>;
+
 interface CreateSessionBodyArgs {
   copilotLlmAuth: CopilotLlmAuthSelection | null;
   resolvedLLMAuth: CopilotLlmAuthSelection;
   dryRun: boolean;
   expertId: string | null;
-  executionTarget: CreateSessionRequestExecutionTarget | null;
+  executionTarget: ExecutionTargetRequest | null;
   options?: { expertKickoff?: boolean };
 }
 
@@ -609,7 +612,7 @@ export function useChatSession({
 
 function sessionExecutionTargetRequest(
   target: NewChatExecutionTarget | undefined,
-): CreateSessionRequestExecutionTarget | null {
+): ExecutionTargetRequest | null {
   if (!target) return null;
   if (target.kind === "cloud") return { kind: "cloud" };
   if (
