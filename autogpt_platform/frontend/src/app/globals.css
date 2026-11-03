@@ -48,6 +48,17 @@
   --color-focus-inbox: 0 96 226; /* rgba(0,96,226,.35), focus ring */
   --color-action-inbox: 0 0 0; /* rgba(0,0,0,.88) primary fill, .8 on hover */
   --color-action-inbox-foreground: 252 252 252; /* #FCFCFC */
+  /* Their opacities, so a palette can swap them (see palette-classic). */
+  --alpha-surface-tray: 0.03;
+  --alpha-border-hairline: 0.06;
+  --alpha-border-card: 0.06;
+  --alpha-foreground-ink: 0.88;
+  --alpha-foreground-text: 0.61;
+  --alpha-foreground-quiet: 0.45;
+  --alpha-foreground-faint: 0.27;
+  --inbox-radius-card: 10px;
+  --inbox-shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --inbox-shadow-card-hover: 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12), 0 1px 3px 0 rgb(0 0 0 / 0.07);
   --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
 
   /* Text */
@@ -152,15 +163,15 @@
   --color-surface-muted: rgb(var(--color-surface-muted) / 1);
   --color-surface-hover: rgb(var(--color-surface-hover) / 1);
   --color-surface-active: rgb(var(--color-surface-active) / 1);
-  --color-surface-tray: rgb(var(--color-surface-tray) / 0.03);
+  --color-surface-tray: rgb(var(--color-surface-tray) / var(--alpha-surface-tray));
   --color-surface-wash: rgb(var(--color-surface-wash) / 0.03);
-  --color-border-hairline: rgb(var(--color-border-hairline) / 0.06);
-  --color-border-card: rgb(var(--color-border-card) / 0.06);
+  --color-border-hairline: rgb(var(--color-border-hairline) / var(--alpha-border-hairline));
+  --color-border-card: rgb(var(--color-border-card) / var(--alpha-border-card));
   --color-foreground-black: rgb(var(--color-foreground-black) / 1);
-  --color-foreground-ink: rgb(var(--color-foreground-ink) / 0.88);
-  --color-foreground-text: rgb(var(--color-foreground-text) / 0.61);
-  --color-foreground-quiet: rgb(var(--color-foreground-quiet) / 0.45);
-  --color-foreground-faint: rgb(var(--color-foreground-faint) / 0.27);
+  --color-foreground-ink: rgb(var(--color-foreground-ink) / var(--alpha-foreground-ink));
+  --color-foreground-text: rgb(var(--color-foreground-text) / var(--alpha-foreground-text));
+  --color-foreground-quiet: rgb(var(--color-foreground-quiet) / var(--alpha-foreground-quiet));
+  --color-foreground-faint: rgb(var(--color-foreground-faint) / var(--alpha-foreground-faint));
   --color-status-waiting: rgb(var(--color-status-waiting) / 1);
   --color-status-ok: rgb(var(--color-status-ok) / 1);
   --color-status-ok-surface: rgb(var(--color-status-ok-surface) / 0.08);
@@ -168,10 +179,11 @@
   --color-action-inbox: rgb(var(--color-action-inbox) / 0.88);
   --color-action-inbox-hover: rgb(var(--color-action-inbox) / 0.8);
   --color-action-inbox-foreground: rgb(var(--color-action-inbox-foreground) / 1);
-  --radius-card: 10px;
+  --radius-card: var(--inbox-radius-card);
+  --radius-tray: 22px;
   --radius-control: 6px;
-  --shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-card-hover: 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12), 0 1px 3px 0 rgb(0 0 0 / 0.07);
+  --shadow-card: var(--inbox-shadow-card);
+  --shadow-card-hover: var(--inbox-shadow-card-hover);
   --shadow-hairline-b: inset 0 -0.5px 0 rgb(0 0 0 / 0.06);
   --shadow-hairline-l: inset 0.5px 0 0 rgb(0 0 0 / 0.06);
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
@@ -865,4 +877,30 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   .animate-number-in {
     animation: none;
   }
+}
+
+/* AffectUI "classic" palette for the inbox tokens, scoped to an element and
+   its children: the tasks board. A #F0F0F0 tray (rounded-tray, p-1.5) holds
+   white cards; text is solid gray. Everything else stays "clean". */
+@utility palette-classic {
+  --color-surface-tray: 240 240 240; /* #F0F0F0 */
+  --alpha-surface-tray: 1;
+  --color-border-hairline: 240 240 240; /* #F0F0F0 */
+  --alpha-border-hairline: 1;
+  --color-border-card: 229 229 229; /* #E5E5E5 */
+  --alpha-border-card: 1;
+  --color-foreground-ink: 23 23 23; /* #171717 */
+  --alpha-foreground-ink: 1;
+  --color-foreground-text: 64 64 64; /* #404040 */
+  --alpha-foreground-text: 1;
+  --color-foreground-quiet: 143 143 143; /* #8F8F8F */
+  --alpha-foreground-quiet: 1;
+  --color-foreground-faint: 181 181 181; /* #B5B5B5 */
+  --alpha-foreground-faint: 1;
+  --color-status-waiting: 232 89 12; /* #E8590C */
+  --color-status-ok: 31 138 76; /* #1F8A4C */
+  --color-status-ok-surface: 31 138 76;
+  --inbox-radius-card: 16px;
+  --inbox-shadow-card: 0 0 0 1px rgb(229 229 229), 0 1px 2px rgb(0 0 0 / 0.06);
+  --inbox-shadow-card-hover: 0 0 0 1px rgb(214 214 214), 0 2px 6px rgb(0 0 0 / 0.08);
 }

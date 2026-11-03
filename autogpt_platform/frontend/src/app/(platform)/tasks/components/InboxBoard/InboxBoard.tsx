@@ -30,7 +30,7 @@ export function InboxBoard({
     <LayoutGroup id="inbox-board">
       <div
         className={cn(
-          "grid items-start gap-3",
+          "palette-classic grid items-start gap-3",
           columns.length === 4 ? "grid-cols-4" : "grid-cols-3",
         )}
       >
@@ -38,9 +38,9 @@ export function InboxBoard({
           <section
             key={column.id}
             aria-labelledby={`inbox-column-${column.id}`}
-            className="flex min-w-0 flex-col gap-2"
+            className="flex min-w-0 flex-col rounded-tray bg-surface-tray p-1.5"
           >
-            <header className="flex items-center gap-1.5 px-1 py-1">
+            <header className="flex items-center gap-1.5 px-3 pt-2 pb-2.5">
               <Text
                 variant="inbox-medium"
                 tone="ink"
@@ -53,7 +53,7 @@ export function InboxBoard({
                 <NumberTicker value={column.tasks.length} />
               </Text>
             </header>
-            <ul className="flex min-h-12 flex-col gap-2">
+            <ul className="flex min-h-12 flex-col gap-1.5">
               <AnimatePresence initial={false}>
                 {column.tasks.map((task) => (
                   <BoardItem
