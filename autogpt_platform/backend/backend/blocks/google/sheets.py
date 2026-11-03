@@ -35,8 +35,9 @@ GOOGLE_SHEETS_DISABLED = not GOOGLE_OAUTH_IS_CONFIGURED
 def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     """Split an A1‑notation string into *(sheet_name, cell_range)*.
 
-    Quote-aware: the split on ``!`` only happens outside of single-quoted
-    sheet names (where an embedded ``!`` or apostrophe is allowed).
+    Quote-aware only when the string starts with a single quote (quoted sheet
+    name). Otherwise a simple split on the first ``!`` is used so that unquoted
+    names containing apostrophes (e.g. ``Bob's Sheet!A1``) are handled correctly.
 
     Examples
     --------
@@ -46,21 +47,29 @@ def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     (None, "A1:B2")
     >>> parse_a1_notation("'Q1!Plan'!A1:B2")
     ("'Q1!Plan'", "A1:B2")
+    >>> parse_a1_notation("Bob's Sheet!A1")
+    ("Bob's Sheet", "A1")
     """
 
-    in_quotes = False
-    i = 0
+    if not a1.startswith("'"):
+        if "!" in a1:
+            sheet, cell = a1.split("!", 1)
+            return sheet, cell
+        return None, a1
+
+    # Quoted sheet name: scan for the closing quote, handling doubled apostrophes
+    i = 1
     while i < len(a1):
         ch = a1[i]
         if ch == "'":
-            # Doubled apostrophe inside quotes is an escape, not a closer
-            if in_quotes and i + 1 < len(a1) and a1[i + 1] == "'":
-                i += 2
+            if i + 1 < len(a1) and a1[i + 1] == "'":
+                i += 2  # escaped apostrophe
                 continue
-            in_quotes = not in_quotes
+            # closing quote
             i += 1
-        elif ch == "!" and not in_quotes:
-            return a1[:i], a1[i + 1 :]
+            if i < len(a1) and a1[i] == "!":
+                return a1[:i], a1[i + 1 :]
+            return None, a1
         else:
             i += 1
     return None, a1
@@ -386,8 +395,12 @@ class GoogleSheetsReadBlock(Block):
         range_to_use = range or "A:Z"
         sheet_name, cell_range = parse_a1_notation(range_to_use)
         if sheet_name:
-            cleaned_sheet = sheet_name.strip().strip("'\"")
-            formatted_sheet = format_sheet_name(cleaned_sheet)
+            # Decode quoted A1 sheet names so we do not double-escape apostrophes
+            if sheet_name.startswith("'") and sheet_name.endswith("'"):
+                decoded_sheet = sheet_name[1:-1].replace("''", "'")
+            else:
+                decoded_sheet = sheet_name
+            formatted_sheet = format_sheet_name(decoded_sheet)
             cell_part = cell_range.strip() if cell_range else ""
             if cell_part:
                 range_to_use = f"{formatted_sheet}!{cell_part}"

@@ -31,3 +31,8 @@ def test_parse_a1_notation_quoted_with_bang():
 
 def test_parse_a1_notation_quoted_with_apostrophe():
     assert parse_a1_notation("'Bob''s Sheet'!A1") == ("'Bob''s Sheet'", "A1")
+
+
+def test_parse_a1_notation_unquoted_apostrophe():
+    assert parse_a1_notation("Bob's Sheet!A1") == ("Bob's Sheet", "A1")
+    assert parse_a1_notation("Bob's Sheet!A1:B2") == ("Bob's Sheet", "A1:B2")
