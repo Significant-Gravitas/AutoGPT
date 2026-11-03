@@ -14,6 +14,9 @@ interface Props {
    *  sits on its baseline. */
   nameAlign?: "center" | "baseline";
   areaClassName?: string;
+  /** Category colour for the title on the name line: a gradient fill with
+   *  a soft glow in that colour (card and page sizes only). */
+  areaColor?: string;
 }
 
 export function ExpertIdentityDetails({
@@ -25,6 +28,7 @@ export function ExpertIdentityDetails({
   nameAccessory,
   nameAlign = "center",
   areaClassName,
+  areaColor,
 }: Props) {
   const compact = size === "compact";
   const Container = compact ? "span" : "div";
@@ -37,12 +41,14 @@ export function ExpertIdentityDetails({
 
   return (
     <Container
+      data-slot="expert-identity"
       className={cn(
         "flex min-w-0 flex-col text-left",
         compact ? "gap-0" : "gap-1",
       )}
     >
       <Container
+        data-slot="expert-identity-name-line"
         className={cn(
           "flex min-w-0 gap-2",
           size === "page" && "flex-wrap gap-y-0",
@@ -51,14 +57,20 @@ export function ExpertIdentityDetails({
       >
         <Text
           as={size === "page" ? "h1" : "span"}
-          variant={compact ? "body-medium" : "lead-semibold"}
+          variant={
+            size === "page"
+              ? "heading-md"
+              : compact
+                ? "body-medium"
+                : "lead-semibold"
+          }
           tone="primary"
-          unmask={false}
+          weight={size === "page" ? "semibold" : undefined}
+          data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-[1.125rem]",
-            size === "page" && "text-2xl leading-8",
+            compact && "leading-4.5",
           )}
         >
           {name}
@@ -66,34 +78,65 @@ export function ExpertIdentityDetails({
         {titleOnNameLine ? (
           <Text
             as="span"
-            variant="body"
+            variant={size === "card" ? "body-sm-medium-inherit" : "body"}
             tone="secondary"
-            unmask={false}
+            weight={size === "card" ? "normal" : undefined}
+            data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
-              size === "card" && "text-[13px]",
+              // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
               areaClassName,
             )}
             title={titleOnNameLine}
           >
-            {"•"} {titleOnNameLine}
+            {areaColor ? (
+              <>
+                {"• "}
+                <span
+                  data-slot="expert-identity-title-text"
+                  className={cn(
+                    "bg-clip-text font-medium text-transparent",
+                    size === "card" && "text-body-md leading-inherit",
+                    size === "page" && "text-lead",
+                  )}
+                  style={{
+                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-primary))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-primary))))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- glow in the runtime category colour
+                    filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
+                  }}
+                >
+                  {titleOnNameLine}
+                </span>
+              </>
+            ) : (
+              <>
+                {"•"} {titleOnNameLine}
+              </>
+            )}
           </Text>
         ) : null}
         {nameAccessory}
       </Container>
       {!area ? (
-        <Text as="span" variant="small" tone="muted">
+        <Text
+          as="span"
+          variant="small"
+          tone="muted"
+          data-slot="expert-identity-subtitle"
+        >
           {isOtto ? "Your personal Head of AI" : "AI Expert"}
         </Text>
       ) : null}
       {compact && area ? (
         <Text
           as="span"
-          variant="small"
+          variant="small-tight"
+          data-slot="expert-identity-area"
           tone="secondary"
-          unmask={false}
-          className={cn("truncate leading-4", areaClassName)}
+          // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
+          className={cn("truncate", areaClassName)}
           title={area}
         >
           {area}

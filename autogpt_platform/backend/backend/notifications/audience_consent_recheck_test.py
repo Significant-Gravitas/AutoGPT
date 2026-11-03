@@ -23,6 +23,7 @@ HANDLERS = {
     AudienceAction.CHECKOUT_OPENED: "record_checkout_opened",
     AudienceAction.UNSUBSCRIBE: "unsubscribe",
     AudienceAction.ONBOARDING_PROFILE: "record_onboarding_profile",
+    AudienceAction.LIFECYCLE_FIELDS: "record_lifecycle",
 }
 WRITES = [action for action in AudienceAction if action != AudienceAction.UNSUBSCRIBE]
 

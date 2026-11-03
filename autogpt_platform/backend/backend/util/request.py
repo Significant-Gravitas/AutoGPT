@@ -1,4 +1,5 @@
 import asyncio
+import codecs
 import ipaddress
 import re
 import socket
@@ -21,6 +22,7 @@ from tenacity import (
 )
 
 from backend.util.json import loads
+from backend.util.settings import Config
 
 
 class HTTPClientError(Exception):
@@ -40,7 +42,21 @@ class HTTPServerError(Exception):
 
 
 # Default User-Agent for all requests
+class ResponseTooLargeError(ValueError):
+    """The response body is over the caller's size limit."""
+
+    def __init__(self, limit: int):
+        super().__init__(f"Response body is larger than {limit} bytes")
+        self.limit = limit
+
+
 DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
+
+# A response is read in chunks and dropped once it passes the limit, so a
+# large or endless body can't fill the process's memory before anyone checks
+# its size. Downloads share the file-size setting.
+DEFAULT_MAX_RESPONSE_BYTES = Config().max_file_size_mb * 1024 * 1024
+RESPONSE_READ_CHUNK_SIZE = 64 * 1024
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
@@ -71,7 +87,11 @@ BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved for Future Use
     # IPv6 Ranges
+    ipaddress.ip_network("::/128"),  # Unspecified; Linux connects it to ::1
     ipaddress.ip_network("::1/128"),  # Loopback
+    # Local-use NAT64 (RFC 8215): it translates to addresses inside some network,
+    # and not always with the IPv4 address in the last 32 bits.
+    ipaddress.ip_network("64:ff9b:1::/48"),
     ipaddress.ip_network("fc00::/7"),  # Unique local addresses (ULA)
     ipaddress.ip_network("fe80::/10"),  # Link-local
     ipaddress.ip_network("ff00::/8"),  # Multicast
@@ -81,22 +101,143 @@ BLOCKED_IP_NETWORKS = [
 ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
 
+# The longest name DNS allows, checked before IDNA encoding.
+MAX_HOSTNAME_LENGTH = 253
+
+# An allowlist of the text encodings a remote server may name for a response
+# body we decode, by their canonical codec names (``codecs.lookup(...).name``),
+# so any alias of a listed codec matches. Anything else is decoded as UTF-8.
+ALLOWED_RESPONSE_CHARSETS = frozenset(
+    {
+        # Unicode
+        "utf-8",
+        "utf-8-sig",
+        "utf-16",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32",
+        "utf-32-le",
+        "utf-32-be",
+        "ascii",
+        # ISO-8859, Windows, KOI8 and Mac single-byte families
+        *(f"iso8859-{n}" for n in (*range(1, 12), *range(13, 17))),
+        *(f"cp{n}" for n in range(1250, 1259)),
+        "koi8-r",
+        "koi8-u",
+        "koi8-t",
+        # DOS and other legacy single-byte codepages
+        *(
+            f"cp{n}"
+            for n in (
+                437,
+                720,
+                737,
+                775,
+                850,
+                852,
+                855,
+                857,
+                858,
+                860,
+                861,
+                862,
+                863,
+                864,
+                865,
+                866,
+                869,
+                1125,
+            )
+        ),
+        "kz1048",
+        "ptcp154",
+        "hp-roman8",
+        "mac-arabic",
+        "mac-croatian",
+        "mac-cyrillic",
+        "mac-farsi",
+        "mac-greek",
+        "mac-iceland",
+        "mac-latin2",
+        "mac-roman",
+        "mac-romanian",
+        "mac-turkish",
+        # Thai
+        "tis-620",
+        "cp874",
+        # Chinese
+        "gb2312",
+        "gbk",
+        "gb18030",
+        "big5",
+        "big5hkscs",
+        "cp950",
+        # Japanese
+        "shift_jis",
+        "shift_jis_2004",
+        "shift_jisx0213",
+        "cp932",
+        "euc_jp",
+        "euc_jis_2004",
+        "euc_jisx0213",
+        "iso2022_jp",
+        "iso2022_jp_1",
+        "iso2022_jp_2",
+        "iso2022_jp_2004",
+        "iso2022_jp_3",
+        "iso2022_jp_ext",
+        # Korean
+        "euc_kr",
+        "cp949",
+        "johab",
+        "iso2022_kr",
+    }
+)
+
+# IPv6 prefixes whose last 32 bits are an IPv4 address the network may route
+# the connection to: the well-known NAT64 prefix (RFC 6052), SIIT (RFC 2765)
+# and the deprecated IPv4-compatible form (RFC 4291).
+_IPV4_IN_LOW_BITS_NETWORKS = [
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("::ffff:0:0:0/96"),
+    ipaddress.ip_network("::/96"),
+]
+
+
+def _embedded_ipv4(ip_addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 address encodes, if it is a form that embeds one."""
+    if ip_addr.ipv4_mapped:
+        return ip_addr.ipv4_mapped
+    if ip_addr.sixtofour:
+        return ip_addr.sixtofour
+    if ip_addr.teredo:
+        # (server, client): the client is the host the packets are delivered to
+        return ip_addr.teredo[1]
+    if any(ip_addr in network for network in _IPV4_IN_LOW_BITS_NETWORKS):
+        return ipaddress.IPv4Address(int(ip_addr) & 0xFFFFFFFF)
+    return None
+
 
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
 
-    IPv4-mapped IPv6 addresses (e.g. ``::ffff:127.0.0.1``) are normalized to
-    their IPv4 equivalent before checking, so the IPv4 blocklist cannot be
-    bypassed by encoding a private IPv4 address as IPv6.
+    IPv6 addresses that embed an IPv4 address (IPv4-mapped ``::ffff:127.0.0.1``,
+    6to4, Teredo, NAT64, SIIT and IPv4-compatible) are also checked as that IPv4
+    address, so the IPv4 blocklist cannot be bypassed by encoding a private IPv4
+    address as IPv6.
     """
     ip_addr = ipaddress.ip_address(ip)
 
-    # Normalize IPv4-mapped IPv6 → IPv4 so the IPv4 blocklist applies
-    if isinstance(ip_addr, ipaddress.IPv6Address) and ip_addr.ipv4_mapped:
-        ip_addr = ip_addr.ipv4_mapped
+    if any(ip_addr in network for network in BLOCKED_IP_NETWORKS):
+        return True
 
-    return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
+    if isinstance(ip_addr, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(ip_addr)
+        if embedded is not None:
+            return any(embedded in network for network in BLOCKED_IP_NETWORKS)
+
+    return False
 
 
 # Lower-cased: HTTP header names are case-insensitive, so a caller passing
@@ -125,13 +266,21 @@ def _is_cross_origin(old_url: URL, new_url: URL) -> bool:
     )
 
 
-def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
+def _remove_insecure_headers(
+    headers: dict,
+    cross_origin: bool,
+    sensitive_headers: Iterable[str] = (),
+) -> dict:
     """
-    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
-    if the scheme/host/port of new_url differ from old_url.
+    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie,
+    plus any names in *sensitive_headers*) when *cross_origin*.
+
+    The caller decides, so that one origin decision covers every carrier of a
+    credential: these headers, and the ``auth=``/``cookies=`` kwargs aiohttp
+    turns into headers of its own downstream of this call.
     """
-    if _is_cross_origin(old_url, new_url):
-        _drop_headers(headers, SENSITIVE_HEADERS)
+    if cross_origin:
+        _drop_headers(headers, [*SENSITIVE_HEADERS, *sensitive_headers])
     return headers
 
 
@@ -228,6 +377,9 @@ async def validate_url_host(
 
     if not parsed.hostname:
         raise ValueError(f"Invalid host/URL; no host in parse result: {url}")
+
+    if len(parsed.hostname.removesuffix(".")) > MAX_HOSTNAME_LENGTH:
+        raise ValueError(f"Hostname is longer than {MAX_HOSTNAME_LENGTH} characters")
 
     # IDNA encode to prevent Unicode domain attacks
     try:
@@ -385,9 +537,7 @@ class Response:
         """
         if encoding is None:
             # Try to extract charset from headers; fall back to UTF-8
-            ctype = self.headers.get("content-type", "")
-            match = re.search(r"charset=([^\s;]+)", ctype, flags=re.I)
-            encoding = match.group(1) if match else None
+            encoding = _response_charset(self.headers.get("content-type", ""))
         return self.content.decode(encoding or "utf-8", errors="replace")
 
     @property
@@ -402,6 +552,18 @@ class Response:
         """
         if self.status >= 400:
             raise http_status_error(self.status, self.reason, self.content)
+
+
+def _response_charset(content_type: str) -> str | None:
+    """The allowed codec a ``Content-Type`` header names, or None."""
+    match = re.search(r"charset=([^\s;]+)", content_type, flags=re.I)
+    if not match:
+        return None
+    try:
+        name = codecs.lookup(match.group(1).strip("\"'")).name
+    except LookupError:
+        return None
+    return name if name in ALLOWED_RESPONSE_CHARSETS else None
 
 
 def http_status_error(status: int, reason: str | None, body: bytes) -> Exception:
@@ -443,7 +605,13 @@ class Requests:
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
         retry_max_attempts: int | None = None,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        sensitive_headers: Iterable[str] = (),
     ):
+        self.max_response_bytes = max_response_bytes
+        # Headers bound to the request's origin, like ``Authorization``: a
+        # cross-origin redirect drops them along with ``SENSITIVE_HEADERS``.
+        self.sensitive_headers = frozenset(sensitive_headers)
         self.trusted_origins = []
         for url in trusted_origins or []:
             hostname = parse_url(url).netloc  # {host}[:{port}]
@@ -471,8 +639,15 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
+        """Send a request, following redirects through the same SSRF checks.
+
+        ``max_body_bytes`` caps how much of a response body is read, counted
+        after decompression; a longer body comes back cut to that many bytes
+        plus one, so the caller can tell it was cut.
+        """
         retry_kwargs: dict[str, Any] = {
             "wait": wait_exponential_jitter(max=self.retry_max_wait),
             "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
@@ -495,6 +670,7 @@ class Requests:
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
                 drop_headers=drop_headers,
+                max_body_bytes=max_body_bytes,
                 **kwargs,
             )
 
@@ -512,6 +688,7 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -609,7 +786,9 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await response.read()
+                        body = await _read_body(
+                            response, self.max_response_bytes, max_body_bytes
+                        )
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -624,15 +803,24 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await response.read(),
+                            body=await _read_body(
+                                response, self.max_response_bytes, max_body_bytes
+                            ),
                         )
 
-                    # The base URL is the pinned_url we just used
-                    # so that relative redirects resolve correctly.
-                    redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
+                    # Joined onto the URL just requested, so a relative
+                    # redirect resolves; parsed with ``parse_url`` because the
+                    # hop below parses it that way, and only that folds a
+                    # backslash in the authority into a slash, naming the host
+                    # that is connected to.
+                    redirect_url = parse_url(urljoin(parsed_url.geturl(), location))
+                    # Decided once, for every carrier of the credential below.
+                    cross_origin = _is_cross_origin(parsed_url, redirect_url)
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
-                        dict(req_headers), parsed_url, redirect_url
+                        dict(req_headers),
+                        cross_origin,
+                        self.sensitive_headers,
                     )
 
                     # ``auth=`` and ``cookies=`` are not headers at this point
@@ -645,7 +833,7 @@ class Requests:
                     # there too, and an authenticated same-origin redirect is
                     # a normal flow.
                     redirect_kwargs = dict(kwargs)
-                    if _is_cross_origin(parsed_url, redirect_url):
+                    if cross_origin:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
@@ -660,6 +848,7 @@ class Requests:
                         json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        max_body_bytes=max_body_bytes,
                         **redirect_kwargs,
                     )
 
@@ -673,7 +862,9 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await response.read(),
+                    body=await _read_body(
+                        response, self.max_response_bytes, max_body_bytes
+                    ),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:
@@ -696,3 +887,44 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
+
+
+async def _read_body(
+    response: ClientResponse, limit: int, cut_at: int | None = None
+) -> bytes:
+    """Buffer the body, refusing it as soon as it's known to be over ``limit``.
+
+    With ``cut_at`` below the limit, the body is instead cut to that many
+    bytes plus one, so the caller can tell it was cut, and never refused.
+    Both read the decompressed stream in chunks and stop at their bound, so
+    neither a long body nor a short compressed one that expands is held whole.
+    """
+    if cut_at is not None and cut_at < limit:
+        return await _read_up_to(response, cut_at + 1)
+
+    declared = response.content_length
+    if declared is not None and declared > limit and _carries_a_body(response):
+        response.close()
+        raise ResponseTooLargeError(limit)
+    body = await _read_up_to(response, limit + 1)
+    if len(body) > limit:
+        response.close()
+        raise ResponseTooLargeError(limit)
+    return body
+
+
+def _carries_a_body(response: ClientResponse) -> bool:
+    """A HEAD response, and a 1xx, 204, 205 or 304 one, declares the
+    resource's Content-Length but transfers no body."""
+    if response.method.upper() == "HEAD":
+        return False
+    return response.status >= 200 and response.status not in (204, 205, 304)
+
+
+async def _read_up_to(response: ClientResponse, size: int) -> bytes:
+    body = bytearray()
+    async for chunk in response.content.iter_chunked(RESPONSE_READ_CHUNK_SIZE):
+        body.extend(chunk[: size - len(body)])
+        if len(body) >= size:
+            break
+    return bytes(body)

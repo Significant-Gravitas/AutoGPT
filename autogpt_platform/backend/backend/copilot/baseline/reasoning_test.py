@@ -528,6 +528,7 @@ class TestClaude5FamilyThinking:
             "claude-fable-5",
             "claude-mythos-5",
             "claude-opus-5",
+            "claude-haiku-5-5",
         ],
     )
     def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
@@ -540,6 +541,7 @@ class TestClaude5FamilyThinking:
             "claude-fable-5",
             "claude-mythos-5",
             "claude-opus-5",
+            "claude-haiku-5-5",
         ],
     )
     def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):

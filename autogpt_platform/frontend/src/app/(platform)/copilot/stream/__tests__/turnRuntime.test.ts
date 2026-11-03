@@ -166,6 +166,72 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     expect(snapshot().stopped).toBe(true);
   });
 
+  it("an approval answered after a stop follows the turn it starts", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.followBackendTurn();
+    await advance(2_000);
+    expect(snapshot().phase).toBe("live");
+    expect(snapshot().stopped).toBe(false);
+  });
+
+  it("an approval answered while a stopped send's turn still runs is followed after it", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    // The cancel came before the turn existed, so it runs on.
+    backend.publish(FIRST_BLOCK_DONE);
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted || view.active_stream) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_000);
+    backend.publish();
+    // The approval's turn starts once that turn has released the session.
+    await advance(700);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
+  });
+
+  it("an approval answered while a stopped turn drains is followed once it has", async () => {
+    await sendAndPublish(FIRST_BLOCK_DONE);
+    runtime.stop();
+    let approvalStarted = false;
+    runtime.bind({}, async () => {
+      const view = backend.view();
+      if (!approvalStarted) return view;
+      return {
+        ...view,
+        chat_status: "running",
+        active_stream: { turn_id: "approval-turn", checkpoint: null },
+      };
+    });
+    runtime.followBackendTurn();
+    await advance(1_200);
+    approvalStarted = true;
+    await advance(5_000);
+    expect(
+      backend.requests.some(
+        (r) => r.url.searchParams.get("turn") === "approval-turn",
+      ),
+    ).toBe(true);
+  });
+
   it("a connection silent for 30 s is replaced without a toast", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     backend.connections[0].silence();
@@ -1045,6 +1111,16 @@ describe("the end-of-turn reconcile", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  it("reports the end-of-turn check as still settling until it is done", async () => {
+    await sendAndPublish(toolTurn.sse.length);
+    expect(snapshot().phase).toBe("finished");
+    expect(snapshot().probing).toBe(true);
+
+    await advance(5_000);
+
+    expect(snapshot().probing).toBe(false);
+  });
+
   it("replaces a row that differs under its own key, and reports it", async () => {
     await sendAndPublish(toolTurn.sse.length - 1);
     const before = render();
@@ -1063,8 +1139,37 @@ describe("the end-of-turn reconcile", () => {
     expect(textsOf(render())).toEqual([PROMPT, `${FIRST_TEXT}It says Other.`]);
     expect(report).toHaveBeenCalledWith(
       "finish",
-      expect.objectContaining({ diffs: [{ index: 2, fields: ["content"] }] }),
+      expect.objectContaining({ diffs: ["2: content"] }),
     );
+  });
+
+  it("keeps the reply of a turn longer than the session window rateable", async () => {
+    await sendAndPublish(toolTurn.sse.length - 1);
+    backend.publish();
+    // The session read returns a window that starts inside the turn.
+    vi.spyOn(backend, "view").mockImplementation(() => ({
+      messages: toolTurn.rows
+        .map((row, sequence) => ({ ...row, sequence }))
+        .slice(2),
+      has_more_messages: true,
+      active_stream: null,
+    }));
+    await advance(1_000);
+
+    const turn = turnSegment();
+    expect(turn.reconciled).toBe(false);
+    expect(turn.lastReplySequence).toBe(3);
+    const { stats } = renderTail(snapshot());
+    expect(stats.get(turn.key)?.savedMessageId).toBe("session-1-seq-3");
+
+    // A later window holds none of the turn's replies: the id stays.
+    runtime.observe({
+      messages: [{ role: "user", content: "Another question", sequence: 4 }],
+      has_more_messages: true,
+      active_stream: null,
+    });
+    await advance(0);
+    expect(turnSegment().lastReplySequence).toBe(3);
   });
 });
 

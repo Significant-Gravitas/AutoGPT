@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+
 import {
   getFileSizeError,
   OAUTH_LOGO_MAX_SIZE_MB,
@@ -137,6 +139,21 @@ describe("uploadSubmissionMediaDirect", () => {
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       "File too large. Maximum size is 50MB",
     );
+  });
+
+  it("keeps the status, so a missing plan reads as one", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 402,
+      text: () => JSON.stringify({ detail: "A subscription is required." }),
+    });
+
+    const error = await uploadSubmissionMediaDirect(makeFile(10)).catch(
+      (e: unknown) => e,
+    );
+
+    expect(isPaywallError(error)).toBe(true);
+    expect((error as Error).message).toBe("A subscription is required.");
   });
 });
 

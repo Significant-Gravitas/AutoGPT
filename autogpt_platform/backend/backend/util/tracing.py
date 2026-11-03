@@ -53,8 +53,6 @@ _UNTRACED_PATHS = frozenset(
         # Every RPC service (AppService): Kubernetes probe.
         "/health_check",
         "/health_check_async",
-        # Chat service health check.
-        "/api/chat/health",
         # Codex compatibility gateway.
         "/healthz",
     }

@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { act, cleanup, render } from "@/tests/integrations/test-utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,6 +95,7 @@ const OTHER_SURFACES: Surface[] = [
           status="ready"
           error={undefined}
           queuedMessages={[]}
+          isTurnSettling={false}
           onSend={async () => {}}
           onStop={vi.fn()}
           onRetry={vi.fn()}
@@ -116,6 +117,7 @@ const OTHER_SURFACES: Surface[] = [
         stop: vi.fn(),
         onSend: vi.fn(),
         queuedMessages: [],
+        isTurnSettling: false,
         isBootstrapping: false,
         revertTargetVersion: null,
         handleRevert: vi.fn(),
@@ -141,6 +143,7 @@ const OTHER_SURFACES: Surface[] = [
         onSend: vi.fn(),
         onActionSend: vi.fn(),
         queuedMessages: [],
+        isTurnSettling: false,
         isResolvingSession: false,
         isLoadingSession: false,
         isCreating: false,
@@ -221,7 +224,7 @@ function sourceFiles(dir: string): string[] {
 function filesRendering(tag: string): string[] {
   return sourceFiles(join(SRC, "app"))
     .filter((path) => readFileSync(path, "utf8").includes(`<${tag}`))
-    .map((path) => relative(SRC, path))
+    .map((path) => relative(SRC, path).split(sep).join("/"))
     .sort();
 }
 

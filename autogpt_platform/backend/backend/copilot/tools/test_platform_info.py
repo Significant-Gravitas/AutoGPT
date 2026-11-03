@@ -7,10 +7,10 @@ import pytest
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.platform_info import PlatformInfoTool
+from backend.util import platform_payment
 
 # Shorthand patch targets
 _TIER_PATH = "backend.copilot.tools.platform_info.get_user_tier"
-_FLAG_PATH = "backend.util.feature_flag.is_feature_enabled"
 
 
 @pytest.fixture
@@ -26,13 +26,15 @@ def mock_session():
 
 
 def _billing_enabled():
-    """Mock ``is_feature_enabled`` returning True (billing ON)."""
-    return patch(_FLAG_PATH, new_callable=AsyncMock, return_value=True)
+    return patch.object(
+        platform_payment.settings.config, "enable_platform_payment", True
+    )
 
 
 def _billing_disabled():
-    """Mock ``is_feature_enabled`` returning False (billing OFF)."""
-    return patch(_FLAG_PATH, new_callable=AsyncMock, return_value=False)
+    return patch.object(
+        platform_payment.settings.config, "enable_platform_payment", False
+    )
 
 
 class TestPlatformInfoTool:
@@ -176,7 +178,7 @@ class TestPlatformInfoTool:
         assert "AutoGPT" in result.message
         assert "You are running on the AutoGPT platform." in result.message
 
-    # -- Feature flag: billing disabled (self-hosted / beta) --
+    # -- Payment off (self-hosted) --
 
     @pytest.mark.asyncio
     async def test_billing_disabled_returns_open_access(self, tool, mock_session):

@@ -49,7 +49,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "24.22.1"
       - env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/batch-bot/batch.mjs

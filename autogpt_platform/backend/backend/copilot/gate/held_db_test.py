@@ -29,13 +29,16 @@ from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     append_and_save_message,
+    clear_pending_question,
     create_chat_session,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
 )
 from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tools.ask_question import AskQuestionTool
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
@@ -135,6 +138,17 @@ async def _row(review_id: str, user_id: str):
     return rows.get(review_id)
 
 
+async def _resolved(
+    user_id: str, session: ChatSession, **kwargs: Any
+) -> list[PendingMessage]:
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(
+        user_id, session, delivered.append, **kwargs
+    ):
+        pass
+    return delivered
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_two_held_calls_in_one_turn_both_wait(
     setup_test_user, test_user_id, gate_on
@@ -201,7 +215,7 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     review_id = await _hold(session, test_user_id, text)
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    delivered = await held.resolve_answered(test_user_id, session)
+    delivered = await _resolved(test_user_id, session)
 
     assert post_tool.runs == [{"text": text}]
     assert len(delivered) == 1
@@ -225,7 +239,7 @@ async def test_the_result_row_carries_the_arguments_as_the_card_showed_them(
     assert decision.review_id
     await _answer(decision.review_id, ReviewStatus.APPROVED)
 
-    [delivered] = await held.resolve_answered(test_user_id, session)
+    [delivered] = await _resolved(test_user_id, session)
 
     assert post_tool.runs == [args]
     shown = delivered.metadata["held_call"]
@@ -288,11 +302,10 @@ async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
+async def test_a_call_rebuilt_without_usage_origin_asks_for_resend_in_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Its record was lost, but a turn in the user's own chat is a root anyway:
-    the wake starts as one, under the session's permissions as they are now."""
+    """The card alone cannot establish which allowance bought the work."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
@@ -310,9 +323,10 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     ):
         await held.wake(test_user_id, session.session_id, rows.values())
 
-    woken = dispatch.await_args.kwargs
-    assert (woken["envelope"], woken["root"]) == (None, True)
-    assert woken["permissions"] == today
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert any("send the request again" in (m.content or "") for m in reloaded.messages)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -337,7 +351,7 @@ async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
     assert reloaded is not None
     refusals = [m for m in reloaded.messages if m.content == UNRECORDED_WAKE]
     assert len(refusals) == 1
-    assert len(await held.resolve_answered(test_user_id, reloaded)) == 1
+    assert len(await _resolved(test_user_id, reloaded)) == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -434,25 +448,52 @@ async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
     assert stored and all(secret not in str(v) for v in stored.values())
 
     await _answer(review_id, ReviewStatus.APPROVED)
-    await held.resolve_answered(test_user_id, session)
+    await _resolved(test_user_id, session)
     assert post_tool.runs == [{"text": f"token {secret}"}]
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+async def test_an_approval_whose_usage_origin_was_lost_does_not_run_from_the_card(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "from the card")
     await _approve_after_losing_the_held_call(session, test_user_id, review_id)
 
-    [delivered] = await held.resolve_answered(test_user_id, session)
+    [delivered] = await _resolved(test_user_id, session)
 
-    assert post_tool.runs == [{"text": "from the card"}]
-    assert "posted from the card" in delivered.content
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
     # The card kept the call's id, so the chain row still finds its result.
     assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
     assert await _row(review_id, test_user_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_held_without_its_usage_origin_is_never_announced_as_running(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Held before calls carried an origin, it asks for a resend and runs nothing."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "held before origins")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    [call] = await held.answered(test_user_id, session.session_id)
+    assert await held.remember(
+        session.session_id, call.model_copy(update={"cost_context": None})
+    )
+    delivered: list[PendingMessage] = []
+
+    heard = [
+        update.message
+        async for update in held.resolve_answered(
+            test_user_id, session, delivered.append
+        )
+    ]
+
+    assert heard == []
+    assert post_tool.runs == []
+    [result] = delivered
+    assert "send the request again" in result.content
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -464,7 +505,7 @@ async def test_a_lost_held_call_the_card_cannot_rebuild_asks_for_a_resend(
     review_id = await _hold(session, test_user_id, "clipped " + "x" * 30_000)
     await _approve_after_losing_the_held_call(session, test_user_id, review_id)
 
-    [delivered] = await held.resolve_answered(test_user_id, session)
+    [delivered] = await _resolved(test_user_id, session)
 
     assert post_tool.runs == []
     assert "send the request again" in delivered.content
@@ -486,7 +527,7 @@ async def test_a_large_late_result_arrives_as_the_direct_result_would(
     review_id = await _hold(session, test_user_id, text)
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    [delivered] = await held.resolve_answered(test_user_id, session)
+    [delivered] = await _resolved(test_user_id, session)
 
     assert delivered.content == (
         f'<held_call_result tool="{_TOOL}" tool_call_id="call-1" '
@@ -502,14 +543,34 @@ async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
     review_id = await _hold(session, test_user_id, "flaky")
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    with patch.object(held, "_outcome", AsyncMock(side_effect=RuntimeError("db"))):
-        assert await held.resolve_answered(test_user_id, session) == []
+    with patch.object(held, "_run", AsyncMock(side_effect=RuntimeError("db"))):
+        assert await _resolved(test_user_id, session) == []
     assert [
         c.review_id for c in await held.answered(test_user_id, session.session_id)
     ] == [review_id]
 
-    [delivered] = await held.resolve_answered(test_user_id, session)
+    [delivered] = await _resolved(test_user_id, session)
     assert "posted flaky" in delivered.content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_closed_at_the_status_keeps_the_call_for_the_next_turn(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A stream closed or cancelled while the status goes out runs nothing."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "closed")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
+
+    turn = held.resolve_answered(test_user_id, session, delivered.append)
+    await anext(turn)
+    await turn.aclose()
+
+    assert post_tool.runs == [] and delivered == []
+    [result] = await _resolved(test_user_id, session)
+    assert post_tool.runs == [{"text": "closed"}]
+    assert result.metadata["held_call"]["outcome"] == "approved"
 
 
 @pytest.mark.parametrize(
@@ -528,7 +589,7 @@ async def test_a_failed_cap_still_delivers_the_real_outcome(
     def broken_cap(_text: str) -> str:
         raise RuntimeError("cap failed")
 
-    [delivered] = await held.resolve_answered(test_user_id, session, cap=broken_cap)
+    [delivered] = await _resolved(test_user_id, session, cap=broken_cap)
 
     assert expect in delivered.content
     assert "may have run" not in delivered.content
@@ -550,8 +611,8 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
         await review_store.consume(review_id, user_id)
         raise RuntimeError("lost after the gate")
 
-    with patch.object(held, "_outcome", spend_then_fail):
-        [delivered] = await held.resolve_answered(test_user_id, session)
+    with patch.object(held, "_run", spend_then_fail):
+        [delivered] = await _resolved(test_user_id, session)
 
     assert "may have run" in delivered.content
     assert delivered.metadata["held_call"]["outcome"] == "unknown"
@@ -569,7 +630,7 @@ async def test_an_approval_run_with_the_flag_off_is_still_spent(
     with patch(
         "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
     ):
-        await held.resolve_answered(test_user_id, session)
+        await _resolved(test_user_id, session)
 
     assert post_tool.runs == [{"text": "flag off"}]
     assert await _row(review_id, test_user_id) is None
@@ -587,7 +648,7 @@ async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
 
     with patch.object(held, "answered", AsyncMock(return_value=listed)):
         results = await asyncio.gather(
-            *(held.resolve_answered(test_user_id, session) for _ in range(4))
+            *(_resolved(test_user_id, session) for _ in range(4))
         )
 
     assert len(post_tool.runs) == 1
@@ -608,7 +669,7 @@ async def test_a_stale_approval_delivers_a_refusal_not_a_run(
     session = await get_chat_session(session.session_id, test_user_id)
     assert session is not None
 
-    delivered = await held.resolve_answered(test_user_id, session)
+    delivered = await _resolved(test_user_id, session)
 
     assert post_tool.runs == []
     assert "expired" in delivered[0].content
@@ -628,7 +689,7 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
     with patch(
         "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
     ):
-        delivered = await held.resolve_answered(test_user_id, session)
+        delivered = await _resolved(test_user_id, session)
 
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
@@ -654,6 +715,54 @@ async def test_a_held_call_returns_the_stub_and_no_partial_result(
     assert post_tool.runs == []
 
 
+@pytest.mark.parametrize(
+    "status, heard",
+    [
+        (ReviewStatus.APPROVED, ["Running the action you approved: Post a message"]),
+        (ReviewStatus.REJECTED, []),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_chat_hears_an_approved_action_before_it_runs(
+    setup_test_user, test_user_id, gate_on, post_tool, status, heard
+):
+    """Nothing else streams while it runs; a declined card runs nothing to name."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "heard first")
+    await _answer(review_id, status)
+    delivered: list[PendingMessage] = []
+    seen = []
+
+    async for update in held.resolve_answered(test_user_id, session, delivered.append):
+        seen.append((update.message, list(post_tool.runs), list(delivered)))
+
+    assert seen == [(message, [], []) for message in heard]
+    assert len(delivered) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_whose_tool_is_gone_runs_nothing_and_says_so(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "gone")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    delivered: list[PendingMessage] = []
+
+    with patch("backend.copilot.tools.get_tool", return_value=None):
+        heard = [
+            update
+            async for update in held.resolve_answered(
+                test_user_id, session, delivered.append
+            )
+        ]
+
+    assert heard == []
+    [result] = delivered
+    assert "no longer exists" in result.content
+    assert await _row(review_id, test_user_id) is None
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_answer_on_an_idle_chat_starts_its_turn(
     setup_test_user, test_user_id, gate_on
@@ -670,6 +779,31 @@ async def test_an_answer_on_an_idle_chat_starts_its_turn(
 
     dispatch.assert_awaited_once()
     assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_open_question_keeps_the_answered_cards_for_its_answer(
+    setup_test_user, test_user_id, gate_on
+):
+    """A turn started now would run over the question and swallow its answer."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "after the question")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    await AskQuestionTool().execute(
+        test_user_id, session, "call-q", questions=[{"question": "Which repo?"}]
+    )
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id)
+        dispatch.assert_not_awaited()
+        [waiting] = await held.answered(test_user_id, session.session_id)
+        assert waiting.review_id == review_id
+
+        await clear_pending_question(session)
+        await held.wake(test_user_id, session.session_id)
+
+    dispatch.assert_awaited_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -705,7 +839,7 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
         await held.wake(test_user_id, session.session_id)
     woken = await get_chat_session(session.session_id, test_user_id)
     assert woken is not None
-    delivered = await held.resolve_answered(test_user_id, woken)
+    delivered = await _resolved(test_user_id, woken)
     assert await persist_pending_as_user_rows(woken, None, delivered, log_prefix="test")
     reloaded = await get_chat_session(session.session_id, test_user_id)
     assert reloaded is not None
@@ -717,4 +851,117 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
     with patch("backend.copilot.gate.supervise", supervisor):
         await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
 
-    assert supervisor.await_args.kwargs["user_message"] == request
+    assert supervisor.await_args.kwargs["user_messages"] == [request]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_answers_on_an_idle_chat_start_one_turn_at_the_last_card(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    cards = [await _hold(session, test_user_id, text) for text in ("a", "b", "c")]
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        for card in cards[:2]:
+            await _answer(card, ReviewStatus.APPROVED)
+            assert not await held.wake(
+                test_user_id, session.session_id, until_last=True
+            )
+        dispatch.assert_not_awaited()
+
+        await _answer(cards[2], ReviewStatus.APPROVED)
+        assert await held.wake(test_user_id, session.session_id, until_last=True)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+    delivered = await _resolved(test_user_id, session)
+    assert len(delivered) == 3
+    assert sorted(run["text"] for run in post_tool.runs) == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_continue_starts_the_turn_and_leaves_the_rest_waiting(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    answered, waiting = [
+        await _hold(session, test_user_id, text) for text in ("now", "later")
+    ]
+    await _answer(answered, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        assert not await held.wake(test_user_id, session.session_id, until_last=True)
+        await held.wake(test_user_id, session.session_id)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"] == (
+        f"{held.WAKE_MESSAGE} 1 more still waits for my answer."
+    )
+    delivered = await _resolved(test_user_id, session)
+    assert [r.metadata["held_call"]["review_id"] for r in delivered] == [answered]
+    row = await _row(waiting, test_user_id)
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert post_tool.runs == [{"text": "now"}]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_answer_during_a_running_turn_is_left_to_that_turns_end(
+    setup_test_user, test_user_id, gate_on
+):
+    """The page follows the turn that end starts, so the answer is not held."""
+    session = await _new_session(test_user_id)
+    answered, _ = [await _hold(session, test_user_id, t) for t in ("mid", "rest")]
+    await _answer(answered, ReviewStatus.APPROVED)
+    assert await chat_db().update_chat_session_status(
+        session_id=session.session_id,
+        expect_status=CHAT_STATUS_IDLE,
+        status=CHAT_STATUS_RUNNING,
+        user_id=test_user_id,
+    )
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        try:
+            assert await held.wake(test_user_id, session.session_id, until_last=True)
+            dispatch.assert_not_awaited()
+        finally:
+            await chat_db().update_chat_session_status(
+                session_id=session.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_IDLE,
+                user_id=test_user_id,
+            )
+        # The running turn's end.
+        await held.wake(test_user_id, session.session_id)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"].endswith(
+        "1 more still waits for my answer."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_lost_after_the_last_answer_starts_on_the_next_one(
+    setup_test_user, test_user_id, gate_on
+):
+    """No timer or marker holds the batch: whatever wakes the same answered
+    cards next (a retried answer, a turn's end) still starts their turn."""
+    session = await _new_session(test_user_id)
+    cards = [await _hold(session, test_user_id, t) for t in ("first", "last")]
+    for card in cards:
+        await _answer(card, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        with patch.object(
+            chat_db(), "get_chat_session_metadata", side_effect=RuntimeError("died")
+        ):
+            await held.wake(test_user_id, session.session_id, until_last=True)
+        dispatch.assert_not_awaited()
+
+        await held.wake(test_user_id, session.session_id, until_last=True)
+        await held.wake(test_user_id, session.session_id, until_last=True)
+
+    dispatch.assert_awaited_once()

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -31,14 +31,17 @@ export function ManagedExpertImage({
   const classes = cn(
     "inline-flex shrink-0 overflow-hidden rounded-xl",
     className,
+    "size-(--avatar-size)",
   );
+  const sizeStyle = { "--avatar-size": `${size}px` } as CSSProperties;
 
   if (!format) {
     return (
       <span
         role="img"
         aria-label={label}
-        style={{ width: size, height: size }}
+        data-slot="expert-avatar"
+        style={sizeStyle}
         className={cn(
           classes,
           "items-center justify-center bg-muted text-foreground",
@@ -50,8 +53,9 @@ export function ManagedExpertImage({
   }
 
   return (
-    <picture className={classes} style={{ width: size, height: size }}>
+    <picture data-slot="expert-avatar" className={classes} style={sizeStyle}>
       <source
+        data-slot="expert-avatar-source"
         type={`image/${format}`}
         srcSet={
           format === "png" && pixels * 2 > pngMaxPixels
@@ -65,6 +69,7 @@ export function ManagedExpertImage({
         width={size}
         height={size}
         unoptimized
+        data-slot="expert-avatar-image"
         className="h-full w-full object-contain"
         onError={() => setFormat(format === "webp" ? "png" : null)}
       />

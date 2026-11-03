@@ -1,9 +1,10 @@
 "use client";
 
 import type { UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
 import { primeAudioContext } from "./audioContext";
@@ -79,7 +80,9 @@ export function useVoiceMode({
   const { toast } = useToast();
 
   const inputs = useRef({ sessionId, onSend, silenceTimeoutMs });
-  inputs.current = { sessionId, onSend, silenceTimeoutMs };
+  useInsertionEffect(() => {
+    inputs.current = { sessionId, onSend, silenceTimeoutMs };
+  });
 
   const stateRef = useRef<VoiceState>("off");
   const playerRef = useRef<SpeechPlayer | null>(null);
@@ -109,105 +112,102 @@ export function useVoiceMode({
   // already spoken, and nothing else on this page can give that back.
   const failedUtterance = useRef<Blob | null>(null);
   const [failure, setFailure] = useState<VoiceFailure | null>(null);
+  // deactivate reaches the silence timer through syncMic, so the timer calls
+  // it through a ref rather than by name. Every render's deactivate touches
+  // only refs and state setters, so the latest one is the same function.
+  const latestDeactivate = useRef<
+    ((reason: "user" | "silence_timeout") => void) | null
+  >(null);
 
-  useEffect(() => {
-    if (stateRef.current === "thinking" || stateRef.current === "speaking") {
-      consumeReply();
+  function clearTimer(name: string) {
+    const timer = timers.current.get(name);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(name);
     }
-  }, [messages]);
-
-  // The turn ending is the cue to flush, never the cue to reopen the mic —
-  // the reply finishes seconds before the speech does. And it is the turn,
-  // not the stream: a reconnect closes the socket mid-turn.
-  useEffect(() => {
-    const finished = wasInFlight.current && !isReplyInFlight;
-    wasInFlight.current = isReplyInFlight;
-    const speaking =
-      stateRef.current === "thinking" || stateRef.current === "speaking";
-    if (finished && speaking) finishReply();
-  }, [isReplyInFlight]);
-
-  useEffect(() => {
-    if (!enabled && stateRef.current !== "off") deactivate();
-  }, [enabled]);
-
-  // Asked for on the previous mount, from the composer of a chat that did not
-  // exist yet. The audio element was already unlocked by that click.
-  useEffect(() => {
-    if (enabled && sessionId && takeVoiceStart()) void activate();
-  }, [enabled, sessionId]);
-
-  useEffect(() => teardown, []);
-
-  return {
-    state,
-    isActive: state !== "off",
-    isStarting,
-    statusLabel: describeVoiceState(state),
-    toggle,
-    failure,
-    retryFailedUtterance,
-    downloadFailedUtterance,
-  };
-
-  function toggle() {
-    if (stateRef.current === "off" && !starting.current) void activate();
-    else deactivate();
   }
 
-  async function activate() {
-    const mine = ++activation.current;
-    setStarting(true);
-    // Unlocking here, inside the click, is what lets later chunks play at all.
-    player().unlock();
-    primeAudioContext();
+  function setTimer(name: string, ms: number, run: () => void) {
+    clearTimer(name);
+    timers.current.set(name, setTimeout(run, ms));
+  }
 
-    let session: VadSession;
-    try {
-      session = await startVadSession({
-        onSpeechStart: () => {
-          // A new utterance supersedes the failed one; leaving the old error
-          // on screen while the mic is live invites a retry of the wrong audio.
-          clearFailure();
-          dispatch({ type: "SPEECH_START" });
-        },
-        onMisfire: () => {
-          trackVoiceMode("voice_turn_dropped", { reason: "vad_misfire" });
-          dispatch({ type: "SPEECH_MISFIRE" });
-        },
-        onSpeechEnd: (wav) => void handleUtterance(wav),
-      });
-    } catch (error) {
-      // A start the user already abandoned — left the page, or toggled off —
-      // has nobody to tell; a toast here lands on whatever page is showing.
-      if (mine !== activation.current) return;
-      report(error);
-      const denied =
-        error instanceof DOMException && error.name === "NotAllowedError";
-      trackVoiceMode(
-        denied ? "voice_mode_permission_denied" : "voice_mode_error",
-        { stage: "vad_start" },
-      );
-      return;
-    } finally {
-      setStarting(false);
-    }
+  function clearTimers() {
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+  }
 
-    // Model download and getUserMedia take seconds; the user may have left in
-    // the meantime. An undestroyed session here keeps the mic live for good.
-    if (mine !== activation.current) {
-      void session.destroy();
-      return;
-    }
-
-    vadRef.current = session;
-    setVoiceTurnActive(true);
-    turnIndex.current = 0;
-    trackVoiceMode("voice_mode_started", {
-      entry: inputs.current.sessionId ? "existing_chat" : "new_chat",
+  function report(error: unknown) {
+    console.error("[Voice mode]", error);
+    toast({
+      title: "Voice mode",
+      description:
+        error instanceof Error ? error.message : "Something went wrong.",
+      variant: "destructive",
     });
-    setTimer("session", MAX_SESSION_MS, () => deactivate("silence_timeout"));
-    dispatch({ type: "ENABLE" });
+  }
+
+  function setStarting(value: boolean) {
+    starting.current = value;
+    setIsStarting(value);
+  }
+
+  function clearFailure() {
+    failedUtterance.current = null;
+    setFailure(null);
+  }
+
+  function discardReply() {
+    chunkBuffer.current = "";
+    reader.current.reset();
+    replyDone.current = true;
+  }
+
+  // A turn cut off before its reply finished never reaches
+  // `voice_turn_completed`, and the slow replies are the ones most likely to
+  // be cut off, so their first-sound latency goes out on the drop instead.
+  function trackInterruptedTurn() {
+    if (stateRef.current !== "thinking" && stateRef.current !== "speaking") {
+      return;
+    }
+    trackVoiceMode("voice_turn_dropped", {
+      reason: "interrupted",
+      turn_index: turnIndex.current,
+      first_sound_latency_ms: firstSoundLatencyMs.current,
+    });
+    firstSoundLatencyMs.current = null;
+  }
+
+  function syncMic(next: VoiceState) {
+    if (isMicOpen(next)) vadRef.current?.resume();
+    else vadRef.current?.pause();
+
+    if (next === "listening" && !failedUtterance.current) {
+      setTimer("silence", inputs.current.silenceTimeoutMs, () =>
+        latestDeactivate.current?.("silence_timeout"),
+      );
+    } else {
+      clearTimer("silence");
+    }
+    if (next === "listening" || next === "off") {
+      clearTimer("reply");
+      clearTimer("textSettled");
+    }
+  }
+
+  function dispatch(event: VoiceEvent) {
+    const next = voiceReduce(stateRef.current, event);
+    if (next === stateRef.current) return;
+    if (event.type === "REPLY_DONE") {
+      trackVoiceMode("voice_turn_completed", {
+        turn_index: turnIndex.current,
+        first_sound_latency_ms: firstSoundLatencyMs.current,
+      });
+      firstSoundLatencyMs.current = null;
+    }
+    stateRef.current = next;
+    setState(next);
+    syncMic(next);
   }
 
   function deactivate(reason: "user" | "silence_timeout" = "user") {
@@ -232,68 +232,121 @@ export function useVoiceMode({
     dispatch({ type: "DISABLE" });
   }
 
-  // A turn cut off before its reply finished never reaches
-  // `voice_turn_completed`, and the slow replies are the ones most likely to
-  // be cut off, so their first-sound latency goes out on the drop instead.
-  function trackInterruptedTurn() {
-    if (stateRef.current !== "thinking" && stateRef.current !== "speaking") {
-      return;
+  function player(): SpeechPlayer {
+    if (!playerRef.current) {
+      playerRef.current = createSpeechPlayer({
+        synthesize: (text) => synthesizeSpeech(text, inputs.current.sessionId),
+        onIdle: () => {
+          if (replyDone.current) dispatch({ type: "REPLY_DONE" });
+        },
+        onPlaybackStart: () => {
+          if (!utteranceEndedAt.current) return;
+          firstSoundLatencyMs.current = Date.now() - utteranceEndedAt.current;
+          utteranceEndedAt.current = 0;
+        },
+        onError: (error) => {
+          trackVoiceMode("voice_mode_error", { stage: "synthesis" });
+          // A reply is one request per sentence, so an outage that refuses
+          // the first refuses them all — and the user reads the same red box
+          // once per sentence.
+          if (reportedThisTurn.current) return;
+          reportedThisTurn.current = true;
+          report(error);
+        },
+      });
     }
-    trackVoiceMode("voice_turn_dropped", {
-      reason: "interrupted",
-      turn_index: turnIndex.current,
-      first_sound_latency_ms: firstSoundLatencyMs.current,
+    return playerRef.current;
+  }
+
+  function speak(text: string) {
+    const speakable = stripMarkdownForSpeech(text);
+    if (!speakable) return;
+    spokeThisTurn.current = true;
+    player().enqueue(speakable);
+    dispatch({ type: "REPLY_SPEAKING" });
+  }
+
+  function armReplyWatchdog() {
+    setTimer("reply", REPLY_SILENCE_MS, () => {
+      replyDone.current = true;
+      if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
     });
-    firstSoundLatencyMs.current = null;
   }
 
-  function setStarting(value: boolean) {
-    starting.current = value;
-    setIsStarting(value);
+  /** Speak whatever is pending once the model stops adding to it. */
+  function armTextSettledFlush() {
+    setTimer("textSettled", TEXT_SETTLED_MS, () => {
+      if (!chunkBuffer.current) return;
+      const { chunks } = takeSpeakableChunks(chunkBuffer.current, true);
+      chunkBuffer.current = "";
+      chunks.forEach(speak);
+    });
   }
 
-  function discardReply() {
+  function startTurn() {
+    replyDone.current = false;
+    spokeThisTurn.current = false;
+    reportedThisTurn.current = false;
+    lastMessageId.current = "";
     chunkBuffer.current = "";
     reader.current.reset();
+    clearTimer("session");
+    dispatch({ type: "TRANSCRIPT_SENT" });
+    armReplyWatchdog();
+  }
+
+  function consumeReply() {
+    if (replyDone.current) return;
+    // Any activity at all — a tool part, a status, more text — proves the
+    // turn is alive, so the mic is not owed back yet.
+    armReplyWatchdog();
+
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant") return;
+
+    // A message after a tool round is a fresh passage: its first sentence
+    // races the clock again rather than waiting behind the prosody minimum.
+    if (last.id !== lastMessageId.current) {
+      lastMessageId.current = last.id;
+      spokeThisTurn.current = false;
+      // Whatever the previous message left unspoken — typically the sentence
+      // said before a tool call — is still owed, but must not run into the
+      // next message's first words.
+      if (chunkBuffer.current && !chunkBuffer.current.endsWith("\n")) {
+        chunkBuffer.current += "\n";
+      }
+    }
+
+    const full = last.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
+    const added = reader.current.read(last.id, full);
+    chunkBuffer.current += added;
+
+    // Only the first chunk races the clock; later ones read better long.
+    const minChars = spokeThisTurn.current ? LATER_CHUNK_MIN_CHARS : 0;
+    const { chunks, rest } = takeSpeakableChunks(
+      chunkBuffer.current,
+      false,
+      minChars,
+    );
+    chunkBuffer.current = rest;
+    chunks.forEach(speak);
+
+    // Only new text restarts the wait; tool parts keep arriving and would
+    // otherwise hold the pending sentence back for the whole tool chain.
+    if (added) armTextSettledFlush();
+  }
+
+  function finishReply() {
+    const tail = chunkBuffer.current + reader.current.flush();
+    chunkBuffer.current = "";
+    takeSpeakableChunks(tail, true).chunks.forEach(speak);
+
     replyDone.current = true;
-  }
-
-  async function handleUtterance(wav: Blob) {
-    utteranceEndedAt.current = Date.now();
-    dispatch({ type: "SPEECH_END" });
-    playClickSound();
-    await transcribeAndSend(wav);
-  }
-
-  /** Retries the utterance that failed, byte for byte. */
-  async function retryFailedUtterance() {
-    const wav = failedUtterance.current;
-    if (!wav) return;
-    dispatch({ type: "RETRY" });
-    // Refused — the user is already speaking again, or the session has moved
-    // on. The failure stays up, audio and all; dropping it here would lose
-    // the recording to a click that did nothing.
-    if (stateRef.current !== "transcribing") return;
-    clearFailure();
-    trackVoiceMode("voice_transcribe_retried", {
-      turn_index: turnIndex.current,
-    });
-    utteranceEndedAt.current = Date.now();
-    await transcribeAndSend(wav);
-  }
-
-  function downloadFailedUtterance() {
-    const wav = failedUtterance.current;
-    if (!wav) return;
-    trackVoiceMode("voice_recording_downloaded", {
-      turn_index: turnIndex.current,
-    });
-    downloadRecording(wav);
-  }
-
-  function clearFailure() {
-    failedUtterance.current = null;
-    setFailure(null);
+    reader.current.reset();
+    clearTimer("reply");
+    if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
   }
 
   /** Assumes the state is already `transcribing`. */
@@ -364,153 +417,101 @@ export function useVoiceMode({
     }
   }
 
-  function consumeReply() {
-    if (replyDone.current) return;
-    // Any activity at all — a tool part, a status, more text — proves the
-    // turn is alive, so the mic is not owed back yet.
-    armReplyWatchdog();
-
-    const last = messages[messages.length - 1];
-    if (last?.role !== "assistant") return;
-
-    // A message after a tool round is a fresh passage: its first sentence
-    // races the clock again rather than waiting behind the prosody minimum.
-    if (last.id !== lastMessageId.current) {
-      lastMessageId.current = last.id;
-      spokeThisTurn.current = false;
-      // Whatever the previous message left unspoken — typically the sentence
-      // said before a tool call — is still owed, but must not run into the
-      // next message's first words.
-      if (chunkBuffer.current && !chunkBuffer.current.endsWith("\n")) {
-        chunkBuffer.current += "\n";
-      }
-    }
-
-    const full = last.parts
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("");
-    const added = reader.current.read(last.id, full);
-    chunkBuffer.current += added;
-
-    // Only the first chunk races the clock; later ones read better long.
-    const minChars = spokeThisTurn.current ? LATER_CHUNK_MIN_CHARS : 0;
-    const { chunks, rest } = takeSpeakableChunks(
-      chunkBuffer.current,
-      false,
-      minChars,
-    );
-    chunkBuffer.current = rest;
-    chunks.forEach(speak);
-
-    // Only new text restarts the wait; tool parts keep arriving and would
-    // otherwise hold the pending sentence back for the whole tool chain.
-    if (added) armTextSettledFlush();
+  async function handleUtterance(wav: Blob) {
+    utteranceEndedAt.current = Date.now();
+    dispatch({ type: "SPEECH_END" });
+    playClickSound();
+    await transcribeAndSend(wav);
   }
 
-  /** Speak whatever is pending once the model stops adding to it. */
-  function armTextSettledFlush() {
-    setTimer("textSettled", TEXT_SETTLED_MS, () => {
-      if (!chunkBuffer.current) return;
-      const { chunks } = takeSpeakableChunks(chunkBuffer.current, true);
-      chunkBuffer.current = "";
-      chunks.forEach(speak);
+  /** Retries the utterance that failed, byte for byte. */
+  async function retryFailedUtterance() {
+    const wav = failedUtterance.current;
+    if (!wav) return;
+    dispatch({ type: "RETRY" });
+    // Refused — the user is already speaking again, or the session has moved
+    // on. The failure stays up, audio and all; dropping it here would lose
+    // the recording to a click that did nothing.
+    if (stateRef.current !== "transcribing") return;
+    clearFailure();
+    trackVoiceMode("voice_transcribe_retried", {
+      turn_index: turnIndex.current,
     });
+    utteranceEndedAt.current = Date.now();
+    await transcribeAndSend(wav);
   }
 
-  function finishReply() {
-    const tail = chunkBuffer.current + reader.current.flush();
-    chunkBuffer.current = "";
-    takeSpeakableChunks(tail, true).chunks.forEach(speak);
-
-    replyDone.current = true;
-    reader.current.reset();
-    clearTimer("reply");
-    if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
-  }
-
-  function speak(text: string) {
-    const speakable = stripMarkdownForSpeech(text);
-    if (!speakable) return;
-    spokeThisTurn.current = true;
-    player().enqueue(speakable);
-    dispatch({ type: "REPLY_SPEAKING" });
-  }
-
-  function startTurn() {
-    replyDone.current = false;
-    spokeThisTurn.current = false;
-    reportedThisTurn.current = false;
-    lastMessageId.current = "";
-    chunkBuffer.current = "";
-    reader.current.reset();
-    clearTimer("session");
-    dispatch({ type: "TRANSCRIPT_SENT" });
-    armReplyWatchdog();
-  }
-
-  function armReplyWatchdog() {
-    setTimer("reply", REPLY_SILENCE_MS, () => {
-      replyDone.current = true;
-      if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
+  function downloadFailedUtterance() {
+    const wav = failedUtterance.current;
+    if (!wav) return;
+    trackVoiceMode("voice_recording_downloaded", {
+      turn_index: turnIndex.current,
     });
+    downloadRecording(wav);
   }
 
-  function dispatch(event: VoiceEvent) {
-    const next = voiceReduce(stateRef.current, event);
-    if (next === stateRef.current) return;
-    if (event.type === "REPLY_DONE") {
-      trackVoiceMode("voice_turn_completed", {
-        turn_index: turnIndex.current,
-        first_sound_latency_ms: firstSoundLatencyMs.current,
+  async function openVadSession(mine: number): Promise<VadSession | null> {
+    try {
+      return await startVadSession({
+        onSpeechStart: () => {
+          // A new utterance supersedes the failed one; leaving the old error
+          // on screen while the mic is live invites a retry of the wrong audio.
+          clearFailure();
+          dispatch({ type: "SPEECH_START" });
+        },
+        onMisfire: () => {
+          trackVoiceMode("voice_turn_dropped", { reason: "vad_misfire" });
+          dispatch({ type: "SPEECH_MISFIRE" });
+        },
+        onSpeechEnd: (wav) => void handleUtterance(wav),
       });
-      firstSoundLatencyMs.current = null;
-    }
-    stateRef.current = next;
-    setState(next);
-    syncMic(next);
-  }
-
-  function syncMic(next: VoiceState) {
-    if (isMicOpen(next)) vadRef.current?.resume();
-    else vadRef.current?.pause();
-
-    if (next === "listening" && !failedUtterance.current) {
-      setTimer("silence", inputs.current.silenceTimeoutMs, () =>
-        deactivate("silence_timeout"),
+    } catch (error) {
+      // A start the user already abandoned — left the page, or toggled off —
+      // has nobody to tell; a toast here lands on whatever page is showing.
+      if (mine !== activation.current) return null;
+      report(error);
+      trackVoiceMode(
+        isMicrophonePermissionDenied(error)
+          ? "voice_mode_permission_denied"
+          : "voice_mode_error",
+        { stage: "vad_start" },
       );
-    } else {
-      clearTimer("silence");
-    }
-    if (next === "listening" || next === "off") {
-      clearTimer("reply");
-      clearTimer("textSettled");
+      return null;
     }
   }
 
-  function player(): SpeechPlayer {
-    if (!playerRef.current) {
-      playerRef.current = createSpeechPlayer({
-        synthesize: (text) => synthesizeSpeech(text, inputs.current.sessionId),
-        onIdle: () => {
-          if (replyDone.current) dispatch({ type: "REPLY_DONE" });
-        },
-        onPlaybackStart: () => {
-          if (!utteranceEndedAt.current) return;
-          firstSoundLatencyMs.current = Date.now() - utteranceEndedAt.current;
-          utteranceEndedAt.current = 0;
-        },
-        onError: (error) => {
-          trackVoiceMode("voice_mode_error", { stage: "synthesis" });
-          // A reply is one request per sentence, so an outage that refuses
-          // the first refuses them all — and the user reads the same red box
-          // once per sentence.
-          if (reportedThisTurn.current) return;
-          reportedThisTurn.current = true;
-          report(error);
-        },
-      });
+  async function activate() {
+    const mine = ++activation.current;
+    setStarting(true);
+    // Unlocking here, inside the click, is what lets later chunks play at all.
+    player().unlock();
+    primeAudioContext();
+
+    const session = await openVadSession(mine).finally(() => {
+      setStarting(false);
+    });
+    if (!session) return;
+
+    // Model download and getUserMedia take seconds; the user may have left in
+    // the meantime. An undestroyed session here keeps the mic live for good.
+    if (mine !== activation.current) {
+      void session.destroy();
+      return;
     }
-    return playerRef.current;
+
+    vadRef.current = session;
+    setVoiceTurnActive(true);
+    turnIndex.current = 0;
+    trackVoiceMode("voice_mode_started", {
+      entry: inputs.current.sessionId ? "existing_chat" : "new_chat",
+    });
+    setTimer("session", MAX_SESSION_MS, () => deactivate("silence_timeout"));
+    dispatch({ type: "ENABLE" });
+  }
+
+  function toggle() {
+    if (stateRef.current === "off" && !starting.current) void activate();
+    else deactivate();
   }
 
   function teardown() {
@@ -528,31 +529,47 @@ export function useVoiceMode({
     void vadRef.current?.destroy();
   }
 
-  function setTimer(name: string, ms: number, run: () => void) {
-    clearTimer(name);
-    timers.current.set(name, setTimeout(run, ms));
-  }
+  useInsertionEffect(() => {
+    latestDeactivate.current = deactivate;
+  });
 
-  function clearTimer(name: string) {
-    const timer = timers.current.get(name);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(name);
+  useEffect(() => {
+    if (stateRef.current === "thinking" || stateRef.current === "speaking") {
+      consumeReply();
     }
-  }
+  }, [messages]);
 
-  function clearTimers() {
-    timers.current.forEach(clearTimeout);
-    timers.current.clear();
-  }
+  // The turn ending is the cue to flush, never the cue to reopen the mic —
+  // the reply finishes seconds before the speech does. And it is the turn,
+  // not the stream: a reconnect closes the socket mid-turn.
+  useEffect(() => {
+    const finished = wasInFlight.current && !isReplyInFlight;
+    wasInFlight.current = isReplyInFlight;
+    const speaking =
+      stateRef.current === "thinking" || stateRef.current === "speaking";
+    if (finished && speaking) finishReply();
+  }, [isReplyInFlight]);
 
-  function report(error: unknown) {
-    console.error("[Voice mode]", error);
-    toast({
-      title: "Voice mode",
-      description:
-        error instanceof Error ? error.message : "Something went wrong.",
-      variant: "destructive",
-    });
-  }
+  useEffect(() => {
+    if (!enabled && stateRef.current !== "off") deactivate();
+  }, [enabled]);
+
+  // Asked for on the previous mount, from the composer of a chat that did not
+  // exist yet. The audio element was already unlocked by that click.
+  useEffect(() => {
+    if (enabled && sessionId && takeVoiceStart()) void activate();
+  }, [enabled, sessionId]);
+
+  useEffect(() => teardown, []);
+
+  return {
+    state,
+    isActive: state !== "off",
+    isStarting,
+    statusLabel: describeVoiceState(state),
+    toggle,
+    failure,
+    retryFailedUtterance,
+    downloadFailedUtterance,
+  };
 }

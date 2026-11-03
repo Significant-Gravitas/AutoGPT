@@ -1,6 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AppSidebarTrigger } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { BubbleChatBlockedIcon } from "@hugeicons/core-free-icons";
 import { parseAsString, useQueryState } from "nuqs";
 
@@ -16,20 +17,19 @@ export function SessionNotFound() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full items-center justify-center bg-white px-6">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center bg-surface px-6">
+      {/* An open chat's thread chip owns the mobile sidebar button; this
+          screen has no chip, so it brings its own. */}
+      <AppSidebarTrigger className="absolute top-5 left-4 rounded-full border border-border-base bg-surface shadow-md hover:bg-surface-hover md:hidden" />
       <div
         role="status"
         className="flex max-w-md flex-col items-center gap-3 text-center"
       >
-        <Icon
-          icon={BubbleChatBlockedIcon}
-          size={28}
-          className="text-muted-foreground"
-        />
+        <Icon icon={BubbleChatBlockedIcon} size={28} tone="muted" />
         <Text variant="large-medium" as="h2">
           This chat isn&apos;t available on this account
         </Text>
-        <Text variant="body" className="text-muted-foreground">
+        <Text variant="body" tone="muted">
           It may belong to another account you use, or it no longer exists.
         </Text>
         <Button

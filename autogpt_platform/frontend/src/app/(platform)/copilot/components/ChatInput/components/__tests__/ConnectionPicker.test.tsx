@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { useCopilotUIStore } from "../../../../store";
 import { ConnectionPicker } from "../ConnectionPicker/ConnectionPicker";
+import { ConnectionPickerDialog } from "../ConnectionPicker/ConnectionPickerDialog";
 
 function tier(
   name: ConnectionTier["tier"],
@@ -124,6 +125,35 @@ beforeEach(() => {
     copilotLlmAuth: null,
     copilotLlmModel: "standard",
   });
+});
+
+describe("ConnectionPickerDialog", () => {
+  it.each([false, true])(
+    "shows the active connection beside distinct tiers when connectionLocked is %s",
+    async (connectionLocked) => {
+      mockOffers([offer()]);
+
+      render(
+        <ConnectionPickerDialog
+          open
+          connectionLocked={connectionLocked}
+          onOpenChange={() => {}}
+        />,
+      );
+
+      expect(
+        await screen.findByRole("radiogroup", { name: "Model tier" }),
+      ).toBeDefined();
+      const connections = screen.getByRole("radiogroup", {
+        name: "Connection this chat runs on",
+      });
+      expect(
+        within(connections)
+          .getByRole("radio", { name: /AutoGPT Platform/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    },
+  );
 });
 
 describe("ConnectionPicker", () => {

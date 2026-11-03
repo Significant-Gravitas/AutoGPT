@@ -1,9 +1,10 @@
+import asyncio
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.util.testing import is_tcp_port_reachable
+from backend.util.testing import Rendezvous, is_tcp_port_reachable
 
 
 @pytest.fixture(autouse=True)
@@ -54,3 +55,20 @@ def test_is_tcp_port_reachable_propagates_unexpected_errors() -> None:
     ):
         with pytest.raises(ValueError, match="invalid endpoint"):
             is_tcp_port_reachable("redis.example", 6379)
+
+
+@pytest.mark.asyncio
+async def test_rendezvous_answers_callers_awaited_side_by_side() -> None:
+    meeting = Rendezvous(2)
+
+    assert await asyncio.gather(
+        meeting.returning("a")(), meeting.returning("b")(key="ignored")
+    ) == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_rendezvous_fails_callers_awaited_one_after_another() -> None:
+    meeting = Rendezvous(2, timeout=0.05)
+
+    with pytest.raises(TimeoutError):
+        await meeting.returning("a")()

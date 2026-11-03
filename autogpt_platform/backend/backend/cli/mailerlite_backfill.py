@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
+    from backend.data.subscription_trial import TrialState
     from backend.notifications.checkout_backfill import OpenerPlan
     from backend.notifications.mailerlite_backfill import (
         Customer,
@@ -12,6 +14,8 @@ if TYPE_CHECKING:
         Subscription,
     )
     from backend.notifications.mailerlite_field_backfill import FieldPlan, Person
+
+logger = logging.getLogger(__name__)
 
 _ACCOUNT_PAGE = 5000
 _SKIPPED_SINCE_PLAN = "opted out or seen in Iran or Russia since the plan (skipped)"
@@ -41,12 +45,13 @@ def mailerlite_backfill_command(
     the customers on a trial that is not set to cancel.
 
     Fields: every account with a Stripe customer that MailerLite already holds
-    gets its subscription_status and dates. Nobody is created here: a Stripe
-    customer alone does not mean they opened checkout (the billing portal
-    makes one too), so new people come only from mailerlite-checkout-backfill.
-    Accounts without a Stripe customer are never read. Accounts that opted out
-    of marketing, or that a signal places in Iran or Russia, are never written,
-    removals included.
+    gets its subscription_status and dates, by the mapping PostHog's status
+    comes from: only a paying subscriber is subscribed. Nobody is created
+    here: a Stripe customer alone does not mean they opened checkout (the
+    billing portal makes one too), so new people come only from
+    mailerlite-checkout-backfill. Accounts without a Stripe customer are
+    never read. Accounts that opted out of marketing, or that a signal places
+    in Iran or Russia, are never written, removals included.
 
     Dry run by default: prints counts and one pseudonymised line per customer,
     and writes nothing. Idempotent, so a partial or repeated --apply is safe,
@@ -196,21 +201,16 @@ async def _run(
         await disconnect()
 
 
-async def _stripe_subscriptions() -> "dict[str, list[Subscription]]":
-    """Every Stripe subscription, by customer ID."""
+async def _stripe_subscriptions() -> "dict[str, list[StripeSubscriptionFacts]]":
+    """Every Stripe subscription, by customer ID, listed as the lifecycle
+    sweep lists them, so the status follows the same rules."""
     import stripe
 
-    from backend.data.stripe_client import stripe_call, stripe_list_items
-    from backend.notifications.mailerlite_backfill import Subscription
+    from backend.data.posthog_lifecycle_sync import all_subscriptions_by_customer
     from backend.util.settings import Settings
 
     stripe.api_key = Settings().secrets.stripe_api_key
-    subscriptions: dict[str, list[Subscription]] = {}
-    page = await stripe_call(stripe.Subscription.list_async, status="all", limit=100)
-    async for sub in stripe_list_items(page):
-        # Not expanded, so this is the customer ID.
-        subscriptions.setdefault(str(sub.customer), []).append(_subscription(sub))
-    return subscriptions
+    return await all_subscriptions_by_customer()
 
 
 async def stripe_billing_countries(
@@ -277,69 +277,66 @@ def _keep_country(
         countries[customer_id] = str(country)
 
 
-def _subscription(sub) -> "Subscription":
+def _subscription(
+    sub: "StripeSubscriptionFacts", trial: "TrialState | None"
+) -> "Subscription":
+    """The fields the group backfill reads (`mailerlite_backfill.classify`)."""
     from backend.notifications.mailerlite_backfill import Subscription
 
     return Subscription(
-        id=str(sub.id),
-        status=str(sub.status),
-        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
-        from_trial=bool((sub.get("metadata") or {}).get("trial_enrollment_id")),
-        start_date=sub.get("start_date"),
-        trial_start=sub.get("trial_start"),
-        trial_end=sub.get("trial_end"),
-        canceled_at=sub.get("canceled_at"),
-        ended_at=sub.get("ended_at"),
+        id=sub.id,
+        status=sub.status,
+        cancel_at_period_end=sub.cancel_at_period_end,
+        from_trial=sub.trial_enrollment_id is not None,
+        converted=trial is not None
+        and trial.converted_at is not None
+        and trial.subscription_id == sub.id,
     )
 
 
-def _refresher(converted: set[str]):
-    """One customer's subscriptions as Stripe has them now, so the checkout
-    backfill writes the current status rather than its snapshot's: a trial
-    that converts during the run is not written back as a trial."""
+async def _refresh(person: "Person") -> "Person":
+    """The person with their subscriptions as Stripe has them now and their
+    trial row as it is now, so the checkout backfill writes the current
+    status rather than its snapshot's: a trial that converts during the run
+    is not written back as a trial. An unreadable trial row raises, and the
+    person is left for the next run."""
+    import prisma.models
 
-    async def refresh(customer_id: str) -> "list[Subscription]":
-        import stripe
+    from backend.data.posthog_lifecycle_sync import list_customer_subscriptions
+    from backend.data.subscription_trial import TrialState
 
-        from backend.data.stripe_client import stripe_call, stripe_list_items
-
-        page = await stripe_call(
-            stripe.Subscription.list_async,
-            customer=customer_id,
-            status="all",
-            limit=100,
-        )
-        return [
-            _subscription(sub).model_copy(
-                update={"converted": str(sub.id) in converted}
-            )
-            async for sub in stripe_list_items(page)
-        ]
-
-    return refresh
+    subscriptions = (
+        await list_customer_subscriptions(person.stripe_customer_id)
+        if person.stripe_customer_id
+        else []
+    )
+    row = await prisma.models.SubscriptionTrial.prisma().find_unique(
+        where={"userId": person.user_id}
+    )
+    return person.model_copy(
+        update={
+            "subscriptions": subscriptions,
+            "trial": TrialState.from_db(row) if row else None,
+        }
+    )
 
 
 async def _people(
-    subscriptions: "dict[str, list[Subscription]]",
+    subscriptions: "dict[str, list[StripeSubscriptionFacts]]",
     billing_countries: dict[str, str],
 ) -> "list[Person]":
     """Every account with a Stripe customer, paged, with its Stripe
-    subscriptions and billing country. Accounts without one never reached
-    checkout, so they are not read at all. Having one is not proof of a
-    checkout either: callers that create MailerLite subscribers must also
+    subscriptions, trial and billing country. Accounts without one never
+    reached checkout, so they are not read at all. Having one is not proof of
+    a checkout either: callers that create MailerLite subscribers must also
     check for a Checkout Session. The account's email is used, as the live
-    handlers do, never Stripe's."""
+    handlers do, never Stripe's. An account whose trial row can't be read is
+    left out, rather than written as if it had no trial."""
     import prisma.models
 
     from backend.notifications.mailerlite_field_backfill import Person
 
-    converted = {
-        t.stripeSubscriptionId
-        for t in await prisma.models.SubscriptionTrial.prisma().find_many(
-            where={"convertedAt": {"not": None}}
-        )
-        if t.stripeSubscriptionId
-    }
+    trials = await _trials()
     people: list[Person] = []
     cursor: str | None = None
     while True:
@@ -350,16 +347,15 @@ async def _people(
             **({"cursor": {"id": cursor}, "skip": 1} if cursor else {}),
         )
         for user in page:
-            subs = subscriptions.get(user.stripeCustomerId or "", [])
+            if user.id in trials and trials[user.id] is None:
+                continue
             people.append(
                 Person(
                     user_id=user.id,
                     email=user.email,
                     created_at=user.createdAt,
-                    subscriptions=[
-                        s.model_copy(update={"converted": s.id in converted})
-                        for s in subs
-                    ],
+                    subscriptions=subscriptions.get(user.stripeCustomerId or "", []),
+                    trial=trials.get(user.id),
                     stripe_customer_id=user.stripeCustomerId,
                     timezone=user.timezone,
                     marketing_opt_out_at=user.marketingOptOutAt,
@@ -372,13 +368,32 @@ async def _people(
         cursor = page[-1].id
 
 
+async def _trials() -> "dict[str, TrialState | None]":
+    """Every trial row by user ID. None marks one that can't be read."""
+    import prisma.models
+
+    from backend.data.subscription_trial import TrialState
+
+    trials: dict[str, TrialState | None] = {}
+    for row in await prisma.models.SubscriptionTrial.prisma().find_many():
+        try:
+            trials[row.userId] = TrialState.from_db(row)
+        except Exception:
+            trials[row.userId] = None
+            logger.warning(
+                f"Unreadable trial row for user {row.userId}; account skipped",
+                exc_info=True,
+            )
+    return trials
+
+
 def _customer(person: "Person") -> "Customer":
     from backend.notifications.mailerlite_backfill import Customer
 
     return Customer(
         user_id=person.user_id,
         email=person.email,
-        subscriptions=person.subscriptions,
+        subscriptions=[_subscription(s, person.trial) for s in person.subscriptions],
         marketing_opt_out_at=person.marketing_opt_out_at,
         timezone=person.timezone,
         billing_country=person.billing_country,
@@ -415,6 +430,7 @@ def _report_fields(plan: "FieldPlan", accounts: int) -> None:
     click.echo(f"  invalid email (skipped): {plan.invalid}")
     click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
     click.echo(f"  placed in Iran or Russia (skipped): {plan.excluded_country}")
+    click.echo(f"  not in MailerLite (skipped): {plan.not_held}")
     click.echo(
         f"{len(plan.changes)} existing MailerLite subscribers to update "
         "(nobody is created here; see mailerlite-checkout-backfill)"
@@ -495,7 +511,6 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             f"\nWrite {len(plan.changes)} checkout openers to MailerLite?", abort=True
         )
     await mailerlite.ensure_fields()
-    converted = {s.id for p in people for s in p.subscriptions if s.converted}
     # Connected again for the writes: each opener is checked against the
     # account as it is now, since the plan is older (`consent.KeptOut`).
     await connect()
@@ -504,7 +519,7 @@ async def _run_checkout(*, apply: bool, yes: bool) -> None:
             plan.changes,
             group_id,
             _checkout_progress,
-            refresh=_refresher(converted),
+            refresh=_refresh,
             kept_out=is_marketing_opted_out,
         )
     finally:

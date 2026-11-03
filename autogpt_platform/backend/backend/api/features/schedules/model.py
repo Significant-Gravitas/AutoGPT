@@ -22,6 +22,17 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     )
 
 
+class ResumeScheduledChatResponse(pydantic.BaseModel):
+    resumed: bool
+
+
+class SetScheduledChatCadenceRequest(pydantic.BaseModel):
+    cron: str = pydantic.Field(
+        description="One of the cadences offered for this chat, as returned by "
+        "getScheduledChatCadence"
+    )
+
+
 class ScheduleUpdateRequest(pydantic.BaseModel):
     """Fields to change on an existing schedule; omitted fields keep their value."""
 
