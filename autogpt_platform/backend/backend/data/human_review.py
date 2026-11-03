@@ -26,6 +26,7 @@ from backend.api.features.graph_executions.review.model import (
 from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     COPILOT_STEP_CARD_PREFIX,
+    SPEND_REVIEW_MARKER,
     is_copilot_synthetic_id,
     legacy_chat_session_id,
     parse_node_id_from_exec_id,
@@ -450,11 +451,9 @@ async def get_reviews_by_node_exec_ids(
     if not reviews:
         return {}
 
-    # Split into synthetic (CoPilot) and real IDs for different resolution paths
-    synthetic_ids = {
-        r.nodeExecId for r in reviews if is_copilot_synthetic_id(r.nodeExecId)
-    }
-    real_ids = [r.nodeExecId for r in reviews if r.nodeExecId not in synthetic_ids]
+    # Split into ids that name their node and real IDs for different resolution paths
+    named_ids = {r.nodeExecId for r in reviews if _names_its_node(r.nodeExecId)}
+    real_ids = [r.nodeExecId for r in reviews if r.nodeExecId not in named_ids]
 
     # Batch fetch real node executions to avoid N+1 queries
     node_exec_id_to_node_id: dict[str, str] = {}
@@ -466,7 +465,7 @@ async def get_reviews_by_node_exec_ids(
 
     result = {}
     for review in reviews:
-        if review.nodeExecId in synthetic_ids:
+        if review.nodeExecId in named_ids:
             node_id = parse_node_id_from_exec_id(review.nodeExecId)
         else:
             node_id = node_exec_id_to_node_id.get(review.nodeExecId, review.nodeExecId)
@@ -541,13 +540,14 @@ async def get_reviews(
     if not steps_waiting_in_chat and (in_chat := await _steps_waiting_in_chat(user_id)):
         where["nodeExecId"] = {"not_in": in_chat}
 
-    total_count = await PendingHumanReview.prisma().count(where=where)
-
-    _reviews = await PendingHumanReview.prisma().find_many(
-        where=where,
-        order={"createdAt": "asc" if oldest_first else "desc"},
-        skip=(page - 1) * page_size if page_size else None,
-        take=page_size,
+    total_count, _reviews = await asyncio.gather(
+        PendingHumanReview.prisma().count(where=where),
+        PendingHumanReview.prisma().find_many(
+            where=where,
+            order={"createdAt": "asc" if oldest_first else "desc"},
+            skip=(page - 1) * page_size if page_size else None,
+            take=page_size,
+        ),
     )
 
     # node_id is filled in by the batched enrichment step.
@@ -668,7 +668,7 @@ async def _enrich_pending_reviews(
     real_exec_ids = [r.graph_exec_id for r in reviews if r.graph_exec_id]
     session_ids = [r.session_id for r in reviews if r.session_id]
     real_node_exec_ids = [
-        r.node_exec_id for r in reviews if not is_copilot_synthetic_id(r.node_exec_id)
+        r.node_exec_id for r in reviews if not _names_its_node(r.node_exec_id)
     ]
 
     # These three reads don't depend on each other; the library lookup below
@@ -707,7 +707,7 @@ async def _enrich_pending_reviews(
     lib_by_graph = {a.agentGraphId: a for a in lib_agents}
 
     for r in reviews:
-        if is_copilot_synthetic_id(r.node_exec_id):
+        if _names_its_node(r.node_exec_id):
             r.node_id = parse_node_id_from_exec_id(r.node_exec_id)
         else:
             r.node_id = node_id_by_exec.get(r.node_exec_id, r.node_exec_id)
@@ -770,6 +770,12 @@ async def _chat_sessions_for(user_id: str, session_ids: list[str]) -> list[ChatS
         where={"id": {"in": session_ids}, "userId": user_id},
         include={"Expert": True},
     )
+
+
+def _names_its_node(node_exec_id: str) -> bool:
+    """A chat review's id carries its node; so does a spend approval's, whose
+    node is its expert, so that expert's waiting runs group as one."""
+    return is_copilot_synthetic_id(node_exec_id) or SPEND_REVIEW_MARKER in node_exec_id
 
 
 async def process_all_reviews_for_execution(
@@ -886,8 +892,8 @@ async def process_all_reviews_for_execution(
         if review is None:
             continue
 
-        if is_copilot_synthetic_id(review.nodeExecId):
-            # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
+        if _names_its_node(review.nodeExecId):
+            # These node_exec_ids encode node_id as "{node_id}:{suffix}"
             node_id = parse_node_id_from_exec_id(review.nodeExecId)
         else:
             node_exec = await get_node_execution(review.nodeExecId)
@@ -975,6 +981,37 @@ async def reopen_review(node_exec_id: str, user_id: str) -> int:
             "reviewedAt": None,
             "processed": False,
         },
+    )
+
+
+async def claim_approved_review(node_exec_id: str, user_id: str) -> bool:
+    """Take an approved review for one run of its action, before it runs.
+
+    The conditional update is the mutex: of several calls resuming the same
+    approval at once, only the one whose update flips the row may run it.
+    """
+    claimed = await PendingHumanReview.prisma().update_many(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.APPROVED,
+            "processed": False,
+        },
+        data={"processed": True},
+    )
+    return claimed == 1
+
+
+async def release_review_claim(node_exec_id: str, user_id: str) -> int:
+    """Give a claimed approval back when its action did not run, for a retry."""
+    return await PendingHumanReview.prisma().update_many(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.APPROVED,
+            "processed": True,
+        },
+        data={"processed": False},
     )
 
 

@@ -20,18 +20,19 @@ export function TourSidebarHeader() {
       aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       onClick={toggleSidebar}
       className={cn(
-        "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+        "size-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-surface-active",
         isCollapsed
           ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
           : "flex",
       )}
     >
-      <Icon icon={SidebarLeftIcon} className="size-5 text-sidebar-foreground" />
+      <Icon icon={SidebarLeftIcon} className="size-5" />
     </button>
   );
 
   return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
+    // oxlint-disable-next-line design-system/no-restyle -- one-off mount fade; SidebarHeader has no motion variant
+    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between group-data-[collapsible=icon]:flex-col">
       <div
         className={cn(
           "relative flex items-center",

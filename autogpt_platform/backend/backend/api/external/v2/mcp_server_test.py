@@ -36,7 +36,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import CARD_HINTS
-from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.models import ErrorResponse, FolderDeletedResponse
 from backend.util.exceptions import GraphValidationError
 
 
@@ -448,6 +448,44 @@ def test_a_run_agent_call_is_a_paid_run_as_the_tool_reads_it(
     assert _starts_a_paid_run(args) is paid_run
 
 
+@pytest.mark.parametrize(
+    "response, is_error",
+    [
+        (ErrorResponse(message="Folder not found", session_id=None), True),
+        (
+            FolderDeletedResponse(
+                message="Folder deleted", folder_id="folder-1", session_id=None
+            ),
+            False,
+        ),
+    ],
+)
+async def test_a_refusal_reaches_the_client_as_an_error_and_a_result_does_not(
+    mocker: pytest_mock.MockerFixture,
+    no_tenancy_lookups: mock.AsyncMock,
+    response: ErrorResponse | FolderDeletedResponse,
+    is_error: bool,
+):
+    """A client reads a refusal from the call's status, and either way the text
+    is the tool's own JSON object, as the MCP server's docs promise."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("delete_folder")),
+    )
+    mocker.patch.object(
+        type(TOOL_REGISTRY["delete_folder"]),
+        "_execute",
+        new_callable=mock.AsyncMock,
+        return_value=response,
+    )
+
+    result = await _call("delete_folder", {"folder_id": "folder-1"})
+
+    assert result.isError is is_error
+    reply = json.loads(result.content[0].text)
+    assert (reply["type"], reply["message"]) == (response.type, response.message)
+
+
 async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
 ):
@@ -531,6 +569,7 @@ async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(
 
     result = await _call("run_agent", {"library_agent_id": "agent-1"})
 
+    assert result.isError
     reply = json.loads(result.content[0].text)
     assert reply["type"] == "error"
     assert "firecrawl" in reply["message"]

@@ -43,7 +43,7 @@ from backend.copilot.constants import (
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
-from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.copilot.rate_limit import RateLimitUnavailable, platform_spend_refusal
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
 from backend.copilot.turn_budget import BudgetWindow, TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
@@ -232,16 +232,23 @@ async def bill_to_credits(
 
     Only the AutoPilot block's turns, and only when the balance covers the
     per-turn spend floor: the organization's balance in an organization's
-    run. None where credits are off, leaving no balance to bill, or where
-    the SDK engine that caps a turn's spend can't run. Raises
-    ``RateLimitUnavailable`` when the balance can't be read: like an
-    unreadable allowance, that fails the turn closed.
+    run. None where credits are off, leaving no balance to bill, in another
+    user's personal organization, or where the SDK engine that caps a turn's
+    spend can't run. Raises ``RateLimitUnavailable`` when the balance can't be
+    read: like an unreadable allowance, that fails the turn closed.
     """
     if user_id is None or tool_name != AUTOPILOT_BLOCK_TOOL_NAME:
         return None
     if not credits_can_pay_block_turns():
         return None
     try:
+        # The turn's ledger is decided once, here.
+        if organization_id:
+            owner = await credit_db().get_personal_org_owner(organization_id)
+            if owner == user_id:
+                organization_id = team_id = None
+            elif owner is not None:
+                return None  # another user's personal org bills nobody
         balance = await _balance(user_id, organization_id)
     except Exception as exc:
         raise RateLimitUnavailable("Credit balance unavailable") from exc
@@ -279,6 +286,20 @@ async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
     finally:
         _credit_billed_turn.reset(token)
         await turn.end()
+
+
+async def tool_spend_refusal(user_id: str | None) -> str | None:
+    """Why a tool may not pay a provider on the platform's key now; None when it may.
+
+    In a credit-billed turn the tool's cost lands on the turn's credits, so it
+    may spend until the turn's recorded cost reaches its cap.
+    """
+    turn = credit_billed_turn(user_id)
+    if turn is None:
+        return await platform_spend_refusal(user_id)
+    if turn.spent_microdollars < turn.cap_credits * MICRODOLLARS_PER_CREDIT:
+        return None
+    return "This run has used all the credits it can spend."
 
 
 def credit_billed_turn(user_id: str | None) -> CreditBilledTurn | None:

@@ -1,13 +1,12 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-red-600 #D93636.
-// Same value as a role with another meaning, so not swapped:
-// text-red-600 = error-hover (a hover fill).
-
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckCircle, XCircle } from "lucide-react";
+import {
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Dialog,
   DialogContent,
@@ -60,29 +59,35 @@ export function ApproveRejectButtons({
     <>
       {!isApproved && (
         <Button
-          size="legacy-sm"
-          variant="legacy-outline"
-          className="text-success hover:bg-success-surface hover:text-success-foreground"
+          size="xs"
+          variant="secondary"
           onClick={(e) => {
             e.stopPropagation();
             setIsApproveDialogOpen(true);
           }}
         >
-          <CheckCircle className="mr-2 h-4 w-4" />
-          Approve
+          <span className="flex items-center gap-1.5 text-success">
+            <Icon
+              aria-hidden
+              icon={CheckmarkCircle02Icon}
+              className="h-4 w-4"
+            />
+            Approve
+          </span>
         </Button>
       )}
       <Button
-        size="legacy-sm"
-        variant="legacy-outline"
-        className="text-red-600 hover:bg-error-surface hover:text-error-foreground"
+        size="xs"
+        variant="secondary"
         onClick={(e) => {
           e.stopPropagation();
           setIsRejectDialogOpen(true);
         }}
       >
-        <XCircle className="mr-2 h-4 w-4" />
-        {isApproved ? "Revoke" : "Reject"}
+        <span className="flex items-center gap-1.5 text-error-hover">
+          <Icon aria-hidden icon={CancelCircleIcon} className="h-4 w-4" />
+          {isApproved ? "Revoke" : "Reject"}
+        </span>
       </Button>
 
       {/* Approve Dialog */}
@@ -118,12 +123,13 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsApproveDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button variant="legacy-default" type="submit">
+              <Button variant="compact-primary" size="compact" type="submit">
                 Approve
               </Button>
             </DialogFooter>
@@ -176,12 +182,17 @@ export function ApproveRejectButtons({
             <DialogFooter>
               <Button
                 type="button"
-                variant="legacy-outline"
+                variant="compact-outline"
+                size="compact"
                 onClick={() => setIsRejectDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="legacy-destructive">
+              <Button
+                type="submit"
+                variant="compact-destructive"
+                size="compact"
+              >
                 {isApproved ? "Revoke" : "Reject"}
               </Button>
             </DialogFooter>

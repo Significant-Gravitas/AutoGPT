@@ -1,13 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-gray-100 #F3F4F6, bg-red-100 #FDECEC, text-blue-700 #1D4ED8,
-// text-gray-500 #6B7280, text-gray-600 #4B5563, text-gray-700 #374151,
-// text-orange-600 #E77B00, text-purple-600 #6C2EDF, text-red-600 #D93636,
-// text-red-800 #832525.
-// Same value as a role with another meaning, so not swapped:
-// text-red-600 = error-hover (a hover fill),
-// text-purple-600 = brand-hover (a hover fill).
 // TODO(tokens): chart and canvas colours, which have no tokens yet: #3B82F6,
 // #10B981, #F59E0B, #8B5CF6.
 
@@ -309,7 +301,7 @@ export function ExecutionAnalyticsForm() {
   if (configLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="text-gray-500">Loading configuration...</div>
+        <div className="text-foreground-tertiary">Loading configuration...</div>
       </div>
     );
   }
@@ -402,12 +394,12 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              <Text variant="lg-semibold" as="h3" className="text-gray-700">
+              <Text variant="lg-semibold" as="h3" tone="body">
                 Advanced Options
               </Text>
             }
             defaultOpen={false}
-            className="space-y-4"
+            contentClassName="mt-4"
           >
             <div className="space-y-4 pt-4">
               {/* Skip Existing Checkbox */}
@@ -456,7 +448,7 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <Text variant="body-tight" className="text-gray-600">
+                <Text variant="body-tight" tone="secondary">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
                 </Text>
@@ -477,13 +469,13 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <Text variant="body-tight" className="text-gray-600">
+                <Text variant="body-tight" tone="secondary">
                   Customize the analysis instructions. Use{" "}
-                  <code className="rounded bg-gray-100 px-1">
+                  <code className="rounded bg-surface-hover px-1">
                     {"{{GRAPH_NAME}}"}
                   </code>{" "}
                   and{" "}
-                  <code className="rounded bg-gray-100 px-1">
+                  <code className="rounded bg-surface-hover px-1">
                     {"{{EXECUTION_DATA}}"}
                   </code>{" "}
                   as placeholders. Leave empty to use the default template shown
@@ -556,11 +548,7 @@ export function ExecutionAnalyticsForm() {
             <Text variant="lg-semibold" as="h3" tone="inherit">
               Execution Accuracy Trends
             </Text>
-            <Text
-              variant="small-tight"
-              as="div"
-              className="rounded-md bg-info-surface px-3 py-2 text-blue-700"
-            >
+            <div className="rounded-md bg-info-surface px-3 py-2 text-caption leading-4 text-info-foreground">
               <p className="font-medium">
                 Chart Filters (matches monitoring system):
               </p>
@@ -569,7 +557,7 @@ export function ExecutionAnalyticsForm() {
                 <li>Last 30 days</li>
                 <li>Averages calculated from scored executions only</li>
               </ul>
-            </Text>
+            </div>
           </div>
 
           {/* Alert Section */}
@@ -580,28 +568,19 @@ export function ExecutionAnalyticsForm() {
                   🚨
                 </Text>
                 <div className="ml-3 space-y-2">
-                  <Text variant="lg-semibold" as="h4" className="text-red-800">
+                  <h4 className="text-lg font-semibold text-error-foreground">
                     Accuracy Alert Detected
-                  </Text>
+                  </h4>
                   <p className="text-error-foreground">
                     <strong>
                       {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
                     </strong>{" "}
                     detected for agent{" "}
-                    <Text
-                      variant="body-mono-tight"
-                      as="code"
-                      tone="inherit"
-                      className="rounded bg-red-100 px-1"
-                    >
+                    <code className="rounded bg-error-surface px-1 font-mono text-body leading-5">
                       {formData.graph_id}
-                    </Text>
+                    </code>
                   </p>
-                  <Text
-                    variant="body-tight"
-                    as="div"
-                    className="space-y-1 text-red-600"
-                  >
+                  <div className="space-y-1 text-body leading-5 text-error-foreground">
                     <p>
                       • 3-day average:{" "}
                       <strong>
@@ -622,7 +601,7 @@ export function ExecutionAnalyticsForm() {
                         ).toLocaleString()}
                       </strong>
                     </p>
-                  </Text>
+                  </div>
                 </div>
               </div>
             </div>
@@ -630,15 +609,11 @@ export function ExecutionAnalyticsForm() {
 
           {/* Latest Data Summary */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-lg border bg-surface p-4 text-center">
-              <Text
-                variant="2xl-bold"
-                as="div"
-                className="text-info-foreground"
-              >
+            <div className="rounded-lg border bg-surface p-4 text-center text-info-foreground">
+              <Text variant="2xl-bold" as="div" tone="inherit">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" className="text-gray-600">
+              <Text variant="body-tight" as="div" tone="secondary">
                 Daily Score
               </Text>
             </div>
@@ -646,23 +621,24 @@ export function ExecutionAnalyticsForm() {
               <Text variant="2xl-bold" as="div" tone="success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" className="text-gray-600">
+              <Text variant="body-tight" as="div" tone="secondary">
                 3-Day Avg
               </Text>
             </div>
-            <div className="rounded-lg border bg-surface p-4 text-center">
-              <Text variant="2xl-bold" as="div" className="text-orange-600">
+            {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
+            <div className="rounded-lg border bg-surface p-4 text-center text-orange-600">
+              <Text variant="2xl-bold" as="div" tone="inherit">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" className="text-gray-600">
+              <Text variant="body-tight" as="div" tone="secondary">
                 7-Day Avg
               </Text>
             </div>
-            <div className="rounded-lg border bg-surface p-4 text-center">
-              <Text variant="2xl-bold" as="div" className="text-purple-600">
+            <div className="rounded-lg border bg-surface p-4 text-center text-brand-hover">
+              <Text variant="2xl-bold" as="div" tone="inherit">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" className="text-gray-600">
+              <Text variant="body-tight" as="div" tone="secondary">
                 14-Day Avg
               </Text>
             </div>

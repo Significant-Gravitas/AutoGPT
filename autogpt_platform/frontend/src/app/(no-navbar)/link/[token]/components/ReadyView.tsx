@@ -32,12 +32,14 @@ export function ReadyView({
     : (serverName ?? `this ${platform} ${serverNoun}`);
 
   return (
-    <AuthCard title={title} className="max-w-[38rem] gap-6 p-8">
+    <AuthCard
+      title={title}
+      // oxlint-disable-next-line design-system/no-restyle -- AuthCard has no roomy size; keeps today's p-8 padding and gap-6
+      className="max-w-[38rem] gap-6 p-8"
+    >
       <div className="flex w-full flex-col items-center gap-6">
         <div className="w-full rounded-xl bg-muted px-6 py-5 text-left">
-          <Text variant="body-medium" className="font-medium">
-            What happens when you confirm:
-          </Text>
+          <Text variant="body-medium">What happens when you confirm:</Text>
           {forUser ? (
             <ul className="mt-4 space-y-2.5 text-sm leading-relaxed text-muted-foreground">
               <li>{contextLabel} will be linked to your AutoGPT account</li>
@@ -62,10 +64,7 @@ export function ReadyView({
         </div>
 
         <div className="w-full rounded-xl border border-border bg-muted px-5 py-4">
-          <Text
-            variant="small"
-            className="leading-relaxed text-muted-foreground"
-          >
+          <Text variant="small-relaxed" tone="muted">
             Usage from {contextLabel} is billed to your AutoGPT account. You can
             unlink at any time in Settings → Bots.
           </Text>
@@ -84,16 +83,17 @@ export function ReadyView({
 
         {userEmail && (
           <div className="flex w-full items-center justify-between">
-            <Text variant="small" className="text-muted-foreground">
+            <Text variant="small" tone="muted">
               Signed in as {userEmail}
             </Text>
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={onSwitchAccount}
-              className="text-xs text-muted-foreground underline underline-offset-2"
-            >
-              Not you? Sign out
+            <Button variant="ghost" size="small" onClick={onSwitchAccount}>
+              <Text
+                variant="small-medium-loose-underline"
+                as="span"
+                tone="muted"
+              >
+                Not you? Sign out
+              </Text>
             </Button>
           </div>
         )}

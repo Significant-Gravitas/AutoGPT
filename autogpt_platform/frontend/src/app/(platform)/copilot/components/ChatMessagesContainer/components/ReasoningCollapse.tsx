@@ -50,13 +50,14 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
               <Icon
                 icon={ArrowRight01Icon}
                 size={14}
-                className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
+                motion="transform"
+                className="shrink-0 group-data-[state=open]:rotate-90"
               />
             )}
             Reasoning
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
-        <AccordionContent className="pb-1 pt-0 font-sans text-sm text-foreground-tertiary [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:text-foreground-tertiary">
+        <AccordionContent className="pt-0 pb-1 font-sans text-sm text-foreground-tertiary [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:whitespace-pre-wrap [&_pre]:text-foreground-tertiary">
           {children}
           <Button
             variant="secondary"

@@ -7,19 +7,18 @@ export function ErrorHeader() {
   return (
     <div data-slot="error-card-header" className="flex items-center gap-3">
       <div data-slot="error-card-icon-wrap" className="flex-shrink-0">
-        {/* TODO(tokens): no role for red-400 (#F26969). */}
         <Icon
           data-slot="error-card-icon"
           icon={Alert01Icon}
           size={24}
-          className="text-red-400"
+          tone="error"
         />
       </div>
       <div data-slot="error-card-heading">
         <Text
           variant="large-semibold"
           data-slot="error-card-title"
-          className="text-foreground-emphasis"
+          tone="emphasis"
         >
           Something went wrong
         </Text>

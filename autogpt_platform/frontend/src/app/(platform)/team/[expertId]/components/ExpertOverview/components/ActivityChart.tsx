@@ -32,9 +32,10 @@ export function ActivityChart({ days }: Props) {
             <span
               aria-hidden
               className="size-2.5 rounded-sm"
+              // oxlint-disable-next-line design-system/no-inline-styles -- the series colour is shared with the Recharts fill prop, which needs a literal
               style={{ backgroundColor: SERIES_COLORS[series.key] }}
             />
-            <Text variant="small" className="!text-foreground-secondary">
+            <Text variant="small" tone="secondary">
               {series.label}
             </Text>
           </li>
@@ -110,16 +111,14 @@ function ChartTooltip({ active, payload }: TooltipProps) {
   if (!day) return null;
 
   return (
-    <div
-      // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
-      className="rounded-md bg-action-hover px-3 py-2 text-xs text-zinc-50 shadow-sm"
-    >
+    <div className="rounded-md bg-action-hover px-3 py-2 text-xs text-action-foreground shadow-sm">
       <p className="mb-1 font-medium">{day.label}</p>
       {SERIES.map((series) => (
         <p key={series.key} className="flex items-center gap-1.5 tabular-nums">
           <span
             aria-hidden
             className="size-2 rounded-sm"
+            // oxlint-disable-next-line design-system/no-inline-styles -- the series colour is shared with the Recharts fill prop, which needs a literal
             style={{ backgroundColor: SERIES_COLORS[series.key] }}
           />
           {series.label}: {day[series.key]}

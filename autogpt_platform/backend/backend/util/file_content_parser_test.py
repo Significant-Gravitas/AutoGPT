@@ -2,14 +2,19 @@
 
 import io
 import json
+import struct
+import zipfile
+from unittest.mock import patch
 
 import pytest
 
+from backend.util import file_content_parser
 from backend.util.file_content_parser import (
     BINARY_FORMATS,
     infer_format_from_uri,
     parse_file_content,
 )
+from backend.util.zip_member import ZipMemberError
 
 # ---------------------------------------------------------------------------
 # infer_format_from_uri
@@ -268,6 +273,16 @@ class TestParseTsv:
 # parse_file_content — YAML
 # ---------------------------------------------------------------------------
 
+KIB = 1024
+MIB = 1024 * KIB
+
+
+def _yaml_expanding_to(expanded: int, *, padding: int) -> str:
+    """YAML whose text is about ``padding`` bytes plus a few KiB, and whose
+    ``uses`` list expands to about ``expanded`` bytes through an alias."""
+    uses = ", ".join(["*b"] * (expanded // 1000))
+    return f"pad: {'y' * padding}\nbase: &b [{'x' * 1000}]\nuses: [{uses}]"
+
 
 class TestParseYaml:
     def test_list(self):
@@ -294,6 +309,53 @@ class TestParseYaml:
         result = parse_file_content(content, "yaml")
         # Malformed YAML should fall back to the original string, not raise.
         assert result == content
+
+    def test_anchors_and_aliases_parse(self):
+        content = "base: &b {x: 1}\nuse: *b"
+        result = parse_file_content(content, "yaml")
+        assert result == {"base": {"x": 1}, "use": {"x": 1}}
+
+    def test_yaml_expanding_past_the_limit_falls_back_to_text(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.util.file_content_parser.MAX_YAML_EXPANDED_BYTES", 1024
+        )
+        uses = ", ".join(["*b"] * 40)
+        content = f"base: &b [xxxxxxxx, xxxxxxxx, xxxxxxxx]\nuses: [{uses}]"
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than 1 KiB"):
+            parse_file_content(content, "yaml", strict=True)
+
+    def test_yaml_that_refers_to_itself_falls_back_to_text(self):
+        content = "items: &a [1, *a]"
+
+        assert parse_file_content(content, "yaml") == content
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 900 * KIB, id="small file under the 1 MiB minimum"),
+            pytest.param(256 * KIB, 1536 * KIB, id="256 KiB file under 8x its size"),
+        ],
+    )
+    def test_yaml_within_its_expanded_budget_parses(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert isinstance(parse_file_content(content, "yaml"), dict)
+
+    @pytest.mark.parametrize(
+        "padding, expanded",
+        [
+            pytest.param(0, 2 * MIB, id="small file over the 1 MiB minimum"),
+            pytest.param(256 * KIB, 3 * MIB, id="256 KiB file over 8x its size"),
+        ],
+    )
+    def test_yaml_past_its_expanded_budget_falls_back_to_text(self, padding, expanded):
+        content = _yaml_expanding_to(expanded, padding=padding)
+
+        assert parse_file_content(content, "yaml") == content
+        with pytest.raises(ValueError, match="expands to more than"):
+            parse_file_content(content, "yaml", strict=True)
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +538,136 @@ class TestBinaryFormats:
 class TestMimeMapping:
     def test_application_yaml(self):
         assert infer_format_from_uri("workspace://abc123#application/yaml") == "yaml"
+
+
+# ---------------------------------------------------------------------------
+# parse_file_content — Excel unpacked size
+# ---------------------------------------------------------------------------
+
+# The .xlsx caps: 50 MiB per member, 200 MiB per workbook.
+_XLSX_MEMBER_CAP = 50 * 1024 * 1024
+
+
+class TestXlsxUnpackedSize:
+    @pytest.fixture
+    def xlsx_bytes(self) -> bytes:
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        assert sheet is not None
+        for row in (["Name", "Score"], ["Alice", 90], ["Bob", 85]):
+            sheet.append(row)
+        buf = io.BytesIO()
+        workbook.save(buf)
+        return buf.getvalue()
+
+    @staticmethod
+    def _with_member(xlsx: bytes, size: int) -> bytes:
+        """Append a member of ``size`` zero bytes, written in pieces."""
+        buf = io.BytesIO(xlsx)
+        with (
+            zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED) as archive,
+            archive.open("xl/media/image1.png", "w") as member,
+        ):
+            for start in range(0, size, 4 * 1024 * 1024):
+                member.write(b"\0" * min(4 * 1024 * 1024, size - start))
+        return buf.getvalue()
+
+    def test_a_member_past_the_cap_is_refused_unread(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+        assert len(data) < 1_000_000
+
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(ValueError, match="unpacks to more than"),
+        ):
+            parse_file_content(data, "xlsx", strict=True)
+        read_excel.assert_not_called()
+
+    def test_a_member_past_the_cap_falls_back_to_the_raw_bytes(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+
+        assert parse_file_content(data, "xlsx") == data
+
+    def test_a_member_at_the_cap_is_read(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP)
+
+        result = parse_file_content(data, "xlsx", strict=True)
+        assert result == [["Name", "Score"], ["Alice", 90], ["Bob", 85]]
+
+    def test_members_together_past_the_total_are_refused(
+        self, xlsx_bytes: bytes, monkeypatch
+    ):
+        monkeypatch.setattr(file_content_parser, "MAX_XLSX_TOTAL_BYTES", 1_000)
+
+        with pytest.raises(ValueError, match="archive unpacks to more than 1000"):
+            parse_file_content(xlsx_bytes, "xlsx", strict=True)
+
+    def test_a_member_past_the_cap_is_reported_once(self, xlsx_bytes: bytes):
+        data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
+
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(data, "xlsx")
+
+        report.assert_called_once()
+        (message,), kwargs = report.call_args
+        assert message == "xlsx workbook over unpack limit"
+        assert kwargs["level"] == "warning"
+        assert kwargs["tags"] == {
+            "xlsx_limit": "MAX_XLSX_MEMBER_BYTES",
+            "xlsx_source": "file_content_parser",
+        }
+        assert kwargs["extras"]["limit_bytes"] == _XLSX_MEMBER_CAP
+        assert kwargs["extras"]["unpacked_bytes"] > _XLSX_MEMBER_CAP
+
+    def test_members_together_past_the_total_are_reported_once(
+        self, xlsx_bytes: bytes, monkeypatch
+    ):
+        monkeypatch.setattr(file_content_parser, "MAX_XLSX_TOTAL_BYTES", 1_000)
+
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(xlsx_bytes, "xlsx")
+
+        report.assert_called_once()
+        assert report.call_args.kwargs["tags"]["xlsx_limit"] == "MAX_XLSX_TOTAL_BYTES"
+        assert report.call_args.kwargs["extras"]["limit_bytes"] == 1_000
+        assert report.call_args.kwargs["extras"]["unpacked_bytes"] > 1_000
+
+    @staticmethod
+    def _with_encrypted_flag(xlsx: bytes) -> bytes:
+        """Set the encrypted flag on every member, in both of its headers."""
+        out = bytearray(xlsx)
+        with zipfile.ZipFile(io.BytesIO(xlsx)) as archive:
+            entry = archive.start_dir
+            for info in archive.infolist():
+                out[info.header_offset + 6] |= 0x1
+                out[entry + 8] |= 0x1
+                name_len, extra_len, comment_len = struct.unpack_from(
+                    "<HHH", out, entry + 28
+                )
+                entry += 46 + name_len + extra_len + comment_len
+        return bytes(out)
+
+    def test_an_encrypted_member_is_refused(self, xlsx_bytes: bytes):
+        data = self._with_encrypted_flag(xlsx_bytes)
+
+        with pytest.raises(ZipMemberError, match="is encrypted"):
+            parse_file_content(data, "xlsx", strict=True)
+
+    def test_an_encrypted_member_falls_back_to_the_raw_bytes(self, xlsx_bytes: bytes):
+        data = self._with_encrypted_flag(xlsx_bytes)
+
+        assert parse_file_content(data, "xlsx") == data
+
+    def test_a_workbook_within_the_caps_is_not_reported(self, xlsx_bytes: bytes):
+        with patch.object(file_content_parser.sentry_sdk, "capture_message") as report:
+            parse_file_content(xlsx_bytes, "xlsx", strict=True)
+
+        report.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

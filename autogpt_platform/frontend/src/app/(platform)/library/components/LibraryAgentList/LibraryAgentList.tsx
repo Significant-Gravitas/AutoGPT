@@ -192,10 +192,10 @@ export function LibraryAgentList({
             </button>
             {currentFolder && (
               <>
-                <Text variant="body" className="text-foreground-subtle">
+                <Text variant="body" tone="subtle">
                   /
                 </Text>
-                <Text variant="large" className="text-foreground-body">
+                <Text variant="large" tone="body">
                   {currentFolder.name}
                 </Text>
               </>

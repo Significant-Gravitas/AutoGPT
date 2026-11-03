@@ -4,7 +4,6 @@ from typing import Literal
 
 from moviepy import concatenate_videoclips
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.blocks._base import (
     Block,
@@ -16,14 +15,19 @@ from backend.blocks._base import (
 )
 from backend.blocks.video._utils import (
     VideoMediaStorage,
+    check_video_frame_size,
     extract_source_name,
     get_video_codecs,
+    open_video_clip,
     strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType, get_exec_file_path
+
+# Most videos one VideoConcatBlock run will join.
+MAX_CONCAT_INPUTS = 10
 
 
 class VideoConcatBlock(VideoMediaStorage, Block):
@@ -90,10 +94,16 @@ class VideoConcatBlock(VideoMediaStorage, Block):
         faded_clips = []
         final = None
         try:
-            # Load clips
+            # Check every input before opening any of them
             for v in video_abspaths:
                 strip_chapters_inplace(v)
-                clips.append(VideoFileClip(v))
+                check_video_frame_size(v, block_name=self.name, block_id=str(self.id))
+
+            # Load clips
+            for v in video_abspaths:
+                clips.append(
+                    open_video_clip(v, block_name=self.name, block_id=str(self.id))
+                )
 
             # Validate transition_duration against shortest clip
             if transition in {"crossfade", "fade_black"} and transition_duration > 0:
@@ -159,6 +169,15 @@ class VideoConcatBlock(VideoMediaStorage, Block):
         if len(input_data.videos) < 2:
             raise BlockExecutionError(
                 message="At least 2 videos are required for concatenation",
+                block_name=self.name,
+                block_id=str(self.id),
+            )
+        if len(input_data.videos) > MAX_CONCAT_INPUTS:
+            raise BlockExecutionError(
+                message=(
+                    f"At most {MAX_CONCAT_INPUTS} videos can be concatenated in "
+                    f"one run, got {len(input_data.videos)}"
+                ),
                 block_name=self.name,
                 block_id=str(self.id),
             )

@@ -34,7 +34,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 
           {apiKey.description && (
             <Section label="Description">
-              <Text variant="body" className="text-foreground-body">
+              <Text variant="body" tone="body">
                 {apiKey.description}
               </Text>
             </Section>
@@ -42,7 +42,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 
           <Section label="Scopes">
             {apiKey.scopes.length === 0 ? (
-              <Text variant="body" className="text-foreground-tertiary">
+              <Text variant="body" tone="muted">
                 No scopes
               </Text>
             ) : (
@@ -66,13 +66,13 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
           </Section>
 
           <Section label="Created">
-            <Text variant="body" className="text-foreground-body">
+            <Text variant="body" tone="body">
               {format(new Date(apiKey.created_at), "PPP p")}
             </Text>
           </Section>
 
           <Section label="Last used">
-            <Text variant="body" className="text-foreground-body">
+            <Text variant="body" tone="body">
               {apiKey.last_used_at
                 ? format(new Date(apiKey.last_used_at), "PPP p")
                 : "Never used"}
@@ -87,11 +87,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text
-        variant="small-medium"
-        as="span"
-        className="text-foreground-tertiary"
-      >
+      <Text variant="small-medium" as="span" tone="muted">
         {label}
       </Text>
       {children}

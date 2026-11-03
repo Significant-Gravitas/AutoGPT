@@ -46,26 +46,16 @@ export function RecentConversations({
         <PanelEmptyState
           textSize="body-md"
           tiles={[
-            <Icon
-              key="a"
-              icon={Comment01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="b"
-              icon={Message01Icon}
-              size={22}
-              className="text-warning"
-            />,
-            <Icon
-              key="c"
-              icon={BubbleChatIcon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="a" className="inline-flex text-sky-500">
+              <Icon icon={Comment01Icon} size={22} />
+            </span>,
+            <span key="b" className="inline-flex text-warning">
+              <Icon icon={Message01Icon} size={22} />
+            </span>,
+            <span key="c" className="inline-flex text-brand">
+              <Icon icon={BubbleChatIcon} size={22} />
+            </span>,
           ]}
           title="No conversations yet"
           description={`Ask ${expertName} for something and the chat shows up here.`}
@@ -94,16 +84,13 @@ export function RecentConversations({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <Text
                     variant="body-md-medium"
+                    tone="primary"
                     as="span"
-                    className="truncate !text-foreground-strong"
+                    className="truncate"
                   >
                     {session.title || "Untitled chat"}
                   </Text>
-                  <Text
-                    variant="small"
-                    as="span"
-                    className="!text-foreground-tertiary"
-                  >
+                  <Text variant="small" tone="muted" as="span">
                     {session.is_processing
                       ? "Working now"
                       : formatRelativeDate(session.updated_at)}

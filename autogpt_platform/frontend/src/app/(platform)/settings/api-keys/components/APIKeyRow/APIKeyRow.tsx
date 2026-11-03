@@ -40,7 +40,7 @@ export function APIKeyRow({
   return (
     <div
       data-selected={selected}
-      className="flex items-center justify-between py-4 pl-3 pr-5 transition-colors data-[selected=true]:bg-surface-hover"
+      className="flex items-center justify-between py-4 pr-5 pl-3 transition-colors data-[selected=true]:bg-surface-hover"
     >
       <div className="flex items-center gap-3">
         <button
@@ -63,7 +63,7 @@ export function APIKeyRow({
         </button>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-textBlack">
+            <Text variant="body-medium" as="span">
               {apiKey.name}
             </Text>
             <TooltipProvider>
@@ -83,14 +83,10 @@ export function APIKeyRow({
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-3 whitespace-nowrap">
-            <Text variant="label" as="span" className="text-foreground-body">
+            <Text variant="label" as="span" tone="body">
               {maskedKey}
             </Text>
-            <Text
-              variant="small"
-              as="span"
-              className="leading-5 text-foreground-tertiary"
-            >
+            <Text variant="small-loose" as="span" tone="muted">
               {lastUsedLabel}
             </Text>
           </div>

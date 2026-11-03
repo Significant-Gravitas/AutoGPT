@@ -74,7 +74,7 @@ export function ApprovalFields({
             </dt>
             <dd
               data-slot="approval-fields-value"
-              className="mb-1.5 min-w-0 text-foreground-strong [overflow-wrap:anywhere] sm:mb-0"
+              className="mb-1.5 min-w-0 [overflow-wrap:anywhere] text-foreground-strong sm:mb-0"
             >
               <FieldOrReference
                 name={field.key}
@@ -91,8 +91,8 @@ export function ApprovalFields({
       {more > 0 && (
         <Button
           variant="link"
-          size="small"
-          className="h-auto min-w-0 self-start px-0 py-0 text-sm"
+          size="inline"
+          className="self-start"
           onClick={() => setShowAll(true)}
         >
           Show {more} more

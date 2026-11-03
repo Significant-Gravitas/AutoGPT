@@ -74,7 +74,7 @@ export function JobTitleStep({
       {selectedTitle || chips.length === 0 ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-caps text-muted-foreground"
+          className="mr-4 text-xs font-medium tracking-caps text-muted-foreground uppercase"
         >
           or
         </span>
@@ -100,7 +100,8 @@ export function JobTitleStep({
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Add title
           </Button>
@@ -109,7 +110,8 @@ export function JobTitleStep({
             variant="ghost"
             size="small"
             onClick={onSkip}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Skip
           </Button>

@@ -32,7 +32,7 @@ async def test_cli_offers_only_allowed_tools(
     offered = await asyncio.wait_for(
         _cli_offered_tools(
             allowed,
-            get_sdk_disallowed_tools(use_e2b=use_e2b),
+            get_sdk_disallowed_tools(),
             tmp_path,
             use_e2b=use_e2b,
         ),

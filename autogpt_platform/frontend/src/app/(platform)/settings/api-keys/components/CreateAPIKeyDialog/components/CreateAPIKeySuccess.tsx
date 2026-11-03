@@ -26,13 +26,13 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
 
   return (
     <div className="flex flex-col gap-4 px-1">
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         Copy your key now. For security, we won&apos;t show it again.
       </Text>
 
       <div className="flex items-center gap-2 rounded-md border border-border-base bg-surface-muted p-3">
         {/* ph-no-capture keeps the one-time key out of PostHog session replays. */}
-        <code className="ph-no-capture flex-1 break-all font-mono text-xs text-foreground-emphasis">
+        <code className="ph-no-capture flex-1 font-mono text-xs break-all text-foreground-emphasis">
           {plainTextKey}
         </code>
         <Button

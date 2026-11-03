@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import type { CreditTransactionType } from "@/lib/autogpt-server-api";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
@@ -29,7 +26,9 @@ function SpendingDashboard({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">User Spending</h1>
-            <p className="text-gray-500">Manage user spending balances</p>
+            <p className="text-foreground-tertiary">
+              Manage user spending balances
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <ExportCreditTransactionsButton />

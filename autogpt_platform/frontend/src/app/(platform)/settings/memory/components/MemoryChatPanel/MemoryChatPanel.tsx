@@ -19,6 +19,7 @@ interface Props {
   queuedMessages: React.ComponentProps<
     typeof ChatMessagesContainer
   >["queuedMessages"];
+  isTurnSettling: boolean;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -35,6 +36,7 @@ export function MemoryChatPanel({
   status,
   error,
   queuedMessages,
+  isTurnSettling,
   onSend,
   onStop,
   onRetry,
@@ -45,7 +47,7 @@ export function MemoryChatPanel({
   const isStreaming = status === "streaming" || status === "submitted";
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end">
       <CopilotChatActionsProvider onSend={onSend}>
         <div
           role="complementary"
@@ -53,13 +55,8 @@ export function MemoryChatPanel({
           className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-base bg-surface shadow-2xl sm:h-[75vh]"
         >
           <div className="flex items-center justify-between border-b border-separator px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Icon
-                // TODO(tokens): no exact role (text-violet-600 #7C3AED)
-                icon={BrainIcon}
-                size={18}
-                className="text-violet-600"
-              />
+            <div className="flex items-center gap-2 text-brand">
+              <Icon icon={BrainIcon} size={18} />
               <span className="text-sm font-semibold text-foreground-emphasis">
                 {scopeName}&apos;s memory
               </span>
@@ -101,9 +98,10 @@ export function MemoryChatPanel({
                     isLoading={false}
                     sessionID={sessionId}
                     queuedMessages={queuedMessages}
+                    isTurnSettling={isTurnSettling}
                   />
                 </div>
-                <div className="relative shrink-0 border-t border-separator bg-surface px-3 pb-2 pt-2">
+                <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">
                   <ChatInput
                     inputId="memory-chat-input"
                     onSend={onSend}
