@@ -211,11 +211,14 @@ function backtickRun(line: string, start: number): string {
   return line.slice(start, end);
 }
 
-// The rest of the paragraph after line `at`, up to its first blank line.
+// The rest of the paragraph after line `at`, up to a blank line or a fence.
 function paragraphAfter(lines: string[], at: number): string {
   const rest = lines.slice(at + 1);
-  const blank = rest.findIndex((line) => !line.trim());
-  return rest.slice(0, blank === -1 ? undefined : blank).join("\n");
+  const end = rest.findIndex((raw) => {
+    const line = raw.replace(QUOTE_PREFIX_RE, "").trim();
+    return !line || OPENING_FENCE_RE.test(line);
+  });
+  return rest.slice(0, end === -1 ? undefined : end).join("\n");
 }
 
 function htmlBlockEnd(
@@ -224,7 +227,8 @@ function htmlBlockEnd(
 ): HTMLBlockEnd | null {
   const raw = HTML_RAW_RE.exec(content);
   if (raw) return new RegExp(`</${raw[1]}>`, "i");
-  if (content.startsWith("<!--")) return /-->/;
+  // Browsers also end a comment at "--!>".
+  if (content.startsWith("<!--")) return /--!?>/;
   if (HTML_BLOCK_TAG_RE.test(content)) return "blank";
   // Any other tag starts a block only on a line of its own, outside a paragraph.
   return !inParagraph && HTML_TAG_LINE_RE.test(content) ? "blank" : null;

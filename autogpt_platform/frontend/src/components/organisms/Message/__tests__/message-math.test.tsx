@@ -121,6 +121,16 @@ describe("MessageResponse math", () => {
     expect(container.textContent).not.toContain("\\$");
   });
 
+  it("escapes prices beside a lone backtick that a fenced block follows", async () => {
+    const container = await renderReply(
+      "Type ` to pay $5 and $10.\n```bash\necho hi\n```",
+    );
+
+    await waitFor(() => expect(container.querySelector("pre")).toBeTruthy());
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(proseOf(container)).toContain("to pay $5 and $10.");
+  });
+
   it.each([
     ["an autolink", "<https://example.org/odata/$metadata>"],
     ["a bare URL", "See https://example.org/odata/$metadata now."],
