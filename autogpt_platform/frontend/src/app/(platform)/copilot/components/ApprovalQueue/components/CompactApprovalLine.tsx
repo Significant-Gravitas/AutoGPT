@@ -36,7 +36,7 @@ export function CompactApprovalLine({
           <Button
             size="xs"
             variant="primary"
-            className="rounded-full"
+            shape="pill"
             loading={status === "approving"}
             disabled={busy}
             onClick={onApprove}
@@ -46,7 +46,7 @@ export function CompactApprovalLine({
           <Button
             size="xs"
             variant="secondary"
-            className="rounded-full"
+            shape="pill"
             loading={status === "rejecting"}
             disabled={busy}
             onClick={onReject}
@@ -58,7 +58,8 @@ export function CompactApprovalLine({
         <Button
           size="xs"
           variant="secondary"
-          className="shrink-0 rounded-full"
+          shape="pill"
+          className="shrink-0"
           onClick={onOpen}
         >
           Review

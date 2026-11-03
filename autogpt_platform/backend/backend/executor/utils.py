@@ -64,6 +64,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
+from backend.executor.input_depth import (
+    validate_graph_input_depth,
+    validate_starting_node_input_depth,
+)
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -991,6 +995,8 @@ async def validate_and_construct_node_execution_input(
         GraphValidationError: If the graph has validation issues.
         ValueError: If there are other validation errors.
     """
+    validate_graph_input_depth(graph_inputs, nodes_input_masks or {})
+
     if prisma.is_connected():
         gdb = graph_db
     else:
@@ -1039,6 +1045,7 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
     )
+    validate_starting_node_input_depth(starting_nodes_input)
     # Also enforced by create_graph_execution; here a schedule or a request is
     # refused before anything is written.
     check_node_input_counts(starting_nodes_input)
@@ -1825,11 +1832,14 @@ async def _add_graph_execution(
 
     # Generate execution context if it's not provided
     if execution_context is None:
-        user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_exec.graph_version,
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
+            udb.get_user_by_id(user_id),
+            gdb.get_graph_settings(
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_exec.graph_version,
+            ),
         )
         workspace = await wdb.get_or_create_workspace(user_id)
 

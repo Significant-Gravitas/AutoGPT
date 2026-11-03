@@ -23,9 +23,9 @@ export function ReceiptEntries({ transaction }: Props) {
         {!!transaction.charges?.length && (
           <Button
             variant="ghost"
-            size="small"
-            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
-            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
+            size="inline"
+            tone="secondary"
+            className="min-h-11"
             onClick={() => setEntriesOpen(!entriesOpen)}
             aria-expanded={entriesOpen}
             aria-controls={entriesOpen ? entriesID : undefined}
@@ -42,9 +42,9 @@ export function ReceiptEntries({ transaction }: Props) {
         {reference && (
           <Button
             variant="ghost"
-            size="small"
-            // oxlint-disable-next-line design-system/no-restyle -- a bare text toggle inside the receipt; no Button variant drops the padding
-            className="min-h-11 min-w-0 px-0 text-foreground-secondary"
+            size="inline"
+            tone="secondary"
+            className="min-h-11"
             onClick={() => setReferenceOpen(!referenceOpen)}
             aria-expanded={referenceOpen}
             aria-controls={referenceOpen ? referenceID : undefined}

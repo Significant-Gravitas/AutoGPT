@@ -60,14 +60,12 @@ function ToolStatusIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
   }
-  return (
-    <Icon icon={Folder01Icon} size={14} className="text-foreground-subtle" />
-  );
+  return <Icon icon={Folder01Icon} size={14} tone="subtle" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -85,11 +83,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
               style={{ backgroundColor: folder.color }}
             />
           ) : (
-            <Icon
-              icon={Folder01Icon}
-              size={14}
-              className="text-foreground-secondary"
-            />
+            <Icon icon={Folder01Icon} size={14} tone="secondary" />
           )}
           <ContentCardTitle>{folder.name}</ContentCardTitle>
         </div>
@@ -103,11 +97,7 @@ function FolderCard({ folder }: { folder: FolderInfo }) {
         <div className="mt-2 space-y-1 border-t border-border-base pt-2">
           {folder.agents.map((a) => (
             <div key={a.id} className="flex items-center gap-1.5">
-              <Icon
-                icon={FileEmpty02Icon}
-                size={12}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={FileEmpty02Icon} size={12} tone="secondary" />
               <Text variant="small-tight" as="span" tone="secondary">
                 {a.name}
               </Text>
@@ -155,20 +145,8 @@ function FolderTreeView({ tree }: { tree: FolderTreeInfo[] }) {
     <Tree
       initialExpandedItems={allIDs}
       elements={elements}
-      openIcon={
-        <Icon
-          icon={FolderOpenIcon}
-          size={16}
-          className="text-foreground-secondary"
-        />
-      }
-      closeIcon={
-        <Icon
-          icon={Folder01Icon}
-          size={16}
-          className="text-foreground-secondary"
-        />
-      }
+      openIcon={<Icon icon={FolderOpenIcon} size={16} tone="secondary" />}
+      closeIcon={<Icon icon={Folder01Icon} size={16} tone="secondary" />}
       className="max-h-64"
     >
       {elements.map((el) => (
@@ -183,13 +161,7 @@ function FolderTreeNodes({ element }: { element: TreeNode }) {
     return (
       <TreeFile
         value={element.id}
-        fileIcon={
-          <Icon
-            icon={FileEmpty02Icon}
-            size={14}
-            className="text-foreground-secondary"
-          />
-        }
+        fileIcon={<Icon icon={FileEmpty02Icon} size={14} tone="secondary" />}
       >
         <Text variant="body-tight" as="span" tone="body">
           {element.name}
