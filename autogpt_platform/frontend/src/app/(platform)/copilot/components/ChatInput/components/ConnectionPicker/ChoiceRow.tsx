@@ -113,8 +113,9 @@ export function ChoiceRow({
         icon={Tick02Icon}
         size={16}
         aria-hidden
+        motion="opacity"
         className={cn(
-          "flex-none text-primary transition-opacity",
+          "flex-none text-primary",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
@@ -141,7 +142,8 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-foreground-subtle"
+        tone="subtle"
+        className="mt-[3px] flex-none"
       />
       <span className="flex min-w-0 flex-col">
         <Text variant="body-medium-tight" as="span" tone="muted">

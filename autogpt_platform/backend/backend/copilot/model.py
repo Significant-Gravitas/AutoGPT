@@ -1792,17 +1792,19 @@ async def get_user_sessions(
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(
-        user_id,
-        limit,
-        offset,
-        organization_id=organization_id,
-        title_contains=title_contains,
-        expert_id=expert_id,
-        pinned_first=pinned_first,
-    )
-    total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id, expert_id=expert_id
+    sessions, total_count = await asyncio.gather(
+        db.get_user_chat_sessions(
+            user_id,
+            limit,
+            offset,
+            organization_id=organization_id,
+            title_contains=title_contains,
+            expert_id=expert_id,
+            pinned_first=pinned_first,
+        ),
+        db.get_user_session_count(
+            user_id, organization_id=organization_id, expert_id=expert_id
+        ),
     )
 
     return sessions, total_count

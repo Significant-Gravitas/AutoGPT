@@ -56,7 +56,8 @@ export function SuggestedTasksBlock({
           aria-expanded={isOpen}
           aria-controls={listID}
           onClick={() => collapse.toggle(countOpenTasks(suggestions.allTasks))}
-          className="gap-1 text-foreground-secondary hover:text-foreground-body"
+          tone="secondary"
+          className="gap-1 hover:text-foreground-body"
         >
           {isOpen
             ? "Hide"

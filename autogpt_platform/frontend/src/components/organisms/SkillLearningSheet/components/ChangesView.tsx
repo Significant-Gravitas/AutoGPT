@@ -81,7 +81,7 @@ export function ChangesView({ version, versions, onSelect }: Props) {
                 {change.step}
               </Text>
               {change.before ? (
-                <Text variant="small" tone="muted" className="line-through">
+                <Text variant="small" tone="muted" decoration="line-through">
                   {change.before}
                 </Text>
               ) : null}

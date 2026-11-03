@@ -125,7 +125,8 @@ export function SuggestedTaskList({
             <Icon
               icon={isMoreOpen ? ArrowUp01Icon : ArrowDown01Icon}
               size={15}
-              className="ml-auto shrink-0 text-foreground-tertiary"
+              tone="muted"
+              className="ml-auto shrink-0"
             />
           </button>
           <ol

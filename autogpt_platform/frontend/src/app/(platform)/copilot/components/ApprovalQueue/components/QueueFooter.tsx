@@ -26,7 +26,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
           <Button
             size="xs"
             variant="primary"
-            className="rounded-full"
+            shape="pill"
             disabled={busy}
             onClick={rejectAll.onConfirm}
           >
@@ -35,7 +35,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
           <Button
             size="xs"
             variant="ghost"
-            className="rounded-full"
+            shape="pill"
             onClick={rejectAll.onCancel}
           >
             Cancel
@@ -44,8 +44,7 @@ export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
       ) : rejectAll ? (
         <Button
           variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
+          size="inline"
           disabled={busy}
           onClick={rejectAll.onAsk}
         >

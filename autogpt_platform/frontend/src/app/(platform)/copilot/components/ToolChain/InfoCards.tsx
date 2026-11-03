@@ -53,7 +53,8 @@ export function PlanSteps({ steps }: ItemsProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                className="shrink-0 text-success"
+                tone="success"
+                className="shrink-0"
               />
             ) : (
               <Icon
@@ -100,7 +101,8 @@ function ErrorList({ errors }: ErrorListProps) {
           <Icon
             icon={AlertCircleIcon}
             size={14}
-            className="mt-px shrink-0 text-error"
+            tone="error"
+            className="mt-px shrink-0"
           />
           <span className="min-w-0 break-words">{error}</span>
         </div>
@@ -148,7 +150,8 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
           <Icon
             icon={MessageQuestionIcon}
             size={14}
-            className="mt-0.5 shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="mt-0.5 shrink-0"
           />
           <div className="min-w-0">
             <p className="text-body-sm leading-inherit text-foreground-body">
@@ -175,13 +178,7 @@ export function SetupCard({ output, provider }: SetupCardProps) {
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
         <CardProviderIcon
           provider={provider}
-          fallback={
-            <Icon
-              icon={ConnectIcon}
-              size={15}
-              className="text-foreground-secondary"
-            />
-          }
+          fallback={<Icon icon={ConnectIcon} size={15} tone="secondary" />}
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -207,11 +204,7 @@ export function SkillCard({ output }: OutputProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={BookBookmarkIcon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={BookBookmarkIcon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
         <Text
