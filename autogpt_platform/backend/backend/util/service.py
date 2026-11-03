@@ -33,7 +33,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
-from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic import BaseModel, ConfigDict, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from tenacity import RetryCallState
 from tenacity.stop import stop_base
@@ -45,6 +45,7 @@ from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, freeze_startup_heap
+from backend.util.request import HTTPServerError as RequestHTTPServerError
 from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.service_auth import internal_auth_headers, require_internal_key
 from backend.util.settings import Config, get_service_name
@@ -243,6 +244,8 @@ class RemoteCallExtras(BaseModel):
 
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
+    # Matched only against exception classes the client has already loaded.
+    module: Optional[str] = None
     args: Optional[Tuple[Any, ...]] = None
     # Optional extras for exception types that carry structured attributes
     # beyond ``exc.args``. When set, the client-side handler uses these to
@@ -362,6 +365,7 @@ class AppService(BaseAppService, ABC):
                 status_code=status_code,
                 content=RemoteCallError(
                     type=str(exc.__class__.__name__),
+                    module=exc.__class__.__module__,
                     args=exc.args or (str(exc),),
                     extras=extras,
                 ).model_dump(),
@@ -840,73 +844,30 @@ def get_service_client(
         def _handle_call_method_response(
             self, *, response: httpx.Response, method_name: str
         ) -> Any:
+            return self._read_answer(
+                response=response, method_name=method_name
+            ).unwrap()
+
+        def _read_answer(
+            self, *, response: httpx.Response, method_name: str
+        ) -> "_RemoteAnswer":
+            """Raises an error a retry may cure; returns one raised on purpose,
+            so the retry around the call never sees it."""
             try:
                 response.raise_for_status()
-                # Reset failure count on successful response
-                self._connection_failure_count = 0
-                return response.json()
             except httpx.HTTPStatusError as e:
-                status_code = e.response.status_code
-
-                # Try to parse the error response as RemoteCallError for mapped exceptions
-                error_response = None
-                try:
-                    error_response = RemoteCallError.model_validate(e.response.json())
-                except Exception:
-                    pass
-
-                # If we successfully parsed a mapped exception type, re-raise it
-                if error_response and error_response.type in EXCEPTION_MAPPING:
-                    exception_class = EXCEPTION_MAPPING[error_response.type]
-                    args = error_response.args or [str(e)]
-
-                    # Prisma DataError subclasses expect a dict `data` arg,
-                    # but RPC serialization only preserves the string message
-                    # from exc.args.  Wrap it in the expected structure so
-                    # the constructor doesn't crash on `.get()`.
-                    if issubclass(exception_class, DataError):
-                        msg = str(args[0]) if args else str(e)
-                        raise exception_class({"user_facing_error": {"message": msg}})
-
-                    # GraphValidationError carries a structured ``node_errors``
-                    # attribute that ``exc.args`` alone doesn't preserve.
-                    # If the server included it in ``extras``, thread it
-                    # back into the reconstructed exception.
-                    #
-                    # Identity check (``is``) is deliberate here — unlike the
-                    # DataError path above which uses ``issubclass`` to catch
-                    # all subclasses, GraphValidationError subclasses should
-                    # fall through to the generic ``raise exception_class(*args)``
-                    # below rather than silently losing their custom attributes.
-                    if exception_class is exceptions.GraphValidationError:
-                        msg = str(args[0]) if args else str(e)
-                        node_errors = (
-                            error_response.extras.node_errors
-                            if error_response.extras
-                            else None
-                        )
-                        raise exception_class(msg, node_errors=node_errors)
-
-                    raise exception_class(*args)
-
-                # Otherwise categorize by HTTP status code. An unmapped 404 is
-                # FastAPI's own: the server has no such route.
-                if status_code == 404:
-                    raise MissingRouteError(method_name, self.base_url)
-                if 400 <= status_code < 500:
-                    # Client errors (4xx) - wrap to prevent retries
-                    raise HTTPClientError(status_code, str(e))
-                elif 500 <= status_code < 600:
-                    # Server errors (5xx) - wrap but allow retries
-                    raise HTTPServerError(status_code, str(e))
-                else:
-                    # Other status codes (1xx, 2xx, 3xx) - re-raise original error
-                    raise e
+                error, raised_on_purpose = _remote_error(e, method_name, self.base_url)
+                if raised_on_purpose:
+                    return _RemoteAnswer(error=error)
+                raise error
+            # Reset failure count on successful response
+            self._connection_failure_count = 0
+            return _RemoteAnswer(value=response.json())
 
         @_maybe_retry
-        def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
+        def _call_method_sync(self, method_name: str, **kwargs: Any) -> "_RemoteAnswer":
             try:
-                return self._handle_call_method_response(
+                return self._read_answer(
                     method_name=method_name,
                     response=self.sync_client.post(method_name, json=to_dict(kwargs)),
                 )
@@ -915,9 +876,11 @@ def get_service_client(
                 raise
 
         @_maybe_retry
-        async def _call_method_async(self, method_name: str, **kwargs: Any) -> Any:
+        async def _call_method_async(
+            self, method_name: str, **kwargs: Any
+        ) -> "_RemoteAnswer":
             try:
-                return self._handle_call_method_response(
+                return self._read_answer(
                     method_name=method_name,
                     response=await self.async_client.post(
                         method_name, json=to_dict(kwargs)
@@ -1023,7 +986,8 @@ def get_service_client(
 
                 async def async_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = await self._call_method_async(rpc_name, **params)
+                    answer = await self._call_method_async(rpc_name, **params)
+                    result = answer.unwrap()
                     return self._get_return(expected_return, result)
 
                 return async_method
@@ -1032,7 +996,7 @@ def get_service_client(
 
                 def sync_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = self._call_method_sync(rpc_name, **params)
+                    result = self._call_method_sync(rpc_name, **params).unwrap()
                     return self._get_return(expected_return, result)
 
                 return sync_method
@@ -1040,6 +1004,124 @@ def get_service_client(
     client = cast(ASC, DynamicClient())
 
     return client
+
+
+# Errors defined in backend code that a later attempt can cure; a new transient
+# error subclasses one of the bases. Every other one is answered at once.
+RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
+    ConnectionError,
+    TimeoutError,
+    RuntimeError,
+    HTTPServerError,
+    MissingRouteError,
+    RequestHTTPServerError,
+    exceptions.DatabaseError,
+    exceptions.ExpertHireUnavailableError,
+    exceptions.WebhookSetupUnavailableError,
+)
+
+
+class _RemoteAnswer(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    value: Any = None
+    error: BaseException | None = None
+
+    def unwrap(self) -> Any:
+        if self.error is not None:
+            raise self.error
+        return self.value
+
+
+def _remote_error(
+    e: httpx.HTTPStatusError, method_name: str, base_url: str
+) -> tuple[BaseException, bool]:
+    """The error the server answered with, rebuilt as the class it raised when
+    this process has that class loaded, and whether it was raised on purpose."""
+    status_code = e.response.status_code
+    remote: RemoteCallError | None = None
+    try:
+        remote = RemoteCallError.model_validate(e.response.json())
+    except Exception:
+        pass
+    # FastAPI's own errors carry ``detail``; only a method's error names a type.
+    if remote and "type" not in remote.model_fields_set:
+        remote = None
+
+    error_class = _remote_error_class(remote) if remote else None
+    raised_on_purpose = error_class is not None and _raised_on_purpose(error_class)
+    if (
+        remote
+        and error_class
+        and (error := _rebuild_remote_error(error_class, remote, e))
+    ):
+        return error, raised_on_purpose
+
+    # A 404 without an error body is FastAPI's own: the server has no such route.
+    if status_code == 404 and remote is None:
+        return MissingRouteError(method_name, base_url), False
+    if 400 <= status_code < 500:
+        return HTTPClientError(status_code, str(e)), raised_on_purpose
+    if 500 <= status_code < 600:
+        return HTTPServerError(status_code, str(e)), raised_on_purpose
+    return e, False
+
+
+def _remote_error_class(remote: RemoteCallError) -> type[BaseException] | None:
+    return _loaded_backend_error_class(remote.module, remote.type) or (
+        EXCEPTION_MAPPING.get(remote.type)
+    )
+
+
+def _loaded_backend_error_class(
+    module: str | None, name: str
+) -> type[BaseException] | None:
+    """Never imports: a class the caller can catch is one it has already loaded."""
+    if not module or not module.startswith("backend."):
+        return None
+    pending: list[type[BaseException]] = [BaseException]
+    while pending:
+        cls = pending.pop()
+        if cls.__module__ == module and cls.__name__ == name:
+            return cls
+        pending.extend(type.__subclasses__(cls))
+    return None
+
+
+def _raised_on_purpose(error_class: type[BaseException]) -> bool:
+    return error_class.__module__.startswith("backend.") and not issubclass(
+        error_class, RETRYABLE_SERVICE_ERRORS
+    )
+
+
+def _rebuild_remote_error(
+    error_class: type[BaseException],
+    remote: RemoteCallError,
+    e: httpx.HTTPStatusError,
+) -> BaseException | None:
+    args = remote.args or (str(e),)
+
+    # Prisma DataError subclasses expect a dict `data` arg, but RPC
+    # serialization only preserves the string message from exc.args.
+    if issubclass(error_class, DataError):
+        msg = str(args[0]) if args else str(e)
+        return error_class({"user_facing_error": {"message": msg}})
+
+    # GraphValidationError's ``node_errors`` rides in ``extras``. An identity
+    # check: a subclass falls through to the generic rebuild below.
+    if error_class is exceptions.GraphValidationError:
+        msg = str(args[0]) if args else str(e)
+        node_errors = remote.extras.node_errors if remote.extras else None
+        return error_class(msg, node_errors=node_errors)
+
+    try:
+        return error_class(*args)
+    except Exception:
+        logger.warning(
+            f"Cannot rebuild {error_class.__module__}.{error_class.__name__} from "
+            f"its args over RPC; its __init__ must accept exc.args"
+        )
+        return None
 
 
 class _MissingRouteDeadline(stop_base):
