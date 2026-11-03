@@ -314,7 +314,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up Python dependency cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -407,6 +407,8 @@ jobs:
           else
             pytest_args+=(-v)
           fi
+
+          pytest_args+=(-s)
 
           unit="ci-backend-${TEST_SHARD}.scope"
           preserve_env=$(python -c 'import os; print(",".join(os.environ))')
