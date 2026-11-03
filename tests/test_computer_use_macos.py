@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -749,3 +750,87 @@ def test_window_focus_fails_when_macos_will_not_activate_the_app(tmp_path, monke
 
     with pytest.raises(WindowStaleError):
         b.window_focus(focus["window_id"])
+
+
+# ── Retina geometry ──────────────────────────────────────────────────────
+
+
+def _retina_quartz() -> MagicMock:
+    """One 1440x900-point display backed by 2880x1800 pixels. Like the real
+    API, CGDisplayPixelsWide reports the mode's size in points."""
+    quartz = MagicMock()
+    quartz.CGGetActiveDisplayList.return_value = (0, [1], 1)
+    quartz.CGMainDisplayID.return_value = 1
+    quartz.CGDisplayBounds.return_value = SimpleNamespace(
+        origin=SimpleNamespace(x=0, y=0), size=SimpleNamespace(width=1440, height=900)
+    )
+    quartz.CGDisplayPixelsWide.return_value = 1440
+    quartz.CGDisplayPixelsHigh.return_value = 900
+    quartz.CGDisplayModeGetPixelWidth.return_value = 2880
+    quartz.CGDisplayModeGetPixelHeight.return_value = 1800
+    return quartz
+
+
+def test_display_info_reads_the_backing_pixels_of_a_retina_display(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "Quartz", _retina_quartz())
+
+    [display] = MacOSBackend(_config(tmp_path)).display_info()
+
+    assert display.logical_size == (1440, 900)
+    assert display.physical_size == (2880, 1800)
+    assert display.scale == 2.0
+
+
+def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeypatch) -> None:
+    """CGWindowListCreateImage returns backing pixels, twice the window's
+    800x600-point bounds on a Retina display."""
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    monkeypatch.setitem(sys.modules, "Quartz", MagicMock())
+    monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
+    pil = MagicMock()
+    pil.Image.open.return_value = SimpleNamespace(width=1600, height=1200)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setattr(macos_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    b = MacOSBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=7, class_name="Notes", creation_timestamp=None)
+    window_id = b.window_registry.mint(42, fp, extra={"bounds": (100, 50, 900, 650)})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _handle: fp)
+
+    result = b._screenshot_window(window_id, quality=75, format="png", include_cursor=False)
+
+    assert result.origin == (100, 50)
+    assert result.logical_size == (800, 600)
+    assert result.display_scale == 2.0
+
+
+def test_the_quartz_display_mode_names_exist() -> None:
+    """display_info's Retina path only runs on a Mac; check its names there."""
+    quartz = pytest.importorskip("Quartz")
+    for name in (
+        "CGDisplayCopyDisplayMode",
+        "CGDisplayModeGetPixelHeight",
+        "CGDisplayModeGetPixelWidth",
+    ):
+        assert hasattr(quartz, name), name
+
+
+def test_pasting_onto_an_empty_clipboard_leaves_it_empty(tmp_path, monkeypatch) -> None:
+    """The restore has no text to put back, so it must clear the pasted text
+    rather than leave it for every other app to read."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_pasteboard(b, monkeypatch, content=None, types=())
+
+    def clear() -> int:
+        clipboard["content"] = None
+        clipboard["seq"] += 1
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_clear_pasteboard", clear)
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
+    assert clipboard["content"] is None
