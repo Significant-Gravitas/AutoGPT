@@ -65,7 +65,6 @@ function toQuery(filters: TaskFilters) {
   if (filters.due) params.set("due", filters.due);
   if (filters.mine) params.set("mine", "true");
   if (filters.parent_id) params.set("parent_id", filters.parent_id);
-  else params.set("top_level", "true");
   const q = params.toString();
   return q ? `?${q}` : "";
 }
