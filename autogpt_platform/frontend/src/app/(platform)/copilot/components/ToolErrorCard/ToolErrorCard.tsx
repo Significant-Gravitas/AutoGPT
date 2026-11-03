@@ -38,7 +38,7 @@ export function ToolErrorCard({
             {message || fallbackMessage}
           </Text>
           {(error || details) && (
-            <details className="text-xs text-error-foreground">
+            <details className="text-caption text-error-foreground">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>

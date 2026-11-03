@@ -59,7 +59,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
           </Button>
         )}
       </div>
-      <Text variant="h4" className="!text-lg !leading-6">
+      <Text variant="h4" className="!text-lead !leading-6">
         {state.isRefreshing
           ? "Checking your usage"
           : state.isError

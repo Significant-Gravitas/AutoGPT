@@ -79,10 +79,10 @@ export default function SharePage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-lg font-semibold">
+                    <h3 className="text-lead font-semibold">
                       {is404 ? "Share Link Not Found" : "Unable to Load"}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-body text-muted-foreground">
                       {is404
                         ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
                         : "There was an error loading this shared execution. Please try refreshing the page."}
@@ -91,7 +91,7 @@ export default function SharePage() {
                   <div className="pt-2">
                     <button
                       onClick={() => window.location.reload()}
-                      className="text-sm text-primary hover:underline"
+                      className="text-body text-primary hover:underline"
                     >
                       Try again
                     </button>
@@ -99,7 +99,7 @@ export default function SharePage() {
                 </div>
               </div>
             </div>
-            <div className="mt-8 text-center text-xs text-muted-foreground">
+            <div className="mt-8 text-center text-caption text-muted-foreground">
               <p>Powered by AutoGPT Platform</p>
             </div>
           </div>
@@ -127,7 +127,7 @@ export default function SharePage() {
 
         <Card variant="outlined" className="mb-6">
           <CardHeader>
-            <h3 className="text-2xl font-semibold tracking-tight">
+            <h3 className="text-heading-md font-semibold tracking-tight">
               {executionData.graph_name}
             </h3>
             {executionData.graph_description && (
@@ -137,7 +137,7 @@ export default function SharePage() {
             )}
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-body">
               <div>
                 <span className="font-medium">Status:</span>
                 <span className="ml-2 capitalize">
@@ -163,7 +163,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <div className="mt-8 text-center text-sm text-muted-foreground">
+        <div className="mt-8 text-center text-body text-muted-foreground">
           <p>Powered by AutoGPT Platform</p>
         </div>
       </div>

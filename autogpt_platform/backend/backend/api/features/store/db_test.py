@@ -1776,6 +1776,41 @@ async def test_approve_does_nothing_with_media_when_the_bucket_is_unset(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_verdict_notifies_the_creator(mocker, review_mocks):
+    _publish_mock(mocker, return_value={})
+    notify = mocker.patch(
+        "backend.api.features.store.db._send_submission_review_notification",
+        new_callable=AsyncMock,
+    )
+
+    await _review(is_approved=True)
+
+    notify.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_can_leave_the_creator_unnotified(mocker, review_mocks):
+    _publish_mock(mocker, return_value={})
+    notify = mocker.patch(
+        "backend.api.features.store.db._send_submission_review_notification",
+        new_callable=AsyncMock,
+    )
+
+    result = await db.review_store_submission(
+        store_listing_version_id="version-id",
+        is_approved=True,
+        external_comments="",
+        internal_comments="",
+        reviewer_id="reviewer-id",
+        notify_creator=False,
+    )
+
+    notify.assert_not_awaited()
+    assert result.status == prisma.enums.SubmissionStatus.APPROVED
+    review_mocks.listing.update.assert_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_approve_succeeds_when_publishing_fails(
     mocker, public_media_bucket, review_mocks
 ):

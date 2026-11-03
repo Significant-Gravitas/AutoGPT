@@ -43,10 +43,12 @@ export function KitResultRow({
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <p className="truncate text-body font-medium text-foreground">
           {hit.name}
         </p>
-        <p className="truncate text-xs text-muted-foreground">{hit.subtitle}</p>
+        <p className="truncate text-caption text-muted-foreground">
+          {hit.subtitle}
+        </p>
       </div>
 
       <Button
