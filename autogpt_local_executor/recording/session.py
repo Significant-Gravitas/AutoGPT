@@ -147,9 +147,11 @@ class RecordingSession:
         self._stopped_at: float | None = None
         # On-disk encrypted buffer path. Unique per session; never reused.
         self._buffer_path = self._buffer_dir / f"{self.recording_id}.{secrets.token_hex(8)}.enc"
+        # Each snapshot is written here first, then renamed over the buffer.
+        self._snapshot_path = self._buffer_path.with_suffix(self._buffer_path.suffix + ".tmp")
         self._closed = False
-        self._last_review_signature: tuple[tuple[int, ...], tuple[int, ...]] | None = None
-        self._last_review_step_count: int | None = None
+        # Steps that reviews have removed, so a retried review stays valid.
+        self._removed_seqs: set[int] = set()
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -185,21 +187,14 @@ class RecordingSession:
         """Secure-erase the on-disk buffer unless pinned (§9 at-rest).
 
         Best-effort overwrite-then-unlink. `pin=True` keeps the encrypted blob
-        (the user chose to keep the recording).
+        (the user chose to keep the recording). A snapshot that a failed or
+        interrupted write left behind is never the kept recording, so it is
+        erased either way.
         """
         self._closed = True
-        if pin:
-            return
-        try:
-            if self._buffer_path.is_file():
-                size = self._buffer_path.stat().st_size
-                with open(self._buffer_path, "r+b") as f:
-                    f.write(secrets.token_bytes(size))
-                    f.flush()
-                    os.fsync(f.fileno())
-                self._buffer_path.unlink()
-        except OSError:
-            logger.debug("secure-erase of recording buffer failed", exc_info=True)
+        _secure_erase(self._snapshot_path)
+        if not pin:
+            _secure_erase(self._buffer_path)
 
     # ── Read-side (post-redaction) ────────────────────────────────────────
 
@@ -232,22 +227,24 @@ class RecordingSession:
         removed_step_seqs: list[int],
         redacted_step_seqs: list[int],
     ) -> int:
-        """Apply the user's review decisions to the authoritative local copy."""
+        """Apply the user's review decisions to the authoritative local copy.
+
+        Reviews only remove steps or hide values, so applying one is idempotent
+        (APPLY_RECORDING_REVIEW is auto-retried, docs/PROTOCOL.md): a step that
+        an earlier review removed already satisfies a request to remove or
+        redact it, even after other reviews. Sequence numbers this recording
+        never had are rejected.
+        """
         if self._stopped_at is None:
             raise RecordingError("recording must be stopped before review")
 
-        signature = (tuple(removed_step_seqs), tuple(redacted_step_seqs))
-        if signature == self._last_review_signature:
-            assert self._last_review_step_count is not None
-            return self._last_review_step_count
-
-        known = {step.seq for step in self._steps}
+        present = {step.seq for step in self._steps}
         requested = set(removed_step_seqs) | set(redacted_step_seqs)
-        unknown = requested - known
+        unknown = requested - present - self._removed_seqs
         if unknown:
             raise RecordingError(f"review references unknown step sequence(s): {sorted(unknown)}")
 
-        removed = set(removed_step_seqs)
+        removed = set(removed_step_seqs) & present
         redacted = set(redacted_step_seqs) - removed
         reviewed: list[TrajectoryStep] = []
         for step in self._steps:
@@ -266,10 +263,9 @@ class RecordingSession:
                 )
             reviewed.append(step)
         self._steps = reviewed
+        self._removed_seqs |= removed
         self._persist_buffer()
-        self._last_review_signature = signature
-        self._last_review_step_count = len(self._steps)
-        return self._last_review_step_count
+        return len(self._steps)
 
     def enrichment_coverage(self) -> EnrichmentCoverage:
         """Per-kind step counts for the summary (§6)."""
@@ -307,12 +303,11 @@ class RecordingSession:
                 separators=(",", ":"),
             ).encode("utf-8")
             blob = self._cipher.encrypt(plaintext)
-            tmp = self._buffer_path.with_suffix(self._buffer_path.suffix + ".tmp")
-            with open(tmp, "wb") as f:
+            with open(self._snapshot_path, "wb") as f:
                 f.write(blob)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, self._buffer_path)
+            os.replace(self._snapshot_path, self._buffer_path)
             if os.name != "nt":
                 try:
                     os.chmod(self._buffer_path, 0o600)
@@ -320,6 +315,20 @@ class RecordingSession:
                     pass
         except (OSError, ValueError):
             logger.debug("failed to persist recording buffer", exc_info=True)
+
+
+def _secure_erase(path: Path) -> None:
+    """Best-effort overwrite-then-unlink of one buffer file, if it exists."""
+    try:
+        if path.is_file():
+            size = path.stat().st_size
+            with open(path, "r+b") as f:
+                f.write(secrets.token_bytes(size))
+                f.flush()
+                os.fsync(f.fileno())
+            path.unlink()
+    except OSError:
+        logger.debug("secure-erase of recording buffer %s failed", path.name, exc_info=True)
 
 
 __all__ = [

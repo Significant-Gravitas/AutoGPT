@@ -12,6 +12,8 @@ scripted recording.
 from __future__ import annotations
 
 import json
+import os
+import types
 from pathlib import Path
 
 import pytest
@@ -53,6 +55,7 @@ from autogpt_local_executor.recording import (
     ConsentError,
     MockCaptureSource,
     RecordingSession,
+    ScreenshotActionFloor,
     probe_interpretation_route,
     redact_step,
 )
@@ -139,6 +142,17 @@ def _approve_consent(broker: ConsentBroker, *, mode: str, interpretation_route: 
 
 def _deny_consent(broker: ConsentBroker, *, mode: str, interpretation_route: str) -> None:
     return None
+
+
+class _OsProxy(types.ModuleType):
+    """The real `os` module with some functions replaced, for one module under test."""
+
+    def __init__(self, **overrides: object) -> None:
+        super().__init__("os")
+        self.__dict__.update(overrides)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(os, name)
 
 
 def test_production_capture_factory_wires_macos_input_source(
@@ -381,6 +395,26 @@ def test_session_exact_repeated_review_is_idempotent(tmp_path: Path) -> None:
     assert [step.seq for step in sess.to_recording().steps] == [1]
 
 
+def test_session_review_retry_after_a_later_review_is_idempotent(tmp_path: Path) -> None:
+    sess = _make_session(tmp_path)
+    sess.start()
+    sess.append(_step(1, raw="hide"))
+    sess.append(_step(2, raw="remove first"))
+    sess.append(_step(3, raw="remove second"))
+    sess.stop()
+
+    first = sess.apply_review(removed_step_seqs=[2], redacted_step_seqs=[1])
+    second = sess.apply_review(removed_step_seqs=[3], redacted_step_seqs=[])
+    retry = sess.apply_review(removed_step_seqs=[2], redacted_step_seqs=[1])
+    redact_removed = sess.apply_review(removed_step_seqs=[], redacted_step_seqs=[2, 3])
+
+    assert (first, second, retry, redact_removed) == (2, 1, 1, 1)
+    steps = sess.to_recording().steps
+    assert [step.seq for step in steps] == [1]
+    assert steps[0].value.raw is None
+    assert steps[0].redacted is True
+
+
 def test_session_review_rejects_unknown_step(tmp_path: Path) -> None:
     from autogpt_local_executor.recording import RecordingError
 
@@ -390,6 +424,65 @@ def test_session_review_rejects_unknown_step(tmp_path: Path) -> None:
     sess.stop()
     with pytest.raises(RecordingError):
         sess.apply_review(removed_step_seqs=[99], redacted_step_seqs=[])
+
+
+@pytest.mark.parametrize("pin", [False, True])
+def test_close_erases_a_snapshot_left_by_a_failed_buffer_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin: bool
+) -> None:
+    import autogpt_local_executor.recording.session as session_mod
+
+    def refuse_replace(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("the buffer file is locked")
+
+    buffer_dir = tmp_path / "recordings"
+    sess = _make_session(tmp_path)
+    sess.start()
+    sess.append(_step(1))
+    published = set(buffer_dir.iterdir())
+    with monkeypatch.context() as patch:
+        patch.setattr(session_mod, "os", _OsProxy(replace=refuse_replace))
+        sess.append(_step(2))
+    assert len(set(buffer_dir.iterdir()) - published) == 1, "expected a leftover snapshot"
+    sess.stop()
+
+    sess.close(pin=pin)
+
+    assert set(buffer_dir.iterdir()) == (published if pin else set())
+
+
+# ── Screenshot floor cursor (§4) ──────────────────────────────────────────────
+
+
+class _PointerBackend:
+    def cursor_position(self) -> tuple[int, int, int]:
+        return (500, 400, 0)
+
+
+def _click_at(seq: int, cursor: tuple[int, int]) -> TrajectoryStep:
+    return _step(seq, action="click").model_copy(update={"cursor": cursor})
+
+
+async def _floor_cursors(tmp_path: Path, source: MockCaptureSource) -> list[tuple[int, int]]:
+    floor = ScreenshotActionFloor(
+        input_events=source, config=_make_config(tmp_path), backend=_PointerBackend()
+    )
+    return [step.cursor async for step in floor.steps()]
+
+
+async def test_floor_keeps_a_click_at_the_display_origin(tmp_path: Path) -> None:
+    source = MockCaptureSource([_click_at(1, (0, 0)), _click_at(2, (840, 314))])
+
+    assert await _floor_cursors(tmp_path, source) == [(0, 0), (840, 314)]
+
+
+async def test_floor_fills_cursor_for_a_source_that_cannot_see_the_pointer(
+    tmp_path: Path,
+) -> None:
+    source = MockCaptureSource([_click_at(1, (0, 0)), _click_at(2, (840, 314))])
+    source.reports_cursor = False
+
+    assert await _floor_cursors(tmp_path, source) == [(500, 400), (500, 400)]
 
 
 # ── Consent tokens (§9) ───────────────────────────────────────────────────────
