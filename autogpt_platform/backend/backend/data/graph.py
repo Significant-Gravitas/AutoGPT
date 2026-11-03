@@ -2128,9 +2128,9 @@ async def assert_graph_deletable(
 async def delete_graph_permanently(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int:
-    """Delete all versions of the user's graph, together with the user's own
-    library entries (soft-deleted ones included) and presets for it, in one
-    transaction. Nodes and the owner's runs cascade with the graph.
+    """Delete all versions of the user's graph in the org, together with the
+    user's own library entries (soft-deleted ones included) and presets on
+    those versions, in one transaction. Nodes and the owner's runs cascade with the graph.
 
     Raises `GraphInUseError` if other users or a store listing reference the
     graph; nothing is deleted then. Schedules, webhooks and trigger agents are
@@ -2141,21 +2141,26 @@ async def delete_graph_permanently(
         async with transaction() as tx:
             await assert_graph_deletable(graph_id, user_id, tx=tx)
             where = _owned_graph_where(graph_id, user_id, organization_id)
-            if not await AgentGraph.prisma(tx).count(where=where):
+            versions = [
+                graph.version
+                for graph in await AgentGraph.prisma(tx).find_many(where=where)
+            ]
+            if not versions:
                 return 0
+            # Only rows on the versions being deleted: versions saved under
+            # another org stay, and so do their presets and library entries.
+            version_filter: dict = {
+                "agentGraphId": graph_id,
+                "agentGraphVersion": {"in": versions},
+                "userId": user_id,
+            }
             # A preset's saved inputs only lose their link (ON DELETE SET
             # NULL), so they go explicitly, as in update_preset.
             await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
-                where={
-                    "AgentPreset": {"is": {"agentGraphId": graph_id, "userId": user_id}}
-                }
+                where={"AgentPreset": {"is": version_filter}}
             )
-            await AgentPreset.prisma(tx).delete_many(
-                where={"agentGraphId": graph_id, "userId": user_id}
-            )
-            await LibraryAgent.prisma(tx).delete_many(
-                where={"agentGraphId": graph_id, "userId": user_id}
-            )
+            await AgentPreset.prisma(tx).delete_many(where=version_filter)
+            await LibraryAgent.prisma(tx).delete_many(where=version_filter)
             return await delete_graph(graph_id, user_id, organization_id, tx=tx)
     except ForeignKeyViolationError as e:
         # Backstop: a reference created after the check (e.g. a concurrent

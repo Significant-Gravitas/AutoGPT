@@ -120,6 +120,53 @@ async def test_delete_created_graph(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_delete_graph_keeps_versions_saved_under_another_org(
+    server: SpinTestServer,
+):
+    created = await _create_graph(server)
+    # The owner saved a later version while another org was active.
+    other_org_version = await prisma.models.AgentGraph.prisma().create(
+        data={
+            "id": created.id,
+            "version": created.version + 1,
+            "name": created.name,
+            "isActive": False,
+            "userId": DEFAULT_USER_ID,
+            "organizationId": f"other-org-{uuid4()}",
+        }
+    )
+    other_org_preset = await prisma.models.AgentPreset.prisma().create(
+        data={
+            "name": "Other org preset",
+            "description": "",
+            "userId": DEFAULT_USER_ID,
+            "agentGraphId": created.id,
+            "agentGraphVersion": other_org_version.version,
+        }
+    )
+
+    try:
+        result = await server.agent_server.test_delete_graph(
+            created.id, DEFAULT_USER_ID
+        )
+
+        assert result == {"version_counts": 1}
+        assert (
+            await prisma.models.AgentGraph.prisma().count(where={"id": created.id}) == 1
+        )
+        assert await prisma.models.AgentPreset.prisma().find_unique(
+            where={"id": other_org_preset.id}
+        )
+    finally:
+        await prisma.models.AgentPreset.prisma().delete_many(
+            where={"id": other_org_preset.id}
+        )
+        await prisma.models.AgentGraph.prisma().delete_many(
+            where={"id": created.id, "version": other_org_version.version}
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_delete_graph_after_library_soft_delete(server: SpinTestServer):
     created = await _create_graph(server)
     library_agent = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
