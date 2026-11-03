@@ -289,15 +289,11 @@ def _config() -> ChatConfig:
     cli = _resolve_cli_path()
     return sdk_service.config.model_copy(
         update={
-            "use_local": False,
-            "use_claude_code_subscription": False,
             "use_e2b_sandbox": False,
-            "use_openrouter": False,
-            "api_key": "sk-ant-chat-text-e2e",
-            "claude_agent_model": SONNET,
-            "claude_agent_fallback_model": None,
+            "platform_route": "direct_anthropic",
+            "anthropic_api_key": "sk-ant-chat-text-e2e",
+            "standard_model": SONNET,
             "claude_agent_cli_path": str(cli) if cli else None,
-            "claude_agent_use_resume": True,
         }
     )
 

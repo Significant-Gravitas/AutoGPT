@@ -15,11 +15,14 @@ from pydantic import BaseModel
 from backend.copilot import usage_activation_fixtures
 from backend.copilot.config import ChatConfig
 from backend.copilot.dream import batch_callbacks, orchestrator
-from backend.copilot.dream.llm import (
-    NO_PLATFORM_API,
-    DreamLLMError,
-    structured_completion,
+from backend.copilot.inference.complete import structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceJob,
+    InferenceScope,
 )
+from backend.copilot.inference.routing import NO_PLATFORM_API, resolve_route
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
 from backend.executor import batch_executor
 
@@ -39,6 +42,19 @@ _MESSAGES = [{"role": "user", "content": "answer"}]
 
 class _Answer(BaseModel):
     ok: bool
+
+
+async def _complete(*, model: str, messages, response_model):
+    scope = InferenceScope(user_id="user-1")
+    job = InferenceJob(
+        kind="dream",
+        correlation_id="background-dispatch-test",
+        latency_class="bounded",
+        tier="standard",
+        pinned_model=model,
+    )
+    ctx = InferenceContext(scope=scope, job=job, route=resolve_route(scope, job))
+    return await structured_complete(ctx, messages, response_model)
 
 
 @pytest.fixture(autouse=True)
@@ -127,7 +143,7 @@ async def test_openrouter_calls_go_to_the_routes_url_with_its_key(
                 openrouter_base_url=f"http://127.0.0.1:{port}/custom/api",
             ),
         )
-        result = await structured_completion(
+        result = await _complete(
             model="anthropic/claude-sonnet-5-5",
             messages=_MESSAGES,
             response_model=_Answer,
@@ -165,7 +181,7 @@ async def test_direct_calls_go_to_the_routes_url_with_its_key_and_native_names(
                 anthropic_base_url=f"http://127.0.0.1:{port}/proxy",
             ),
         )
-        result = await structured_completion(
+        result = await _complete(
             model="anthropic/claude-sonnet-5-5",
             messages=_MESSAGES,
             response_model=_Answer,
@@ -225,7 +241,7 @@ async def test_direct_sends_and_attributes_the_tiers_in_native_spelling(
     cfg = _direct(**overrides)
     _use(monkeypatch, cfg)
     dispatch = mocker.patch(
-        "backend.copilot.dream.llm.call_provider",
+        "backend.copilot.inference.complete.call_provider",
         new=AsyncMock(
             return_value=ProviderResponse(
                 content='{"ok": true}', prompt_tokens=1, completion_tokens=1
@@ -233,7 +249,7 @@ async def test_direct_sends_and_attributes_the_tiers_in_native_spelling(
         ),
     )
 
-    result = await structured_completion(
+    result = await _complete(
         model=cfg.job_tier_model(tier), messages=_MESSAGES, response_model=_Answer
     )
 
@@ -247,10 +263,12 @@ async def test_direct_refuses_another_vendors_model_before_any_call(
     monkeypatch, mocker
 ):
     _use(monkeypatch, _direct())
-    dispatch = mocker.patch("backend.copilot.dream.llm.call_provider", new=AsyncMock())
+    dispatch = mocker.patch(
+        "backend.copilot.inference.complete.call_provider", new=AsyncMock()
+    )
 
-    with pytest.raises(DreamLLMError, match="serves Anthropic models only"):
-        await structured_completion(
+    with pytest.raises(InferenceError, match="requires an Anthropic model"):
+        await _complete(
             model="openai/gpt-5.4-mini", messages=_MESSAGES, response_model=_Answer
         )
     dispatch.assert_not_awaited()
@@ -269,7 +287,7 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
     assert cfg.platform_route == "subscription"
     _use(monkeypatch, cfg)
     sync_dispatch = mocker.patch(
-        "backend.copilot.dream.llm.call_provider", new=AsyncMock()
+        "backend.copilot.inference.complete.call_provider", new=AsyncMock()
     )
     batch_dispatch = mocker.patch(
         "backend.copilot.dream.batch_submit.call_provider", new=AsyncMock()
@@ -288,8 +306,8 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
     assert result.skipped is True
     assert result.skip_reason == "no_platform_api"
 
-    with pytest.raises(DreamLLMError) as raised:
-        await structured_completion(
+    with pytest.raises(InferenceError) as raised:
+        await _complete(
             model=cfg.job_tier_model("standard"),
             messages=_MESSAGES,
             response_model=_Answer,
@@ -300,7 +318,7 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
     assert routing.provider is None and routing.api_key == ""
     assert cfg.batch_anthropic_api_key is None
     assert batch_executor._default_api_key_for("anthropic") is None
-    assert batch_callbacks._anthropic_api_key() is None
+    assert batch_callbacks.anthropic_api_key() is None
     sync_dispatch.assert_not_awaited()
     batch_dispatch.assert_not_awaited()
 

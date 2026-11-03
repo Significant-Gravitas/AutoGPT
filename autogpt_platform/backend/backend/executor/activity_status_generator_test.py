@@ -1229,7 +1229,6 @@ async def test_the_status_runs_on_the_platform_routes_model(
             execution_stats=mock_execution_stats,
             db_client=db_client,
             user_id="u",
-            skip_feature_flag=True,
         )
 
     assert result == {"activity_status": "Done.", "correctness_score": 1.0}
@@ -1255,6 +1254,5 @@ async def test_no_status_on_a_route_without_an_api(mock_execution_stats):
             execution_stats=mock_execution_stats,
             db_client=AsyncMock(),
             user_id="u",
-            skip_feature_flag=True,
         )
     assert result is None

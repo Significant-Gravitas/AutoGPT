@@ -77,7 +77,6 @@ META_KEY_REQUIRED_SCOPES = "required_scopes"
 # out of the external surface unnoticed.
 EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     # Copilot-UI or chat-session-only behaviour
-    "TodoWrite": "drives the copilot task checklist UI",
     "add_understanding": "copilot's own memory of the user",
     "ask_question": "needs an interactive chat turn to answer",
     "decompose_goal": "renders a plan card in the copilot UI",
@@ -453,7 +452,7 @@ def _create_tool_handler(
         )
         # Tools read the turn, not the origin: without this a missing credential
         # comes back as a setup card, and an ambiguous one as a question.
-        set_turn_unattended(session, scheduled=False)
+        set_turn_unattended(True)
 
         try:
             result = await _execute_tool_sync(tool, user_id, session, kwargs)

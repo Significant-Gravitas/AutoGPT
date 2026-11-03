@@ -166,7 +166,7 @@ SANITIZE_MAX_TOKENS = 16384
 #
 # Recombine (the advanced tier, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
-# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# on the standard tier model: 480s covers 16384 at ~34 tok/s.
 # Consolidate's 240s covers its whole 16384 at ~68 tok/s, and a thinking
 # answer the size measured above (5,912 tokens) at ~25 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240

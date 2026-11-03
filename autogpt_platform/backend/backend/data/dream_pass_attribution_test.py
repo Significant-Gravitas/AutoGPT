@@ -51,9 +51,10 @@ from backend.util.llm.providers import BatchResultRow, BatchSubmissionRef
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 _CONFIG = ChatConfig(
-    fast_standard_model="anthropic/claude-sonnet-5",
-    fast_advanced_model="anthropic/claude-opus-5",
-    direct_anthropic_api_key="test-key",
+    standard_model="anthropic/claude-sonnet-5",
+    advanced_model="anthropic/claude-opus-5",
+    platform_route="direct_anthropic",
+    anthropic_api_key="test-key",
 )
 _OUTPUTS = {
     "consolidate": {"facts": [{"content": "A likes B", "confidence": 0.8}]},

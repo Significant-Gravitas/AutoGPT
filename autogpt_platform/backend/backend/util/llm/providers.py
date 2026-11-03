@@ -36,6 +36,7 @@ import binascii
 import functools
 import json as json_module
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -384,12 +385,15 @@ _ANTHROPIC_API_ROOT = "https://api.anthropic.com"
 
 
 def _anthropic_client(api_key: str, base_url: str | None = None) -> Any:
-    """An Anthropic client on *api_key* alone, sent to *base_url* or
-    Anthropic's own API. Left to itself the SDK also takes a bearer from
-    ``ANTHROPIC_AUTH_TOKEN`` and its URL from ``ANTHROPIC_BASE_URL`` in the
-    process environment."""
+    """An Anthropic client on *api_key* alone. An explicit route URL wins;
+    block calls without one retain the deployment's Anthropic endpoint."""
+    endpoint = (
+        base_url
+        if base_url is not None
+        else os.environ.get("ANTHROPIC_BASE_URL", _ANTHROPIC_API_ROOT)
+    )
     client = anthropic.AsyncAnthropic(
-        api_key=api_key, base_url=base_url or _ANTHROPIC_API_ROOT
+        api_key=api_key, base_url=endpoint or _ANTHROPIC_API_ROOT
     )
     client.auth_token = None
     return client

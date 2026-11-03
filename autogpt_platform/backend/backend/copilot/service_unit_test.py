@@ -736,7 +736,7 @@ class TestGenerateSessionTitle:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=True,
-                    title_model="anthropic/claude-haiku",
+                    aux_model="anthropic/claude-haiku",
                 ),
             ),
         ):
@@ -766,7 +766,7 @@ class TestGenerateSessionTitle:
                 MagicMock(
                     aux_uses_openrouter=False,
                     aux_provider_label="anthropic",
-                    title_model="anthropic/claude-haiku-4.5",
+                    aux_model="anthropic/claude-haiku-4.5",
                 ),
             ),
         ):

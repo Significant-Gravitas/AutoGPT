@@ -294,30 +294,21 @@ async def dev_spawned_env(
 
 
 def dev_config(**settings) -> ChatConfig:
-    subscription_route = settings.get("use_claude_code_subscription", False)
-    route = (
-        "subscription"
-        if subscription_route
-        else (
-            "openrouter"
-            if settings.get("use_openrouter", False)
-            else "direct_anthropic"
-        )
-    )
     return ChatConfig(
-        platform_route=route,
-        openrouter_api_key=settings.get("api_key", DEV_ROUTE_KEY),
-        openrouter_base_url=settings.get("base_url", "https://openrouter.ai/api"),
-        anthropic_api_key=DEV_DEPLOYMENT_KEY,
+        **{
+            "platform_route": "direct_anthropic",
+            "anthropic_api_key": DEV_DEPLOYMENT_KEY,
+            **settings,
+        }
     )
 
 
 DEV_LAUNCHES = {
     "openrouter": (
         {
-            "use_openrouter": True,
-            "api_key": DEV_ROUTE_KEY,
-            "base_url": "https://openrouter.ai/api/v1",
+            "platform_route": "openrouter",
+            "openrouter_api_key": DEV_ROUTE_KEY,
+            "openrouter_base_url": "https://openrouter.ai/api/v1",
         },
         {},
         "ANTHROPIC_AUTH_TOKEN",
@@ -325,7 +316,7 @@ DEV_LAUNCHES = {
     ),
     "direct_anthropic": ({}, {}, "ANTHROPIC_API_KEY", DEV_DEPLOYMENT_KEY),
     "subscription": (
-        {"use_claude_code_subscription": True},
+        {"platform_route": "subscription"},
         {},
         "CLAUDE_CODE_OAUTH_TOKEN",
         DEV_HOST_LOGIN,
@@ -390,11 +381,10 @@ async def test_dev_an_orchestrator_launch_keeps_only_the_users_key_and_the_runti
 
 
 @pytest.mark.asyncio
-async def test_dev_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_reached(
+async def test_dev_an_orchestrator_launch_keeps_the_users_key_on_anthropic(
     dev_parent: None, monkeypatch: pytest.MonkeyPatch
 ):
-    """A base URL the deployment points Anthropic traffic at still applies,
-    without a password embedded in it or the deployment's auth token."""
+    """A user-key CLI launch keeps no endpoint or token from the deployment."""
     monkeypatch.setenv(
         "ANTHROPIC_BASE_URL",
         "https://svc:FAKE-gateway-password@anthropic-proxy.example:8443/v",
@@ -402,7 +392,7 @@ async def test_dev_an_orchestrator_launch_sends_the_users_key_where_anthropic_is
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-deployment-bearer")
     options = await dev_orchestrator_launch("anthropic")
     spawned = await dev_spawned_env(monkeypatch, options)
-    assert spawned["ANTHROPIC_BASE_URL"] == "https://anthropic-proxy.example:8443/v"
+    assert spawned["ANTHROPIC_BASE_URL"] == ""
     assert spawned["ANTHROPIC_API_KEY"] == DEV_ROUTE_KEY
     assert spawned["ANTHROPIC_AUTH_TOKEN"] == ""
     assert not any(("FAKE-gateway-password" in value for value in spawned.values()))

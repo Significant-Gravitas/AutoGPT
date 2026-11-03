@@ -23,7 +23,7 @@ import { loadRecordedTurn } from "./recordedTurns";
 // The real SDK, so each report is normalised as Sentry stores it: arrays nested
 // past `normalizeDepth` (3) arrive as "[Array]".
 const events: Sentry.ErrorEvent[] = [];
-const toolTurn = loadRecordedTurn("baseline-tool-turn");
+const toolTurn = loadRecordedTurn("sdk-tool-turn");
 const SECOND_TEXT = "It says Example Domain.";
 
 beforeAll(() => {

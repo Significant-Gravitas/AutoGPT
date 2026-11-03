@@ -91,3 +91,40 @@ async def test_shared_codex_gateway_reports_unreadable_images_before_the_upstrea
                     assert response.status == 400
                     assert "Image not shown" in await response.text()
     assert calls == []
+
+
+@pytest.mark.parametrize("messages", [None, {}, "hello", 42])
+async def test_shared_codex_gateway_rejects_nonarray_messages_before_the_upstream(
+    messages,
+):
+    import httpx
+    from aiohttp import ClientSession
+
+    from backend.copilot.sdk.model_gateway.adapters.codex_responses import (
+        CodexResponses,
+    )
+    from backend.copilot.sdk.model_gateway.front import ModelGateway
+    from backend.copilot.sdk.model_gateway.testing.codex_lease import codex_route
+
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(500)
+
+    route = codex_route("gpt-5.6-sol")
+    async with httpx.AsyncClient(
+        base_url="https://codex.test", transport=httpx.MockTransport(respond)
+    ) as client:
+        async with ModelGateway(
+            route, upstream=CodexResponses(route, client=client)
+        ) as gateway:
+            async with ClientSession() as incoming:
+                async with incoming.post(
+                    f"{gateway.base_url}/v1/messages",
+                    json={"messages": messages},
+                    headers={"x-api-key": gateway.auth_token},
+                ) as response:
+                    assert response.status == 400
+                    assert "messages must be an array" in await response.text()
+    assert calls == []

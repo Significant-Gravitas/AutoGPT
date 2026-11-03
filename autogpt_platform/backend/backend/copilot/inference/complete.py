@@ -121,6 +121,7 @@ async def _call_provider_sync(
             # ``call_provider`` only reads ``ollama_host`` for
             # ``provider="ollama"``, so passing it on cloud routes is harmless.
             ollama_host=_normalize_ollama_host(platform.base_url),
+            base_url=platform.base_url if ctx.route.provider != "ollama" else None,
         )
 
     try:
@@ -201,9 +202,9 @@ def _uncached_input_tokens(
 
 
 def _normalize_ollama_host(base_url: str | None) -> str:
-    """Turn ``CHAT_BASE_URL`` into the host string ollama.AsyncClient wants.
+    """Turn ``CHAT_LOCAL_BASE_URL`` into the host string ollama.AsyncClient wants.
 
-    ``CHAT_BASE_URL`` for local installs points at the OpenAI-compat surface
+    ``CHAT_LOCAL_BASE_URL`` for local installs points at the OpenAI-compat surface
     (``http://localhost:11434/v1``); Ollama's native client takes the raw host
     and would POST to ``/v1/api/generate`` and 404 with the path left on. So
     path, query and fragment go, leaving ``http://localhost:11434``. With no

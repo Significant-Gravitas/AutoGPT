@@ -33,7 +33,7 @@ async def test_sdk_matching_survives_resume_disabled_and_context_retry(
             [("user", "Earlier"), ("assistant", "Ready")]
         ),
         compacted_transcript=None,
-        client_side_effect=_sdk_client_factory(queries, retry),
+        client_side_effect=_sdk_client_factory(queries, retry, resume),
     )
     with ExitStack() as stack:
         for target, kwargs in patches:
@@ -70,10 +70,12 @@ def _sdk_session() -> ChatSession:
     return session
 
 
-def _sdk_client_factory(queries: list[str], retry: bool):
+def _sdk_client_factory(queries: list[str], retry: bool, resume: bool):
     harness = _SdkHarness()
 
     def client_factory(*args, **kwargs):
+        if not queries:
+            assert bool(kwargs["options"].resume) is resume
         client = harness._make_client_mock(
             result_message=harness._make_result_message()
         )
@@ -90,9 +92,16 @@ def _sdk_client_factory(queries: list[str], retry: bool):
 
 
 def _patch_sdk_context(stack: ExitStack, resume: bool) -> None:
-    stack.enter_context(
-        patch.object(sdk_service.config, "claude_agent_use_resume", resume)
-    )
+    if resume:
+        stack.enter_context(
+            patch.object(sdk_service, "_write_cli_session_to_disk", return_value=True)
+        )
+    else:
+        stack.enter_context(
+            patch.object(
+                sdk_service, "download_transcript", AsyncMock(return_value=None)
+            )
+        )
     held_statuses = MagicMock()
     held_statuses.__aiter__.return_value = []
     stack.enter_context(

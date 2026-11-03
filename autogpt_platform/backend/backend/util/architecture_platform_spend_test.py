@@ -38,18 +38,14 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "copilot/learning/reviewer.py _review_context": _DREAM_BUDGET,
     "copilot/tools/consult_teammate.py _complete": _CHECKS_ALLOWANCE,
     "copilot/tools/web_search.py WebSearchTool._execute": _CHECKS_ALLOWANCE,
+    "copilot/tools/web_search.py WebSearchTool.is_available": "credential availability only; no model request",
     "data/tally.py extract_business_understanding": _OUTSIDE_TURNS,
     "executor/activity_status_generator.py "
     "generate_activity_status_for_execution": _OUTSIDE_TURNS,
     "executor/simulator.py _call_llm_for_simulation": _CHECKS_ALLOWANCE,
-    "util/clients.py _get_local_openai_client": "the client factory itself",
 }
 
-_RAW_TURN_PUBLISHES = {
-    "blocks/autopilot.py _enqueue_for_recovery": (
-        "re-publishes a turn whose slot was taken when it was first dispatched"
-    ),
-}
+_RAW_TURN_PUBLISHES: dict[str, str] = {}
 
 _CHAT_CONFIG_KEY = re.compile(r"(?:_chat_config|chat_config|chat_cfg)\.api_key")
 
@@ -137,7 +133,7 @@ def _calls_by_function(path) -> dict[str, set[str]]:
 
 def _is_platform_key_model_call(call: ast.Call) -> bool:
     name = _call_name(call)
-    if name == "resolve_route":
+    if name in {"resolve_route", "_platform_client", "_openrouter_credentials"}:
         return True
     keywords = {k.arg: k.value for k in call.keywords}
     if name == "get_openai_client":

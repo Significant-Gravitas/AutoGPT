@@ -339,8 +339,8 @@ def test_sdk_exposes_max_thinking_tokens_option():
     sig = inspect.signature(ClaudeAgentOptions)
     assert "max_thinking_tokens" in sig.parameters, (
         "ClaudeAgentOptions no longer accepts `max_thinking_tokens` — our "
-        "claude_agent_max_thinking_tokens cost cap would be silently ignored, "
+        "route profile thinking_budget cost cap would be silently ignored, "
         "allowing Opus extended thinking to generate unbounded tokens at $75/M. "
         "Find the correct parameter name in the new SDK version and update "
-        "ChatConfig.claude_agent_max_thinking_tokens and service.py accordingly."
+        "RouteProfile.thinking_budget and service.py accordingly."
     )

@@ -29,7 +29,7 @@ class RecordingResponse(web.StreamResponse):
             self._disconnected = True
             return None
 
-    async def write(self, data: bytes) -> None:
+    async def write(self, data: bytes | bytearray | memoryview) -> None:
         if self.recording is not None:
             if len(self.recording) + len(data) <= MAX_REPLAY_BYTES:
                 self.recording.extend(data)

@@ -328,8 +328,8 @@ class TestPrepareDryRun:
     def test_orchestrator_loop_until_finished_takes_the_cap(self) -> None:
         block = OrchestratorBlock()
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
-            return_value="sk-or-test-key",
+            "backend.executor.simulator._platform_dry_run_key",
+            return_value=("open_router", "sk-or-test-key"),
         ):
             result = prepare_dry_run(block, {"agent_mode_max_iterations": -1})
         assert result is not None
@@ -855,7 +855,7 @@ class TestSimulatorCostTracking:
     async def test_a_spent_allowance_never_calls_the_model(self, spend_refusal) -> None:
         spend_refusal.return_value = "You've reached your daily usage limit."
         get_client = MagicMock()
-        with patch("backend.executor.simulator.get_openai_client", get_client):
+        with patch("backend.executor.simulator._platform_client", get_client):
             outputs = [
                 item
                 async for item in simulate_block(
@@ -874,7 +874,7 @@ class TestSimulatorCostTracking:
             _sim_completion(content="not json", usage=_sim_usage(cost=0.0001))
         )
         with (
-            patch("backend.executor.simulator.get_openai_client", return_value=client),
+            patch("backend.executor.simulator._platform_client", return_value=client),
             patch(
                 "backend.executor.simulator.persist_and_record_usage",
                 new=AsyncMock(return_value=1),

@@ -126,7 +126,7 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
         # Otto turn carries, so leaving it out here would make this check pass
         # while production and the harness disagreed.
         blocks = [
-            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED),
+            render_team_context(roster),
             render_account_standing_work_block(),
         ]
     else:
@@ -139,7 +139,6 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
             render_expert_computer_block(),
             render_team_context(
                 roster,
-                delegation_enabled=DELEGATION_ENABLED,
                 exclude_expert_id=expert.id,
             ),
         ]

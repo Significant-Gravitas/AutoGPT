@@ -2404,7 +2404,7 @@ def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
         return_value="anthropic_batch",
     )
     config = MagicMock()
-    config.direct_anthropic_api_key = "key"
+    config.batch_anthropic_api_key = "key"
     mocker.patch.object(orchestrator_mod, "ChatConfig", return_value=config)
     handle = MagicMock()
     handle.token = "tok"

@@ -2,9 +2,8 @@
 
 The delegation contract: the route's provider and model with the platform's
 key, JSON mode, the job's timeout, and which failures carry billed usage.
-Moved here with the call from ``dream/llm.py``; the parse helpers' own tests
-stay in ``dream/llm_test.py``. The native Anthropic path is in
-``complete_anthropic_test.py`` and its forced-tool retry in
+Parsing recovery is covered in ``parse_output_test.py``. The native Anthropic
+path is in ``complete_anthropic_test.py`` and its forced-tool retry in
 ``complete_retry_test.py``.
 """
 
@@ -164,7 +163,7 @@ class TestDelegation:
     @pytest.mark.asyncio
     async def test_routes_to_ollama_with_the_raw_host(self):
         """Local: ``provider="ollama"`` with ``ollama_host`` from
-        ``CHAT_BASE_URL`` minus the OpenAI-compat ``/v1``."""
+        ``CHAT_LOCAL_BASE_URL`` minus the OpenAI-compat ``/v1``."""
         call_provider = AsyncMock(
             return_value=ProviderResponse(
                 content='{"facts": [{"content": "y", "confidence": 0.5}]}',

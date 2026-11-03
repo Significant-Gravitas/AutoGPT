@@ -56,7 +56,7 @@ def resolve_route(
     before anything about its models.
     """
     transport = routing_kwargs_for_chat_transport()
-    _require_platform_key(transport)
+    provider = _require_platform_key(transport)
     if job.pinned_model:
         model, source = job.pinned_model, "the job's pinned model"
     else:
@@ -65,8 +65,8 @@ def resolve_route(
     return RouteDecision(
         engine="provider_sync",
         auth_provider="platform",
-        provider=transport.provider,
-        model=_dispatch_model(transport.provider, model),
+        provider=provider,
+        model=_dispatch_model(provider, model),
         payer="local" if transport.provider == "ollama" else "platform_allowance",
         execution_path="sync_baseline",
         cost_log_provider=transport.cost_log_provider,
@@ -106,13 +106,14 @@ def platform_credentials(route: RouteDecision) -> ProviderRoutingKwargs:
     return transport
 
 
-def _require_platform_key(transport: ProviderRoutingKwargs) -> None:
+def _require_platform_key(transport: ProviderRoutingKwargs) -> ProviderLiteral:
     """Refuse a transport the platform has no key for; a local backend takes
     none."""
     if transport.provider is None:
         raise InferenceError(NO_PLATFORM_API)
     if not transport.api_key and transport.provider != "ollama":
         raise InferenceError(_missing_api_key_message(transport.provider))
+    return transport.provider
 
 
 def _tier_model(config: ChatConfig, tier: InferenceTier) -> str:

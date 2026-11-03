@@ -112,7 +112,7 @@ async def test_images_go_to_the_judge_as_images():
 
 @pytest.mark.parametrize("item", _CORPUS["items"], ids=lambda i: i["id"])
 async def test_corpus_replays_its_recorded_verdict(item):
-    """Each item's answer as recorded from ``gate_content_model``; the label is the truth.
+    """Each item's answer as recorded from the auxiliary model; the label is the truth.
 
     A recorded answer that disagrees with its label is a measured miss or
     false hold, kept as an xfail so re-recording on a better model flips it.

@@ -1242,7 +1242,7 @@ class TestOllamaTrustedHosts:
     """SSRF trust list for the Ollama dispatch. The host can be
     user-supplied (block input field) so it must be validated — but the
     allowlist has to include BOTH operator-set endpoints: the block
-    layer's ``Config.ollama_host`` AND the copilot ``CHAT_BASE_URL``
+    layer's ``Config.ollama_host`` AND the copilot ``CHAT_LOCAL_BASE_URL``
     the dream pass routes through on the local transport. Trusting only
     the former made every local dream phase fail with a misleading
     'blocked IP' error whenever the two were configured differently."""
@@ -1316,7 +1316,7 @@ class TestOllamaTrustedHosts:
     @pytest.mark.asyncio
     async def test_lan_host_matching_chat_base_url_passes_real_ssrf_check(self):
         """Regression for the local dream-pass failure: operator points
-        ``CHAT_BASE_URL`` at a LAN GPU box (private IP) while the block
+        ``CHAT_LOCAL_BASE_URL`` at a LAN GPU box (private IP) while the block
         layer's ``ollama_host`` stays at its localhost default. The real
         ``validate_url_host`` must accept the host via the trust match
         instead of rejecting the private IP."""
@@ -1385,7 +1385,7 @@ class TestOllamaTrustedHosts:
         """A transient ``ChatConfig`` construction failure degrades that
         one dispatch to the block-layer trust list, but must not be
         memoized — once the config is fixed, the next dispatch picks up
-        ``CHAT_BASE_URL`` again."""
+        ``CHAT_LOCAL_BASE_URL`` again."""
         from backend.util.llm.providers import settings
 
         captured: dict = {}
@@ -3241,3 +3241,49 @@ class TestForcedToolChoiceCapability:
         )
         assert not is_forced_tool_choice_rejection(server_error)
         assert not is_forced_tool_choice_rejection(RuntimeError(text))
+
+
+@pytest.mark.asyncio
+async def test_native_block_calls_use_the_deployment_anthropic_endpoint(monkeypatch):
+    seen = []
+
+    async def handle(request):
+        seen.append(
+            {
+                "key": request.headers.get("x-api-key"),
+                "authorization": request.headers.get("authorization"),
+                "body": await request.json(),
+            }
+        )
+        return web.json_response(
+            {
+                "id": "msg-block-route",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5-5",
+                "content": [{"type": "text", "text": "hello"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 19, "output_tokens": 3},
+            }
+        )
+
+    app = web.Application()
+    app.router.add_post("/proxy/v1/messages", handle)
+    async with TestServer(app) as server:
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", str(server.make_url("/proxy")))
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-parent-login")
+        result = await call_provider(
+            provider="anthropic",
+            api_key="FAKE-block-key",
+            model="claude-sonnet-5-5",
+            messages=[{"role": "user", "content": "greet"}],
+            max_tokens=100,
+        )
+    assert isinstance(result, ProviderResponse)
+    assert result.content == "hello"
+    assert (result.prompt_tokens, result.completion_tokens) == (19, 3)
+    assert len(seen) == 1
+    assert seen[0]["key"] == "FAKE-block-key"
+    assert seen[0]["authorization"] is None
+    assert seen[0]["body"]["messages"] == [{"role": "user", "content": "greet"}]

@@ -80,8 +80,13 @@ class CodexResponses(Upstream):
         self.reported_usage = GatewayUsage()
 
     async def stream(self, body: Event) -> AsyncGenerator[StreamItem, None]:
+        messages = body.get("messages")
+        if not isinstance(messages, list):
+            raise GatewayError(
+                400, "invalid_request_error", "messages must be an array"
+            )
         try:
-            for message in body.get("messages") or []:
+            for message in messages:
                 if isinstance(message, dict):
                     _validate_image_content(message.get("content"))
         except ValueError as exc:

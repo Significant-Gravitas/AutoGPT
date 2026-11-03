@@ -1,6 +1,6 @@
 """Expert routing and model-tier checks for bot chat turns."""
 
-from contextlib import ExitStack, asynccontextmanager
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -205,25 +205,17 @@ def _turn_patches(stack: ExitStack, *, cached, created, experts_db, entitled=Tru
         )
     )
     stack.enter_context(
-        patch(
-            f"{CHAT}.append_and_save_message", new=AsyncMock(return_value=MagicMock())
-        )
-    )
-    stack.enter_context(
         patch(f"{CHAT}.count_inflight_turns", new=AsyncMock(return_value=0))
     )
-    stack.enter_context(patch(f"{CHAT}.acquire_turn_slot", new=_granted_slot))
-    enqueue = stack.enter_context(patch(f"{CHAT}.dispatch_turn", new=AsyncMock()))
+    stack.enter_context(patch(f"{CHAT}.check_inflight_cap", new=AsyncMock()))
+    enqueue = stack.enter_context(
+        patch(f"{CHAT}.schedule_chat_turn", new=AsyncMock(return_value="turn-1"))
+    )
     stack.enter_context(patch(f"{EXPERTS}.experts_db", return_value=experts_db))
     stack.enter_context(
         patch(f"{EXPERTS}.advanced_tier_entitled", new=AsyncMock(return_value=entitled))
     )
     return create, enqueue
-
-
-@asynccontextmanager
-async def _granted_slot(_user_id, _session_id, capacity=None):
-    yield MagicMock()
 
 
 def _req(**kw) -> BotChatRequest:
