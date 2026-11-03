@@ -357,11 +357,13 @@ async def _resume(
     and find their answers."""
     try:
         assert graph_id and graph_version is not None
-        user = await get_user_by_id(user_id)
-        settings = await get_graph_settings(
-            user_id=user_id, graph_id=graph_id, graph_version=graph_version
+        user, settings, workspace = await asyncio.gather(
+            get_user_by_id(user_id),
+            get_graph_settings(
+                user_id=user_id, graph_id=graph_id, graph_version=graph_version
+            ),
+            get_or_create_workspace(user_id),
         )
-        workspace = await get_or_create_workspace(user_id)
         await add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
