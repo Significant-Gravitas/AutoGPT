@@ -1243,3 +1243,25 @@ async def test_command_env_merged_with_baseline(tmp_path: Path) -> None:
     assert "PYTHONIOENCODING" in env
     # PATH (or equivalent) is preserved from the baseline on every OS.
     assert any(k.upper() == "PATH" for k in env)
+
+
+@pytest.mark.asyncio
+async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("[remote]")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print()")
+    (tmp_path / "src" / ".env").write_text("TOKEN=x")
+
+    response = await FileHandler(make_config(tmp_path)).handle_list(
+        FileListMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileListPayload(path=str(tmp_path), recursive=True, include_hidden=False),
+        )
+    )
+
+    assert isinstance(response, FileListResponseMessage)
+    assert sorted(entry.name for entry in response.payload.entries) == ["app.py", "src"]

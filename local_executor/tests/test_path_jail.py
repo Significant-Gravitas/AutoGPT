@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import pytest
 
-import autogpt_local_executor.path_jail as path_jail_module
 from autogpt_local_executor.path_jail import (
     PathJailError,
     assert_inside_jail,
@@ -21,27 +20,20 @@ from autogpt_local_executor.path_jail import (
 
 
 def test_a_path_outside_the_root_leaves_no_trace_outside_it(tmp_path: Path) -> None:
-    """Probing case sensitivity creates and deletes a file in the probed
-    directory, so only the root may be probed. Probing the requested path's
-    own directory would write wherever a rejected path points."""
+    """The check only reads: it never writes into a refused path's directory,
+    nor into the root."""
     root = tmp_path / "root"
     root.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
-    probed: list[str] = []
 
-    def probe(path: str | os.PathLike[str]) -> bool:
-        probed.append(os.path.realpath(str(path)))
-        return False
-
-    with patch("autogpt_local_executor.path_jail.is_case_insensitive_fs", probe):
-        with pytest.raises(PathJailError) as exc:
-            assert_inside_jail(outside / "secret.txt", root)
+    with pytest.raises(PathJailError) as exc:
+        assert_inside_jail(outside / "secret.txt", root)
+    assert_inside_jail(root / "notes.txt", root)
 
     assert exc.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
-    real_root = os.path.realpath(str(root))
-    assert probed and all(path == real_root for path in probed)
     assert list(outside.iterdir()) == []
+    assert list(root.iterdir()) == []
 
 
 def test_allows_file_inside_root(tmp_path: Path) -> None:
@@ -104,18 +96,38 @@ def test_allows_uppercased_on_case_insensitive_fs(tmp_path: Path) -> None:
     assert_inside_jail(nested, upper_root)
 
 
-def test_case_differences_are_folded_when_the_root_fs_ignores_case(
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory modes")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes")
+def test_a_case_variant_sibling_of_a_read_only_root_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """os.path.normcase changes nothing on macOS, so case must be folded
-    explicitly. Linux filesystems are case-sensitive, so the probe is forced."""
-    root = tmp_path / "Work"
+    """Where directories are case-sensitive, `WS` beside a root `Ws` is another
+    directory. A case probe that cannot write into a read-only root must not
+    fall back to folding case, which would let `WS` in."""
+    root = tmp_path / "Ws"
     root.mkdir()
-    monkeypatch.setattr(path_jail_module, "is_case_insensitive_fs", lambda _path: True)
+    sibling = tmp_path / "WS"
+    try:
+        sibling.mkdir()
+    except FileExistsError:
+        pytest.skip("this filesystem ignores case, so WS and Ws are one directory")
+    (sibling / "secret.txt").write_text("not yours")
+    # macOS and Windows are where a failed probe used to assume insensitivity.
+    monkeypatch.setattr(sys, "platform", "darwin")
+    root.chmod(0o555)
+    try:
+        with pytest.raises(PathJailError):
+            assert_inside_jail(sibling / "secret.txt", root)
+    finally:
+        root.chmod(0o755)
 
-    assert_inside_jail(tmp_path / "WORK" / "notes.txt", root)
+
+def test_a_root_with_a_nul_byte_is_refused_rather_than_raising(tmp_path: Path) -> None:
+    bad_root = str(tmp_path) + "\x00evil"
+
+    assert is_inside_jail(tmp_path / "notes.txt", bad_root) is False
     with pytest.raises(PathJailError):
-        assert_inside_jail(tmp_path / "WORKSHOP" / "notes.txt", root)
+        assert_inside_jail(tmp_path / "notes.txt", bad_root)
 
 
 def test_blocks_prefix_lookalike_dir(tmp_path: Path) -> None:

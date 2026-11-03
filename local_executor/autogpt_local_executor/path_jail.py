@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path, PurePath
 from typing import BinaryIO
 
-from .platform_info import detect_platform, is_case_insensitive_fs
+from .platform_info import detect_platform
 
 # Windows reserved device names (case-insensitive, with or without extension).
 # Per docs/CROSS_PLATFORM.md → "Reserved filenames" row.
@@ -168,7 +168,7 @@ def assert_inside_jail(
     #    pathlib's resolve() can hang on broken symlinks on some FS.
     try:
         resolved = os.path.realpath(str(lex), strict=False)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
             f"Cannot resolve path {raw!r}: {exc}",
@@ -176,7 +176,7 @@ def assert_inside_jail(
 
     try:
         root_resolved = os.path.realpath(str(allowed_root), strict=True)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         # Treat a missing allowed_root as a config error, not a path error,
         # but still surface it via the jail interface so handlers don't crash.
         raise PathJailError(
@@ -184,30 +184,50 @@ def assert_inside_jail(
             f"allowed_root {str(allowed_root)!r} does not exist: {exc}",
         ) from exc
 
-    # 3. Canonical-form comparison, case-folded only when the root's FS is
-    #    case-insensitive. Only the root is probed: the probe creates and
-    #    deletes a file, and a path inside the root is on the root's FS.
-    #    Probing the requested path would write wherever a rejected path
-    #    points.
-    if is_case_insensitive_fs(root_resolved):
-        # normcase only folds case on Windows; macOS volumes need it too.
-        a = os.path.normcase(resolved).casefold()
-        b = os.path.normcase(root_resolved).casefold()
-    else:
-        a, b = resolved, root_resolved
+    # 3. Exact prefix with a path separator boundary, so /workspace doesn't
+    #    match /workspaceother.
+    if _has_prefix(resolved, root_resolved):
+        return Path(resolved)
 
-    # 4. Strict prefix with path separator boundary — append os.sep so that
-    #    /workspace doesn't match /workspaceother.
-    a_check = a if a.endswith(os.sep) else a + os.sep
-    b_check = b if b.endswith(os.sep) else b + os.sep
-
-    if a == b or a_check.startswith(b_check):
+    # 4. A case-insensitive filesystem can spell the root differently (macOS
+    #    realpath keeps the spelling it was given), so ask the filesystem
+    #    instead of folding case: the path is inside only if the root is one
+    #    of its existing ancestors. Folding strings would let a case-variant
+    #    sibling of the root (`WS` beside `Ws`) in wherever a directory on the
+    #    way is case-sensitive.
+    if _root_is_an_ancestor(resolved, root_resolved):
         return Path(resolved)
 
     raise PathJailError(
         "PATH_OUTSIDE_ALLOWED_ROOT",
         f"Path {raw!r} (resolved to {resolved!r}) is outside allowed_root {root_resolved!r}",
     )
+
+
+def _has_prefix(path: str, root: str) -> bool:
+    root_prefix = root if root.endswith(os.sep) else root + os.sep
+    return path == root or path.startswith(root_prefix)
+
+
+def _root_is_an_ancestor(path: str, root: str) -> bool:
+    """Whether `root` is `path` itself or one of its existing ancestors, by
+    device and inode, whatever case either is spelled in."""
+    try:
+        root_info = os.stat(root)
+    except (OSError, ValueError):
+        return False
+    if root_info.st_ino == 0:
+        # A filesystem without inode numbers can't establish identity.
+        return False
+    candidate = Path(path)
+    for ancestor in (candidate, *candidate.parents):
+        try:
+            info = os.stat(ancestor)
+        except (OSError, ValueError):
+            continue  # not created yet; keep walking up
+        if (info.st_dev, info.st_ino) == (root_info.st_dev, root_info.st_ino):
+            return True
+    return False
 
 
 def assert_entry_inside_jail(

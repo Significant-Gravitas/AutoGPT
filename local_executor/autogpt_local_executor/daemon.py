@@ -165,6 +165,11 @@ class CredentialBoundConnect(connect):
 
 
 logger = logging.getLogger(__name__)
+# websockets logs every handshake header at DEBUG, Authorization included.
+# Connections log through this logger, held at INFO, so a program that
+# imports the daemon and turns on DEBUG still never logs the bearer token.
+_websocket_logger = logging.getLogger(f"{__name__}.websocket")
+_websocket_logger.setLevel(logging.INFO)
 
 MAX_ACTIVE_CHILD_SESSIONS = 8
 MAX_SESSION_BINDINGS = 64
@@ -407,6 +412,7 @@ class ShimDaemon:
                 ping_interval=20,
                 ping_timeout=10,
                 max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
+                logger=_websocket_logger,
             ) as ws:
                 await self._run_session(ws)
         except websockets.exceptions.InvalidStatus as exc:
@@ -439,6 +445,7 @@ class ShimDaemon:
                     ping_interval=20,
                     ping_timeout=10,
                     max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
+                    logger=_websocket_logger,
                 ) as ws:
                     await self._run_session(ws)
             except websockets.exceptions.InvalidStatus as retry_exc:

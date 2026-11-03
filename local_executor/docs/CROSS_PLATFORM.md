@@ -260,43 +260,30 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
 
     root_resolved = os.path.realpath(allowed_root, strict=True)
 
-    # 4. Canonical-form comparison.
-    if is_case_insensitive_fs(root_resolved):
-        # macOS (APFS default), Windows (NTFS default), Linux on case-folded ext4.
-        # normcase only folds case on Windows, so fold it explicitly.
-        a = os.path.normcase(resolved).casefold()
-        b = os.path.normcase(root_resolved).casefold()
-    else:
-        a = resolved
-        b = root_resolved
-
-    # 5. Strict prefix with path separator boundary.
+    # 4. Exact prefix with a path separator boundary.
     #    Append os.sep to prevent /foo matching /foobar.
-    if not a.endswith(os.sep):
-        a_check = a + os.sep
-    else:
-        a_check = a
-    if not b.endswith(os.sep):
-        b_check = b + os.sep
-    else:
-        b_check = b
-
-    return a_check.startswith(b_check) or a == root_resolved
-
-def is_case_insensitive_fs(path: str) -> bool:
-    # Cheapest heuristic: probe the actual filesystem.
-    # On macOS, default APFS is case-insensitive (but user can format
-    # case-sensitive APFS). On Windows, NTFS is case-insensitive by default
-    # (but per-directory case-sensitivity flag exists since Win10 1803).
-    # On Linux, ext4/btrfs/xfs are case-sensitive (but optional case-folding
-    # since kernel 5.2).
-    if sys.platform == "win32":
+    root_prefix = root_resolved.rstrip(os.sep) + os.sep
+    if resolved == root_resolved or resolved.startswith(root_prefix):
         return True
-    if sys.platform == "darwin":
-        # Check the actual volume. Use os.pathconf("/", "PC_CASE_SENSITIVE")
-        # where available; otherwise probe by creating "X" and looking up "x".
-        return _probe_case_insensitive(path)
-    return _probe_case_insensitive(path)  # Linux default sensitive, but probe
+
+    # 5. Same directory, different spelling. A case-insensitive filesystem
+    #    accepts any case, and macOS realpath keeps the spelling it was given.
+    #    Never fold case to compare: `WS` beside a root `Ws` is a different
+    #    directory wherever a directory on the way is case-sensitive (case-
+    #    sensitive APFS, per-directory NTFS, case-folding ext4 off). Ask the
+    #    filesystem: the path is inside only if the root is one of its
+    #    existing ancestors, by device and inode.
+    root_info = os.stat(root_resolved)
+    if root_info.st_ino == 0:
+        return False  # no inode numbers, no identity
+    for ancestor in (Path(resolved), *Path(resolved).parents):
+        try:
+            info = os.stat(ancestor)
+        except OSError:
+            continue  # not created yet
+        if (info.st_dev, info.st_ino) == (root_info.st_dev, root_info.st_ino):
+            return True
+    return False
 ```
 
 Key invariants:
@@ -304,8 +291,10 @@ Key invariants:
 - **Always realpath both sides.** Never compare a not-yet-resolved path against
   a resolved root.
 - **Always check with a separator boundary.** `/foo` must not match `/foobar`.
-- **Per-volume case-sensitivity probe.** Don't hardcode "macOS = insensitive";
-  modern users can have case-sensitive APFS or per-dir case-sensitive NTFS.
+- **Never fold case.** Case sensitivity varies per volume and, on NTFS, per
+  directory, so neither a hardcoded "macOS = insensitive" nor a probe of one
+  directory is safe. Compare the exact spelling, then filesystem identity.
+  The check never writes anything.
 - **Validate complete destinations before creation.** FILE_WRITE may create
   a new file under an existing in-root parent; `create_parents: true` also
   allows missing in-root parents. FILE_MOVE may target a new in-root name.
@@ -337,13 +326,14 @@ operation can act on the root itself.
 
 | Attack | Caught at step |
 |---|---|
-| `../../../etc/passwd` | 1 (normalize → 3 (realpath) → 5 (prefix mismatch) |
-| `/workspace/symlink-to-etc` | 3 (realpath resolves outside) → 5 |
-| `/WORKSPACE/foo` on case-insensitive FS | 4 (normcase) → 5 (matches root) → allowed (correct) |
-| `/workspace2/foo` (root is `/workspace`) | 5 (boundary check) |
+| `../../../etc/passwd` | 1 (normalize) → 3 (realpath) → 4 (prefix mismatch) → 5 (root is no ancestor) |
+| `/workspace/symlink-to-etc` | 3 (realpath resolves outside) → 4 → 5 |
+| `/WORKSPACE/foo` on case-insensitive FS | 4 (spelling differs) → 5 (the root is an ancestor) → allowed (correct) |
+| `/WS/foo` beside root `/Ws` in a case-sensitive directory | 4 → 5 (`/WS` is another directory) |
+| `/workspace2/foo` (root is `/workspace`) | 4 (boundary check) → 5 |
 | `C:\workspace\file.txt:hidden` | 2 (ADS check) |
 | `C:\workspace\CON` | 2 (reserved name) |
-| `\\?\C:\workspace\..\..\etc` | 1 → 3 → 5 |
+| `\\?\C:\workspace\..\..\etc` | 1 → 3 → 4 → 5 |
 
 ---
 

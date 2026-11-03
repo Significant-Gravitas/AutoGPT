@@ -1008,7 +1008,9 @@ class FileHandler:
 
             iterator = base.rglob("*") if payload.recursive else base.iterdir()
             for p in iterator:
-                if not payload.include_hidden and p.name.startswith("."):
+                # A recursive walk reaches the contents of hidden folders too.
+                hidden = any(part.startswith(".") for part in p.relative_to(base).parts)
+                if hidden and not payload.include_hidden:
                     continue
                 if not _matches(p.name):
                     continue
