@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: python-import-diagnostic-${{ github.run_id }}
-  cancel-in-progress: false
+  group: python-import-diagnostic-41681099758
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -385,3 +385,18 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      RUN_ENV: local
+      PORT: 8080
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
+      SKILLS_CATALOG_TOKEN: ${{ github.token }}
+      # The job's own broker login and FalkorDB password. Service containers
+      # start before any step can generate a value, so both are derived from
+      # the run instead, with the same expression the services above use.
+      RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
+      RABBITMQ_DEFAULT_PASS: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      GRAPHITI_FALKORDB_PASSWORD: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
