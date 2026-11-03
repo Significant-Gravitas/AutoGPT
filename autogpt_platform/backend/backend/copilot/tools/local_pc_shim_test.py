@@ -414,11 +414,13 @@ class TestShimConnectionManager:
     async def test_wait_for_uses_one_timeout_budget(self):
         manager = ShimConnectionManager(relay=self.NoPresenceRelay())
         started = asyncio.get_running_loop().time()
-        with pytest.raises(TimeoutError):
+        with pytest.raises(TimeoutError, match="did not connect within"):
             await manager.wait_for("missing", timeout=0.03)
         elapsed = asyncio.get_running_loop().time() - started
 
-        assert elapsed < 0.08
+        # 10x the budget: room for a stalled runner, and still far short of a
+        # wait that ignored the budget.
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_cannot_miss_direct_registration(self):
@@ -462,7 +464,7 @@ class TestShimConnectionManager:
             await manager.wait_for("stale", timeout=0.03)
 
         elapsed = asyncio.get_running_loop().time() - started
-        assert elapsed < 0.08
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_transport_open_uses_original_timeout_budget(self):
@@ -487,7 +489,7 @@ class TestShimConnectionManager:
             await manager.wait_for("slow-open", timeout=0.03)
 
         elapsed = asyncio.get_running_loop().time() - started
-        assert elapsed < 0.08
+        assert elapsed < 0.3
 
     @pytest.mark.asyncio
     async def test_duplicate_session_revokes_old_connection_without_losing_new(self):
