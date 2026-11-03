@@ -7,14 +7,18 @@ that compute without a model, credentials or the network, so anyone in a
 preview can add one to their library and run it.
 """
 
-from dataclasses import dataclass
 from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
 
 EMAIL_DOMAIN = "previews.agpt.co"
 
 
-@dataclass(frozen=True)
-class SeedUser:
+class _Content(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class SeedUser(_Content):
     key: str
     name: str
     username: str
@@ -27,8 +31,7 @@ class SeedUser:
         return f"seed-{self.username}@{EMAIL_DOMAIN}"
 
 
-@dataclass(frozen=True)
-class TemplateWorkflow:
+class TemplateWorkflow(_Content):
     """One text input rendered through a Jinja template."""
 
     input_name: str
@@ -39,8 +42,7 @@ class TemplateWorkflow:
     long_input: bool = False
 
 
-@dataclass(frozen=True)
-class CalculatorWorkflow:
+class CalculatorWorkflow(_Content):
     """One amount put through a single arithmetic step.
 
     The amount is entered as text: the number input holds whole numbers only,
@@ -55,8 +57,7 @@ class CalculatorWorkflow:
     output_name: str
 
 
-@dataclass(frozen=True)
-class ReplaceWorkflow:
+class ReplaceWorkflow(_Content):
     """A pasted text with one substring replaced throughout."""
 
     input_name: str
@@ -67,8 +68,7 @@ class ReplaceWorkflow:
     output_name: str
 
 
-@dataclass(frozen=True)
-class CountWorkflow:
+class CountWorkflow(_Content):
     """A pasted list, one item per line, counted. Blank lines don't count."""
 
     input_name: str
@@ -80,8 +80,7 @@ class CountWorkflow:
 Workflow = TemplateWorkflow | CalculatorWorkflow | ReplaceWorkflow | CountWorkflow
 
 
-@dataclass(frozen=True)
-class SeedListing:
+class SeedListing(_Content):
     slug: str
     creator: str
     name: str
@@ -96,8 +95,7 @@ class SeedListing:
     recommended_schedule_cron: str | None = None
 
 
-@dataclass(frozen=True)
-class SeedSkill:
+class SeedSkill(_Content):
     creator: str
     slug: str
     categories: tuple[str, ...]

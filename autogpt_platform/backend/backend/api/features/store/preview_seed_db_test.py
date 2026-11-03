@@ -153,10 +153,6 @@ async def test_skills_list_and_open_by_slug(seeded):
     assert skill.body.startswith("# ")
 
 
-# The tests from here on change the seeded state, so they stay after every
-# test that reads it.
-
-
 async def test_a_listing_rejected_since_stays_rejected(seeded):
     listing = LISTINGS[1]
     row = await prisma.models.StoreListing.prisma().find_unique_or_raise(
@@ -180,6 +176,18 @@ async def test_a_listing_rejected_since_stays_rejected(seeded):
         where={"id": row.id}
     )
     assert after.hasApprovedVersion is False
+
+    # Put it back, so the module's other tests see the marketplace as seeded.
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        await store_db.review_store_submission(
+            store_listing_version_id=row.activeVersionId,
+            is_approved=True,
+            external_comments="",
+            internal_comments="",
+            reviewer_id=preview_seed.seed_user_id(ADMIN),
+            notify_creator=False,
+        )
+    await _assert_live(listing)
 
 
 async def _resubmit(listing) -> store_model.StoreSubmission:

@@ -21,6 +21,7 @@ from .preview_seed import (
     SeedRefused,
     all_users,
     build_graph,
+    ensure_seedable,
     parse_seed_skill,
     reviewer_keys,
     seed_graph_id,
@@ -45,6 +46,7 @@ CREATOR_KEYS = {creator.key for creator in CREATORS}
 async def test_production_is_refused_before_anything_is_written(mocker):
     settings = mocker.patch("backend.api.features.store.preview_seed.Settings")
     settings.return_value.config.app_env = AppEnvironment.PRODUCTION
+    settings.return_value.config.sentry_environment = ""
     blocks = mocker.patch(
         "backend.api.features.store.preview_seed._ensure_workflow_blocks"
     )
@@ -53,6 +55,31 @@ async def test_production_is_refused_before_anything_is_written(mocker):
         await seed_marketplace()
 
     blocks.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "app_env, sentry_environment, allowed",
+    [
+        (AppEnvironment.LOCAL, "", True),
+        (AppEnvironment.DEVELOPMENT, "pr-15488", True),
+        # The shared dev deployment and self-hosted installs.
+        (AppEnvironment.DEVELOPMENT, "", False),
+        (AppEnvironment.DEVELOPMENT, "dev", False),
+        (AppEnvironment.PRODUCTION, "pr-15488", False),
+    ],
+)
+def test_only_local_databases_and_previews_are_seeded(
+    mocker, app_env, sentry_environment, allowed
+):
+    settings = mocker.patch("backend.api.features.store.preview_seed.Settings")
+    settings.return_value.config.app_env = app_env
+    settings.return_value.config.sentry_environment = sentry_environment
+
+    if allowed:
+        ensure_seedable()
+    else:
+        with pytest.raises(SeedRefused):
+            ensure_seedable()
 
 
 def test_marketplace_is_small_but_full():

@@ -20,11 +20,10 @@ approval, and skipped otherwise.
 import logging
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
 
 import prisma.enums
 import prisma.models
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks.io import (
@@ -63,6 +62,7 @@ from .preview_seed_content import (
     SeedSkill,
     SeedUser,
     TemplateWorkflow,
+    Workflow,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,8 +100,9 @@ class SeedSummary(BaseModel):
     failed: dict[str, str] = {}
 
 
-@dataclass(frozen=True)
-class _SeededUser:
+class _SeededUser(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     id: str
     org_id: str | None
     team_id: str | None
@@ -130,9 +131,28 @@ def reviewer_keys(listing: SeedListing) -> list[str]:
     ]
 
 
+def ensure_seedable() -> None:
+    """Raise :class:`SeedRefused` unless this is a local database or a PR preview.
+
+    A preview runs with ``APP_ENV=dev``, like the shared dev deployment and
+    self-hosted installs; its Sentry environment, ``pr-<n>``, is what sets it
+    apart.
+    """
+    config = Settings().config
+    if config.app_env == AppEnvironment.LOCAL:
+        return
+    if config.app_env != AppEnvironment.PRODUCTION and (
+        config.sentry_environment.startswith("pr-")
+    ):
+        return
+    raise SeedRefused(
+        f"refusing to seed synthetic data with APP_ENV={config.app_env.value}: "
+        "only local databases and pr-<n> previews are seeded"
+    )
+
+
 async def seed_marketplace() -> SeedSummary:
-    if Settings().config.app_env == AppEnvironment.PRODUCTION:
-        raise SeedRefused("refusing to seed synthetic data into production")
+    ensure_seedable()
     summary = SeedSummary()
     await _ensure_workflow_blocks()
 
@@ -228,8 +248,14 @@ async def _ensure_user(user: SeedUser) -> _SeededUser:
     return _SeededUser(id=user_id, org_id=org_id, team_id=team_id)
 
 
+# (role, block id, input defaults), laid out left to right.
+_Step = tuple[str, str, dict]
+# (source role, source pin, sink role, sink pin)
+_Wire = tuple[str, str, str, str]
+
+
 def build_graph(listing: SeedListing) -> Graph:
-    """The listing's workflow: input, one or two processing nodes, output."""
+    """The listing's workflow: input, one to three processing nodes, output."""
 
     def node_id(role: str) -> str:
         return seed_id("node", listing.slug, role)
@@ -241,71 +267,8 @@ def build_graph(listing: SeedListing) -> Graph:
         input_block = AgentLongTextInputBlock()
     else:
         input_block = AgentShortTextInputBlock()
-
-    # Left to right: (role, block id, input defaults).
-    steps: list[tuple[str, str, dict]]
-    # (source role, source pin, sink role, sink pin)
-    wiring: list[tuple[str, str, str, str]]
-    if isinstance(workflow, TemplateWorkflow):
-        steps = [
-            (
-                "step",
-                FillTextTemplateBlock().id,
-                {"format": workflow.template, "values": {}},
-            )
-        ]
-        wiring = [
-            ("input", "result", "step", f"values_#_{workflow.input_name}"),
-            ("step", "output", "output", "value"),
-        ]
-    elif isinstance(workflow, CalculatorWorkflow):
-        steps = [
-            (
-                "step",
-                CalculatorBlock().id,
-                {
-                    "operation": workflow.operation,
-                    "b": workflow.operand,
-                    "round_result": False,
-                },
-            )
-        ]
-        wiring = [
-            ("input", "result", "step", "a"),
-            ("step", "result", "output", "value"),
-        ]
-    elif isinstance(workflow, ReplaceWorkflow):
-        steps = [
-            (
-                "step",
-                TextReplaceBlock().id,
-                {"old": workflow.old, "new": workflow.new},
-            )
-        ]
-        wiring = [
-            ("input", "result", "step", "text"),
-            ("step", "output", "output", "value"),
-        ]
-    else:
-        # Drop blank lines first, so a trailing newline isn't an item.
-        lines = f"{workflow.input_name}.splitlines() | map('trim') | select"
-        steps = [
-            (
-                "tidy",
-                FillTextTemplateBlock().id,
-                {"format": f"{{{{ {lines} | join('\\n') }}}}", "values": {}},
-            ),
-            ("split", TextSplitBlock().id, {"delimiter": "\n", "strip": True}),
-            ("step", CountItemsBlock().id, {}),
-        ]
-        wiring = [
-            ("input", "result", "tidy", f"values_#_{workflow.input_name}"),
-            ("tidy", "output", "split", "text"),
-            ("split", "texts", "step", "collection"),
-            ("step", "count", "output", "value"),
-        ]
-
-    layout = [
+    steps, wiring = _processing(workflow)
+    layout: list[_Step] = [
         (
             "input",
             input_block.id,
@@ -349,6 +312,55 @@ def build_graph(listing: SeedListing) -> Graph:
             for source, source_pin, sink, sink_pin in wiring
         ],
     )
+
+
+def _processing(workflow: Workflow) -> tuple[list[_Step], list[_Wire]]:
+    """The nodes between a workflow's input and output, and every link."""
+    if isinstance(workflow, TemplateWorkflow):
+        return [
+            (
+                "step",
+                FillTextTemplateBlock().id,
+                {"format": workflow.template, "values": {}},
+            )
+        ], [
+            ("input", "result", "step", f"values_#_{workflow.input_name}"),
+            ("step", "output", "output", "value"),
+        ]
+    if isinstance(workflow, CalculatorWorkflow):
+        return [
+            (
+                "step",
+                CalculatorBlock().id,
+                {"operation": workflow.operation, "b": workflow.operand},
+            )
+        ], [
+            ("input", "result", "step", "a"),
+            ("step", "result", "output", "value"),
+        ]
+    if isinstance(workflow, ReplaceWorkflow):
+        return [
+            ("step", TextReplaceBlock().id, {"old": workflow.old, "new": workflow.new})
+        ], [
+            ("input", "result", "step", "text"),
+            ("step", "output", "output", "value"),
+        ]
+    # Drop blank lines first, so a trailing newline isn't an item.
+    lines = f"{workflow.input_name}.splitlines() | map('trim') | select"
+    return [
+        (
+            "tidy",
+            FillTextTemplateBlock().id,
+            {"format": f"{{{{ {lines} | join('\\n') }}}}", "values": {}},
+        ),
+        ("split", TextSplitBlock().id, {"delimiter": "\n", "strip": True}),
+        ("step", CountItemsBlock().id, {}),
+    ], [
+        ("input", "result", "tidy", f"values_#_{workflow.input_name}"),
+        ("tidy", "output", "split", "text"),
+        ("split", "texts", "step", "collection"),
+        ("step", "count", "output", "value"),
+    ]
 
 
 async def _ensure_graph(listing: SeedListing, owner: _SeededUser) -> tuple[str, int]:
@@ -404,16 +416,8 @@ async def _ensure_listing(
         )
         submission = await store_db.create_store_submission(
             user_id=owner.id,
-            graph_id=request.graph_id,
-            graph_version=request.graph_version,
-            slug=request.slug,
-            name=request.name,
-            sub_heading=request.sub_heading,
-            description=request.description,
-            instructions=request.instructions,
-            categories=request.categories,
-            recommended_schedule_cron=request.recommended_schedule_cron,
             organization_id=owner.org_id,
+            **request.model_dump(exclude_none=True),
         )
         if submission.listing_version_id is None:
             raise ValueError(f"Submission of '{listing.slug}' returned no version")
