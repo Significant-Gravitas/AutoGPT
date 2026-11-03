@@ -46,7 +46,7 @@ _LOCAL_EMBEDDER_MODEL = "nomic-embed-text"
 class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
-    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
+    All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_FALKORDB_HOST``.
     LLM/embedder keys fall back to the Otto-dedicated keys
     (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
     tracked under Otto, then to the platform-wide OpenRouter / OpenAI
@@ -59,6 +59,42 @@ class GraphitiConfig(BaseSettings):
     falkordb_host: str = Field(default="localhost")
     falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
+    # Transport deadlines on every FalkorDB connection this package opens
+    # (``falkordb_connect.new_falkordb_client``), for every operation on it,
+    # reads and writes alike. They are separate from the chat's asyncio budgets
+    # (``context_timeout``; ``context_refresh_timeout`` and
+    # ``warm_context_refresh_join_grace_ms``), which are shorter and cancel an
+    # interactive read before a deadline would. The deadlines also end what
+    # cancellation cannot reach: a worker thread still building a client
+    # (falkordb's constructor probes the server synchronously) and a
+    # connection to a server that stopped answering.
+    falkordb_socket_connect_timeout: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Seconds to open a TCP connection to FalkorDB before giving up, on "
+            "every connection the memory code opens. Short, so an unreachable "
+            "server fails a client build or a reconnect quickly. Also caps "
+            "the constructor probe's reply timeout."
+        ),
+    )
+    falkordb_socket_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Seconds any single FalkorDB reply may take before its command "
+            "fails with a timeout: a deadline per reply, on every operation the "
+            "memory code runs (reads and writes). The constructor probe uses "
+            "the shorter of this and the connect timeout. A write whose reply "
+            "times out may already have been "
+            "committed, so its outcome is unknown to the caller. Separate from "
+            "the chat's asyncio budgets (context_timeout; "
+            "context_refresh_timeout and the join grace), which are shorter and "
+            "end an interactive read first. Long by default so that a slow "
+            "write (ingestion, the dream, a forget) on a large graph normally "
+            "completes; it also ends connections to a server that stopped answering."
+        ),
+    )
 
     # LLM for entity extraction (used by graphiti-core during ingestion).
     # Default is a cloud OpenAI-compat slug. Under ``CHAT_USE_LOCAL=true``
@@ -101,6 +137,18 @@ class GraphitiConfig(BaseSettings):
     reranker_model: str = Field(
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
+    )
+    # A new chat's first turn waits on the slowest of those calls. OpenRouter
+    # picks a model's endpoint by price unless told otherwise; the ``nitro``
+    # variant sorts by throughput and lets OpenAI's priority tier serve the
+    # calls, keeping fallbacks, at twice the standard tier's token price.
+    reranker_openrouter_variant: str = Field(
+        default="nitro",
+        description=(
+            "OpenRouter variant appended to the reranker's model when it goes "
+            "through OpenRouter (nitro = throughput-sorted, priority tier "
+            "allowed); empty sends the model as named"
+        ),
     )
 
     # Activity-gate threshold for community rebuilds (P-1.7).
@@ -159,6 +207,27 @@ class GraphitiConfig(BaseSettings):
     context_timeout: float = Field(
         default=8.0,
         description="Seconds before warm context fetch is abandoned (needs headroom for FalkorDB cold connections)",
+    )
+    context_refresh_timeout: float = Field(
+        default=3.0,
+        description=(
+            "Seconds a follow-up-turn warm-context refresh (SECRT-2378) may run "
+            "in all before it is abandoned. On the SDK engine it starts before "
+            "the query build; what it may add to time-to-first-token is bounded "
+            "separately by warm_context_refresh_join_grace_ms."
+        ),
+    )
+    warm_context_refresh_join_grace_ms: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "The most a follow-up warm-context refresh (SECRT-2378) may add to "
+            "time-to-first-token, in milliseconds. Once the turn's query is "
+            "ready it waits at most this long for the refresh; a refresh still "
+            "running then is cancelled and the turn goes on without a block. "
+            "A refresh started at that point (the baseline engine, retries, a "
+            "refresh forced by a compaction) has this as its whole budget."
+        ),
     )
 
     # Client cache
@@ -240,6 +309,19 @@ class GraphitiConfig(BaseSettings):
         if local_fallback is not None and local_fallback[1]:
             return local_fallback[1]
         return OPENROUTER_BASE_URL
+
+    def resolve_reranker_model(self) -> str:
+        """The model name the reranker sends: ``reranker_model`` with
+        ``reranker_openrouter_variant`` appended when the calls go through
+        OpenRouter and the name names no variant yet. Any other endpoint (a
+        custom ``llm_base_url``, local transport) gets the name as set."""
+        if (
+            not self.reranker_openrouter_variant
+            or ":" in self.reranker_model
+            or self.resolve_llm_base_url() != OPENROUTER_BASE_URL
+        ):
+            return self.reranker_model
+        return f"{self.reranker_model}:{self.reranker_openrouter_variant}"
 
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:
@@ -338,42 +420,3 @@ class _LazyConfigProxy:
 
 
 graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
-
-
-async def is_enabled_for_user(user_id: str | None) -> bool:
-    """Check if Graphiti memory is enabled for a specific user.
-
-    Gated solely by LaunchDarkly flag ``graphiti-memory``
-    (Flag.GRAPHITI_MEMORY).  When LD is not configured, defaults to False.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_MEMORY,
-        user_id,
-        default=False,
-    )
-
-
-async def is_communities_enabled_for_user(user_id: str | None) -> bool:
-    """Check if per-user community-detection rebuilds are enabled.
-
-    Distinct from ``is_enabled_for_user`` — a user can have Graphiti
-    memory enabled (writes + reads work) without the weekly Leiden
-    rebuild + LLM summarization running on their graph. Gated by
-    ``Flag.GRAPHITI_COMMUNITIES_ENABLED``; defaults False so the cost
-    only lands behind explicit opt-in.
-    """
-    if not user_id:
-        return False
-
-    from backend.util.feature_flag import Flag, is_feature_enabled
-
-    return await is_feature_enabled(
-        Flag.GRAPHITI_COMMUNITIES_ENABLED,
-        user_id,
-        default=False,
-    )

@@ -107,6 +107,14 @@ When fixing a bug or adding a feature, follow a test-first approach:
 
 This ensures every change is covered by a test and that the test actually validates the intended behavior.
 
+### Writing Tests That Don't Flake
+
+A test that fails and then passes on the same code ejects other people's PRs from the merge queue, so write it to pass on a slow, loaded CI runner. The rules for each stack are in `backend/AGENTS.md` and `frontend/AGENTS.md`.
+
+- **Assume the CI runner is several times slower than your machine and can pause for seconds** — a test that has to finish inside a product timer or a tight time bound passes locally and fails there.
+- **A test leaves nothing behind** — no open request, client, timer or patched global outlives it, or the next test, or the file's teardown, pays for it.
+- **Treat a flaky test as a bug to find, not a run to retry** — some turn out to be real races in the product code.
+
 ### Reviewing/Revising Pull Requests
 
 Use `/pr-review` to review a PR or `/pr-address` to address comments.

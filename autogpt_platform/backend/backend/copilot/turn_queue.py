@@ -46,7 +46,7 @@ from backend.copilot.active_turns import (
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPin
-from backend.copilot.db import is_duplicate_chat_message_id_error
+from backend.copilot.duplicate_message_id import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,

@@ -31,13 +31,20 @@ function rect(top: number) {
 }
 
 let rerenderParent: () => void = () => {};
+let remountRow: () => void = () => {};
 
 function Transcript() {
   const [, setTick] = useState(0);
+  const [rowKey, setRowKey] = useState(0);
   rerenderParent = () => setTick((tick) => tick + 1);
+  remountRow = () => setRowKey((key) => key + 1);
   return (
     <div>
-      <div data-message-id="u1" ref={stubTop(() => layout.messageTop)} />
+      <div
+        key={rowKey}
+        data-message-id="u1"
+        ref={stubTop(() => layout.messageTop)}
+      />
       <TailSpacer messageID="u1" bottomInset={0} />
     </div>
   );
@@ -80,6 +87,20 @@ describe("TailSpacer", () => {
     act(() => resize());
 
     expect(spacer.style.height).toBe("0px");
+  });
+
+  it("measures the row's new node after the transcript remounts it", () => {
+    const spacer = renderTranscript();
+    expect(spacer.style.height).toBe("338px");
+
+    // A windowed transcript drops the row when it scrolls far away and
+    // mounts a fresh node when it comes back.
+    act(() => remountRow());
+    layout.messageTop = 40;
+    act(() => resize());
+
+    // (900 - 24) * 0.5 - (100 - 40)
+    expect(spacer.style.height).toBe("378px");
   });
 
   it("does not render when its parent renders with the same props", () => {

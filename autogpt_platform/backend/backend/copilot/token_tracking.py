@@ -130,6 +130,7 @@ async def persist_and_record_usage(
     credential_id_override: str | None = None,
     skip_daily: bool = False,
     execution_path: str = "sync",
+    expert_id: str | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -152,6 +153,8 @@ async def persist_and_record_usage(
             report a cost and rate limiting is skipped for this turn.
         model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
+        expert_id: The expert the spend is attributed to on the cost log
+            row (``PlatformCostLog.expertId``); ``None`` for the account's own.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -247,9 +250,10 @@ async def persist_and_record_usage(
             await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
-    # Include entries where cost_usd is set even if token count is 0
-    # (e.g. fully-cached Anthropic responses where only cache tokens
-    # accumulate a charge without incrementing total_tokens).
+    # Include entries whose only tokens are cache tokens, which total_tokens
+    # leaves out (e.g. a fully-cached response), with or without a cost:
+    # tokens the provider billed stay in the ledger even when nobody could
+    # price them.
     if user_id and (not no_tokens or cost_float is not None):
         # A dream pass logs under its own id as graph_exec_id; only a chat's
         # usage names the chat.
@@ -312,6 +316,7 @@ async def persist_and_record_usage(
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
                 metadata=metadata,
+                expert_id=expert_id,
             )
         )
 

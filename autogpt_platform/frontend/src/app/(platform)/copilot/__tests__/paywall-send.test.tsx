@@ -61,6 +61,8 @@ vi.mock(
             },
           },
       isError: false,
+      // A list still loading never arrives in these tests.
+      refetch: async () => ({ data: undefined }),
     }),
   }),
 );
@@ -171,13 +173,13 @@ describe("a refused first send", () => {
     expect(textarea.value).toBe("hello");
   });
 
-  it("says once that AI connections are still loading", async () => {
+  it("says once that AI connections could not be checked", async () => {
     transports.loaded = false;
     const textarea = await send("too quick");
 
     expect(toast).toHaveBeenCalledOnce();
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "AI connections are still loading" }),
+      expect.objectContaining({ title: "Could not check AI connections" }),
     );
     expect(textarea.value).toBe("too quick");
   });

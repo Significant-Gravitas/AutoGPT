@@ -82,6 +82,33 @@ describe("ChatMinimap", () => {
 
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
   });
+
+  it("hands a message whose row is not mounted to the transcript", () => {
+    const onJumpToUnmounted = vi.fn();
+    render(
+      <div>
+        <ChatMinimap
+          messages={MESSAGES}
+          onJumpToUnmounted={onJumpToUnmounted}
+        />
+        <div data-message-id="m1">Plan my week</div>
+      </div>,
+    );
+    const scrollIntoView = vi.fn();
+    document
+      .querySelectorAll("[data-message-id]")
+      .forEach(
+        (el) => ((el as HTMLElement).scrollIntoView = scrollIntoView as never),
+      );
+
+    fireEvent.click(screen.getByLabelText("Jump to: Now the budget"));
+    expect(onJumpToUnmounted).toHaveBeenCalledWith("m3");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Jump to: Plan my week"));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(onJumpToUnmounted).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("ChatMinimap renders", () => {
@@ -199,8 +226,8 @@ describe("minimap helpers", () => {
     expect(tickScale(3, 3)).toBe(1);
     expect(tickScale(4, 3)).toBeCloseTo(0.8);
     expect(tickScale(9, 3)).toBe(0.6);
-    expect(tickColor(0)).toBe("bg-zinc-800");
-    expect(tickColor(1)).toBe("bg-zinc-500");
-    expect(tickColor(4)).toBe("bg-zinc-400");
+    expect(tickColor(0)).toBe("bg-action");
+    expect(tickColor(1)).toBe("bg-foreground-tertiary");
+    expect(tickColor(4)).toBe("bg-foreground-subtle");
   });
 });

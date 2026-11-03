@@ -30,7 +30,8 @@ export function ExpertAvatarButton({ expert }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
-          className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
+          // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
+          className="rounded-full border border-border-base ring-4 ring-canvas"
           backgroundColor={getExpertTopicHex({
             avatarUrl: expert.avatar_url,
             categories: expert.categories,

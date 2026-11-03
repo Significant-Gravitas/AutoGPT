@@ -29,6 +29,7 @@ import {
   isSessionLive,
   isSessionPending,
 } from "./subSessionStatus";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   subSessionId: string;
@@ -83,10 +84,10 @@ export function SubSessionLive({
   );
 
   return (
-    <div className="mt-2 border-t border-zinc-100 pl-1 pt-2.5">
+    <div className="mt-2 border-t border-separator pt-2.5 pl-1">
       <LiveSteps rows={rows} />
       {latestText && (
-        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+        <p className="mt-1.5 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
           {latestText}
         </p>
       )}
@@ -169,11 +170,11 @@ function LiveNotice({
   subSessionId: string;
 }) {
   return (
-    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption text-foreground-subtle">
       {text}
       <Link
         href={`/copilot?sessionId=${subSessionId}`}
-        className="underline underline-offset-2 hover:text-zinc-600"
+        className="underline underline-offset-2 hover:text-foreground-secondary"
       >
         Open sub-session
       </Link>
@@ -187,16 +188,16 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
     return (
       <div key={row.key} className="flex items-stretch gap-2.5">
         <div className="flex w-6 flex-col items-center">
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-hover">
             <RowIcon row={row} />
           </div>
-          {!isLastRow && <div className="w-px flex-1 bg-zinc-200" />}
+          {!isLastRow && <div className="w-px flex-1 bg-surface-active" />}
         </div>
-        <div className={cn("min-w-0 flex-1 pt-[2px]", !isLastRow && "pb-2.5")}>
+        <div className={cn("min-w-0 flex-1 pt-0.5", !isLastRow && "pb-2.5")}>
           <SwapText
             text={row.text}
             shimmer={row.state === "running"}
-            className="max-w-full text-sm leading-5 text-zinc-600"
+            className="max-w-full text-body leading-5 text-foreground-secondary"
           />
         </div>
       </div>
@@ -319,32 +320,36 @@ export function SubSessionPendingCard({
           color={expert?.color}
           size={28}
         />
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">
+        <Text
+          variant="body-medium-tight"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {expert?.name ?? "Expert"}
           {expert?.role && (
-            <span className="ml-1.5 font-normal text-zinc-400">
+            <span className="ml-1.5 font-normal text-foreground-subtle">
               {expert.role}
             </span>
           )}
-        </p>
+        </Text>
         {/* Once the poll dies the card no longer knows the run is going —
             keeping the spinner up would be a guess dressed as a fact. */}
         <StatusPill
           status={isError || isPaused ? "unknown" : "running"}
-          className="text-sm"
+          className="text-body"
         />
         {liveSessionId && (
           <Link
             href={`/copilot?sessionId=${liveSessionId}`}
             aria-label="Open sub-session"
-            className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+            className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
           >
             <Icon icon={LinkSquare01Icon} size={14} />
           </Link>
         )}
       </div>
       {!minimal && prompt && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-body text-foreground-tertiary">
           {prompt}
         </p>
       )}
@@ -394,8 +399,10 @@ function useDelegatedSessionId(expertId: string | null) {
 
 /** A sub-session tool output freezes the status it had when the tool
  *  returned — a "running" card would say running forever after the work
- *  lands. While the frozen status is running/queued, read the truth off the
- *  polled session and flip to completed once it goes idle.
+ *  lands, and a "queued" one would say queued after it started. While the
+ *  frozen status is running/queued, read the status off the polled session
+ *  instead: queued while it waits for a slot, running once it runs, and
+ *  completed once it goes idle.
  *
  *  Owns the poll through `useLiveSubSession` rather than piggybacking on a
  *  mounted live view: a minimal delegate card renders no live view, so this
@@ -429,7 +436,14 @@ export function useSubSessionEffectiveStatus(
       ? session.chat_status
       : status;
   }
-  return isSessionLive(session) ? status : "completed";
+  return liveStatusOf(session);
+}
+
+function liveStatusOf(session: SessionDetailResponse) {
+  if (session.active_stream) return "running";
+  const status = session.chat_status?.toLowerCase();
+  if (status === "running" || status === "queued") return status;
+  return "completed";
 }
 
 function parseArguments(rawArguments: unknown): unknown {

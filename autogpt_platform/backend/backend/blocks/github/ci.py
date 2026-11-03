@@ -1,8 +1,10 @@
 import logging
 import re
 from enum import Enum
+from time import monotonic
 from typing import Optional
 
+import regex
 from typing_extensions import TypedDict
 
 from backend.blocks._base import (
@@ -14,6 +16,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from backend.util.request import HTTPClientError
 
 from ._api import get_api
 from ._auth import (
@@ -25,6 +28,29 @@ from ._auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Compiling the search pattern isn't covered by the timeout, and the timeout
+# is shared by every line searched in one run.
+SEARCH_PATTERN_MAX_LENGTH = 10_000
+SEARCH_TIMEOUT_SECONDS = 5.0
+SEARCH_TIMED_OUT = "Searching the CI logs timed out."
+
+# GitHub check-run conclusions that count as a pass. Everything else that is
+# completed (failure, timed_out, action_required, cancelled, stale,
+# startup_failure, or a missing conclusion) counts as a failure.
+PASSING_CONCLUSIONS = frozenset({"success", "neutral", "skipped"})
+
+
+def _is_passing(run: dict) -> bool:
+    return run.get("conclusion") in PASSING_CONCLUSIONS
+
+
+def _is_not_found(error: HTTPClientError) -> bool:
+    # GitHub answers an unknown commit ref with 422 "No commit found for SHA";
+    # any other 422 is a real validation error.
+    if error.status_code == 404:
+        return True
+    return error.status_code == 422 and "No commit found" in str(error)
 
 
 class CheckRunStatus(Enum):
@@ -176,22 +202,46 @@ class GithubGetCIResultsBlock(Block):
         )
 
     @staticmethod
+    async def _pr_head_sha(api, repo: str, number: int | str) -> str:
+        response = await api.get(f"https://api.github.com/repos/{repo}/pulls/{number}")
+        return response.json()["head"]["sha"]
+
+    @staticmethod
+    async def _resolve_commit_sha(api, repo: str, ref: str) -> str:
+        response = await api.get(f"https://api.github.com/repos/{repo}/commits/{ref}")
+        return response.json()["sha"]
+
+    @staticmethod
     async def get_commit_sha(api, repo: str, target: str | int) -> str:
-        """Get commit SHA from either a commit SHA or PR URL."""
-        # If it's already a SHA, return it
+        """Get commit SHA from either a commit SHA or a PR number."""
+        cls = GithubGetCIResultsBlock
 
-        if isinstance(target, str):
-            if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
-                return target
-
-        # If it's a PR URL, get the head SHA
         if isinstance(target, int):
-            pr_url = f"https://api.github.com/repos/{repo}/pulls/{target}"
-            response = await api.get(pr_url)
-            pr_data = response.json()
-            return pr_data["head"]["sha"]
+            return await cls._pr_head_sha(api, repo, target)
 
-        raise ValueError("Target must be a commit SHA or PR URL")
+        target = target.strip()
+        if re.fullmatch(r"#[0-9]+", target):
+            return await cls._pr_head_sha(api, repo, target[1:])
+
+        if re.fullmatch(r"[0-9]+", target):
+            # All-digit input is ambiguous: an abbreviated SHA can be all
+            # digits. Try the likelier reading first and fall back only when
+            # it doesn't exist.
+            lookups = [cls._resolve_commit_sha, cls._pr_head_sha]
+            if len(target) < 7:
+                lookups.reverse()
+            try:
+                return await lookups[0](api, repo, target)
+            except HTTPClientError as e:
+                if not _is_not_found(e):
+                    raise
+            return await lookups[1](api, repo, target)
+
+        # If it's already a SHA, return it
+        if re.match(r"^[0-9a-f]{6,40}$", target, re.IGNORECASE):
+            return target
+
+        raise ValueError("Target must be a commit SHA or PR number")
 
     @staticmethod
     async def search_in_logs(
@@ -203,7 +253,8 @@ class GithubGetCIResultsBlock(Block):
             return []
 
         matched_lines = []
-        regex = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+        compiled = _compile_search_pattern(pattern)
+        deadline = monotonic() + SEARCH_TIMEOUT_SECONDS
 
         for check in check_runs:
             output_text = check.get("output_text", "") or ""
@@ -212,7 +263,7 @@ class GithubGetCIResultsBlock(Block):
 
             lines = output_text.split("\n")
             for i, line in enumerate(lines):
-                if regex.search(line):
+                if _line_matches(compiled, line, deadline):
                     # Get context (2 lines before and after)
                     start = max(0, i - 2)
                     end = min(len(lines), i + 3)
@@ -336,15 +387,10 @@ class GithubGetCIResultsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        try:
-            target = int(input_data.target)
-        except ValueError:
-            target = input_data.target
-
         result = await self.get_ci_results(
             credentials,
             input_data.repo,
-            target,
+            input_data.target,
             input_data.search_pattern,
             input_data.check_name_filter,
         )
@@ -359,11 +405,9 @@ class GithubGetCIResultsBlock(Block):
             all_completed = all(run["status"] == "completed" for run in check_runs)
             if all_completed:
                 yield "overall_status", "completed"
-                # Determine overall conclusion
-                has_failure = any(
-                    run["conclusion"] in ["failure", "timed_out", "action_required"]
-                    for run in check_runs
-                )
+                # Allow-list: any other completed conclusion (cancelled, stale,
+                # startup_failure, action_required, ...) is not a pass.
+                has_failure = any(not _is_passing(run) for run in check_runs)
                 if has_failure:
                     yield "overall_conclusion", "failure"
                 else:
@@ -374,9 +418,11 @@ class GithubGetCIResultsBlock(Block):
 
         # Count checks
         total = len(check_runs)
-        passed = sum(1 for run in check_runs if run.get("conclusion") == "success")
+        passed = sum(1 for run in check_runs if _is_passing(run))
         failed = sum(
-            1 for run in check_runs if run.get("conclusion") in ["failure", "timed_out"]
+            1
+            for run in check_runs
+            if run.get("status") == "completed" and not _is_passing(run)
         )
 
         yield "total_checks", total
@@ -393,3 +439,26 @@ class GithubGetCIResultsBlock(Block):
             )
             if matched_lines:
                 yield "matched_lines", matched_lines
+
+
+def _compile_search_pattern(pattern: str) -> regex.Pattern[str]:
+    if len(pattern) > SEARCH_PATTERN_MAX_LENGTH:
+        raise ValueError(
+            f"Search pattern is too large to evaluate safely "
+            f"({len(pattern)} characters; maximum {SEARCH_PATTERN_MAX_LENGTH})."
+        )
+    try:
+        return regex.compile(pattern, regex.IGNORECASE | regex.MULTILINE)
+    except regex.error as error:
+        raise ValueError(f"Invalid search pattern: {error}") from error
+
+
+def _line_matches(pattern: regex.Pattern[str], line: str, deadline: float) -> bool:
+    """Search one line with whatever is left of the run's search time."""
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise ValueError(SEARCH_TIMED_OUT)
+    try:
+        return pattern.search(line, timeout=remaining) is not None
+    except TimeoutError as error:
+        raise ValueError(SEARCH_TIMED_OUT) from error

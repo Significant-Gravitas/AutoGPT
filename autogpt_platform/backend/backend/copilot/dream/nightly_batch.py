@@ -33,9 +33,10 @@ read-only against the user's graph); only the apply / writeback step
 of each submitter briefly acquires the per-user lock and queues user
 writes for the seconds it holds.
 
-One pre-flight billing check runs at the top so a single
-``nightly_id`` correlates all per-submitter cost log rows for this
-pass.
+One pre-flight billing check runs at the top, so a paywalled or
+over-budget user costs one check for the night rather than one per
+submitter. ``nightly_id`` names the fan-out in its logs and result;
+cost rows carry each submitter's own id (the dream pass's pass id).
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from backend.copilot.learning.nightly import run_skill_learning_pass
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .billing import check_dream_budget
+from .pass_record import DreamTrigger
 from .ratification import RatificationResult, run_ratification_pass
 from .schemas import DreamPassResult
 
@@ -70,9 +72,9 @@ class NightlyBatchResult(BaseModel):
     expert_id: str | None = None
     nightly_id: str = Field(
         description=(
-            "UUID correlating every per-submitter cost-log row for "
-            "this pass. The dream pass and ratification supersession "
-            "sweep all share this id."
+            "UUID naming this fan-out in its logs and result. Cost "
+            "rows carry each submitter's own id instead: the dream "
+            "pass logs under dream.pass_id."
         )
     )
     started_at: datetime
@@ -103,13 +105,9 @@ class NightlyBatchResult(BaseModel):
 
 
 async def run_nightly_batch_submit(
-    user_id: str, *, expert_id: str | None = None
+    user_id: str, *, expert_id: str | None = None, trigger: DreamTrigger = "cron"
 ) -> NightlyBatchResult:
     """Fan out one memory scope's nightly batch-family submissions, in order.
-
-    ``expert_id`` picks the expert's scope instead of the account's; the
-    budget check stays on the owner either way, since an expert's dreams
-    are paid from the owner's allowance.
 
     Today the order is dream-pass → ratification-supersession-sweep.
     Future additions land as new sequential calls between these two
@@ -124,40 +122,19 @@ async def run_nightly_batch_submit(
     Never raises — top-level failures are captured in
     ``NightlyBatchResult.error`` so the scheduler wrapper can log
     without retry-storming the cron.
+
+    ``trigger`` is recorded on the dream pass: ``cron`` from the nightly
+    job, ``admin`` when an admin ran the fan-out on demand.
     """
     nightly_id = str(uuidlib.uuid4())
     started_at = datetime.now(timezone.utc)
 
-    # One pre-flight billing check for the whole pass. Per-submitter
-    # cost logs (written by each submitter's own `record_phase_cost`
-    # calls) all reference the same ``nightly_id`` via the
-    # ``dream_pass_id`` field on PlatformCostLog rows. This means a
-    # paywalled / over-budget user costs us one LD lookup + one
-    # Redis read for the night, not one per submitter.
+    # One pre-flight billing check for the whole fan-out: a paywalled /
+    # over-budget user costs us one LD lookup + one Redis read for the
+    # night, not one per submitter.
     budget_ok, budget_skip = await check_dream_budget(user_id)
     if not budget_ok:
-        completed_at = datetime.now(timezone.utc)
-        elapsed = (completed_at - started_at).total_seconds()
-        if budget_skip == "rate_limit_unavailable":
-            return NightlyBatchResult(
-                user_id=user_id,
-                expert_id=expert_id,
-                nightly_id=nightly_id,
-                started_at=started_at,
-                completed_at=completed_at,
-                elapsed_seconds=elapsed,
-                error=f"billing: {budget_skip}",
-            )
-        return NightlyBatchResult(
-            user_id=user_id,
-            expert_id=expert_id,
-            nightly_id=nightly_id,
-            started_at=started_at,
-            completed_at=completed_at,
-            elapsed_seconds=elapsed,
-            skipped=True,
-            skip_reason=budget_skip or "insufficient_credits",
-        )
+        return _budget_stopped(user_id, expert_id, nightly_id, started_at, budget_skip)
 
     result = NightlyBatchResult(
         user_id=user_id,
@@ -165,19 +142,61 @@ async def run_nightly_batch_submit(
         nightly_id=nightly_id,
         started_at=started_at,
     )
+    await _submit_dream(result, trigger)
+    await _submit_ratification(result)
+    await _submit_learning(result)
+    return _finished(result)
 
-    # Dream pass submitter. Per-submitter failure stays isolated —
-    # a crashed dream pass doesn't block the ratification sweep
-    # (ratification operates on already-written tentatives from
-    # previous passes, not tonight's failed one).
+
+def _budget_stopped(
+    user_id: str,
+    expert_id: str | None,
+    nightly_id: str,
+    started_at: datetime,
+    budget_skip: str | None,
+) -> NightlyBatchResult:
+    """The fan-out the pre-flight billing check stopped: errored when the
+    budget could not be read, else skipped."""
+    completed_at = datetime.now(timezone.utc)
+    elapsed = (completed_at - started_at).total_seconds()
+    if budget_skip == "rate_limit_unavailable":
+        return NightlyBatchResult(
+            user_id=user_id,
+            expert_id=expert_id,
+            nightly_id=nightly_id,
+            started_at=started_at,
+            completed_at=completed_at,
+            elapsed_seconds=elapsed,
+            error=f"billing: {budget_skip}",
+        )
+    return NightlyBatchResult(
+        user_id=user_id,
+        expert_id=expert_id,
+        nightly_id=nightly_id,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_seconds=elapsed,
+        skipped=True,
+        skip_reason=budget_skip or "insufficient_credits",
+    )
+
+
+async def _submit_dream(result: NightlyBatchResult, trigger: DreamTrigger) -> None:
+    """Dream pass submitter. Per-submitter failure stays isolated — a
+    crashed dream pass doesn't block the ratification sweep (ratification
+    operates on already-written tentatives from previous passes, not
+    tonight's failed one)."""
+    user_id = result.user_id
     try:
         from .orchestrator import execute_dream_pass
 
-        result.dream = await execute_dream_pass(user_id, expert_id=expert_id)
+        result.dream = await execute_dream_pass(
+            user_id, expert_id=result.expert_id, trigger=trigger
+        )
         if result.dream.error:
             logger.warning(
                 "Nightly batch %s: dream submitter errored for user %s: %s",
-                nightly_id,
+                result.nightly_id,
                 user_id[:12],
                 result.dream.error,
             )
@@ -188,31 +207,35 @@ async def run_nightly_batch_submit(
     except Exception as exc:
         logger.exception(
             "Nightly batch %s: dream submitter crashed for user %s",
-            nightly_id,
+            result.nightly_id,
             user_id[:12],
         )
         # Capture but continue to the next submitter — sweep is
         # independent.
         result.error = f"dream: {exc}"
 
-    # Ratification supersession sweep. With the sync hit-hook landed
-    # (see ``ratification_hits.try_ratify_on_hit``), the nightly
-    # sweep primarily handles supersession of unratified tentatives
-    # past their grace period — promotions happen inline at
-    # retrieval-hit time.
+
+async def _submit_ratification(result: NightlyBatchResult) -> None:
+    """Ratification supersession sweep. With the sync hit-hook landed
+    (see ``ratification_hits.try_ratify_on_hit``), the nightly sweep
+    primarily handles supersession of unratified tentatives past their
+    grace period — promotions happen inline at retrieval-hit time."""
+    user_id = result.user_id
     try:
-        result.ratification = await run_ratification_pass(user_id, expert_id=expert_id)
+        result.ratification = await run_ratification_pass(
+            user_id, expert_id=result.expert_id
+        )
         if result.ratification.error:
             logger.warning(
                 "Nightly batch %s: ratification sweep errored for user %s: %s",
-                nightly_id,
+                result.nightly_id,
                 user_id[:12],
                 result.ratification.error,
             )
     except Exception as exc:
         logger.exception(
             "Nightly batch %s: ratification sweep crashed for user %s",
-            nightly_id,
+            result.nightly_id,
             user_id[:12],
         )
         # Append rather than overwrite so a dream failure plus a
@@ -220,10 +243,13 @@ async def run_nightly_batch_submit(
         prev = result.error or ""
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
 
-    # Skill learning runs once per account: its pass reviews the account's
-    # skills and its experts', so an expert's nightly batch leaves it out.
+
+async def _submit_learning(result: NightlyBatchResult) -> None:
+    """Skill learning, when its own flag is on for the user: the dream pass
+    never implies it. A failure stays isolated, as the other submitters' do."""
+    user_id = result.user_id
     try:
-        if expert_id is None and await is_feature_enabled(
+        if result.expert_id is None and await is_feature_enabled(
             Flag.DREAM_SKILL_LEARNING_ENABLED, user_id
         ):
             result.learning = await run_skill_learning_pass(user_id, trigger="nightly")
@@ -233,13 +259,15 @@ async def run_nightly_batch_submit(
             part for part in (result.error, f"learning: {exc}") if part
         )
 
+
+def _finished(result: NightlyBatchResult) -> NightlyBatchResult:
     completed_at = datetime.now(timezone.utc)
     result.completed_at = completed_at
-    result.elapsed_seconds = (completed_at - started_at).total_seconds()
+    result.elapsed_seconds = (completed_at - result.started_at).total_seconds()
     logger.info(
         "Nightly batch %s done for user %s in %.1fs: dream=%s ratification=%s",
-        nightly_id,
-        user_id[:12],
+        result.nightly_id,
+        result.user_id[:12],
         result.elapsed_seconds,
         _summary(result.dream),
         _summary(result.ratification),

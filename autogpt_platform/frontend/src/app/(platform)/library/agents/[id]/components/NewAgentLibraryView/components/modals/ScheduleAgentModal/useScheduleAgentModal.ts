@@ -2,7 +2,6 @@ import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { trackScheduleCreatedGoal } from "@/services/analytics/activation-goals";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
@@ -34,10 +33,6 @@ export function useScheduleAgentModal(
           toast({
             title: "Schedule created",
           });
-          trackScheduleCreatedGoal(
-            { id: agent.graph_id, name: agent.name },
-            "library",
-          );
           callbacks?.onCreateSchedule?.(response.data);
           invalidateAllScheduleQueries(queryClient, agent.graph_id);
           // Reset form

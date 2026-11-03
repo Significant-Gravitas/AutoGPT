@@ -28,6 +28,8 @@ from backend.copilot.bot.adapters.base import (
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 
+from .location import location_of
+
 logger = logging.getLogger(__name__)
 
 # Set once by `register_choice_handler`. The click handler is reconstructed by
@@ -154,6 +156,7 @@ def _context_from_interaction(
         channel_type = "dm"
     elif isinstance(interaction.channel, discord.Thread):
         channel_type = "thread"
+    location = location_of(interaction.guild, interaction.channel)
     return MessageContext(
         platform="discord",
         channel_type=channel_type,
@@ -164,6 +167,12 @@ def _context_from_interaction(
         username=interaction.user.display_name,
         text=option,
         bot_mentioned=True,
+        server_name=location.server_name,
+        channel_name=location.channel_name,
+        public_channel_id=location.public_channel_id,
+        thread_name=location.thread_name,
+        public_thread_id=location.public_thread_id,
+        post_channel_id=location.post_channel_id,
     )
 
 

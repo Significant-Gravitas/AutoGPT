@@ -10,7 +10,7 @@ each call.
 import pytest
 
 from .conftest import FakeAsyncRedis
-from .locks import _EXTEND_SCRIPT, _UNLOCK_SCRIPT
+from .locks import EXTEND_SCRIPT, UNLOCK_SCRIPT
 
 
 @pytest.mark.asyncio
@@ -62,11 +62,11 @@ async def test_hash_commands():
 async def test_eval_models_the_lock_scripts():
     redis = FakeAsyncRedis()
     await redis.set("dream:inflight:u1", "token-a", nx=True, ex=1800)
-    assert await redis.eval(_EXTEND_SCRIPT, 1, "dream:inflight:u1", "token-b", 60) == 0
-    assert await redis.eval(_EXTEND_SCRIPT, 1, "dream:inflight:u1", "token-a", 60) == 1
+    assert await redis.eval(EXTEND_SCRIPT, 1, "dream:inflight:u1", "token-b", 60) == 0
+    assert await redis.eval(EXTEND_SCRIPT, 1, "dream:inflight:u1", "token-a", 60) == 1
     assert await redis.ttl("dream:inflight:u1") == 60
-    assert await redis.eval(_UNLOCK_SCRIPT, 1, "dream:inflight:u1", "token-b") == 0
-    assert await redis.eval(_UNLOCK_SCRIPT, 1, "dream:inflight:u1", "token-a") == 1
+    assert await redis.eval(UNLOCK_SCRIPT, 1, "dream:inflight:u1", "token-b") == 0
+    assert await redis.eval(UNLOCK_SCRIPT, 1, "dream:inflight:u1", "token-a") == 1
     assert await redis.get("dream:inflight:u1") is None
     with pytest.raises(NotImplementedError):
         await redis.eval("return 1", 2, "a", "b", "c")

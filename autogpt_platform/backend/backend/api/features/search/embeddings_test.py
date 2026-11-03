@@ -1,5 +1,6 @@
 """Tests for the generic embedding service in search/embeddings.py."""
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma
@@ -7,7 +8,7 @@ import pytest
 from prisma import Prisma
 from prisma.enums import ContentType
 
-from backend.api.features.search import embeddings
+from backend.api.features.search import embeddings, rate_limit
 
 
 @pytest.fixture(autouse=True)
@@ -167,14 +168,60 @@ async def test_embedding_to_vector_string():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_embed_query():
-    """Test embed_query function (alias for generate_embedding)."""
-    with patch(
-        "backend.api.features.search.embeddings.generate_embedding"
-    ) as mock_generate:
-        mock_generate.return_value = [0.1, 0.2, 0.3]
+async def test_a_repeated_query_reuses_its_embedding():
+    # Unique per run: the cache is the real Redis, shared with later runs.
+    query = f"repeat {uuid.uuid4().hex}"
+    generate = AsyncMock(return_value=[0.1, 0.2, 0.3])
+    with patch.object(embeddings, "generate_embedding", generate):
+        first = await embeddings.embed_query(query)
+        again = await embeddings.embed_query(f"  {query.replace(' ', '   ')} ")
 
-        result = await embeddings.embed_query("test query")
+    assert first == again == [0.1, 0.2, 0.3]
+    generate.assert_awaited_once_with(query)
 
-        assert result == [0.1, 0.2, 0.3]
-        mock_generate.assert_called_once_with("test query")
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_public_query_past_the_budget_is_not_embedded():
+    generate = AsyncMock(return_value=[0.1])
+    with (
+        patch.object(embeddings, "generate_embedding", generate),
+        patch.object(
+            embeddings,
+            "take_public_search_embedding_slot",
+            AsyncMock(return_value=False),
+        ),
+        pytest.raises(embeddings.PublicSearchBudgetSpent),
+    ):
+        await embeddings.embed_query(f"spent {uuid.uuid4().hex}", public_search=True)
+
+    generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_with_the_budget_off_a_public_query_ignores_a_cached_embedding(
+    monkeypatch,
+):
+    query = f"off {uuid.uuid4().hex}"
+    with patch.object(embeddings, "generate_embedding", AsyncMock(return_value=[0.4])):
+        await embeddings.embed_query(query)
+    monkeypatch.setattr(
+        rate_limit.settings.config, "public_search_embeddings_per_minute", 0
+    )
+
+    with pytest.raises(embeddings.PublicSearchBudgetSpent):
+        await embeddings.embed_query(query, public_search=True)
+    assert await embeddings.embed_query(query) == [0.4]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_only_a_new_public_embedding_takes_from_the_budget():
+    query = f"cached {uuid.uuid4().hex}"
+    slot = AsyncMock(return_value=False)
+    with (
+        patch.object(embeddings, "generate_embedding", AsyncMock(return_value=[0.4])),
+        patch.object(embeddings, "take_public_search_embedding_slot", slot),
+    ):
+        await embeddings.embed_query(query)
+        assert await embeddings.embed_query(query, public_search=True) == [0.4]
+
+    slot.assert_not_awaited()

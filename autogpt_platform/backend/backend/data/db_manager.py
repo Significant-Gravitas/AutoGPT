@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
@@ -41,7 +42,11 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.api.features.onboarding_dump import db as onboarding_dump_db
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    resolve_member_tenancy,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -59,13 +64,16 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.blocks import get_blocks
 from backend.copilot import background_task_db
 from backend.copilot import db as chat_db
+from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.copilot.scheduled_chats.service import record_scheduled_run
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import dream_pass as dream_pass_db
 from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
@@ -90,6 +98,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -144,11 +153,13 @@ from backend.data.graph import (
     get_graph_settings,
     get_node,
     get_store_listed_graphs,
+    is_graph_version_owner,
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    claim_approved_review,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
     get_pending_reviews_for_chat_session,
@@ -158,6 +169,7 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
     record_gate_approval,
+    release_review_claim,
     reopen_review,
     update_review_processed_status,
 )
@@ -171,6 +183,7 @@ from backend.data.posthog_lifecycle_sync import (
     start_posthog_lifecycle_sweep,
 )
 from backend.data.pro_activation import get_usage_activation_state
+from backend.data.product_mail_audience import get_product_mail_standing
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -327,6 +340,15 @@ class DatabaseManager(AppService):
             logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
             await db.connect()
 
+            # Load the block registry before serving. The first RPC that needs a
+            # block loads it otherwise, on this event loop, and every RPC waits.
+            load_started = time.monotonic()
+            block_count = len(get_blocks())
+            logger.info(
+                f"[{self.service_name}] Loaded {block_count} blocks in "
+                f"{time.monotonic() - load_started:.1f}s"
+            )
+
             logger.info(f"[{self.service_name}] ✅ Ready")
             yield
 
@@ -395,6 +417,7 @@ class DatabaseManager(AppService):
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
+    is_graph_version_owner = _(is_graph_version_owner)
 
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -413,7 +436,7 @@ class DatabaseManager(AppService):
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
-    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    # full flag context — see backend/util/feature_flag/__init__.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
@@ -429,11 +452,13 @@ class DatabaseManager(AppService):
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
+    get_product_mail_standing = _(get_product_mail_standing)
     get_user_notification_preference = _(get_user_notification_preference)
 
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    claim_approved_review = _(claim_approved_review)
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
@@ -443,6 +468,7 @@ class DatabaseManager(AppService):
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     record_gate_approval = _(record_gate_approval)
+    release_review_claim = _(release_review_claim)
     reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -485,6 +511,9 @@ class DatabaseManager(AppService):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = _(delete_expired_ip_events)
 
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
@@ -578,6 +607,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    resolve_member_tenancy = _(resolve_member_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -636,6 +666,8 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
+    list_expert_identities = _(experts_db.list_expert_identities)
+    owns_active_expert = _(experts_db.owns_active_expert)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -725,6 +757,7 @@ class DatabaseManager(AppService):
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
+    get_template = _(experts_db.get_template)
     with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
     expert_setup_status = _(experts_db.expert_setup_status)
@@ -786,6 +819,8 @@ class DatabaseManager(AppService):
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    add_dream_narrative = _(chat_db.add_dream_narrative)
+    blank_dream_narratives = _(chat_db.blank_dream_narratives)
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
@@ -803,14 +838,31 @@ class DatabaseManager(AppService):
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
+    # ============ Dream Passes ============ #
+    # The scheduler (sync passes, the reaper, retention) and the batch
+    # executor (batch callbacks) keep no Prisma connection; the dream store
+    # reaches each pass's record through these via db_accessors.dream_db().
+    create_dream_pass = _(dream_pass_db.create_dream_pass)
+    update_dream_pass = _(dream_pass_db.update_dream_pass)
+    get_dream_pass = _(dream_pass_db.get_dream_pass)
+    get_dream_pass_for_user = _(dream_pass_db.get_dream_pass_for_user)
+    list_open_dream_passes = _(dream_pass_db.list_open_dream_passes)
+    list_dream_passes = _(dream_pass_db.list_dream_passes)
+    list_expired_dream_passes = _(dream_pass_db.list_expired_dream_passes)
+    list_dream_pass_cleanups = _(dream_pass_db.list_dream_pass_cleanups)
+    delete_old_dream_passes = _(dream_pass_db.delete_old_dream_passes)
+    erase_dream_passes = _(dream_pass_db.erase_dream_passes)
+
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
     # post a briefing via db_accessors / the DatabaseManager RPC.
     append_plain_session_message = _(chat_db.append_plain_session_message)
     # And to tell a scheduled chat why its run was skipped, in that chat.
     append_session_message = _(chat_db.append_session_message)
-    # The copilot executor counts each scheduled run toward a failure streak.
+    # The copilot executor counts each scheduled run toward a failure streak,
+    # and drops a follow-up's streak when Otto deletes its schedule.
     record_scheduled_run = _(record_scheduled_run)
+    forget_scheduled_chat = _(forget_scheduled_chat)
     create_briefing = _(create_briefing)
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
@@ -866,6 +918,9 @@ class DatabaseManagerClient(AppServiceClient):
     spend_org_credits = _(d.spend_org_credits)
     get_org_credits = _(d.get_org_credits)
     get_personal_org_owner = _(d.get_personal_org_owner)
+
+    # Orgs
+    resolve_member_tenancy = _(d.resolve_member_tenancy)
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
@@ -953,6 +1008,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
+    is_graph_version_owner = d.is_graph_version_owner
     get_node = d.get_node
     get_store_listed_graphs = d.get_store_listed_graphs
 
@@ -976,6 +1032,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    claim_approved_review = d.claim_approved_review
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
@@ -984,6 +1041,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
     record_gate_approval = d.record_gate_approval
+    release_review_claim = d.release_review_claim
     reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
@@ -991,6 +1049,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
     get_user_email_by_id = d.get_user_email_by_id
     get_user_email_verification = d.get_user_email_verification
+    get_product_mail_standing = d.get_product_mail_standing
     get_user_notification_preference = d.get_user_notification_preference
 
     # ============ Alerts ============ #
@@ -1025,6 +1084,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_plain_session_message = d.append_plain_session_message
     append_session_message = d.append_session_message
     record_scheduled_run = d.record_scheduled_run
+    forget_scheduled_chat = d.forget_scheduled_chat
     create_briefing = d.create_briefing
     get_briefing_for_date = d.get_briefing_for_date
     get_latest_briefings = d.get_latest_briefings
@@ -1068,6 +1128,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
+
+    # ============ Sign-in IP log ============ #
+    delete_expired_ip_events = d.delete_expired_ip_events
 
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
@@ -1140,6 +1203,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    resolve_member_tenancy = d.resolve_member_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -1187,6 +1251,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     get_autopilot_mode = d.get_autopilot_mode
+    list_expert_identities = d.list_expert_identities
+    owns_active_expert = d.owns_active_expert
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired
@@ -1265,6 +1331,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     revoke_expert_credential = d.revoke_expert_credential
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
+    get_template = d.get_template
     with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
     expert_setup_status = d.expert_setup_status
@@ -1305,6 +1372,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    add_dream_narrative = d.add_dream_narrative
+    blank_dream_narratives = d.blank_dream_narratives
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
@@ -1320,3 +1389,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message
+
+    # ============ Dream Passes ============ #
+    create_dream_pass = d.create_dream_pass
+    update_dream_pass = d.update_dream_pass
+    get_dream_pass = d.get_dream_pass
+    get_dream_pass_for_user = d.get_dream_pass_for_user
+    list_open_dream_passes = d.list_open_dream_passes
+    list_dream_passes = d.list_dream_passes
+    list_expired_dream_passes = d.list_expired_dream_passes
+    list_dream_pass_cleanups = d.list_dream_pass_cleanups
+    delete_old_dream_passes = d.delete_old_dream_passes
+    erase_dream_passes = d.erase_dream_passes

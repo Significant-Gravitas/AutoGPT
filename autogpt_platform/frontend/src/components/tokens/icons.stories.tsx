@@ -1,6 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   Alert01Icon,
@@ -23,6 +22,7 @@ import {
   InstagramIcon,
   Key01Icon,
   LibraryIcon,
+  LinkSquare01Icon,
   Linkedin01Icon,
   Logout03Icon,
   Menu01Icon,
@@ -205,7 +205,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               Hugeicons
             </Text>
@@ -215,15 +215,19 @@ export function AllVariants() {
                   href="https://hugeicons.com/icons/stroke-rounded"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-blue-600 hover:underline"
                 >
                   Hugeicons Library{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
                 <Text variant="body" className="mb-2 text-zinc-600">
                   A comprehensive icon family; we use the stroke-rounded variant
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-zinc-800">
                   @hugeicons/core-free-icons → icon data
                 </div>
               </div>
@@ -238,7 +242,7 @@ export function AllVariants() {
                   There is a single stroke width, owned by the Icon atom - never
                   override it per call site
                 </Text>
-                <div className="space-y-1 font-mono text-sm text-zinc-800">
+                <div className="space-y-1 font-mono text-body text-zinc-800">
                   <div>2px</div>
                 </div>
               </div>
@@ -248,7 +252,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               Usage Guidelines
             </Text>
@@ -281,7 +285,7 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-zinc-800"
+                  className="mb-2 text-body-lg font-semibold text-zinc-800"
                 >
                   🎨 Design Consistency
                 </Text>
@@ -307,7 +311,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-zinc-800"
           >
             Matching Design Specifications
           </Text>
@@ -375,7 +379,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-zinc-800"
           >
             Icon Categories
           </Text>
@@ -390,7 +394,7 @@ export function AllVariants() {
             <div>
               <Text
                 variant="h3"
-                className="mb-1 text-lg font-semibold text-zinc-800"
+                className="mb-1 text-lead font-semibold text-zinc-800"
               >
                 {category.name}
               </Text>
@@ -423,7 +427,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-zinc-800"
           >
             Usage Examples
           </Text>

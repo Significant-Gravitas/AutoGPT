@@ -24,7 +24,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import MemoryScopeSchedule
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import is_feature_enabled
+from backend.util.feature_flag import evaluate_feature_flag
 
 from .deadline import within_deadline
 from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
@@ -38,13 +38,19 @@ async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSyste
     results: dict[str, Any] = {}
     enabled: list[DreamSystemJob] = []
     for job in jobs_for(scope):
+        if job.flag is None:
+            enabled.append(job)
+            continue
         try:
-            on = await within_deadline(
-                is_feature_enabled(job.flag, scope.owner_user_id)
+            on, authoritative = await within_deadline(
+                evaluate_feature_flag(job.flag, scope.owner_user_id)
             )
         except Exception:
             logger.warning(f"Flag check failed for {job.name}", exc_info=True)
-            results[job.job_id_prefix] = skipped("registration_failed")
+            results[job.job_id_prefix] = skipped("flag_unavailable")
+            continue
+        if not authoritative:
+            results[job.job_id_prefix] = skipped("flag_unavailable")
             continue
         if on:
             enabled.append(job)
@@ -59,6 +65,7 @@ async def register_scope_jobs(
     row: MemoryScopeSchedule | None,
     user_timezone: str,
     force_refresh: bool,
+    skipped_jobs: dict[str, Any],
 ) -> dict[str, Any]:
     """Claim the scope's row if it has none, register every enabled cron
     that is missing or was registered in another timezone, and record the
@@ -74,7 +81,7 @@ async def register_scope_jobs(
         failure = await _record_timezone(scope, row, user_timezone)
         if failure is not None:
             return skip_all(enabled, failure)
-    outcomes: dict[str, Any] = {}
+    outcomes: dict[str, Any] = dict(skipped_jobs)
     for job in enabled:
         if not stale and recorded_job_id(row, job) is not None:
             outcomes[job.job_id_prefix] = None
@@ -244,7 +251,10 @@ def _next_job_id(
     """Keep failed registration intent so reconciliation can retry it."""
     if _registered(outcome):
         return outcome["id"]
-    if outcome and outcome.get("reason") == "registration_failed":
+    if outcome and outcome.get("reason") in (
+        "registration_failed",
+        "flag_unavailable",
+    ):
         return recorded_job_id(row, job)
     return None if stale else recorded_job_id(row, job)
 

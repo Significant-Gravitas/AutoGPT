@@ -191,14 +191,31 @@ async def test_enqueue_turn_includes_default_transport_and_attribution() -> None
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> None:
+@pytest.mark.parametrize(
+    "error_data",
+    [
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)",
+                "error_code": "P2002",
+                "meta": {"target": ["id"]},
+            }
+        },
+        # Through the database manager's RPC only the message survives.
+        {
+            "user_facing_error": {
+                "message": "Unique constraint failed on the fields: (`id`)"
+            }
+        },
+    ],
+    ids=["local", "rpc"],
+)
+async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued(
+    error_data: dict,
+) -> None:
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
-    db.add_chat_message = AsyncMock(
-        side_effect=UniqueViolationError(
-            {"user_facing_error": {"message": "ChatMessage_pkey"}}
-        )
-    )
+    db.add_chat_message = AsyncMock(side_effect=UniqueViolationError(error_data))
     db.update_chat_session_status = AsyncMock()
     invalidate = AsyncMock()
     with (

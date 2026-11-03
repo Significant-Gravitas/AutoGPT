@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class SwapCredentialService(AppService):
-    # Nothing on the swap path reads a flag; no second LaunchDarkly client.
+    # Nothing on the swap path reads a flag; no second flag client.
     reads_feature_flags = False
 
     @classmethod
@@ -54,6 +54,6 @@ class SwapCredentialService(AppService):
 
     @expose
     async def resolve_swap_credential(
-        self, user_id: str, name: str, host: str
+        self, user_id: str, name: str, host: str, box: str
     ) -> Optional[SwapCredential]:
-        return await resolve_swap_credential(user_id, name, host)
+        return await resolve_swap_credential(user_id, name, host, box)

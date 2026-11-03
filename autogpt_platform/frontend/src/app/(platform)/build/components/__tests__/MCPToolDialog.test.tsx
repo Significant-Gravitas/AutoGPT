@@ -587,3 +587,45 @@ describe("MCPToolDialog credential binding", () => {
     });
   });
 });
+
+describe("MCPToolDialog tool list", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists a tool's parameters and marks the required ones", async () => {
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(200, {
+        tools: [
+          {
+            name: "search-tool",
+            description: "Searches the web",
+            input_schema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                limit: { type: "integer" },
+              },
+              required: ["query"],
+            },
+          },
+        ],
+        server_name: "Public Server",
+      }),
+    );
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PUBLIC_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    const tool = await screen.findByRole("button", { name: /search-tool/i });
+    expect(tool.textContent).toContain("2 params");
+    expect(screen.getByText("query").textContent).toBe("query*");
+    expect(screen.getByText("limit").textContent).toBe("limit");
+  });
+});
