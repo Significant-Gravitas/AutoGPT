@@ -21,31 +21,34 @@ from backend.data.execution import create_graph_execution, get_graph_execution
 @pytest_asyncio.fixture(loop_scope="session")
 async def owner():
     connected_here = not prisma.is_connected()
-    if connected_here:
-        await prisma.connect()
     user_id = str(uuid4())
-    await prisma.user.create(
-        data={"id": user_id, "email": f"depth-{user_id}@example.com"}
-    )
-    for block in (AgentInputBlock(), CreateListBlock()):
-        await prisma.agentblock.upsert(
-            where={"id": block.id},
-            data={
-                "create": {
-                    "id": block.id,
-                    "name": block.name,
-                    "inputSchema": json.dumps(block.input_schema.jsonschema()),
-                    "outputSchema": json.dumps(block.output_schema.jsonschema()),
-                },
-                "update": {},
-            },
-        )
     try:
+        if connected_here:
+            await prisma.connect()
+        await prisma.user.create(
+            data={"id": user_id, "email": f"depth-{user_id}@example.com"}
+        )
+        for block in (AgentInputBlock(), CreateListBlock()):
+            await prisma.agentblock.upsert(
+                where={"id": block.id},
+                data={
+                    "create": {
+                        "id": block.id,
+                        "name": block.name,
+                        "inputSchema": json.dumps(block.input_schema.jsonschema()),
+                        "outputSchema": json.dumps(block.output_schema.jsonschema()),
+                    },
+                    "update": {},
+                },
+            )
         yield user_id
     finally:
-        await prisma.user.delete(where={"id": user_id})
-        if connected_here:
-            await prisma.disconnect()
+        try:
+            if prisma.is_connected():
+                await prisma.user.delete_many(where={"id": user_id})
+        finally:
+            if connected_here and prisma.is_connected():
+                await prisma.disconnect()
 
 
 @pytest_asyncio.fixture(loop_scope="session")
