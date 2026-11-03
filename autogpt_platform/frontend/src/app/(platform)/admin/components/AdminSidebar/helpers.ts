@@ -1,5 +1,6 @@
 import {
   BrainIcon,
+  Building03Icon,
   Calculator01Icon,
   Database01Icon,
   DollarSignIcon,
@@ -26,6 +27,11 @@ export interface AdminNavItem {
 export function getAdminNavItems(): AdminNavItem[] {
   return [
     { label: "Users", href: "/admin/users", Icon: UserIcon },
+    {
+      label: "Organization Access",
+      href: "/admin/organizations",
+      Icon: Building03Icon,
+    },
     {
       label: "Marketplace Management",
       href: "/admin/marketplace",

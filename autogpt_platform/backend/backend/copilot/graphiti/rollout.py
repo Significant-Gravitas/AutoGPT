@@ -3,7 +3,7 @@
 from copy import deepcopy
 from typing import Any
 
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.api.features.orgs.rollout import org_collaboration_enabled
 
 SHARED_MEMORY_DISABLED = "Organization collaboration is not enabled for this account."
 
@@ -11,7 +11,7 @@ SHARED_MEMORY_DISABLED = "Organization collaboration is not enabled for this acc
 async def shared_memory_enabled(user_id: str | None) -> bool:
     if not user_id:
         return False
-    return await is_feature_enabled(Flag.SHOW_ORG_SETTINGS, user_id, default=False)
+    return await org_collaboration_enabled(user_id)
 
 
 def memory_tool_parameters(

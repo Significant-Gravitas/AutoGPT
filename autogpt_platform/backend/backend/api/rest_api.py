@@ -24,6 +24,7 @@ import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
+import backend.api.features.admin.org_access_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
@@ -476,6 +477,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.admin.user_admin_routes.router,
+    tags=["admin"],
+    prefix="/api",
+)
+app.include_router(
+    backend.api.features.admin.org_access_admin_routes.router,
     tags=["admin"],
     prefix="/api",
 )

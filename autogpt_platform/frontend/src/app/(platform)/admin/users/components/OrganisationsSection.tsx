@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { AdminSection } from "../../components/AdminSection";
 import { formatMonth } from "../helpers";
+import { OrgAccessControl } from "./OrgAccessControl/OrgAccessControl";
 
 interface Props {
   userId: string;
@@ -25,6 +26,9 @@ export function OrganisationsSection({ userId }: Props) {
       title="Organisations"
       description="Every account has a personal organisation."
     >
+      <div className="mb-4 border-b border-border-base pb-4">
+        <OrgAccessControl userId={userId} />
+      </div>
       {isLoading ? (
         <div className="flex flex-col gap-2" aria-busy="true">
           <Skeleton className="h-10 w-full rounded-lg" />

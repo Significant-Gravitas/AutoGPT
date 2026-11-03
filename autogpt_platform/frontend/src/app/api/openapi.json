@@ -2684,6 +2684,233 @@
         }
       }
     },
+    "/api/admin/org-access": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List organization access",
+        "description": "Accounts an admin has given organizations, newest first. Admin-only.",
+        "operationId": "getAdminList organization access",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 320 },
+                { "type": "null" }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAccessGrantPage" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/org-access/by-email": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Enable organization access by email",
+        "description": "Same as enabling by id, for an account found by its sign-in email.",
+        "operationId": "postAdminEnable organization access by email",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableOrgAccessByEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAccessStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/org-access/users/{user_id}": {
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Disable organization access",
+        "description": "Take an account's organizations away. Memberships and data are kept,\nand access through another owner's team organization remains. Admin-only.",
+        "operationId": "deleteAdminDisable organization access",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAccessStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get organization access",
+        "description": "Whether an account has organizations, and through which grant. Admin-only.",
+        "operationId": "getAdminGet organization access",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAccessStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["admin"],
+        "summary": "Enable organization access",
+        "description": "Give an account organizations; its team organizations pass them on to\ntheir members and invitees. Admin-only.",
+        "operationId": "putAdminEnable organization access",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableOrgAccessRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgAccessStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
@@ -25546,6 +25773,41 @@
         ],
         "title": "EmailDomainInfo"
       },
+      "EnableOrgAccessByEmailRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Note",
+            "description": "Why the account gets organizations, e.g. the plan or trial."
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "EnableOrgAccessByEmailRequest"
+      },
+      "EnableOrgAccessRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Note",
+            "description": "Why the account gets organizations, e.g. the plan or trial."
+          }
+        },
+        "type": "object",
+        "title": "EnableOrgAccessRequest"
+      },
       "EnableShareRequest": {
         "properties": {
           "auto_share_executions": {
@@ -29332,6 +29594,21 @@
         "title": "IngestionDrainStatus",
         "description": "Fate of a dream pass's enqueued graph writes at the moment the pass\nwas reported complete.\n\nFive distinct states, so consumers (and a future Memory Visualizer)\ncan tell a healthy by-design skip from a real failure:\n\n  * ``drained`` — the worker finished every one of the pass's own\n    episodes before the pass returned (sync path): each was written,\n    dropped for resting on a forget (``dropped_forgotten``), or failed\n    with a logged error; or the pass enqueued nothing to drain. Healthy.\n  * ``skipped`` — the drain was intentionally not run to avoid stalling\n    a shared serial loop (batch path). The episodes process\n    fire-and-forget, counted pending; healthy by design, NOT a failure\n    signal.\n  * ``not_applied`` — this pass never began applying, so no drain ran.\n  * ``unknown`` — this pass began applying but recorded no outcome: it\n    may still be applying, or have applied before it ended (a cancel\n    after its last check does not stop an apply), or failed partway. Its\n    writes may have been enqueued, so whether they drained is not known.\n  * ``timed_out`` — the sync-path drain was attempted but did not finish\n    within its budget. The episodes not written yet are counted pending,\n    not written; they stay queued in-process, and are lost if the\n    worker's pod restarts. This is the only value that warrants an\n    operator warning."
       },
+      "InheritedOrgAccess": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "org_name": { "type": "string", "title": "Org Name" },
+          "via": {
+            "type": "string",
+            "enum": ["membership", "invitation"],
+            "title": "Via"
+          }
+        },
+        "type": "object",
+        "required": ["org_id", "org_name", "via"],
+        "title": "InheritedOrgAccess",
+        "description": "A team organization that gives an account access without a grant of its own."
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -32118,6 +32395,90 @@
         "type": "object",
         "required": ["items"],
         "title": "OpenDecisionsResponse"
+      },
+      "OrgAccessGrantInfo": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Granted At"
+          },
+          "granted_by_user_id": {
+            "type": "string",
+            "title": "Granted By User Id"
+          },
+          "granted_by_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Granted By Email"
+          },
+          "note": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "granted_at",
+          "granted_by_user_id",
+          "granted_by_email",
+          "note"
+        ],
+        "title": "OrgAccessGrantInfo"
+      },
+      "OrgAccessGrantPage": {
+        "properties": {
+          "grants": {
+            "items": { "$ref": "#/components/schemas/OrgAccessGrantInfo" },
+            "type": "array",
+            "title": "Grants"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "page": { "type": "integer", "title": "Page" },
+          "page_size": { "type": "integer", "title": "Page Size" }
+        },
+        "type": "object",
+        "required": ["grants", "total", "page", "page_size"],
+        "title": "OrgAccessGrantPage"
+      },
+      "OrgAccessStatus": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "email": { "type": "string", "title": "Email" },
+          "grant": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OrgAccessGrantInfo" },
+              { "type": "null" }
+            ]
+          },
+          "inherited_from": {
+            "items": { "$ref": "#/components/schemas/InheritedOrgAccess" },
+            "type": "array",
+            "title": "Inherited From"
+          },
+          "has_access": {
+            "type": "boolean",
+            "title": "Has Access",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "grant",
+          "inherited_from",
+          "has_access"
+        ],
+        "title": "OrgAccessStatus"
       },
       "OrgAliasResponse": {
         "properties": {

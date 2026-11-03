@@ -290,6 +290,20 @@ describe("/admin/users", () => {
     expect(await within(section).findByText("Acme Inc")).toBeDefined();
   });
 
+  it("turns organization features on for the account being looked up", async () => {
+    const enabled = mockEnableOrgAccess();
+    renderPage(`?user=${ALEX.id}`);
+
+    const control = await screen.findByTestId("org-access-control");
+    expect(within(control).getByText("Off")).toBeDefined();
+    fireEvent.click(within(control).getByRole("button", { name: "Turn on" }));
+
+    await waitFor(() => expect(enabled).toEqual([ALEX.id]));
+    const updated = await screen.findByTestId("org-access-control");
+    expect(await within(updated).findByText("On")).toBeDefined();
+    expect(within(updated).getByText(/by admin@agpt\.co/)).toBeDefined();
+  });
+
   it("offers no ban or impersonation until the signed-in admin is known", async () => {
     auth.user = null;
     renderPage(`?user=${ALEX.id}`);
@@ -343,9 +357,46 @@ function mockUserRoutes(user: typeof ALEX) {
     http.get(`*/api/admin/users/${user.id}/organizations`, () =>
       HttpResponse.json([ORGANISATION]),
     ),
+    http.get(`*/api/admin/org-access/users/${user.id}`, () =>
+      HttpResponse.json(orgAccess(user, false)),
+    ),
     // The admin's own session, for the Sign-ins card's "that's you" warning.
     http.get("*/api/auth/get-session", () => HttpResponse.json(null)),
   );
+}
+
+function orgAccess(user: typeof ALEX, hasAccess: boolean) {
+  return {
+    user_id: user.id,
+    email: user.email,
+    grant: hasAccess
+      ? {
+          user_id: user.id,
+          email: user.email,
+          name: user.name,
+          granted_at: "2026-11-02T10:00:00Z",
+          granted_by_user_id: "admin-self",
+          granted_by_email: "admin@agpt.co",
+          note: null,
+        }
+      : null,
+    inherited_from: [],
+    has_access: hasAccess,
+  };
+}
+
+function mockEnableOrgAccess() {
+  const enabled: string[] = [];
+  server.use(
+    http.get(`*/api/admin/org-access/users/${ALEX.id}`, () =>
+      HttpResponse.json(orgAccess(ALEX, enabled.length > 0)),
+    ),
+    http.put(`*/api/admin/org-access/users/${ALEX.id}`, () => {
+      enabled.push(ALEX.id);
+      return HttpResponse.json(orgAccess(ALEX, true));
+    }),
+  );
+  return enabled;
 }
 
 function mockBan() {

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.api.features.orgs import rollout as org_rollout
 from backend.copilot.model import ChatSession
 from backend.copilot.prompting import get_graphiti_supplement
 from backend.copilot.sdk.tool_adapter import _build_input_schema
@@ -31,9 +32,12 @@ def _rollout_off(monkeypatch: pytest.MonkeyPatch, _enable_shared_memory_rollout)
 
 
 @pytest.mark.asyncio
-async def test_unavailable_flag_defaults_to_disabled():
+async def test_unavailable_flag_defaults_to_disabled(monkeypatch):
+    # The shared-memory gate is the organization gate; without an override
+    # or a grant it is the rollout flag.
+    monkeypatch.delenv("FORCE_FLAG_SHOW_ORG_SETTINGS")
     with patch.object(
-        rollout, "is_feature_enabled", AsyncMock(return_value=False)
+        org_rollout, "is_feature_enabled", AsyncMock(return_value=False)
     ) as flag:
         assert not await rollout.shared_memory_enabled("user-1")
         flag.assert_awaited_once_with(Flag.SHOW_ORG_SETTINGS, "user-1", default=False)

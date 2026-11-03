@@ -119,3 +119,35 @@ async def test_disabled_rollout_still_allows_removing_existing_members(
     remove = mocker.patch.object(routes.org_db, "remove_org_member", AsyncMock())
     await routes.remove_member("org", "recipient", owner_context())
     remove.assert_awaited_once_with("org", "recipient", requesting_user_id="owner")
+
+
+@pytest.mark.asyncio
+@pytest.mark.real_org_access
+async def test_an_admins_grant_turns_organizations_on_without_the_flag(
+    mocker, monkeypatch
+):
+    monkeypatch.delenv("FORCE_FLAG_SHOW_ORG_SETTINGS", raising=False)
+    grants = AsyncMock(return_value=True)
+    mocker.patch.object(rollout, "has_org_access", grants)
+    flag = mocker.patch.object(
+        rollout, "is_feature_enabled", AsyncMock(return_value=False)
+    )
+
+    assert await rollout.org_collaboration_enabled("owner")
+    grants.assert_awaited_once_with("owner")
+    flag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.real_org_access
+@pytest.mark.parametrize("forced", ["true", "false"])
+async def test_an_env_override_decides_before_any_grant(mocker, monkeypatch, forced):
+    """An installation that turns organizations on or off for everyone is not
+    overruled by one account's grant."""
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", forced)
+    grants = AsyncMock(return_value=True)
+    mocker.patch.object(rollout, "has_org_access", grants)
+
+    assert await rollout.org_collaboration_enabled("owner") is (forced == "true")
+    assert await rollout.org_access_granted("owner") is False
+    grants.assert_not_awaited()

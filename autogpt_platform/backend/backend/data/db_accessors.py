@@ -583,6 +583,19 @@ def review_db():
     return review_db
 
 
+def org_access_db():
+    if db.is_connected():
+        from backend.data import org_access as _org_access_db
+
+        org_access_db = _org_access_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        org_access_db = get_database_manager_async_client()
+
+    return org_access_db
+
+
 def credit_db():
     if db.is_connected():
         from backend.data import db_manager as _credit_db

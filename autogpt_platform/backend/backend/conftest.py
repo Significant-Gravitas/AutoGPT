@@ -86,6 +86,24 @@ async def server():
             yield server
 
 
+@pytest.fixture(autouse=True)
+def no_org_access_grants(request: pytest.FixtureRequest, monkeypatch):
+    """No account holds an admin's organization grant unless a test asks.
+
+    The grant is a database read on the organization gate's path; a unit
+    test without a database would wait on the DatabaseManager for it. A
+    test marked ``real_org_access`` reads the real grants.
+    """
+    if request.node.get_closest_marker("real_org_access"):
+        return
+    from backend.api.features.orgs import rollout
+
+    async def no_grant(_user_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(rollout, "org_access_granted", no_grant)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     """Fail a test that leaves a database transaction open.

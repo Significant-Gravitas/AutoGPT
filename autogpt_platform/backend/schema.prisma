@@ -275,6 +275,8 @@ model User {
 
   memoryHome   PersonalMemoryOrganization?
   memoryScopes MemoryScopeRegistry[]
+
+  OrgAccessGrant OrgAccessGrant?
 }
 
 // One row per (user, experiment): the arm a user was bucketed into the first
@@ -3962,6 +3964,18 @@ model LlmModelMigration {
   // migrations per source: UNIQUE (sourceModelSlug) WHERE isReverted = false
   @@index([targetModelSlug])
   @@index([sourceModelSlug, isReverted])
+}
+
+// An admin's grant of organizations to one account. The account's team
+// organizations pass the access on to their members and invitees; see
+// backend/data/org_access.py.
+model OrgAccessGrant {
+  userId          String   @id
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // The admin who granted it; kept when that account goes away.
+  grantedByUserId String
+  note            String?
+  createdAt       DateTime @default(now())
 }
 
 model PersonalMemoryOrganization {
