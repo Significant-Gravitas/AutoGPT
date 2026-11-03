@@ -1,0 +1,41 @@
+name: Inspect appliance cache records
+'on':
+  push:
+    branches:
+    - codex/ci-appliance-cache-audit-20261103-1845
+permissions:
+  contents: read
+  packages: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Read cache metadata without downloading image layers
+      env:
+        REGISTRY_USER: ${{ github.actor }}
+        REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: "python3 - <<'PY'\nimport base64, hashlib, json, os, re, urllib.parse, urllib.request\nfrom\
+        \ pathlib import Path\nout=Path(os.environ['RUNNER_TEMP'])/'cache-audit'\nout.mkdir()\nrepo='significant-gravitas/autogpt-single-container-buildcache'\n\
+        query=urllib.parse.urlencode({'service':'ghcr.io','scope':f'repository:{repo}:pull'})\nauth=base64.b64encode((os.environ['REGISTRY_USER']+':'+os.environ['REGISTRY_TOKEN']).encode()).decode()\n\
+        request=urllib.request.Request('https://ghcr.io/token?'+query, headers={'Authorization':'Basic\
+        \ '+auth})\nwith urllib.request.urlopen(request,timeout=30) as response:\n    token=json.load(response)['token']\n\
+        headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json'}\n\
+        def get(path):\n    request=urllib.request.Request(f'https://ghcr.io/v2/{repo}/{path}',headers=headers)\n\
+        \    with urllib.request.urlopen(request,timeout=30) as response: return response.read()\nfor\
+        \ arch in ['arm64','amd64']:\n    tag='v4-branch-12773d6f1549976067e2-'+arch\n    raw=get('manifests/'+tag)\n\
+        \    manifest=json.loads(raw)\n    (out/f'{arch}-manifest.json').write_bytes(raw)\n    descriptors=manifest.get('manifests',[])+[manifest.get('config',{})]\n\
+        \    desc=next(d for d in descriptors if d.get('mediaType')=='application/vnd.buildkit.cacheconfig.v0')\n\
+        \    assert re.fullmatch(r'sha256:[0-9a-f]{64}',desc['digest'])\n    data=get('blobs/'+desc['digest'])\n\
+        \    assert 'sha256:'+hashlib.sha256(data).hexdigest()==desc['digest']\n    config=json.loads(data)\n\
+        \    (out/f'{arch}-config.json').write_bytes(data)\n    records=config['records']\n    empty=[i\
+        \ for i,r in enumerate(records) if any(not links for links in r.get('inputs',[]))]\n    print('::notice\
+        \ title=cache-record-audit::'+json.dumps({'arch':arch,'manifest':'sha256:'+hashlib.sha256(raw).hexdigest(),'records':len(records),'records_with_empty_inputs':empty,'records_with_layers':sum(bool(r.get('layers'))\
+        \ for r in records)}))\n\nPY\n"
+    - name: Upload cache metadata
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: appliance-cache-metadata
+        path: ${{ runner.temp }}/cache-audit
+        if-no-files-found: error
+        retention-days: 3
