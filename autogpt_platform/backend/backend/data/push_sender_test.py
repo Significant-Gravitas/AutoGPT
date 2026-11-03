@@ -162,7 +162,11 @@ class TestSendPushForUser:
         mocker.patch.object(
             secrets_guard,
             "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
-            {hashlib.sha256(published.encode()).hexdigest()},
+            {
+                hashlib.sha256(
+                    secrets_guard._canonical_vapid_key(published).encode()
+                ).hexdigest()
+            },
         )
         mocker.patch.object(push_sender, "_settings", _make_settings(private=published))
         mock_db_client.get_user_push_subscriptions.return_value = [_make_subscription()]

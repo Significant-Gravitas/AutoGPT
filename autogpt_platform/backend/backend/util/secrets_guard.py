@@ -14,6 +14,8 @@ The retired values are matched by SHA-256 digest, so detecting them does not
 require putting the literals back into a tracked file.
 """
 
+import base64
+import binascii
 import hashlib
 import logging
 import os
@@ -82,22 +84,40 @@ _RETIRED_VAPID_PRIVATE_KEY_DIGESTS = {
 VAPID_HINT = (
     "Run `make init-env` in autogpt_platform/ to replace the pair with one "
     "generated for this install, then recreate the services so they read it "
-    "(`docker compose up -d`). Browsers subscribed under the old pair stop "
+    "(`docker compose up -d`, with `--build` if the frontend image was built "
+    "from this checkout). Browsers subscribed under the old pair stop "
     "receiving pushes until they turn notifications off and on again."
 )
+_URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
 
 
 def vapid_private_key_is_published(value: str) -> bool:
     """Whether a Web Push private key is one this repository published, however
-    it is padded or wrapped: py-vapid drops newlines and restores Base64 padding
-    before decoding, so those spellings are the same key."""
-    canonical = "".join(value.split()).rstrip("=")
+    it is spelled: py-vapid drops newlines, restores Base64 padding and takes
+    the standard alphabet too, and a decoder ignores the unused bits of the
+    last character, so every spelling that decodes to the published bytes is
+    the published key."""
+    canonical = _canonical_vapid_key(value)
     if not canonical:
         return False
     return (
         hashlib.sha256(canonical.encode()).hexdigest()
         in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
     )
+
+
+def _canonical_vapid_key(value: str) -> str:
+    """The unpadded Base64url spelling of the bytes `value` decodes to, or
+    `value` without whitespace and padding when it does not decode."""
+    compact = "".join(value.split()).rstrip("=")
+    try:
+        decoded = base64.b64decode(
+            compact.translate(_URLSAFE_TO_STANDARD) + "=" * (-len(compact) % 4),
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        return compact
+    return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode()
 
 
 def check_secrets(settings: Settings | None = None) -> None:

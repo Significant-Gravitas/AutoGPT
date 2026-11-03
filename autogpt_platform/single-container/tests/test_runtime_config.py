@@ -218,7 +218,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "VAPID_PUBLIC_KEY": "pretend-shipped-public",
         }
         digests = frozenset(
-            hashlib.sha256(value.encode()).hexdigest() for value in environment.values()
+            runtime_config._vapid_key_digest(value) for value in environment.values()
         )
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -232,6 +232,53 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(second, first)
         self.assertNotIn(first["VAPID_PRIVATE_KEY"], environment.values())
         self.assertNotIn(first["VAPID_PUBLIC_KEY"], environment.values())
+
+    def test_a_persisted_published_pair_is_replaced_on_the_next_boot(self) -> None:
+        """An earlier release persisted whatever pair the environment gave it,
+        the published one included, and the backend sends no push with that
+        pair. The next boot replaces it the way a first boot would today: with
+        the environment's own pair, or a generated one, saved for the boots
+        after it."""
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        theirs = {
+            "VAPID_PRIVATE_KEY": base64.urlsafe_b64encode(b"p" * 32)
+            .rstrip(b"=")
+            .decode(),
+            "VAPID_PUBLIC_KEY": base64.urlsafe_b64encode(b"\x04" + b"q" * 64)
+            .rstrip(b"=")
+            .decode(),
+        }
+        for environment in ({}, theirs):
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+            ):
+                path = Path(directory) / "runtime.env"
+                runtime_config.ensure_runtime_config(path, {})
+                content = path.read_text(encoding="ascii")
+                for name, value in published.items():
+                    content = _replace_config_value(content, name, value)
+                path.write_text(content, encoding="ascii")
+
+                replaced = runtime_config.ensure_runtime_config(path, environment)
+                again = runtime_config.ensure_runtime_config(path, environment)
+
+                self.assertEqual(again, replaced)
+                self.assertNotIn(replaced["VAPID_PRIVATE_KEY"], published.values())
+                self.assertNotIn(replaced["VAPID_PUBLIC_KEY"], published.values())
+                for name, value in environment.items():
+                    self.assertEqual(replaced[name], value)
+                self.assertEqual(
+                    runtime_config._read_config(path)["VAPID_PRIVATE_KEY"],
+                    replaced["VAPID_PRIVATE_KEY"],
+                )
 
     def test_rejects_corrupt_existing_config(self) -> None:
         invalid_vapid_public = (
@@ -648,7 +695,7 @@ class FillEnvSecretsTest(unittest.TestCase):
             "public": "pretend-shipped-public",
         }
         digests = frozenset(
-            hashlib.sha256(value.encode()).hexdigest() for value in published.values()
+            runtime_config._vapid_key_digest(value) for value in published.values()
         )
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -673,23 +720,30 @@ class FillEnvSecretsTest(unittest.TestCase):
                 runtime_config._p256_public_point(int.from_bytes(private, "big")),
             )
 
-    def test_a_padded_or_wrapped_published_key_still_counts_as_published(
-        self,
-    ) -> None:
-        """py-vapid drops newlines and restores Base64 padding before decoding,
-        so `KEY=`, `KEY==` and a key split over lines are the published key."""
-        published = "pretend-shipped-private"
-        digests = frozenset({hashlib.sha256(published.encode()).hexdigest()})
-        spellings = (
-            published,
-            f"{published}=",
-            f"{published}==\n",
-            f"{published[:8]}\n{published[8:]}",
-        )
+    def test_every_spelling_of_the_published_key_counts_as_published(self) -> None:
+        """py-vapid drops newlines, restores Base64 padding and takes the
+        standard alphabet, and a decoder ignores the unused bits of the last
+        character, so each of these decodes to the published bytes."""
+        raw = bytes(range(0xE0, 0x100))  # Base64url with both `-` and `_` in it.
+        published = runtime_config._base64url(raw)
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
+        spellings = {
+            "as published": published,
+            "padded": f"{published}=",
+            "wrapped": f"{published[:8]}\n{published[8:]}",
+            "standard alphabet": base64.b64encode(raw).decode(),
+            "other unused bits": _with_other_unused_bits(published),
+        }
         with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
-            for spelling in spellings:
-                with self.subTest(spelling=spelling):
+            for name, spelling in spellings.items():
+                with self.subTest(spelling=name):
+                    self.assertEqual(_base64url_decode("".join(spelling.split())), raw)
                     self.assertTrue(runtime_config._is_published_vapid_key(spelling))
+            self.assertFalse(
+                runtime_config._is_published_vapid_key(
+                    runtime_config._base64url(bytes(32))
+                )
+            )
             self.assertFalse(runtime_config._is_published_vapid_key("their-private"))
             self.assertFalse(runtime_config._is_published_vapid_key(""))
             self.assertFalse(runtime_config._is_published_vapid_key("=\n"))
@@ -725,7 +779,7 @@ class FillEnvSecretsTest(unittest.TestCase):
         subscribing under a pair the backend no longer signs with. Blank, the
         app fetches the backend's key; any other value is the operator's."""
         published = "pretend-shipped-public"
-        digests = frozenset({hashlib.sha256(published.encode()).hexdigest()})
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
         with (
             tempfile.TemporaryDirectory() as directory,
             mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
@@ -765,7 +819,7 @@ class FillEnvSecretsTest(unittest.TestCase):
             "VAPID_PUBLIC_KEY": "pretend-shipped-public",
         }
         digests = frozenset(
-            hashlib.sha256(value.encode()).hexdigest() for value in environment.values()
+            runtime_config._vapid_key_digest(value) for value in environment.values()
         )
         with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
             private, public = runtime_config._configured_or_generated_vapid(environment)
@@ -1769,6 +1823,16 @@ def _write_config_lines(path: Path, values: dict[str, str]) -> None:
     lines += [f"{name}={value}" for name, value in values.items()]
     path.write_text("\n".join(lines) + "\n", encoding="ascii")
     path.chmod(0o600)
+
+
+_BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _with_other_unused_bits(key: str) -> str:
+    """`key` with the lowest bit of its last character flipped: for 32 bytes
+    that bit is one of the two the decoder ignores, so the bytes are the same."""
+    last = _BASE64URL_ALPHABET.index(key[-1]) ^ 1
+    return key[:-1] + _BASE64URL_ALPHABET[last]
 
 
 def _replace_config_value(content: str, name: str, value: str) -> str:

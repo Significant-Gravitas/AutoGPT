@@ -163,9 +163,10 @@ def main() -> int:
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot.
 
-    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
-    is saved as the current version once it passes every check, so a boot that
-    fails them leaves the file as it was."""
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one, and
+    a config whose Web Push pair is the published one gets the pair a first
+    boot would make today. Either is saved once it passes every check, so a
+    boot that fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
@@ -173,9 +174,12 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
         upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
         if upgrade:
             values = _upgraded_from_version_1(values, environment)
+        rotated = _with_a_published_vapid_pair_replaced(values, environment)
+        if rotated is not None:
+            values = rotated
         _validate_values(values)
         _verify_environment_matches(values, environment)
-        if upgrade:
+        if upgrade or rotated is not None:
             _write_config(path, values)
         path.chmod(0o600)
         return values
@@ -350,14 +354,32 @@ def _is_unset_vapid_key(value: str) -> bool:
 
 def _is_published_vapid_key(value: str) -> bool:
     """Whether a Web Push key is one this repository published, however it is
-    padded or wrapped: py-vapid drops newlines and restores Base64 padding
-    before decoding, so those spellings are the same key."""
+    spelled: py-vapid drops newlines, restores Base64 padding and takes the
+    standard alphabet too, and a decoder ignores the unused bits of the last
+    character, so every spelling that decodes to the published bytes is the
+    published key."""
     return _vapid_key_digest(value) in PUBLISHED_VAPID_DIGESTS
 
 
 def _vapid_key_digest(value: str) -> str:
-    canonical = "".join(value.split()).rstrip("=")
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    return hashlib.sha256(_canonical_vapid_key(value).encode()).hexdigest()
+
+
+_URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
+
+
+def _canonical_vapid_key(value: str) -> str:
+    """The unpadded Base64url spelling of the bytes `value` decodes to, or
+    `value` without whitespace and padding when it does not decode."""
+    compact = "".join(value.split()).rstrip("=")
+    try:
+        decoded = base64.b64decode(
+            compact.translate(_URLSAFE_TO_STANDARD) + "=" * (-len(compact) % 4),
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        return compact
+    return _base64url(decoded)
 
 
 def _database_url(
@@ -799,6 +821,20 @@ def _upgraded_from_version_1(
             environment, "INTERNAL_API_KEY", SECRET_GENERATORS["INTERNAL_API_KEY"]
         ),
     }
+
+
+def _with_a_published_vapid_pair_replaced(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str] | None:
+    """A config whose persisted Web Push pair is the published one, with the
+    pair a first boot would make today in its place: the environment's own,
+    or a generated one. An earlier release persisted whatever pair the
+    environment gave it, the published one included, and the backend sends
+    no push with that pair. None when the persisted pair is anyone else's."""
+    if not _is_published_vapid_key(values.get("VAPID_PRIVATE_KEY", "")):
+        return None
+    private, public = _configured_or_generated_vapid(environment)
+    return {**values, "VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public}
 
 
 def _configured_or_generated_vapid(
