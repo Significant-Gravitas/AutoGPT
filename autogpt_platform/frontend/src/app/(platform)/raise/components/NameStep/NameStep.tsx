@@ -41,7 +41,7 @@ export function NameStep({
             disabled={Boolean(selectedName)}
             aria-pressed={selectedName ? true : undefined}
             className={cn(
-              "rounded-full border px-5 py-2.5 text-sm font-medium text-foreground transition-colors",
+              "rounded-full border px-5 py-2.5 text-body font-medium text-foreground transition-colors",
               selectedName
                 ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
                 : "border-border bg-background hover:border-accent hover:bg-accent/5",
@@ -54,7 +54,7 @@ export function NameStep({
       {selectedName ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium tracking-caps text-muted-foreground uppercase"
+          className="mr-4 text-caption font-medium tracking-caps text-muted-foreground uppercase"
         >
           or
         </span>

@@ -94,7 +94,7 @@ export function ChoiceRow({
             )}
           </span>
           {subtitle && (
-            <span className="text-sm leading-snug break-words text-foreground-tertiary">
+            <span className="text-body leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -150,7 +150,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
           {title}
         </Text>
         {subtitle && (
-          <span className="text-sm leading-snug break-words text-foreground-subtle">
+          <span className="text-body leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}

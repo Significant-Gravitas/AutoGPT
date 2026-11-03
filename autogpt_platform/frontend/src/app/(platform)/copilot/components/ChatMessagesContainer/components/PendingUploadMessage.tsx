@@ -66,7 +66,7 @@ function PendingArtifactCard({ attachment }: CardProps) {
           {attachment.name}
         </Text>
         <Text variant="small-tight" tone="subtle">
-          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-xs font-medium text-info">
+          <span className="inline-block rounded-full bg-info-surface px-1.5 py-0.5 text-caption font-medium text-info">
             {classification.label}
           </span>
           {attachment.sizeBytes ? ` • ${formatSize(attachment.sizeBytes)}` : ""}
@@ -118,7 +118,7 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
           <MessageContent
             className={cn(
               isCompact
-                ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                ? "text-body leading-6 group-[.is-user]:rounded-xl"
                 : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
               "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
             )}

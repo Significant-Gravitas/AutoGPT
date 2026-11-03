@@ -47,7 +47,7 @@ export function SelectionBar({
         {count < totalCount ? (
           <button
             type="button"
-            className="text-sm text-foreground-tertiary underline-offset-2 hover:text-foreground-strong hover:underline"
+            className="text-body text-foreground-tertiary underline-offset-2 hover:text-foreground-strong hover:underline"
             onClick={onSelectAll}
             data-testid="artifacts-select-all"
           >

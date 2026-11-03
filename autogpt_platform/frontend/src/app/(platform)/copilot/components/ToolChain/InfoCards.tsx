@@ -96,7 +96,7 @@ function ErrorList({ errors }: ErrorListProps) {
       {errors.map((error) => (
         <div
           key={error}
-          className="flex items-start gap-2 text-xs text-foreground-secondary"
+          className="flex items-start gap-2 text-caption text-foreground-secondary"
         >
           <Icon
             icon={AlertCircleIcon}
@@ -247,7 +247,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
       {actions && (
         <button
           type="button"
-          className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-xs font-medium text-action-foreground transition-colors hover:bg-action"
+          className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-caption font-medium text-action-foreground transition-colors hover:bg-action"
           onClick={() =>
             actions.onSend(`Please create a workflow with this goal: ${goal}`)
           }
@@ -278,13 +278,13 @@ export function TriggerSetupCard({ output }: OutputProps) {
       </p>
       {url && (
         <div className="flex items-center gap-2 rounded-lg bg-surface-muted p-2 ring-1 ring-border-base/70">
-          <code className="ph-no-capture min-w-0 flex-1 text-xs break-all text-foreground-secondary">
+          <code className="ph-no-capture min-w-0 flex-1 text-caption break-all text-foreground-secondary">
             {url}
           </code>
           <button
             type="button"
             onClick={handleCopy}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-foreground-secondary transition-colors hover:bg-surface-active"
+            className="shrink-0 rounded-md px-2 py-1 text-caption font-medium text-foreground-secondary transition-colors hover:bg-surface-active"
           >
             Copy
           </button>

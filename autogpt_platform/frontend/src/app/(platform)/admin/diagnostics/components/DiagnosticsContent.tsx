@@ -63,7 +63,7 @@ export function DiagnosticsContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">System Diagnostics</h1>
+          <h1 className="text-heading font-bold">System Diagnostics</h1>
           <p className="text-foreground-tertiary">
             Monitor execution and agent system health
           </p>
@@ -193,7 +193,7 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Running Executions
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.running_executions}
                     </p>
                   </div>
@@ -207,12 +207,12 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Queued in Database
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.queued_executions_db}
                     </p>
                     {executionData.stuck_queued_1h > 0 && (
                       // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                      <p className="text-xs text-orange-600">
+                      <p className="text-caption text-orange-600">
                         {executionData.stuck_queued_1h} stuck {">"}1h
                       </p>
                     )}
@@ -227,9 +227,9 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Queued in RabbitMQ
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.queued_executions_rabbitmq === -1 ? (
-                        <span className="text-xl text-error">Error</span>
+                        <span className="text-lead text-error">Error</span>
                       ) : (
                         executionData.queued_executions_rabbitmq
                       )}
@@ -256,7 +256,7 @@ export function DiagnosticsContent() {
                   </div>
                 </div>
 
-                <div className="text-xs text-foreground-subtle">
+                <div className="text-caption text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
@@ -282,7 +282,7 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Completed (24h)
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.completed_24h}
                     </p>
                     <Text variant="small-tight" tone="secondary">
@@ -299,7 +299,7 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Throughput Rate
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.throughput_per_hour.toFixed(1)}
                     </p>
                     <Text variant="small-tight" tone="secondary">
@@ -316,9 +316,9 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Cancel Queue Depth
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {executionData.cancel_queue_depth === -1 ? (
-                        <span className="text-xl text-error">Error</span>
+                        <span className="text-lead text-error">Error</span>
                       ) : (
                         executionData.cancel_queue_depth
                       )}
@@ -329,7 +329,7 @@ export function DiagnosticsContent() {
                   </div>
                 </div>
 
-                <div className="text-xs text-foreground-subtle">
+                <div className="text-caption text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(executionData.timestamp).toLocaleString()}
                 </div>
@@ -355,12 +355,12 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       User Schedules
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {scheduleData.user_schedules}
                     </p>
                     {scheduleData.total_orphaned > 0 && (
                       // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-                      <p className="text-xs text-orange-600">
+                      <p className="text-caption text-orange-600">
                         {scheduleData.total_orphaned} orphaned
                       </p>
                     )}
@@ -375,7 +375,7 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Upcoming Runs (1h)
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {scheduleData.total_runs_next_hour}
                     </p>
                     <Text variant="small-tight" tone="secondary">
@@ -393,7 +393,7 @@ export function DiagnosticsContent() {
                     <Text variant="body-medium-tight" tone="muted">
                       Upcoming Runs (24h)
                     </Text>
-                    <p className="text-3xl font-bold">
+                    <p className="text-heading font-bold">
                       {scheduleData.total_runs_next_24h}
                     </p>
                     <Text variant="small-tight" tone="secondary">
@@ -406,7 +406,7 @@ export function DiagnosticsContent() {
                   </div>
                 </div>
 
-                <div className="text-xs text-foreground-subtle">
+                <div className="text-caption text-foreground-subtle">
                   Last updated:{" "}
                   {new Date(scheduleData.timestamp).toLocaleString()}
                 </div>
@@ -426,7 +426,7 @@ export function DiagnosticsContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 text-body">
             <div>
               {/* oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred) */}
               <p className="font-semibold text-orange-700">

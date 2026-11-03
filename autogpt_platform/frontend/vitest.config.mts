@@ -6,13 +6,16 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    // Any test that mounts a real-URL iframe (desktop-stream, YouTube embeds) must not have
+    // happy-dom actually fetch it: vitest teardown cuts the socket mid-connect and the resulting
+    // ECANCELED/AbortError/NetworkError reads as a test failure (#16544).
     environmentOptions: {
       happyDOM: {
-        // happy-dom fetches an <iframe src> for real. chat-surface-parity's
-        // desktop stream opened a TLS connection that teardown cut mid-write,
-        // failing the shard with an unhandled "write ECANCELED". A child frame
-        // now just takes its URL and fires load, without the network.
-        settings: { navigation: { disableChildFrameNavigation: true } },
+        settings: {
+          navigation: {
+            disableChildFrameNavigation: true,
+          },
+        },
       },
     },
     include: [

@@ -97,7 +97,7 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               Tailwind utilities
             </Text>
@@ -107,7 +107,7 @@ export function AllVariants() {
                   href="https://tailwindcss.com/docs/border-radius"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-blue-600 hover:underline"
                 >
                   Border Radius Classes{" "}
                   <Icon
@@ -119,7 +119,7 @@ export function AllVariants() {
                 <Text variant="body" className="mb-2 text-zinc-600">
                   Used to round the corners of elements
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-zinc-800">
                   rounded-lg → border-radius: 0.5rem (8px)
                 </div>
               </div>
@@ -134,7 +134,7 @@ export function AllVariants() {
                   Apply radius to specific corners or sides using our design
                   tokens
                 </Text>
-                <div className="space-y-1 font-mono text-sm text-zinc-800">
+                <div className="space-y-1 font-mono text-body text-zinc-800">
                   <div>rounded-t-m → top corners</div>
                   <div>rounded-r-m → right corners</div>
                   <div>rounded-b-m → bottom corners</div>
@@ -154,14 +154,14 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-zinc-800"
             >
               FAQ
             </Text>
             <div className="space-y-4">
               <Text
                 variant="h3"
-                className="mb-2 text-base font-semibold text-zinc-800"
+                className="mb-2 text-body-lg font-semibold text-zinc-800"
               >
                 🤔 Why use border radius tokens?
               </Text>
@@ -170,7 +170,7 @@ export function AllVariants() {
                   Always use radius classes instead of arbitrary values.
                   Reasons:
                 </Text>
-                <ul className="ml-4 list-disc space-y-1 text-sm">
+                <ul className="ml-4 list-disc space-y-1 text-body">
                   <li>Ensures consistent corner rounding across components</li>
                   <li>Creates visual hierarchy through systematic scaling</li>
                   <li>Maintains design cohesion and brand consistency</li>
@@ -188,7 +188,7 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-zinc-800"
           >
             Design System Border Radius Tokens
           </Text>
@@ -215,8 +215,12 @@ export function AllVariants() {
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-zinc-500">{radius.rem}</p>
-                <p className="font-mono text-xs text-zinc-500">{radius.px}</p>
+                <p className="font-mono text-caption text-zinc-500">
+                  {radius.rem}
+                </p>
+                <p className="font-mono text-caption text-zinc-500">
+                  {radius.px}
+                </p>
               </div>
               <div className="ml-8 flex-1">
                 <div className="flex items-center gap-4">

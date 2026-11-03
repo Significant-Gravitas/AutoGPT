@@ -38,7 +38,6 @@ class FrontendFlag(str, Enum):
     """
 
     MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms"
-    ENABLE_PLATFORM_PAYMENT = Flag.ENABLE_PLATFORM_PAYMENT.value
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
     LOCAL_PC_EXECUTOR = Flag.LOCAL_PC_EXECUTOR.value
     WORKFLOW_RECORDING = Flag.WORKFLOW_RECORDING.value

@@ -103,7 +103,6 @@ vi.mock("@/hooks/useCredits", () => ({
 }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     LOCAL_PC_EXECUTOR: "LOCAL_PC_EXECUTOR",
     WORKFLOW_RECORDING: "WORKFLOW_RECORDING",
