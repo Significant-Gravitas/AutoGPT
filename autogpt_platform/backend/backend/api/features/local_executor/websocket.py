@@ -98,20 +98,9 @@ async def local_executor_machine_ws(websocket: WebSocket) -> None:
         _close_when_token_ends(websocket, identity.expires_at)
     )
     try:
-        done, pending = await asyncio.wait(
-            {relay_task, expiry_task}, return_when=asyncio.FIRST_COMPLETED
-        )
-        for task in done:
-            if not task.cancelled():
-                task.result()
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+        await _serve_until_either_ends(relay_task, expiry_task)
     finally:
-        for task in (relay_task, expiry_task):
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(relay_task, expiry_task, return_exceptions=True)
+        await _stop_tasks(relay_task, expiry_task)
 
 
 @router.websocket("/ws/local-executor/{session_id}")
@@ -161,22 +150,47 @@ async def local_executor_ws(
         _close_when_token_ends(websocket, identity.expires_at)
     )
     try:
-        done, pending = await asyncio.wait(
-            {relay_task, expiry_task}, return_when=asyncio.FIRST_COMPLETED
-        )
-        for task in done:
-            if not task.cancelled():
-                task.result()
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+        await _serve_until_either_ends(relay_task, expiry_task)
     finally:
-        for task in (relay_task, expiry_task):
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(relay_task, expiry_task, return_exceptions=True)
-        record_shim_disconnected(platform=hello.platform, arch=hello.arch)
-        logger.info("[LocalPC] Shim disconnected for session %s", session_id[:12])
+        try:
+            await _stop_tasks(relay_task, expiry_task)
+        finally:
+            # Even when the handler is cancelled while it stops them, so the
+            # active-connection gauge stays balanced.
+            record_shim_disconnected(platform=hello.platform, arch=hello.arch)
+            logger.info("[LocalPC] Shim disconnected for session %s", session_id[:12])
+
+
+async def _serve_until_either_ends(
+    relay_task: asyncio.Task[None], expiry_task: asyncio.Task[None]
+) -> None:
+    """Return once the relay or the token watch ends, raising what it raised."""
+    done, _ = await asyncio.wait(
+        {relay_task, expiry_task}, return_when=asyncio.FIRST_COMPLETED
+    )
+    for task in done:
+        if not task.cancelled():
+            task.result()
+
+
+async def _stop_tasks(*tasks: asyncio.Task[None]) -> None:
+    """Cancel *tasks* and wait for them to finish.
+
+    asyncio.wait, unlike gather, never surfaces a child's CancelledError: if
+    this handler is cancelled meanwhile, it raises its own. A server that
+    cancels the handler (Starlette's TestClient does, as soon as it closes)
+    gets back its own cancellation, which anyio recognises; a child's,
+    raised through gather, could escape its cancel scope instead.
+    """
+    for task in tasks:
+        task.cancel()
+    unfinished = [task for task in tasks if not task.done()]
+    if unfinished:
+        await asyncio.wait(unfinished)
+    for task in tasks:
+        if not task.cancelled():
+            # Retrieved, so asyncio does not log it as never retrieved.
+            task.exception()
 
 
 async def _authenticate_shim_session(
