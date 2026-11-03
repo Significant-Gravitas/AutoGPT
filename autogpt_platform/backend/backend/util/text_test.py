@@ -3,15 +3,18 @@
 import asyncio
 import os
 import resource
+import sys
 from pathlib import Path
 
 import jinja2
 import pytest
 from markupsafe import Markup
 
+from backend.util import text
 from backend.util.text import (
     MAX_FORMAT_FIELD_SIZE,
     MAX_RENDER_OUTPUT,
+    MAX_RENDER_WORKERS,
     RENDER_MEMORY_LIMIT,
     TextFormatter,
     _check_percent_format,
@@ -298,6 +301,10 @@ def test_star_sizes_within_the_cap_pass_after_a_literal_percent():
 # Some routes are refused for memory, some for output, and the slow ones at
 # the deadline; any of the three is the guarantee.
 REFUSED = "out of memory|output too large|timed out|too large"
+# The worker's memory limit is set on Linux only, and /proc is read there too
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux", reason="needs the worker's memory limit and /proc"
+)
 HUGE = "2000000000"
 # Built while rendering, because Jinja folds a constant value into the
 # compiled code, and compiling it costs several times its size
@@ -443,6 +450,7 @@ OVERSIZED_VALUES = {
 ESCAPING = {"markup search over plain text", "plain replacement into markup"}
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize(
     ("name", "template"), OVERSIZED_TEMPLATES.items(), ids=OVERSIZED_TEMPLATES
 )
@@ -694,6 +702,7 @@ async def test_the_output_cap_is_exact(fmt: TextFormatter):
         await fmt.format_string("{{ 'x'|center(" + str(MAX_RENDER_OUTPUT + 1) + ") }}")
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize(
     "oversized",
     ["tilde concatenation", "a loop's literal text", "center filter"],
@@ -711,6 +720,7 @@ async def test_the_limits_hold_for_an_autoescaping_formatter(oversized: str):
         await escaping.format_string(OVERSIZED_TEMPLATES[oversized], timeout=3)
 
 
+@LINUX_ONLY
 @pytest.mark.asyncio
 async def test_the_memory_limit_binds_the_worker_and_not_the_caller(
     fmt: TextFormatter,
@@ -728,6 +738,7 @@ async def test_the_memory_limit_binds_the_worker_and_not_the_caller(
     )
 
 
+@LINUX_ONLY
 @pytest.mark.asyncio
 async def test_a_refused_render_leaves_rendering_working(fmt: TextFormatter):
     with pytest.raises(ValueError, match="out of memory"):
@@ -735,6 +746,7 @@ async def test_a_refused_render_leaves_rendering_working(fmt: TextFormatter):
     assert await fmt.format_string("{{ v }}!", {"v": "still here"}) == "still here!"
 
 
+@LINUX_ONLY
 @pytest.mark.asyncio
 async def test_a_render_that_fills_the_heap_leaves_the_next_its_whole_limit(
     fmt: TextFormatter,
@@ -779,6 +791,64 @@ async def test_a_builtin_error_keeps_its_type(fmt: TextFormatter):
     # As before the worker: what is not a template refusal is not a 400
     with pytest.raises(TypeError, match="unsupported operand"):
         await fmt.format_string("{{ 1 + 'a' }}")
+
+
+def test_an_error_raised_while_handling_a_memory_error_is_out_of_memory():
+    # What Jinja raises when it cannot rewrite a MemoryError's traceback
+    try:
+        try:
+            raise MemoryError
+        except MemoryError:
+            raise SystemError("error return without exception set")
+    except SystemError as handled:
+        assert text._ran_out_of_memory(handled)
+    assert not text._ran_out_of_memory(SystemError("an interpreter error"))
+
+
+@pytest.mark.asyncio
+async def test_a_builtin_error_its_type_cannot_rebuild_is_a_runtime_error(
+    fmt: TextFormatter,
+):
+    # UnicodeEncodeError takes five arguments, and the worker sends one
+    with pytest.raises(RuntimeError, match="UnicodeEncodeError"):
+        await fmt.format_string("{{ v.encode('utf-8') }}", {"v": "\udcff"})
+
+
+@pytest.mark.asyncio
+async def test_a_render_interrupted_mid_answer_leaves_no_answer_behind(
+    fmt: TextFormatter, monkeypatch: pytest.MonkeyPatch
+):
+    await fmt.format_string("warm")
+
+    def interrupted(self, maxlength=None):
+        raise MemoryError
+
+    # The first answer stays unread on its worker's socket
+    with monkeypatch.context() as patched:
+        patched.setattr(text.Connection, "recv_bytes", interrupted)
+        with pytest.raises(MemoryError):
+            await fmt.format_string("first")
+    assert await fmt.format_string("second") == "second"
+
+
+@pytest.mark.asyncio
+async def test_renders_waiting_for_a_worker_leave_the_shared_executor_free(
+    fmt: TextFormatter,
+):
+    # More waiting renders than the loop's default executor has threads
+    waiting = (os.cpu_count() or 1) + 4 + MAX_RENDER_WORKERS
+    renders = [
+        asyncio.create_task(fmt.format_string(NESTED_LOOPS, timeout=1))
+        for _ in range(waiting)
+    ]
+    await asyncio.sleep(0.2)
+    try:
+        await asyncio.wait_for(asyncio.to_thread(int), timeout=0.5)
+    finally:
+        for render in renders:
+            render.cancel()
+        await asyncio.gather(*renders, return_exceptions=True)
+    assert await fmt.format_string("{{ 2 }}") == "2"
 
 
 @pytest.mark.asyncio
@@ -877,10 +947,14 @@ async def test_a_render_past_its_deadline_is_refused(fmt: TextFormatter, templat
         await fmt.format_string(template, timeout=0.5)
 
 
+@LINUX_ONLY
 @pytest.mark.asyncio
 async def test_a_render_past_its_deadline_is_killed(fmt: TextFormatter):
-    render = asyncio.create_task(fmt.format_string(NESTED_LOOPS, timeout=0.5))
-    seen = set()
+    # A worker waits idle before the render starts, so the first sample sees
+    # the one it takes even if this loop then pauses until the kill
+    await fmt.format_string("warm")
+    seen = _render_workers()
+    render = asyncio.create_task(fmt.format_string(NESTED_LOOPS, timeout=2))
     while not render.done():
         seen |= _render_workers()
         await asyncio.wait([render], timeout=0.05)

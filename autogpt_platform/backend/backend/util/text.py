@@ -12,6 +12,7 @@ import sys
 import threading
 import types
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import update_wrapper
 from multiprocessing.connection import Connection
 from typing import Any
@@ -152,8 +153,13 @@ class TextFormatter:
         for, so the API answers 400 rather than 500.
         """
         context = {**(values or {}), **kwargs}
-        return await asyncio.to_thread(
-            _render_pool.render, template_str, context, self.autoescape, timeout
+        return await asyncio.get_running_loop().run_in_executor(
+            _render_threads,
+            _render_pool.render,
+            template_str,
+            context,
+            self.autoescape,
+            timeout,
         )
 
 
@@ -268,22 +274,29 @@ class _RenderWorker:
         self.renders += 1
         try:
             self._connection.send_bytes(request)
-            if not self._connection.poll(timeout):
-                self.retired = True
-                self.close()
-                raise ValueError(
-                    f"Template rendering timed out after {timeout}s "
-                    "(expression too complex)"
-                )
-            answer = self._connection.recv_bytes()
+            answered = self._connection.poll(timeout)
+            answer = self._connection.recv_bytes() if answered else b""
         except (EOFError, OSError) as e:
-            self.retired = True
-            self.close()
+            self.retire()
             logger.warning(f"Template render worker stopped mid-render: {e!r}")
             raise ValueError("Template rendering failed") from e
+        except BaseException:
+            # Half a request or answer left on the socket would reach the next caller
+            self.retire()
+            raise
+        if not answered:
+            self.retire()
+            raise ValueError(
+                f"Template rendering timed out after {timeout}s "
+                "(expression too complex)"
+            )
         if answer[:1] == _RETIRING:
             self.retired = True
         return answer[1:]
+
+    def retire(self) -> None:
+        self.retired = True
+        self.close()
 
     def close(self) -> None:
         if self._process.poll() is None:
@@ -308,9 +321,14 @@ def _read_answer(answer: bytes) -> str:
         raise ValueError(body)
     name, message = json.loads(body)
     # The worker answers in plain text, so only a builtin type is rebuilt
-    error = getattr(builtins, name, None)
-    if isinstance(error, type) and issubclass(error, Exception):
-        raise error(message)
+    error_type = getattr(builtins, name, None)
+    if isinstance(error_type, type) and issubclass(error_type, Exception):
+        try:
+            error = error_type(message)
+        except TypeError:  # Its constructor wants more than a message
+            pass
+        else:
+            raise error
     raise RuntimeError(f"{name}: {message}")
 
 
@@ -328,11 +346,12 @@ def _serve_renders(fd: int) -> None:
     connection.send_bytes(b"ready")
     while True:
         try:
-            answer = _answer(connection.recv_bytes(), environments)
+            answer, out_of_memory = _answer(connection.recv_bytes(), environments)
         except (EOFError, MemoryError):
             # A request too big to receive leaves the rest of it unread
             return
-        retiring = _data_in_use() > started_with + WORKER_RETIRE_GROWTH
+        grown = _data_in_use() > started_with + WORKER_RETIRE_GROWTH
+        retiring = out_of_memory or grown
         connection.send_bytes((_RETIRING if retiring else _SERVING) + answer)
         if retiring:
             return
@@ -340,23 +359,39 @@ def _serve_renders(fd: int) -> None:
 
 def _answer(
     request: bytes, environments: dict[bool, "_RestrictedEnvironment"]
-) -> bytes:
+) -> tuple[bytes, bool]:
+    """The answer to one request, and whether the render ran out of memory."""
     try:
         template_str, context, autoescape = pickle.loads(request)
         template = environments[autoescape].from_string(template_str)
-        return _TEXT + _render_capped(template, context).encode(
-            "utf-8", "surrogatepass"
-        )
-    except MemoryError:
-        limit = RENDER_MEMORY_LIMIT // 2**20
-        return _REFUSED + (
-            f"Template rendering ran out of memory (max {limit} MB)".encode()
-        )
-    except _REFUSALS as refused:
-        return _REFUSED + str(refused).encode("utf-8", "surrogatepass")
+        text = _render_capped(template, context)
+        return _TEXT + text.encode("utf-8", "surrogatepass"), False
     except Exception as error:
+        if _ran_out_of_memory(error):
+            limit = RENDER_MEMORY_LIMIT // 2**20
+            refusal = f"Template rendering ran out of memory (max {limit} MB)"
+            return _REFUSED + refusal.encode(), True
+        if isinstance(error, _REFUSALS):
+            return _REFUSED + str(error).encode("utf-8", "surrogatepass"), False
         detail = json.dumps([type(error).__name__, str(error)])
-        return _ERROR + detail.encode("utf-8", "surrogatepass")
+        return _ERROR + detail.encode("utf-8", "surrogatepass"), False
+
+
+def _ran_out_of_memory(error: BaseException) -> bool:
+    """Whether a MemoryError is anywhere in the error's chain.
+
+    Jinja rewrites a render's traceback by compiling code, which fails too
+    once memory has run out, so what arrives can be a SystemError (3.12) or
+    a ValueError (3.11) raised while handling the MemoryError.
+    """
+    seen: set[int] = set()
+    link: BaseException | None = error
+    while link is not None and id(link) not in seen:
+        if isinstance(link, MemoryError):
+            return True
+        seen.add(id(link))
+        link = link.__cause__ or link.__context__
+    return False
 
 
 def _render_capped(template: Template, context: dict[str, Any]) -> str:
@@ -421,6 +456,9 @@ _RETIRING, _SERVING = b"X", b"-"
 _TEXT, _REFUSED, _ERROR = b"T", b"R", b"E"
 
 _render_pool = _RenderPool()
+# One thread per worker, so renders waiting for one hold no thread of the
+# event loop's shared executor
+_render_threads = ThreadPoolExecutor(MAX_RENDER_WORKERS, "template-render")
 atexit.register(_render_pool.close)
 
 
