@@ -1,8 +1,31 @@
 # Vision: AutoGPT Local PC Executor
 ## The Dream — Where This Could Go
 
-> **Status**: Experimental / Pre-Alpha Spec  
-> **Warning**: This document describes aspirational goals. Nothing here is built yet.
+> **Status**: Experimental / Pre-Alpha Spec
+>
+> This document started as a list of goals. Some of it is now built in
+> this package; the rest is not. By section:
+>
+> - **1. Shell + file access**: built. File access is always on and is
+>   jailed to the folder chosen for the chat. Shell is off by default
+>   (`--enable-shell`).
+> - **2. Computer use**: built, off by default (`--enable-computer-use`).
+>   See [COMPUTER_USE.md](COMPUTER_USE.md).
+> - **3. Resident daemon**: partly built. `autogpt-shim install` writes an
+>   autostart entry (launchd, systemd or Task Scheduler), and the daemon
+>   reconnects with backoff and jitter. Scheduled tasks, file watchers and
+>   background turns are not built.
+> - **4. Hardware**: not built. `enable_hardware` only adds capability
+>   names to HELLO; the shim handles no hardware operations. See
+>   [HARDWARE.md](HARDWARE.md).
+> - **5. Privacy mode**: not built. See [PRIVACY_MODE.md](PRIVACY_MODE.md).
+> - **6. Multi-machine**: not built. See [MULTI_MACHINE.md](MULTI_MACHINE.md).
+> - **7. Local LLM routing**: not built. The code is disabled scaffolding,
+>   and the shim refuses to start with `enable_local_llm = true`. See
+>   [LOCAL_LLM.md](LOCAL_LLM.md).
+>
+> The "Platform changes needed" lists below are the original plan, not a
+> record of what the platform built.
 
 ---
 
@@ -124,10 +147,10 @@ The shim executes these using `pyautogui` (cross-platform) or `xdotool` (Linux X
 ---
 
 ### 5. Privacy Inversion — Files Never Leave the Machine
-**Dream**: Claude reasons about sensitive data (medical records, financial files, private code) without that data ever hitting the cloud. The LLM prompt references file *metadata and structure*, not raw content.
+**Dream**: Claude reasons about sensitive data (medical records, financial files, private code) without that data ever hitting the cloud. The LLM prompt references file *metadata*, not raw content.
 
 **Platform changes needed**:
-- `e2b_file_tools.py` / `_handle_read_file`: New "privacy mode" path — instead of returning file content, return a `FileStub` with `{path, size, mime_type, hash, schema_preview}` and send the full content *only* to a local LLM running on the shim
+- `e2b_file_tools.py` / `_handle_read_file`: New "privacy mode" path — instead of returning file content, return a `FileStub` with `{path, size, mime_type, hash}` and send the full content *only* to a local LLM running on the shim
 - New `PrivacyRouter` in `service.py`: for privacy-flagged sessions, file tool results are stubs; a second local-LLM turn runs on the shim to process the actual content and returns only the *answer*, not the content
 - `ChatConfig`: `privacy_mode: bool = False` — enables content-blind routing
 - New message type `LOCAL_LLM_TURN`: platform sends a prompt fragment + file stub; shim resolves the file locally, calls local LLM, returns the response

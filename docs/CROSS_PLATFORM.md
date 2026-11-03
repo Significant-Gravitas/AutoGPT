@@ -85,8 +85,8 @@ paths only; navigation and selection use short-lived opaque references.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Default interactive shell | `zsh` (macOS 10.15+) | `bash` (most distros) | `cmd.exe` (no PowerShell default) | Shim's default for `EXECUTE_COMMAND` when `shell == "auto"`. |
-| Available shells | `sh`, `bash`, `zsh` | `sh`, `bash`, possibly `zsh`/`fish` | `cmd`, `powershell`, `pwsh` (if installed) | `shell` enum on the wire selects explicitly. See PROTOCOL.md. |
+| `shell: "auto"` runs | `bash` if on `PATH`, else `sh` | `bash` if on `PATH`, else `sh` | `cmd.exe` | Shim's default for `EXECUTE_COMMAND`. It ignores the user's login shell, so on macOS `auto` runs `bash`, not the default `zsh`. |
+| Explicit `shell` values | `bash`, `sh`, `zsh`, `pwsh` | `bash`, `sh`, `zsh`, `pwsh` | `cmd`, `powershell`, `pwsh`, `bash` (Git Bash / WSL) | Each needs its binary on `PATH`; otherwise `SHELL_NOT_AVAILABLE`. See PROTOCOL.md. |
 | POSIX `bash -c "..."` shape | Works | Works | Not available unless Git Bash / WSL installed | Platform must not assume bash on Windows — use `argv` array or `shell: "auto"`. |
 | Argument quoting | `shlex.quote` | `shlex.quote` | `subprocess.list2cmdline` | Shim uses the right quoter per OS when given `argv` form. |
 
@@ -140,7 +140,7 @@ paths only; navigation and selection use short-lived opaque references.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Primary installer | `pipx install autogpt-local-executor` | `pipx install autogpt-local-executor` | `pipx install autogpt-local-executor` | All paths go through pipx in v0. |
+| Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git: `pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git`. After it, `pipx install autogpt-local-executor` works too. |
 | Secondary | Homebrew tap (`brew install autogpt/tap/local-executor`) | distro packages (deb/rpm) — best-effort | Scoop / winget — best-effort | Future. |
 | Signing | Apple Developer ID + notarization for `.pkg` | none (pipx wheels are unsigned) | Authenticode signing for `.exe` wrapper (SmartScreen) | Required if we ship native installers. |
 | Python runtime | 3.11+ via pyenv/pipx-bundled | 3.11+ via distro or pyenv | 3.11+ via python.org or Microsoft Store | Pin to 3.11 minimum in `pyproject.toml`. |

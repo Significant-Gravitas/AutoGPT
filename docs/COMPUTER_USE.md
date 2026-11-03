@@ -964,14 +964,20 @@ that originate from a screen position; v2's `DRAG_FILE` covers drags
 that originate from a *file* and need to look to the target app like a
 Finder drag.
 
-### Multi-monitor coordinate normalization
+### Monitor- and window-relative coordinates
 
-v1 keeps `coordinate` in *primary-monitor logical pixels with origin at
-top-left*. Multi-monitor setups need per-monitor coordinates or a global
-virtual coordinate space. The right call depends on how the model emits
-coordinates after seeing a multi-monitor `screenshot.region` — likely
-v2 adds `coordinate_space: "global"|"monitor"|"window"` and a
-`monitor_index` / `window_id` qualifier.
+v1 already uses one display-global, top-left-origin coordinate space
+across all monitors ([Q1](#q1--coordinate-space-locked)), not
+primary-monitor coordinates. Each backend checks a `coordinate` against
+the union of the display rects from `DISPLAY_INFO` and passes it to
+pyautogui unchanged, so a point on a secondary monitor is valid. What
+v1 lacks is a way to give a point relative to one monitor or one
+window. After a cropped or per-monitor screenshot, the platform maps a
+point in that image to a global one itself, using `meta.origin` (and
+`display_scale` on HiDPI displays). v2 may add
+`coordinate_space: "global"|"monitor"|"window"` with a
+`monitor_index` / `window_id` qualifier, keeping `"global"` as the
+default.
 
 ### Notifications, system events, IME state
 

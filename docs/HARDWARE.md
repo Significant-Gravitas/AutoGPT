@@ -400,9 +400,20 @@ mid-session.
 
 Hardware access bypasses the file-jail entirely. Three lines of defense:
 
-1. **Capability gate at HELLO.** The user opts in at install time via
-   the shim CLI: `autogpt-shim auth --scope hardware_serial,hardware_gpio`.
-   No request body field can re-enable a missing scope.
+1. **Capability gate at HELLO.** Hardware is off by default, and the
+   user turns it on in the shim's local config. There is no command-line
+   flag for it. The user installs the `hardware` extra (`pyserial`,
+   `pyusb`; GPIO also needs `RPi.GPIO`), then sets
+   `enable_hardware = true` in the shim's `config.toml` (by default in
+   `~/.config/autogpt-local-executor/` on Linux,
+   `~/Library/Application Support/autogpt-local-executor/` on macOS and
+   `%APPDATA%\autogpt-local-executor\` on Windows) or
+   `AUTOGPT_SHIM_ENABLE_HARDWARE=true` in the environment. On its next
+   start the shim lists `hardware_serial` / `hardware_usb` /
+   `hardware_gpio` in HELLO `capabilities`, one for each of those
+   libraries that is installed. The shim closes the connection if
+   HELLO_ACK grants a capability it did not advertise, so the platform
+   cannot turn hardware on from its side.
 2. **OS-level permissions** (Linux: `dialout` / `gpio` groups; macOS:
    driver entitlements; Windows: WinUSB driver install). The shim
    inherits the user's permissions and cannot escalate.
