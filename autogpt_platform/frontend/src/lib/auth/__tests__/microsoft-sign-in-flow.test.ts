@@ -371,6 +371,35 @@ describe("Continue with Microsoft", () => {
     ]);
   });
 
+  it("still signs in an account already linked to that Microsoft login once its address stops counting", async () => {
+    const { handler, db } = await createAuthHandler();
+    existingAccount(db, "pat@outlook.com");
+    const now = new Date();
+    db.UserAuthAccount.push({
+      id: "linked-account",
+      accountId: "personal-id",
+      providerId: "microsoft",
+      userId: "existing-user",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // The personal account's primary address moved off Outlook.com.
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "personal-id",
+      tid: PERSONAL_TENANT,
+      email: "pat@company.example",
+    });
+
+    expect(landing).toBe(callbackURL);
+    expect(db.UserAuthIdentity).toHaveLength(1);
+    expect(db.UserAuthAccount).toHaveLength(1);
+    expect(db.UserAuthSession).toEqual([
+      expect.objectContaining({ userId: "existing-user" }),
+    ]);
+  });
+
   it("refuses a sign-in that hands over a Microsoft ID token directly", async () => {
     const { handler, db } = await createAuthHandler();
     // A token signed with the key served as Microsoft's, for an address
