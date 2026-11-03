@@ -22,7 +22,7 @@ from backend.copilot.gate.subject import (
     workflow_subject,
 )
 from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, pauses_irreversible_actions
 from backend.copilot.permissions import denied_graph_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
@@ -49,6 +49,7 @@ from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
     GraphValidationError,
+    InvalidInputError,
     MissingConfigError,
     NotFoundError,
 )
@@ -538,13 +539,18 @@ class RunAgentTool(BaseTool):
             # after the run/schedule actually started, so a failed operation
             # (e.g. schedule validation, credential race) doesn't orphan a preset.
             if isinstance(result, ExecutionStartedResponse):
-                saved_preset_id = await self._maybe_save_preset(
-                    user_id=user_id,
-                    graph=graph,
-                    graph_credentials=graph_credentials,
-                    params=params,
-                    expert_id=session.expert_id,
-                )
+                try:
+                    saved_preset_id = await self._maybe_save_preset(
+                        user_id=user_id,
+                        graph=graph,
+                        graph_credentials=graph_credentials,
+                        params=params,
+                        expert_id=session.expert_id,
+                    )
+                except InvalidInputError as e:
+                    # The run has started; reporting an error would invite a rerun.
+                    result.message += f" The preset was not saved: {e}"
+                    saved_preset_id = None
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
             return result
@@ -1102,7 +1108,7 @@ class RunAgentTool(BaseTool):
                 pause_irreversible_actions=(
                     not dry_run
                     and not gate_approved
-                    and session.metadata.pauses_irreversible_actions
+                    and await pauses_irreversible_actions(session.metadata)
                 ),
             )
         except GraphValidationError as e:
@@ -1430,7 +1436,7 @@ class RunAgentTool(BaseTool):
             result = await get_scheduler_client().add_execution_schedule(
                 user_id=user_id,
                 graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
+                graph_version=graph.version,
                 name=schedule_name,
                 cron=cron,
                 input_data=inputs,

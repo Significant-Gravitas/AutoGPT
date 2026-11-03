@@ -139,6 +139,32 @@ class TestBuildAndValidatePermissions:
             mock_validate.assert_not_called()
 
 
+class TestBlockListLimit:
+    def test_input_refuses_more_than_1000_blocks(self):
+        with pytest.raises(ValidationError):
+            _make_input(blocks=["HTTP Request"] * 1_001)
+
+    def test_input_accepts_1000_blocks(self):
+        assert len(_make_input(blocks=["HTTP Request"] * 1_000).blocks) == 1_000
+
+    def test_block_input_validation_refuses_more_than_1000_blocks(self):
+        error = AutoPilotBlock.Input.validate_data(
+            {"prompt": "Do something", "blocks": ["HTTP Request"] * 1_001}
+        )
+        assert error is not None
+
+    @pytest.mark.asyncio
+    async def test_permissions_refuse_an_oversized_list_before_resolving_it(self):
+        inp = _make_input().model_copy(update={"blocks": ["HTTP Request"] * 1_001})
+        with patch(
+            "backend.blocks.autopilot.validate_block_identifiers"
+        ) as mock_validate:
+            result = await _build_and_validate_permissions(inp)
+        assert isinstance(result, str)
+        assert "at most 1000" in result
+        mock_validate.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _merge_inherited_permissions
 # ---------------------------------------------------------------------------

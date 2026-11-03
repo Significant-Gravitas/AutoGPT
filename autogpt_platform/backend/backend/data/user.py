@@ -237,9 +237,9 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
 
 
 class AuthUserFlagFields(BaseModel):
-    """Minimal AuthUser attributes used to build a LaunchDarkly context.
+    """Minimal AuthUser attributes used to build a feature flag context.
 
-    A plain serializable shape (not an ``ldclient.Context``) so it can cross
+    A plain serializable shape (not the flag module's context) so it can cross
     the DatabaseManager RPC boundary — feature-flag evaluation runs in
     Prisma-less workers (scheduler, copilot-executor) that reach the auth
     table via the RPC client rather than a locally-connected Prisma engine.
@@ -251,7 +251,7 @@ class AuthUserFlagFields(BaseModel):
 
 
 async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
-    """Fetch the AuthUser fields used for LaunchDarkly targeting.
+    """Fetch the AuthUser fields used for feature flag targeting.
 
     Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
     window) so the caller can avoid caching a not-found as an anonymous

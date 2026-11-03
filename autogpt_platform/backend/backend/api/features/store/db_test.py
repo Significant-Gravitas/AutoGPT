@@ -9,7 +9,7 @@ import pytest
 from prisma import Prisma
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 
 from . import categories as store_categories
 from . import db
@@ -200,9 +200,64 @@ async def test_get_store_creator(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_create_store_submission(mocker):
-    now = datetime.now()
+    graph_prisma, version_prisma = _patch_submission(mocker, existing_listing=None)
 
-    # Mock agent graph (with no pending submissions) and user with profile
+    result = await _submit()
+
+    assert result.name == "Test Agent"
+    assert result.description == "Test description"
+    assert result.listing_version_id == "version-id"
+    graph_prisma.find_first.assert_called_once()
+    version_prisma.create.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "owning_user_id, owning_org_id, organization_id",
+    [
+        pytest.param("the-creator", None, None, id="another-creators"),
+        pytest.param("user-id", "org-2", "org-1", id="another-organizations"),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_never_touches_another_creators_listing(
+    mocker, owning_user_id, owning_org_id, organization_id
+):
+    listing = _listing_with_a_pending_version(owning_user_id, owning_org_id)
+    _, version_prisma = _patch_submission(mocker, existing_listing=listing)
+
+    with pytest.raises(PreconditionFailed):
+        await _submit(organization_id=organization_id)
+
+    version_prisma.create.assert_not_awaited()
+    version_prisma.update_many.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "owning_user_id, owning_org_id",
+    [
+        pytest.param("a-colleague", "org-1", id="the-organizations"),
+        pytest.param("user-id", None, id="own-tenant-less"),
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
+    mocker, owning_user_id, owning_org_id
+):
+    listing = _listing_with_a_pending_version(owning_user_id, owning_org_id)
+    _, version_prisma = _patch_submission(mocker, existing_listing=listing)
+
+    await _submit(organization_id="org-1")
+
+    version_prisma.create.assert_awaited_once()
+
+
+def _patch_submission(
+    mocker, existing_listing: prisma.models.StoreListing | None
+) -> tuple[MagicMock, MagicMock]:
+    """create_store_submission without a database, for user-id's graph agent-id
+    v1, by a member of any organization. Returns the AgentGraph and
+    StoreListingVersion prisma mocks."""
+    now = datetime.now()
     mock_profile = prisma.models.Profile(
         id="profile-id",
         userId="user-id",
@@ -240,20 +295,74 @@ async def test_create_store_submission(mocker):
         StoreListingVersions=[],
         User=mock_user,
     )
+    mock_version = _pending_version(
+        StoreListing=prisma.models.StoreListing(
+            id="listing-id",
+            createdAt=now,
+            updatedAt=now,
+            isDeleted=False,
+            hasApprovedVersion=False,
+            slug="test-agent",
+            agentGraphId="agent-id",
+            owningUserId="user-id",
+            useForOnboarding=False,
+        )
+    )
 
-    # Mock the created StoreListingVersion (returned by create)
-    mock_store_listing_obj = prisma.models.StoreListing(
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_first = AsyncMock(return_value=mock_agent)
+    mock_members = mocker.patch("prisma.models.OrgMember.prisma")
+    mock_members.return_value.find_first = AsyncMock(return_value=MagicMock())
+    mocker.patch(
+        "backend.api.features.store.db.transaction",
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mocker.MagicMock()),
+            __aexit__=AsyncMock(return_value=False),
+        ),
+    )
+    mock_sl = mocker.patch("prisma.models.StoreListing.prisma")
+    mock_sl.return_value.find_unique = AsyncMock(return_value=existing_listing)
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.create = AsyncMock(return_value=mock_version)
+    mock_slv.return_value.update_many = AsyncMock()
+    return mock_agent_graph.return_value, mock_slv.return_value
+
+
+async def _submit(organization_id: str | None = None):
+    return await db.create_store_submission(
+        user_id="user-id",
+        graph_id="agent-id",
+        graph_version=1,
+        slug="test-agent",
+        name="Test Agent",
+        sub_heading="Find test agents fast",
+        description="Test description",
+        organization_id=organization_id,
+    )
+
+
+def _listing_with_a_pending_version(
+    owning_user_id: str, owning_org_id: str | None
+) -> prisma.models.StoreListing:
+    now = datetime.now()
+    return prisma.models.StoreListing(
         id="listing-id",
         createdAt=now,
         updatedAt=now,
         isDeleted=False,
-        hasApprovedVersion=False,
+        hasApprovedVersion=True,
         slug="test-agent",
         agentGraphId="agent-id",
-        owningUserId="user-id",
+        owningUserId=owning_user_id,
+        owningOrgId=owning_org_id,
         useForOnboarding=False,
+        Versions=[_pending_version()],
     )
-    mock_version = prisma.models.StoreListingVersion(
+
+
+def _pending_version(**fields) -> prisma.models.StoreListingVersion:
+    now = datetime.now()
+    return prisma.models.StoreListingVersion(
         id="version-id",
         agentGraphId="agent-id",
         agentGraphVersion=1,
@@ -271,48 +380,8 @@ async def test_create_store_submission(mocker):
         submissionStatus=prisma.enums.SubmissionStatus.PENDING,
         isAvailable=True,
         submittedAt=now,
-        StoreListing=mock_store_listing_obj,
+        **fields,
     )
-
-    # Mock prisma calls
-    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
-    mock_agent_graph.return_value.find_first = AsyncMock(return_value=mock_agent)
-
-    # Mock transaction context manager
-    mock_tx = mocker.MagicMock()
-    mocker.patch(
-        "backend.api.features.store.db.transaction",
-        return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_tx),
-            __aexit__=AsyncMock(return_value=False),
-        ),
-    )
-
-    mock_sl = mocker.patch("prisma.models.StoreListing.prisma")
-    mock_sl.return_value.find_unique = AsyncMock(return_value=None)
-
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.create = AsyncMock(return_value=mock_version)
-
-    # Call function
-    result = await db.create_store_submission(
-        user_id="user-id",
-        graph_id="agent-id",
-        graph_version=1,
-        slug="test-agent",
-        name="Test Agent",
-        sub_heading="Find test agents fast",
-        description="Test description",
-    )
-
-    # Verify results
-    assert result.name == "Test Agent"
-    assert result.description == "Test description"
-    assert result.listing_version_id == "version-id"
-
-    # Verify mocks called correctly
-    mock_agent_graph.return_value.find_first.assert_called_once()
-    mock_slv.return_value.create.assert_called_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1622,6 +1691,63 @@ async def test_approve_publishes_media_and_rewrites_the_rows(
     assert result.image_urls == [f"{PUBLIC_URL}/a.png", "https://example.com/b.png"]
     assert result.video_url == f"{PRIVATE_URL}/../videos/v.mp4"
     assert result.agent_output_demo_url == f"{PUBLIC_URL}/demo.png"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_never_touches_another_creators_sub_agent_listing(
+    mocker, review_mocks
+):
+    _sub_agent_listed_by(mocker, review_mocks, "another-creator")
+
+    with pytest.raises(PreconditionFailed):
+        await _review(is_approved=True)
+
+    review_mocks.slv.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_versions_its_creators_sub_agent_listing(
+    mocker, review_mocks
+):
+    _sub_agent_listed_by(mocker, review_mocks, "owner-id")
+
+    await _review(is_approved=True)
+
+    review_mocks.slv.create.assert_awaited_once()
+
+
+def _sub_agent_listed_by(mocker, review_mocks, owning_user_id: str) -> None:
+    """The approved graph runs one of its owner's graphs, listed by *owning_user_id*."""
+    now = datetime.now()
+    mocker.patch(
+        "backend.api.features.store.db.get_sub_graphs",
+        new_callable=AsyncMock,
+        return_value=[
+            prisma.models.AgentGraph(
+                id="sub-agent-id",
+                version=1,
+                userId="owner-id",
+                createdAt=now,
+                isActive=True,
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
+            )
+        ],
+    )
+    review_mocks.listing.find_first = AsyncMock(
+        return_value=prisma.models.StoreListing(
+            id="sub-listing-id",
+            createdAt=now,
+            updatedAt=now,
+            isDeleted=False,
+            hasApprovedVersion=True,
+            slug="sub-agent",
+            agentGraphId="sub-agent-id",
+            owningUserId=owning_user_id,
+            useForOnboarding=False,
+            Versions=[],
+        )
+    )
+    review_mocks.slv.create = AsyncMock()
 
 
 @pytest.mark.asyncio(loop_scope="session")
