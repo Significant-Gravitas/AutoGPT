@@ -20,13 +20,15 @@ import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlsplit, urlunsplit
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,
+    Depends,
     HTTPException,
+    Query,
     Request,
     Security,
     UploadFile,
@@ -38,6 +40,7 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
 from backend.data.auth.oauth import (
     InvalidClientError,
@@ -133,17 +136,29 @@ class OAuthApplicationPublicInfo(BaseModel):
 @router.get(
     "/app/{client_id}",
     responses={
+        400: {"description": "redirect_uri is not registered for the application"},
         404: {"description": "Application not found or disabled"},
     },
 )
 async def get_oauth_app_info(
-    client_id: str, user_id: str = Security(get_user_id)
+    client_id: str,
+    redirect_uri: Optional[str] = Query(
+        default=None,
+        description=(
+            "Where the page will send the user back to. When given, it must be "
+            "one of the application's registered redirect URIs."
+        ),
+    ),
+    user_id: str = Security(get_user_id),
 ) -> OAuthApplicationPublicInfo:
     """
     Get public information about an OAuth application.
 
-    This endpoint is used by the consent screen to display application details
-    to the user before they authorize access.
+    This endpoint is used by the consent screen and the integration setup
+    wizard to display application details to the user before they authorize
+    access. Both pages send the `redirect_uri` they were given and send the
+    user back there only once this endpoint accepts it, so neither redirects
+    to an address the application did not register (RFC 6749 4.1.2.1).
 
     Returns:
     - name: Application name
@@ -155,6 +170,11 @@ async def get_oauth_app_info(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
+        )
+    if redirect_uri is not None and not validate_redirect_uri(app, redirect_uri):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="redirect_uri is not registered for this application",
         )
 
     return OAuthApplicationPublicInfo(
@@ -250,13 +270,16 @@ async def authorize(
     Returns:
     - redirect_url: The URL to redirect the user to (includes authorization code)
 
-    Error cases return a redirect_url with error parameters, or raise HTTPException
-    for critical errors (like invalid redirect_uri).
+    Error cases return a redirect_url with error parameters once the client and
+    its redirect_uri check out; before that (unknown or inactive client, an
+    unregistered redirect_uri) they raise HTTPException, so the platform never
+    redirects to a URI no registered client vouches for (RFC 6749 4.1.2.1).
     """
+    # Raises before any redirect is built, so nothing below can send the user to
+    # a URI no registered, active client vouches for.
     app = await _get_valid_authorization_app(request.client_id, request.redirect_uri)
 
     try:
-        # Validate response_type
         if request.response_type != "code":
             return _error_redirect_url(
                 request.redirect_uri,
@@ -347,7 +370,14 @@ async def authorize(
         )
 
 
-@router.post("/authorize/deny")
+@router.post(
+    "/authorize/deny",
+    responses={
+        400: {
+            "description": "Unknown or inactive client, or an unregistered redirect_uri"
+        }
+    },
+)
 async def deny_authorization(
     request: DenyAuthorizeRequest = Body(),
     _user_id: str = Security(get_user_id),
@@ -808,9 +838,6 @@ async def update_app_logo(
             detail="OAuth App not found",
         )
 
-    # Delete the current app logo file (if any and it's in our cloud storage)
-    await _delete_app_current_logo_file(app)
-
     updated_app = await update_oauth_application(
         app_id=app_id,
         owner_id=user_id,
@@ -822,6 +849,9 @@ async def update_app_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found or you don't have permission to update it",
         )
+
+    if app.logo_url != request.logo_url:
+        await _delete_app_current_logo_file(app)
 
     logger.info(
         f"OAuth app {updated_app.name} (#{app_id}) logo updated by user #{user_id}"
@@ -837,7 +867,9 @@ LOGO_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 LOGO_MAX_FILE_SIZE = 3 * 1024 * 1024  # 3MB
 
 
-@router.post("/apps/{app_id}/logo/upload")
+@router.post(
+    "/apps/{app_id}/logo/upload", dependencies=[Depends(enforce_payment_paywall)]
+)
 async def upload_app_logo(
     app_id: str,
     file: UploadFile,
@@ -867,7 +899,7 @@ async def upload_app_logo(
         )
 
     # Check GCS configuration
-    if not settings.config.media_gcs_bucket_name:
+    if not settings.config.resolved_public_site_media_bucket:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Media storage is not configured",
@@ -946,7 +978,7 @@ async def upload_app_logo(
     # Upload to GCS
     try:
         async with async_storage.Storage() as async_client:
-            bucket_name = settings.config.media_gcs_bucket_name
+            bucket_name = settings.config.resolved_public_site_media_bucket
 
             await async_client.upload(
                 bucket_name, storage_path, file_bytes, content_type=content_type
@@ -959,9 +991,6 @@ async def upload_app_logo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload logo",
         )
-
-    # Delete the current app logo file (if any and it's in our cloud storage)
-    await _delete_app_current_logo_file(app)
 
     # Update the app with the new logo URL
     updated_app = await update_oauth_application(
@@ -976,6 +1005,8 @@ async def upload_app_logo(
             detail="Application not found or you don't have permission to update it",
         )
 
+    await _delete_app_current_logo_file(app)
+
     logger.info(
         f"OAuth app {updated_app.name} (#{app_id}) logo uploaded by user #{user_id}"
     )
@@ -987,18 +1018,35 @@ async def _delete_app_current_logo_file(app: OAuthApplicationInfo):
     """
     Delete the current logo file for the given app, if there is one in our cloud storage
     """
-    bucket_name = settings.config.media_gcs_bucket_name
-    storage_base_url = f"https://storage.googleapis.com/{bucket_name}/"
+    if not app.logo_url:
+        return
 
-    if app.logo_url and app.logo_url.startswith(storage_base_url):
-        # Parse blob path from URL: https://storage.googleapis.com/{bucket}/{path}
-        old_path = app.logo_url.replace(storage_base_url, "")
-        try:
-            async with async_storage.Storage() as async_client:
-                await async_client.delete(bucket_name, old_path)
-            logger.info(f"Deleted old logo for OAuth app #{app.id}: {old_path}")
-        except Exception as e:
-            # Log but don't fail - the new logo was uploaded successfully
-            logger.warning(
-                f"Failed to delete old logo for OAuth app #{app.id}: {e}", exc_info=e
-            )
+    parsed = urlparse(app.logo_url)
+    if parsed.scheme != "https" or parsed.netloc != "storage.googleapis.com":
+        return
+
+    bucket_and_path = unquote(parsed.path).lstrip("/").split("/", 1)
+    if len(bucket_and_path) != 2:
+        return
+    bucket_name, object_path = bucket_and_path
+
+    allowed_buckets = {
+        settings.config.resolved_public_site_media_bucket,
+        settings.config.resolved_private_user_data_bucket,
+        settings.config.media_gcs_bucket_name,
+    }
+    allowed_buckets.discard("")
+    expected_prefix = f"oauth-apps/{app.id}/logo/"
+    if bucket_name not in allowed_buckets or not object_path.startswith(
+        expected_prefix
+    ):
+        return
+
+    try:
+        async with async_storage.Storage() as async_client:
+            await async_client.delete(bucket_name, object_path)
+        logger.info(f"Deleted old logo for OAuth app #{app.id}: {object_path}")
+    except Exception as e:
+        logger.warning(
+            f"Failed to delete old logo for OAuth app #{app.id}: {e}", exc_info=e
+        )

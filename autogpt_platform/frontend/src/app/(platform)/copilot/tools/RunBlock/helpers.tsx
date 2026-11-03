@@ -37,7 +37,6 @@ export interface ReviewRequiredResponse {
   block_id: string;
   block_name: string;
   review_id: string;
-  graph_exec_id: string;
   input_data: Record<string, unknown>;
 }
 
@@ -226,12 +225,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <Icon icon={PlayIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={PlayIcon} size={14} className="text-foreground-subtle" />;
 }
 
 export function AccordionIcon() {
@@ -311,8 +310,8 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: <Icon icon={AlertDiamondIcon} size={32} className="text-red-500" />,
+    icon: <Icon icon={AlertDiamondIcon} size={32} className="text-error" />,
     title: "Error",
-    titleClassName: "text-red-500",
+    titleClassName: "text-error",
   };
 }

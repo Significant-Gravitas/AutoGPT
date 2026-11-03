@@ -138,6 +138,7 @@ class MCPCallResult(BaseModel):
     """Result from calling an MCP tool."""
 
     content: list[dict[str, Any]] = Field(default_factory=list)
+    structured_content: Any = None
     is_error: bool = False
 
 
@@ -761,6 +762,12 @@ class MCPClient:
                     f"{base}{path}",
                 )
             )
+            candidates.append(
+                (
+                    f"{base}{path}/.well-known/openid-configuration",
+                    f"{base}{path}",
+                )
+            )
         candidates.append((f"{base}/.well-known/oauth-authorization-server", base))
         candidates.append((f"{base}/.well-known/openid-configuration", base))
 
@@ -944,5 +951,6 @@ class MCPClient:
 
         return MCPCallResult(
             content=self._content_blocks(result.get("content")),
+            structured_content=result.get("structuredContent"),
             is_error=bool(result.get("isError", False)),
         )

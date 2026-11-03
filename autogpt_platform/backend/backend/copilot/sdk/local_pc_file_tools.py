@@ -11,7 +11,7 @@ is a best-effort lexical check, not a security boundary.
 
 from __future__ import annotations
 
-from typing import TypeGuard
+from typing_extensions import TypeIs
 
 from backend.copilot.context import is_local_pc_executor, resolve_executor_path
 from backend.copilot.tools.local_pc_shim import LocalPCShim
@@ -100,7 +100,7 @@ async def move_via_shim(
     await sandbox.files.move(remote_src, remote_dst, overwrite=overwrite)
 
 
-def is_local_pc(sandbox: object | None) -> TypeGuard[LocalPCShim]:
+def is_local_pc(sandbox: object | None) -> TypeIs[LocalPCShim]:
     """Narrow an executor to the Local PC adapter.
 
     Use this at the top of e2b_file_tools handlers to branch on executor

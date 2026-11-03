@@ -12,6 +12,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -110,6 +111,7 @@ class AgentMailCreateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -210,6 +212,7 @@ class AgentMailGetDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -305,6 +308,7 @@ class AgentMailListDraftsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -409,6 +413,7 @@ class AgentMailUpdateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -483,7 +488,7 @@ class AgentMailSendDraftBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -506,6 +511,7 @@ class AgentMailSendDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -561,7 +567,7 @@ class AgentMailDeleteDraftBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -572,6 +578,7 @@ class AgentMailDeleteDraftBlock(Block):
             test_mock={
                 "delete_draft": lambda *a, **kw: None,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -653,6 +660,7 @@ class AgentMailListOrgDraftsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -33,10 +33,11 @@ export function VoiceModeButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+        "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
         className,
         disabled && "opacity-40",
-        isActive && "bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white",
+        isActive &&
+          "bg-action-hover text-action-foreground hover:bg-action hover:text-action-foreground",
       )}
     >
       <Icon icon={speaking ? StopIcon : VoiceIcon} className="h-4 w-4" />

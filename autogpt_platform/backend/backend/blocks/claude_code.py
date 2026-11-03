@@ -20,14 +20,33 @@ from backend.data.model import (
     NodeExecutionStats,
     SchemaField,
 )
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    hold_sandbox,
+    kill_sandbox,
+    release_sandbox,
+    uses_platform_e2b_key,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
+
+
+# Claude Code runs on the user's own Anthropic key; platform credits don't
+# apply to this block.
+OWN_ANTHROPIC_KEY_REQUIRED = (
+    "Claude Code needs your own Anthropic API key. Platform credits can't pay "
+    "for it: add an Anthropic API key under Integrations and pick it here."
+)
 
 
 class ClaudeCodeExecutionError(Exception):
@@ -98,7 +117,8 @@ class ClaudeCodeBlock(Block):
             Literal[ProviderName.ANTHROPIC], Literal["api_key"]
         ] = CredentialsField(
             description=(
-                "API key for Anthropic to power Claude Code. "
+                "Your own API key for Anthropic to power Claude Code. Platform "
+                "credits can't be used here. "
                 "Get one at [Anthropic's website](https://console.anthropic.com)"
             ),
         )
@@ -118,9 +138,8 @@ class ClaudeCodeBlock(Block):
             description=(
                 "Sandbox timeout in seconds. Claude Code tasks can take "
                 "a while, so set this appropriately for your task complexity. "
-                "Note: This only applies when creating a new sandbox. "
-                "When reconnecting to an existing sandbox via sandbox_id, "
-                "the original timeout is retained."
+                "When reconnecting via sandbox_id, the sandbox runs for at "
+                "least this long."
             ),
             default=300,  # 5 minutes default
             advanced=True,
@@ -221,6 +240,7 @@ class ClaudeCodeBlock(Block):
     def __init__(self):
         super().__init__(
             id="4e34f4a5-9b89-4326-ba77-2dd6750b7194",
+            capability_kind="primitive",
             description=(
                 "Execute tasks using Claude Code in an E2B sandbox. "
                 "Claude Code can create files, install tools, run commands, "
@@ -300,9 +320,14 @@ class ClaudeCodeBlock(Block):
         conversation_history: str,
         dispose_sandbox: bool,
         execution_context: "ExecutionContext",
+        pause_when_kept: bool = False,
     ) -> tuple[str, list[SandboxFileOutput], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
+
+        With pause_when_kept, a sandbox that is not disposed is paused when
+        this returns, unless another run still holds it; resuming the session
+        reconnects and resumes it.
 
         Returns:
             Tuple of (response, files, conversation_history, session_id, sandbox_id)
@@ -319,23 +344,58 @@ class ClaudeCodeBlock(Block):
 
         sandbox = None
         sandbox_id = ""
+        # The box this run is counted on (``hold_sandbox``) while it keeps it.
+        held = ""
+        egress_owner = EgressOwner(
+            kind="block",
+            id=execution_context.user_id or "anonymous",
+            user_id=execution_context.user_id,
+        )
 
         try:
             # Either reconnect to existing sandbox or create a new one
             if existing_sandbox_id:
-                # Reconnect to existing sandbox for conversation continuation
-                sandbox = await BaseAsyncSandbox.connect(
-                    sandbox_id=existing_sandbox_id,
+                # Reconnect to existing sandbox for conversation continuation.
+                # The id is caller-supplied and any id connects under our key,
+                # so the box must be stamped with this user before it is used.
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await BaseAsyncSandbox.get_info(
+                    existing_sandbox_id, api_key=e2b_api_key
+                )
+                if not owned_by_user(info.metadata, execution_context.user_id):
+                    raise PermissionError(
+                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                    )
+                if pause_when_kept and not dispose_sandbox:
+                    # Counted before the connect: a run on this box returning
+                    # meanwhile must leave it running for this one.
+                    held = existing_sandbox_id
+                    await hold_sandbox(held)
+                sandbox = await connect_sandbox(
+                    BaseAsyncSandbox,
+                    existing_sandbox_id,
+                    egress_owner,
                     api_key=e2b_api_key,
+                    timeout=timeout,
                 )
             else:
                 # Create new sandbox
-                sandbox = await BaseAsyncSandbox.create(
+                sandbox = await create_sandbox(
+                    BaseAsyncSandbox,
+                    egress_owner,
                     template=self.DEFAULT_TEMPLATE,
                     api_key=e2b_api_key,
                     timeout=timeout,
                     envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    metadata=SandboxMetadata.for_block(
+                        execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
+                    ).as_e2b(),
                 )
+                if pause_when_kept and not dispose_sandbox:
+                    held = sandbox.sandbox_id
+                    await hold_sandbox(held)
 
                 # Install Claude Code from npm (ensures we get the latest version)
                 install_result = await sandbox.commands.run(
@@ -413,6 +473,9 @@ class ClaudeCodeBlock(Block):
 
             result = await sandbox.commands.run(
                 claude_command,
+                # The key picked for this run, also on a resumed box that was
+                # created with another one.
+                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 
@@ -482,7 +545,9 @@ class ClaudeCodeBlock(Block):
 
         finally:
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
+            elif held:
+                await release_sandbox(held, sandbox, api_key=e2b_api_key)
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""
@@ -516,6 +581,12 @@ class ClaudeCodeBlock(Block):
         execution_context: "ExecutionContext",
         **kwargs,
     ) -> BlockOutput:
+        if (
+            is_system_credential(anthropic_credentials.id)
+            or anthropic_credentials.is_managed
+        ):
+            yield "error", OWN_ANTHROPIC_KEY_REQUIRED
+            return
         try:
             (
                 response,
@@ -535,6 +606,7 @@ class ClaudeCodeBlock(Block):
                 conversation_history=input_data.conversation_history,
                 dispose_sandbox=input_data.dispose_sandbox,
                 execution_context=execution_context,
+                pause_when_kept=uses_platform_e2b_key(e2b_credentials),
             )
 
             yield "response", response

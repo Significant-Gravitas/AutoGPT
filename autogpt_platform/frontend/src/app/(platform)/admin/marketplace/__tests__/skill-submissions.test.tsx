@@ -25,7 +25,23 @@ const pending: SkillSubmission = {
   status: "PENDING",
   review_comments: null,
   is_live: false,
+  files: [],
 };
+
+const PACKAGE = [
+  {
+    path: "references/tone.md",
+    size_bytes: 2048,
+    mime_type: "text/markdown",
+    is_executable: false,
+  },
+  {
+    path: "scripts/check.sh",
+    size_bytes: 3693,
+    mime_type: "application/x-sh",
+    is_executable: true,
+  },
+];
 
 describe("admin skill submissions", () => {
   test("shows what a reviewer needs to judge the submission", async () => {
@@ -98,6 +114,39 @@ describe("admin skill submissions", () => {
       await screen.findByText(/Skill submissions are unavailable/),
     ).toBeDefined();
     expect(screen.queryByText(/No skill submissions are waiting/)).toBeNull();
+  });
+
+  test("counts a package's files and opens one before approving", async () => {
+    server.use(
+      getGetV2AdminListPendingSkillSubmissionsMockHandler200([
+        { ...pending, files: PACKAGE },
+      ]),
+      http.get("*/api/store/admin/skills/submissions/:id/files/*", () =>
+        HttpResponse.text("#!/bin/sh\necho checking\n"),
+      ),
+    );
+
+    render(<AdminSkillSubmissions />);
+
+    await userEvent.click(await screen.findByTestId("files-version-1"));
+    expect(await screen.findByText("2 files")).toBeDefined();
+    expect(await screen.findByText("scripts/check.sh")).toBeDefined();
+    expect(screen.getByText("executable")).toBeDefined();
+
+    await userEvent.click(screen.getByRole("button", { name: /check\.sh/ }));
+
+    expect(await screen.findByText(/echo checking/)).toBeDefined();
+  });
+
+  test("shows no file control for a single-file submission", async () => {
+    server.use(
+      getGetV2AdminListPendingSkillSubmissionsMockHandler200([pending]),
+    );
+
+    render(<AdminSkillSubmissions />);
+
+    await screen.findByTestId("admin-skill-submissions");
+    expect(screen.queryByTestId("files-version-1")).toBeNull();
   });
 
   test("says the queue is empty rather than rendering an empty list", async () => {

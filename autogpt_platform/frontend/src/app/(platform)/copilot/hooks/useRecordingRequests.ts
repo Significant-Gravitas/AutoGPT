@@ -81,24 +81,15 @@ export function useRecordingRequests({ onStarted, onStopped }: Args) {
   });
 
   const stopMutation = useMutation({
-    mutationFn: async (activeRecording: RecordingIdentity) => {
+    mutationFn: (activeRecording: RecordingIdentity) => {
       stopInFlightRef.current = true;
-      try {
-        const response = await postExperimentalStopSessionRecording(
-          activeRecording.sessionID,
-          { recording_id: activeRecording.recordingID },
-        );
-        if (response.status !== 200) {
-          throw new Error("The Local PC executor did not stop recording");
-        }
-        return { activeRecording, recording: response.data.recording };
-      } catch (error) {
+      return requestStopRecording(activeRecording).catch((error: unknown) => {
         stopInFlightRef.current = false;
         if (!mountedRef.current) {
           stopInBackground(activeRecording);
         }
         throw error;
-      }
+      });
     },
     onSuccess: ({ activeRecording, recording }) => {
       stopInFlightRef.current = false;
@@ -149,4 +140,15 @@ export function useRecordingRequests({ onStarted, onStopped }: Args) {
     hasStartError: startMutation.isError,
     hasStopError: stopMutation.isError,
   };
+}
+
+async function requestStopRecording(activeRecording: RecordingIdentity) {
+  const response = await postExperimentalStopSessionRecording(
+    activeRecording.sessionID,
+    { recording_id: activeRecording.recordingID },
+  );
+  if (response.status !== 200) {
+    throw new Error("The Local PC executor did not stop recording");
+  }
+  return { activeRecording, recording: response.data.recording };
 }

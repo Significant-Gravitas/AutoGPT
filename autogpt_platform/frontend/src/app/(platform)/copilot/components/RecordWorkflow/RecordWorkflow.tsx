@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { RecordIcon, StopIcon } from "@phosphor-icons/react";
+import { RecordIcon, StopIcon } from "@hugeicons/core-free-icons";
 import { useLocalPCExecutor } from "../../hooks/useLocalPCExecutor";
 import { useRecordingWorkflow } from "../../hooks/useRecordingWorkflow";
 import { LocalPCRecordingConsent } from "../LocalPCRecordingConsent/LocalPCRecordingConsent";
@@ -39,11 +40,14 @@ function SessionRecordWorkflow({ sessionID }: Props) {
           onClick={flow.start}
           aria-label="Record workflow"
         >
-          <RecordIcon
-            className="h-4 w-4 text-red-600"
-            weight="fill"
-            aria-hidden="true"
-          />
+          <span className="flex text-error-hover">
+            <Icon
+              icon={RecordIcon}
+              fill="currentColor"
+              className="h-4 w-4"
+              aria-hidden="true"
+            />
+          </span>
           Record workflow
         </Button>
       ) : null}
@@ -58,7 +62,12 @@ function SessionRecordWorkflow({ sessionID }: Props) {
             disabled={flow.isStopping}
             onClick={flow.stop}
           >
-            <StopIcon className="h-4 w-4" weight="fill" aria-hidden="true" />
+            <Icon
+              icon={StopIcon}
+              fill="currentColor"
+              className="h-4 w-4"
+              aria-hidden="true"
+            />
             Stop
           </Button>
         </div>
@@ -67,10 +76,10 @@ function SessionRecordWorkflow({ sessionID }: Props) {
       {flow.phase === "ready" ? (
         <div className="flex flex-wrap items-center gap-2">
           <Text
-            variant="body"
+            variant="small-tight"
             role="status"
             aria-live="polite"
-            className="text-xs text-green-800"
+            tone="success-strong"
           >
             Recording reviewed. Ask Copilot to generate the skill.
           </Text>
@@ -81,7 +90,7 @@ function SessionRecordWorkflow({ sessionID }: Props) {
       ) : null}
 
       {flow.errorMessage && flow.phase !== "review" ? (
-        <Text variant="body" role="alert" className="text-xs text-red-700">
+        <Text variant="small-tight" role="alert" tone="danger">
           {flow.errorMessage}
         </Text>
       ) : null}

@@ -15,10 +15,12 @@ interface MetadataFieldProps {
 function MetadataField({ label, value }: MetadataFieldProps) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+      <dt className="text-caption-sm leading-inherit font-medium tracking-wide text-foreground-tertiary uppercase">
         {label}
       </dt>
-      <dd className="break-all font-mono text-xs text-neutral-800">{value}</dd>
+      <dd className="font-mono text-xs break-all text-foreground-emphasis">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -75,7 +77,7 @@ export function RecordingReview({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-3 py-2">
-          <Text variant="body" className="text-sm text-neutral-700">
+          <Text variant="body-tight" tone="body">
             Your executor transferred these hygiene-redacted structured steps to
             this authenticated browser for review. Remove anything you
             don&apos;t want included, or hide a value. Finishing applies those
@@ -85,13 +87,13 @@ export function RecordingReview({
           </Text>
 
           {errorMessage ? (
-            <Text variant="body" role="alert" className="text-sm text-red-700">
+            <Text variant="body-tight" role="alert" tone="danger">
               {errorMessage}
             </Text>
           ) : null}
 
           {steps.length === 0 ? (
-            <Text variant="body" className="text-sm text-neutral-500">
+            <Text variant="body-tight" tone="muted">
               No steps captured.
             </Text>
           ) : (
@@ -100,28 +102,30 @@ export function RecordingReview({
                 <li
                   key={step.seq}
                   data-testid={`recording-step-${step.seq}`}
-                  className="flex flex-col gap-2 rounded-md border border-neutral-200 px-3 py-2 sm:flex-row sm:items-start sm:justify-between"
+                  className="flex flex-col gap-2 rounded-md border border-border-base px-3 py-2 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-900">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground-strong">
                       <span className="font-medium">
                         Step {step.seq}: {step.action}
                       </span>
-                      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-700">
+                      <span className="rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-body">
                         outcome: {step.outcome}
                       </span>
                     </div>
                     {step.label ? (
                       <Text
-                        variant="body"
-                        className="break-words text-sm text-neutral-700"
+                        variant="body-tight"
+                        tone="body"
+                        className="break-words"
                       >
                         {step.label}
                       </Text>
                     ) : null}
                     <Text
-                      variant="body"
-                      className="break-words text-xs text-neutral-500"
+                      variant="small-tight"
+                      tone="muted"
+                      className="break-words"
                     >
                       {step.activeApp ? `${step.activeApp} · ` : ""}
                       {step.redacted ? (
@@ -138,11 +142,11 @@ export function RecordingReview({
                     <details className="group mt-1">
                       <summary
                         aria-label={`View retained metadata for step ${step.seq}`}
-                        className="w-fit cursor-pointer rounded text-xs font-medium text-neutral-700 outline-none hover:text-neutral-950 focus-visible:ring-2 focus-visible:ring-neutral-500 focus-visible:ring-offset-2"
+                        className="w-fit cursor-pointer rounded text-xs font-medium text-foreground-body outline-none hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
                       >
                         View retained metadata
                       </summary>
-                      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 rounded-md bg-neutral-50 p-3 sm:grid-cols-2">
+                      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 rounded-md bg-surface-muted p-3 sm:grid-cols-2">
                         <MetadataField
                           label="Sequence"
                           value={String(step.seq)}
@@ -226,17 +230,17 @@ export function RecordingReview({
                           value={optionalValue(step.enrichment.url)}
                         />
                         <div className="min-w-0 sm:col-span-2">
-                          <dt className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                          <dt className="text-caption-sm leading-inherit font-medium tracking-wide text-foreground-tertiary uppercase">
                             Selectors
                           </dt>
-                          <dd className="text-xs text-neutral-800">
+                          <dd className="text-xs text-foreground-emphasis">
                             {step.enrichment.selectors.length > 0 ? (
                               <ul className="mt-1 flex flex-col gap-1">
                                 {step.enrichment.selectors.map(
                                   (selector, index) => (
                                     <li
                                       key={`${selector.strategy}-${selector.value}-${index}`}
-                                      className="break-all font-mono"
+                                      className="font-mono break-all"
                                     >
                                       {selector.strategy}: {selector.value}
                                     </li>
@@ -276,11 +280,13 @@ export function RecordingReview({
                       disabled={isSubmitting}
                       onClick={() => onDeleteStep(step.seq)}
                     >
-                      <Icon
-                        icon={Delete02Icon}
-                        className="h-4 w-4 text-red-600"
-                        aria-hidden="true"
-                      />
+                      <span className="flex text-error-hover">
+                        <Icon
+                          icon={Delete02Icon}
+                          className="h-4 w-4"
+                          aria-hidden="true"
+                        />
+                      </span>
                     </Button>
                   </div>
                 </li>

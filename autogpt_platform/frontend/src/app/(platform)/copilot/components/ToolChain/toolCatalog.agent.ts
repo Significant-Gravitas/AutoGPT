@@ -9,28 +9,28 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   create_agent: {
     category: "agent-build",
-    running: "Creating agent",
-    done: "Created agent",
+    running: "Creating workflow",
+    done: "Created workflow",
   },
   customize_agent: {
     category: "agent-build",
-    running: "Customizing agent",
-    done: "Customized agent",
+    running: "Customizing workflow",
+    done: "Customized workflow",
   },
   edit_agent: {
     category: "agent-build",
-    running: "Editing agent",
-    done: "Edited agent",
+    running: "Editing workflow",
+    done: "Edited workflow",
   },
   validate_agent_graph: {
     category: "agent-build",
-    running: "Validating agent",
-    done: "Validated agent",
+    running: "Validating workflow",
+    done: "Validated workflow",
   },
   fix_agent_graph: {
     category: "agent-build",
-    running: "Fixing agent",
-    done: "Fixed agent",
+    running: "Fixing workflow",
+    done: "Fixed workflow",
   },
   enter_agent_building_mode: {
     category: "agent-build",
@@ -39,8 +39,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   get_agent_building_guide: {
     category: "docs",
-    running: "Reading the agent building guide",
-    done: "Read the agent building guide",
+    running: "Reading the workflow building guide",
+    done: "Read the workflow building guide",
   },
   decompose_goal: {
     category: "plan",
@@ -56,8 +56,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   find_agent: {
     category: "agent",
-    running: "Finding agents for",
-    done: "Found agents for",
+    running: "Finding workflows for",
+    done: "Found workflows for",
     subject: (input) => quoted(input, "query"),
   },
   find_library_agent: {
@@ -98,6 +98,7 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "folder",
     running: "Listing folders",
     done: "Listed folders",
+    empty: "none yet",
   },
   update_folder: {
     category: "folder",
@@ -117,20 +118,20 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   move_agents_to_folder: {
     category: "folder",
-    running: "Moving agents to folder",
-    done: "Moved agents to folder",
+    running: "Moving workflows to folder",
+    done: "Moved workflows to folder",
   },
   run_agent: {
     category: "agent",
-    running: "Running agent",
-    done: "Ran agent",
+    running: "Running workflow",
+    done: "Ran workflow",
     subject: (_input, context) =>
       quotedName(getAgentDisplayName(context.displayName, context.output)),
   },
   view_agent_output: {
     category: "agent",
-    running: "Viewing agent output",
-    done: "Viewed agent output",
+    running: "Viewing workflow output",
+    done: "Viewed workflow output",
   },
   run_sub_session: {
     category: "agent",
@@ -149,6 +150,23 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Teammate handled:",
     subject: (input) => quoted(input, "prompt", 45),
   },
+  consult_teammate: {
+    category: "team",
+    running: "Asking a teammate to check:",
+    done: "Teammate checked:",
+    subject: (input) => quoted(input, "question", 45),
+  },
+  find_session: {
+    category: "team",
+    running: "Looking for a session",
+    done: "Found sessions",
+  },
+  message_session: {
+    category: "team",
+    running: "Messaging a session:",
+    done: "Messaged a session:",
+    subject: (input) => quoted(input, "message", 45),
+  },
   handoff_to_expert: {
     category: "agent",
     running: "Handing over:",
@@ -163,7 +181,7 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   raise_expert: {
     category: "team",
     running: "Writing a charter for",
-    done: "Ready to raise",
+    done: "Ready to create",
     subject: (input) => quoted(input, "name", 30),
   },
   update_expert: {
@@ -176,5 +194,74 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "team",
     running: "Adding to the team",
     done: "Added to the team",
+  },
+  update_expert_soul: {
+    category: "team",
+    running: "Drafting a Soul update",
+    done: "Soul update ready",
+  },
+  confirm_expert_soul_update: {
+    category: "team",
+    running: "Updating the Soul",
+    done: "Updated the Soul",
+  },
+  expert_onboarding: {
+    category: "question",
+    running: "Preparing a few questions",
+    done: "Asked a few questions",
+  },
+  list_team: {
+    category: "team",
+    running: "Checking your team",
+    done: "Checked your team",
+    empty: "no one yet",
+  },
+  list_expert_chats: {
+    category: "team",
+    running: "Looking through expert chats",
+    done: "Looked through expert chats",
+    empty: "none yet",
+  },
+  read_expert_chat: {
+    category: "team",
+    running: "Reading an expert chat",
+    done: "Read an expert chat",
+  },
+  list_expert_workflows: {
+    category: "team",
+    running: "Checking an expert's workflows",
+    done: "Checked an expert's workflows",
+    empty: "none yet",
+  },
+  install_expert_workflow: {
+    category: "team",
+    running: "Adding a workflow to an expert",
+    done: "Added a workflow to an expert",
+  },
+  remove_expert_workflow: {
+    category: "team",
+    running: "Removing a workflow from an expert",
+    done: "Removed a workflow from an expert",
+  },
+  list_expert_credentials: {
+    category: "team",
+    running: "Checking an expert's credentials",
+    done: "Checked an expert's credentials",
+    empty: "none yet",
+  },
+  grant_expert_credential: {
+    category: "team",
+    running: "Granting an expert access",
+    done: "Granted an expert access",
+  },
+  revoke_expert_credential: {
+    category: "team",
+    running: "Revoking an expert's access",
+    done: "Revoked an expert's access",
+  },
+  request_credential_grant: {
+    category: "team",
+    running: "Asking you for access",
+    done: "Asked you for access",
   },
 };

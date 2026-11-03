@@ -18,12 +18,6 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { FILE_DRAG_MIME } from "../components/WorkspaceFolders/drag";
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
-
 beforeEach(() => {
   server.use(getListExpertIdentitiesMockHandler([]));
 });
@@ -228,6 +222,7 @@ describe("ArtifactsPage - row selection", () => {
     fireEvent.click(await screen.findByTestId("artifacts-selection-move"));
     expect(await screen.findByText("Move 2 files to:")).toBeDefined();
     fireEvent.click(await screen.findByTestId("move-to-folder-option"));
+    fireEvent.click(screen.getByTestId("confirm-move-to-folder"));
 
     await waitFor(() =>
       expect(body).toEqual({ file_ids: ["f1", "f2"], folder_id: "fld-1" }),

@@ -6,18 +6,40 @@ backend test job (and counted by codecov), not just the integration suite.
 """
 
 import asyncio
+import concurrent.futures
 import logging
+import threading
+import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
+from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
+from backend.copilot.executor.utils import ScheduledTurnOrigin
+from backend.copilot.permissions import (
+    CAPABILITY_GATE_NAMES,
+    ROUTINE_SELF_ESCALATION_TOOLS,
+)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
+    _MAX_LIMITS_RETRIES,
+    _MAX_PLAN_LOOKUP_RETRIES,
+    _MAX_USAGE_WAITS,
+    _USAGE_WAIT_SPREAD_SECONDS,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -33,17 +55,29 @@ from backend.executor.scheduler import (
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
+    _reschedule_one_shot_after_limits_unreadable,
+    _reschedule_one_shot_after_plan_unreadable,
+    _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
-    _self_delete_morning_briefing_schedule,
+    execute_community_rebuild,
+    execute_nightly_batch_sync,
+    execute_skill_learning_sync,
+    reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
+    refresh_near_expiry_credentials,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserBannedError,
     UserPaywalledError,
 )
+from backend.util.process import AppProcess
+from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
+from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+_TURN_QUEUE_PATH = "backend.copilot.turn_queue"
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +89,39 @@ def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "backend.executor.schedule_events.record_schedule_created", MagicMock()
     )
+
+
+class _OwnerGate(NamedTuple):
+    is_user_paywalled: AsyncMock
+    check_rate_limit: AsyncMock
+    has_codex_access: AsyncMock
+
+
+@pytest.fixture(autouse=True)
+def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
+    """An owner with a subscription, AutoPilot usage left and Codex access;
+    tests that need another owner set these mocks rather than patch again.
+    Patched where the shared gate resolves them."""
+    gate = _OwnerGate(
+        AsyncMock(return_value=False), AsyncMock(), AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.is_user_paywalled", gate.is_user_paywalled)
+    monkeypatch.setattr(
+        f"{_TURN_QUEUE_PATH}.get_global_rate_limits",
+        AsyncMock(return_value=(1_000_000, 5_000_000, None)),
+    )
+    monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.check_rate_limit", gate.check_rate_limit)
+    monkeypatch.setattr(f"{_TURN_QUEUE_PATH}.has_codex_access", gate.has_codex_access)
+    return gate
+
+
+@pytest.fixture(autouse=True)
+def post_notice(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """The note a skipped run posts into its chat. Patched for every test so
+    none reaches the DatabaseManager, whose client retries for minutes."""
+    post = AsyncMock(return_value=True)
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}.post_notice", post)
+    return post
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +392,95 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["message"] == "check CI"
     assert call_kwargs["organization_id"] == "org-sched"
     assert call_kwargs["team_id"] == "team-sched"
+    # Marks the turn as scheduled so the executor alerts if it fails later.
+    assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_into_the_users_chat_is_marked_unattended():
+    """A follow-up pinned to the user's own chat still has nobody watching it,
+    so its tools must not hand questions back to the user (SECRT-2804)."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_awaited_once()
+    assert mock_schedule_turn.call_args.kwargs["unattended"] is True
+
+
+_WORK_KEY = CredentialPin(id="exa-new", title="Work key")
+
+
+async def _fire_into_users_chat(args: CopilotTurnJobArgs, routine=None) -> dict:
+    mock_schedule_turn = AsyncMock()
+    users_chat = MagicMock(session_id="session-1", expert_id=None)
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=users_chat),
+        ),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    mock_schedule_turn.assert_awaited_once()
+    return mock_schedule_turn.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_a_followups_turn_runs_on_the_accounts_picked_when_it_was_made():
+    kwargs = await _fire_into_users_chat(_args(credential_pins={"exa": _WORK_KEY}))
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_routines_turn_runs_on_the_accounts_on_its_row():
+    """A routine keeps its pins on the row, so they survive it being switched
+    off and on, which re-creates its jobs."""
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Briefing",
+        prompt="Brief me",
+        crons=["0 9 * * *"],
+        enabled=True,
+        grants_credentials=True,
+        credential_pins={"exa": _WORK_KEY},
+    )
+    kwargs = await _fire_into_users_chat(
+        _args(routine_id="routine-1", run_at=None, cron="0 9 * * *"), routine
+    )
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_made_before_pins_fires_with_none(caplog):
+    legacy = CopilotTurnJobArgs.model_validate(
+        {"user_id": "user-1", "session_id": "session-1", "message": "check CI"}
+    )
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        kwargs = await _fire_into_users_chat(legacy)
+    assert kwargs["credential_pins"] == {}
+    assert "no pinned credentials" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_pinned_accounts():
+    args = _args(cap_retry_count=0, credential_pins={"exa": _WORK_KEY})
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["credential_pins"] == {"exa": _WORK_KEY}
 
 
 @pytest.mark.asyncio
@@ -868,6 +1024,17 @@ async def test_self_delete_copilot_turn_swallows_errors():
         await _self_delete_copilot_turn_schedule(args)
 
 
+@pytest.mark.asyncio
+async def test_self_delete_switches_off_the_routine_that_lost_the_job():
+    store = MagicMock(mark_routine_unscheduled=AsyncMock())
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _self_delete_copilot_turn_schedule(_args(routine_id="routine-1"))
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
+
+
 # ---------------------------------------------------------------------------
 # _best_effort_unschedule / _cleanup_old_schedules_without_id
 # ---------------------------------------------------------------------------
@@ -1039,6 +1206,38 @@ async def test_expert_lookup_and_cap_retries_have_independent_budgets():
     assert expert_kwargs["expert_lookup_retry_count"] == 1
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("retry", "kind", "max_retries"),
+    [
+        (
+            _reschedule_one_shot_after_plan_unreadable,
+            "plan_lookup",
+            _MAX_PLAN_LOOKUP_RETRIES,
+        ),
+        (_reschedule_one_shot_after_limits_unreadable, "limits", _MAX_LIMITS_RETRIES),
+    ],
+    ids=["plan-lookup", "limits"],
+)
+async def test_an_outage_retry_and_a_cap_retry_have_independent_budgets(
+    retry, kind, max_retries
+):
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await retry(_args(cap_retry_count=_MAX_CAP_RETRIES))
+        outage_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+        mock_client.reset_mock()
+        await _reschedule_one_shot_after_cap(
+            _args(**{f"{kind}_retry_count": max_retries})
+        )
+        cap_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+
+    assert outage_kwargs["cap_retry_count"] == _MAX_CAP_RETRIES
+    assert outage_kwargs[f"{kind}_retry_count"] == 1
+    assert cap_kwargs["cap_retry_count"] == 1
+    assert cap_kwargs[f"{kind}_retry_count"] == max_retries
+
+
 # ---------------------------------------------------------------------------
 # GraphExecutionJobArgs back-compat — legacy rows have no `kind`
 # ---------------------------------------------------------------------------
@@ -1105,7 +1304,14 @@ async def test_execute_graph_forwards_expert_id_and_schedule_id():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        UserPaywalledError("A subscription is required to run agents."),
+        UserBannedError("This account is banned, so its workflows can't run."),
+    ],
+)
+async def test_execute_graph_quietly_skips_a_refused_owner(caplog, refusal):
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1115,9 +1321,7 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         input_data={},
         input_credentials={},
     )
-    mock_add = AsyncMock(
-        side_effect=UserPaywalledError("A subscription is required to run agents.")
-    )
+    mock_add = AsyncMock(side_effect=refusal)
     mock_db = MagicMock()
     mock_db.increment_onboarding_runs = AsyncMock()
 
@@ -1138,6 +1342,53 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         for record in caplog.records
     )
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "job, work",
+    [
+        (execute_community_rebuild, f"{_SCHEDULER_PATH}.rebuild_communities_for_user"),
+        (
+            execute_nightly_batch_sync,
+            "backend.copilot.dream.nightly_batch.run_nightly_batch_submit",
+        ),
+        (
+            execute_skill_learning_sync,
+            "backend.copilot.learning.nightly.run_skill_learning_pass",
+        ),
+    ],
+)
+def test_a_nightly_job_does_no_work_for_a_banned_owner(job, work):
+    def flag_on_and_owner_banned(coro, *args, **kwargs):
+        coro.close()
+        return True
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=flag_on_and_owner_banned),
+        patch(work) as work_fn,
+    ):
+        assert job("user-1") is None
+
+    work_fn.assert_not_called()
+
+
+def test_a_memory_cron_skips_when_the_ban_is_unreadable():
+    """Bounded by the registry gate's own budget, and skipped like it."""
+    timeouts = []
+
+    def ban_lookup_times_out(coro, *args, **kwargs):
+        coro.close()
+        timeouts.append(kwargs.get("timeout"))
+        raise concurrent.futures.TimeoutError()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=ban_lookup_times_out),
+        patch("backend.copilot.dream.nightly_batch.run_nightly_batch_submit") as work,
+    ):
+        assert execute_nightly_batch_sync("user-1") is None
+
+    work.assert_not_called()
+    assert timeouts == [scheduler_module.bridge_timeout()]
 
 
 @pytest.mark.asyncio
@@ -1502,17 +1753,36 @@ class _StartupRun(NamedTuple):
     add_job_calls: list
     embedding_backfill: MagicMock
     backfill_calls_at_readiness: int
+    scheduler_calls: list
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
+def _registered_jobs(
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+    on_start: Callable[[], object] | None = None,
+    existing_idle_job=None,
+) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
-    handing over to ``AppService.run_service``."""
+    handing over to ``AppService.run_service``. *on_start* runs as the mock
+    APScheduler starts, as a job due then would."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.scheduler_startup_embedding_backfill",
+        startup_embedding_backfill,
+    )
     mock_scheduler = MagicMock()
+    mock_scheduler.start.side_effect = on_start
+
+    mock_scheduler.get_job.side_effect = lambda job_id, **_: (
+        existing_idle_job
+        if mock_scheduler.start.called and job_id == "refresh_near_expiry_credentials"
+        else None
+    )
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
@@ -1521,7 +1791,10 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
-        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            return_value=MagicMock(get_parked_job_ids=MagicMock(return_value=[])),
+        ),
         patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
         patch(
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
@@ -1536,7 +1809,10 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
     ):
         Scheduler(register_system_tasks=True).run_service()
     return _StartupRun(
-        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+        mock_scheduler.add_job.call_args_list,
+        embedding_backfill,
+        at_readiness[0],
+        mock_scheduler.mock_calls,
     )
 
 
@@ -1557,11 +1833,218 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["seconds"] == 6 * 3600
 
 
+def test_memory_cron_reconcile_registered_after_start_on_its_interval(
+    monkeypatch,
+):
+    """The level-triggered backstop of the memory registry runs every
+    ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
+    coalesced. Each process gets an immediate pass in its own memory store."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job" and args and args[0] is reconcile_memory_scope_crons
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert str(args[1]) == str(IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES))
+    assert RECONCILE_INTERVAL_MINUTES == 30
+    assert kwargs["id"] == "reconcile_memory_scope_crons"
+    assert kwargs["max_instances"] == 1
+    assert kwargs["coalesce"] is True
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
+    assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
+
+
+def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
+    """The brain-dump recording sweep keeps "deleted within 48 hours". It is
+    registered once the scheduler has started, so an unchanged job keeps its
+    next run; a start that stopped calling ``_register_recording_purge``
+    would leave no sweep at all."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job"
+        and args
+        and args[0] is scheduler_module.purge_expired_recordings_job
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert kwargs["id"] == scheduler_module.RECORDING_PURGE_JOB_ID
+    assert args[1].interval == RECORDING_PURGE_INTERVAL
+    assert kwargs["max_instances"] == 1
+    assert kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
+
+
+def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):
+    """An immediately due system job reaches the service only through
+    ``_scheduler_instance``, so that is published before ``start``; published
+    after it, the pass was skipped as "scheduler not running" and the crons
+    waited a whole interval more."""
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}._scheduler_instance", None)
+    reconciled = MagicMock()
+    monkeypatch.setattr(Scheduler, "_reconcile_memory_crons", reconciled)
+
+    _registered_jobs(
+        monkeypatch, interval_hours=6, on_start=reconcile_memory_scope_crons
+    )
+
+    reconciled.assert_called_once_with()
+
+
+@pytest.mark.parametrize("offset_days", [-2, 1, None])
+def test_idle_credentials_startup_preserves_existing_daily_job(
+    monkeypatch, offset_days
+):
+    existing = MagicMock(
+        trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+        next_run_time=(
+            datetime.now(timezone.utc) + timedelta(days=offset_days)
+            if offset_days is not None
+            else None
+        ),
+    )
+    calls = _registered_jobs(
+        monkeypatch, interval_hours=6, existing_idle_job=existing
+    ).add_job_calls
+
+    assert not [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+
+def test_idle_credentials_job_is_registered_daily(monkeypatch):
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    matches = [
+        call
+        for call in calls
+        if call.args and call.args[0] is refresh_near_expiry_credentials
+    ]
+
+    assert len(matches) == 1
+    call = matches[0]
+    assert call.kwargs["id"] == "refresh_near_expiry_credentials"
+    assert str(call.kwargs["trigger"]) == str(
+        CronTrigger(hour=3, minute=0, timezone=timezone.utc)
+    )
+    assert call.kwargs["replace_existing"] is True
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == "execution"
+
+
+def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    started, release, completed = (threading.Event() for _ in range(3))
+    run_async = scheduler_module.run_async
+
+    async def refresh():
+        started.set()
+        await asyncio.to_thread(release.wait)
+        completed.set()
+
+    def short_timeout(coro, timeout=0.01):
+        return run_async(coro, timeout=timeout)
+
+    monkeypatch.setattr(scheduler_module, "_event_loop", loop)
+    monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(
+        scheduler_module,
+        "IntegrationCredentialsManager",
+        lambda: MagicMock(refresh_idle_credentials=refresh),
+    )
+    thread.start()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job = pool.submit(refresh_near_expiry_credentials)
+            try:
+                assert started.wait(timeout=2)
+                assert not completed.wait(timeout=0.1)
+                assert not job.done()
+            finally:
+                release.set()
+                assert completed.wait(timeout=2)
+            job.result(timeout=2)
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2)
+        loop.close()
+
+
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
     calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
+    ids = [c.kwargs["id"] for c in _registered_jobs(monkeypatch, 6).add_job_calls]
+
+    assert ids.count("dream_pass_reaper") == 1
+    assert ids.count("dream_pass_retention") == 1
+
+
+def test_dream_pass_retention_defaults_to_ninety_days():
+    assert Config.model_fields["dream_pass_retention_days"].default == 90
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.auth_identity_orphan_sweep_enabled", enabled
+    )
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    ids = [c.kwargs.get("id") for c in calls]
+    assert ids.count("report_orphaned_auth_identities") == int(enabled)
+
+
+def test_startup_embedding_backfill_defaults_on():
+    assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
+
+
+def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(
+        monkeypatch, interval_hours=6, startup_embedding_backfill=False
+    )
+
+    run.embedding_backfill.assert_not_called()
+    job = next(
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    )
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert before + timedelta(hours=6) <= job.kwargs["next_run_time"]
+
+
+def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypatch):
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    run.embedding_backfill.assert_not_called()
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
+    job.args[0]()
+    run.embedding_backfill.assert_called_once_with()
 
 
 def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
@@ -1647,6 +2130,10 @@ class TestScheduleOrgVisibility:
         sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
         with (
             patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            # None of these fixture jobs are paused, so the active-only path
+            # (what get_execution_schedules actually calls unless
+            # include_paused=True) can return the same list.
+            patch.object(Scheduler, "_get_active_jobs_cached", lambda self: jobs),
             patch(
                 "backend.executor.scheduler._job_to_info",
                 side_effect=fake_job_to_info,
@@ -1753,6 +2240,38 @@ class TestMorningBriefingSchedule:
         )
         Scheduler.add_morning_briefing_schedule(sched, **kwargs)
         return sched.scheduler.add_job
+
+    @pytest.mark.parametrize("requested_timezone", ["America/Chicago", "UTC"])
+    def test_learning_reregistration_preserves_an_overdue_job_unless_timezone_changes(
+        self, requested_timezone
+    ):
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        overdue = datetime(2026, 8, 7, 8, tzinfo=timezone.utc)
+        existing = MagicMock(
+            id="skill_learning_nightly_user-1",
+            next_run_time=overdue,
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone="America/Chicago"),
+        )
+        sched.scheduler.get_job.return_value = existing
+
+        def enabled(coro):
+            coro.close()
+            return True
+
+        with patch(f"{_SCHEDULER_PATH}.run_async", side_effect=enabled):
+            result = Scheduler.add_skill_learning_schedule(
+                sched, user_id="user-1", user_timezone=requested_timezone
+            )
+        if requested_timezone == "America/Chicago":
+            sched.scheduler.add_job.assert_not_called()
+            assert result["next_run_time"] == overdue.isoformat()
+        else:
+            sched.scheduler.add_job.assert_called_once()
+            assert (
+                str(sched.scheduler.add_job.call_args.kwargs["trigger"].timezone)
+                == "UTC"
+            )
 
     def test_registers_daily_9am_cron_in_the_users_timezone(self):
         add_job = self._register(user_id="user-1", user_timezone="America/New_York")
@@ -1872,40 +2391,16 @@ class TestMorningBriefingSchedule:
         sched._invalidate_jobs_cache.assert_not_called()
         assert result["removed"] is False
 
-    def test_job_body_removes_the_schedule_once_the_flag_is_off(self):
-        """Without this the cron outlives the feature, firing daily forever
-        to return flag_disabled."""
-        from backend.executor.scheduler import execute_morning_briefing
-
-        with (
-            patch(
-                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
-                new=MagicMock(),
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}.run_async",
-                side_effect=[{"status": "skipped", "reason": "flag_disabled"}, None],
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
-        ):
-            execute_morning_briefing("user-1")
-
-        self_delete.assert_called_once_with("user-1")
-
     @pytest.mark.parametrize(
         "result",
         [
             {"status": "skipped", "reason": "nothing_to_say"},
             {"status": "skipped", "reason": "already_delivered"},
-            # An unreachable LaunchDarkly must cost one morning, not the cron.
-            {"status": "skipped", "reason": "flag_unavailable"},
+            {"status": "skipped", "reason": "banned"},
             {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
         ],
     )
-    def test_job_body_keeps_the_schedule_on_every_other_outcome(self, result):
+    def test_job_body_keeps_the_schedule_after_generation(self, result):
         from backend.executor.scheduler import execute_morning_briefing
 
         with (
@@ -1913,51 +2408,920 @@ class TestMorningBriefingSchedule:
                 "backend.copilot.briefing.generate.generate_and_deliver_briefing",
                 new=MagicMock(),
             ),
-            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=[result]),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
+            patch(f"{_SCHEDULER_PATH}.run_async", return_value=result) as run,
         ):
             execute_morning_briefing("user-1")
 
-        self_delete.assert_not_called()
+        run.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_self_delete_also_clears_the_registration_marker(self):
-        """A marker left behind would suppress lazy re-registration for the
-        rest of its TTL if the flag is turned back on."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock()
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            patch(
-                "backend.copilot.briefing.scheduling."
-                "clear_briefing_registration_marker",
-                new=AsyncMock(),
-            ) as clear_marker,
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
 
-        client.remove_morning_briefing_schedule.assert_awaited_once_with(
-            user_id="user-1"
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    # Two caches, not one: the default path reads the SQL-filtered
+    # _get_active_jobs_cached and only include_paused reads the unfiltered
+    # _get_jobs_cached. Patching one leaves the other on the real jobstore,
+    # which this Scheduler.__new__ instance does not have.
+    active = [j for j in jobs if j.next_run_time is not None]
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch.object(Scheduler, "_get_active_jobs_cached", return_value=active),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
         )
-        clear_marker.assert_awaited_once_with("user-1")
 
-    @pytest.mark.asyncio
-    async def test_self_delete_swallows_a_scheduler_rpc_failure(self, caplog):
-        """It runs inside a job body; raising here would fail the whole run."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock(
-            side_effect=RuntimeError("pyro down")
-        )
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            caplog.at_level(logging.WARNING),
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
 
-        assert any(
-            "Failed to remove morning briefing job" in r.getMessage()
-            for r in caplog.records
+class TestRoutineTurnPermissions:
+    """What a routine's unattended turn is allowed to do.
+
+    This is the single decision the whole safety story rests on, and it is
+    made here rather than in the session, so it is worth pinning directly
+    instead of only through the set that feeds it.
+    """
+
+    @staticmethod
+    def _routine(**overrides) -> ExpertRoutine:
+        return ExpertRoutine(
+            **{
+                "id": "routine-1",
+                "title": "Sweep the queue",
+                "prompt": "Read the queue.",
+                "crons": ["0 9 * * 1-5"],
+                "source": "TEMPLATE",
+                "grants_credentials": False,
+                **overrides,
+            }
         )
+
+    def _denied(self, routine: ExpertRoutine | None) -> set[str]:
+        return set(_routine_turn_permissions(routine).tools)
+
+    def test_a_template_routine_reaches_nothing_outside_the_platform(self):
+        denied = self._denied(self._routine())
+
+        assert "run_agent" in denied
+        assert "post_to_chat_platform" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_granting_a_template_routine_is_the_owners_call_and_it_counts(self):
+        """The grant is the whole rule at fire time. A template the owner
+        looked at and bound to their queue must actually reach it, or the
+        question they were asked meant nothing."""
+        denied = self._denied(self._routine(grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_a_routine_the_owner_dictated_is_not_muted_like_a_template(self):
+        """``create_routine`` grants an OWNER row by default, which is what
+        settles the complaint this came from: the same words typed into the
+        same chat already run with these, so muting somebody's own morning
+        briefing protected nobody. Fire time reads only the grant — provenance
+        is what decided the grant's starting value."""
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_an_owner_who_asked_for_hands_off_still_gets_hands_off(self):
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=False))
+
+        assert "run_agent" in denied
+
+    @pytest.mark.parametrize(
+        "routine",
+        [
+            None,
+            _routine.__func__(),
+            _routine.__func__(source="OWNER", grants_credentials=True),
+        ],
+    )
+    def test_no_routine_turn_may_schedule_another(self, routine):
+        """An unattended turn reads pages nobody is watching it read. Without
+        this, one injected page buys standing access to the account forever —
+        a routine that can write a routine can grant itself the credentials
+        its own prompt was denied."""
+        denied = set(_routine_turn_permissions(routine).tools)
+
+        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied
+
+    def test_a_routine_that_could_not_be_loaded_is_trusted_least(self):
+        """The row is gone or the lookup failed; the turn still fires, and
+        guessing that it was granted something is the wrong way to be wrong."""
+        denied = self._denied(None)
+
+        assert "run_agent" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_the_filter_is_always_a_denylist_never_an_empty_one(self):
+        """``effective_allowed_tools`` reads an empty ``tools`` as "everything
+        allowed", so a filter that narrowed to nothing would silently widen."""
+        for routine in (None, self._routine(), self._routine(source="OWNER")):
+            permissions = _routine_turn_permissions(routine)
+            assert permissions.tools
+            assert permissions.tools_exclude is True
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_routine_behind_the_turn():
+    """The retried job has to still be a routine's.
+
+    Without ``routine_id`` the replacement resolves no routine, so
+    ``_execute_copilot_turn`` passes ``permissions=None`` and the turn runs
+    with whatever the session allows. An ungranted routine that merely lost a
+    race to the concurrency cap would come back holding everything the mute
+    exists to withhold — and it would never be marked as having fired.
+    """
+    args = _args(cap_retry_count=0, routine_id="routine-1")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+
+    assert (
+        mock_client.add_copilot_turn_schedule.call_args.kwargs["routine_id"]
+        == "routine-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_switched_off_routine_does_not_fire_and_its_job_is_removed():
+    """Deleting a routine's jobs is best effort, so "off" has to mean
+    something at fire time too. Otherwise a job the scheduler refused to
+    delete keeps running work its owner stopped, forever."""
+    args = _args(routine_id="routine-1")
+    off = ExpertRoutine(
+        id="routine-1",
+        title="Stopped",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=False,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=off)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_not_awaited()
+    self_delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_switched_on_routine_still_fires():
+    """The guard above must not be the thing that stops every routine."""
+    args = _args(routine_id="routine-1")
+    on = ExpertRoutine(
+        id="routine-1",
+        title="Running",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=True,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=on)
+    db.record_routine_fired = AsyncMock()
+    session = MagicMock(
+        session_id="session-1",
+        expert_id=None,
+        metadata=MagicMock(llm_auth_provider=None, llm_credential_id=None),
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_awaited_once()
+    self_delete.assert_not_awaited()
+
+
+def _paywalled(gate: _OwnerGate) -> None:
+    gate.is_user_paywalled.return_value = True
+
+
+def _lost_codex(gate: _OwnerGate) -> None:
+    gate.has_codex_access.return_value = False
+
+
+def _over_a_cap(gate: _OwnerGate) -> None:
+    resets_at = datetime.now(tz=timezone.utc) + timedelta(hours=3)
+    gate.check_rate_limit.side_effect = RateLimitExceeded("daily", resets_at)
+
+
+def _limits_unreadable(gate: _OwnerGate) -> None:
+    gate.check_rate_limit.side_effect = RateLimitUnavailable()
+
+
+def _lookup_fails(gate: _OwnerGate) -> None:
+    gate.is_user_paywalled.side_effect = RuntimeError("tier lookup down")
+
+
+async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, AsyncMock]:
+    args = _args(session_id=session_id, run_at=None, cron="9 * * * *")
+    mocks = {
+        "schedule_turn": AsyncMock(),
+        "create_chat_session": AsyncMock(
+            return_value=MagicMock(session_id="new-session", expert_id=None)
+        ),
+        "_self_delete_copilot_turn_schedule": AsyncMock(),
+    }
+    session = MagicMock(session_id="session-1", expert_id=None)
+    session.metadata.llm_auth_provider = provider
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}.resolve_default_chat_route",
+            AsyncMock(return_value=(provider, None)),
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", mocks["schedule_turn"]),
+        patch(f"{_SCHEDULER_PATH}.create_chat_session", mocks["create_chat_session"]),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            mocks["_self_delete_copilot_turn_schedule"],
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    return mocks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
+)
+@pytest.mark.parametrize(
+    ("refuse", "provider"),
+    [
+        (_paywalled, "platform"),
+        (_over_a_cap, "platform"),
+        (_limits_unreadable, "platform"),
+        (_lost_codex, "codex"),
+        (_lookup_fails, "platform"),
+    ],
+    ids=["paywalled", "over-a-cap", "limits-unreadable", "lost-codex", "lookup-fails"],
+)
+async def test_a_tick_that_may_not_start_is_skipped_and_the_schedule_kept(
+    owner_gate, refuse, provider, session_id, caplog
+):
+    """No turn and no empty chat per tick, and nothing deleted, so the schedule
+    resumes by itself once the owner has access or the usage window resets."""
+    refuse(owner_gate)
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        mocks = await _fire_hourly(session_id, provider)
+
+    mocks["schedule_turn"].assert_not_awaited()
+    mocks["create_chat_session"].assert_not_awaited()
+    mocks["_self_delete_copilot_turn_schedule"].assert_not_awaited()
+    assert "Skipping scheduled copilot turn sched-1" in caplog.text
+    assert "the schedule stays registered" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
+)
+async def test_a_tick_that_may_start_fires(owner_gate, session_id):
+    mocks = await _fire_hourly(session_id, "platform")
+
+    mocks["schedule_turn"].assert_awaited_once()
+    owner_gate.is_user_paywalled.assert_awaited_once_with("user-1")
+    owner_gate.check_rate_limit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_codex_billed_tick_is_not_held_to_the_platform_paywall(owner_gate):
+    """A Codex-routed turn spends no platform dollars, as the chat route and
+    the queue dispatcher already treat it."""
+    _paywalled(owner_gate)
+    mocks = await _fire_hourly("session-1", "codex")
+
+    mocks["schedule_turn"].assert_awaited_once()
+    owner_gate.has_codex_access.assert_awaited_once_with("user-1")
+
+
+_ONE_SHOT = {"run_at": datetime.now(tz=timezone.utc) + timedelta(minutes=5)}
+_HOURLY = {"run_at": None, "cron": "9 * * * *"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("refuse", "timing", "dropped", "budget"),
+    [
+        (_paywalled, _ONE_SHOT, [("routine-1", "sched-1")], None),
+        (_over_a_cap, _ONE_SHOT, [], "usage_wait_count"),
+        (_limits_unreadable, _ONE_SHOT, [], "limits_retry_count"),
+        (_lookup_fails, _ONE_SHOT, [], "plan_lookup_retry_count"),
+        (_paywalled, _HOURLY, [], None),
+        (_limits_unreadable, _HOURLY, [], None),
+        (_lookup_fails, _HOURLY, [], None),
+    ],
+    ids=[
+        "paywalled-one-shot",
+        "over-a-cap-one-shot",
+        "brown-out-one-shot",
+        "lookup-fails-one-shot",
+        "paywalled-cron",
+        "brown-out-cron",
+        "lookup-fails-cron",
+    ],
+)
+async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
+    owner_gate, refuse, timing, dropped, budget
+):
+    """APScheduler drops a one-shot once it fires. An outage (unreadable limits
+    or plan) is ours, so the one-shot comes back in a few minutes, and a used-up
+    limit has a reset to wait for; otherwise, left on, it would read as pending
+    for a time that has passed."""
+    refuse(owner_gate)
+    scheduler_client = AsyncMock()
+    routine = ExpertRoutine(
+        id="routine-1", title="CI", prompt="Check CI.", enabled=True
+    )
+    store = MagicMock(
+        get_routine=AsyncMock(return_value=routine),
+        mark_routine_unscheduled=AsyncMock(),
+    )
+    session = MagicMock(session_id="session-1", expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    schedule_turn = AsyncMock()
+    args = _args(routine_id="routine-1", **timing)
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    schedule_turn.assert_not_awaited()
+    calls = store.mark_routine_unscheduled.await_args_list
+    assert [c.args for c in calls] == dropped
+    retry = scheduler_client.add_copilot_turn_schedule
+    assert retry.await_count == int(budget is not None)
+    if budget is not None:
+        assert retry.call_args.kwargs["routine_id"] == "routine-1"
+        assert retry.call_args.kwargs["routine_schedule_id"] == "sched-1"
+        assert retry.call_args.kwargs[budget] == 1
+
+
+def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
+    gate.check_rate_limit.side_effect = RateLimitExceeded("daily", resets_at)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("window", ["daily", "weekly"])
+async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
+    owner_gate, post_notice, window
+):
+    """Nick (2026-10-10): once usage comes back, the run should happen. A
+    one-shot is moved to the reset, spread over a few minutes, and its chat is
+    told when it will run."""
+    resets_at = datetime.now(tz=timezone.utc).replace(microsecond=0) + timedelta(
+        hours=3
+    )
+    owner_gate.check_rate_limit.side_effect = RateLimitExceeded(window, resets_at)
+    scheduler_client = AsyncMock()
+    with patch(
+        f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client
+    ):
+        mocks = await _fire(_args(run_at=_ONE_SHOT["run_at"]))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    kwargs = scheduler_client.add_copilot_turn_schedule.call_args.kwargs
+    assert resets_at <= kwargs["run_at"]
+    assert kwargs["run_at"] < resets_at + timedelta(seconds=_USAGE_WAIT_SPREAD_SECONDS)
+    assert kwargs["usage_wait_count"] == 1
+    notice = post_notice.call_args.args[0]
+    assert notice.body.startswith("“check CI” will run when the limit resets")
+
+
+@pytest.mark.asyncio
+async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
+    owner_gate, post_notice
+):
+    _over_the_daily_limit(
+        owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
+    )
+    scheduler_client = AsyncMock()
+    store = MagicMock(get_routine=AsyncMock(return_value=None))
+    store.mark_routine_unscheduled = AsyncMock()
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _fire(_args(routine_id="routine-1", usage_wait_count=_MAX_USAGE_WAITS))
+
+    scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
+    assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+
+
+async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:
+    """Fire *args* into its existing chat, with the dispatch mocked."""
+    mocks = {"schedule_turn": AsyncMock()}
+    session = MagicMock(session_id=args.session_id, expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", mocks["schedule_turn"]),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+    return mocks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_id", [None, "session-1"], ids=["fresh-chat", "existing-chat"]
+)
+@pytest.mark.parametrize(
+    ("refuse", "provider", "reason"),
+    [
+        (_paywalled, "platform", "no_plan"),
+        (_over_a_cap, "platform", "usage"),
+        (_lost_codex, "codex", "codex_access"),
+    ],
+    ids=["paywalled", "over-a-cap", "lost-codex"],
+)
+async def test_a_skipped_run_tells_its_chat_why(
+    owner_gate, post_notice, refuse, provider, reason, session_id
+):
+    """SECRT-2879: skipping without a word is what left the trial account's
+    owner with 33 missing runs a day and nothing to say why."""
+    refuse(owner_gate)
+    await _fire_hourly(session_id, provider)
+
+    post_notice.assert_awaited_once()
+    notice = post_notice.call_args.args[0]
+    kwargs = post_notice.call_args.kwargs
+    assert notice.reason == reason
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["schedule_key"] == "sched-1"
+    assert kwargs["title"] == "check CI"
+    # A fresh-chat schedule has no chat yet; the note goes to its fallback.
+    assert kwargs["session_id"] == session_id
+    assert kwargs["expert_id"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refuse", [_limits_unreadable, _lookup_fails], ids=["brown-out", "lookup-fails"]
+)
+async def test_a_run_skipped_by_our_outage_tells_nobody(
+    owner_gate, post_notice, refuse
+):
+    refuse(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    post_notice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("timing", "outcome"),
+    [
+        ({"run_at": None, "cron": "9 * * * *"}, "the schedule stays registered"),
+        ({}, "the one-shot is dropped"),
+    ],
+    ids=["recurring", "one-shot"],
+)
+async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
+    post_notice, timing, outcome, caplog
+):
+    """Nothing new starts for a banned account: a recurring schedule stays for
+    when the ban is lifted, a one-shot is dropped as a paywalled one is, and
+    nothing is posted into its chats."""
+    with (
+        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        mocks = await _fire(_args(**timing))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    post_notice.assert_not_awaited()
+    assert "owner is banned" in caplog.text
+    assert outcome in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_routine_is_named_by_its_title_and_keyed_by_its_id(
+    owner_gate, post_notice
+):
+    _paywalled(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1", title="Morning briefing", prompt="Brief me.", enabled=True
+    )
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        await _fire(_args(routine_id="routine-1", run_at=None, cron="0 6 * * *"))
+
+    kwargs = post_notice.call_args.kwargs
+    assert kwargs["schedule_key"] == "routine-1"
+    assert kwargs["title"] == "Morning briefing"
+
+
+@pytest.mark.asyncio
+async def test_an_hourly_schedule_over_its_limit_is_offered_to_run_less_often(
+    owner_gate, post_notice
+):
+    _over_a_cap(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
+
+
+@pytest.mark.asyncio
+async def test_a_routine_is_offered_less_often_by_all_of_its_times(
+    owner_gate, post_notice
+):
+    """Each job carries one fire time; whether the routine can run less often
+    depends on all of them. Two weekly times make twice a week, which can."""
+    _over_a_cap(owner_gate)
+    routine = ExpertRoutine(
+        id="routine-1",
+        title="Weekly review",
+        prompt="Review the week.",
+        crons=["0 9 * * mon", "0 9 * * thu"],
+        enabled=True,
+    )
+    store = MagicMock(get_routine=AsyncMock(return_value=routine))
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        await _fire(_args(routine_id="routine-1", run_at=None, cron="0 9 * * mon"))
+
+    actions = [action.kind for action in post_notice.call_args.args[0].actions]
+    assert actions == ["link", "run_less_often"]
+
+
+@pytest.mark.asyncio
+async def test_a_note_that_cannot_be_posted_does_not_fail_the_tick(
+    owner_gate, post_notice, caplog
+):
+    _paywalled(owner_gate)
+    post_notice.side_effect = RuntimeError("database manager down")
+
+    with caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH):
+        mocks = await _fire(_args(run_at=None, cron="9 * * * *"))
+
+    mocks["schedule_turn"].assert_not_awaited()
+    assert "Could not tell the owner why scheduled copilot turn sched-1" in caplog.text
+    assert "the schedule stays registered" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("budget_left", "happened", "did_not"),
+    [
+        (True, "the one-shot is retried", "the one-shot is dropped"),
+        (False, "the one-shot is dropped", "the one-shot is retried"),
+    ],
+    ids=["retried", "budget-spent"],
+)
+async def test_a_skipped_one_shot_logs_what_became_of_it(
+    owner_gate, budget_left, happened, did_not, caplog
+):
+    _lookup_fails(owner_gate)
+    args = _args(plan_lookup_retry_count=0 if budget_left else _MAX_PLAN_LOOKUP_RETRIES)
+    session = MagicMock(session_id="session-1", expert_id=None)
+    session.metadata.llm_auth_provider = "platform"
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", AsyncMock()),
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=AsyncMock()),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert happened in caplog.text
+    assert did_not not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("give_up", ["exhausted", "scheduler-down"])
+async def test_a_one_shot_retry_that_gives_up_switches_its_routine_off(give_up):
+    """The retry's own schedule_id is new to the routine's row, so it has to
+    carry the one the row holds, or the routine stays on with nothing behind it."""
+    args = _args(
+        schedule_id="sched-retry",
+        routine_id="routine-1",
+        routine_schedule_id="sched-0",
+        plan_lookup_retry_count=(
+            _MAX_PLAN_LOOKUP_RETRIES if give_up == "exhausted" else 0
+        ),
+    )
+    scheduler_client = AsyncMock()
+    scheduler_client.add_copilot_turn_schedule.side_effect = RuntimeError("down")
+    store = MagicMock(mark_routine_unscheduled=AsyncMock())
+    with (
+        patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=scheduler_client),
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store),
+    ):
+        await _reschedule_one_shot_after_plan_unreadable(args)
+
+    store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-0")
+
+
+@pytest.mark.parametrize("name", ["", " ", "\t\n", "\u2003"])
+def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(name):
+    scheduler = Scheduler(register_system_tasks=False)
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async") as run,
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="at least 1 character"),
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="user-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            name=name,
+        )
+    run.assert_not_called()
+    persist.assert_not_called()
+
+
+class TestPostHogLifecycleSweepRegistration:
+    """An unchanged daily sweep job is left alone, so a restart after 04:15
+    can't push that day's overdue run to tomorrow."""
+
+    def _register(self, existing=None) -> MagicMock:
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        Scheduler._register_posthog_lifecycle_sweep(sched)
+        return sched.scheduler.add_job
+
+    def test_registers_the_daily_cron_when_missing(self):
+        add_job = self._register()
+
+        add_job.assert_called_once()
+        assert add_job.call_args.kwargs["id"] == "sync_posthog_lifecycles"
+        assert "hour='4', minute='15'" in str(add_job.call_args.args[1])
+
+    def test_leaves_an_unchanged_job_alone(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("15 4 * * *"))
+
+        self._register(existing=existing).assert_not_called()
+
+    def test_replaces_a_job_whose_schedule_changed(self):
+        existing = MagicMock(trigger=CronTrigger.from_crontab("0 3 * * *"))
+
+        self._register(existing=existing).assert_called_once()
+
+    def test_morning_briefing_stays_an_rpc_endpoint(self):
+        # The sweep registrar sits next to it; the @expose must stay on the
+        # RPC method, not slide onto the private helper.
+        assert getattr(Scheduler.add_morning_briefing_schedule, EXPOSED_FLAG, False)
+        assert not getattr(
+            Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
+        )
+
+
+class TestScheduleListCache:
+    """One jobstore read per cache miss, and no caller waits a scan while an
+    expired list can answer it. Both cached reads share the logic, so every
+    test runs against each."""
+
+    @pytest.fixture(params=["all", "active"])
+    def cache(self, request, monkeypatch: pytest.MonkeyPatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched.scheduler = MagicMock()
+        sched._execution_jobstore = MagicMock()
+        fetch = _GatedFetch()
+        if request.param == "all":
+            sched.scheduler.get_jobs = fetch
+            read = sched._get_jobs_cached
+        else:
+            sched._execution_jobstore._get_jobs = fetch
+            read = sched._get_active_jobs_cached
+        # Every list expires the moment it is cached, so each read after the
+        # first is an expired one.
+        monkeypatch.setattr(Scheduler, "_JOBS_CACHE_TTL_S", 0.0)
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
+        yield sched, read, fetch
+        fetch.release_all()
+
+    def test_eight_misses_run_one_query(self, cache):
+        sched, read, fetch = cache
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(r is results[0] for r in results)
+
+    def test_a_failed_query_fails_every_waiter_once(self, cache):
+        sched, read, fetch = cache
+        fetch.fail_with = RuntimeError("QueuePool limit reached")
+
+        results = _read_concurrently(read, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert all(isinstance(r, RuntimeError) for r in results)
+
+    def test_an_expired_list_is_served_while_one_refresh_runs(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+
+        assert _within(read) is old  # starts the refresh, does not wait for it
+        fetch.wait_for_calls(2)
+        assert _within(read) is old
+        assert fetch.calls == 2
+
+        fetch.release(2)
+        _join_refreshes()
+        assert _within(read) == ["list-2"]
+
+    def test_a_failed_refresh_keeps_the_old_list_and_retries(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        fetch.fail_with = RuntimeError("database timeout")
+
+        assert _within(read) is old
+        fetch.release(2)
+        _join_refreshes()
+        assert _within(read) is old  # and starts refresh #3: #2 did not wedge it
+        fetch.wait_for_calls(3)
+
+    def test_an_invalidation_is_never_answered_from_the_old_list(self, cache):
+        sched, read, fetch = cache
+        fetch.release(1)
+        old = read()
+        assert _within(read) is old
+        fetch.wait_for_calls(2)  # refresh #2 started before the write
+
+        sched._invalidate_jobs_cache()
+        after = _start(read)
+        fetch.wait_for_calls(3)  # a fresh read, not a wait on refresh #2
+        assert after.is_alive()
+
+        fetch.release(3)
+        assert after.result() == ["list-3"]
+        fetch.release(2)
+        _join_refreshes()
+        # Refresh #2 read before the write, so it must not land in the cache.
+        assert _within(read) == ["list-3"]
+
+    def test_a_failing_gauge_update_still_answers_the_waiters(self, monkeypatch):
+        sched = Scheduler(register_system_tasks=False)
+        sched._execution_jobstore = MagicMock()
+        fetch = sched._execution_jobstore._get_jobs = _GatedFetch()
+        monkeypatch.setattr(Scheduler, "_jobs_cache_lock", _CountingLock())
+        monkeypatch.setattr(
+            f"{_SCHEDULER_PATH}.SCHEDULER_JOBS.labels",
+            MagicMock(side_effect=RuntimeError("registry")),
+        )
+
+        results = _read_concurrently(sched._get_active_jobs_cached, fetch, callers=8)
+
+        assert fetch.calls == 1
+        assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
+        assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
+
+
+# ── stopped before `run_service` started the APScheduler ───────────────────
+
+
+@pytest.mark.parametrize(
+    "built", [False, True], ids=["not built", "built, not started"]
+)
+def test_cleanup_of_a_scheduler_stopped_before_run_service_finishes_the_chain(
+    monkeypatch: pytest.MonkeyPatch, mocker, built: bool
+):
+    monkeypatch.setattr(scheduler_module, "_event_loop", None)
+    monkeypatch.setattr(scheduler_module, "_event_loop_thread", None)
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = Scheduler(register_system_tasks=False)
+    if built:
+        service.scheduler = BackgroundScheduler()
+
+    service.cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+async def test_a_scheduler_before_run_service_reports_itself_initializing():
+    with pytest.raises(UnhealthyServiceError, match="initializing"):
+        await Scheduler(register_system_tasks=False).health_check()
+
+
+class _GatedFetch:
+    """A jobstore read that counts its calls and holds each until released."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.fail_with: Exception | None = None
+        self._lock = threading.Lock()
+        self._gates: dict[int, threading.Event] = {}
+
+    def __call__(self, *_args, **_kwargs) -> list[str]:
+        with self._lock:
+            self.calls += 1
+            call = self.calls
+            failure = self.fail_with
+        self._gate(call).wait(timeout=10)
+        if failure is not None:
+            raise failure
+        return [f"list-{call}"]
+
+    def release(self, call: int) -> None:
+        self._gate(call).set()
+
+    def release_all(self) -> None:
+        for call in range(1, self.calls + 2):
+            self.release(call)
+
+    def wait_for_calls(self, count: int) -> None:
+        _wait_until(lambda: self.calls >= count)
+
+    def _gate(self, call: int) -> threading.Event:
+        with self._lock:
+            return self._gates.setdefault(call, threading.Event())
+
+
+class _CountingLock:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.acquired = 0
+
+    def __enter__(self) -> "_CountingLock":
+        self._lock.acquire()
+        self.acquired += 1
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self._lock.release()
+
+
+class _Call(threading.Thread):
+    def __init__(self, fn) -> None:
+        super().__init__(daemon=True)
+        self._fn = fn
+        self._outcome: object = None
+
+    def run(self) -> None:
+        try:
+            self._outcome = self._fn()
+        except Exception as e:
+            self._outcome = e
+
+    def result(self, timeout: float = 5.0) -> object:
+        self.join(timeout)
+        assert not self.is_alive(), "the read is still waiting"
+        return self._outcome
+
+
+def _start(fn) -> _Call:
+    call = _Call(fn)
+    call.start()
+    return call
+
+
+def _within(fn, timeout: float = 2.0) -> object:
+    return _start(fn).result(timeout)
+
+
+def _read_concurrently(read, fetch: _GatedFetch, callers: int) -> list[object]:
+    lock = Scheduler._jobs_cache_lock
+    assert isinstance(lock, _CountingLock)
+    calls = [_start(read) for _ in range(callers)]
+    # Each caller takes the lock once to check the cache; the fetcher's
+    # write-back is held behind the gate, so this counts arrivals only.
+    _wait_until(lambda: lock.acquired >= callers)
+    fetch.release_all()
+    return [call.result() for call in calls]
+
+
+def _join_refreshes() -> None:
+    for thread in threading.enumerate():
+        if thread.name == "ScheduleListRefresh":
+            thread.join(timeout=5)
+            assert not thread.is_alive(), "a background refresh is still running"
+
+
+def _wait_until(condition, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.01)

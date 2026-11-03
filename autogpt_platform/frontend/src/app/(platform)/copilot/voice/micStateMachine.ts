@@ -24,6 +24,8 @@ export type VoiceEvent =
   | { type: "TRANSCRIPT_SENT" }
   /** Transcript was empty, filler, or the send failed. */
   | { type: "TRANSCRIPT_DROPPED" }
+  /** The user asked for a failed transcription to be tried again. */
+  | { type: "RETRY" }
   | { type: "REPLY_SPEAKING" }
   /** The reply finished with nothing left to say. */
   | { type: "REPLY_DONE" }
@@ -44,6 +46,10 @@ export function voiceReduce(state: VoiceState, event: VoiceEvent): VoiceState {
       return state === "transcribing" ? "thinking" : state;
     case "TRANSCRIPT_DROPPED":
       return state === "transcribing" ? "listening" : state;
+    // Only from an open, quiet mic: mid-utterance the retry would race the
+    // user's new speech for the same turn.
+    case "RETRY":
+      return state === "listening" ? "transcribing" : state;
     case "REPLY_SPEAKING":
       return state === "thinking" || state === "speaking" ? "speaking" : state;
     case "REPLY_DONE":

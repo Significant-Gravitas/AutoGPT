@@ -53,7 +53,7 @@ export function LocalPCRecordingConsent({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4 py-2">
-          <Text variant="body" className="text-neutral-800">
+          <Text variant="body" tone="emphasis">
             Your computer doesn&apos;t have a local model that can read these
             screenshots, so later skill generation needs cloud processing
             through this AutoGPT deployment. If you ask Copilot to generate the
@@ -64,10 +64,10 @@ export function LocalPCRecordingConsent({
           </Text>
 
           <div className="flex flex-col gap-1">
-            <Text variant="body" className="font-medium text-neutral-900">
+            <Text variant="body-medium" tone="primary">
               Worth knowing:
             </Text>
-            <ul className="ml-4 list-disc text-sm text-neutral-700">
+            <ul className="ml-4 list-disc text-sm text-foreground-body">
               <li>
                 The images show whatever was on your screen while recording —
                 including anything else that was open. You decide what&apos;s
@@ -84,14 +84,14 @@ export function LocalPCRecordingConsent({
             </ul>
           </div>
 
-          <Text variant="body" className="text-sm text-neutral-700">
+          <Text variant="body-tight" tone="body">
             Prefer to keep raw screenshots on your machine? Install a local
             model and re-record. The hygiene-redacted structured steps shown in
             review have already been transferred to this authenticated browser.
           </Text>
 
           {errorMessage ? (
-            <Text variant="body" role="alert" className="text-sm text-red-700">
+            <Text variant="body-tight" role="alert" tone="danger">
               {errorMessage}
             </Text>
           ) : null}

@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
-import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { useOnboardingWizardStore } from "../../store";
 import { AutopilotScene } from "./components/AutopilotScene";
 import { TeamScene } from "./components/TeamScene";
@@ -25,37 +25,39 @@ export function IntroStep({ slide }: Props) {
   const Scene = SCENES[slide];
 
   return (
-    <FadeIn className="flex w-full max-w-lg flex-col items-center gap-8 px-4">
-      <Text variant="h4" as="h1" className="text-center leading-tight">
-        {title}
-      </Text>
+    <FadeIn
+      className={cn("w-full", slide === "team" ? "max-w-2xl" : "max-w-lg")}
+    >
+      <div className="flex w-full flex-col items-center gap-8 px-4">
+        <h1 className="text-center font-poppins text-heading-sm leading-tight font-medium text-foreground-base">
+          {title}
+        </h1>
 
-      <div
-        data-testid="intro-stage"
-        className="relative h-[340px] w-full overflow-hidden"
-      >
-        <Scene />
-      </div>
-
-      {body && (
-        <Text
-          variant="large"
-          as="p"
-          tone="muted"
-          className="max-w-md text-center"
+        <div
+          data-testid="intro-stage"
+          className={cn(
+            "relative w-full overflow-hidden",
+            slide === "team" ? "h-[420px]" : "h-[340px]",
+          )}
         >
-          {body}
-        </Text>
-      )}
+          <Scene />
+        </div>
 
-      <Button
-        type="button"
-        size="small"
-        onClick={nextStep}
-        className="h-10 w-56 rounded-xl"
-      >
-        Next
-      </Button>
+        {body && (
+          <p className="max-w-md text-center font-sans text-body-lg font-normal text-foreground-tertiary md:max-w-full md:text-lg md:leading-tight">
+            {body}
+          </p>
+        )}
+
+        <Button
+          type="button"
+          size="small"
+          onClick={nextStep}
+          className="h-10 w-56"
+        >
+          Next
+        </Button>
+      </div>
     </FadeIn>
   );
 }

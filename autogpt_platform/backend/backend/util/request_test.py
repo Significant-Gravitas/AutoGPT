@@ -1,14 +1,27 @@
+import codecs
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
+import idna
 import pytest
+import pytest_mock
 from aiohttp import web
 
 from backend.util.request import (
+    ALLOWED_RESPONSE_CHARSETS,
+    Requests,
+    Response,
+    ResponseTooLargeError,
+    _is_cross_origin,
     _is_ip_blocked,
+    _read_body,
     _remove_insecure_headers,
+    parse_url,
     pin_url,
+    resolve_and_check_blocked,
     validate_url_host,
 )
+from backend.util.settings import Config
 
 
 @pytest.mark.parametrize(
@@ -204,9 +217,22 @@ async def test_large_header_handling():
         ("1.1.1.1", False),
         ("::ffff:8.8.8.8", False),  # IPv4-mapped but public
         # Native IPv6 blocked ranges
+        ("::", True),  # Unspecified; Linux connects it to ::1
         ("::1", True),  # Loopback
         ("fe80::1", True),  # Link-local
         ("fc00::1", True),  # ULA
+        # Other IPv6 encodings of a blocked IPv4 address
+        ("2002:a9fe:a9fe::", True),  # 6to4 of 169.254.169.254
+        ("2001:0:4136:e378:8000:63bf:80ff:fffe", True),  # Teredo, client 127.0.0.1
+        ("64:ff9b::a9fe:a9fe", True),  # NAT64 of 169.254.169.254
+        ("64:ff9b:1::a00:1", True),  # Local-use NAT64 of 10.0.0.1
+        ("64:ff9b:1::808:808", True),  # Local-use NAT64 is blocked whatever it embeds
+        ("::ffff:0:7f00:1", True),  # SIIT of 127.0.0.1
+        ("::7f00:1", True),  # IPv4-compatible 127.0.0.1
+        # The same encodings of a public IPv4 address (should NOT be blocked)
+        ("2002:808:808::", False),  # 6to4 of 8.8.8.8
+        ("2001:0:4136:e378:8000:63bf:f7f7:f7f7", False),  # Teredo, client 8.8.8.8
+        ("64:ff9b::808:808", False),  # NAT64 of 8.8.8.8, as DNS64 networks resolve
         # Public IPv6 (should NOT be blocked)
         ("2607:f8b0:4004:800::200e", False),  # Google
     ],
@@ -228,17 +254,21 @@ def test_is_ip_blocked(ip: str, expected_blocked: bool):
         ("cgnat.example.com", ["100.64.0.1"], True),
         # Mixed: one public, one mapped-private — must be blocked (any blocked = reject)
         ("mixed.example.com", ["8.8.8.8", "::ffff:192.168.1.1"], True),
+        # A lone AAAA record of :: — Linux connects it to ::1, so must be blocked
+        ("unspecified.example.com", ["::"], True),
+        # NAT64 of the cloud metadata address — must be blocked
+        ("nat64-metadata.example.com", ["64:ff9b::a9fe:a9fe"], True),
         # All public — should pass
         ("public.example.com", ["8.8.8.8", "9.9.9.9"], False),
     ],
 )
-async def test_ipv4_mapped_ipv6_bypass(
+async def test_ipv6_encoded_blocked_ip_bypass(
     monkeypatch,
     raw_url: str,
     resolved_ips: list[str],
     should_raise: bool,
 ):
-    """Ensures IPv4-mapped IPv6 addresses are checked against IPv4 blocklist."""
+    """Ensures a host that resolves to a blocked address in any IPv6 form is rejected."""
 
     def mock_getaddrinfo(host, port, *args, **kwargs):
         return [(None, None, None, None, (ip, port)) for ip in resolved_ips]
@@ -251,6 +281,15 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.parametrize("host", ["::", "::1", "::ffff:127.0.0.1", "0.0.0.0"])
+async def test_literal_blocked_host_is_rejected(host: str):
+    """The SQL and email blocks pass a user's host to resolve_and_check_blocked
+    as typed, without validate_url_host's hostname check, so an IP literal must
+    be rejected here. getaddrinfo returns a literal as is, so no DNS is involved."""
+    with pytest.raises(ValueError):
+        await resolve_and_check_blocked(host)
 
 
 @pytest.mark.parametrize(
@@ -282,7 +321,7 @@ def test_sensitive_headers_are_stripped_regardless_of_case(
     headers = {header_name: "secret", "X-Keep": "kept"}
 
     result = _remove_insecure_headers(
-        headers, urlparse("https://example.com/a"), urlparse(new_url)
+        headers, _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url))
     )
 
     assert (header_name not in result) is expect_stripped
@@ -583,3 +622,627 @@ async def test_credentials_survive_a_same_origin_redirect():
 
     assert seen["authorization"] == "Basic dXNlcjpwYXNz"
     assert seen["cookie"] == "session=secret_session_value"
+
+
+# The four ways a credential rides a redirect hop: a name in
+# ``SENSITIVE_HEADERS``, the two kwargs aiohttp turns into headers downstream of
+# the strip, and a name the caller declared sensitive. One origin decision in
+# the redirect branch has to cover all four, in both directions.
+CREDENTIAL_CARRIERS = [
+    (
+        {},
+        {"headers": {"Authorization": "Bearer dft_secret_token"}},
+        "Authorization",
+        "Bearer dft_secret_token",
+    ),
+    ({}, {"auth": ("user", "pass")}, "Authorization", "Basic dXNlcjpwYXNz"),
+    (
+        {},
+        {"cookies": {"session": "secret_session_value"}},
+        "Cookie",
+        "session=secret_session_value",
+    ),
+    (
+        {"sensitive_headers": ["X-Custom-Credential"]},
+        {"headers": {"X-Custom-Credential": "credential-value"}},
+        "X-Custom-Credential",
+        "credential-value",
+    ),
+]
+CARRIER_IDS = ["header", "auth-kwarg", "cookies-kwarg", "caller-named-header"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+async def test_a_redirect_is_judged_by_the_host_the_next_hop_connects_to(
+    client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """Every carrier of a credential answers to that one origin decision.
+
+    ``parse_url`` and ``urlparse`` disagree about an authority holding a
+    backslash, and the next hop parses the target with the former, so the
+    comparison has to as well. A header, ``auth=`` and ``cookies=`` are each
+    covered here, because each leaves by a different route.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["elsewhere"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    # The hop lands on ``/@<origin host>/collect``, so match any path.
+    elsewhere.router.add_get("/{tail:.*}", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        # Raw header, not ``HTTPFound``: that percent-encodes the backslash,
+        # and ``%5C`` is read the same way by both parsers.
+        location = f"http://127.0.0.1:{elsewhere_port}\\@{request.host}/collect"
+        return web.Response(status=302, headers={"Location": location})
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{origin_port}/start", **call_kwargs)
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["elsewhere"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs, call_kwargs, header, expected", CREDENTIAL_CARRIERS, ids=CARRIER_IDS
+)
+@pytest.mark.parametrize("shape", ["absolute", "path", "path-with-a-backslash"])
+async def test_a_credential_survives_a_hop_that_stays_on_the_origin(
+    shape: str, client_kwargs: dict, call_kwargs: dict, header: str, expected: str
+):
+    """The keep direction of that one decision, for the header carriers too.
+
+    Without this, a branch that stripped the credential headers on every hop
+    would pass the whole file: the other same-origin test carries its credential
+    as ``auth=``/``cookies=``, which aiohttp builds downstream of the strip, so
+    the header dance never sees them. A target whose own path holds a backslash
+    belongs here, because ``urljoin`` runs before the parse and the fold then
+    only moves the backslash further into the path.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def final(request: web.Request) -> web.Response:
+        seen["final"] = request.headers.get(header)
+        return web.json_response({"ok": True})
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the credential never being applied.
+        seen["origin"] = request.headers.get(header)
+        target = {
+            "absolute": f"http://{request.host}/final",
+            "path": "/final",
+            # Joins to ``/\final``, which the fold turns into ``//final``.
+            "path-with-a-backslash": "\\final",
+        }[shape]
+        return web.Response(status=302, headers={"Location": target})
+
+    app = web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/{tail:.*}", final)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], **client_kwargs)
+        await requests.get(f"http://127.0.0.1:{port}/start", **call_kwargs)
+    finally:
+        await runner.cleanup()
+
+    assert seen["origin"] == expected
+    assert seen["final"] == expected
+
+
+@pytest.mark.parametrize(
+    "target, by_urlparse, by_parse_url",
+    [
+        (
+            "http://elsewhere.example\\@origin.example/collect",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "http://elsewhere.example:8080\\@origin.example/c",
+            "origin.example",
+            "elsewhere.example",
+        ),
+        (
+            "HTTP://Elsewhere.Example\\@Origin.Example/C",
+            "origin.example",
+            "elsewhere.example",
+        ),
+    ],
+)
+def test_parse_url_names_the_host_a_backslashed_authority_resolves_to(
+    target: str, by_urlparse: str, by_parse_url: str
+):
+    """The two parsers are not interchangeable for such an authority.
+
+    The redirect branch parses the target once with ``parse_url`` and passes
+    ``geturl()`` of that same parse to the next hop, which parses it the same
+    way, so what it compares is what gets connected to. Reading the authority
+    with ``urlparse`` instead names a host the request never reaches.
+    """
+    assert urlparse(target).hostname == by_urlparse
+    assert parse_url(target).hostname == by_parse_url
+
+
+@pytest.mark.parametrize("header_name", ["X-Custom-Credential", "x-custom-credential"])
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+    ],
+)
+def test_caller_sensitive_headers_are_stripped_cross_origin(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    """Names passed as ``sensitive_headers`` join ``SENSITIVE_HEADERS``."""
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers,
+        _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url)),
+        sensitive_headers=["X-CUSTOM-Credential"],
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"
+
+
+@pytest.mark.asyncio
+async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect():
+    """``Requests(sensitive_headers=...)`` reaches the redirect branch's strip.
+
+    The unit test above covers ``_remove_insecure_headers``; this one fails if
+    the names are not stored or not handed to it on a redirect.
+    """
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: web.Request) -> web.Response:
+        seen["credential"] = request.headers.get("X-Custom-Credential")
+        seen["accept"] = request.headers.get("Accept")
+        return web.json_response({"ok": True})
+
+    elsewhere = web.Application()
+    elsewhere.router.add_get("/collect", collect)
+    elsewhere_runner = web.AppRunner(elsewhere)
+    await elsewhere_runner.setup()
+    await web.TCPSite(elsewhere_runner, "127.0.0.1", 0).start()
+    elsewhere_port = elsewhere_runner.addresses[0][1]
+
+    async def redirect(request: web.Request) -> web.Response:
+        # Pinned, so the test cannot pass by the header never being sent.
+        seen["origin_credential"] = request.headers.get("X-Custom-Credential")
+        raise web.HTTPFound(f"http://127.0.0.1:{elsewhere_port}/collect")
+
+    origin = web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = web.AppRunner(origin)
+    await origin_runner.setup()
+    await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            sensitive_headers=["X-Custom-Credential"],
+        )
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            headers={
+                "X-Custom-Credential": "credential-value",
+                "Accept": "application/json",
+            },
+        )
+    finally:
+        await origin_runner.cleanup()
+        await elsewhere_runner.cleanup()
+
+    assert seen["origin_credential"] == "credential-value"
+    assert seen["credential"] is None
+    assert seen["accept"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_post_follows_redirect_to_trailing_slash_without_looping():
+    from backend.util.request import Requests
+
+    seen: list[str] = []
+
+    async def redirect(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        raise web.HTTPTemporaryRedirect("/mcp/")
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.path)
+        assert await request.json() == {"method": "initialize"}
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    app = web.Application()
+    app.router.add_post("/mcp", redirect)
+    app.router.add_post("/mcp/", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests(
+            trusted_origins=["127.0.0.1"], raise_for_status=False
+        ).post(
+            f"http://127.0.0.1:{port}/mcp",
+            json={"method": "initialize"},
+            max_redirects=2,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 401
+    assert response.json() == {"error": "unauthorized"}
+    assert seen == ["/mcp", "/mcp/"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("compressed", [False, True], ids=["plain", "gzip"])
+async def test_a_capped_read_stops_at_the_cap(compressed: bool):
+    """A capped caller holds at most the cap, however much the server sends.
+
+    Counted after decompression, so a short gzip body that expands is cut too.
+    """
+    import gzip
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    body = b"x" * (5 * 1024 * 1024)
+
+    async def big(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        if compressed:
+            return aiohttp_web.Response(
+                body=gzip.compress(body),
+                headers={"Content-Encoding": "gzip", "Content-Type": "text/plain"},
+            )
+        return aiohttp_web.Response(body=body, content_type="text/plain")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/big", big)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp_web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], raise_for_status=False)
+        capped = await requests.get(f"http://127.0.0.1:{port}/big", max_body_bytes=1024)
+        whole = await requests.get(f"http://127.0.0.1:{port}/big")
+    finally:
+        await runner.cleanup()
+
+    assert capped.content == b"x" * 1025
+    assert whole.content == body
+
+
+async def test_untrusted_request_connects_only_to_the_pinned_address(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The SSRF check's IPs are the ones the request connects to.
+
+    ``validate_url_host`` resolves and vets the host once; the request must then
+    go to those addresses and never resolve the name again, or DNS rebinding gets
+    past the check. That rests on aiohttp's ``TCPConnector`` asking our
+    ``HostResolver`` for the host, so this drives the real connector: ``.invalid``
+    never resolves, and the request can only reach the local server through the pin.
+    """
+    from backend.util import request as request_module
+    from backend.util.request import Requests
+
+    vetted: list[str] = []
+
+    async def resolve_and_check_blocked(hostname: str) -> list[str]:
+        vetted.append(hostname)
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(
+        request_module, "resolve_and_check_blocked", resolve_and_check_blocked
+    )
+
+    seen: list[str | None] = []
+
+    async def endpoint(request: web.Request) -> web.Response:
+        seen.append(request.headers.get("Host"))
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_get("/pinned", endpoint)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        response = await Requests().get(f"http://pinned.invalid:{port}/pinned")
+    finally:
+        await runner.cleanup()
+
+    assert response.json() == {"ok": True}
+    assert vetted == ["pinned.invalid"]
+    assert seen == ["pinned.invalid"]
+
+
+# --- Response bodies are read under a size limit ---
+
+
+async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    return runner, f"http://127.0.0.1:{runner.addresses[0][1]}"
+
+
+def _local_requests(**kwargs) -> Requests:
+    return Requests(trusted_origins=["127.0.0.1"], **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_body_at_the_limit_is_read_in_full():
+    async def exactly_at_limit(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4096)
+
+    app = web.Application()
+    app.router.add_get("/", exactly_at_limit)
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.content == b"x" * 4096
+
+
+@pytest.mark.asyncio
+async def test_a_body_over_the_limit_is_refused():
+    async def one_byte_over(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", one_byte_over)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_without_a_declared_length_stops_at_the_limit():
+    async def stream(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse()
+        await response.prepare(request)
+        for _ in range(64):
+            await response.write(b"x" * 1024)
+        return response
+
+    app = web.Application()
+    app.router.add_get("/", stream)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=16 * 1024).get(base)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_an_error_body_over_the_limit_is_refused_too():
+    async def failing_with_a_long_body(request: web.Request) -> web.Response:
+        return web.Response(status=500, body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", failing_with_a_long_body)
+    runner, base = await _serve(app)
+
+    try:
+        with pytest.raises(ResponseTooLargeError):
+            await _local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
+                base
+            )
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_a_declared_length_over_the_limit_is_refused_before_any_read():
+    class NeverRead:
+        def iter_chunked(self, size: int):
+            raise AssertionError("the body was read")
+
+    response = MagicMock(
+        method="GET", status=200, content_length=10**12, content=NeverRead()
+    )
+
+    with pytest.raises(ResponseTooLargeError):
+        await _read_body(response, 1024)
+
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
+    async def big(request: web.Request) -> web.Response:
+        return web.Response(body=b"x" * 4097)
+
+    app = web.Application()
+    app.router.add_get("/", big)  # aiohttp answers HEAD for it too
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(max_response_bytes=4096).head(base)
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert response.headers.get("Content-Length") == "4097"
+    assert response.content == b""
+
+
+def test_the_default_limit_follows_the_file_size_setting():
+    assert Requests().max_response_bytes == Config().max_file_size_mb * 1024 * 1024
+
+
+# The longest hostname DNS allows.
+_DNS_MAX_HOSTNAME = 253
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_an_overlong_hostname_before_encoding_it(
+    mocker: pytest_mock.MockerFixture,
+):
+    encode = mocker.patch("backend.util.request.idna.encode", wraps=idna.encode)
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{'a' * 5000}.com/")
+
+    encode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_length_limit():
+    hostname = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+    assert len(hostname) == _DNS_MAX_HOSTNAME
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+_MAX_LENGTH_HOSTNAME = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_accepts_a_hostname_at_the_limit_with_a_root_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}."
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    url, trusted, _ = await validate_url_host(
+        f"https://{hostname}/", trusted_hostnames=[hostname]
+    )
+
+    assert trusted
+    assert url.hostname == hostname
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_one_character_over_the_limit_without_a_dot():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}e"
+    assert len(hostname) == _DNS_MAX_HOSTNAME + 1
+
+    with pytest.raises(ValueError, match=f"longer than {_DNS_MAX_HOSTNAME}"):
+        await validate_url_host(f"https://{hostname}/")
+
+
+@pytest.mark.asyncio
+async def test_validate_url_host_refuses_a_double_trailing_dot_at_the_limit():
+    hostname = f"{_MAX_LENGTH_HOSTNAME}.."
+
+    with pytest.raises(ValueError):
+        await validate_url_host(f"https://{hostname}/", trusted_hostnames=[hostname])
+
+
+def _response(body: bytes, content_type: str) -> Response:
+    raw = MagicMock(status=200, headers={"content-type": content_type}, reason="OK")
+    return Response(response=raw, url="https://example.com/", body=body)
+
+
+@pytest.mark.parametrize(
+    "charset",
+    [
+        "punycode",
+        "unicode_escape",
+        "raw_unicode_escape",
+        "idna",
+        "utf-7",
+        "hz",
+        "undefined",
+        "no-such-codec",
+    ],
+)
+def test_response_text_decodes_an_unlisted_charset_as_utf8(charset: str):
+    body = "abc-caf\\xe9-é".encode()
+
+    text = _response(body, f"text/plain; charset={charset}").text()
+
+    assert text == body.decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    ["text/plain; charset=ISO-8859-1", 'text/plain; charset="iso-8859-1"'],
+)
+def test_response_text_uses_a_listed_charset(content_type: str):
+    assert _response(b"caf\xe9", content_type).text() == "café"
+
+
+@pytest.mark.parametrize(
+    "charset, body, expected",
+    [
+        ("TIS-620", b"\xa1", "\u0e01"),
+        ("CP874", b"\xa1", "\u0e01"),
+        ("cp950", b"\xa4\xa4\xf9\xd6", "\u4e2d\u7881"),
+        ("Shift_JIS", b"\x82\xa0", "\u3042"),
+        ("Shift_JIS_2004", b"\x82\xa0", "\u3042"),
+        ("ISO-2022-JP-2", b'\x1b$B$"\x1b(B', "\u3042"),
+        ("MacCyrillic", b"\x80", "\u0410"),
+        ("KOI8-T", b"\xf0", "\u041f"),
+        ("johab", b"\x88\x61", "\uac00"),
+        ("IBM866", b"\x8f", "\u041f"),
+        ("cp866", b"\x8f", "\u041f"),
+        ("cp437", b"\x80", "\u00c7"),
+        ("cp1125", b"\x8f", "\u041f"),
+    ],
+)
+def test_response_text_decodes_a_listed_text_charset(
+    charset: str, body: bytes, expected: str
+):
+    assert _response(body, f"text/plain; charset={charset}").text() == expected
+
+
+def test_allowed_response_charsets_are_canonical_codec_names():
+    assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
+        ALLOWED_RESPONSE_CHARSETS
+    )

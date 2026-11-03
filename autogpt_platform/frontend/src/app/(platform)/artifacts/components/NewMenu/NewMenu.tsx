@@ -1,5 +1,6 @@
 "use client";
 
+// oxlint-disable-next-line design-system/no-legacy-import -- a menu trigger the size of its label; the Button atom's min-width would widen it
 import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -20,9 +21,12 @@ import { useNewMenu } from "./useNewMenu";
 
 interface Props {
   selectedFolderId: string | null;
+  /** Open folder's name, shown in the create dialog so the destination is
+   *  visible before the folder is made. */
+  selectedFolderName?: string | null;
 }
 
-export function NewMenu({ selectedFolderId }: Props) {
+export function NewMenu({ selectedFolderId, selectedFolderName }: Props) {
   const {
     fileInputRef,
     isUploading,
@@ -43,12 +47,14 @@ export function NewMenu({ selectedFolderId }: Props) {
             disabled={isUploading}
             className={cn(
               extendedButtonVariants({ variant: "primary", size: "small" }),
-              "min-w-0 gap-1.5 pl-4 pr-3",
+              "min-w-0 gap-1.5 pr-3 pl-4",
             )}
             data-testid="artifacts-new-menu"
           >
             {isUploading ? (
-              <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+              <span className="flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : null}
             {isUploading ? "Uploading…" : "New"}
             <Icon icon={ArrowDown01Icon} size={16} />
@@ -85,6 +91,9 @@ export function NewMenu({ selectedFolderId }: Props) {
         isOpen={isCreateOpen}
         setIsOpen={setIsCreateOpen}
         mode="create"
+        location={
+          selectedFolderId ? (selectedFolderName ?? undefined) : undefined
+        }
         isSubmitting={isCreating}
         onSubmit={handleCreateFolder}
       />

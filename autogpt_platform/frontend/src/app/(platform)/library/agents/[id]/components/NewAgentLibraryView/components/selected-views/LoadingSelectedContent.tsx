@@ -1,5 +1,5 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../helpers";
 import { SelectedViewLayout } from "./SelectedViewLayout";

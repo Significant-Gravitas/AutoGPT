@@ -13,21 +13,8 @@ class AuthConfigError(ValueError):
     pass
 
 
-ALGO_RECOMMENDATION = (
-    "We highly recommend using an asymmetric algorithm such as ES256, "
-    "because when leaked, a shared secret would allow anyone to "
-    "forge valid tokens and impersonate users. "
-    "Configure JWT_JWKS_URL to verify asymmetric tokens issued by the "
-    "platform auth service."
-)
-
-
 class Settings:
     def __init__(self):
-        self.JWT_VERIFY_KEY: str = os.getenv(
-            "JWT_VERIFY_KEY", os.getenv("SUPABASE_JWT_SECRET", "")
-        ).strip()
-        self.JWT_ALGORITHM: str = os.getenv("JWT_SIGN_ALGORITHM", "HS256").strip()
         self.JWT_JWKS_URL: str = os.getenv("JWT_JWKS_URL", "").strip()
         self.JWT_JWKS_ALGORITHMS: list[str] = [
             algo.strip()
@@ -44,9 +31,7 @@ class Settings:
                 "auth service (e.g. https://<frontend-host>/api/auth/jwks). "
                 "Better Auth issues asymmetric (ES256) tokens verified against "
                 "that endpoint, so without it the backend cannot verify any live "
-                "session. JWT_VERIFY_KEY is not a substitute: it only covers "
-                "transient legacy (Supabase HS256) tokens during the cutover "
-                "window."
+                "session."
             )
 
         if self.JWT_JWKS_URL and not self.JWT_JWKS_URL.startswith(
@@ -93,28 +78,12 @@ class Settings:
                     "tokens. Use https:// unless the path is fully trusted."
                 )
 
-        if self.JWT_VERIFY_KEY and len(self.JWT_VERIFY_KEY) < 32:
-            logger.warning(
-                "⚠️ JWT_VERIFY_KEY appears weak (less than 32 characters). "
-                "Consider using a longer, cryptographically secure secret."
-            )
-
         supported_algorithms = get_default_algorithms().keys()
 
         if not has_crypto:
             raise AuthConfigError(
                 "'cryptography' package is required for JWT verification "
                 "but not installed"
-            )
-
-        if (
-            self.JWT_ALGORITHM not in supported_algorithms
-            or self.JWT_ALGORITHM == "none"
-        ):
-            raise AuthConfigError(
-                f"Invalid JWT_SIGN_ALGORITHM: '{self.JWT_ALGORITHM}'. "
-                "Supported algorithms are listed on "
-                "https://pyjwt.readthedocs.io/en/stable/algorithms.html"
             )
 
         for algo in self.JWT_JWKS_ALGORITHMS:
@@ -138,12 +107,6 @@ class Settings:
                 "setting, every token it issues will be rejected. Add ES256 "
                 "unless a customized auth service signs with a different "
                 "algorithm."
-            )
-
-        if self.JWT_VERIFY_KEY and self.JWT_ALGORITHM.startswith("HS"):
-            logger.warning(
-                f"⚠️ JWT_SIGN_ALGORITHM is set to '{self.JWT_ALGORITHM}', "
-                "a symmetric shared-key signature algorithm. " + ALGO_RECOMMENDATION
             )
 
 

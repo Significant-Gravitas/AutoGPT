@@ -29,6 +29,8 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.user import is_user_banned
+
 from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,16 @@ REFRESH_TOKEN_TTL = timedelta(days=30)
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
 _PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
+
+
+def is_access_token(credential: str) -> bool:
+    """Whether a credential is in the OAuth access-token format.
+
+    Such a value is only ever looked up as a token, never tried as an API key:
+    a key issued before `APIKeySmith` reserved the prefix can start the same
+    way, and trying every forged token as a key would cost a Scrypt hash each.
+    """
+    return credential.startswith(ACCESS_TOKEN_PREFIX)
 
 
 # ============================================================================
@@ -179,10 +191,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -250,10 +258,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     revoked_at: Optional[datetime] = None
     family_id: str
     family_revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
@@ -527,14 +531,23 @@ async def consume_authorization_code(
         ):
             raise InvalidGrantError("PKCE verification failed")
 
-    # Atomically claim the one-time code. Concurrent exchanges can both pass
-    # the read-side checks, but only one may transition ``usedAt``.
+    # Atomically claim the code. The checks above run on a possibly stale read,
+    # so two concurrent redeems can both pass them; only the request whose
+    # conditional write flips usedAt from NULL may mint tokens. Everything is
+    # validated first so a request with a wrong redirect_uri or PKCE verifier
+    # cannot burn a code that belongs to the legitimate client.
+    claimed_at = datetime.now(timezone.utc)
     claimed = await PrismaOAuthAuthorizationCode.prisma().update_many(
-        where={"code": code, "usedAt": None},
-        data={"usedAt": now},
+        where={
+            "code": code,
+            "applicationId": application_id,
+            "usedAt": None,
+            "expiresAt": {"gt": claimed_at},
+        },
+        data={"usedAt": claimed_at},
     )
     if claimed != 1:
-        raise InvalidGrantError("authorization code already used")
+        raise InvalidGrantError("authorization code already used or expired")
 
     return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 
@@ -610,6 +623,11 @@ async def validate_access_token(
         InvalidTokenError: If token is invalid, expired, or revoked
         InvalidClientError: If the client application is not marked as active
     """
+    if not is_access_token(token):
+        # Every access token carries the prefix, so this can't match one, and
+        # an API's rate limits count only the bearers that cost a lookup.
+        raise InvalidTokenError("access token not found")
+
     token_hash = _hash_token(token)
 
     # Direct lookup by hash
@@ -792,8 +810,15 @@ async def refresh_tokens(
     if rt.expiresAt < now:
         raise InvalidGrantError("refresh token expired")
 
+    # Before the claim, so the app's grant still works once a ban is lifted.
+    if await is_user_banned(rt.userId):
+        raise InvalidGrantError("the account this token belongs to is banned")
+
     # Atomically claim the one-time refresh token before minting descendants.
-    # Concurrent replays can both pass the read checks, but only one may revoke it.
+    # Concurrent presentations can all pass the read checks, but only one may
+    # revoke it. The server can't tell a racing replay from a racing client, so
+    # every loser is treated as reuse and revokes the whole family (OAuth
+    # security BCP, RFC 9700 4.14.2).
     claimed = await PrismaOAuthRefreshToken.prisma().update_many(
         where={
             "token": token_hash,
@@ -902,6 +927,8 @@ async def introspect_token(
     if token_type_hint != "refresh_token":
         try:
             token_info, app = await validate_access_token(token)
+            if await is_user_banned(token_info.user_id):
+                return TokenIntrospectionResult(active=False)
             return TokenIntrospectionResult(
                 active=True,
                 scopes=list(s.value for s in token_info.scopes),
@@ -927,7 +954,9 @@ async def introspect_token(
     ):
         # Check if valid (not expired)
         now = datetime.now(timezone.utc)
-        if refresh_token.expiresAt > now:
+        if refresh_token.expiresAt > now and not await is_user_banned(
+            refresh_token.userId
+        ):
             app = await get_oauth_application_by_id(refresh_token.applicationId)
             if app and app.is_active:
                 return TokenIntrospectionResult(

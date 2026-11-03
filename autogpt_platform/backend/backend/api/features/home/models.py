@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME, AUTOPILOT_ROLE
 
 
@@ -19,11 +19,18 @@ class HomeAction(BaseModel):
     href: str
 
 
+class HomeHeadline(BaseModel):
+    ask: str
+    object: str | None = None
+
+
 class HomeAttentionItem(BaseModel):
     id: str
     kind: Literal["approval", "setup", "paused", "credits", "question"]
     priority: Literal["high", "normal"]
     title: str
+    # A held call's action and its object, which the row sets like the card does.
+    headline: HomeHeadline | None = None
     description: str
     why_it_matters: str
     expert: HomeExpert | None = None

@@ -1,13 +1,13 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Button } from "@/components/atoms/Button/Button";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { useExpertsSection } from "./useExpertsSection";
 
-const RAISE_LABEL = "Raise your own";
+const RAISE_LABEL = "Create an Expert";
 const RAISE_HREF = "/raise";
 
 interface Props {
@@ -17,6 +17,11 @@ interface Props {
 export function ExpertsSection({ category }: Props) {
   const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
     useExpertsSection({ category });
+
+  useTrackFunnelViewOnce(
+    "experts_section_viewed",
+    !isLoading && !isError && templates.length > 0,
+  );
 
   if (isError || (!isLoading && templates.length === 0)) {
     // Under a category filter an empty shelf means "no experts in this
@@ -45,14 +50,24 @@ export function ExpertsSection({ category }: Props) {
   return (
     <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
-        titleIcon={<AITeamIcon size={30} />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
-        action={
-          isLoggedIn ? { label: "View your team", href: "/team" } : undefined
-        }
-        secondaryAction={
-          isLoggedIn ? { label: RAISE_LABEL, href: RAISE_HREF } : undefined
+        actions={
+          isLoggedIn ? (
+            <div className="flex items-center gap-2">
+              <Button
+                as="NextLink"
+                href="/team"
+                variant="secondary"
+                size="small"
+              >
+                View your team
+              </Button>
+              <Button as="NextLink" href={RAISE_HREF} size="small">
+                {RAISE_LABEL}
+              </Button>
+            </div>
+          ) : undefined
         }
       />
       {isLoading ? (
@@ -67,6 +82,7 @@ export function ExpertsSection({ category }: Props) {
             <ExpertCard
               key={template.id}
               expert={template}
+              category={category}
               isHired={hiredTemplateIds.has(template.id)}
             />
           ))}

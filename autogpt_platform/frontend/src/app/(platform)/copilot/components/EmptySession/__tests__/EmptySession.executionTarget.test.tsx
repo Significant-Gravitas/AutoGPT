@@ -75,18 +75,19 @@ afterEach(() => {
 });
 
 describe("EmptySession execution target flag", () => {
-  it("leaves the existing Cloud-only UI unchanged when the flag is off", () => {
+  it("leaves the existing Cloud-only UI unchanged when the flag is off", async () => {
     render(
       <NuqsTestingAdapter>
         <EmptySession {...props} />
       </NuqsTestingAdapter>,
     );
 
-    expect(screen.getByTestId("chat-input")).toBeDefined();
+    // The composer waits for the greeting check, like the picker beside it.
+    expect(await screen.findByTestId("chat-input")).toBeDefined();
     expect(screen.queryByTestId("execution-target-picker")).toBeNull();
   });
 
-  it("shows the execution target picker only when Local PC is enabled", () => {
+  it("shows the execution target picker only when Local PC is enabled", async () => {
     flags.localPC = true;
     render(
       <NuqsTestingAdapter>
@@ -94,7 +95,7 @@ describe("EmptySession execution target flag", () => {
       </NuqsTestingAdapter>,
     );
 
-    expect(screen.getByTestId("execution-target-picker")).toBeDefined();
+    expect(await screen.findByTestId("execution-target-picker")).toBeDefined();
   });
 
   it("starts a newly mounted chat in Cloud", () => {

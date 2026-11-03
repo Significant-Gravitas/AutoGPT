@@ -1,22 +1,32 @@
 "use client";
 
 import { environment } from "@/services/environment";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { localExecutorDeployment } from "./helpers";
 
-export function useLocalExecutorSetup() {
-  const [deployment, setDeployment] = useState<ReturnType<
-    typeof localExecutorDeployment
-  > | null>(null);
+function subscribeToNothing() {
+  return () => {};
+}
 
-  useEffect(function loadDeploymentURLs() {
-    setDeployment(
-      localExecutorDeployment(
-        environment.getAGPTServerApiUrl(),
-        window.location.origin,
-      ),
-    );
-  }, []);
+function readOrigin() {
+  return window.location.origin;
+}
+
+function readNoOrigin() {
+  return null;
+}
+
+export function useLocalExecutorSetup() {
+  // The pairing commands name this page's origin, which the server render
+  // cannot know; it renders without them and the browser fills them in.
+  const origin = useSyncExternalStore(
+    subscribeToNothing,
+    readOrigin,
+    readNoOrigin,
+  );
+  const deployment = origin
+    ? localExecutorDeployment(environment.getAGPTServerApiUrl(), origin)
+    : null;
 
   return { deployment };
 }

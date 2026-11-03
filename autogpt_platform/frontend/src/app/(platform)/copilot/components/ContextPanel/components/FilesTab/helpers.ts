@@ -11,6 +11,19 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
   return item.origin === "uploaded";
 }
 
+// Older outputs have no purpose metadata. Only the reserved directory directly
+// under the session root is a legacy fallback; nested user directories are not.
+const SDK_TOOL_RESULT_PATH =
+  /^\/sessions\/[^/]+\/tool-(?:results|outputs)\/[^/]+$/i;
+
+export function isInternalToolOutput(item: WorkspaceFileItem): boolean {
+  if (isUploadedFile(item)) return false;
+  if (item.metadata?.purpose !== undefined) {
+    return item.metadata.purpose === "tool-output";
+  }
+  return SDK_TOOL_RESULT_PATH.test(item.path);
+}
+
 export function fileItemToArtifactRef(item: WorkspaceFileItem): ArtifactRef {
   return {
     id: item.id,

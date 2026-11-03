@@ -1,124 +1,605 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-@source "../node_modules/streamdown/dist/*.js";
+@import "./tailwind-v3-preflight.css";
+@config "../../tailwind.config.ts";
 
+/* Defaults Tailwind 4 reads from its own theme, which is not loaded: the
+   values Tailwind 3 used for a bare `transition`, `ring` and `outline`. */
+@theme inline {
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-ring-width: 3px;
+  --default-ring-color: rgb(59 130 246 / 0.5);
+  --default-outline-width: medium;
+}
+
+/* Tailwind 4 only applies `hover:` on devices that can hover, so a tap on a
+   touch screen no longer shows it. Tailwind 3 applied it on every device. */
+@custom-variant hover (&:hover);
+
+/* `dark:` applies under a `.dark` ancestor, the one dark selector. The app
+   forces the light theme, so no `dark:` class renders today. */
+@custom-variant dark (&:is(.dark *));
+
+/* Design tokens. Each colour is an RGB channel triplet, so a colour can be
+   read with an alpha (`rgb(var(--color-surface) / 0.5)`) and Tailwind's
+   opacity modifiers keep working: the theme below registers every name.
+   Values are what renders today; the hex beside each one is the class it
+   replaces. */
+:root {
+  /* Surfaces */
+  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
+  --color-surface: 254 254 254; /* white #FEFEFE */
+  --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
+  --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
+  --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
+
+  /* Text */
+  --color-foreground-base: 20 20 20; /* black #141414, the Text default */
+  --color-foreground-strong: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-foreground-emphasis: 62 62 67; /* zinc-800 #3E3E43 */
+  --color-foreground-body: 80 80 87; /* zinc-700 #505057 */
+  --color-foreground-secondary: 104 104 111; /* zinc-600 #68686F */
+  --color-foreground-tertiary: 131 131 140; /* zinc-500 #83838C */
+  --color-foreground-subtle: 173 173 179; /* zinc-400 #ADADB3 */
+  --color-foreground-disabled: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-placeholder: 131 131 140; /* zinc-500 #83838C */
+
+  /* Borders */
+  --color-separator: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-border-base: 218 218 220; /* zinc-200 #DADADC */
+  --color-border-strong: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-focus: 10 10 10; /* neutral-950 #0A0A0A, the Button focus ring */
+
+  /* Action */
+  --color-action: 62 62 67; /* zinc-800 #3E3E43, primary Button */
+  --color-action-hover: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-action-foreground: 254 254 254; /* white #FEFEFE */
+
+  /* Accent */
+  --color-brand: 119 51 245; /* purple-500 #7733F5 */
+  --color-brand-hover: 108 46 223; /* purple-600 #6C2EDF */
+  --color-accent-surface: 245 243 255; /* violet-50 #F5F3FF */
+  --color-accent-strong: 109 40 217; /* violet-700 #6D28D9 */
+
+  /* Status */
+  --color-error: 239 68 68; /* red-500 #EF4444 */
+  --color-error-hover: 217 54 54; /* red-600 #D93636 */
+  --color-error-foreground: 170 48 48; /* red-700 #AA3030 */
+  --color-error-surface: 254 245 245; /* red-50 #FEF5F5 */
+  --color-warning: 245 158 11; /* amber-500 #F59E0B */
+  --color-warning-foreground: 180 83 9; /* amber-700 #B45309 */
+  --color-warning-surface: 255 251 235; /* amber-50 #FFFBEB */
+  --color-warning-border: 253 230 138; /* amber-200 #FDE68A */
+  --color-success: 20 148 67; /* green-600 #149443 */
+  --color-success-foreground: 16 116 53; /* green-700 #107435 */
+  --color-success-surface: 232 246 237; /* green-50 #E8F6ED */
+  --color-info: 59 130 246; /* blue-500 #3B82F6 */
+  --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
+  --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
+
+  /* Builder (flow editor) */
+  --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
+  --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
+  --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
+  --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
+  --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
+  --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
+  --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
+
+  /* shadcn names, kept as aliases of the role of the same intent so the
+     classes that still use them render the roles. Each name is renamed to
+     its role class in the directory PRs; the aliases go once none is left. */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-foreground-base);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-foreground-base);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-foreground-base);
+  --color-primary: var(--color-action);
+  --color-primary-foreground: var(--color-action-foreground);
+  --color-secondary: var(--color-surface-hover);
+  --color-secondary-foreground: var(--color-foreground-strong);
+  --color-muted: var(--color-surface-hover);
+  --color-muted-foreground: var(--color-foreground-tertiary);
+  --color-accent: var(--color-brand);
+  --color-accent-foreground: var(--color-action-foreground);
+  --color-destructive: var(--color-error);
+  --color-destructive-foreground: var(--color-action-foreground);
+  --color-border: var(--color-border-base);
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-focus);
+  --color-sidebar: var(--color-surface-muted);
+  --color-sidebar-foreground: var(--color-foreground-emphasis);
+  --color-sidebar-primary: var(--color-action);
+  --color-sidebar-primary-foreground: var(--color-action-foreground);
+  --color-sidebar-accent: var(--color-surface-hover);
+  --color-sidebar-accent-foreground: var(--color-foreground-strong);
+  --color-sidebar-border: var(--color-border-base);
+  --color-sidebar-ring: var(--color-info);
+
+  --radius: 0.5rem;
+}
+
+/* The theme: the colour roles, type scale and radii, read by Tailwind from
+   here instead of tailwind.config.ts. `inline` writes each value into the
+   class, and `reference` keeps Tailwind from also writing these variables
+   onto `:root`, so a role's entry can share the name of its RGB triplet above
+   and read it: `bg-surface` is `rgb(var(--color-surface) / 1)` and
+   `bg-surface/50` is `rgb(var(--color-surface) / 0.5)`, as before. The raw
+   palette stays in tailwind.v3-preset.ts: @shadcn/lint reads every colour
+   in this file's `@theme` as a design token. */
+@theme inline reference {
+  /* Roles, the triplets above */
+  --color-canvas: rgb(var(--color-canvas) / 1);
+  --color-surface: rgb(var(--color-surface) / 1);
+  --color-surface-muted: rgb(var(--color-surface-muted) / 1);
+  --color-surface-hover: rgb(var(--color-surface-hover) / 1);
+  --color-surface-active: rgb(var(--color-surface-active) / 1);
+  --color-overlay: rgb(var(--color-overlay) / 1);
+  --color-foreground-base: rgb(var(--color-foreground-base) / 1);
+  --color-foreground-strong: rgb(var(--color-foreground-strong) / 1);
+  --color-foreground-emphasis: rgb(var(--color-foreground-emphasis) / 1);
+  --color-foreground-body: rgb(var(--color-foreground-body) / 1);
+  --color-foreground-secondary: rgb(var(--color-foreground-secondary) / 1);
+  --color-foreground-tertiary: rgb(var(--color-foreground-tertiary) / 1);
+  --color-foreground-subtle: rgb(var(--color-foreground-subtle) / 1);
+  --color-foreground-disabled: rgb(var(--color-foreground-disabled) / 1);
+  --color-placeholder: rgb(var(--color-placeholder) / 1);
+  --color-separator: rgb(var(--color-separator) / 1);
+  --color-border-base: rgb(var(--color-border-base) / 1);
+  --color-border-strong: rgb(var(--color-border-strong) / 1);
+  --color-focus: rgb(var(--color-focus) / 1);
+  --color-action: rgb(var(--color-action) / 1);
+  --color-action-hover: rgb(var(--color-action-hover) / 1);
+  --color-action-foreground: rgb(var(--color-action-foreground) / 1);
+  --color-brand: rgb(var(--color-brand) / 1);
+  --color-brand-hover: rgb(var(--color-brand-hover) / 1);
+  --color-accent-surface: rgb(var(--color-accent-surface) / 1);
+  --color-accent-strong: rgb(var(--color-accent-strong) / 1);
+  --color-error: rgb(var(--color-error) / 1);
+  --color-error-hover: rgb(var(--color-error-hover) / 1);
+  --color-error-foreground: rgb(var(--color-error-foreground) / 1);
+  --color-error-surface: rgb(var(--color-error-surface) / 1);
+  --color-warning: rgb(var(--color-warning) / 1);
+  --color-warning-foreground: rgb(var(--color-warning-foreground) / 1);
+  --color-warning-surface: rgb(var(--color-warning-surface) / 1);
+  --color-warning-border: rgb(var(--color-warning-border) / 1);
+  --color-success: rgb(var(--color-success) / 1);
+  --color-success-foreground: rgb(var(--color-success-foreground) / 1);
+  --color-success-surface: rgb(var(--color-success-surface) / 1);
+  --color-info: rgb(var(--color-info) / 1);
+  --color-info-foreground: rgb(var(--color-info-foreground) / 1);
+  --color-info-surface: rgb(var(--color-info-surface) / 1);
+  --color-builder-canvas: rgb(var(--color-builder-canvas) / 1);
+  --color-builder-grid: rgb(var(--color-builder-grid) / 1);
+  --color-node-surface: rgb(var(--color-node-surface) / 1);
+  --color-node-border: rgb(var(--color-node-border) / 1);
+  --color-node-selected: rgb(var(--color-node-selected) / 1);
+  --color-edge: rgb(var(--color-edge) / 1);
+  --color-handle: rgb(var(--color-handle) / 1);
+
+  /* shadcn names, the aliases above */
+  --color-border: rgb(var(--color-border) / 1);
+  --color-input: rgb(var(--color-input) / 1);
+  --color-ring: rgb(var(--color-ring) / 1);
+  --color-background: rgb(var(--color-background) / 1);
+  --color-foreground: rgb(var(--color-foreground) / 1);
+  --color-primary: rgb(var(--color-primary) / 1);
+  --color-primary-foreground: rgb(var(--color-primary-foreground) / 1);
+  --color-secondary: rgb(var(--color-secondary) / 1);
+  --color-secondary-foreground: rgb(var(--color-secondary-foreground) / 1);
+  --color-destructive: rgb(var(--color-destructive) / 1);
+  --color-destructive-foreground: rgb(var(--color-destructive-foreground) / 1);
+  --color-muted: rgb(var(--color-muted) / 1);
+  --color-muted-foreground: rgb(var(--color-muted-foreground) / 1);
+  --color-accent: rgb(var(--color-accent) / 1);
+  --color-accent-foreground: rgb(var(--color-accent-foreground) / 1);
+  --color-popover: rgb(var(--color-popover) / 1);
+  --color-popover-foreground: rgb(var(--color-popover-foreground) / 1);
+  --color-card: rgb(var(--color-card) / 1);
+  --color-card-foreground: rgb(var(--color-card-foreground) / 1);
+  --color-sidebar: rgb(var(--color-sidebar) / 1);
+  --color-sidebar-foreground: rgb(var(--color-sidebar-foreground) / 1);
+  --color-sidebar-primary: rgb(var(--color-sidebar-primary) / 1);
+  --color-sidebar-primary-foreground: rgb(
+    var(--color-sidebar-primary-foreground) / 1
+  );
+  --color-sidebar-accent: rgb(var(--color-sidebar-accent) / 1);
+  --color-sidebar-accent-foreground: rgb(
+    var(--color-sidebar-accent-foreground) / 1
+  );
+  --color-sidebar-border: rgb(var(--color-sidebar-border) / 1);
+  --color-sidebar-ring: rgb(var(--color-sidebar-ring) / 1);
+
+  /* Type. A size bundles its line-height. */
+  --font-sans: var(--font-geist-sans);
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: var(--font-geist-mono);
+  --font-poppins: var(--font-poppins);
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1;
+  --text-6xl: 3.75rem;
+  --text-6xl--line-height: 1;
+  --text-7xl: 4.5rem;
+  --text-7xl--line-height: 1;
+  --text-8xl: 6rem;
+  --text-8xl--line-height: 1;
+  --text-9xl: 8rem;
+  --text-9xl--line-height: 1;
+  --text-tiny: 0.625rem;
+  --text-tiny--line-height: 0.875rem;
+  --text-caption-sm: 0.6875rem;
+  --text-caption-sm--line-height: 1rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.125rem;
+  --text-body-sm: 0.8125rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.375rem;
+  --text-body-md: 0.9375rem;
+  --text-body-md--line-height: 1.5rem;
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 1.625rem;
+  --text-lead: 1.25rem;
+  --text-lead--line-height: 1.75rem;
+  --text-heading-sm: 1.375rem;
+  --text-heading-sm--line-height: 1.5rem;
+  --text-heading: 1.75rem;
+  --text-heading--line-height: 2.5rem;
+  --text-title: 2rem;
+  --text-title--line-height: 2.5rem;
+  --text-display: 2.75rem;
+  --text-display--line-height: 3.5rem;
+
+  --leading-3: 0.75rem;
+  --leading-4: 1rem;
+  --leading-5: 1.25rem;
+  --leading-6: 1.5rem;
+  --leading-7: 1.75rem;
+  --leading-8: 2rem;
+  --leading-9: 2.25rem;
+  --leading-10: 2.5rem;
+  --leading-12: 3rem;
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+  --leading-inherit: inherit;
+  --leading-4_5: 1.125rem;
+  --leading-5_5: 1.375rem;
+  --leading-6_5: 1.625rem;
+
+  --tracking-tighter: -0.05em;
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
+  --tracking-widest: 0.1em;
+  --tracking-display: -0.04em;
+  --tracking-heading: -0.02em;
+  --tracking-title: -0.01em;
+  --tracking-caps: 0.12em;
+  --tracking-eyebrow: 0.06em;
+
+  /* Radius. `rounded` reads --radius here, 0.25rem; the shadcn steps
+     read the --radius on :root, 0.5rem. */
+  --radius-none: 0px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius: 0.25rem;
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+  --radius-xsmall: 0.25rem;
+  --radius-small: 0.5rem;
+  --radius-medium: 0.75rem;
+  --radius-large: 1rem;
+  --radius-xlarge: 1.25rem;
+  --radius-2xlarge: 1.5rem;
+}
+
+/* Base styles of the utilities below. */
 @layer base {
-  :root {
-    --background: 0 0% 98%; /* neutral-50#FAFAFA */
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 262 83% 58%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 85%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
   * {
-    @apply border-border;
+    scrollbar-color: initial;
+    scrollbar-width: initial;
   }
-  body {
-    @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
+  :root {
+    --smooth-ring-color: rgba(0, 0, 0, 0.05);
+    --smooth-ring-width: 1px;
   }
+  .dark {
+    --smooth-ring-color: rgba(255, 255, 255, 0.18);
+  }
+}
+
+/* A soft layered shadow with a hairline ring. */
+@utility smooth-shadow-ring-sm {
+  --smooth-shadow-color: var(--tw-shadow-color, rgb(0 0 0));
+  box-shadow:
+    0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent),
+    0 7.5px 19px 0
+      color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent),
+    0 4px 10.5px 0
+      color-mix(in srgb, var(--smooth-shadow-color) 2%, transparent),
+    0 2.3px 5.8px 0
+      color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent),
+    0 1.2px 3.1px 0
+      color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent),
+    0 0.5px 1.3px 0
+      color-mix(in srgb, var(--smooth-shadow-color) 1%, transparent),
+    0 0 0 var(--smooth-ring-width, 1px) var(--smooth-ring-color);
+}
+
+/* Lays a fractal-noise grain over an element's own background. It sets no
+   `position`, so it never fights the positioning classes on the element:
+   position it yourself. `#` and `%` stay percent-encoded in the data URI. */
+@utility grain-overlay {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
+    opacity: 0.5;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+  }
+}
+
+/* The chat message table's glowing header text. */
+@utility text-shadow-message-table-violet {
+  text-shadow:
+    0 0 6px rgba(139, 92, 246, 0.45),
+    0 0 18px rgba(139, 92, 246, 0.55);
+}
+@utility text-shadow-message-table-indigo {
+  text-shadow:
+    0 0 6px rgba(99, 102, 241, 0.45),
+    0 0 18px rgba(99, 102, 241, 0.55);
+}
+@utility text-shadow-message-table-blue {
+  text-shadow:
+    0 0 6px rgba(59, 130, 246, 0.45),
+    0 0 18px rgba(59, 130, 246, 0.55);
+}
+
+/* The scrollbar utilities of tailwind-scrollbar 3.1.0 (MIT License,
+   https://github.com/adoxography/tailwind-scrollbar), with `nocompatible`
+   on. tailwind-scrollbar 3 reads Tailwind 3 internals and does not load
+   under Tailwind 4, and version 4 writes different CSS. A `hover:`
+   (`focus:`, `active:`) scrollbar colour sets `--scrollbar-thumb-hover` on
+   the element, which the thumb's own `:hover` rule below reads; that
+   selector rewrite is in postcss.tailwind3-compat.cjs. */
+@utility scrollbar {
+  &::-webkit-scrollbar-track {
+    background-color: var(--scrollbar-track);
+    border-radius: var(--scrollbar-track-radius);
+  }
+  &::-webkit-scrollbar-track:hover {
+    background-color: var(--scrollbar-track-hover, var(--scrollbar-track));
+  }
+  &::-webkit-scrollbar-track:active {
+    background-color: var(
+      --scrollbar-track-active,
+      var(--scrollbar-track-hover, var(--scrollbar-track))
+    );
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-thumb-radius);
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover, var(--scrollbar-thumb));
+  }
+  &::-webkit-scrollbar-thumb:active {
+    background-color: var(
+      --scrollbar-thumb-active,
+      var(--scrollbar-thumb-hover, var(--scrollbar-thumb))
+    );
+  }
+  &::-webkit-scrollbar-corner {
+    background-color: var(--scrollbar-corner);
+    border-radius: var(--scrollbar-corner-radius);
+  }
+  &::-webkit-scrollbar-corner:hover {
+    background-color: var(--scrollbar-corner-hover, var(--scrollbar-corner));
+  }
+  &::-webkit-scrollbar-corner:active {
+    background-color: var(
+      --scrollbar-corner-active,
+      var(--scrollbar-corner-hover, var(--scrollbar-corner))
+    );
+  }
+  scrollbar-width: auto;
+  scrollbar-color: var(--scrollbar-thumb, initial)
+    var(--scrollbar-track, initial);
+  &::-webkit-scrollbar {
+    display: block;
+    width: var(--scrollbar-width, 16px);
+    height: var(--scrollbar-height, 16px);
+  }
+}
+@utility scrollbar-thin {
+  &::-webkit-scrollbar-track {
+    background-color: var(--scrollbar-track);
+    border-radius: var(--scrollbar-track-radius);
+  }
+  &::-webkit-scrollbar-track:hover {
+    background-color: var(--scrollbar-track-hover, var(--scrollbar-track));
+  }
+  &::-webkit-scrollbar-track:active {
+    background-color: var(
+      --scrollbar-track-active,
+      var(--scrollbar-track-hover, var(--scrollbar-track))
+    );
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-thumb-radius);
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover, var(--scrollbar-thumb));
+  }
+  &::-webkit-scrollbar-thumb:active {
+    background-color: var(
+      --scrollbar-thumb-active,
+      var(--scrollbar-thumb-hover, var(--scrollbar-thumb))
+    );
+  }
+  &::-webkit-scrollbar-corner {
+    background-color: var(--scrollbar-corner);
+    border-radius: var(--scrollbar-corner-radius);
+  }
+  &::-webkit-scrollbar-corner:hover {
+    background-color: var(--scrollbar-corner-hover, var(--scrollbar-corner));
+  }
+  &::-webkit-scrollbar-corner:active {
+    background-color: var(
+      --scrollbar-corner-active,
+      var(--scrollbar-corner-hover, var(--scrollbar-corner))
+    );
+  }
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, initial)
+    var(--scrollbar-track, initial);
+  &::-webkit-scrollbar {
+    display: block;
+    width: 8px;
+    height: 8px;
+  }
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+@utility scrollbar-track-* {
+  --scrollbar-track: --value(--color-*, [color]) !important;
+  --scrollbar-track: --alpha(
+    --value(--color-*, [color]) / --modifier(integer) %
+  ) !important;
+}
+@utility scrollbar-track-rounded {
+  --scrollbar-track-radius: 0.25rem;
+}
+@utility scrollbar-track-rounded-* {
+  --scrollbar-track-radius: --value(--radius-*, [length]);
+}
+@utility scrollbar-thumb-* {
+  --scrollbar-thumb: --value(--color-*, [color]) !important;
+  --scrollbar-thumb: --alpha(
+    --value(--color-*, [color]) / --modifier(integer) %
+  ) !important;
+}
+@utility scrollbar-thumb-rounded {
+  --scrollbar-thumb-radius: 0.25rem;
+}
+@utility scrollbar-thumb-rounded-* {
+  --scrollbar-thumb-radius: --value(--radius-*, [length]);
+}
+@utility scrollbar-corner-* {
+  --scrollbar-corner: --value(--color-*, [color]) !important;
+  --scrollbar-corner: --alpha(
+    --value(--color-*, [color]) / --modifier(integer) %
+  ) !important;
+}
+@utility scrollbar-corner-rounded {
+  --scrollbar-corner-radius: 0.25rem;
+}
+@utility scrollbar-corner-rounded-* {
+  --scrollbar-corner-radius: --value(--radius-*, [length]);
+}
+@utility scrollbar-w-* {
+  --scrollbar-width: --value(--spacing-*, [length]);
+}
+@utility scrollbar-h-* {
+  --scrollbar-height: --value(--spacing-*, [length]);
+}
+
+* {
+  @apply border-border;
+}
+body {
+  @apply bg-canvas font-sans text-foreground antialiased transition-colors;
+}
+
+/* Touch screens: no grey flash on tap, and no double-tap zoom on controls,
+   which also drops the wait the browser adds to tell a tap from one. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+input,
+label,
+select,
+summary,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 /* *** AutoGPT Design Components *** */
 
-@layer components {
-  .agpt-border-input {
-    @apply m-0.5 border border-input data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400;
-  }
-
-  .agpt-shadow-input {
-    @apply shadow-sm focus-visible:shadow-md;
-  }
-
-  .agpt-rounded-card {
-    @apply rounded-2xl;
-  }
-
-  .agpt-rounded-box {
-    @apply rounded-3xl;
-  }
-
-  .agpt-card {
-    @apply agpt-rounded-card border border-zinc-300 bg-white p-[1px];
-  }
-
-  .agpt-box {
-    @apply agpt-card agpt-rounded-box;
-  }
-
-  .agpt-div {
-    @apply border-zinc-200 p-5;
-  }
+.agpt-border-input {
+  @apply m-0.5 border border-input focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none data-[state=open]:border-foreground-subtle data-[state=open]:ring-1 data-[state=open]:ring-foreground-subtle;
 }
 
-@layer utilities {
-  .agpt-card-selected {
-    @apply border-2 border-accent bg-violet-50/50 p-0;
-  }
+.agpt-shadow-input {
+  @apply shadow-sm focus-visible:shadow-md;
+}
+
+.agpt-rounded-card {
+  @apply rounded-2xl;
+}
+
+.agpt-card {
+  @apply rounded-2xl border border-border-strong bg-surface p-[1px];
+}
+
+/*! tailwind-utilities:start (postcss.tailwind3-compat.cjs orders them) */
+@tailwind utilities source(none);
+/*! tailwind-utilities:end */
+
+/* Streamdown's stacked-variant classes, as Tailwind 3 read them (right to
+   left): they style the children of a block that is itself the first or last
+   child. tailwind.config.ts keeps Tailwind 4 from reading them left to right. */
+.\*\:first\:mt-0:first-child > * {
+  margin-top: 0rem;
+}
+.\*\:last\:mb-0:last-child > * {
+  margin-bottom: 0rem;
+}
+.\*\:last\:after\:inline:last-child > *::after {
+  content: var(--tw-content);
+  display: inline;
+}
+.\*\:last\:after\:align-baseline:last-child > *::after {
+  content: var(--tw-content);
+  vertical-align: baseline;
 }
 
 input[type="number"]::-webkit-outer-spin-button,
@@ -131,22 +612,22 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+/* Google Drive Picker: ensure picker appears above dialogs and can receive
+   clicks. The picker is Google's own markup, so it has no slot; !important
+   beats the z-index and pointer-events Google's script writes inline. */
 [class*="picker-dialog"] {
   z-index: 10000 !important;
   pointer-events: auto !important;
 }
 
-/* When Google picker is open, lower dialog z-index so picker renders on top */
-body[data-google-picker-open="true"] [data-dialog-overlay],
-body[data-google-picker-open="true"] [data-dialog-content] {
+/* When Google picker is open, lower dialog z-index so picker renders on top.
+   !important: Radix writes pointer-events inline on the overlay and popup,
+   and Dialog's `styling` prop is written inline on the popup and may set a
+   z-index. */
+body[data-google-picker-open="true"] [data-slot="dialog-overlay"],
+body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   z-index: 1 !important;
   pointer-events: none !important;
-}
-
-/* Streamdown external link dialog: "Open link" button */
-[data-streamdown="link-safety-modal"] button:last-of-type {
-  color: white;
 }
 
 /* Markdown headings: rehype-autolink-headings wraps each heading's text in an
@@ -155,6 +636,38 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 .markdown-output :is(h1, h2, h3, h4, h5, h6) a {
   text-decoration: none;
   color: inherit;
+}
+
+/* Streamdown's code-block buttons are 24px icons: on a touch screen, widen
+   the area that takes the tap without moving the header around. */
+@media (pointer: coarse) {
+  [data-streamdown="code-block-copy-button"],
+  [data-streamdown="code-block-download-button"] {
+    position: relative;
+  }
+
+  [data-streamdown="code-block-copy-button"]::after,
+  [data-streamdown="code-block-download-button"]::after {
+    content: "";
+    position: absolute;
+    inset: -0.5rem;
+  }
+}
+
+/* A bare URL is one long word: let it wrap instead of running off a phone
+   screen. */
+[data-streamdown="link"] {
+  overflow-wrap: anywhere;
+}
+
+/* Phones: code lines get the 40px the line numbers take. The number keeps
+   its box (at no width), since it is what gives a blank line its height. */
+@media (max-width: 767px) {
+  [data-streamdown="code-block-body"] span::before {
+    visibility: hidden;
+    width: 0;
+    margin-right: 0;
+  }
 }
 
 /* CoPilot chat table styling — remove left/right borders, increase padding */
@@ -166,4 +679,125 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 [data-streamdown="table-wrapper"] th,
 [data-streamdown="table-wrapper"] td {
   padding: 0.875rem 1rem; /* py-3.5 px-4 */
+}
+
+/* KaTeX sets .katex to 1.21em, which makes inline formulas outgrow the prose
+   around them; display blocks keep KaTeX's size. */
+:not(.katex-display) > .katex {
+  font-size: 1.1em;
+}
+
+/* DS2b keyframes */
+
+/* GlassOrb (molecules/GlassOrb): each blob turns on its own spinner and
+   drifts inside it. */
+@keyframes glass-orb-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glass-orb-drift-1 {
+  from {
+    transform: rotate(-10deg) translate(0%, 0%) scale(1);
+  }
+  to {
+    transform: rotate(32deg) translate(8%, 12%) scale(1.12);
+  }
+}
+
+@keyframes glass-orb-drift-2 {
+  from {
+    transform: rotate(14deg) translate(0%, 0%) scale(1.05);
+  }
+  to {
+    transform: rotate(-24deg) translate(-10%, 6%) scale(0.92);
+  }
+}
+
+@keyframes glass-orb-drift-3 {
+  from {
+    transform: rotate(4deg) translate(-4%, 0%) scale(0.95);
+  }
+  to {
+    transform: rotate(-30deg) translate(10%, -12%) scale(1.15);
+  }
+}
+
+@keyframes glass-orb-drift-4 {
+  from {
+    transform: rotate(-22deg) translate(6%, -6%) scale(1.1);
+  }
+  to {
+    transform: rotate(18deg) translate(-6%, 10%) scale(0.9);
+  }
+}
+
+@keyframes glass-orb-drift-5 {
+  from {
+    transform: rotate(26deg) translate(-8%, 4%) scale(1);
+  }
+  to {
+    transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
+  }
+}
+
+/* DS5g keyframes */
+/* Copilot loaders, moved unchanged from the OrbitLoader and ScaleLoader CSS
+   modules. The modules scoped the names, so they are prefixed
+   here. */
+@keyframes orbit-loader-rotate {
+  0% {
+    transform: rotate(0deg) scale(0.8);
+  }
+  50% {
+    transform: rotate(360deg) scale(1.2);
+  }
+  100% {
+    transform: rotate(720deg) scale(0.8);
+  }
+}
+
+@keyframes orbit-loader-ball1 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+  }
+  50% {
+    box-shadow: 0 0 0 #18181b;
+    margin-bottom: 0;
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+    margin-bottom: calc(var(--gap));
+  }
+}
+
+@keyframes orbit-loader-ball2 {
+  0% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+  }
+  50% {
+    box-shadow: 0 0 0 #a1a1aa;
+    margin-top: calc(var(--ball-size) * -1);
+    transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
+  }
+  100% {
+    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+    margin-top: 0;
+  }
+}
+
+@keyframes scale-loader-grow {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
 }

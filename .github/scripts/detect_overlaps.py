@@ -350,7 +350,7 @@ def find_file_overlap_candidates(
     current_files: list[str], other_prs: list[dict], max_age_days: int = 14
 ) -> list[tuple[dict, list[str]]]:
     """Find PRs that share files with the current PR."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
 
     current_files_set = set(f for f in current_files if not should_ignore_file(f))
     candidates = []
@@ -1139,7 +1139,7 @@ def post_or_update_comment(pr_number: int, body: str):
         """
         result = run_gh(["api", "graphql", "-f", f"query={mutation}"], check=False)
         if result.returncode == 0:
-            print(f"Updated existing overlap comment")
+            print("Updated existing overlap comment")
         else:
             # Fallback to posting new comment
             print(

@@ -5,6 +5,7 @@ import {
   FileEmpty02Icon,
   Image01Icon,
   Pdf01Icon,
+  Presentation01Icon,
   TableIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons";
@@ -160,12 +161,44 @@ export function isCodeFile(fileName: string | undefined): boolean {
   return ext ? CODE_EXTENSIONS.has(ext[1]) : false;
 }
 
+type OfficeDocKind = "presentation" | "document" | "spreadsheet";
+
+// Extension first: an office file stored with a wrong MIME (e.g. text/plain)
+// must still read as an office document.
+function getOfficeDocKind(
+  mimeType: string,
+  fileName: string,
+): OfficeDocKind | null {
+  if (/\.pptx?$/.test(fileName)) return "presentation";
+  if (/\.docx?$/.test(fileName)) return "document";
+  if (/\.xlsx?$/.test(fileName)) return "spreadsheet";
+  if (mimeType.includes("presentationml") || mimeType.includes("powerpoint"))
+    return "presentation";
+  if (mimeType.includes("wordprocessingml") || mimeType.includes("msword"))
+    return "document";
+  return null;
+}
+
+const OFFICE_LABEL: Record<OfficeDocKind, string> = {
+  presentation: "Presentation",
+  document: "Document",
+  spreadsheet: "Spreadsheet",
+};
+
+const OFFICE_ICON: Record<OfficeDocKind, IconSvgElement> = {
+  presentation: Presentation01Icon,
+  document: File02Icon,
+  spreadsheet: TableIcon,
+};
+
 export function getFileTypeLabel(
   mimeType: string | undefined,
   fileName?: string,
 ): string {
   if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_LABEL[officeKind];
   if (mt.startsWith("image/")) return "Image";
   if (mt.startsWith("video/")) return "Video";
   if (mt.startsWith("audio/")) return "Audio";
@@ -185,6 +218,8 @@ export function getFileTypeIcon(
 ): IconSvgElement {
   if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_ICON[officeKind];
   if (mt.startsWith("image/")) return Image01Icon;
   if (mt.startsWith("video/")) return Video01Icon;
   if (mt.includes("pdf")) return Pdf01Icon;
@@ -342,12 +377,23 @@ export function hasImageThumbnail(kind: PreviewKind): boolean {
 export function getEmptyMessage(opts: {
   hasSearchTerm: boolean;
   isInFolder: boolean;
+  /** Child folders are listed above the empty files area. */
   hasFolders: boolean;
   hasExpertFilter?: boolean;
+  expertName?: string | null;
 }): string {
   if (opts.hasSearchTerm) return "No files match your search";
-  if (opts.hasExpertFilter) return "No files from this expert yet";
-  if (opts.isInFolder) return "This folder is empty";
+  if (opts.hasExpertFilter) {
+    // "yet" is only true of a workspace with nowhere else to look; anywhere
+    // with folders or inside one, the files may simply be elsewhere.
+    if (!opts.isInFolder && !opts.hasFolders)
+      return "No files from this expert yet";
+    return `No files from ${opts.expertName ?? "this expert"} here`;
+  }
+  if (opts.isInFolder)
+    return opts.hasFolders
+      ? "No files directly in this folder"
+      : "This folder is empty";
   if (opts.hasFolders) return "No files at the root yet";
   return "No files yet";
 }
@@ -373,6 +419,7 @@ export function getEmptyState(opts: {
     isInFolder: opts.isInFolder,
     hasFolders: opts.hasFolders,
     hasExpertFilter: opts.expert !== null,
+    expertName: opts.expert?.name,
   });
   const base: EmptyStateContent = {
     title,

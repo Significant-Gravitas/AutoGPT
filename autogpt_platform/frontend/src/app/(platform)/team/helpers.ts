@@ -1,5 +1,14 @@
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  Calendar04Icon,
+  Clock01Icon,
+  PlayIcon,
+  Time04Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -23,43 +32,16 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
-/** Cover art and palette colour shipped with the seeded experts, keyed by
- *  the avatar the seed gives them. Seeded experts carry no colour of their
- *  own, so the picture's pastel fills in; an expert's own colour still wins. */
-const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
-  "/experts/max.svg": {
-    art: "/experts/covers/max-1.jpg",
-    color: "fuchsia-300",
-  },
-  "/experts/maria.svg": {
-    art: "/experts/covers/maria-1.jpg",
-    color: "orange-300",
-  },
-  "/experts/frankie.svg": {
-    art: "/experts/covers/frankie-1.jpg",
-    color: "yellow-300",
-  },
-};
-
-/** A raised expert with no colour of its own still gets a pastel, picked
- *  from the palette by its id so it is the same on every render and page. */
-function getFallbackCoverColor(expertId: string) {
-  let hash = 0;
-  for (const char of expertId) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return COLOR_OPTIONS[hash % COLOR_OPTIONS.length].id;
-}
-
 export function getExpertCover(
-  expert: Pick<Expert, "id" | "avatar_url" | "color">,
+  expert: Pick<Expert, "id" | "avatar_url" | "color" | "role" | "categories">,
 ) {
-  const seeded = expert.avatar_url
-    ? SEEDED_COVERS[expert.avatar_url]
-    : undefined;
   return {
-    art: seeded?.art ?? null,
-    color: expert.color || seeded?.color || getFallbackCoverColor(expert.id),
+    art: null,
+    color: getExpertTopicHex({
+      avatarUrl: expert.avatar_url,
+      categories: expert.categories,
+      role: expert.role,
+    }),
   };
 }
 
@@ -67,7 +49,7 @@ export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const AUTOPILOT_PILL_CLASS =
-  "border border-zinc-200 bg-zinc-50 text-zinc-700";
+  "border border-border-base bg-surface-muted text-foreground-body";
 
 /** Otto owns whatever no hired expert does: every library workflow that
  *  is not installed on an expert, shaped like an expert workflow so the expert
@@ -176,17 +158,6 @@ export function getLastRunLabel(expert: Expert) {
     return `Last run succeeded ${when}`;
   if (expert.last_run_status === "FAILED") return `Last run failed ${when}`;
   return `Last run ${when}`;
-}
-
-/** The line under an expert's name on their card: their tagline, falling back
- *  to the opening of their identity when they have none. */
-export function getExpertBlurb(expert: Expert) {
-  if (expert.tagline?.trim()) return expert.tagline;
-  const lines = expert.identity
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.slice(0, 2).join(" ") || null;
 }
 
 export function getWeeklySpend(expert: Expert) {
@@ -365,10 +336,10 @@ export function getAutopilotSummary({
 }
 
 export const WORKFLOW_FILTERS = [
-  { value: "all", label: "All workflows" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "manual", label: "Manual" },
-  { value: "needs-setup", label: "Needs setup" },
+  { value: "all", label: "All workflows", icon: WorkflowSquare01Icon },
+  { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
+  { value: "manual", label: "Manual", icon: PlayIcon },
+  { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
 ] as const;
 
 export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number]["value"];
@@ -394,10 +365,10 @@ export function filterExpertWorkflows(
 }
 
 export const SCHEDULE_FILTERS = [
-  { value: "all", label: "All schedules" },
-  { value: "today", label: "Next 24 hours" },
-  { value: "week", label: "Next 7 days" },
-  { value: "later", label: "Later" },
+  { value: "all", label: "All schedules", icon: Calendar03Icon },
+  { value: "today", label: "Next 24 hours", icon: Clock01Icon },
+  { value: "week", label: "Next 7 days", icon: Calendar04Icon },
+  { value: "later", label: "Later", icon: Time04Icon },
 ] as const;
 
 export type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number]["value"];
@@ -425,3 +396,39 @@ export function filterExpertSchedules(
     return untilNext > 7 * DAY_MS;
   });
 }
+
+export const SETUP_POLL_MS = 2_000;
+
+export function isSettingUp(experts: Expert[]) {
+  return experts.some((expert) => expert.setup_status === "installing");
+}
+
+/** Matches the backend's per-request cap on `GET /library/agents/batch`. */
+const LIBRARY_AGENT_BATCH_SIZE = 50;
+
+/** Sorted so filtering or re-ordering the grid reuses the cached batches. */
+export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
+  const ids = [
+    ...new Set(
+      workflows
+        .map((workflow) => workflow.library_agent_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += LIBRARY_AGENT_BATCH_SIZE) {
+    chunks.push(ids.slice(start, start + LIBRARY_AGENT_BATCH_SIZE));
+  }
+  return chunks;
+}
+
+// The expert and Otto pages' tabs: a segmented control with a white pill
+// that slides to the active tab (TabsLine's indicator, restyled). The list
+// sets no z-index, so its grey track paints first, the pill (z-10) over it
+// and the labels (z-20) on top.
+export const PROFILE_TABS_LIST_CLASS =
+  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
+export const PROFILE_TABS_INDICATOR_CLASS =
+  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-surface shadow-sm ring-1 ring-border-base/70";
+export const PROFILE_TABS_TRIGGER_CLASS =
+  "z-20 rounded-full px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";

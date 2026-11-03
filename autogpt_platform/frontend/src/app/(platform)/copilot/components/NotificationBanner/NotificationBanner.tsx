@@ -1,70 +1,28 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import { Key, storage } from "@/services/storage/local-storage";
-import { useEffect, useState } from "react";
-import { useCopilotUIStore } from "../../store";
-import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { useNotificationBanner } from "./useNotificationBanner";
 
-// Alert's `icon` prop takes a component (its defaults come from lucide).
+// Alert's `icon` prop takes a component, not icon data.
 const BellRing = createIconComponent(BellRingIcon);
 
 export function NotificationBanner() {
-  const { setNotificationsEnabled, isNotificationsEnabled } =
-    useCopilotUIStore();
+  const { isVisible, handleTurnOn, handleDismiss } = useNotificationBanner();
 
-  const [dismissed, setDismissed] = useState(
-    () => storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
-  );
-  const [permission, setPermission] = useState(() =>
-    typeof Notification !== "undefined" ? Notification.permission : "denied",
-  );
-
-  // Re-read dismissed flag when notifications are toggled off (e.g. clearCopilotLocalData)
-  useEffect(() => {
-    if (!isNotificationsEnabled) {
-      setDismissed(
-        storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
-      );
-    }
-  }, [isNotificationsEnabled]);
-
-  // Don't show if notifications aren't supported, already decided, dismissed, or already enabled
-  if (
-    typeof Notification === "undefined" ||
-    permission !== "default" ||
-    dismissed ||
-    isNotificationsEnabled
-  ) {
-    return null;
-  }
-
-  function handleEnable() {
-    Notification.requestPermission().then((result) => {
-      setPermission(result);
-      if (result === "granted") {
-        setNotificationsEnabled(true);
-        handleDismiss();
-      }
-    });
-  }
-
-  function handleDismiss() {
-    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
-    setDismissed(true);
-  }
+  if (!isVisible) return null;
 
   return (
     <Alert variant="warning" icon={BellRing} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          Enable browser notifications to know when your experts finish working,
-          even when you switch tabs.
+          Get a notification when Otto or your experts finish, even when you
+          switch tabs.
         </AlertDescription>
-        <Button variant="primary" size="small" onClick={handleEnable}>
-          Enable
+        <Button variant="primary" size="small" onClick={handleTurnOn}>
+          Turn on notifications
         </Button>
         <Button
           variant="ghost"
@@ -72,6 +30,7 @@ export function NotificationBanner() {
           onClick={handleDismiss}
           aria-label="Dismiss"
           title="Dismiss"
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- peach hover on the banner; the nearest role (warning-border) is a yellow hue, deferred
           className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />

@@ -2,9 +2,10 @@
 
 import { postExperimentalSetSessionComputerUseConsent } from "@/app/api/__generated__/endpoints/copilot/copilot";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EyeIcon } from "@phosphor-icons/react";
+import { ViewIcon } from "@hugeicons/core-free-icons";
 import { useMutation } from "@tanstack/react-query";
 import {
   type LocalPCExecutorStatus,
@@ -131,18 +132,14 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-4 py-2">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-              <EyeIcon
-                className="h-5 w-5 text-amber-700"
-                weight="fill"
-                aria-hidden="true"
-              />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-surface text-warning-foreground">
+              <Icon icon={ViewIcon} className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="flex flex-col gap-2">
-              <Text variant="body" className="font-medium text-neutral-900">
+              <Text variant="body-medium" tone="primary">
                 For this chat session, Claude can:
               </Text>
-              <ul className="ml-4 list-disc text-sm text-neutral-700">
+              <ul className="ml-4 list-disc text-sm text-foreground-body">
                 {computerUseFeatures.has("screenshot") ? (
                   <li>Capture screenshots of your screen</li>
                 ) : null}
@@ -162,7 +159,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                   <li>Check operating-system permission status</li>
                 ) : null}
               </ul>
-              <Text variant="body" className="text-sm text-neutral-700">
+              <Text variant="body-tight" tone="body">
                 The shim writes operation records to its local audit log. Review
                 them with{" "}
                 <span className="font-mono text-xs">
@@ -172,16 +169,12 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 daemon&apos;s terminal, or disconnect it with{" "}
                 <span className="font-mono text-xs">autogpt-shim revoke</span>.
               </Text>
-              <Text variant="body" className="text-sm text-neutral-700">
+              <Text variant="body-tight" tone="body">
                 This consent applies only to the current chat session. New
                 sessions will ask again.
               </Text>
               {consentMutation.isError ? (
-                <Text
-                  variant="body"
-                  role="alert"
-                  className="text-sm text-red-700"
-                >
+                <Text variant="body-tight" role="alert" tone="danger">
                   Could not update computer access. Try again.
                 </Text>
               ) : null}

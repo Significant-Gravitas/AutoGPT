@@ -23,7 +23,7 @@ DEBOUNCE_SECONDS = 5.0
 # Per-user debounce timestamps, bounded + auto-evicted so the process doesn't
 # accumulate one entry per user forever. Process-local — ineffective across
 # multiple WS replicas; acceptable since debounce is a best-effort UX nicety.
-_user_last_push: TTLCache[str, float] = TTLCache(maxsize=10_000, ttl=DEBOUNCE_SECONDS)
+_user_last_push = TTLCache[str, float](maxsize=10_000, ttl=DEBOUNCE_SECONDS)
 
 # Fields to forward from the notification payload to the push message
 _FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")

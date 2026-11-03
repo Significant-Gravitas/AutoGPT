@@ -11,8 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const SESSIONS_URL = "http://localhost:3000/api/proxy/api/chat/sessions";
 
-vi.mock("@sentry/nextjs", () => ({
+vi.mock("@sentry/nextjs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/nextjs")>()),
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
   getTraceData: vi.fn(() => ({})),
 }));
 
@@ -128,8 +130,12 @@ describe("useChatSession execution target", () => {
       await session.result.current.createSession();
     });
 
+    // Every new chat names itself so a retry adopts it (dev's create flow).
     await waitFor(() => {
-      expect(requestBody).toEqual({ execution_target: { kind: "cloud" } });
+      expect(requestBody).toEqual({
+        session_id: expect.any(String),
+        execution_target: { kind: "cloud" },
+      });
     });
   });
 
@@ -169,6 +175,7 @@ describe("useChatSession execution target", () => {
           ...(useCodex
             ? { llm_auth_provider: "codex", llm_credential_id: "credential-1" }
             : {}),
+          session_id: expect.any(String),
           execution_target: {
             kind: "local",
             machine_id: "machine-1",
@@ -204,7 +211,7 @@ describe("useChatSession execution target", () => {
     });
     await act(async () => {
       await expect(session.result.current.createSession()).rejects.toThrow(
-        /connection changed/i,
+        /computer or folder changed/i,
       );
     });
 
@@ -232,11 +239,11 @@ describe("useChatSession execution target", () => {
   });
 
   it("keeps the feature-off session request free of execution metadata", async () => {
-    let requestText: string | undefined;
+    let requestBody: unknown;
     mockCreatedSession();
     server.use(
       http.post(SESSIONS_URL, async ({ request }) => {
-        requestText = await request.text();
+        requestBody = await request.json();
         return HttpResponse.json(createdSession());
       }),
     );
@@ -246,6 +253,8 @@ describe("useChatSession execution target", () => {
       await session.result.current.createSession();
     });
 
-    await waitFor(() => expect(requestText).toBe("null"));
+    await waitFor(() =>
+      expect(requestBody).toEqual({ session_id: expect.any(String) }),
+    );
   });
 });

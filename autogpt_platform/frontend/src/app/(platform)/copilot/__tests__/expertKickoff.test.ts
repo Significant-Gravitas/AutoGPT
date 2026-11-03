@@ -64,6 +64,9 @@ describe("buildKickoffMessage", () => {
     expect(message.text).toContain("expert_onboarding");
     // The hire's first turn is an intake, not a first job.
     expect(message.text).toContain("Do not run a workflow");
+    // The card is about the expert's own role, not whatever else the model
+    // knows about the user or their teammates.
+    expect(message.text).toContain("Do not ask about work outside your role");
     expect(message.text).not.toContain("run_agent");
     expect(message.text).not.toContain("EXPERT_KICKOFF");
     expect(message.text).not.toContain(EXPERT_ID);
@@ -72,13 +75,12 @@ describe("buildKickoffMessage", () => {
 
 describe("shouldClearKickoffParam", () => {
   it("preserves kickoff through a retryable expert-map error and recovery", () => {
-    expect(shouldClearKickoffParam(true, false, null)).toBe(false);
-    expect(shouldClearKickoffParam(true, true, EXPERT_ID)).toBe(false);
+    expect(shouldClearKickoffParam(false, null)).toBe(false);
+    expect(shouldClearKickoffParam(true, EXPERT_ID)).toBe(false);
   });
 
-  it("clears kickoff only when experts are disabled or a loaded map misses it", () => {
-    expect(shouldClearKickoffParam(false, false, null)).toBe(true);
-    expect(shouldClearKickoffParam(true, true, null)).toBe(true);
+  it("clears kickoff only when the settled roster does not contain the expert", () => {
+    expect(shouldClearKickoffParam(true, null)).toBe(true);
   });
 });
 
@@ -142,6 +144,15 @@ describe("kickoff message identification", () => {
     ]);
 
     expect(visible.map((message) => message.id)).toEqual(["m2"]);
+  });
+
+  it("returns the same array when there is no kickoff message to hide", () => {
+    const messages = [
+      userMessage("m1", "Plan my week"),
+      assistantMessage("m2", "Here's a plan."),
+    ];
+
+    expect(hideKickoffMessages(messages)).toBe(messages);
   });
 
   it("keeps a user message that merely repeats the kickoff wording", () => {

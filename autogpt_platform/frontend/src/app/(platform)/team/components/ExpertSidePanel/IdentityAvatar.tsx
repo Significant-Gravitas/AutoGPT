@@ -1,14 +1,5 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 
 export interface PanelIdentity {
@@ -25,29 +16,19 @@ interface Props {
 }
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
-  if (identity.isAutopilot) {
-    return <AutopilotAvatar size={imageSize} className={className} />;
-  }
-  if (!isUploadedAvatar(identity.avatarUrl)) {
-    return (
-      <BotAvatar
-        config={expertAvatarConfig(identity)}
-        size={imageSize}
-        showBadge={false}
-        title={identity.name}
-        className={className}
-      />
-    );
-  }
+  const avatarClassName = cn(
+    // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar and AutopilotAvatar have no bordered variant (src/components is P9's)
+    "rounded-full border border-border-base",
+    className,
+  );
+  if (identity.isAutopilot)
+    return <AutopilotAvatar size={imageSize} className={avatarClassName} />;
   return (
-    <Avatar className={cn("shrink-0 border border-stone-500", className)}>
-      <AvatarImage
-        src={identity.avatarUrl ?? undefined}
-        alt={identity.name}
-        width={imageSize}
-        height={imageSize}
-      />
-      <AvatarFallback>{identity.name}</AvatarFallback>
-    </Avatar>
+    <ExpertAvatar
+      name={identity.name}
+      avatarUrl={identity.avatarUrl}
+      size={imageSize}
+      className={avatarClassName}
+    />
   );
 }

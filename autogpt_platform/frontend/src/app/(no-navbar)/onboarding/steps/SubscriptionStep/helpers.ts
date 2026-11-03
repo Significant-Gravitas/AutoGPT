@@ -4,9 +4,6 @@ import {
   type PlanDef,
 } from "@/components/molecules/PlanCard/plans";
 
-export const SUBSCRIPTION_PRICING_EXPERIMENT_FLAG =
-  "subscription-pricing-page-initial-state";
-
 const HIGHLIGHT_BADGE = "Best value";
 
 export type BillingCycle = "monthly" | "yearly";
@@ -77,6 +74,19 @@ export function getSubscriptionPricingExperimentConfig(
   return DEFAULT_EXPERIMENT_CONFIG;
 }
 
+// The arm to report on `plan_selected`: only one PostHog actually assigned.
+// Unresolved flags and users outside the rollout render the control layout
+// but are not in the control arm, so reporting "control" for them would
+// inflate it.
+export function getReportedPricingVariant(
+  variant: string | null,
+  isResolved: boolean,
+) {
+  if (!isResolved || variant === null) return undefined;
+  if (variant !== "control" && !isExperimentVariant(variant)) return undefined;
+  return variant;
+}
+
 export function getSubscriptionPricingExperimentPlans(
   highlightedPlan: HighlightedPlanKey | null,
   plans: PlanDef[] = PLANS,
@@ -90,7 +100,6 @@ export function getSubscriptionPricingExperimentPlans(
       ...plan,
       highlighted,
       badge: highlighted ? HIGHLIGHT_BADGE : null,
-      buttonVariant: highlighted ? "primary" : "secondary",
     } satisfies PlanDef;
   });
 }

@@ -1,14 +1,17 @@
 import { useState } from "react";
+import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { formatTrialEnd } from "./helpers";
 
 interface Props {
+  trial: TrialStatusResponse;
   isCanceling: boolean;
   onCancel: () => void;
 }
 
-export function CancelTrialDialog({ isCanceling, onCancel }: Props) {
+export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
   function confirmCancellation() {
@@ -18,30 +21,50 @@ export function CancelTrialDialog({ isCanceling, onCancel }: Props) {
 
   return (
     <Dialog
-      title="End your trial now?"
-      styling={{ maxWidth: "440px" }}
+      title="Cancel your trial?"
+      styling={{ maxWidth: "28rem", minWidth: "auto" }}
       controlled={{ isOpen, set: setIsOpen }}
     >
       <Dialog.Trigger>
-        <Button variant="outline" loading={isCanceling} disabled={isCanceling}>
+        <Button
+          variant="outline"
+          size="small"
+          loading={isCanceling}
+          disabled={isCanceling}
+        >
           Cancel trial
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <Text variant="body">
-          Your trial access will end immediately and your trial will not convert
-          to a paid plan. You cannot restart this trial.
-        </Text>
+        <div
+          data-slot="cancel-trial-dialog-body"
+          className="flex flex-col gap-3"
+        >
+          <Text variant="body" className="!text-foreground-emphasis">
+            Your trial won&apos;t convert to a paid plan and your card
+            won&apos;t be charged.
+          </Text>
+          <Text variant="body" className="!text-foreground-emphasis">
+            You keep full access until{" "}
+            <strong
+              data-slot="cancel-trial-dialog-end-date"
+              className="font-semibold"
+            >
+              {formatTrialEnd(trial.ends_at)}
+            </strong>
+            , and you can resume your trial any time before then.
+          </Text>
+        </div>
         <Dialog.Footer>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
             Keep trial
           </Button>
           <Button
-            variant="destructive"
+            variant="primary"
             onClick={confirmCancellation}
             disabled={isCanceling}
           >
-            End trial now
+            Cancel trial
           </Button>
         </Dialog.Footer>
       </Dialog.Content>

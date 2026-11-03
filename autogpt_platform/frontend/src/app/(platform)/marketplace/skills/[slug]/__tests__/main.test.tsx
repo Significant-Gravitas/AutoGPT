@@ -26,7 +26,6 @@ configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
-const skillsHubFlag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -45,17 +44,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => skillsHubFlag };
-});
-
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
-  name: "Outreach playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],
@@ -108,20 +100,15 @@ describe("Marketplace skill page", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     mockNotFound.mockClear();
-    skillsHubFlag.enabled = true;
-    skillsHubFlag.ready = true;
+
     userSkills.length = 0;
     server.use(userSkillsHandler());
   });
 
-  test("is not found when the skills-hub flag is off", async () => {
-    skillsHubFlag.enabled = false;
+  test("loads skill instructions without a rollout flag", async () => {
     renderPage([]);
-
-    // A bookmarked URL reaches this page without passing the marketplace
-    // shelf, so the shelf being hidden is not what keeps the feature dark.
-    expect(mockNotFound).toHaveBeenCalled();
-    expect(screen.queryByTestId("skill-install-button")).toBeNull();
+    expect(await screen.findByText(/Four sentences, no more/)).toBeDefined();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 
   test("shows the instructions experts will follow", async () => {
@@ -138,6 +125,45 @@ describe("Marketplace skill page", () => {
     expect(
       screen.getAllByRole("heading", { name: "Outreach playbook" }),
     ).toHaveLength(1);
+  });
+
+  test("links a vendored skill to its source and shows its license", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: "coreyhaines31/marketingskills",
+        source_url:
+          "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+        license: "MIT",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const source = await screen.findByRole("link", {
+      name: "coreyhaines31/marketingskills",
+    });
+    expect(source.getAttribute("href")).toBe(
+      "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+    );
+    expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("shows a creator skill license without a source repo", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: null,
+        source_url: null,
+        license: "Proprietary",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText("License: Proprietary")).toBeDefined();
   });
 
   test("installs in one click and offers the connect step afterwards", async () => {

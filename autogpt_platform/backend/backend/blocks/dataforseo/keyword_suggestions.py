@@ -8,6 +8,7 @@ from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -139,6 +140,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     async def _fetch_keyword_suggestions(
@@ -277,6 +279,7 @@ class KeywordSuggestionExtractorBlock(Block):
                 ("serp_info", None),
                 ("clickstream_data", None),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(

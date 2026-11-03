@@ -2,16 +2,20 @@ import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-from backend.api.features.executions.review.model import PendingHumanReviewModel
+from pydantic import ValidationError
+
 from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
+from backend.copilot.scheduled_chats.service import PausedScheduledChat
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
-from .models import HomeAction, HomeAttentionItem, HomeExpert
+from .models import HomeAction, HomeAttentionItem, HomeExpert, HomeHeadline
 
 # Longest payload preview we return before clipping it with an ellipsis.
 _PREVIEW_MAX = 140
@@ -25,32 +29,44 @@ def compose_attention_items(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
+    paused_chats: list[PausedScheduledChat] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
     items.extend(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
     )
+    items.extend(_paused_chat_attention(chat) for chat in paused_chats or [])
     items.extend(
         _question_attention(session, question, expert_by_id)
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
     )
-    if credits_balance is not None and credits_balance <= 0 and schedules:
-        items.append(_credits_attention(len(schedules)))
+    # Chat follow-ups bill the plan's allowance, not credits; only workflow
+    # schedules stop on an empty balance.
+    workflow_schedules = sum(schedule.kind == "graph" for schedule in schedules)
+    if credits_balance is not None and credits_balance <= 0 and workflow_schedules:
+        items.append(_credits_attention(workflow_schedules))
     return sorted(items, key=_attention_sort_key)
 
 
 def _review_attention(
     review: PendingHumanReviewModel, now: datetime
 ) -> HomeAttentionItem:
-    title = review.instructions or review.agent_name or "Review an agent decision"
+    if gate := _gate_payload(review):
+        return _gate_attention(review, gate, now)
+    title = (
+        review.action
+        or review.instructions
+        or review.agent_name
+        or "Review a workflow step"
+    )
     created_at = as_utc(review.created_at)
     if is_spend_review(review.node_exec_id):
         description = "Spending threshold reached; this work is on hold."
         why_it_matters = "It runs once you approve; declining cancels it."
     else:
-        description = "Your agent paused before taking an external action."
+        description = f"{_waiting_on(review)} is waiting for your approval."
         why_it_matters = "The task cannot continue until you approve or decline it."
     return HomeAttentionItem(
         id=f"approval-{review.node_exec_id}",
@@ -68,6 +84,94 @@ def _review_attention(
     )
 
 
+def _gate_attention(
+    review: PendingHumanReviewModel, gate: GateReviewPayload, now: datetime
+) -> HomeAttentionItem:
+    """A held AutoPilot call: the card's own headline and reason, and its inputs
+    as the preview, because Home answers it without opening the chat."""
+    created_at = as_utc(review.created_at)
+    return HomeAttentionItem(
+        id=f"approval-{review.node_exec_id}",
+        kind="approval",
+        priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
+        title=gate.headline.text,
+        headline=HomeHeadline(ask=gate.headline.ask, object=gate.headline.object),
+        description=_gate_reason(gate),
+        why_it_matters="Nothing runs until you approve it.",
+        expert=_review_expert(review),
+        created_at=created_at,
+        preview=_clip(
+            " · ".join(
+                f"{field.label}: {_named_value(gate, field.key) or _preview_value(gate.arguments[field.key])}"
+                for field in gate.fields
+                if field.key != gate.headline.object_key
+                and gate.arguments.get(field.key) not in (None, "", [], {})
+            )
+        )
+        or None,
+        review=_without_held_bytes(review),
+        primary_action=HomeAction(label="Open chat", href=_review_link(review)),
+    )
+
+
+def _without_held_bytes(review: PendingHumanReviewModel) -> PendingHumanReviewModel:
+    # A held read's `content` is up to 70k chars the card never shows (it renders
+    # `passage`), shipped per row on every Home poll.
+    if not isinstance(review.payload, dict) or "content" not in review.payload:
+        return review
+    payload = {k: v for k, v in review.payload.items() if k != "content"}
+    return review.model_copy(update={"payload": payload})
+
+
+def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:
+    if not review.node_exec_id.startswith(GATE_NODE_PREFIX):
+        return None
+    try:
+        return GateReviewPayload.model_validate(review.payload)
+    except ValidationError:
+        # A row written before the payload carried a headline.
+        return None
+
+
+def _gate_reason(gate: GateReviewPayload) -> str:
+    if gate.reason_kind == "supervisor" and gate.reason:
+        return f"Not sure this is safe: {gate.reason}"
+    if gate.reason_kind in ("subject", "rule", "content") and gate.reason:
+        return gate.reason
+    return f"{AUTOPILOT_NAME} is waiting for your approval."
+
+
+def _named_value(gate: GateReviewPayload, key: str) -> str | None:
+    """An id argument as the names it resolved to, as the card shows it."""
+    refs = [ref for ref in gate.references if ref.key == key]
+    if not any(ref.name for ref in refs):
+        return None
+    more = gate.reference_totals.get(key, len(refs)) - len(refs)
+    text = ", ".join(ref.name or ref.id for ref in refs)
+    return f"{text} +{more} more" if more > 0 else text
+
+
+def _preview_value(value: object) -> str:
+    """As the card shows it: a list of names joined, never a Python repr."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(
+        isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in value
+    ):
+        return ", ".join(str(v) for v in value)
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return json.dumps(value, default=str, ensure_ascii=False)
+
+
+def _waiting_on(review: PendingHumanReviewModel) -> str:
+    if review.session_id:
+        return AUTOPILOT_NAME
+    if review.agent_name:
+        return f"Workflow “{review.agent_name}”"
+    return "A workflow"
+
+
 def _expert_attention(expert: Expert) -> HomeAttentionItem:
     summary = to_home_expert(expert)
     if expert.schedules_paused_at:
@@ -83,7 +187,7 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
             priority="high",
             title=f"Review {expert.name}'s paused work",
             description=description,
-            why_it_matters="Upcoming tasks will not run while this agent is paused.",
+            why_it_matters="Upcoming tasks will not run while this expert is paused.",
             expert=summary,
             created_at=as_utc(expert.schedules_paused_at),
             primary_action=HomeAction(
@@ -105,6 +209,27 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
         expert=summary,
         # The Team page carries the setup card that names and fixes the gap.
         primary_action=HomeAction(label="Finish setup", href="/team"),
+    )
+
+
+def _paused_chat_attention(chat: PausedScheduledChat) -> HomeAttentionItem:
+    """A scheduled chat paused after failing the same way three runs in a
+    row (SECRT-2879). The fix is on the card in its chat, so that is where
+    the item goes."""
+    href = (
+        f"/copilot?sessionId={quote(chat.session_id)}"
+        if chat.session_id
+        else "/library/followups"
+    )
+    return HomeAttentionItem(
+        id=f"paused-chat-{chat.schedule_key}",
+        kind="paused",
+        priority="high",
+        title=f"Scheduled chat “{chat.title}”",
+        description=chat.summary,
+        why_it_matters="It won't run again until it is fixed and resumed.",
+        created_at=as_utc(chat.paused_at),
+        primary_action=HomeAction(label="Fix it", href=href),
     )
 
 
@@ -175,7 +300,7 @@ def _credits_attention(schedule_count: int) -> HomeAttentionItem:
         description=(
             f"{schedule_count} upcoming task{'s' if schedule_count != 1 else ''} may not run."
         ),
-        why_it_matters="Agents need a positive balance before paid blocks can start.",
+        why_it_matters="Experts and workflows need a positive balance before paid blocks can start.",
         primary_action=HomeAction(label="Add credits", href="/profile/credits"),
     )
 
@@ -186,7 +311,7 @@ def _review_expert(review: PendingHumanReviewModel) -> HomeExpert | None:
     return HomeExpert(
         id=review.expert_id,
         name=review.expert_name,
-        role="Agent",
+        role="Expert",
         avatar_url=review.expert_avatar_url,
     )
 
@@ -218,6 +343,6 @@ def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
 def _review_link(review: PendingHumanReviewModel) -> str:
     if review.session_id:
         return f"/copilot?sessionId={quote(review.session_id)}"
-    if review.library_agent_id:
+    if review.library_agent_id and review.graph_exec_id:
         return run_link(review.library_agent_id, review.graph_exec_id) or "/library"
     return "/library"

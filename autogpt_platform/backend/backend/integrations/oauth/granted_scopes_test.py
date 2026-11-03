@@ -13,6 +13,7 @@ from pydantic import SecretStr
 
 from backend.blocks.airtable._api import OAuthTokenResponse as AirtableTokenResponse
 from backend.blocks.airtable._oauth import AirtableOAuthHandler
+from backend.blocks.linear._oauth import LinearOAuthHandler
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.blocks.wordpress._api import OAuthTokenResponse as WordPressTokenResponse
 from backend.blocks.wordpress._oauth import WordPressOAuthHandler
@@ -217,6 +218,69 @@ async def test_refresh_that_narrows_the_scopes_is_refused_by_the_store(mocker):
     await store.update_creds("user-a", oauth_credentials(["identity", "read"]))
 
 
+@pytest.mark.asyncio
+async def test_linear_refresh_splits_the_space_separated_scope():
+    """Linear is asked with commas and answers with spaces; `.split(",")` kept one."""
+    with mock_requests(
+        "backend.blocks.linear._oauth",
+        post=[
+            {
+                "access_token": "new",
+                "refresh_token": "rt2",
+                "expires_in": 3600,
+                "scope": "issues:create read",
+            }
+        ],
+    ):
+        refreshed = await LinearOAuthHandler(*CLIENT)._refresh_tokens(
+            linear_credentials(["issues:create", "read"])
+        )
+
+    assert refreshed.scopes == ["issues:create", "read"]
+    assert refreshed.id == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_linear_refresh_still_splits_a_comma_separated_scope():
+    with mock_requests(
+        "backend.blocks.linear._oauth",
+        post=[{"access_token": "new", "scope": "issues:create,read"}],
+    ):
+        refreshed = await LinearOAuthHandler(*CLIENT)._refresh_tokens(
+            linear_credentials(["issues:create", "read"])
+        )
+
+    assert refreshed.scopes == ["issues:create", "read"]
+
+
+@pytest.mark.asyncio
+async def test_linear_refresh_falls_back_when_the_response_omits_the_scope():
+    with mock_requests("backend.blocks.linear._oauth", post=[{"access_token": "new"}]):
+        refreshed = await LinearOAuthHandler(*CLIENT)._refresh_tokens(
+            linear_credentials(["issues:create", "read"])
+        )
+
+    assert refreshed.scopes == ["issues:create", "read"]
+
+
+@pytest.mark.asyncio
+async def test_linear_refreshed_credentials_pass_the_stores_superset_check(mocker):
+    """The production failure: the refresh succeeded and `update_creds` refused it."""
+    stored = linear_credentials(["issues:create", "read"])
+    store = IntegrationCredentialsStore()
+    persist = patch_store(mocker, store, persisted=[stored])
+
+    with mock_requests(
+        "backend.blocks.linear._oauth",
+        post=[{"access_token": "new", "scope": "issues:create read"}],
+    ):
+        refreshed = await LinearOAuthHandler(*CLIENT)._refresh_tokens(stored)
+
+    await store.update_creds("user-a", refreshed)
+
+    assert persist.await_args.args[1][0].scopes == ["issues:create", "read"]
+
+
 def mock_requests(
     module: str, *, post: list[dict] | None = None, get: list[dict] | None = None
 ):
@@ -262,4 +326,15 @@ def patch_store(mocker, store: IntegrationCredentialsStore, persisted: list):
     mocker.patch.object(store, "locked_user_integrations", AsyncMock())
     return mocker.patch.object(
         store, "_set_user_integration_creds", new_callable=AsyncMock
+    )
+
+
+def linear_credentials(scopes: list[str]) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id="cred-1",
+        provider="linear",
+        access_token=SecretStr("at"),
+        refresh_token=SecretStr("rt"),
+        scopes=scopes,
+        username="alice",
     )

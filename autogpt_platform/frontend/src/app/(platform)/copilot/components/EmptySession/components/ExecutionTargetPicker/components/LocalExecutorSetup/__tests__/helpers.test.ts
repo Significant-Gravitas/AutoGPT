@@ -10,8 +10,9 @@ describe("localExecutorDeployment", () => {
     expect(deployment.authCommand).toBe(
       "autogpt-shim --platform-url 'https://api.example.com' --platform-oauth-url 'https://app.example.com/auth' auth",
     );
+    // `start` must name the same deployment `auth` stored credentials for.
     expect(deployment.startCommand).toBe(
-      "autogpt-shim --platform-url 'https://api.example.com' start",
+      "autogpt-shim --platform-url 'https://api.example.com' --platform-oauth-url 'https://app.example.com/auth' start",
     );
     expect(deployment.config).toBe(
       'platform_url = "https://api.example.com"\nplatform_oauth_url = "https://app.example.com/auth"',
@@ -32,7 +33,7 @@ describe("localExecutorDeployment", () => {
         "https://app.example.com",
       ).startCommand,
     ).toBe(
-      "autogpt-shim --platform-url 'https://api.example.com/it%27s' start",
+      "autogpt-shim --platform-url 'https://api.example.com/it%27s' --platform-oauth-url 'https://app.example.com/auth' start",
     );
   });
 });

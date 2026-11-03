@@ -13,10 +13,14 @@ export function localExecutorDeployment(
   const platformArgument = `'${platformURL.replaceAll("'", "%27")}'`;
   const oauthArgument = `'${oauthURL.replaceAll("'", "%27")}'`;
 
+  // The executor binds stored credentials to both URLs, so `start` must name
+  // the same deployment `auth` signed in to, or it finds no credentials.
+  const deploymentArguments = `--platform-url ${platformArgument} --platform-oauth-url ${oauthArgument}`;
+
   return {
     platformURL,
-    authCommand: `autogpt-shim --platform-url ${platformArgument} --platform-oauth-url ${oauthArgument} auth`,
-    startCommand: `autogpt-shim --platform-url ${platformArgument} start`,
+    authCommand: `autogpt-shim ${deploymentArguments} auth`,
+    startCommand: `autogpt-shim ${deploymentArguments} start`,
     config: `platform_url = ${JSON.stringify(platformURL)}\nplatform_oauth_url = ${JSON.stringify(oauthURL)}`,
   };
 }

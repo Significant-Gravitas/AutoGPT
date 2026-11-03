@@ -15,7 +15,7 @@ import {
   Home01Icon,
   Alert02Icon,
 } from "@hugeicons/core-free-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
 
@@ -62,24 +62,26 @@ export function LocalFolderPicker({
     !browser.error &&
     !isMachinesError &&
     !isLoadingMachines;
-  const previousMachineCountRef = useRef(machines.length);
+  const [knownMachineCount, setKnownMachineCount] = useState(machines.length);
   const [machineAnnouncement, setMachineAnnouncement] = useState("");
-
-  useEffect(
-    function announceNewConnection() {
-      const previousCount = previousMachineCountRef.current;
-      previousMachineCountRef.current = machines.length;
-      if (!isOpen || previousCount !== 0 || machines.length === 0) return;
-
+  if (machines.length !== knownMachineCount) {
+    setKnownMachineCount(machines.length);
+    if (isOpen && knownMachineCount === 0 && machines.length > 0) {
       setMachineAnnouncement(
         `${machines[0].display_name} connected. Choose a computer and folder.`,
       );
+    }
+  }
+
+  useEffect(
+    function focusNewConnection() {
+      if (!machineAnnouncement) return;
       const frame = requestAnimationFrame(() => {
         document.getElementById("local-executor-machine")?.focus();
       });
       return () => cancelAnimationFrame(frame);
     },
-    [isOpen, machines],
+    [machineAnnouncement],
   );
 
   function handleUseFolder() {
@@ -112,18 +114,13 @@ export function LocalFolderPicker({
           ) : isMachinesError ? (
             <div
               role="alert"
-              className="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-6 text-center"
+              className="flex flex-col items-center gap-3 rounded-2xl border border-error/20 bg-error-surface p-6 text-center text-error-foreground"
             >
-              <Icon
-                icon={Alert02Icon}
-                size={24}
-                className="text-red-700"
-                aria-hidden="true"
-              />
-              <Text variant="body-medium" className="text-red-900">
+              <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
+              <Text variant="body-medium" tone="inherit">
                 Could Not Check Your Computers
               </Text>
-              <Text variant="small" className="text-red-800">
+              <Text variant="small" tone="inherit">
                 Check your connection and try again.
               </Text>
               <Button
@@ -168,7 +165,7 @@ export function LocalFolderPicker({
 
               <div
                 aria-busy={browser.isLoading}
-                className="min-h-0 flex-1 rounded-2xl border border-zinc-200 bg-white"
+                className="min-h-0 flex-1 rounded-2xl border border-border-base bg-surface"
               >
                 {browser.isLoading ? (
                   <div
@@ -189,13 +186,10 @@ export function LocalFolderPicker({
                     role="alert"
                     className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center"
                   >
-                    <Icon
-                      icon={Alert02Icon}
-                      size={24}
-                      className="text-amber-700"
-                      aria-hidden="true"
-                    />
-                    <Text variant="small-medium" className="text-zinc-900">
+                    <span className="flex text-warning-foreground">
+                      <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
+                    </span>
+                    <Text variant="small-medium" tone="primary">
                       {browser.error}
                     </Text>
                     <Button
@@ -210,7 +204,7 @@ export function LocalFolderPicker({
                 ) : (browser.directory?.entries.length ?? 0) === 0 ? (
                   <div
                     role="status"
-                    className="flex min-h-48 items-center justify-center p-6 text-center text-sm text-zinc-500"
+                    className="flex min-h-48 items-center justify-center p-6 text-center text-sm text-foreground-tertiary"
                   >
                     This folder has no subfolders.
                   </div>
@@ -224,23 +218,25 @@ export function LocalFolderPicker({
                         <button
                           type="button"
                           onClick={() => browser.openDirectory(entry)}
-                          className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1"
+                          className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-foreground-emphasis outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
                         >
-                          <Icon
-                            icon={Folder01Icon}
-                            size={20}
-                            className="shrink-0 text-violet-500"
-                            aria-hidden="true"
-                          />
+                          <span className="flex shrink-0 text-brand">
+                            <Icon
+                              icon={Folder01Icon}
+                              size={20}
+                              aria-hidden="true"
+                            />
+                          </span>
                           <span className="min-w-0 flex-1 truncate">
                             {entry.name}
                           </span>
-                          <Icon
-                            icon={ArrowRight01Icon}
-                            size={16}
-                            className="shrink-0 text-zinc-400"
-                            aria-hidden="true"
-                          />
+                          <span className="flex shrink-0 text-foreground-subtle">
+                            <Icon
+                              icon={ArrowRight01Icon}
+                              size={16}
+                              aria-hidden="true"
+                            />
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -263,7 +259,7 @@ export function LocalFolderPicker({
 
               {browser.directory?.truncated &&
               !browser.directory.next_cursor ? (
-                <Text role="status" variant="small" className="text-amber-800">
+                <Text role="status" variant="small" tone="warning">
                   This folder is too large to show completely. Choose a visible
                   folder or narrow it on your computer.
                 </Text>
@@ -321,7 +317,7 @@ function FolderPath({
           aria-label="Go to parent folder"
           disabled={!canGoBack}
           onClick={onBack}
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border-base text-foreground-body outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Icon icon={ArrowLeft01Icon} size={18} aria-hidden="true" />
         </button>
@@ -335,7 +331,7 @@ function FolderPath({
                 type="button"
                 aria-label="Computer roots"
                 onClick={() => onOpenBreadcrumb(-1)}
-                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-zinc-600 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600"
+                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-foreground-secondary outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <Icon icon={Home01Icon} size={16} aria-hidden="true" />
                 Computer
@@ -343,19 +339,16 @@ function FolderPath({
             </li>
             {history.map((item, index) => (
               <li key={item.directory_ref} className="flex items-center gap-1">
-                <Icon
-                  icon={ArrowRight01Icon}
-                  size={14}
-                  className="text-zinc-400"
-                  aria-hidden="true"
-                />
+                <span className="flex text-foreground-subtle">
+                  <Icon icon={ArrowRight01Icon} size={14} aria-hidden="true" />
+                </span>
                 <button
                   type="button"
                   aria-current={
                     index === history.length - 1 ? "location" : undefined
                   }
                   onClick={() => onOpenBreadcrumb(index)}
-                  className="min-h-11 max-w-48 truncate rounded-lg px-2 text-zinc-700 outline-none hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-violet-600"
+                  className="min-h-11 max-w-48 truncate rounded-lg px-2 text-foreground-body outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {item.name}
                 </button>
@@ -367,7 +360,7 @@ function FolderPath({
       {currentPath ? (
         <code
           translate="no"
-          className="break-all rounded-lg bg-zinc-100 px-3 py-2 text-left text-xs text-zinc-600"
+          className="rounded-lg bg-surface-hover px-3 py-2 text-left text-xs break-all text-foreground-secondary"
         >
           {currentPath}
         </code>

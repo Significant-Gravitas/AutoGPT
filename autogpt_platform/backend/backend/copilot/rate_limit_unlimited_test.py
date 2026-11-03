@@ -9,6 +9,7 @@ from backend.copilot.rate_limit import (
     check_rate_limit,
     get_global_rate_limits,
 )
+from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
 
@@ -70,8 +71,12 @@ async def test_tier_scaling_preserves_unlimited_windows(
 async def test_uncapped_windows_do_not_require_redis(daily: int, skip_daily: bool):
     with (
         patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+            "backend.copilot.rate_limit.get_ready_usage_state",
+            new=AsyncMock(
+                return_value=UsageActivationState(
+                    user_id="unlimited-user", tier=SubscriptionTier.NO_TIER, ready=True
+                )
+            ),
         ),
         patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -90,8 +95,12 @@ async def test_active_window_still_fails_closed_without_redis(
 ):
     with (
         patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+            "backend.copilot.rate_limit.get_ready_usage_state",
+            new=AsyncMock(
+                return_value=UsageActivationState(
+                    user_id="limited-user", tier=SubscriptionTier.NO_TIER, ready=True
+                )
+            ),
         ),
         patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -114,8 +123,15 @@ async def test_uncapped_windows_preserve_trial_enforcement(active: bool, cost: i
     store.get_subscription_trial = AsyncMock(return_value=trial)
     with (
         patch(
-            "backend.copilot.rate_limit._fetch_user_tier",
-            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+            "backend.copilot.rate_limit.get_ready_usage_state",
+            new=AsyncMock(
+                return_value=UsageActivationState(
+                    user_id="trial-user",
+                    trial_id="trial",
+                    tier=SubscriptionTier.TRIAL,
+                    ready=True,
+                )
+            ),
         ),
         patch("backend.copilot.rate_limit.credit_db", return_value=store),
         patch("backend.copilot.rate_limit.get_redis_async", new=AsyncMock()) as redis,

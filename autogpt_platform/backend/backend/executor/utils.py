@@ -5,14 +5,26 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    TypeVar,
+    cast,
+    get_args,
+)
 
 from prisma.enums import ReviewStatus
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
-from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
+from backend.copilot.model import pauses_irreversible_actions
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -27,6 +39,7 @@ from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
+from backend.data.db_accessors import chat_db, credit_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
@@ -38,6 +51,7 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
+    check_node_input_counts,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
@@ -45,9 +59,15 @@ from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
+    is_refused_sdk_default,
+    sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.integrations.credentials_store import is_system_credential
+from backend.data.user import is_user_banned
+from backend.integrations.credentials_store import (
+    CredentialsSnapshot,
+    is_system_credential,
+)
 from backend.monitoring.instrumentation import record_graph_execution
 from backend.util import product_analytics
 from backend.util.clients import (
@@ -61,14 +81,23 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
+    InsufficientBalanceError,
+    InvalidInputError,
     NotFoundError,
+    UserBannedError,
 )
+from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
+
+# The most a run may store and hand to its blocks, counting every copy.
+MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
+# A credentials title is only a label; this is what a node gets of it.
+MAX_CREDENTIALS_TITLE_LENGTH = 256
 
 # ============ Resource Helpers ============ #
 
@@ -163,6 +192,7 @@ def block_usage_cost(
     if not block_costs:
         return 0, {}
 
+    input_data = _with_schema_defaults(block, input_data)
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
@@ -291,6 +321,17 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
     if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
         return 0.0
     return max(0.0, float(stats.provider_cost))
+
+
+def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
+    """The input `Block._execute` runs on: `None` values dropped, schema defaults
+    filled in. Cost filters are matched against this."""
+    defaults = {
+        name: field.get_default(call_default_factory=True)
+        for name, field in block.input_schema.model_fields.items()
+        if not field.is_required()
+    }
+    return {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
@@ -463,6 +504,10 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    linked_inputs = _linked_inputs(graph)
+    user_credentials = CredentialsSnapshot(
+        lambda: get_integration_credentials_store().get_all_creds(user_id)
+    )
 
     for node in graph.nodes:
         block = node.block
@@ -481,8 +526,7 @@ async def _validate_node_input_credentials(
         # `nodes_to_skip` here rather than relying on the post-loop
         # guard — that guard only fires when the NODE-level
         # ``is_creds_optional`` is True. For auto-credential fields the
-        # optionality is usually field-level (``field_name not in
-        # required_fields`` because the schema default is None), so
+        # optionality can be field-level (``_is_optional_picker``), so
         # deferring would let the node silently pass validation and then
         # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
         # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
@@ -545,11 +589,16 @@ async def _validate_node_input_credentials(
                 ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
+            if is_refused_sdk_default(credentials_meta.id):
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
+                    f"{sdk_default_refused_message(credentials_meta.id)}"
+                )
+                continue
+
             try:
                 # Fetch the corresponding Credentials and perform sanity checks
-                credentials = await get_integration_credentials_store().get_creds_by_id(
-                    user_id, credentials_meta.id
-                )
+                credentials = await user_credentials.get(credentials_meta.id)
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
@@ -582,8 +631,12 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                field_is_optional = (
-                    is_creds_optional or field_name not in required_fields
+                if (node.id, field_name) in linked_inputs:
+                    # An upstream block supplies the file at run time, so the
+                    # stored value (possibly a leftover None) isn't what runs.
+                    continue
+                field_is_optional = is_creds_optional or _is_optional_picker(
+                    block.input_schema, field_name
                 )
                 # Check input_default and nodes_input_masks for the field value
                 field_value = node.input_default.get(field_name)
@@ -594,7 +647,7 @@ async def _validate_node_input_credentials(
 
                 if field_value is None:
                     # Sentry HIGH: an explicitly-None value (e.g. cleared by
-                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # `stripped_for_export` on fork, or nulled by a mask) means
                     # credentials were there and are now gone. Treat as
                     # missing so optional fields hit `nodes_to_skip` and
                     # required fields surface a clean re-auth message —
@@ -664,8 +717,7 @@ async def _validate_node_input_credentials(
                         )
                         continue
                     try:
-                        creds_store = get_integration_credentials_store()
-                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                        creds = await user_credentials.get(cred_id)
                     except Exception as e:
                         if field_is_optional:
                             _mark_optional_skip()
@@ -680,9 +732,12 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} the selected file "
+                            "was picked with an account you don't have connected "
+                            "(it was removed, or it belongs to someone else). "
+                            "Please select the file again with your own account."
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -700,6 +755,27 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:
+    """Whether a block can run with nothing picked in this picker input.
+
+    Picker fields (e.g. `GoogleDriveFileField`) always default to None, so the
+    schema's required fields can't answer this; the annotation does. An
+    `Optional[GoogleDriveFile]` input may stay empty and its node is skipped.
+    A plain `GoogleDriveFile` input needs a file, so leaving it empty (as a
+    fork or copy does) is an error the user can act on, not a silent skip.
+    """
+    field = input_schema.model_fields.get(field_name)
+    return field is not None and type(None) in get_args(field.annotation)
+
+
+def _linked_inputs(graph: GraphModel) -> set[tuple[str, str]]:
+    """The (node id, input name) pairs a link supplies as a whole input, built
+    once per validation so each lookup is constant time. A link into one
+    attribute of an input (e.g. `spreadsheet_@_id`) can't bring the
+    `_credentials_id`, so it doesn't count as the whole input."""
+    return {(link.sink_id, link.sink_name) for link in graph.links}
 
 
 def make_node_credentials_input_map(
@@ -727,15 +803,21 @@ def make_node_credentials_input_map(
         if graph_input_name not in graph_credentials_input:
             continue
 
+        credentials = _node_credentials_input(graph_credentials_input[graph_input_name])
         # Use passed-in credentials for all compatible node input fields
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[
-                graph_input_name
-            ].model_dump(exclude_none=True)
+            result[node_id][node_field_name] = dict(credentials)
 
     return result
+
+
+def _node_credentials_input(credentials: CredentialsMetaInput) -> dict[str, JsonValue]:
+    node_input = credentials.model_dump(exclude_none=True)
+    if title := node_input.get("title"):
+        node_input["title"] = title[:MAX_CREDENTIALS_TITLE_LENGTH]
+    return node_input
 
 
 async def validate_graph_with_credentials(
@@ -823,7 +905,7 @@ async def _construct_starting_node_execution_input(
     n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
         raise GraphValidationError(
-            f"Graph validation failed: {n_errors} issues on {n_error_nodes} nodes",
+            f"Workflow validation failed: {n_errors} issues on {n_error_nodes} nodes",
             node_errors=validation_errors,
         )
 
@@ -857,9 +939,9 @@ async def _construct_starting_node_execution_input(
             and "payload" not in input_data
         ):
             raise ValueError(
-                "This agent is triggered by an external event (webhook) "
+                "This workflow is triggered by an external event (webhook) "
                 "and cannot be executed directly. "
-                "Please use the appropriate trigger to run this agent."
+                "Please use the appropriate trigger to run this workflow."
             )
 
         input_data, error = validate_exec(node, input_data, dry_run=dry_run)
@@ -870,7 +952,7 @@ async def _construct_starting_node_execution_input(
 
     if not nodes_input:
         raise ValueError(
-            "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
+            "No starting point found for this workflow. Add an input block, or a block with no incoming links."
         )
 
     return nodes_input, nodes_to_skip
@@ -923,7 +1005,7 @@ async def validate_and_construct_node_execution_input(
         skip_access_check=True,
     )
     if not graph:
-        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Workflow #{graph_id} not found.")
 
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
@@ -943,6 +1025,9 @@ async def validate_and_construct_node_execution_input(
         ),
         nodes_input_masks or {},
     )
+    _check_run_input_size(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs or {}
+    )
 
     (
         starting_nodes_input,
@@ -954,8 +1039,93 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
     )
+    # Also enforced by create_graph_execution; here a schedule or a request is
+    # refused before anything is written.
+    check_node_input_counts(starting_nodes_input)
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
+
+
+def _check_run_input_size(
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
+) -> None:
+    """Refuses a run that would store and hand its blocks more than
+    `MAX_RUN_INPUT_BYTES`, before any of it is built. Counting stops as soon as
+    the total is over."""
+    total = 0
+    for size in _run_input_sizes(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs
+    ):
+        total += size
+        if total > MAX_RUN_INPUT_BYTES:
+            raise InvalidInputError(
+                "The inputs for this run are too large: together, as handed to "
+                f"each block, they must stay under {MAX_RUN_INPUT_BYTES // 2**20} MB."
+            )
+
+
+def _run_input_sizes(
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
+) -> Iterator[int]:
+    """The size of the graph inputs, node input overrides and credentials as
+    stored on the run, keys included, then of each starting node's copy of a
+    graph input value and of its own input overrides, which
+    `_construct_starting_node_execution_input` puts in that node's input.
+    Each value is measured only once."""
+    input_sizes: dict[str, int] = {}
+    mask_sizes: dict[str, int] = {}
+
+    def graph_input_size(input_name: str, value: Any) -> int:
+        input_sizes[input_name] = _json_size(value)
+        return input_sizes[input_name]
+
+    def node_input_mask_size(node_id: str, node_input_mask: Any) -> int:
+        mask_sizes[node_id] = _json_size(node_input_mask)
+        return mask_sizes[node_id]
+
+    yield from _json_mapping_sizes(graph_inputs, graph_input_size)
+    yield from _json_mapping_sizes(nodes_input_masks, node_input_mask_size)
+    yield from _json_mapping_sizes(
+        graph_credentials_inputs,
+        lambda _, credentials: _json_size(
+            credentials.model_dump(mode="json", exclude_none=True)
+        ),
+    )
+    for node in graph.starting_nodes:
+        if node.block.block_type == BlockType.NOTE:
+            continue
+        input_name = cast(str | None, node.input_default.get("name"))
+        if (
+            node.block.block_type == BlockType.INPUT
+            and input_name
+            and input_name in input_sizes
+        ):
+            yield input_sizes[input_name]
+        if node.id in mask_sizes:
+            yield mask_sizes[node.id]
+
+
+_V = TypeVar("_V")
+
+
+def _json_mapping_sizes(
+    mapping: Mapping[str, _V], value_size: Callable[[str, _V], int]
+) -> Iterator[int]:
+    """The size of `mapping` as compact JSON, in parts: its braces, then each
+    entry with its key, colon and comma."""
+    yield 2
+    for i, (key, value) in enumerate(mapping.items()):
+        yield (1 if i else 0) + _json_size(key) + 1 + value_size(key, value)
+
+
+def _json_size(value: Any) -> int:
+    return len(json_dumps(value).encode("utf-8"))
 
 
 def _merge_nodes_input_masks(
@@ -991,7 +1161,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
+# Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
+# ExecutionManager pod, so RabbitMQ round-robined each cancel to a single
+# arbitrary pod. Old-image pods keep draining it through a rollout; each new pod
+# deletes it once none is left, so no operator step is needed on any install.
+LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants
 # Agent executions can run for up to 1 day, so we need a graceful shutdown period
@@ -1024,18 +1198,14 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-        arguments={"x-queue-type": "quorum"},
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming connection,
+    # and declared by the consumer itself through ``declare_broadcast_queue``.
+    # A queue in this config is declared by every holder, publishers included,
+    # which is how one queue came to serve the whole fleet.
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
 
 
@@ -1127,7 +1297,7 @@ async def stop_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
 
         if graph_exec.status in [
             ExecutionStatus.TERMINATED,
@@ -1179,7 +1349,7 @@ async def stop_graph_execution(
             await asyncio.sleep(0.1)
 
     raise TimeoutError(
-        f"Graph execution #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
+        f"Workflow run #{graph_exec_id} will need to take longer than {wait_timeout} seconds to stop. "
         f"You can check the status of the execution in the UI or try again later."
     )
 
@@ -1197,6 +1367,18 @@ async def _resolve_expert_execution_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
     return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+
+
+async def _resolve_runner_tenancy(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str | None, str | None]:
+    """``resolve_member_tenancy`` for a run's org/team, called directly in the
+    API server and through the DB manager in the scheduler and executor."""
+    if prisma.is_connected():
+        return await resolve_member_tenancy(user_id, organization_id, team_id)
+    return await get_database_manager_async_client().resolve_member_tenancy(
+        user_id, organization_id, team_id
+    )
 
 
 async def _enforce_expert_credential_scope(
@@ -1254,6 +1436,7 @@ async def add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
 
@@ -1282,13 +1465,14 @@ async def add_graph_execution(
             bypass_paywall=bypass_paywall,
             trigger=trigger,
             trigger_ref=trigger_ref,
+            pause_irreversible_actions=pause_irreversible_actions,
         )
     except GraphValidationError:
         record_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
         raise
-    except UserPaywalledError:
+    except (UserPaywalledError, UserBannedError):
         raise
     except Exception:
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
@@ -1317,6 +1501,7 @@ async def _add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1348,6 +1533,9 @@ async def _add_graph_execution(
             in REQUEUE mode, where the original row is authoritative.
         trigger_ref: Identifier of what started the run for that trigger
             (schedule id, webhook id, chat session id, API key id, UI surface).
+        pause_irreversible_actions: Pause before every irreversible block
+            whatever the graph's ``sensitive_action_safe_mode`` setting. On
+            resume it is re-derived from the chat that started the run.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1374,9 +1562,13 @@ async def _add_graph_execution(
         )
 
     if not bypass_paywall and await is_user_paywalled(user_id):
-        raise UserPaywalledError("A subscription is required to run agents.")
+        raise UserPaywalledError("A subscription is required to run workflows.")
+    if await is_user_banned(user_id):
+        raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
+    tenancy_replaced = False
+    nesting: list[GraphExecutionMeta | None] = []
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1405,7 +1597,16 @@ async def _add_graph_execution(
         )
 
         if not graph_exec:
-            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+            raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
+
+        nesting = await nesting_runs(graph_exec, user_id, edb)
+        approval_chat_id = starting_chat(graph_exec, nesting)
+        # A resume rebuilds its context from the graph settings, which would
+        # drop the pause the chat that started this run asked for.
+        pause_irreversible_actions = (
+            pause_irreversible_actions
+            or await _started_from_attended_chat(approval_chat_id)
+        )
 
         # The persisted row is authoritative on resume. A caller cannot turn
         # an Otto run into an expert run or swap one expert for another.
@@ -1457,9 +1658,34 @@ async def _add_graph_execution(
                     )
                     graph_exec.status = ExecutionStatus.TERMINATED
                     return graph_exec
+        else:
+            # Any other run resumes in the org and team it's stored in,
+            # whatever the caller passes. One whose runner has left them since
+            # isn't moved, as it has already run there: the executor stops it
+            # when it picks it up.
+            organization_id, team_id = graph_exec.organization_id, graph_exec.team_id
 
-        # Use existing execution's compiled input masks
+        # The row stores the caller's raw masks and the run-time credential
+        # inputs separately; rebuild the credential masks the same way the
+        # create path compiles them, or nodes that get their credentials from
+        # the run dialog fail validation and are silently skipped (#15266).
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+        if graph_exec.credential_inputs:
+            resumed_graph = await gdb.get_graph(
+                graph_id=graph_exec.graph_id,
+                version=graph_exec.graph_version,
+                user_id=user_id,
+                include_subgraphs=True,
+                skip_access_check=True,
+            )
+            if resumed_graph:
+                # Same precedence as create: explicit masks override credentials.
+                compiled_nodes_input_masks = _merge_nodes_input_masks(
+                    make_node_credentials_input_map(
+                        resumed_graph, graph_exec.credential_inputs
+                    ),
+                    compiled_nodes_input_masks,
+                )
         # For resumed executions, nodes_to_skip was already determined at creation time
         # TODO: Consider storing nodes_to_skip in DB if we need to preserve it across resumes
         nodes_to_skip: set[str] = set()
@@ -1478,6 +1704,13 @@ async def _add_graph_execution(
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
+        # A sub-graph asks in the chat that started its parent run.
+        if trigger == ExecutionTrigger.COPILOT:
+            approval_chat_id = trigger_ref
+        elif trigger == ExecutionTrigger.SUBGRAPH and execution_context:
+            approval_chat_id = execution_context.approval_chat_id
+        else:
+            approval_chat_id = None
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
         # inherit dry_run so child-graph validation skips credential checks.
@@ -1500,6 +1733,20 @@ async def _add_graph_execution(
             is_sub_graph=parent_exec_id is not None,
             dry_run=dry_run,
         )
+
+        if organization_id and not expert_id:
+            # The org/team comes from whatever started the run: a request's
+            # verified context, a parent run, a preset, a trigger or a
+            # schedule. As for a request, it's kept only if the user belongs
+            # to it; otherwise the run gets the user's own default.
+            member_org_id, member_team_id = await _resolve_runner_tenancy(
+                user_id, organization_id, team_id
+            )
+            tenancy_replaced = (member_org_id, member_team_id) != (
+                organization_id,
+                team_id,
+            )
+            organization_id, team_id = member_org_id, member_team_id
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),
@@ -1632,10 +1879,23 @@ async def _add_graph_execution(
                 "expert_id": expert_id,
             }
         )
+    elif tenancy_replaced:
+        # Billing reads the context, not the row, and a sub-graph is handed
+        # its parent's: the org/team the run was moved to must replace it.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
+    elif not is_new_execution:
+        # A resumed run's context gets the org/team the run is stored with,
+        # in place of any the caller's names. Review resume builds one with
+        # neither, before they're known.
+        execution_context = execution_context.model_copy(
+            update={"organization_id": organization_id, "team_id": team_id}
+        )
     elif execution_context.organization_id is None and graph_exec.organization_id:
-        # A caller-supplied context (e.g. review-resume, admin-requeue) may
-        # be built before org/team are known. Backfill from the persisted
-        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        # A caller-supplied context (e.g. a sub-graph's, whose parent run is
+        # untenanted) may have no org/team. Backfill from the persisted row
+        # so billing and sub-graph runs aren't tenant-blind.
         execution_context = execution_context.model_copy(
             update={
                 "organization_id": graph_exec.organization_id,
@@ -1643,7 +1903,46 @@ async def _add_graph_execution(
             }
         )
 
+    # Identity always comes from the persisted row. A caller-supplied context
+    # (review-resume builds one with only safety/user settings) would
+    # otherwise reach the executor with graph_exec_id=None, which skips the
+    # review gate for irreversible blocks and breaks file blocks (#15300).
+    execution_context = execution_context.model_copy(
+        update={
+            "user_id": graph_exec.user_id,
+            "graph_id": graph_exec.graph_id,
+            "graph_exec_id": graph_exec.id,
+            "graph_version": graph_exec.graph_version,
+            "root_execution_id": execution_context.root_execution_id or graph_exec.id,
+        }
+    )
+
+    if nesting:
+        execution_context = await _keep_nesting_safe_modes(
+            execution_context, nesting, user_id, gdb
+        )
+
+    stamp: dict[str, Any] = {
+        "approval_chat_id": (
+            None
+            if dry_run or execution_context.dry_run or graph_exec.is_dry_run
+            else approval_chat_id or None
+        )
+    }
+    if execution_context.graph_sensitive_action_safe_mode is None:
+        # Kept apart from the pause forced below: the gate holds it as a floor.
+        stamp["graph_sensitive_action_safe_mode"] = (
+            execution_context.sensitive_action_safe_mode
+        )
+    if pause_irreversible_actions:
+        stamp["sensitive_action_safe_mode"] = True
+
     try:
+        # The ledger is decided here, once per run; a caller's value never stands.
+        stamp["bills_own_wallet"] = await _bills_own_wallet(
+            graph_exec.user_id, execution_context.organization_id
+        )
+        execution_context = execution_context.model_copy(update=stamp)
         graph_exec_entry = graph_exec.to_graph_execution_entry(
             compiled_nodes_input_masks=compiled_nodes_input_masks,
             nodes_to_skip=nodes_to_skip,
@@ -1737,8 +2036,106 @@ async def _add_graph_execution(
     return graph_exec
 
 
+# A sub-graph run whose parent run is gone: no chat can be named for it.
+PARENT_GONE = ""
+
+
+async def nesting_runs(
+    graph_exec: GraphExecutionMeta, user_id: str, edb
+) -> list[GraphExecutionMeta | None]:
+    """The runs a sub-graph run is nested in, nearest first, ending in None
+    when a parent run no longer exists. Empty for a run nothing nested."""
+    runs: list[GraphExecutionMeta | None] = []
+    while (
+        graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
+        and graph_exec.trigger_ref
+    ):
+        parent = await edb.get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec.trigger_ref
+        )
+        runs.append(parent)
+        if parent is None:
+            break
+        graph_exec = parent
+    return runs
+
+
+def starting_chat(
+    graph_exec: GraphExecutionMeta, nesting: list[GraphExecutionMeta | None]
+) -> str | None:
+    """The chat that started this run, through the runs it is nested in: None
+    when no chat did, ``PARENT_GONE`` when a parent run no longer exists."""
+    top = nesting[-1] if nesting else graph_exec
+    if top is None:
+        return PARENT_GONE
+    if top.trigger_source != ExecutionTrigger.COPILOT:
+        return None
+    return top.trigger_ref or None
+
+
+async def _keep_nesting_safe_modes(
+    execution_context: ExecutionContext,
+    nesting: list[GraphExecutionMeta | None],
+    user_id: str,
+    gdb,
+) -> ExecutionContext:
+    """A sub-graph run starts under the safe modes of the run that nested it,
+    so a resumed one keeps the nesting runs' modes as a floor over its own
+    graph's settings. When a parent run is gone, both modes stay on."""
+    hitl = execution_context.human_in_the_loop_safe_mode
+    sensitive = execution_context.sensitive_action_safe_mode
+    for parent in nesting:
+        if hitl and sensitive:
+            break
+        if parent is None:
+            hitl = sensitive = True
+            break
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=parent.graph_id,
+            graph_version=parent.graph_version,
+        )
+        hitl = hitl or settings.human_in_the_loop_safe_mode
+        sensitive = sensitive or settings.sensitive_action_safe_mode
+    return execution_context.model_copy(
+        update={
+            "human_in_the_loop_safe_mode": hitl,
+            "sensitive_action_safe_mode": sensitive,
+        }
+    )
+
+
+async def _started_from_attended_chat(chat_id: str | None) -> bool:
+    # A parent or chat that is gone cannot prove nobody is watching, so the
+    # run pauses.
+    if chat_id is None:
+        return False
+    if chat_id == PARENT_GONE:
+        return True
+    session = await chat_db().get_chat_session_metadata(chat_id)
+    return session is None or await pauses_irreversible_actions(session.metadata)
+
+
 async def _spend_approval_required(user_id: str, expert_id: str):
     return await spend_approval_db().spend_approval_required(user_id, expert_id)
+
+
+async def _bills_own_wallet(user_id: str, organization_id: str | None) -> bool:
+    """Whether the run's org is the user's own personal org, which bills their wallet.
+
+    Raises ``InsufficientBalanceError`` for another user's personal org.
+    """
+    if not organization_id:
+        return False
+    owner = await credit_db().get_personal_org_owner(organization_id)
+    if owner is not None and owner != user_id:
+        raise InsufficientBalanceError(
+            "A personal organization pays only for its owner's usage",
+            user_id=user_id,
+            balance=0,
+            amount=0,
+        )
+    return owner is not None
 
 
 async def _park_for_spend_approval(**kwargs) -> None:
@@ -1760,6 +2157,17 @@ class ExecutionOutputEntry(BaseModel):
     node: Node
     node_exec_id: str
     data: BlockOutputEntry
+    # The producing node's Sentry trace, which the output's routing continues,
+    # and when the output was produced (monotonic), for the routing's wait.
+    trace_headers: dict[str, str] = Field(default_factory=dict, exclude=True)
+    produced_at: float = Field(default_factory=time.monotonic, exclude=True)
+
+
+# How long a stopped run's cleanup waits for nodes whose block is still running
+# after the cancel. The cleanup gives all its nodes this one grace together, so
+# blocks that ignore the cancel can't hold a stop past stop_graph_execution's
+# 15 s wait.
+NODE_UNWIND_GRACE_SECONDS = 5.0
 
 
 class NodeExecutionProgress:
@@ -1767,9 +2175,39 @@ class NodeExecutionProgress:
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self._lock = threading.Lock()
+        # A stop marks a node's future done at once, before its task has
+        # unwound to the bookkeeping for its block, so wait_for_done watches
+        # the task itself and then the bookkeeping. See wait_for_done.
+        self._unwinding: dict[asyncio.Future, str] = {}
+        self._settling: dict[asyncio.Future, str] = {}
+        # Set when a stop request, rather than the run ending some other way,
+        # cancels these nodes.
+        self.stop_requested = False
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
+
+    def track_unwinding(self, node_exec_id: str, task: asyncio.Future) -> None:
+        self._track(self._unwinding, node_exec_id, task)
+
+    def track_settling(self, node_exec_id: str, settle: asyncio.Future) -> None:
+        self._track(self._settling, node_exec_id, settle)
+
+    def _track(
+        self,
+        pending: dict[asyncio.Future, str],
+        node_exec_id: str,
+        work: asyncio.Future,
+    ) -> None:
+        with self._lock:
+            pending[work] = node_exec_id
+        work.add_done_callback(lambda done: self._untrack(pending, done))
+
+    def _untrack(
+        self, pending: dict[asyncio.Future, str], work: asyncio.Future
+    ) -> None:
+        with self._lock:
+            pending.pop(work, None)
 
     def add_output(self, output: ExecutionOutputEntry):
         with self._lock:
@@ -1811,12 +2249,14 @@ class NodeExecutionProgress:
             pass
         return self.is_done(0)
 
-    def stop(self) -> list[str]:
+    def stop(self, stop_requested: bool = False) -> list[str]:
         """
         Stops all tasks and clears the output.
         This is useful for cleaning up when the execution is cancelled or terminated.
+        ``stop_requested`` says a stop request ended the run.
         Returns a list of execution IDs that were stopped.
         """
+        self.stop_requested = stop_requested
         cancelled_ids = []
         for task_id, task in self.tasks.items():
             if task.done():
@@ -1825,26 +2265,41 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
-    def wait_for_done(self, timeout: float = 5.0):
+    def wait_for_done(self, timeout: float = 5.0, unwind_until: float | None = None):
         """
         Wait for all cancelled tasks to complete cancellation.
 
+        A node's bookkeeping, which begins once its block has finished, is
+        waited for in full: the run's terminal write would otherwise fail
+        the node before its own status lands. A node whose block is still
+        running is waited for up to NODE_UNWIND_GRACE_SECONDS, since a block
+        may ignore the cancel.
+
         Args:
             timeout: Maximum time to wait for cancellation in seconds
+            unwind_until: When to stop waiting for a node whose block is still
+                running (a time.time() value); by default
+                NODE_UNWIND_GRACE_SECONDS from now
         """
         start_time = time.time()
+        if unwind_until is None:
+            unwind_until = start_time + NODE_UNWIND_GRACE_SECONDS
 
         while time.time() - start_time < timeout:
             while self.pop_output():
                 pass
 
-            if self.is_done():
+            unwound = not self._unwinding or time.time() >= unwind_until
+            if self.is_done() and unwound and not self._settling:
                 return
 
             time.sleep(0.1)  # Small delay to avoid busy waiting
 
+        with self._lock:
+            settling = sorted(self._settling.values())
         raise TimeoutError(
-            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+            "Timeout waiting for cancellation of tasks: "
+            f"{list(self.tasks.keys()) + settling}"
         )
 
     def _pop_done_task(self, exec_id: str) -> bool:

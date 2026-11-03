@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import TypeVar, overload
@@ -45,7 +46,29 @@ if STMT_CACHE_SIZE:
 
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
-prisma = Prisma(
+
+class _ThreadBoundPrisma(Prisma):
+    """A Prisma client that reports itself connected only on the thread that
+    connected it.
+
+    Its HTTP connection pool belongs to that thread's event loop. Code running
+    on another thread's loop (direct block execution runs blocks on worker
+    loops) sees it as disconnected and takes the database manager RPC path, as
+    it does in the executor.
+    """
+
+    _connected_thread: int | None = None
+
+    async def connect(self, *args, **kwargs) -> None:
+        await super().connect(*args, **kwargs)
+        self._connected_thread = threading.get_ident()
+
+    def is_connected(self) -> bool:
+        owner = self._connected_thread
+        return super().is_connected() and owner in (None, threading.get_ident())
+
+
+prisma = _ThreadBoundPrisma(
     auto_register=True,
     http={"timeout": HTTP_TIMEOUT},
     datasource={"url": DATABASE_URL},
@@ -78,12 +101,22 @@ async def connect():
     #     raise ConnectionError("Failed to connect to Prisma.") from e
 
 
+# Prisma shuts the query engine down by sending it SIGINT and then calling
+# ``subprocess.wait(timeout=...)``. Passing no timeout makes that wait
+# unbounded, so an engine that does not act on the SIGINT wedges the caller
+# forever — and because the wait is a blocking call inside an async function,
+# it takes the event loop with it. The visible symptom is a test session that
+# runs every test and then never prints its summary line. Bound the wait so
+# an unresponsive engine is SIGKILLed instead of hung on.
+DISCONNECT_TIMEOUT = timedelta(seconds=10)
+
+
 @conn_retry("Prisma", "Releasing connection")
 async def disconnect():
     if not prisma.is_connected():
         return
 
-    await prisma.disconnect()
+    await prisma.disconnect(DISCONNECT_TIMEOUT)
 
     if prisma.is_connected():
         raise ConnectionError("Failed to disconnect from Prisma.")
@@ -104,6 +137,20 @@ async def transaction(timeout: timedelta = TRANSACTION_TIMEOUT):
             Defaults to `TRANSACTION_TIMEOUT` (30s).
     """
     async with prisma.tx(timeout=timeout) as tx:
+        yield tx
+
+
+@asynccontextmanager
+async def bounded_transaction(statement_timeout_ms: int):
+    """A transaction each of whose statements the database gives up on
+    after *statement_timeout_ms* (``statement_timeout``, for this transaction
+    only), cancelling it there, where a caller's own deadline only stops
+    waiting for it."""
+    async with transaction() as tx:
+        await tx.query_raw(
+            "SELECT set_config('statement_timeout', $1, true)",
+            str(statement_timeout_ms),
+        )
         yield tx
 
 

@@ -64,7 +64,7 @@ export function useNewMenu(selectedFolderId: string | null) {
   }
 
   function handleCreateFolder(values: { name: string }) {
-    createFolder(values)
+    createFolder({ ...values, parentId: selectedFolderId })
       .then(() => setIsCreateOpen(false))
       .catch(() => {});
   }

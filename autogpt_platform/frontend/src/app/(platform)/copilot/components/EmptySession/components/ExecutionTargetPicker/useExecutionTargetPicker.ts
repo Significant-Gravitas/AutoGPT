@@ -6,6 +6,7 @@ import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useEffect } from "react";
 
 const EXECUTOR_POLL_INTERVAL_MS = 3_000;
+const NO_MACHINES: ExecutorMachine[] = [];
 
 function localTargetForMachine(machine: ExecutorMachine) {
   return {
@@ -59,7 +60,9 @@ export function useExecutionTargetPicker() {
   });
 
   const machines =
-    machinesQuery.data?.status === 200 ? machinesQuery.data.data.executors : [];
+    machinesQuery.data?.status === 200
+      ? machinesQuery.data.data.executors
+      : NO_MACHINES;
 
   useEffect(
     function reconcileSelectedMachine() {

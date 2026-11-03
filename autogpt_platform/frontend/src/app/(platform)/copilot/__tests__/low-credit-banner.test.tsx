@@ -15,20 +15,8 @@ import { CopilotPage } from "../CopilotPage";
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
   ChatContainer: () => <div data-testid="chat-container" />,
 }));
-vi.mock("../components/ChatSidebar/ChatSidebar", () => ({
-  ChatSidebar: () => <div data-testid="chat-sidebar" />,
-}));
-vi.mock("../components/MobileDrawer/MobileDrawer", () => ({
-  MobileDrawer: () => null,
-}));
-vi.mock("../components/MobileHeader/MobileHeader", () => ({
-  MobileHeader: () => null,
-}));
 vi.mock("../components/NotificationBanner/NotificationBanner", () => ({
   NotificationBanner: () => null,
-}));
-vi.mock("../components/NotificationDialog/NotificationDialog", () => ({
-  NotificationDialog: () => null,
 }));
 vi.mock("../components/RateLimitResetDialog/RateLimitGate", () => ({
   RateLimitGate: () => null,
@@ -47,7 +35,7 @@ vi.mock("../components/ScaleLoader/ScaleLoader", () => ({
 vi.mock("../components/ArtifactPanel/ArtifactPanel", () => ({
   ArtifactPanel: () => null,
 }));
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@/components/molecules/Sidebar/Sidebar", () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -91,7 +79,7 @@ vi.mock("nuqs", () => ({
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the
-// real `Flag` enum so the page's other flag reads (e.g. ARTIFACTS) resolve.
+// real `Flag` enum so the page's other flag reads resolve.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<

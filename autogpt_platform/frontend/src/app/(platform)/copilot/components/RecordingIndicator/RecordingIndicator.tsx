@@ -1,7 +1,8 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { RecordIcon } from "@phosphor-icons/react";
+import { RecordIcon } from "@hugeicons/core-free-icons";
 
 interface Props {
   stepCount: number;
@@ -21,14 +22,17 @@ export function RecordingIndicator({ stepCount }: Props) {
     <div
       role="status"
       aria-live="polite"
-      className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-900"
+      className="inline-flex items-center gap-1.5 rounded-full border border-error/20 bg-error-surface px-2.5 py-1 text-error-foreground"
     >
-      <RecordIcon
-        className="h-3.5 w-3.5 text-red-600 motion-safe:animate-pulse"
-        weight="fill"
-        aria-hidden="true"
-      />
-      <Text variant="body" className="text-xs font-medium">
+      <span className="flex text-error-hover motion-safe:animate-pulse">
+        <Icon
+          icon={RecordIcon}
+          fill="currentColor"
+          className="h-3.5 w-3.5"
+          aria-hidden="true"
+        />
+      </span>
+      <Text variant="small-medium-tight">
         Recording{stepCount > 0 ? ` · ${stepCount} steps` : ""}
       </Text>
     </div>
