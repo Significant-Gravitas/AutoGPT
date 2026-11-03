@@ -7,11 +7,13 @@ input, so every gate (credentials, review, spend) is evaluated again rather
 than trusting the stored approval for different data.
 """
 
+import json
 import logging
 from typing import Any
 
 from prisma.enums import ReviewStatus
 
+from backend.blocks import get_block
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
@@ -29,7 +31,7 @@ from backend.data.db_accessors import review_db
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .continue_run_block import ContinueRunBlockTool, run_claimed
+from .continue_run_block import ContinueRunBlockTool, refuse_disabled_block, run_claimed
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -172,7 +174,7 @@ async def _resume_mcp(
             session_id=session.session_id,
         ).from_outside()
     arguments = {**payload.arguments, **(input_overrides or {})}
-    if arguments != payload.arguments:
+    if not _same_json(arguments, payload.arguments):
         # The user approved one call, not a family of them. This review only
         # exists because the original call needed approving, so the changed
         # call needs approving too. Re-deriving that from the live catalog
@@ -228,6 +230,11 @@ async def _rerun_block(
     if isinstance(review, ErrorResponse):
         return review
     block_id = parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
+    block = get_block(block_id)
+    if block is not None and block.disabled:
+        return await refuse_disabled_block(
+            block_id, review_id, user_id, session.session_id
+        )
     stored = review.payload if isinstance(review.payload, dict) else {}
     return await run_claimed(
         review_id,
@@ -240,3 +247,9 @@ async def _rerun_block(
             input_data={**stored, **input_overrides},
         ),
     )
+
+
+def _same_json(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Equal as JSON. Python's ``==`` counts ``True`` as ``1`` and ``1.0`` as
+    ``1``, which an MCP server need not."""
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)

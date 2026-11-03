@@ -256,8 +256,11 @@ class TestExecuteCodeBlockRun:
         )
         # process_execution_results parses E2B-specific result objects; patch it so
         # this test only exercises run()'s own output-forwarding branches.
-        with patch.object(block, "execute_code", mock), patch.object(
-            block, "process_execution_results", return_value=({"text": "42"}, [])
+        with (
+            patch.object(block, "execute_code", mock),
+            patch.object(
+                block, "process_execution_results", return_value=({"text": "42"}, [])
+            ),
         ):
             outputs = dict(
                 await _run(
@@ -366,9 +369,11 @@ class TestConnectToExistingSandbox:
             }
         )
         hold = AsyncMock()
-        with patch("backend.blocks.code_executor.AsyncSandbox") as cls, patch(
-            "backend.blocks.code_executor.hold_sandbox", hold
-        ), patch("backend.util.e2b_network.AsyncSandbox") as by_id:
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch("backend.blocks.code_executor.hold_sandbox", hold),
+            patch("backend.util.e2b_network.AsyncSandbox") as by_id,
+        ):
             self._sdk(cls, theirs)
             by_id.pause = AsyncMock()
             with pytest.raises(PermissionError, match="does not belong"):
@@ -389,6 +394,82 @@ class TestConnectToExistingSandbox:
         theirs.kill.assert_not_awaited()
         hold.assert_not_awaited()
         by_id.pause.assert_not_awaited()
+
+    async def test_the_users_own_box_of_another_kind_is_refused(self):
+        """A code step continues the boxes the code sandbox blocks make, not a
+        box the same user has from another block."""
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        claude_box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "claude_code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch(
+                "backend.blocks.code_executor.connect_sandbox", AsyncMock()
+            ) as connect,
+        ):
+            self._sdk(cls, claude_box)
+            with pytest.raises(PermissionError, match="not a code sandbox"):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-claude",
+                    dispose_sandbox=False,
+                    execution_context=context,
+                )
+        connect.assert_not_awaited()
+        claude_box.run_code.assert_not_awaited()
+
+    async def test_the_users_own_code_box_is_reconnected(self):
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        code_box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        code_box.sandbox_id = "sb-code"
+        code_box.run_code = AsyncMock(
+            return_value=MagicMock(
+                error=None,
+                results=[],
+                text="1",
+                logs=MagicMock(stdout=["1\n"], stderr=[]),
+            )
+        )
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch(
+                "backend.blocks.code_executor.connect_sandbox",
+                AsyncMock(return_value=code_box),
+            ) as connect,
+        ):
+            self._sdk(cls, code_box)
+            *_, sandbox_id, _ = await block.execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                sandbox_id="sb-code",
+                dispose_sandbox=False,
+                execution_context=context,
+            )
+        connect.assert_awaited_once()
+        code_box.run_code.assert_awaited_once()
+        assert sandbox_id == "sb-code"
 
     async def test_step_block_hands_the_caller_to_the_ownership_check(self):
         """The step block always reconnects by id, so without the caller's
@@ -482,9 +563,12 @@ class TestKeptSandbox:
         box = _executed_box("sb")
         m = "backend.blocks.code_executor"
         kill, hold, release = AsyncMock(), AsyncMock(), AsyncMock()
-        with patch(f"{m}.create_sandbox", AsyncMock(return_value=box)), patch(
-            f"{m}.kill_sandbox", kill
-        ), patch(f"{m}.hold_sandbox", hold), patch(f"{m}.release_sandbox", release):
+        with (
+            patch(f"{m}.create_sandbox", AsyncMock(return_value=box)),
+            patch(f"{m}.kill_sandbox", kill),
+            patch(f"{m}.hold_sandbox", hold),
+            patch(f"{m}.release_sandbox", release),
+        ):
             await ExecuteCodeBlock().execute_code(
                 api_key="k",
                 code="print(1)",
@@ -525,9 +609,12 @@ class TestKeptSandbox:
 
         m = "backend.blocks.code_executor"
         release, connect_mock = AsyncMock(), AsyncMock(side_effect=connect)
-        with patch(f"{m}.AsyncSandbox") as cls, patch(
-            f"{m}.connect_sandbox", connect_mock
-        ), patch(f"{m}.hold_sandbox", hold), patch(f"{m}.release_sandbox", release):
+        with (
+            patch(f"{m}.AsyncSandbox") as cls,
+            patch(f"{m}.connect_sandbox", connect_mock),
+            patch(f"{m}.hold_sandbox", hold),
+            patch(f"{m}.release_sandbox", release),
+        ):
             cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
             with nullcontext() if connects else pytest.raises(RuntimeError):
                 await ExecuteCodeStepBlock().execute_code(

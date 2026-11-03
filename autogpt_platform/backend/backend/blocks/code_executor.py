@@ -181,9 +181,10 @@ class BaseE2BExecutorMixin:
                 # without waking it.
                 info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
                 user_id = execution_context.user_id if execution_context else None
-                if not owned_by_user(info.metadata, user_id):
+                if not owned_by_user(info.metadata, user_id, kind="code"):
                     raise PermissionError(
-                        f"Sandbox {sandbox_id} does not belong to this user"
+                        f"Sandbox {sandbox_id} does not belong to this user, "
+                        "or is not a code sandbox"
                     )
                 if pause_when_kept and not dispose_sandbox:
                     # Counted before the connect: a run on this box returning
