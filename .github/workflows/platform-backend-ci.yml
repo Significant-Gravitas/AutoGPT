@@ -33,6 +33,11 @@ jobs:
               /usr/bin/setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
               /usr/bin/env PATH="$PATH" HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /usr/bin/time -v \
               "$@"
+            local status=$?
+            if [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == loaded ]]; then
+              sudo systemctl stop "$unit" || status=1
+            fi
+            return "$status"
           }
           run_scope ci-env-contract.scope 30s python3 .github/scripts/scope_contract.py verify "$RUNNER_TEMP/scope-context.json"
           status=$?
