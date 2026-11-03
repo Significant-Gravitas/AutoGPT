@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import hashlib
 import hmac
 import json
 import os
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -49,6 +51,7 @@ class RootGrantSigner:
         fingerprint = directory_fingerprint(root)
         claims = {
             "allowed_root": str(root),
+            "birth": directory_birth(root),
             "fingerprint": fingerprint,
             "issued_at": self._now(),
             "machine_id": self.machine_id,
@@ -97,6 +100,13 @@ class RootGrantSigner:
             root = canonical_directory(Path(allowed_root))
             if directory_fingerprint(root) != fingerprint:
                 raise RootGrantError("The selected directory changed after the grant was issued")
+            # Grants issued before the claim existed carry none and keep the
+            # device/inode check alone. A filesystem that reuses a freed inode
+            # (ext4, tmpfs) gives a recreated directory the old identity; its
+            # creation time still differs.
+            birth = claims.get("birth")
+            if birth is not None and birth != directory_birth(root):
+                raise RootGrantError("The selected directory changed after the grant was issued")
         except RootGrantError:
             raise
         except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -139,6 +149,95 @@ def directory_fingerprint(path: Path) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def directory_birth(path: Path) -> str | None:
+    """The directory's creation time, or None where the platform keeps none.
+
+    macOS, BSD and Windows (Python 3.12+) report it through ``stat``; Linux
+    only through ``statx(STATX_BTIME)`` (glibc 2.28+), which ext4, btrfs and
+    xfs answer.
+    """
+    try:
+        stat = path.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise RootGrantError("Selected root is unavailable") from exc
+    birth_ns = getattr(stat, "st_birthtime_ns", None)
+    if isinstance(birth_ns, int):
+        return f"ns:{birth_ns}"
+    birth = getattr(stat, "st_birthtime", None)
+    if isinstance(birth, float):
+        return f"s:{birth!r}"
+    if sys.platform.startswith("linux"):
+        return _linux_birth(path)
+    return None
+
+
+class _StatxTimestamp(ctypes.Structure):
+    _fields_ = [
+        ("tv_sec", ctypes.c_int64),
+        ("tv_nsec", ctypes.c_uint32),
+        ("_reserved", ctypes.c_int32),
+    ]
+
+
+class _Statx(ctypes.Structure):
+    # struct statx from <linux/stat.h>: 256 bytes, the tail reserved.
+    _fields_ = [
+        ("stx_mask", ctypes.c_uint32),
+        ("stx_blksize", ctypes.c_uint32),
+        ("stx_attributes", ctypes.c_uint64),
+        ("stx_nlink", ctypes.c_uint32),
+        ("stx_uid", ctypes.c_uint32),
+        ("stx_gid", ctypes.c_uint32),
+        ("stx_mode", ctypes.c_uint16),
+        ("_spare0", ctypes.c_uint16),
+        ("stx_ino", ctypes.c_uint64),
+        ("stx_size", ctypes.c_uint64),
+        ("stx_blocks", ctypes.c_uint64),
+        ("stx_attributes_mask", ctypes.c_uint64),
+        ("stx_atime", _StatxTimestamp),
+        ("stx_btime", _StatxTimestamp),
+        ("stx_ctime", _StatxTimestamp),
+        ("stx_mtime", _StatxTimestamp),
+        ("stx_rdev_major", ctypes.c_uint32),
+        ("stx_rdev_minor", ctypes.c_uint32),
+        ("stx_dev_major", ctypes.c_uint32),
+        ("stx_dev_minor", ctypes.c_uint32),
+        ("_spare2", ctypes.c_uint64 * 14),
+    ]
+
+
+_AT_FDCWD = -100
+_AT_SYMLINK_NOFOLLOW = 0x100
+_STATX_BTIME = 0x800
+
+
+def _linux_birth(path: Path) -> str | None:
+    try:
+        statx = ctypes.CDLL(None, use_errno=True).statx
+    except (AttributeError, OSError):
+        return None
+    statx.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_uint,
+        ctypes.POINTER(_Statx),
+    ]
+    statx.restype = ctypes.c_int
+    result = _Statx()
+    if statx(
+        _AT_FDCWD,
+        os.fsencode(path),
+        _AT_SYMLINK_NOFOLLOW,
+        _STATX_BTIME,
+        ctypes.byref(result),
+    ):
+        return None
+    if not result.stx_mask & _STATX_BTIME:
+        return None
+    return f"ns:{result.stx_btime.tv_sec * 1_000_000_000 + result.stx_btime.tv_nsec}"
+
+
 def _b64encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -153,5 +252,6 @@ __all__ = [
     "RootGrantError",
     "RootGrantSigner",
     "canonical_directory",
+    "directory_birth",
     "directory_fingerprint",
 ]

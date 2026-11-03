@@ -15,19 +15,19 @@ All file paths are relative to `autogpt_platform/backend/backend/`.
 use_local_pc_executor: bool = Field(
     default=False,
     description="Route execution to a user's local machine via the LocalPC shim. "
-                "EXPERIMENTAL. Overrides E2B when set.",
+    "EXPERIMENTAL. Overrides E2B when set.",
 )
 
 local_pc_allowed_root: str = Field(
     default="",
     description="Absolute path on the user's machine that the shim will jail file ops to. "
-                "Advertised by shim in HELLO; platform validates against this.",
+    "Advertised by shim in HELLO; platform validates against this.",
 )
 
 allow_computer_use: bool = Field(
     default=False,
     description="Allow Claude to take screenshots and inject mouse/keyboard input via the shim. "
-                "Requires use_local_pc_executor=True. Off by default — explicit opt-in only.",
+    "Requires use_local_pc_executor=True. Off by default — explicit opt-in only.",
 )
 
 local_llm_policy: Literal["never", "prefer", "always"] = Field(
@@ -102,7 +102,7 @@ Key interface:
 
 ```python
 class LocalPCShim:
-    sandbox_id: str              # = f"localpc:{machine_id}:{session_id}"
+    sandbox_id: str  # = f"localpc:{machine_id}:{session_id}"
     machine_id: str
     capabilities: list[str]
 
@@ -145,11 +145,12 @@ async def get_or_create_local_pc_shim(
 ```python
 # New file: api/routes/local_executor_ws.py
 
+
 @router.websocket("/ws/local-executor/{session_id}")
 async def local_executor_ws(
     websocket: WebSocket,
     session_id: str,
-    token: str = Query(...),   # Bearer token for the shim
+    token: str = Query(...),  # Bearer token for the shim
 ):
     """
     Shim connects here. Platform:
@@ -171,10 +172,12 @@ async def local_executor_ws(
 E2B_WORKDIR = "/home/user"
 E2B_ALLOWED_DIRS = ("/home/user", "/tmp")
 
+
 # ADD:
 def get_allowed_dirs(sandbox) -> tuple[str, ...]:
     """Returns allowed dirs for the current executor."""
     from backend.copilot.tools.local_pc_shim import LocalPCShim
+
     if isinstance(sandbox, LocalPCShim):
         return (sandbox.allowed_root,)
     return E2B_ALLOWED_DIRS
@@ -384,7 +387,7 @@ OAuth client registration must accept ALL ports in that range as valid
 
 End-to-end computer-use is wired. When all of —
 `config.use_local_pc_executor` AND `config.allow_computer_use` AND
-the per-user `local-pc-executor` LaunchDarkly flag AND the connected
+the per-user `local-pc-executor` PostHog flag AND the connected
 shim advertised `"computer_use"` in its HELLO `capabilities` — are
 true, copilot turns route screenshots / clicks / typing / window
 listing / app launch / clipboard ops to the user's shim.

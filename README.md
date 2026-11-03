@@ -70,7 +70,7 @@ The daemon also fails startup if its tamper-evident audit writer cannot be
 initialized; there is no implicit unaudited mode.
 
 Then on the platform: ask an operator to flip the `local-pc-executor`
-LaunchDarkly flag for your user. Once on, copilot turns route through
+PostHog feature flag for your user. Once on, copilot turns route through
 your shim instead of E2B. Audit log lives at the per-OS path documented
 in [AUDIT_LOG.md](docs/AUDIT_LOG.md); review it with
 `autogpt-shim audit tail` / `verify`.

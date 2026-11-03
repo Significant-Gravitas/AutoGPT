@@ -110,10 +110,7 @@ class LocalPCRouter:
       4. round-robin across all attached shims for the session.
     """
 
-    async def pick(
-        self, session_id: str, op: WireOp, *, hint: str | None = None
-    ) -> str:
-        ...
+    async def pick(self, session_id: str, op: WireOp, *, hint: str | None = None) -> str: ...
 ```
 
 `ShimConnectionManager` grows a `dict[session_id, dict[machine_id, ws]]`
