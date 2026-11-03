@@ -128,6 +128,9 @@ _MAX_LOCAL_REPR = 1024
 _SENTRY_MAX_VALUE_LENGTH = 8 * 1024
 # Characters of text the scrubber searches per event; strings past it are filtered.
 _SENTRY_SCRUB_BUDGET = 512 * 1024
+# Sentry lists breadcrumbs, chained exceptions and frames oldest or outermost first;
+# the scrubber walks them from the end so the budget goes to the newest.
+_OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
 
 
 def _scrub_sentry_event(event: dict) -> None:
@@ -141,7 +144,8 @@ def _scrub_sentry_event(event: dict) -> None:
 
     It searches at most ``_SENTRY_SCRUB_BUDGET`` characters per event and filters
     any string beyond that rather than send it unsearched; it walks breadth-first,
-    and the breadcrumbs get only what the rest of the event left.
+    newest breadcrumb and innermost frame first, and the breadcrumbs get only what
+    the rest of the event left.
     """
     _redact_request_urls(event)
     keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
@@ -166,7 +170,10 @@ def _scrub_breadth_first(roots: list[tuple[dict[Any, Any], Any]], budget: int) -
                 else:
                     queue.append((value, nested_key))
         elif isinstance(value, list):
-            queue.extend((value, index) for index in range(len(value)))
+            indices = range(len(value))
+            if key in _OLDEST_FIRST_LISTS:
+                indices = indices[::-1]
+            queue.extend((value, index) for index in indices)
         elif isinstance(value, str):
             if len(value) > budget:
                 parent[key] = _FILTERED_VALUE

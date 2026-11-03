@@ -309,6 +309,49 @@ def test_before_send_searches_no_more_than_its_budget(monkeypatch) -> None:
     assert set(messages) == {chunk, "[Filtered]"}
 
 
+def _put_in_breadcrumbs(event: dict, chunks: list[str]) -> None:
+    event["breadcrumbs"] = {"values": [{"message": chunk} for chunk in chunks]}
+
+
+def _read_breadcrumbs(event: dict) -> list[str]:
+    return [crumb["message"] for crumb in event["breadcrumbs"]["values"]]
+
+
+def _put_in_frames(event: dict, chunks: list[str]) -> None:
+    frames = [{"vars": {"local": chunk}} for chunk in chunks]
+    event["exception"] = {"values": [{"stacktrace": {"frames": frames}}]}
+
+
+def _read_frames(event: dict) -> list[str]:
+    frames = event["exception"]["values"][0]["stacktrace"]["frames"]
+    return [frame["vars"]["local"] for frame in frames]
+
+
+@pytest.mark.parametrize(
+    "put, read",
+    [(_put_in_breadcrumbs, _read_breadcrumbs), (_put_in_frames, _read_frames)],
+    ids=["breadcrumbs", "frames"],
+)
+def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
+    count = metrics._SENTRY_SCRUB_BUDGET // metrics._SENTRY_MAX_VALUE_LENGTH + 4
+    chunks = [
+        f"{index:04d}".ljust(metrics._SENTRY_MAX_VALUE_LENGTH, "x")
+        for index in range(count)
+    ]
+    event = _log_event("backend.api.rest_api", "nothing secret")
+    put(event, chunks)
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    values = read(scrubbed)
+    # Searched and kept from the newest end, filtered from the oldest, in place.
+    assert values[0] == "[Filtered]"
+    first_kept = next(i for i, value in enumerate(values) if value != "[Filtered]")
+    assert values[first_kept:] == chunks[first_kept:]
+    assert set(values[:first_kept]) == {"[Filtered]"}
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
