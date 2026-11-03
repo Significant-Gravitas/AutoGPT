@@ -2710,126 +2710,121 @@ async def stream_chat_completion_baseline(
                 # round hits the budget without adding any text, the outer
                 # fallback uses this anchor to detect a silent finish.
                 text_len_before_final_round[0] = len(state.assistant_text)
-                try:
-                    pending = await drain_pending_messages(session_id)
-                except Exception:
-                    logger.warning(
-                        "[Baseline] mid-loop drain_pending_messages failed for "
-                        "session %s",
-                        session_id,
-                        exc_info=True,
-                    )
-                    pending = []
-                if pending:
-                    # Flush any buffered assistant/tool messages from completed
-                    # rounds into session.messages BEFORE appending the pending
-                    # user message.  ``_baseline_conversation_updater`` only
-                    # records assistant+tool rounds into ``state.session_messages``
-                    # — they are normally batch-flushed in the finally block.
-                    # Without this in-order flush, the mid-loop pending user
-                    # message lands before the preceding round's assistant/tool
-                    # entries, producing chronologically-wrong session.messages
-                    # on persist (user interposed between an assistant tool_call
-                    # and its tool-result), which breaks OpenAI tool-call ordering
-                    # invariants on the next turn's replay.
-                    #
-                    # Also persist any assistant text from text-only rounds (rounds
-                    # with no tool calls, which ``_baseline_conversation_updater``
-                    # does NOT record in session_messages).  If we only update
-                    # ``_flushed_assistant_text_len`` without persisting the text,
-                    # that text is silently lost: the finally block only appends
-                    # assistant_text[_flushed_assistant_text_len:], so text generated
-                    # before this drain never reaches session.messages.
-                    recorded_text = "".join(
-                        m.content or ""
-                        for m in state.session_messages
-                        if m.role == "assistant"
-                    )
-                    unflushed_text = state.assistant_text[
-                        state._flushed_assistant_text_len :
-                    ]
-                    text_only_text = (
-                        unflushed_text[len(recorded_text) :]
-                        if unflushed_text.startswith(recorded_text)
-                        else unflushed_text
-                    )
-                    current_session = _session_holder[0]
-                    if text_only_text.strip():
-                        current_session.messages.append(
-                            ChatMessage(
-                                role="assistant",
-                                content=text_only_text,
-                                model=state.model,
-                                routing_source=state.routing_source,
-                                llm_auth_provider=state.llm_auth_provider,
-                                llm_credential_id=state.llm_credential_id,
-                            )
+                async with recover_pending_on_failure(
+                    session_id, drain_pending_messages(session_id)
+                ) as pending:
+                    if pending:
+                        # Flush any buffered assistant/tool messages from completed
+                        # rounds into session.messages BEFORE appending the pending
+                        # user message.  ``_baseline_conversation_updater`` only
+                        # records assistant+tool rounds into ``state.session_messages``
+                        # — they are normally batch-flushed in the finally block.
+                        # Without this in-order flush, the mid-loop pending user
+                        # message lands before the preceding round's assistant/tool
+                        # entries, producing chronologically-wrong session.messages
+                        # on persist (user interposed between an assistant tool_call
+                        # and its tool-result), which breaks OpenAI tool-call ordering
+                        # invariants on the next turn's replay.
+                        #
+                        # Also persist any assistant text from text-only rounds (rounds
+                        # with no tool calls, which ``_baseline_conversation_updater``
+                        # does NOT record in session_messages).  If we only update
+                        # ``_flushed_assistant_text_len`` without persisting the text,
+                        # that text is silently lost: the finally block only appends
+                        # assistant_text[_flushed_assistant_text_len:], so text generated
+                        # before this drain never reaches session.messages.
+                        recorded_text = "".join(
+                            m.content or ""
+                            for m in state.session_messages
+                            if m.role == "assistant"
                         )
-                    for _buffered in state.session_messages:
-                        current_session.messages.append(_buffered)
-                    state.session_messages.clear()
-                    # Record how much assistant_text has been covered by the
-                    # structured entries just flushed, so the finally block's
-                    # final-text dedup doesn't re-append rounds already persisted.
-                    state._flushed_assistant_text_len = len(state.assistant_text)
+                        unflushed_text = state.assistant_text[
+                            state._flushed_assistant_text_len :
+                        ]
+                        text_only_text = (
+                            unflushed_text[len(recorded_text) :]
+                            if unflushed_text.startswith(recorded_text)
+                            else unflushed_text
+                        )
+                        current_session = _session_holder[0]
+                        if text_only_text.strip():
+                            current_session.messages.append(
+                                ChatMessage(
+                                    role="assistant",
+                                    content=text_only_text,
+                                    model=state.model,
+                                    routing_source=state.routing_source,
+                                    llm_auth_provider=state.llm_auth_provider,
+                                    llm_credential_id=state.llm_credential_id,
+                                )
+                            )
+                        for _buffered in state.session_messages:
+                            current_session.messages.append(_buffered)
+                        state.session_messages.clear()
+                        # Record how much assistant_text has been covered by the
+                        # structured entries just flushed, so the finally block's
+                        # final-text dedup doesn't re-append rounds already persisted.
+                        state._flushed_assistant_text_len = len(state.assistant_text)
 
-                    # Persist the assistant/tool flush BEFORE the pending append
-                    # so a later pending-persist failure can roll back the
-                    # pending rows without also discarding LLM output.
-                    stamp_turn_trace_id(current_session.messages, turn_start)
-                    current_session = await persist_session_safe(
-                        current_session, "[Baseline]"
-                    )
-                    # ``upsert_chat_session`` may return a *new* ``ChatSession``
-                    # instance (e.g. when a concurrent title update has written a
-                    # newer title to Redis, it returns ``session.model_copy``).
-                    # Keep ``_session_holder`` in sync so subsequent tool rounds
-                    # executed via ``_bound_tool_executor`` see the fresh session
-                    # — any tool-side mutations on the stale object would be
-                    # discarded when the new one is persisted in the ``finally``.
-                    _session_holder[0] = current_session
+                        # Persist the assistant/tool flush BEFORE the pending append
+                        # so a later pending-persist failure can roll back the
+                        # pending rows without also discarding LLM output.
+                        stamp_turn_trace_id(current_session.messages, turn_start)
+                        current_session = await persist_session_safe(
+                            current_session, "[Baseline]"
+                        )
+                        # ``upsert_chat_session`` may return a *new* ``ChatSession``
+                        # instance (e.g. when a concurrent title update has written a
+                        # newer title to Redis, it returns ``session.model_copy``).
+                        # Keep ``_session_holder`` in sync so subsequent tool rounds
+                        # executed via ``_bound_tool_executor`` see the fresh session
+                        # — any tool-side mutations on the stale object would be
+                        # discarded when the new one is persisted in the ``finally``.
+                        _session_holder[0] = current_session
 
-                    # Image blocks go only to the model; persisted chat rows
-                    # keep the same formatted text and attachment/context hints.
-                    # Rollback trims the model messages to the recorded anchor.
-                    formatted_by_pm = {
-                        id(pm): format_pending_as_user_message(pm) for pm in pending
-                    }
+                        # Image blocks go only to the model; persisted chat rows
+                        # keep the same formatted text and attachment/context hints.
+                        # Rollback trims the model messages to the recorded anchor.
+                        formatted_by_pm = {
+                            id(pm): format_pending_as_user_message(pm) for pm in pending
+                        }
 
-                    def _formatted(pm: PendingMessage) -> str:
-                        return pending_message_text(pm)
+                        def _formatted(pm: PendingMessage) -> str:
+                            return pending_message_text(pm)
 
-                    _openai_anchor = len(openai_messages)
-                    for pm in pending:
-                        openai_messages.append(formatted_by_pm[id(pm)])
+                        _openai_anchor = len(openai_messages)
+                        for pm in pending:
+                            openai_messages.append(formatted_by_pm[id(pm)])
 
-                    def _trim_openai_on_rollback(_session_anchor: int) -> None:
-                        del openai_messages[_openai_anchor:]
+                        def _trim_openai_on_rollback(_session_anchor: int) -> None:
+                            del openai_messages[_openai_anchor:]
 
-                    if await persist_pending_as_user_rows(
-                        current_session,
-                        transcript_builder,
-                        pending,
-                        log_prefix="[Baseline]",
-                        content_of=_formatted,
-                        on_rollback=_trim_openai_on_rollback,
-                    ):
-                        matched_skills_notice = await build_matched_skills_notice(
-                            user_id,
+                        if await persist_pending_as_user_rows(
                             current_session,
-                            "\n\n".join(pm.content for pm in pending),
-                            permissions=permissions,
-                        )
-                        if matched_skills_notice:
-                            _add_message_text(
-                                openai_messages[-1],
-                                matched_skills_notice,
-                                prepend=False,
+                            transcript_builder,
+                            pending,
+                            log_prefix="[Baseline]",
+                            content_of=_formatted,
+                            on_rollback=_trim_openai_on_rollback,
+                        ):
+                            matched_skills_notice = await build_matched_skills_notice(
+                                user_id,
+                                current_session,
+                                "\n\n".join(pm.content for pm in pending),
+                                permissions=permissions,
                             )
-                        _emit(state, drained_rows_entry(pending, _formatted))
-                    checkpoint = turn_checkpoint(current_session.messages, turn_start)
-                    if checkpoint is not None:
-                        _emit(state, checkpoint)
+                            if matched_skills_notice:
+                                _add_message_text(
+                                    openai_messages[-1],
+                                    matched_skills_notice,
+                                    prepend=False,
+                                )
+                            _emit(state, drained_rows_entry(pending, _formatted))
+                        checkpoint = turn_checkpoint(
+                            current_session.messages, turn_start
+                        )
+                        if checkpoint is not None:
+                            _emit(state, checkpoint)
         finally:
             # Always post the sentinel so the outer consumer exits — even if
             # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own

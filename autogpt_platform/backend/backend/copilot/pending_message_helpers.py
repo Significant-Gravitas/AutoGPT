@@ -615,75 +615,93 @@ async def persist_pending_as_user_rows(
         transcript_builder.snapshot() if transcript_builder is not None else None
     )
 
-    rows = await reconcile_pending_rows(session, pending, content_of)
-    existing = {
-        message.id: i for i, message in enumerate(session.messages) if message.id
-    }
-    pending_by_id: dict[str, PendingMessage] = {}
-    for message in pending:
-        pending_by_id.setdefault(message.id, message)
-    for row in rows:
-        if row.id in existing:
-            if row.sequence is not None:
-                session.messages[existing[row.id]] = row
-            continue
-        session.messages.append(row)
-        if transcript_builder is not None:
-            source = pending_by_id.get(row.id or "")
-            image = source.model_image if source is not None else None
-            content = row.content or ""
-            transcript_builder.append_user(
-                content=(
-                    [{"type": "text", "text": content}, image.anthropic()]
-                    if image is not None
-                    else content
+    try:
+        rows = await reconcile_pending_rows(session, pending, content_of)
+        existing = {
+            message.id: i for i, message in enumerate(session.messages) if message.id
+        }
+        pending_by_id: dict[str, PendingMessage] = {}
+        for message in pending:
+            pending_by_id.setdefault(message.id, message)
+        for row in rows:
+            if row.id in existing:
+                if row.sequence is not None:
+                    session.messages[existing[row.id]] = row
+                continue
+            session.messages.append(row)
+            if transcript_builder is not None:
+                source = pending_by_id.get(row.id or "")
+                image = source.model_image if source is not None else None
+                content = row.content or ""
+                transcript_builder.append_user(
+                    content=(
+                        [{"type": "text", "text": content}, image.anthropic()]
+                        if image is not None
+                        else content
+                    )
                 )
-            )
 
-    # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
-    # when ``upsert_chat_session`` patches a concurrently-updated title).
-    # Do NOT reassign the caller's reference — the caller already pushed the
-    # rows into its own ``session.messages`` above, and rollback below MUST
-    # delete from that same list.  Inspect the returned object only to learn
-    # whether sequences were back-filled; if so, copy them onto the caller's
-    # objects so the session stays internally consistent for downstream
-    # ``append_and_save_message`` calls.
-    persisted = await persist_session_safe(session, log_prefix)
-    persisted_tail = persisted.messages[session_anchor:]
-    if len(persisted_tail) == len(session.messages) - session_anchor and all(
-        m.sequence is not None for m in persisted_tail
-    ):
-        for caller_msg, persisted_msg in zip(
-            session.messages[session_anchor:], persisted_tail
+        # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
+        # when ``upsert_chat_session`` patches a concurrently-updated title).
+        # Do NOT reassign the caller's reference — the caller already pushed the
+        # rows into its own ``session.messages`` above, and rollback below MUST
+        # delete from that same list.  Inspect the returned object only to learn
+        # whether sequences were back-filled; if so, copy them onto the caller's
+        # objects so the session stays internally consistent for downstream
+        # ``append_and_save_message`` calls.
+        persisted = await persist_session_safe(session, log_prefix)
+        persisted_tail = persisted.messages[session_anchor:]
+        if len(persisted_tail) == len(session.messages) - session_anchor and all(
+            m.sequence is not None for m in persisted_tail
         ):
-            caller_msg.sequence = persisted_msg.sequence
-    pending_ids = {message.id for message in pending}
-    if any(m.sequence is None for m in session.messages if m.id in pending_ids):
-        logger.warning(
-            "%s Mid-turn follow-up persist did not back-fill sequences; "
-            "rolling back %d row(s) and re-queueing into the primary buffer",
+            for caller_msg, persisted_msg in zip(
+                session.messages[session_anchor:], persisted_tail
+            ):
+                caller_msg.sequence = persisted_msg.sequence
+        pending_ids = {message.id for message in pending}
+        if any(m.sequence is None for m in session.messages if m.id in pending_ids):
+            logger.warning(
+                "%s Mid-turn follow-up persist did not back-fill sequences; "
+                "rolling back %d row(s) and re-queueing into the primary buffer",
+                log_prefix,
+                len(pending),
+            )
+            del session.messages[session_anchor:]
+            if transcript_builder is not None and transcript_snapshot is not None:
+                transcript_builder.restore(transcript_snapshot)
+            if on_rollback is not None:
+                on_rollback(session_anchor)
+            try:
+                await restore_pending_messages(session.session_id, pending)
+            except Exception:
+                logger.exception(
+                    "%s Failed to re-queue mid-turn follow-up on rollback", log_prefix
+                )
+            return False
+
+        logger.info(
+            "%s Persisted %d mid-turn follow-up user row(s)",
             log_prefix,
             len(pending),
         )
+        return True
+    except BaseException:
         del session.messages[session_anchor:]
         if transcript_builder is not None and transcript_snapshot is not None:
             transcript_builder.restore(transcript_snapshot)
-        if on_rollback is not None:
-            on_rollback(session_anchor)
         try:
-            await restore_pending_messages(session.session_id, pending)
+            await finish_despite_cancellation(
+                asyncio.ensure_future(
+                    restore_pending_messages(session.session_id, pending)
+                )
+            )
         except Exception:
             logger.exception(
-                "%s Failed to re-queue mid-turn follow-up on rollback", log_prefix
+                "%s Failed to recover interrupted pending persistence", log_prefix
             )
-        return False
-
-    logger.info(
-        "%s Persisted %d mid-turn follow-up user row(s)",
-        log_prefix,
-        len(pending),
-    )
-    return True
+        if on_rollback is not None:
+            on_rollback(session_anchor)
+        raise
 
 
 async def persist_unfolded_rows(

@@ -873,15 +873,19 @@ async def _consume_sdk_until_done(
                 and dispatched is not None
                 and acc.has_tool_results
             ):
-                followup_drained = await drain_pending_for_persist(
-                    ctx.session.session_id
-                )
-                if followup_drained and await persist_pending_as_user_rows(
-                    ctx.session,
-                    state.transcript_builder,
-                    followup_drained,
-                    log_prefix=ctx.log_prefix,
-                ):
+                async with recover_pending_on_failure(
+                    ctx.session.session_id,
+                    drain_pending_for_persist(ctx.session.session_id),
+                ) as followup_drained:
+                    persisted = bool(
+                        followup_drained
+                    ) and await persist_pending_as_user_rows(
+                        ctx.session,
+                        state.transcript_builder,
+                        followup_drained,
+                        log_prefix=ctx.log_prefix,
+                    )
+                if persisted:
                     # Track CLI-JSONL-invisible rows so the upload
                     # watermark excludes them and the next turn's
                     # detect_gap picks them up as gap-fill.
