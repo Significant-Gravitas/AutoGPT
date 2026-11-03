@@ -53,6 +53,28 @@ async def test_a_library_page_counts_its_runs_while_its_schedules_are_read() -> 
 
 
 @pytest.mark.asyncio
+async def test_a_library_page_gives_each_entry_its_workflows_run_count() -> None:
+    row = SimpleNamespace(id="ua1", agentGraphId="g1")
+    agents = MagicMock()
+    agents.find_many = AsyncMock(return_value=[row])
+    agents.count = AsyncMock(return_value=1)
+    execution_counts = AsyncMock(return_value={"g1": 7})
+    entry = library_model.LibraryAgent.model_construct(id="ua1")
+    from_db = MagicMock(return_value=entry)
+    with (
+        patch.object(prisma.models.LibraryAgent, "prisma", return_value=agents),
+        patch.object(library_db, "_fetch_schedule_info", AsyncMock(return_value={})),
+        patch.object(library_db, "_fetch_execution_counts", execution_counts),
+        patch.object(library_model.LibraryAgent, "from_db", from_db),
+    ):
+        response = await library_db.list_library_agents(USER_ID)
+
+    assert response.agents == [entry]
+    execution_counts.assert_awaited_once_with(USER_ID, ["g1"])
+    from_db.assert_called_once_with(row, execution_count_override=7, schedule_info={})
+
+
+@pytest.mark.asyncio
 async def test_a_library_agents_sub_graphs_and_schedule_are_read_side_by_side() -> None:
     meeting = Rendezvous(2)
     row = SimpleNamespace(agentGraphId="g1", AgentGraph=SimpleNamespace(id="g1"))
