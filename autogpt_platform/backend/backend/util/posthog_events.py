@@ -46,6 +46,8 @@ class PostHogEvent(StrEnum):
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/gate/shadow.py
+    CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 
     # Billing: backend/data/credit.py
     TOPUP_COMPLETED = "topup_completed"
@@ -73,6 +75,10 @@ class PostHogEvent(StrEnum):
     # event for a score on a generative AI trace, named by PostHog rather
     # than the analytics plan; a thumbs up/down or copy of an AutoPilot reply.
     AI_METRIC = "$ai_metric"
+    # backend/copilot/ai_spans.py (SECRT-2979): an AutoPilot reply's trace
+    # root, and a tool call or expert subtask within it.
+    AI_TRACE = "$ai_trace"
+    AI_SPAN = "$ai_span"
 
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
@@ -81,6 +87,14 @@ class PostHogEvent(StrEnum):
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
+
+    # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
+    # webhooks for the mail the platform sends itself.
+    EMAIL_DELIVERED = "email_delivered"
+    EMAIL_OPENED = "email_opened"
+    EMAIL_CLICKED = "email_clicked"
+    EMAIL_BOUNCED = "email_bounced"
+    EMAIL_COMPLAINED = "email_complained"
 
 
 class PlannedPostHogEvent(StrEnum):

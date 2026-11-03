@@ -28,14 +28,27 @@ from typing import TYPE_CHECKING, Any, Literal
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
-from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
+from backend.copilot.context import (
+    get_current_envelope,
+    get_current_permissions,
+    get_execution_context,
+)
+from backend.copilot.executor.utils import (
+    TurnPublishUnconfirmed,
+    queue_spawned_turn,
+    schedule_turn,
+)
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
+    ChatSession,
     _get_session_lock,
     get_chat_session,
 )
-from backend.copilot.pending_message_helpers import is_turn_in_flight
+from backend.copilot.pending_message_helpers import (
+    is_turn_in_flight,
+    queue_user_message,
+)
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_pause import TurnPause
@@ -56,6 +69,7 @@ SessionOutcome = Literal[
     "running",
     # Waiting for one of the user's task slots; it starts on its own.
     "queued_for_slot",
+    "queued",
     "rejected_concurrent_turn_cap",
     "refused",
 ]
@@ -66,6 +80,20 @@ _ALREADY_WAITING = (
     "That session already has a task waiting to start, so this task cannot be "
     "handed to it right now. Wait for it, or start a fresh one."
 )
+
+
+class TurnNotDispatched(Exception):
+    """The turn provably never reached the executor queue.
+
+    Raised for a failure before the publish (the session lookup, the status
+    checks, the slot or tree admission, the stream registry write), each of
+    which leaves nothing for a worker to pick up, and for a wait for a task
+    slot that raised with nothing stored (``_nothing_queued``). Only this lets
+    a caller remove the thread it opened or send the task again; a publish
+    that raised is :class:`TurnPublishUnconfirmed` instead, and any other
+    error from this module leaves the turn's state unknown. The original
+    error is the ``__cause__``.
+    """
 
 
 @dataclass
@@ -84,6 +112,7 @@ class SessionResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     queued: bool = False
+    pending_buffer_length: int = 0
     # Why the turn never started, when the outcome is ``refused``. Written
     # for the model: it names the bound that was hit.
     refusal: str = ""
@@ -168,10 +197,10 @@ async def wait_for_session_result(
 def _budget_refusal(pause: TurnPause) -> str:
     """What the caller's model is told about a turn refused for budget."""
     if pause.resets_at is None:
-        return f"{pause.summary} The AutoPilot budget doesn't reset on its own."
+        return f"{pause.summary} The account's budget doesn't reset on its own."
     resets_at = pause.resets_at.astimezone(UTC)
     return (
-        f"{pause.summary} The AutoPilot budget resets "
+        f"{pause.summary} The account's budget resets "
         f"{resets_at:%Y-%m-%d %H:%M} UTC."
     )
 
@@ -187,13 +216,15 @@ async def run_copilot_turn_via_queue(
     tool_name: str,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    allow_queue: bool = True,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
     ``spawn`` is what the caller asks for the child's tree envelope; the
-    chokepoint clamps it. A target session with a turn in flight, or with a
-    task already waiting for a slot, is ``refused``: a prompt never rides a
-    turn that is running under a different envelope. Continuing a
+    chokepoint clamps it. With ``allow_queue=False``, a target session with
+    a turn in flight or a task waiting for a slot is ``refused``. The default
+    queue fallback also refuses a prompt whose authority cannot be preserved
+    by the target turn. Continuing a
     delegation to a teammate who is still working (``delegate_to_expert``
     with ``delegated_session_id``) gets a message telling the caller to wait
     or start fresh, and ``AutoPilotBlock`` raises on ``refused``.
@@ -213,20 +244,62 @@ async def run_copilot_turn_via_queue(
     turn in observability / replay (e.g. ``"sub:<parent>"`` for a
     sub-session, ``"autopilot_block"`` for an AutoPilotBlock run).
     """
-    session = await get_chat_session(session_id, user_id)
-    if session is None:
-        raise RuntimeError("copilot_session_not_found")
-
-    if await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED:
-        return "refused", SessionResult(refusal=_ALREADY_WAITING)
-    if await is_turn_in_flight(session_id):
-        return "refused", SessionResult(
-            refusal=(
-                "That session already has a turn in flight, so this task "
-                "cannot be handed to it right now. Wait for it to finish, "
-                "or start a fresh one."
-            )
+    try:
+        session = await get_chat_session(session_id, user_id)
+        already_waiting = not allow_queue and (
+            await chat_db().get_chat_session_status(session_id) == CHAT_STATUS_QUEUED
         )
+        in_flight = not already_waiting and await is_turn_in_flight(session_id)
+    except Exception as e:
+        raise TurnNotDispatched(f"The checks before the dispatch failed: {e}") from e
+    if session is None:
+        raise TurnNotDispatched("copilot_session_not_found")
+
+    if already_waiting:
+        return "refused", SessionResult(refusal=_ALREADY_WAITING)
+    if in_flight:
+        if not allow_queue:
+            return "refused", SessionResult(
+                refusal=(
+                    "That session already has a turn in flight, so this task "
+                    "cannot be handed to it right now. Wait for it to finish, "
+                    "or start a fresh one."
+                )
+            )
+        if _queue_would_change_authority(user_id, session, permissions, spawn):
+            return "refused", SessionResult(
+                refusal="This task must start in its own turn to keep its permissions and scope. Wait for the current turn to finish."
+            )
+        logger.info(
+            "[queue] session=%s has a turn in flight; queueing message "
+            "(tool=%s) into pending buffer instead of starting a new turn",
+            session_id[:12],
+            tool_name,
+        )
+        state = await queue_user_message(
+            session_id=session_id, message=message, metadata=message_metadata
+        )
+        if timeout <= 0:
+            # Fire-and-forget: caller explicitly asked not to wait.
+            return "queued", SessionResult(
+                queued=True, pending_buffer_length=state.buffer_length
+            )
+        # Ride the in-flight turn: subscribe to its stream and return the
+        # same aggregated result shape as a fresh dispatch.  The model
+        # drains the pending buffer between tool rounds (baseline) or at
+        # the next tool boundary via the PostToolUse hook (SDK), so the
+        # response we observe will reflect our queued follow-up (or be
+        # the terminal result if the in-flight turn finishes before the
+        # buffer drains — in that case ``result.queued=True`` is still
+        # the correct signal for the caller).
+        outcome, observed = await wait_for_session_result(
+            session_id=session_id,
+            user_id=user_id,
+            timeout=timeout,
+        )
+        observed.queued = True
+        observed.pending_buffer_length = state.buffer_length
+        return outcome, observed
 
     # Same per-user concurrent-turn cap as the HTTP chat route via the
     # shared ``schedule_turn`` helper — without this a graph spawning N
@@ -253,6 +326,8 @@ async def run_copilot_turn_via_queue(
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
+    except TurnPublishUnconfirmed:
+        raise
     except ConcurrentTurnLimitError:
         if delegated:
             return await _queue_for_slot(
@@ -281,11 +356,70 @@ async def run_copilot_turn_via_queue(
             tool_name,
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    except Exception as e:
+        raise TurnNotDispatched(f"The turn could not be dispatched: {e}") from e
+    if timeout <= 0:
+        # The turn is queued and the caller waits for nothing. Subscribing
+        # anyway could only fail, and a failure here, after the dispatch,
+        # would read as "not started" to a caller that then runs the same
+        # task a second time.
+        return "running", SessionResult()
     return await wait_for_session_result(
         session_id=session_id,
         user_id=user_id,
         timeout=timeout,
     )
+
+
+def _queue_would_change_authority(
+    user_id: str,
+    target: ChatSession,
+    permissions: "CopilotPermissions | None",
+    spawn: SpawnRequest | None,
+) -> bool:
+    parent_permissions = get_current_permissions()
+    envelope = get_current_envelope()
+    if any(
+        p is not None and not p.is_empty() for p in (permissions, parent_permissions)
+    ):
+        return True
+    if spawn is not None or envelope is not None:
+        return True
+    source_user, source = get_execution_context()
+    if source_user is not None and source_user != user_id:
+        return True
+    if source is None:
+        return False
+    return (
+        source.expert_id,
+        source.organization_id,
+        source.team_id,
+        source.metadata.llm_auth_provider,
+        source.metadata.llm_credential_id,
+    ) != (
+        target.expert_id,
+        target.organization_id,
+        target.team_id,
+        target.metadata.llm_auth_provider,
+        target.metadata.llm_credential_id,
+    )
+
+
+async def _nothing_queued(session_id: str) -> bool:
+    """Whether a queue attempt that raised left nothing that can run. Unlike
+    the broker, the queue is these rows: a turn waits only as the session's
+    pending message with the session ``queued``, so a thread with no message
+    that is not queued holds nothing. A thread with history can't be read
+    this way, and a read that fails proves nothing."""
+    try:
+        db = chat_db()
+        return (
+            await db.get_chat_session_status(session_id) != CHAT_STATUS_QUEUED
+            and await db.get_next_sequence(session_id) == 0
+        )
+    except Exception:
+        logger.warning("Could not check a failed queue attempt", exc_info=True)
+        return False
 
 
 async def wait_for_queued_session(
@@ -353,6 +487,14 @@ async def _queue_for_slot(
             f"inflight cap (tool={tool_name})"
         )
         return "rejected_concurrent_turn_cap", SessionResult()
+    except Exception as e:
+        if await _nothing_queued(session_id):
+            raise TurnNotDispatched(f"The turn could not be queued: {e}") from e
+        raise
+    if timeout <= 0:
+        # Stored, so it runs when a slot frees; as after a dispatch, a read
+        # with nothing to wait for could only fail and read as "not queued".
+        return "queued_for_slot", SessionResult(queued=True)
     return await wait_for_queued_session(
         session_id=session_id, user_id=user_id, timeout=timeout
     )

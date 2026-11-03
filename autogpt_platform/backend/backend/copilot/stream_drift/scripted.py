@@ -4,7 +4,7 @@ import contextlib
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -120,6 +120,17 @@ async def sdk_service_turn(
         connection.__aenter__.return_value = client
         return connection
 
+    async def answered_cards(
+        _user_id: str,
+        _session: ChatSession,
+        deliver: Callable[[PendingMessage], None],
+        **__: Any,
+    ) -> AsyncGenerator[StreamBaseResponse, None]:
+        for result in held_results or []:
+            deliver(result)
+        return
+        yield
+
     def lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
         return MagicMock(
             try_acquire=AsyncMock(return_value=owner_id),
@@ -129,6 +140,7 @@ async def sdk_service_turn(
 
     stubs: dict[str, Any] = {
         "ClaudeSDKClient": MagicMock(side_effect=cli),
+        "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),
@@ -142,7 +154,6 @@ async def sdk_service_turn(
         "get_sdk_disallowed_tools": MagicMock(return_value=[]),
         "route_launch_env": MagicMock(return_value={}),
         "set_execution_context": MagicMock(),
-        "get_user_tier": AsyncMock(return_value=None),
         "resolve_turn_budget": AsyncMock(
             return_value=TurnBudget(usd=100.0, limiting="task")
         ),
@@ -151,7 +162,7 @@ async def sdk_service_turn(
             side_effect=[queued_at_start or [], queued_after_first]
             + [[]] * len(queries)
         ),
-        "resolve_answered": AsyncMock(return_value=held_results or []),
+        "resolve_answered": answered_cards,
         "build_session_context": AsyncMock(return_value=""),
         "skills_context_block": AsyncMock(return_value=None),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),

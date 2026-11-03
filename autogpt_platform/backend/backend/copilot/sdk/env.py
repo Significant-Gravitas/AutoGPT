@@ -12,6 +12,7 @@ import json
 import os
 import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict
 
@@ -36,6 +37,12 @@ config = ChatConfig()
 
 # The window the CLI assumes for any Claude model once 1M is gated off.
 CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+
+# Both launch paths check the CLI binary themselves (``cli_version``), from the
+# allowlisted environment. The SDK's own check takes no environment, so before
+# each launch it would start the CLI with the backend's whole one; an empty
+# value would leave it on.
+os.environ["CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"] = "1"
 
 # RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
 _HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
@@ -64,7 +71,8 @@ def common_launch_options() -> dict[str, Any]:
     """
     options: dict[str, Any] = {
         "setting_sources": [],
-        "extra_args": {"strict-mcp-config": None},
+        "verbatim_prompts": True,
+        "extra_args": {"strict-mcp-config": None, DISABLE_SLASH_COMMANDS_FLAG: None},
         "max_buffer_size": config.claude_agent_max_buffer_size,
         "max_turns": config.agent_max_turns,
     }
@@ -111,7 +119,9 @@ def route_launch_env(
     # Route subagent temp files into the per-session workspace so output
     # files are accessible (fixes /tmp/claude-0/ permission errors in E2B).
     if sdk_cwd:
-        env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        from backend.copilot.host_fs import cli_tmpdir
+
+        env["CLAUDE_CODE_TMPDIR"] = cli_tmpdir(sdk_cwd)
     env.update(_HARDENING)
     env["API_TIMEOUT_MS"] = str(profile.row.api_timeout_ms)
     env.update(_window_env(profile))
@@ -227,6 +237,53 @@ def _trace_headers(session_id: str | None, user_id: str | None) -> str:
     if user_id:
         parts.append(f"x-user-id: {_safe(user_id)}")
     return "\n".join(parts)
+
+
+# A direct-Anthropic launch's credential and where it goes, carried over from
+# the backend's environment: what the CLI used to inherit along with the rest.
+_DIRECT_ANTHROPIC_NAMES = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+)
+
+# CLI flag for ``ClaudeAgentOptions.extra_args``. Every prompt we send is user
+# or graph text, never a CLI slash command.
+DISABLE_SLASH_COMMANDS_FLAG = "disable-slash-commands"
+
+
+def without_url_credentials(url: str) -> str:
+    """*url* without a user name and password some deployments embed in it."""
+    parts = urlsplit(url)
+    if "@" not in parts.netloc:
+        return url
+    return urlunsplit(parts._replace(netloc=parts.netloc.rpartition("@")[2]))
+
+
+def cli_prompt_text(text: str) -> str:
+    """*text* as the CLI must receive it to send it on to the model.
+
+    Even with the flag above, the CLI answers a prompt that starts with "/"
+    itself when it names a built-in command. It only looks at the first
+    character, so a leading space keeps the text whole.
+    """
+    return f" {text}" if text.startswith("/") else text
+
+
+def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str, Any]:
+    """A stream-json user message the CLI hands to the model as written.
+
+    ``ClaudeAgentOptions.verbatim_prompts`` marks every message the SDK writes
+    ``client_composed``; a message written straight to the transport must
+    carry the mark itself.
+    """
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": session_id,
+        "client_composed": True,
+    }
 
 
 def _loopback_no_proxy_value() -> str:

@@ -91,7 +91,9 @@ later turns resume. No message is lost.
 
 ## Required environment variables
 
-In `autogpt_platform/backend/.env`:
+In `autogpt_platform/backend/.env` (for the single-container image, the same
+lines go in its `--env-file`; see
+[Run AutoGPT in One Docker Container](single-container.md#ollama-or-another-local-openai-compatible-server)):
 
 ```bash
 # Select the local route
@@ -375,10 +377,10 @@ the table under "How it works" above.
 **Frontend shows "The assistant encountered an error"** â€” check the
 copilot_executor log for the upstream error. Common causes:
 - `model requires more system memory (X GiB) than is available (Y GiB)`
-  â†’ free RAM (stop ClamAV, raise VM memory) or pick a smaller model
-- `model "..." not found` â†’ `ollama pull <slug>` first
-- `connection refused` â†’ containers can't reach the host on `:11434`;
-  see "Container â†’ host networking" above
+  → free RAM (stop ClamAV, raise VM memory) or pick a smaller model
+- `model "..." not found` → `ollama pull <slug>` first
+- `connection refused` → containers can't reach the host on `:11434`;
+  see "Networking — same host, different host, or remote" above
 
 **The server gets no key even though I set `OPENAI_API_KEY`** â€” by
 design. The local route sends only `CHAT_LOCAL_API_KEY`, so a cloud key
@@ -430,8 +432,8 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 
 | Setting | Cloud default | Local default |
 |---|---|---|
-| `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_LLM_MODEL` | `gpt-6-luna` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-6-luna` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
 The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`
@@ -441,7 +443,8 @@ the next section.
 
 You can pin your own slugs at any time by setting the matching
 `GRAPHITI_*_MODEL` env var; the validator only touches slots still at
-their cloud default. A custom slug (`qwen3:8b`, `hf.co/...`,
+their cloud default, including the previous `gpt-4.1-mini` default in
+existing `.env` files. A custom slug (`qwen3:8b`, `hf.co/...`,
 `my-registry.io/model:tag`) passes through untouched.
 
 ### Embeddings require an embedding model pulled into Ollama

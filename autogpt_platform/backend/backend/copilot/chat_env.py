@@ -118,6 +118,8 @@ RETIRED_CHAT_SETTINGS: dict[str, str] = {
 # the memory layer's embedding key.
 ACCEPTED_CHAT_SETTINGS: frozenset[str] = frozenset(
     {
+        "CHAT_POSTHOG_BUILTIN_TOOL_SPANS",
+        "CHAT_READ_SCREEN_SHADOW_SAMPLE_RATE",
         "CHAT_PLATFORM_ROUTE",
         "CHAT_OPENROUTER_API_KEY",
         "CHAT_OPENROUTER_BASE_URL",

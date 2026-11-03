@@ -14,6 +14,8 @@ from backend.copilot.route_profile import (
 from backend.copilot.sdk.context_window import CodexEngineWindow
 from backend.copilot.sdk.env import (
     GatewayEndpoint,
+    cli_prompt_text,
+    cli_user_message,
     describe_sdk_context,
     route_launch_env,
 )
@@ -77,6 +79,18 @@ class TestSubscription:
         # Anthropic first-party: the CLI keeps its attribution header.
         assert "CLAUDE_CODE_ATTRIBUTION_HEADER" not in result
         mock_validate.assert_called_once()
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_carries_the_login_the_host_holds_in_a_variable(
+        self, mock_validate, monkeypatch
+    ):
+        """The launch keeps nothing else of the backend's environment."""
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-host-login")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN", "sk-ant-ort01-host")
+        result = route_launch_env(_subscription())
+
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-host-login"
+        assert result["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == "sk-ant-ort01-host"
 
     @patch(
         "backend.copilot.sdk.env.validate_subscription",
@@ -272,7 +286,7 @@ class TestEveryRoute:
             )
         for name, value in _HARDENING.items():
             assert result[name] == value
-        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-abc"
+        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-abc.cli"
         assert result["API_TIMEOUT_MS"] == "600000"
         assert result["ANTHROPIC_CUSTOM_HEADERS"].endswith("Accept-Encoding: identity")
 
@@ -437,3 +451,37 @@ class TestDescribeSdkContext:
         env = route_launch_env(_openrouter(), session_id="s")
         line = describe_sdk_context(route="openrouter", model="m", sdk_env=env)
         assert "sk-or-test-key" not in line
+
+
+class TestCliPromptText:
+    """The text the CLI receives must never parse as one of its commands."""
+
+    @pytest.mark.parametrize(
+        "text", ["/compact", "/model claude-opus-4-1", "/", "/dataviz chart"]
+    )
+    def test_leading_slash_gets_a_leading_space(self, text: str):
+        assert cli_prompt_text(text) == f" {text}"
+
+    @pytest.mark.parametrize(
+        "text", ["hello", "", " /compact", "a/b", "<user_context>x</user_context>"]
+    )
+    def test_other_text_is_unchanged(self, text: str):
+        assert cli_prompt_text(text) == text
+
+
+class TestCliUserMessage:
+    """A user message written straight to the CLI's transport."""
+
+    def test_carries_the_mark_the_sdk_sets_for_verbatim_prompts(self):
+        content = [
+            {"type": "image", "source": {"type": "base64", "data": "x"}},
+            {"type": "text", "text": "hello"},
+        ]
+
+        assert cli_user_message(content, "s1") == {
+            "type": "user",
+            "message": {"role": "user", "content": content},
+            "parent_tool_use_id": None,
+            "session_id": "s1",
+            "client_composed": True,
+        }

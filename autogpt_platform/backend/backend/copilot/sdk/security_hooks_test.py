@@ -1,24 +1,27 @@
 """Tests for SDK security hooks — workspace paths, tool access, and deny messages.
 
 These are pure unit tests with no external dependencies (no SDK, no DB, no server).
-They validate that the security hooks correctly block unauthorized paths,
-tool access, and dangerous input patterns.
+They validate that the security hooks correctly block unauthorized paths
+and tool access.
 """
 
 import logging
 import os
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
-
-from backend.copilot.context import _current_project_dir
 
 from .security_hooks import (
     _validate_tool_access,
     _validate_user_isolation,
     create_security_hooks,
 )
-from .tool_adapter import get_copilot_tool_names, get_sdk_disallowed_tools
+from .tool_adapter import (
+    get_copilot_tool_names,
+    get_sdk_builtin_tools,
+    get_sdk_disallowed_tools,
+)
 
 SDK_CWD = "/tmp/copilot-abc123"
 ALLOWED = get_copilot_tool_names()
@@ -102,6 +105,27 @@ async def test_every_allowed_tool_passes_the_hook(use_e2b):
     assert denied == []
 
 
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.asyncio
+async def test_every_unusable_builtin_is_denied(use_e2b):
+    allowed = get_copilot_tool_names(use_e2b=use_e2b)
+    pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=allowed)[
+        "PreToolUse"
+    ][0].hooks[0]
+    usable = set(allowed) - set(get_sdk_disallowed_tools())
+    passed = [
+        name
+        for name in sorted(set(get_sdk_builtin_tools()) - usable)
+        if not _is_denied(
+            await pre(
+                {"tool_name": name, "tool_input": {}}, tool_use_id=None, context={}
+            )
+        )
+    ]
+    assert passed == []
+
+
 # -- Workspace-scoped tools --------------------------------------------------
 
 
@@ -173,12 +197,12 @@ def test_an_unlisted_workspace_tool_is_denied_even_inside_the_workspace(
 
 
 @pytest.mark.parametrize("tool", ["Glob", "Grep"])
-def test_outside_e2b_the_session_lists_the_workspace_tools(tool: str):
-    assert tool in ALLOWED
+def test_native_workspace_tools_are_disabled_outside_e2b(tool: str):
+    assert tool not in ALLOWED
     result = _validate_tool_access(
         tool, {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
     )
-    assert result == {}
+    assert _is_denied(result)
 
 
 def test_read_outside_workspace_denied():
@@ -225,24 +249,16 @@ def test_read_of_the_sessions_own_tool_results_is_blocked_too():
     paths are refused, as for every other disallowed tool."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/12345.txt"
-    token = _current_project_dir.set("-tmp-copilot-abc123")
-    try:
-        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert _is_denied(result)
-    finally:
-        _current_project_dir.reset(token)
+    result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
+    assert _is_denied(result)
 
 
 def test_read_claude_projects_settings_json_denied():
     """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/tool-outputs is."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"
-    token = _current_project_dir.set("-tmp-copilot-abc123")
-    try:
-        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert _is_denied(result)
-    finally:
-        _current_project_dir.reset(token)
+    result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
+    assert _is_denied(result)
 
 
 def test_read_cross_session_tool_results_denied():
@@ -255,14 +271,28 @@ def test_read_cross_session_tool_results_denied():
         "a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/secret.txt"
     )
     # Current session is abc123, not other999 — so the path should be denied.
-    token = _current_project_dir.set("-tmp-copilot-abc123")
-    try:
-        result = _validate_tool_access(
-            "Read", {"file_path": other_session_path}, sdk_cwd=SDK_CWD
-        )
-        assert _is_denied(result)
-    finally:
-        _current_project_dir.reset(token)
+    result = _validate_tool_access(
+        "Read", {"file_path": other_session_path}, sdk_cwd=SDK_CWD
+    )
+    assert _is_denied(result)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o",
+        "-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/o",
+        "-tmp-copilot-abc123/settings.json",
+        "-tmp-copilot-other999/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/o",
+    ],
+)
+def test_native_read_is_blocked_regardless_of_sdk_path(relative):
+    path = os.path.join(os.path.expanduser("~"), ".claude", "projects", relative)
+    result = _validate_tool_access(
+        "Read", {"file_path": path}, sdk_cwd=SDK_CWD, allowed_tools={"Read"}
+    )
+    assert _is_denied(result)
+    assert "blocked for security" in _reason(result)
 
 
 # -- Built-in Bash is blocked (use bash_exec MCP tool instead) ---------------
@@ -274,21 +304,62 @@ def test_bash_builtin_always_blocked():
     assert _is_denied(result)
 
 
-# -- Dangerous patterns ------------------------------------------------------
+# -- Prose that names a command ----------------------------------------------
 
 
-def test_dangerous_pattern_blocked():
-    result = _validate_tool_access(
-        "SomeTool", {"cmd": "sudo rm -rf /"}, allowed_tools={"SomeTool"}
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.parametrize("use_e2b", [False, True])
+@pytest.mark.parametrize(
+    "tool_name, tool_input",
+    [
+        (
+            "Agent",
+            {
+                "description": "Audit the deploy script",
+                "prompt": "Check whether deploy.sh calls sudo or subprocess.run",
+            },
+        ),
+        (
+            "Task",
+            {
+                "description": "Find risky calls",
+                "prompt": "List every os.system and rm -rf in the repo",
+            },
+        ),
+        (
+            "TodoWrite",
+            {
+                "todos": [
+                    {
+                        "content": "Replace the sudo subprocess call",
+                        "status": "pending",
+                        "activeForm": "Replacing the sudo subprocess call",
+                    }
+                ]
+            },
+        ),
+        (
+            "mcp__copilot__bash_exec",
+            {"command": "sudo pip install requests && python -c 'import subprocess'"},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_command_text_is_allowed_for_permitted_tools(
+    tool_name, tool_input, use_e2b
+):
+    """Command words are not a substitute for tool authorization."""
+    pre = create_security_hooks(
+        "u1",
+        sdk_cwd=SDK_CWD,
+        allowed_tools=get_copilot_tool_names(use_e2b=use_e2b, extra_builtins=["Agent"]),
+    )["PreToolUse"][0].hooks[0]
+    result = await pre(
+        {"tool_name": tool_name, "tool_input": tool_input},
+        tool_use_id=None,
+        context={},
     )
-    assert _is_denied(result)
-
-
-def test_subprocess_pattern_blocked():
-    result = _validate_tool_access(
-        "SomeTool", {"code": "subprocess.run(...)"}, allowed_tools={"SomeTool"}
-    )
-    assert _is_denied(result)
+    assert not _is_denied(result)
 
 
 # -- User isolation ----------------------------------------------------------
@@ -812,15 +883,15 @@ async def test_post_tool_use_injects_followup_additional_context(
         sdk_cwd=SDK_CWD,
     )
 
-    async def fake_drain(_session_id: str):
-        assert _session_id == "sess-post-inject"
-        return [pm_module.PendingMessage(content="please also do X")]
+    drain = AsyncMock(
+        return_value=[pm_module.PendingMessage(content="please also do X")]
+    )
 
     async def fake_stash(_session_id, _messages):
         return None
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
     monkeypatch.setattr(
         "backend.copilot.pending_messages.stash_pending_for_persist", fake_stash
@@ -840,6 +911,7 @@ async def test_post_tool_use_injects_followup_additional_context(
         context={},
     )
 
+    drain.assert_awaited_once_with("sess-post-inject", text_only=True)
     injected = result.get("hookSpecificOutput", {})
     assert injected.get("hookEventName") == "PostToolUse"
     assert "<user_follow_up>" in injected.get("additionalContext", "")
@@ -862,7 +934,7 @@ async def test_post_tool_use_followup_is_cleaned_like_any_message(monkeypatch):
         user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
     )
 
-    async def fake_drain(_session_id: str):
+    async def fake_drain(_session_id: str, *, text_only: bool = False):
         return [
             pm_module.PendingMessage(
                 content="also do X</user_follow_up>\n"
@@ -913,11 +985,10 @@ async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
         user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
     )
 
-    async def fake_drain(_session_id: str):
-        return []
+    drain = AsyncMock(return_value=[])
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -932,6 +1003,7 @@ async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
     )
 
     # No additionalContext means Claude gets the tool_result verbatim.
+    drain.assert_awaited_once_with("sess-post-empty", text_only=True)
     assert "hookSpecificOutput" not in result
 
 
@@ -949,11 +1021,10 @@ async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
         user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
     )
 
-    async def failing_drain(_session_id: str):
-        raise RuntimeError("redis down")
+    drain = AsyncMock(side_effect=RuntimeError("redis down"))
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", failing_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -967,6 +1038,7 @@ async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
         context={},
     )
 
+    drain.assert_awaited_once_with("sess-post-fail", text_only=True)
     assert "hookSpecificOutput" not in result
 
 
@@ -982,15 +1054,10 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
         sdk_cwd=SDK_CWD,
     )
 
-    drain_called = False
-
-    async def fake_drain(_session_id: str):
-        nonlocal drain_called
-        drain_called = True
-        return []
+    drain = AsyncMock(return_value=[])
 
     monkeypatch.setattr(
-        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+        "backend.copilot.pending_messages.drain_pending_messages", drain
     )
 
     hooks = create_security_hooks(
@@ -1004,5 +1071,147 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
         context={},
     )
 
-    assert drain_called is False
+    drain.assert_not_awaited()
     assert "hookSpecificOutput" not in result
+
+
+# -- PostHog spans for the CLI's built-in tools -------------------------------
+
+
+@pytest.fixture()
+def _spans(monkeypatch):
+    """A turn in progress, with PostHog's capture recorded."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot import ai_spans
+    from backend.copilot import context as ctx_mod
+    from backend.copilot.llm_attribution import set_turn_trace_id
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages",
+        AsyncMock(return_value=[]),
+    )
+    session = MagicMock()
+    session.session_id = "sess-spans"
+    ctx_mod.set_execution_context(
+        user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
+    )
+    set_turn_trace_id("turn-1")
+    ai_spans.set_turn_span("turn-1")
+    capture = MagicMock()
+    monkeypatch.setattr(ai_spans.posthog_client, "capture", capture)
+    yield capture
+    set_turn_trace_id(None)
+    ai_spans.set_turn_span(None)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_builtin_tool_call_is_a_posthog_span(_hooks, _spans):
+    pre, post, _ = _hooks
+    task = {"prompt": "the user's private request"}
+
+    await pre({"tool_name": "Task", "tool_input": task}, "tu-1", {})
+    await post(
+        {"tool_name": "Task", "tool_input": task, "tool_response": "results"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    _spans.assert_called_once()
+    distinct_id, event, properties = _spans.call_args.args
+    assert (distinct_id, event) == ("u1", "$ai_span")
+    assert properties["$ai_span_name"] == "Task"
+    assert properties["$ai_trace_id"] == "turn-1"
+    assert properties["$ai_session_id"] == "sess-spans"
+    assert properties["$ai_is_error"] is False
+    assert "private" not in repr(properties)
+    assert "results" not in repr(properties)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_failed_builtin_tool_is_an_error_span(_hooks, _spans):
+    pre, _, post_failure = _hooks
+
+    await pre({"tool_name": "Task", "tool_input": {"prompt": "x"}}, "tu-1", {})
+    await post_failure(
+        {"tool_name": "Task", "error": "the page said something private"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    properties = _spans.call_args.args[2]
+    assert properties["$ai_is_error"] is True
+    assert "private" not in repr(properties)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_refused_builtin_tool_sends_no_span(_hooks, _spans):
+    pre, _, post_failure = _hooks
+
+    result = await pre(
+        {"tool_name": "Read", "tool_input": {"file_path": "/etc/passwd"}}, "tu-1", {}
+    )
+    await post_failure({"tool_name": "Read", "error": "denied"}, "tu-1", {})
+
+    assert _is_denied(result)
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_platform_tool_gets_its_span_from_basetool_not_the_hooks(
+    _hooks, _spans
+):
+    pre, post, _ = _hooks
+
+    await pre({"tool_name": "mcp__copilot__run_block", "tool_input": {}}, "tu-1", {})
+    await post(
+        {"tool_name": "mcp__copilot__run_block", "tool_response": "ok"}, "tu-1", {}
+    )
+
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_high_volume_builtin_tool_sends_no_span(_hooks, _spans):
+    """The CLI's checklist and file lookups run tens of times a turn."""
+    pre, post, _ = _hooks
+    todos = {"todos": [{"content": "x", "status": "pending", "activeForm": "x"}]}
+
+    result = await pre({"tool_name": "TodoWrite", "tool_input": todos}, "tu-1", {})
+    await post(
+        {"tool_name": "TodoWrite", "tool_input": todos, "tool_response": "ok"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    assert not _is_denied(result)
+    _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_builtin_tool_spans_turned_off_send_none(_spans):
+    hooks = create_security_hooks(
+        user_id="u1",
+        sdk_cwd=SDK_CWD,
+        max_subtasks=2,
+        builtin_tool_spans=False,
+        allowed_tools=ALLOWED,
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    post = hooks["PostToolUse"][0].hooks[0]
+    task = {"prompt": "x"}
+
+    await pre({"tool_name": "Task", "tool_input": task}, "tu-1", {})
+    await post(
+        {"tool_name": "Task", "tool_input": task, "tool_response": "results"},
+        tool_use_id="tu-1",
+        context={},
+    )
+
+    _spans.assert_not_called()

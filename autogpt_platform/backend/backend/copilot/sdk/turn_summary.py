@@ -2,8 +2,7 @@
 
 Every turn that enters the SDK path's main ``try`` logs exactly one line,
 ``[turn-summary] {...}``, from its ``finally`` (successful, failed and
-cancelled turns alike) and attaches the same dict to the turn's Langfuse trace
-as a ``copilot-turn-summary`` event. It records names, sizes, counts and hashes
+cancelled turns alike). It records names, sizes, counts and hashes
 only, never prompt or message content, so a measure can be read before and
 after a change without regexing prompt text out of traces.
 
@@ -17,7 +16,6 @@ from typing import Callable, ParamSpec
 
 import sentry_sdk
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ToolUseBlock
-from langfuse import get_client
 
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import CopilotPermissions
@@ -36,7 +34,6 @@ from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
-LANGFUSE_EVENT_NAME = "copilot-turn-summary"
 
 _P = ParamSpec("_P")
 
@@ -286,8 +283,8 @@ class TurnSummaryCollector:
             error, s.error_class, ended_with_stream_error
         )
 
-    def emit(self, langfuse_trace_id: str | None = None) -> None:
-        """Log the line and attach it to the trace, once. Never raises."""
+    def emit(self) -> None:
+        """Log the measurement once. Never raises."""
         if self._emitted:
             return
         self._emitted = True
@@ -296,13 +293,3 @@ class TurnSummaryCollector:
         except Exception:
             logger.warning("turn summary: emit failed", exc_info=True)
             return
-        if not langfuse_trace_id:
-            return
-        try:
-            get_client().create_event(
-                trace_context={"trace_id": langfuse_trace_id},
-                name=LANGFUSE_EVENT_NAME,
-                metadata=self.summary.model_dump(exclude_none=True),
-            )
-        except Exception:
-            logger.debug("turn summary: Langfuse event emit failed", exc_info=True)

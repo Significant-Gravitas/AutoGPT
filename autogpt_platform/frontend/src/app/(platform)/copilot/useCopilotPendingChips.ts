@@ -1,6 +1,7 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
@@ -73,12 +74,10 @@ export function useCopilotPendingChips({
       promoteChipsToTrailingBubbles(setMessages, drained, flavour);
   };
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
-  // Stable string view for consumers that only need the texts. Memoised so
-  // downstream components don't re-render on identity churn alone.
-  const queuedMessages = useMemo(
-    () => queue.map((entry) => entry.text),
-    [queue],
-  );
+  // Stable string view for consumers that only need the texts. The compiler
+  // caches it on `queue`, so downstream components don't re-render on
+  // identity churn alone.
+  const queuedMessages = queue.map((entry) => entry.text);
   // Live view of the strip for the peek effect, which needs the queue at the
   // moment it issues a GET without re-running on every enqueue.
   const queueRef = useRef(queue);
@@ -106,12 +105,12 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
-  const queueMessage = useCallback((text: string) => {
+  function queueMessage(text: string) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
     // exist on a plain-HTTP LAN origin, and this updater runs during render,
     // so there it took the whole chat page down instead of queueing.
     setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
-  }, []);
+  }
 
   return { queuedMessages, queueMessage };
 }
@@ -136,7 +135,9 @@ function usePeekOnBoundary({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
@@ -187,7 +188,7 @@ function usePeekOnBoundary({
     const inFlightIds = new Set(
       (sessionChanged ? [] : queueRef.current).map((entry) => entry.id),
     );
-    void getV2GetPendingMessages(sessionId).then((res) => {
+    const peek = getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (peekSeq !== latestPeekSeqRef.current) return;
       if (res.status !== 200) return;
@@ -245,7 +246,15 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
+    void peek.catch(ignoreMissingSession);
   }, [sessionId, status, queueRef, setQueue]);
+}
+
+// A deleted chat, or another account's, answers 404: nothing is pending. Any
+// other failure is rethrown, so it still reaches Sentry as before.
+function ignoreMissingSession(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) return;
+  throw error;
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
@@ -282,7 +291,9 @@ function useAutoContinuePromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
   // Any LATER assistant id in the same chain is the auto-continue.
@@ -432,7 +443,9 @@ function useMidTurnDrainPromotion({
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const promoteRef = useRef(promote);
-  promoteRef.current = promote;
+  useInsertionEffect(() => {
+    promoteRef.current = promote;
+  });
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue

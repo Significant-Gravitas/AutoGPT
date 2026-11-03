@@ -32,6 +32,7 @@ from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.model import (
     ChatSession,
     create_chat_session,
@@ -45,6 +46,7 @@ from backend.copilot.sdk.session_waiter import (
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.tree import SpawnRequest
+from backend.data.workspace_internal import is_internal_workspace_file
 
 from .base import BaseTool
 from .expert_delegation import sent_from_metadata
@@ -55,6 +57,7 @@ from .models import (
     ToolResponseBase,
     WorkspaceFileInfoData,
 )
+from .workspace_files import AGENT_CREATED_METADATA
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +258,8 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                # It starts in the mode the parent's gate enforces.
+                inherited_autopilot_mode=child_autopilot_mode(session, None),
             )
             inner_session_id = new_session.session_id
             opened_here = True
@@ -344,7 +349,8 @@ async def list_sub_workspace_files(
     The ``origin=agent-created`` filter means only files the sub persisted via
     ``write_workspace_file`` are listed — transient working-directory artefacts
     (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
-    files and never appear here. When the sub persists more than
+    files and never appear here, and neither do the sub's own working files
+    (its build scratchpad). When the sub persists more than
     ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
     (the listing is ordered ``createdAt`` descending).
 
@@ -355,7 +361,8 @@ async def list_sub_workspace_files(
         manager = await get_workspace_manager(user_id, inner_session_id)
         files = await manager.list_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
-            metadata_equals={"origin": "agent-created"},
+            metadata_equals=AGENT_CREATED_METADATA,
+            include_internal=False,
         )
     except Exception:
         logger.warning(
@@ -401,10 +408,17 @@ def _workspace_files_from_tool_calls(
         if not file_id or not path or file_id in seen_ids:
             continue
         seen_ids.add(file_id)
+        name = payload.get("name") or path.rsplit("/", 1)[-1]
+        # The log does not carry the mark, but this tool's writes are marked by
+        # name and path alone, so the same rule gives the same answer.
+        if is_internal_workspace_file(
+            name=name, path=path, metadata=AGENT_CREATED_METADATA
+        ):
+            continue
         files.append(
             WorkspaceFileInfoData(
                 file_id=file_id,
-                name=payload.get("name") or path.rsplit("/", 1)[-1],
+                name=name,
                 path=path,
                 mime_type=payload.get("mime_type") or "",
                 size_bytes=_coerce_size_bytes(payload.get("size_bytes")),

@@ -23,13 +23,22 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.copilot.transports import resolve_default_chat_route
+from backend.copilot.turn_queue import count_inflight_turns
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
 
+from .chat_experts import (
+    list_owner_experts,
+    require_turn_expert,
+    resolve_turn_model,
+    session_reusable,
+)
 from .models import (
     BotChatRequest,
+    BotExpert,
     ChatSessionSummary,
     ChatTurnHandle,
     EnsureSessionResult,
@@ -62,6 +71,21 @@ def _unavailable_denial() -> TurnDenial:
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
     )
+
+
+async def _check_ban(user_id: str) -> TurnDenial | None:
+    """Fail closed on lookup failure, as the paywall check does."""
+    try:
+        banned = await is_user_banned(user_id)
+    except Exception:
+        logger.warning(
+            f"evaluate_turn_gate: ban lookup failed for ...{user_id[-8:]}",
+            exc_info=True,
+        )
+        return _unavailable_denial()
+    if not banned:
+        return None
+    return TurnDenial(reason="banned", message="This account has been banned.")
 
 
 async def _check_paywall(user_id: str) -> TurnDenial | None:
@@ -131,14 +155,18 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
 
 
 async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
-    """Apply the same subscription paywall + usage rate limits as the web UI.
+    """Apply the same ban, subscription paywall and usage limits as the web UI.
 
     The bot enqueues turns directly into the executor, bypassing the
     route-level paywall dependency and the dispatcher's rate-limit check, so
     without this a NO_TIER / over-cap user would get unmetered free usage.
     Returns a :class:`TurnDenial` to surface, or None when the turn may run.
     """
-    return await _check_paywall(user_id) or await _check_usage_limits(user_id)
+    return (
+        await _check_ban(user_id)
+        or await _check_paywall(user_id)
+        or await _check_usage_limits(user_id)
+    )
 
 
 async def resolve_owner(
@@ -245,20 +273,20 @@ async def _resolve_or_create_session(
     source_platform: str,
     *,
     allow_expert_session: bool = True,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
     The bot caches session IDs across turns and a cached session can be
     deleted from the web app in between — fall back to a new one so the
-    conversation self-heals instead of erroring.
+    conversation self-heals instead of erroring. A session bound to another
+    expert than ``expert_id`` (or one this context may not reach) is replaced.
     """
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if (
-            session is not None
-            and not allow_expert_session
-            and session.expert_id is not None
+        if session is not None and not await session_reusable(
+            session, owner_user_id, expert_id, allow_expert_session
         ):
             session = None
     if session is None:
@@ -274,6 +302,7 @@ async def _resolve_or_create_session(
             source_platform=source_platform,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
         )
     return session
 
@@ -283,6 +312,7 @@ async def ensure_chat_session(
     platform_user_id: str,
     platform_server_id: str | None,
     session_id: str | None,
+    expert_id: str | None = None,
 ) -> EnsureSessionResult:
     """Resolve (or create) the session for a bot conversation.
 
@@ -307,11 +337,13 @@ async def ensure_chat_session(
             owner_user_id[-8:],
         )
         return EnsureSessionResult(denial=denial)
+    await require_turn_expert(owner_user_id, expert_id, platform_server_id)
     session = await _resolve_or_create_session(
         owner_user_id,
         session_id,
         platform.value.lower(),
         allow_expert_session=platform_server_id is None,
+        expert_id=expert_id,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -337,6 +369,14 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
 
+    # Bot turns share the owner's in-flight cap with every other turn source.
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(owner_user_id) >= inflight_cap:
+        return _busy_handle(owner_user_id, inflight_cap)
+
+    await require_turn_expert(
+        owner_user_id, request.expert_id, request.platform_server_id
+    )
     if request.file_ids and request.session_id:
         # Attachment turn: the files were already uploaded into this session
         # (ensure_chat_session ran first). It must still exist — silently
@@ -344,7 +384,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.platform_server_id is not None and session.expert_id is not None:
+        if not await session_reusable(
+            session,
+            owner_user_id,
+            request.expert_id,
+            allow_expert_session=request.platform_server_id is None,
+        ):
             raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
@@ -352,8 +397,10 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             request.session_id,
             request.platform.value.lower(),
             allow_expert_session=request.platform_server_id is None,
+            expert_id=request.expert_id,
         )
     session_id = session.session_id
+    model, notice = await resolve_turn_model(owner_user_id, request.model, session)
 
     # Through the dispatch every turn takes: the owner's concurrency slot,
     # the message saved inside it (so a refused turn leaves no row behind),
@@ -362,7 +409,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     # fall back on. Marked as a chat-platform prompt, written by someone who
     # need not be the account owner, so the turn and whatever it spawns are
     # tainted.
-    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
+    org_id, team_id = await _turn_tenancy(owner_user_id, session)
     try:
         await check_inflight_cap(owner_user_id)
         turn_id = await schedule_chat_turn(
@@ -377,7 +424,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
             from_chat_platform=True,
-            capacity=get_inflight_turn_limit(),
+            capacity=inflight_cap,
+            model=model,
         )
     except ConcurrentTurnLimitError as exc:
         logger.info("Bot chat turn denied (busy) for user ...%s", owner_user_id[-8:])
@@ -409,10 +457,50 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     )
 
     return ChatTurnHandle(
-        session_id=session_id,
-        turn_id=turn_id,
-        user_id=owner_user_id,
+        session_id=session_id, turn_id=turn_id, user_id=owner_user_id, notice=notice
     )
+
+
+def _busy_handle(owner_user_id: str, inflight_cap: int) -> ChatTurnHandle:
+    return ChatTurnHandle(
+        session_id="",
+        turn_id="",
+        user_id=owner_user_id,
+        denial=TurnDenial(
+            reason="rate_limited",
+            message=(
+                f"The linked account is already running its limit of {inflight_cap} "
+                "tasks at once. Try again once one of them finishes."
+            ),
+        ),
+    )
+
+
+async def _turn_tenancy(
+    owner_user_id: str, session: ChatSession
+) -> tuple[str | None, str | None]:
+    """An expert session runs in the org/team it is pinned to (the owner's
+    personal one); anything else in the owner's default team."""
+    if session.expert_id is not None and session.organization_id:
+        return session.organization_id, session.team_id
+    return await orgs_db().get_user_default_team(owner_user_id)
+
+
+async def list_user_experts(
+    platform: Platform, platform_user_id: str, platform_server_id: str | None
+) -> list[BotExpert]:
+    """The experts a bot conversation can route a turn to.
+
+    The owner resolves exactly like a chat turn. A server gets none: expert
+    sessions are DM-only, and listing the server owner's hires to every
+    member would leak them for nothing.
+    """
+    owner_user_id = await resolve_owner(
+        platform.value, platform_server_id, platform_user_id
+    )
+    if platform_server_id is not None:
+        return []
+    return await list_owner_experts(owner_user_id)
 
 
 LIST_USER_CHATS_MAX_LIMIT = 25

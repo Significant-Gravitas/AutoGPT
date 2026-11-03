@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import active_turns
+from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
 from backend.copilot.response_model import (
     StreamFinish,
     StreamStart,
@@ -15,10 +17,20 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk.session_waiter import (
     SessionResult,
+    TurnNotDispatched,
     run_copilot_turn_via_queue,
     wait_for_session_result,
 )
 from backend.copilot.turn_pause import TurnPause
+
+
+@pytest.fixture(autouse=True)
+def clear_turn_context():
+    from backend.copilot.context import set_execution_context
+
+    set_execution_context(None, None)
+    yield
+    set_execution_context(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -121,7 +133,7 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
     db.get_chat_session_status = AsyncMock(return_value="idle")
     queued = MagicMock()
     # Idle when the waiter first looks; queued once the turn waits for a slot.
-    statuses = iter(["idle"])
+    statuses = iter([])
     queued.get_chat_session_status = AsyncMock(
         side_effect=lambda *_a, **_k: next(statuses, "queued")
     )
@@ -158,7 +170,7 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
             tool_name="run_sub_session",
         )
 
-    assert outcome == expected
+    assert outcome == expected, _.refusal
 
 
 @pytest.mark.asyncio
@@ -241,6 +253,7 @@ async def test_an_in_flight_session_is_refused():
             timeout=5,
             tool_call_id="autopilot_block",
             tool_name="autopilot_block",
+            allow_queue=False,
         )
 
     assert outcome == "refused"
@@ -268,6 +281,7 @@ async def test_a_queued_session_is_refused():
             timeout=5,
             tool_call_id="sub:parent",
             tool_name="run_sub_session",
+            allow_queue=False,
         )
 
     assert outcome == "refused"
@@ -345,7 +359,7 @@ async def test_a_turn_refused_at_pickup_is_refused_not_completed():
     assert result.response_text == ""
     assert result.refusal == (
         "Not started: out of this week's budget. "
-        "The AutoPilot budget resets 2026-10-19 00:00 UTC."
+        "The account's budget resets 2026-10-19 00:00 UTC."
     )
 
 
@@ -358,7 +372,7 @@ async def test_a_refusal_with_nothing_to_wait_for_says_so():
     assert outcome == "refused"
     assert result.refusal == (
         "Not started: the trial allowance is used up. "
-        "The AutoPilot budget doesn't reset on its own."
+        "The account's budget doesn't reset on its own."
     )
 
 
@@ -468,3 +482,308 @@ async def test_a_queued_child_turn_carries_its_parents_impersonation(
         )
 
     assert queued.await_args.kwargs["impersonated"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_dispatched_turn_with_no_wait_returns_without_reading_its_stream():
+    """``timeout == 0`` after a dispatch has nothing to wait for. Reading the
+    stream anyway is pure risk: the turn is already queued, so a Redis error
+    there would read as "not started" and a caller retrying on it would run
+    the same task twice (SECRT-3138 review)."""
+    scheduled = AsyncMock()
+    stream_read = AsyncMock(side_effect=RuntimeError("redis subscribe failed"))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=stream_read,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-fire-and-forget",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+    assert outcome == "running"
+    assert result == SessionResult()
+    scheduled.assert_awaited_once()
+    stream_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
+    mock_session_lookup,
+):
+    """Once queue_spawned_turn has stored the turn it will run when a slot
+    frees, so with nothing to wait for a status read can only fail, and a
+    failure there would read as "not queued" (SECRT-3138 review)."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    queued = AsyncMock()
+    status_read = AsyncMock(side_effect=RuntimeError("db blip"))
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("full")),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn", new=queued),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_queued_session",
+            new=status_read,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-slot",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+    assert outcome == "queued_for_slot"
+    assert result.queued is True
+    queued.assert_awaited_once()
+    status_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_before_the_dispatch_is_typed_as_not_dispatched():
+    """Callers may remove a thread or send again only when the turn provably
+    never reached the queue, so that case is typed; a publish that raised
+    stays TurnPublishUnconfirmed (Sentry on #16101)."""
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        pytest.raises(TurnNotDispatched) as raised,
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
+    assert isinstance(raised.value.__cause__, ConnectionError)
+    # Callers that report str(exc) (the AutoPilot block) keep the reason.
+    assert "redis down" in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_status_check_is_typed_as_not_dispatched():
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        pytest.raises(TurnNotDispatched, match="redis down"),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_publish_that_raised_is_not_called_undispatched():
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=TurnPublishUnconfirmed("confirm lost")),
+        ),
+        pytest.raises(TurnPublishUnconfirmed),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="s",
+            user_id="u1",
+            message="m",
+            timeout=0,
+            tool_call_id="delegate:p",
+            tool_name="delegate_to_expert",
+        )
+
+
+async def _queue_that_raised(chat):
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=ConcurrentTurnLimitError("full")),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_spawned_turn",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        patch("backend.copilot.sdk.session_waiter.chat_db", return_value=chat),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-slot",
+            user_id="u1",
+            message="own the Printify pipeline",
+            timeout=0,
+            tool_call_id="delegate:parent",
+            tool_name="delegate_to_expert",
+        )
+
+
+def _chat(*, status="idle", next_sequence=0, read_error=None):
+    chat = MagicMock()
+    chat.get_chat_session_status = AsyncMock(return_value=status)
+    chat.get_next_sequence = AsyncMock(
+        return_value=next_sequence, side_effect=read_error
+    )
+    return chat
+
+
+@pytest.mark.asyncio
+async def test_a_wait_for_a_slot_that_stored_nothing_is_not_dispatched(
+    mock_session_lookup,
+):
+    """The queue is the session's rows, so a queue attempt that raised and
+    left a fresh thread with no message, not queued, holds nothing that can
+    run (Sentry on #16101)."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    with pytest.raises(TurnNotDispatched) as raised:
+        await _queue_that_raised(_chat())
+    assert isinstance(raised.value.__cause__, ConnectionError)
+    # Callers that report str(exc) (the AutoPilot block) keep the reason.
+    assert "redis down" in str(raised.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "chat",
+    [
+        pytest.param(_chat(next_sequence=1), id="a-message-was-stored"),
+        pytest.param(_chat(status="queued"), id="the-session-is-queued"),
+        pytest.param(_chat(read_error=RuntimeError("db")), id="the-check-failed"),
+    ],
+)
+async def test_a_wait_for_a_slot_that_may_have_stored_the_turn_stays_untyped(
+    mock_session_lookup, chat
+):
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    with pytest.raises(ConnectionError):
+        await _queue_that_raised(chat)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restriction", ["tools", "providers", "envelope", "scope", "credential"]
+)
+async def test_queue_fallback_keeps_the_callers_authority(restriction):
+    from backend.copilot.context import set_execution_context
+    from backend.copilot.model import ChatSession
+    from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
+
+    source = ChatSession.new("u1", dry_run=False)
+    target = ChatSession.new("u1", dry_run=False)
+    permission = None
+    envelope = None
+    if restriction == "tools":
+        permission = CopilotPermissions(tools=["read_file"], tools_exclude=False)
+    elif restriction == "providers":
+        permission = CopilotPermissions(providers=["github"], providers_exclude=False)
+    elif restriction == "envelope":
+        envelope = TurnEnvelope(
+            tree_id="parent", depth=1, tools=frozenset({"read_file"}), tainted=True
+        )
+    elif restriction == "scope":
+        target.expert_id = "other-expert"
+    else:
+        target.metadata.llm_credential_id = "other-credential"
+    set_execution_context("u1", source, permissions=permission, envelope=envelope)
+    queued = AsyncMock()
+    try:
+        with (
+            patch(
+                "backend.copilot.sdk.session_waiter.get_chat_session",
+                AsyncMock(return_value=target),
+            ),
+            patch(
+                "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+                AsyncMock(return_value=True),
+            ),
+            patch("backend.copilot.sdk.session_waiter.queue_user_message", queued),
+        ):
+            outcome, result = await run_copilot_turn_via_queue(
+                session_id=target.session_id,
+                user_id="u1",
+                message="do this",
+                timeout=0,
+                permissions=permission,
+                tool_call_id="sub",
+                tool_name="run_sub_session",
+            )
+        assert outcome == "refused"
+        assert result.refusal
+        queued.assert_not_awaited()
+    finally:
+        set_execution_context(None, None)
+
+
+@pytest.mark.asyncio
+async def test_default_queue_fallback_remains_available():
+    from backend.copilot.context import set_execution_context
+    from backend.copilot.model import ChatSession
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    target = ChatSession.new("u1", dry_run=False)
+    queued = AsyncMock(
+        return_value=QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+    )
+    set_execution_context(None, None)
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.get_chat_session",
+            AsyncMock(return_value=target),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            AsyncMock(return_value=True),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_user_message", queued),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id=target.session_id,
+            user_id="u1",
+            message="do this",
+            timeout=0,
+            tool_call_id="block",
+            tool_name="autopilot_block",
+        )
+    assert outcome == "queued"
+    assert result.queued
+    queued.assert_awaited_once()

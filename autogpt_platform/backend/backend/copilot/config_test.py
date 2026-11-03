@@ -354,3 +354,12 @@ class TestClaudeAgentExtraBuiltinTools:
     def test_env_var_reads_a_json_list(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("CHAT_CLAUDE_AGENT_EXTRA_BUILTIN_TOOLS", '["Agent"]')
         assert ChatConfig().claude_agent_extra_builtin_tools == ["Agent"]
+
+
+class TestPosthogBuiltinToolSpans:
+    def test_on_by_default(self):
+        assert ChatConfig.model_fields["posthog_builtin_tool_spans"].default is True
+
+    def test_env_turns_it_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_POSTHOG_BUILTIN_TOOL_SPANS", "false")
+        assert ChatConfig().posthog_builtin_tool_spans is False

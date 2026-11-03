@@ -18,6 +18,16 @@ from backend.copilot.sdk.route_credentials import subscription_env
 
 logger = logging.getLogger(__name__)
 
+# The variables a host may hold its Claude login in instead of a
+# ``claude login`` credentials file.
+HOST_LOGIN_NAMES = ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN")
+
+
+def host_login_env() -> dict[str, str]:
+    """The host's Claude login, for a CLI that keeps nothing else of the
+    backend's environment (``launch_env.py``)."""
+    return {name: value for name in HOST_LOGIN_NAMES if (value := os.environ.get(name))}
+
 
 def find_bundled_cli() -> str:
     """Locate the Claude CLI binary bundled inside ``claude_agent_sdk``.

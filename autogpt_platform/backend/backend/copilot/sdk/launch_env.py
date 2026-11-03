@@ -10,9 +10,9 @@ blanked too, without a list of names to keep up to date.
 
 Two things fall outside it: a variable added to ``os.environ`` between
 ``launch_options`` and the spawn, which the SDK merges in as it spawns, and
-the SDK's own ``claude -v`` version check, which runs on the parent
-environment (AutoPilot's workers skip it). The backend writes no secret to
-``os.environ`` after import.
+the SDK's own ``claude -v`` version check, which takes no environment and so
+would run on the parent's; ``env.py`` turns it off in every process that loads
+the launch code. The backend writes no secret to ``os.environ`` after import.
 """
 
 from __future__ import annotations

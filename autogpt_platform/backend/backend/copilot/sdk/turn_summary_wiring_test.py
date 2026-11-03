@@ -32,6 +32,8 @@ from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
 from backend.copilot.sdk.service import stream_chat_completion_sdk
 from backend.copilot.sdk.turn_summary_model import TURN_SUMMARY_MARKER, short_hash
 
+from .retry_scenarios_test import _no_answered_cards
+
 _SVC = "backend.copilot.sdk.service"
 _SUMMARY_LOGGER = "backend.copilot.sdk.turn_summary"
 
@@ -108,7 +110,7 @@ async def _run_turn(
     )
     patches = _make_sdk_patches(session, transcript, None, client_factory) + [
         (f"{_SVC}._make_sdk_cwd", dict(return_value=str(tmp_path))),
-        (f"{_SVC}.resolve_answered", dict(new_callable=AsyncMock, return_value=[])),
+        (f"{_SVC}.resolve_answered", dict(new=_no_answered_cards)),
         (f"{_SVC}._update_title_async", dict(new_callable=AsyncMock)),
         (
             f"{_SVC}.build_turn_budget_block",

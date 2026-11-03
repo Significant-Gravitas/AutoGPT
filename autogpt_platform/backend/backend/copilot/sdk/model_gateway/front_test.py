@@ -320,3 +320,91 @@ async def test_a_closed_gateway_stays_closed():
     assert upstream.closed
     with pytest.raises(RuntimeError, match="cannot be restarted"):
         await gateway.start()
+
+
+async def test_codex_retry_after_disconnect_replays_without_a_second_invocation():
+    usage = GatewayUsage(input_tokens=30, output_tokens=5)
+    upstream = _FakeUpstream(_answer("completed after disconnect", usage), pause=0.02)
+    route = _ROUTE.model_copy(update={"adapter": "codex_responses"})
+    body = {"messages": [{"role": "user", "content": "same query"}], "stream": True}
+    async with ModelGateway(route, upstream=upstream) as gateway:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{gateway.base_url}/v1/messages",
+                json=body,
+                headers={"x-api-key": gateway.auth_token},
+            ) as response:
+                first = await response.content.readuntil(b"\\n\\n")
+                assert b"message_start" in first
+            status, _, replayed = await _post(gateway, body)
+            _, _, again = await _post(gateway, body)
+    assert status == 200
+    assert b"completed after disconnect" in replayed
+    assert b"message_stop" in replayed
+    assert replayed == again
+    assert len(upstream.bodies) == 1
+    assert upstream.finished_streams == 1
+    assert gateway.requests == 1
+    assert gateway.usage == usage
+
+
+async def test_codex_changed_history_is_a_new_request_and_failures_can_retry():
+    upstream = _FakeUpstream(fail=GatewayError(503, "api_error", "retry"))
+    route = _ROUTE.model_copy(update={"adapter": "codex_responses"})
+    body = {"messages": [], "stream": True}
+    async with ModelGateway(route, upstream=upstream) as gateway:
+        assert (await _post(gateway, body))[0] == 503
+        upstream.fail = None
+        assert (await _post(gateway, body))[0] == 200
+        assert (await _post(gateway, body))[0] == 200
+        assert (
+            await _post(
+                gateway, {**body, "messages": [{"role": "user", "content": "next"}]}
+            )
+        )[0] == 200
+    assert len(upstream.bodies) == 3
+
+
+async def test_codex_timeout_before_first_event_keeps_the_same_response():
+    upstream = _FakeUpstream(_answer("one invocation"), pause=0.03)
+    route = _ROUTE.model_copy(update={"adapter": "codex_responses"})
+    body = {"messages": [], "stream": True}
+    async with ModelGateway(route, upstream=upstream) as gateway:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=0.01)
+        ) as session:
+            with pytest.raises(TimeoutError):
+                await session.post(
+                    f"{gateway.base_url}/v1/messages",
+                    json=body,
+                    headers={"x-api-key": gateway.auth_token},
+                )
+        assert b"one invocation" in (await _post(gateway, body))[2]
+    assert len(upstream.bodies) == 1
+
+
+async def test_codex_nonstream_retry_is_not_charged_twice():
+    upstream = _FakeUpstream()
+    route = _ROUTE.model_copy(update={"adapter": "codex_responses"})
+    body = {"messages": [], "stream": False}
+    async with ModelGateway(route, upstream=upstream) as gateway:
+        first = (await _post(gateway, body))[2]
+        assert (await _post(gateway, body))[2] == first
+    assert len(upstream.bodies) == 1
+    assert gateway.requests == 1
+
+
+async def test_codex_replay_retention_is_bounded(monkeypatch):
+    from backend.copilot.sdk.model_gateway import replay
+
+    monkeypatch.setattr(replay, "MAX_REPLAY_ENTRIES", 1)
+    upstream = _FakeUpstream()
+    route = _ROUTE.model_copy(update={"adapter": "codex_responses"})
+    one = {"messages": [{"role": "user", "content": "one"}], "stream": True}
+    two = {"messages": [{"role": "user", "content": "two"}], "stream": True}
+    async with ModelGateway(route, upstream=upstream) as gateway:
+        await _post(gateway, one)
+        await _post(gateway, one)
+        await _post(gateway, two)
+        await _post(gateway, one)
+    assert len(upstream.bodies) == 3

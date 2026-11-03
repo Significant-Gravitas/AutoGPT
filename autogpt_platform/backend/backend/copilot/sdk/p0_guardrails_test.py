@@ -103,7 +103,7 @@ class TestSecurityEnvVars:
         """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""
         env = _launch_env("direct", sdk_cwd="/workspace/session-1")
 
-        assert env.get("CLAUDE_CODE_TMPDIR") == "/workspace/session-1"
+        assert env.get("CLAUDE_CODE_TMPDIR") == "/workspace/session-1.cli"
 
     def test_tmpdir_absent_when_sdk_cwd_not_provided(self):
         """CLAUDE_CODE_TMPDIR must NOT be set when sdk_cwd is None."""

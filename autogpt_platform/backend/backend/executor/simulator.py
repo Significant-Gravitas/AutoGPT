@@ -43,8 +43,10 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.trial_cost_context import attributed_usage
+from backend.data.model import NodeExecutionStats
 from backend.util.json import strip_code_fence
 
 logger = logging.getLogger(__name__)
@@ -175,6 +177,8 @@ async def _call_llm_for_simulation(
         RuntimeError: If the platform route has no API to simulate on.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
+    if refusal := await platform_spend_refusal(user_id):
+        raise RuntimeError(f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] {refusal}")
     client = _platform_client()
     if client is None:
         raise RuntimeError(_NO_PLATFORM_API)
@@ -207,6 +211,27 @@ async def _call_llm_for_simulation(
                 response_format={"type": "json_object"},
                 messages=messages,
                 extra_body=extra_body,
+            )
+            # Recorded before parsing: an unusable response was still paid for.
+            usage = response.usage
+            if usage is not None:
+                logger.debug(
+                    "simulate(%s): attempt=%d tokens=%d/%d",
+                    label,
+                    attempt + 1,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                )
+            else:
+                logger.debug(
+                    "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
+                )
+
+            await _track_simulator_cost(
+                usage=usage,
+                user_id=user_id,
+                model=model,
+                provider=chat_cfg.aux_provider_label,
             )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
@@ -356,6 +381,32 @@ async def _track_simulator_cost(
         )
     except Exception as exc:
         logger.warning("[simulator] usage tracking failed: %s", exc)
+
+
+async def track_dry_run_block_cost(
+    stats: NodeExecutionStats, *, user_id: str, model: str | None
+) -> None:
+    """Record what a block that ran for real on the platform's key spent.
+
+    The ``prepare_dry_run`` counterpart of ``_track_simulator_cost``: the
+    OrchestratorBlock's usage lands on its execution stats, and a dry run skips
+    the credit reconciliation that would otherwise account for it.
+    """
+    try:
+        await persist_and_record_usage(
+            session=None,
+            user_id=user_id,
+            prompt_tokens=stats.input_token_count,
+            completion_tokens=stats.output_token_count,
+            cache_read_tokens=stats.cache_read_token_count,
+            cache_creation_tokens=stats.cache_creation_token_count,
+            log_prefix="[simulator]",
+            cost_usd=stats.provider_cost,
+            model=model,
+            provider="open_router",
+        )
+    except Exception as exc:
+        logger.warning(f"[simulator] usage tracking failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -517,10 +568,10 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # safety net against runaway simulation cost.  The earlier cap of 1
         # starved multi-role patterns (Advocate/Critic, propose/critique)
         # where the second iteration is what proves the loop actually
-        # closes, and ``original=0`` (unbounded) already passed through
-        # untouched so a tiny bounded cap was asymmetric anyway.
+        # closes. ``0`` (a single call) passes through; a negative value
+        # ("loop until finished") takes the cap too.
         original = input_data.get("agent_mode_max_iterations", 0)
-        max_iters = min(original, 10) if original != 0 else 0
+        max_iters = 10 if original < 0 else min(original, 10)
         # Resolve the configured simulator model (typically an OpenRouter
         # slug like "anthropic/claude-haiku-4-5") to its canonical
         # ``LLMModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have

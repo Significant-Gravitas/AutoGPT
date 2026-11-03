@@ -31,6 +31,7 @@ from claude_agent_sdk.types import (
 )
 from pydantic import BaseModel, Field
 
+from backend.copilot.sdk.cli_io import send_user_text
 from backend.copilot.sdk.model_gateway.front import ModelGateway
 from backend.copilot.sdk.model_gateway.testing.script import handbook_page
 
@@ -76,7 +77,7 @@ class CliSession:
         records: list[TurnRecord] = []
         async with ClaudeSDKClient(options=self._options(resume)) as client:
             for prompt in prompts:
-                await client.query(prompt)
+                await send_user_text(client, prompt, "")
                 record = TurnRecord()
                 async with asyncio.timeout(_TURN_TIMEOUT_SECONDS):
                     async for message in client.receive_response():

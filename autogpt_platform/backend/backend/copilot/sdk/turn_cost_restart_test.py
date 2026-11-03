@@ -5,8 +5,10 @@ result, and the turn is captured for learning once, whole."""
 
 import asyncio
 import contextlib
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -91,6 +93,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
         original_transcript=transcript,
         compacted_transcript=None,
         client_side_effect=client_factory,
+        write_session=True,
     )
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:
@@ -115,9 +118,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
         capture = stack.enter_context(
             patch(f"{_SVC}.capture_chat_turn", new_callable=AsyncMock)
         )
-        stack.enter_context(
-            patch(f"{_SVC}.resolve_answered", new_callable=AsyncMock, return_value=[])
-        )
+        stack.enter_context(patch(f"{_SVC}.resolve_answered", new=_no_answered_cards))
         events = [
             event
             async for event in stream_chat_completion_sdk(
@@ -150,3 +151,8 @@ async def test_building_restart_preserves_cost_and_learning_capture(
         "before restart",
         "after restart",
     ]
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

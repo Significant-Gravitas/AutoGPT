@@ -23,7 +23,7 @@ if TYPE_CHECKING:
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
-    from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
+    from backend.data.rabbitmq import AsyncRabbitMQ
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -110,17 +110,6 @@ def get_async_execution_event_bus() -> "AsyncRedisExecutionEventBus":
 
 
 # ============ Execution Queue Helpers ============ #
-
-
-@thread_cached
-def get_execution_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ execution queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.executor.utils import create_execution_queue_config
-
-    client = SyncRabbitMQ(create_execution_queue_config())
-    client.connect()
-    return client
 
 
 @thread_cached
@@ -245,17 +234,6 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 
 
 # ============ Notification Queue Helpers ============ #
-
-
-@thread_cached
-def get_notification_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ notification queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.queue import create_notification_config
-
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
 
 
 @thread_cached

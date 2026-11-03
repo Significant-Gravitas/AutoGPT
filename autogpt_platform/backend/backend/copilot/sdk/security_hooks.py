@@ -4,14 +4,13 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
-import json
 import logging
-import re
 from collections.abc import Awaitable, Callable, Collection, Iterable
 from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
 
+from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
@@ -20,7 +19,6 @@ from .after_compaction_handout import AfterCompactionHandout
 from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
-    DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     SDK_SUBAGENT_TOOLS,
     WORKSPACE_SCOPED_TOOLS,
@@ -148,23 +146,8 @@ def _validate_tool_access(
     if tool_name not in allowed_tools:
         return _deny_unlisted(tool_name)
 
-    # Workspace-scoped tools: allowed only within the SDK workspace directory.
     if tool_name in WORKSPACE_SCOPED_TOOLS:
         return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
-
-    # Check for dangerous patterns in tool input
-    # Use json.dumps for predictable format (str() produces Python repr)
-    input_str = json.dumps(tool_input) if tool_input else ""
-
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, input_str, re.IGNORECASE):
-            logger.warning(
-                f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
-            )
-            return _deny(
-                "[SECURITY] Input contains a blocked pattern. "
-                "This is enforced by the platform and cannot be bypassed."
-            )
 
     return {}
 
@@ -216,6 +199,7 @@ def create_security_hooks(
     tool_display_bridge: SDKToolDisplayBridge | None = None,
     context_after_compaction: Callable[[], Awaitable[list[str]]] | None = None,
     governor: TurnGovernor | None = None,
+    builtin_tool_spans: bool = True,
     *,
     allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
@@ -244,6 +228,8 @@ def create_security_hooks(
         governor: The turn's spend and step governor. Once it is landing the
             turn, every tool call -- the main agent's and its sub-agents' --
             is refused with a reason that asks for a checkpoint.
+        builtin_tool_spans: Send a PostHog span for each call of the CLI's
+            built-in tools (``ChatConfig.posthog_builtin_tool_spans``).
         allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
             every other tool is denied.
 
@@ -262,6 +248,24 @@ def create_security_hooks(
         # as long as the sub-agent and PostToolUse releases the slot when it
         # finishes.
         subagent_tool_use_ids: set[str] = set()
+        # The CLI runs its built-in tools (Bash, Task, WebSearch, ...) itself,
+        # so they never pass through ``BaseTool``; their PostHog spans are
+        # timed from these hooks. Our MCP tools get theirs in ``BaseTool``.
+        builtin_spans = ToolSpanTimer(enabled=builtin_tool_spans)
+
+        def _finish_builtin_span(
+            tool_name: str, tool_use_id: str | None, *, is_error: bool
+        ) -> None:
+            if tool_use_id is None or tool_name.startswith(MCP_TOOL_PREFIX):
+                return
+            _, session = get_execution_context()
+            builtin_spans.finish(
+                tool_use_id,
+                tool_name,
+                user_id=user_id,
+                session_id=session.session_id if session is not None else None,
+                is_error=is_error,
+            )
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -323,6 +327,8 @@ def create_security_hooks(
             # Reserve the sub-agent slot only after all validations pass
             if tool_name in SDK_SUBAGENT_TOOLS and tool_use_id is not None:
                 subagent_tool_use_ids.add(tool_use_id)
+            if not is_copilot_tool and tool_use_id is not None:
+                builtin_spans.start(tool_use_id, tool_name)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (
@@ -368,6 +374,7 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
 
             _release_subagent_slot(tool_name, tool_use_id)
+            _finish_builtin_span(tool_name, tool_use_id, is_error=False)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
             safe_tool_use_id = _sanitize(str(tool_use_id or ""), max_len=12)
             logger.info(
@@ -446,6 +453,7 @@ def create_security_hooks(
             )
 
             _release_subagent_slot(tool_name, tool_use_id)
+            _finish_builtin_span(tool_name, tool_use_id, is_error=True)
 
             return cast(SyncHookJSONOutput, {})
 

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import orjson
 import pytest
 
+from backend.api.features.library import db as library_db_module
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.session_kind import SessionKind
 from backend.data.execution import (
@@ -89,6 +90,33 @@ async def test_run_agent(setup_test_data):
     assert result_data["graph_id"] == graph.id
     assert "graph_name" in result_data
     assert result_data["graph_name"] == "Test Agent"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refused_preset_save_still_reports_the_started_run(
+    setup_test_data, monkeypatch
+):
+    """An error here would read as a failed run, and invite a second one."""
+    monkeypatch.setattr(library_db_module, "MAX_PRESETS_PER_USER", 0)
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+
+    response = await RunAgentTool().execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        username_agent_slug=f"{user.email.split('@')[0]}/{store_submission.slug}",
+        inputs={"test_input": "Hello World"},
+        dry_run=False,
+        save_as_preset=True,
+        session=make_session(user_id=user.id),
+    )
+
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+    assert result_data["execution_id"]
+    assert result_data.get("saved_preset_id") is None
+    assert "preset was not saved" in result_data["message"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1294,6 +1322,129 @@ async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
     )
 
     assert add.await_args.kwargs["pause_irreversible_actions"] is expected
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "chain, expected",
+    [
+        # A sub-session of a person's chat pauses as that chat would.
+        (["interactive"], True),
+        # So does a sub of a sub of one.
+        (["automation-sub", "interactive"], True),
+        # A sub of a schedule or an AutoPilot block run does not: unchanged.
+        (["automation"], False),
+        # One whose chat is gone cannot prove nobody is watching.
+        ([], True),
+    ],
+)
+async def test_run_agent_in_a_sub_session_pauses_as_the_chat_it_came_from(
+    mocker, chain, expected
+):
+    from backend.copilot.model import ChatSessionMetadata
+
+    sessions = {}
+    for index, origin in enumerate(chain):
+        if origin == "automation-sub":
+            sessions[f"chat-{index}"] = ChatSessionMetadata(
+                origin="automation", delegated_by_session_id=f"chat-{index + 1}"
+            )
+        else:
+            sessions[f"chat-{index}"] = ChatSessionMetadata(origin=origin)
+
+    async def metadata(session_id):
+        found = sessions.get(session_id)
+        return None if found is None else MagicMock(metadata=found)
+
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=MagicMock(
+            get_chat_session_metadata=AsyncMock(side_effect=metadata)
+        ),
+    )
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.metadata = ChatSessionMetadata(
+        origin="automation", delegated_by_session_id="chat-0"
+    )
+    session.organization_id = "org-1"
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+    )
+
+    assert add.await_args.kwargs["pause_irreversible_actions"] is expected
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("external_caller", [False, True])
+async def test_a_run_an_api_caller_starts_names_no_chat(mocker, external_caller):
+    """An MCP call's session is never saved: a run pointing at it would ask its
+    approvals there, and pause irreversible blocks on resume for want of it."""
+    from backend.data.execution import ExecutionTrigger
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.organization_id = "org-1"
+    session.external_caller = external_caller
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_chat_outcome")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=False,
+        gate_approved=False,
+    )
+
+    kwargs = add.await_args.kwargs
+    if external_caller:
+        assert kwargs["trigger"] == ExecutionTrigger.API
+        assert kwargs["trigger_ref"] != session.session_id
+    else:
+        assert kwargs["trigger"] == ExecutionTrigger.COPILOT
+        assert kwargs["trigger_ref"] == session.session_id
 
 
 @pytest.mark.asyncio(loop_scope="session")

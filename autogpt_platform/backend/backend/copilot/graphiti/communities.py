@@ -7,8 +7,9 @@ community. The audit's default recommendation was to leave communities
 off in P0 and revisit only if retrieval relevance plateaued.
 
 The user direction for P-1 overrides that default: enable communities
-now, behind a LaunchDarkly flag, run rebuilds during off-peak windows
-to bound cost. The scheduler hook in ``backend/executor/scheduler.py``
+now, and run rebuilds as a weekly memory-maintenance job at an off-peak
+hour (owner-local 04:00, see ``dream/scheduling.py``) to bound cost. No
+feature flag gates them. The scheduler hook in ``backend/executor/scheduler.py``
 calls into this module.
 
 Operational notes:

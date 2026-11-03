@@ -33,7 +33,7 @@ export function BudgetRing({ label, percent }: Props) {
           fill="none"
           stroke="currentColor"
           strokeWidth={STROKE}
-          className="text-zinc-200"
+          className="text-border-base"
         />
         <circle
           cx={center}
@@ -46,7 +46,7 @@ export function BudgetRing({ label, percent }: Props) {
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={CIRCUMFERENCE * (1 - value / 100)}
           transform={`rotate(-90 ${center} ${center})`}
-          className="text-purple-500"
+          className="text-brand"
         />
       </svg>
     </span>

@@ -8,6 +8,7 @@ from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot import rate_limit, usage_activation
 from backend.copilot.trial_cost_context import TrialCostContext
+from backend.copilot.trial_reads import trial_reads_shared
 from backend.data import pro_activation
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
@@ -1604,6 +1605,31 @@ class TestMaybeReconcileStripeTier:
         accessor.reconcile_stripe_tier_for_user.assert_awaited_once_with(_USER)
 
 
+@pytest.mark.asyncio
+async def test_a_reconciled_tier_is_read_again_inside_a_shared_block(mocker):
+    """The reconcile writes the user's tier, so the read after it can't be the
+    copy the request already shares."""
+    usage_db = MagicMock()
+    usage_db.get_usage_activation_state = AsyncMock(
+        side_effect=[
+            UsageActivationState(
+                user_id=_USER, tier=SubscriptionTier.NO_TIER, ready=True
+            ),
+            UsageActivationState(user_id=_USER, tier=SubscriptionTier.PRO, ready=True),
+        ]
+    )
+    mocker.patch.object(usage_activation, "pro_activation_db", return_value=usage_db)
+    mocker.patch.object(
+        rate_limit, "get_ready_usage_state", usage_activation.get_ready_usage_state
+    )
+    mocker.patch.object(
+        rate_limit, "_maybe_reconcile_stripe_tier", AsyncMock(return_value=True)
+    )
+
+    with trial_reads_shared():
+        assert await get_user_tier(_USER) == SubscriptionTier.PRO
+
+
 # ---------------------------------------------------------------------------
 # set_user_tier
 # ---------------------------------------------------------------------------
@@ -1688,8 +1714,8 @@ class TestSetUserTier:
         assert tier_after == SubscriptionTier.ENTERPRISE
 
     @pytest.mark.asyncio
-    async def test_drift_check_swallows_launchdarkly_failure(self):
-        """LaunchDarkly price-id lookup failures inside the drift check must
+    async def test_drift_check_swallows_posthog_failure(self):
+        """PostHog price-id lookup failures inside the drift check must
         never bubble up and 500 the admin tier write — the DB update is
         already committed by the time we check drift."""
         mock_prisma = AsyncMock()

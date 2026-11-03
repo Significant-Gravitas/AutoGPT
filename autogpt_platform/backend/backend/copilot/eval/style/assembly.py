@@ -50,10 +50,8 @@ BASELINE_PATH = STYLE_DIR / "baseline.json"
 # runs under, the judge's own prompt, and the rules that decide which rows are
 # scored at all.
 HARNESS_MODULES = ("generation.py", "runner.py", "scorer.py")
-# The state every scored turn is sent in. An expert exists only because
-# hire-experts was on when it was hired, so that is the state its writing is
-# measured in; turning the flag off afterwards leaves a session this check
-# does not cover, which the baseline records rather than implies.
+# Historical score files record this field; authenticated expert sessions
+# always have delegation available.
 DELEGATION_ENABLED = True
 
 
@@ -174,9 +172,8 @@ def chat_system_prompt(expert: Expert | None) -> str:
 
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
-    """The model an expert turn runs on: the router's ``("thinking",
-    standard)`` cell. No user id, so LaunchDarkly is
-    skipped and this is the catalog/env layer; a proposed LD value is
+    """The SDK model on the standard tier. Without a user id, the flag is
+    skipped and this is the catalog/env layer; a proposed flag value is
     checked by hand with ``--model``."""
     mode: ModelMode = "thinking"
     route = await resolve_model_route(mode, "standard", None, config=config)

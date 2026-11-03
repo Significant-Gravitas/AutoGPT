@@ -11,6 +11,7 @@ import base64
 import json
 import shutil
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
@@ -76,6 +78,7 @@ class SdkTurns:
         # platform reads the CLI's session files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
+
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -125,9 +128,9 @@ class SdkTurns:
             "upsert_chat_session": AsyncMock(return_value=session),
             "download_transcript": AsyncMock(side_effect=self._download),
             "upload_transcript": AsyncMock(side_effect=self._upload),
+            "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
-            "propagate_attributes": MagicMock(),
             "_build_system_prompt": AsyncMock(
                 return_value="You are a test assistant. Reply briefly."
             ),
@@ -139,7 +142,6 @@ class SdkTurns:
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),
             "get_sdk_disallowed_tools": MagicMock(return_value=[]),
-            "get_user_tier": AsyncMock(return_value=None),
             # Well above any turn here, so the governor never lands one.
             "resolve_turn_budget": AsyncMock(
                 return_value=TurnBudget(usd=100.0, limiting="task")
@@ -147,7 +149,11 @@ class SdkTurns:
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
-            "resolve_answered": AsyncMock(return_value=[]),
+            # Nothing is queued mid-turn, so a finished turn simply ends.
+            "gate_auto_continue": AsyncMock(
+                return_value=AutoContinueGate(proceed=True)
+            ),
+            "resolve_answered": _no_answered_cards,
             "clear_pending_question": AsyncMock(),
         }
 
@@ -192,6 +198,9 @@ class SdkTurns:
         self, user_id: str, session_id: str, *_: Any, **__: Any
     ) -> TranscriptDownload | None:
         return self._transcripts.get(session_id)
+
+    async def _delete(self, user_id: str, session_id: str) -> None:
+        self._transcripts.pop(session_id, None)
 
 
 def _lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
@@ -255,3 +264,8 @@ def _codex_credentials() -> OAuth2Credentials:
     return credentials_from_bundle(bundle).model_copy(
         update={"id": CODEX_CREDENTIAL_ID}
     )
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

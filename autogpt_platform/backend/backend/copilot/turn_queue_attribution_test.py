@@ -157,8 +157,11 @@ async def test_retry_uses_persisted_trial_snapshot_after_publish_failure(fifo):
         {"cost_context": snapshot.model_dump(mode="json")}
     )
     publisher.publish_message.side_effect = [RuntimeError("RabbitMQ blip"), None]
-    with pytest.raises(RuntimeError, match="RabbitMQ blip"):
+    # A publish that raised may still have reached the broker, so it surfaces
+    # as TurnPublishUnconfirmed with the broker error as its cause.
+    with pytest.raises(utils.TurnPublishUnconfirmed) as raised:
         await turn_queue.dispatch_next_for_user("user-1")
+    assert str(raised.value.__cause__) == "RabbitMQ blip"
     db.update_chat_session_status.assert_any_await(
         session_id="session-1", expect_status="running", status="queued"
     )

@@ -42,6 +42,7 @@ from backend.copilot.sdk.cli_openrouter_compat_test import (
     assert_pinned_cli,
 )
 from backend.copilot.sdk.env import route_launch_env
+from backend.copilot.sdk.launch_env import launch_options
 
 _MAIN_USER_MARKER = "MAIN-USER-7f3a"
 _SUBAGENT_PROMPT = "SUBAGENT-PROMPT-9c41: report the magic word."
@@ -275,7 +276,7 @@ async def run_copilot_style_turn(
             env=env,
             stderr=stderr_lines.append,
         )
-        sdk_client = ClaudeSDKClient(options=options)
+        sdk_client = ClaudeSDKClient(options=launch_options(options))
         client = await sdk_client.__aenter__()
         try:
             await client.query(f"{_MAIN_USER_MARKER} find the magic word")

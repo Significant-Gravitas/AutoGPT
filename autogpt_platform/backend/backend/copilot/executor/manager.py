@@ -16,18 +16,22 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
+from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry
+from backend.blocks import get_blocks
+from backend.copilot import after_turn, stream_registry
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, freeze_startup_heap
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
+from .cli_warmup import start_cli_warmup
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -91,6 +95,7 @@ class CoPilotExecutor(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_copilot_workers
         self.active_tasks: dict[str, tuple[Future, threading.Event]] = {}
+        self._active_turn_ids: dict[str, str] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -112,7 +117,28 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
+        # First: the liveness probe connects here and the loads below take seconds.
+        # Work comes only through RabbitMQ, so an early open routes nothing to us.
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
+
         _load_catalog()
+        start_cli_warmup()
+        # Load the block registry before taking turns. A turn's first tool call
+        # loads it otherwise, and the collections over the grown heap stall every turn.
+        load_started = time.monotonic()
+        block_count = len(get_blocks())
+        logger.info(
+            f"Loaded {block_count} blocks in {time.monotonic() - load_started:.1f}s"
+        )
+        freeze_startup_heap()
 
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property
@@ -123,15 +149,6 @@ class CoPilotExecutor(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        # Deliberate reuse of pyro_host: despite the legacy name it is the
-        # bind address for every service's internal listener (see
-        # backend.util.service). Metrics follow the same interface as the RPC
-        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
-        # cross-container scraping), loopback in the single-container runtime.
-        start_http_server(
-            settings.config.copilot_executor_port,
-            addr=settings.config.pyro_host,
-        )
 
         self.cancel_thread.start()
         self.run_thread.start()
@@ -432,6 +449,11 @@ class CoPilotExecutor(AppProcess):
         except Exception as e:
             logger.error(f"Could not parse run message: {e}, body={body}")
             ack_message(reject=True, requeue=False)
+            try:
+                ids = _TurnIds.model_validate_json(body)
+            except ValidationError:
+                return
+            _close_rejected_turn(ids.session_id, ids.turn_id)
             return
 
         session_id = entry.session_id
@@ -442,6 +464,10 @@ class CoPilotExecutor(AppProcess):
                 f"Session {session_id} already running locally, rejecting duplicate"
             )
             ack_message(reject=True, requeue=False)
+            # A redelivery of the running turn is left to it; any other turn
+            # would read as running forever.
+            if self._active_turn_ids.get(session_id) != entry.turn_id:
+                _close_rejected_turn(session_id, entry.turn_id)
             return
 
         # Try to acquire cluster-wide lock
@@ -453,6 +479,8 @@ class CoPilotExecutor(AppProcess):
         )
         current_owner = cluster_lock.try_acquire()
         if current_owner != self.executor_id:
+            # Only the holder's own turn can meet its lock: a turn's end frees
+            # the lock before a later turn of the chat can be admitted.
             if current_owner is not None:
                 logger.warning(
                     f"Session {session_id} already running on pod {current_owner}"
@@ -474,12 +502,15 @@ class CoPilotExecutor(AppProcess):
 
             self._task_locks[session_id] = cluster_lock
             cancel_event = threading.Event()
+            after_turn.turn_started(entry.turn_id)
             future = self.executor.submit(
                 execute_copilot_turn, entry, cancel_event, cluster_lock
             )
+            self._active_turn_ids[session_id] = entry.turn_id
             self.active_tasks[session_id] = (future, cancel_event)
         except Exception as e:
             logger.warning(f"Failed to setup execution for {session_id}: {e}")
+            after_turn.turn_finished(entry.turn_id)
             cluster_lock.release()
             if session_id in self._task_locks:
                 del self._task_locks[session_id]
@@ -509,6 +540,7 @@ class CoPilotExecutor(AppProcess):
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
+                _dispatch_after_turn(session_id, entry.turn_id, error_msg)
 
         future.add_done_callback(on_run_done)
 
@@ -522,6 +554,7 @@ class CoPilotExecutor(AppProcess):
                 if future.done():
                     completed_tasks.append(session_id)
                     self.active_tasks.pop(session_id, None)
+                    self._active_turn_ids.pop(session_id, None)
                     logger.info(f"Cleaned up completed session {session_id}")
 
         self._update_metrics()
@@ -609,3 +642,52 @@ class CoPilotExecutor(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_copilot_queue_config())
         return self._run_client
+
+
+def _dispatch_after_turn(session_id: str, turn_id: str, error_msg: str | None) -> None:
+    deferred = after_turn.turn_finished(turn_id)
+    if not deferred:
+        return
+    threading.Thread(
+        target=lambda: asyncio.run(_after_turn(session_id, deferred)),
+        name=f"after-turn-{session_id[:8]}",
+        daemon=True,
+    ).start()
+
+
+async def _after_turn(session_id: str, deferred: list[after_turn.Work]) -> None:
+    for work in deferred:
+        try:
+            await work()
+        except Exception as work_err:
+            logger.error(f"After-turn work for {session_id} failed: {work_err}")
+
+
+_REJECTED_TURN_MESSAGE = "This reply could not start. Please try again."
+
+
+class _TurnIds(BaseModel):
+    session_id: str
+    turn_id: str
+
+
+def _close_rejected_turn(session_id: str, turn_id: str) -> None:
+    """Close a turn this executor dropped unrun, so the chat stops reading as
+    running it; the turn guard leaves a chat a later turn owns alone."""
+    # Without its id there is no guard, and the close would end the running turn.
+    if not turn_id:
+        return
+    threading.Thread(
+        target=lambda: asyncio.run(_close_turn(session_id, turn_id)),
+        name=f"close-rejected-{session_id[:8]}",
+        daemon=True,
+    ).start()
+
+
+async def _close_turn(session_id: str, turn_id: str) -> None:
+    try:
+        await stream_registry.mark_session_completed(
+            session_id, error_message=_REJECTED_TURN_MESSAGE, turn_id=turn_id
+        )
+    except Exception as close_err:
+        logger.error(f"Could not close rejected turn {turn_id}: {close_err}")

@@ -22,6 +22,7 @@ from backend.copilot.sdk.service import stream_chat_completion_sdk
 from backend.copilot.transcript import TranscriptDownload
 
 from .cli_openrouter_compat_test import _resolve_cli_path, assert_pinned_cli
+from .launch_env import launch_options
 from .retry_scenarios_test import _make_sdk_patches, scenario_profile
 
 _SVC = "backend.copilot.sdk.service"
@@ -80,7 +81,7 @@ async def test_second_turn_on_a_new_pod_is_charged_only_its_own_call(
         options.allowed_tools = []
         options.disallowed_tools = []
         options.system_prompt = "Reply ok."
-        client = ClaudeSDKClient(*args, options=options, **kwargs)
+        client = ClaudeSDKClient(*args, options=launch_options(options), **kwargs)
         receive = client.receive_response
 
         async def _receive_and_note_totals():
@@ -152,6 +153,7 @@ async def _run_turn(session, prompt, tmp_path, env, client, upload, download):
             compacted_transcript=None,
             client_side_effect=client,
             profile=scenario_profile(_MODEL),
+            write_session=True,
         )
         if target not in _STUBBED_HERE
     ]

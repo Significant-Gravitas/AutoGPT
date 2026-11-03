@@ -10,6 +10,7 @@ from backend.copilot.provider_failure import (
     ProviderFailureKind,
     reset_time_from_headers,
 )
+from backend.copilot.sdk.codex_images import image_urls_from_content
 from backend.copilot.sdk.model_gateway.adapters.codex_input import responses_payload
 from backend.copilot.sdk.model_gateway.adapters.codex_quota import rate_limited
 from backend.copilot.sdk.model_gateway.adapters.codex_signature import reasoning_tag
@@ -38,7 +39,7 @@ from backend.copilot.sdk.model_gateway.upstream_http import (
     response_lines,
     retain_usage,
 )
-from backend.copilot.sdk.model_gateway.usage import estimate_tokens
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage, estimate_tokens
 from backend.integrations.codex.http_client import (
     API_BASE,
     account_id_for,
@@ -76,8 +77,15 @@ class CodexResponses(Upstream):
         self._client = client or build_http_client(route.timeout_seconds, codex=True)
         self._url = f"{str(client.base_url).rstrip('/') if client is not None and str(client.base_url) else API_BASE}/responses"
         self.rate_limits: CodexRateLimitsSnapshot | None = None
+        self.reported_usage = GatewayUsage()
 
     async def stream(self, body: Event) -> AsyncGenerator[StreamItem, None]:
+        try:
+            for message in body.get("messages") or []:
+                if isinstance(message, dict):
+                    _validate_image_content(message.get("content"))
+        except ValueError as exc:
+            raise GatewayError(400, "invalid_request_error", str(exc)) from None
         credential = self._route.credential
         if credential.kind != "codex_lease":
             raise ValueError("The Codex adapter needs the account's credential lease")
@@ -99,17 +107,25 @@ class CodexResponses(Upstream):
             "authorization": f"Bearer {secrets[0]}",
             "accept": "text/event-stream",
         }
-        with retain_usage(lambda: mapper.usage):
-            async with post_json(self._client, self._url, payload, headers) as response:
-                self.rate_limits = parse_rate_limits(response.headers)
-                async for item in self._read_response(
-                    response, mapper, estimate, secrets, credentials.id
-                ):
+        try:
+            with retain_usage(lambda: mapper.usage):
+                async with post_json(
+                    self._client, self._url, payload, headers
+                ) as response:
+                    self.rate_limits = parse_rate_limits(response.headers)
+                    async for item in self._read_response(
+                        response, mapper, estimate, secrets, credentials.id
+                    ):
+                        yield item
+                if not mapper.completed:
+                    raise GatewayError(
+                        502, "api_error", "ChatGPT ended the response early"
+                    )
+                for item in closing_items(mapper.finish(), mapper.usage):
                     yield item
-            if not mapper.completed:
-                raise GatewayError(502, "api_error", "ChatGPT ended the response early")
-            for item in closing_items(mapper.finish(), mapper.usage):
-                yield item
+        finally:
+            if mapper.usage is not None:
+                self.reported_usage = self.reported_usage.plus(mapper.usage)
 
     async def _read_response(
         self,
@@ -184,3 +200,11 @@ class CodexResponses(Upstream):
                 credential_id=credential_id,
             )
         return restated
+
+
+def _validate_image_content(content: object) -> None:
+    image_urls_from_content(content)
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                _validate_image_content(block.get("content"))

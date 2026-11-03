@@ -161,6 +161,12 @@ class TurnEnvelope(BaseModel):
     deadline_at: datetime | None = None
     # The chat whose spend ceiling this tree's paid calls count against.
     spend_session_id: str | None = None
+    # Not limits: where a spawned turn sits in PostHog (``copilot.ai_spans``).
+    # The trace of the turn that spawned it and the span of the tool call that
+    # did, recorded when the child is derived. A queued child and an approval
+    # wake start under the stored envelope, so they keep both. None for a root.
+    ai_trace_id: str | None = None
+    ai_parent_span_id: str | None = None
 
     def permits(self, tool_name: str) -> bool:
         return self.tools is None or tool_name in self.tools

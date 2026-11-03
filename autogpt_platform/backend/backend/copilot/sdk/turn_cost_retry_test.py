@@ -114,6 +114,7 @@ async def test_retried_turn_charge(
         original_transcript=transcript,
         compacted_transcript=compacted,
         client_side_effect=client_factory,
+        write_session=True,
     )
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:

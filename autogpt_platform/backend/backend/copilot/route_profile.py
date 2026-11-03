@@ -240,14 +240,16 @@ def codex_profile(
     )
 
 
-def user_key_profile(provider: str, api_key: str, model: str | None) -> RouteProfile:
-    """A launch on a user's own key: OpenRouter's key goes to OpenRouter and
-    any other to Anthropic, never to a URL the deployment configured for its
-    own chat."""
+def user_key_profile(
+    provider: str, api_key: str, model: str | None, *, base_url: str | None = None
+) -> RouteProfile:
+    """A user-key launch on its provider, with an explicit endpoint override."""
     if provider == "open_router":
-        row, base_url = ROUTES["openrouter"], OPENROUTER_ROOT_URL
+        row, base_url = ROUTES["openrouter"], _without_v1(
+            base_url or OPENROUTER_ROOT_URL
+        )
     else:
-        row, base_url = ROUTES["direct_anthropic"], ""
+        row, base_url = ROUTES["direct_anthropic"], base_url or ""
     return RouteProfile(
         row=row,
         model=model or "",

@@ -41,11 +41,6 @@ def server():
     yield None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 # ── queueing it ──────────────────────────────────────────────────────────────
 
 
@@ -94,7 +89,7 @@ def queued(monkeypatch, recorded):
     )
     monkeypatch.setattr(
         checkout_audience,
-        "get_onboarding_role",
+        "get_answered_role",
         AsyncMock(return_value=OnboardingRole(choice="Marketing")),
     )
     return queue
@@ -158,7 +153,7 @@ async def test_a_posthog_failure_never_costs_the_mailerlite_change(queued, monke
 async def test_an_opener_without_a_readable_role_is_still_queued(
     queued, monkeypatch, role
 ):
-    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
+    monkeypatch.setattr(checkout_audience, "get_answered_role", role)
     await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     event = queued.await_args.args[0]
     assert event.action is AudienceAction.CHECKOUT_OPENED
@@ -184,7 +179,7 @@ async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
     marketing, so it still gets the opener; the role, which only MailerLite
     gets from here, is not read."""
     role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
-    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
+    monkeypatch.setattr(checkout_audience, "get_answered_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", **countries)
     recorded.assert_awaited_once_with("user-1", code)
@@ -257,7 +252,7 @@ async def test_an_opted_out_opener_is_never_queued(
     """Only for MailerLite: PostHog is analytics, not marketing."""
     _opt_out(monkeypatch)
     role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
-    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
+    monkeypatch.setattr(checkout_audience, "get_answered_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     queued.assert_not_awaited()

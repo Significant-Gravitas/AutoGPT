@@ -92,6 +92,7 @@ async def test_cli_exit_without_result_records_its_spend(model, tmp_path, monkey
         original_transcript=transcript,
         compacted_transcript=None,
         client_side_effect=client_factory,
+        write_session=True,
     )
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:

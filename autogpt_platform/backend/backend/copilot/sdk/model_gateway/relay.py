@@ -68,6 +68,14 @@ async def json_body(request: web.Request) -> Event | web.Response:
     """The request's JSON object, or the 400 to answer with."""
     try:
         body = await request.json()
+    except web.HTTPRequestEntityTooLarge:
+        return error_response(
+            GatewayError(
+                413,
+                "request_too_large",
+                "Request too large. Use fewer or smaller images, or shorten the conversation context.",
+            )
+        )
     except ValueError:
         return error_response(
             GatewayError(400, "invalid_request_error", "The request body must be JSON")

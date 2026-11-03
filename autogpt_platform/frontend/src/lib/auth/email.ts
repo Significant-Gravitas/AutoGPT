@@ -1,4 +1,9 @@
 import { environment } from "@/services/environment";
+import { APIError } from "better-auth/api";
+import {
+  assertEmailHasMailServer,
+  undeliverableEmailError,
+} from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
 
 export type AuthEmailType =
@@ -22,10 +27,16 @@ interface SendAuthEmailArgs {
  * configure on either side.
  *
  * In production a failed mint/send throws so an "email sent" UI can't lie
- * about an undeliverable message. Elsewhere the action link is logged to the
- * server console instead (local backends usually have no Postmark credential).
+ * about it; outside production the action link is logged to the server
+ * console instead (local backends usually have no Postmark credential).
+ * An address mail can't reach (a domain DNS says takes no mail, or one the
+ * mail provider refuses) throws the undeliverable error in every environment,
+ * and the resend button shows it. Disposable domains still get their email:
+ * older accounts on one need it to reset a password or move to a real address.
  */
 export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
+  // DNS errors still send.
+  await assertEmailHasMailServer(to);
   try {
     const token = await mintServiceToken("auth-email:send");
     const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth/email/send`;
@@ -40,18 +51,30 @@ export async function sendAuthEmail({ to, type, url }: SendAuthEmailArgs) {
 
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
+      if (isUndeliverable(response.status, detail)) {
+        throw undeliverableEmailError();
+      }
       throw new Error(
         `Backend auth-email send failed (${response.status}) for "${type}"` +
           (detail ? `: ${detail.slice(0, 200)}` : ""),
       );
     }
   } catch (error) {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" || error instanceof APIError) {
       throw error;
     }
     console.info(
       `[auth-email] Send failed (${error}). ${type} link for ${to}:`,
     );
     console.info(`[auth-email] ${url}`);
+  }
+}
+
+function isUndeliverable(status: number, body: string) {
+  if (status !== 422) return false;
+  try {
+    return JSON.parse(body).detail === "email_undeliverable";
+  } catch {
+    return false;
   }
 }

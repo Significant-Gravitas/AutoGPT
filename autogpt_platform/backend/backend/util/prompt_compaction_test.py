@@ -232,7 +232,7 @@ def test_image_blocks_are_counted():
             },
         ],
     }
-    assert _msg_tokens(message, encoding_for_model(MODEL)) > 50_000
+    assert _msg_tokens(message, encoding_for_model(MODEL)) >= 4096
 
 
 @pytest.mark.asyncio

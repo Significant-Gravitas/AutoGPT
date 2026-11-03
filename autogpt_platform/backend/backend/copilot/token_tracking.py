@@ -130,6 +130,7 @@ async def persist_and_record_usage(
     credential_id_override: str | None = None,
     skip_daily: bool = False,
     execution_path: str = "sync",
+    expert_id: str | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -152,6 +153,8 @@ async def persist_and_record_usage(
             report a cost and rate limiting is skipped for this turn.
         model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
+        expert_id: The expert the spend is attributed to on the cost log
+            row (``PlatformCostLog.expertId``); ``None`` for the account's own.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -227,8 +230,8 @@ async def persist_and_record_usage(
     cost_microdollars = usd_to_microdollars(cost_float)
 
     if cost_microdollars is not None and cost_microdollars > 0:
-        # A turn billed to credits is charged to the credit balance when it
-        # ends, and spends nothing from the plan's daily and weekly windows.
+        # A turn billed to credits is charged to the credit balance as its cost
+        # lands, and spends nothing from the plan's daily and weekly windows.
         if user_id and not await record_credit_billed_cost(user_id, cost_microdollars):
             # record_cost_usage() owns its fail-open handling for Redis/network
             # errors. Don't wrap with a broad except here — unexpected accounting
@@ -247,10 +250,11 @@ async def persist_and_record_usage(
             await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
-    # Include entries where cost_usd is set even if token count is 0
-    # (e.g. fully-cached Anthropic responses where only cache tokens
-    # accumulate a charge without incrementing total_tokens).
-    if user_id and (total_tokens > 0 or cost_float is not None):
+    # Include entries whose only tokens are cache tokens, which total_tokens
+    # leaves out (e.g. a fully-cached response), with or without a cost:
+    # tokens the provider billed stay in the ledger even when nobody could
+    # price them.
+    if user_id and (not no_tokens or cost_float is not None):
         # A dream pass logs under its own id as graph_exec_id; only a chat's
         # usage names the chat.
         chat_session_id = chat_session_id_override or (
@@ -312,6 +316,7 @@ async def persist_and_record_usage(
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
                 metadata=metadata,
+                expert_id=expert_id,
             )
         )
 

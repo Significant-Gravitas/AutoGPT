@@ -125,7 +125,6 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
             f"{_SVC}.build_session_context",
             dict(return_value=f"session_id: {_SESSION_ID}"),
         ),
-        (f"{_SVC}.is_enabled_for_user", dict(return_value=True)),
         (f"{_SVC}.fetch_warm_context", dict(return_value=_MEMORY)),
         # The ingest runs as a background task that outlives these patches.
         (f"{_SVC}._graphiti_ingest_allowed", dict(return_value=False)),
@@ -137,7 +136,7 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
             dict(return_value=_UNDERSTANDING),
         ),
         (f"{_SHARED}._fetch_langfuse_prompt", dict(return_value=None)),
-        (f"{_SHARED}.build_expert_context", dict(return_value=[_TEAM_BLOCK])),
+        (f"{_SVC}.build_expert_context", dict(return_value=[_TEAM_BLOCK])),
         ("backend.copilot.rate_limit.get_user_tier", dict(return_value=tier)),
     ]
     if resume_hit:

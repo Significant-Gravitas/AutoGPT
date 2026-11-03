@@ -3,6 +3,7 @@ import { budgetLowHint } from "@/services/usageExperience/budget";
 import type { UsageSnapshot } from "@/services/usageExperience/useUsageExperience";
 import { cn } from "@/lib/utils";
 import { BudgetRing } from "./BudgetRing";
+import { useTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 
 interface Props {
   usage: UsageSnapshot;
@@ -17,26 +18,30 @@ const WINDOW_LABEL = {
 
 export function BudgetLowHint({ usage, className }: Props) {
   const { budget, experience } = usage;
-  if (budget.state !== "low" || !budget.window) return null;
+  // The window running low, or nothing while the budget is fine.
+  const lowWindow = budget.state === "low" ? budget.window : null;
+  // Running low is the moment the allowance matters, if Otto never said so.
+  useTipMoment("first-cost", lowWindow !== null);
+  if (!lowWindow) return null;
   const trialPercent = experience.isLifetimeTrial
     ? experience.trialPercent
     : null;
   const percent =
-    budget.window === "trial"
+    lowWindow === "trial"
       ? (trialPercent ?? budget.percentUsed)
       : budget.percentUsed;
   if (percent === null) return null;
   return (
     <div
-      aria-label="AutoPilot budget"
+      aria-label="Budget running low"
       className={cn(
         "mx-auto mt-2 flex w-full items-center gap-2 px-3 text-left",
         className,
       )}
     >
-      <BudgetRing label={WINDOW_LABEL[budget.window]} percent={percent} />
-      <Text variant="small" className="!text-xs !text-zinc-500">
-        {budgetLowHint(budget.window, percent)}
+      <BudgetRing label={WINDOW_LABEL[lowWindow]} percent={percent} />
+      <Text tone="muted" variant="small-tight">
+        {budgetLowHint(lowWindow, percent)}
       </Text>
     </div>
   );

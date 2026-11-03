@@ -16,7 +16,7 @@ from backend.copilot import service as copilot_service
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.compaction import CompactionStats, CompactionTracker
 from backend.copilot.sdk.service import _build_system_prompt_value
-from backend.copilot.sdk.turn_summary import LANGFUSE_EVENT_NAME, TurnSummaryCollector
+from backend.copilot.sdk.turn_summary import TurnSummaryCollector
 from backend.copilot.sdk.turn_summary_model import (
     TURN_SUMMARY_MARKER,
     TurnSummary,
@@ -436,47 +436,22 @@ class TestNeverRaises:
             patch.object(TurnSummary, "to_line", side_effect=RuntimeError("boom")),
             caplog.at_level(logging.INFO, logger=_MOD),
         ):
-            c.emit("trace-1")
+            c.emit()
         assert _lines(caplog) == []
-
-        d = TurnSummaryCollector("s")
-        with (
-            patch(f"{_MOD}.get_client", side_effect=RuntimeError("down")),
-            caplog.at_level(logging.INFO, logger=_MOD),
-        ):
-            d.emit("trace-1")
-        assert len(_lines(caplog)) == 1
 
 
 class TestEmit:
-    def test_logs_once_and_attaches_the_same_dict_to_the_trace(self, caplog):
+    def test_logs_once(self, caplog):
         c = TurnSummaryCollector("s", is_user_message=True)
         _finish(c)
-        client = MagicMock()
-        with (
-            patch(f"{_MOD}.get_client", return_value=client),
-            caplog.at_level(logging.INFO, logger=_MOD),
-        ):
-            c.emit("trace-1")
-            c.emit("trace-1")
-
+        with caplog.at_level(logging.INFO, logger=_MOD):
+            c.emit()
+            c.emit()
         lines = _lines(caplog)
         assert len(lines) == 1
-        client.create_event.assert_called_once()
-        kwargs = client.create_event.call_args.kwargs
-        assert kwargs["name"] == LANGFUSE_EVENT_NAME
-        assert kwargs["trace_context"] == {"trace_id": "trace-1"}
-        assert kwargs["metadata"] == json.loads(lines[0].split(" ", 1)[1])
-
-    def test_no_trace_id_logs_without_an_event(self, caplog):
-        c = TurnSummaryCollector("s")
-        with (
-            patch(f"{_MOD}.get_client") as get_client,
-            caplog.at_level(logging.INFO, logger=_MOD),
-        ):
-            c.emit(None)
-        get_client.assert_not_called()
-        assert len(_lines(caplog)) == 1
+        assert json.loads(lines[0].split(" ", 1)[1]) == c.summary.model_dump(
+            exclude_none=True
+        )
 
 
 @pytest.mark.parametrize(

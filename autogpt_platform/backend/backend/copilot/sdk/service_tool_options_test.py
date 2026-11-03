@@ -22,7 +22,7 @@ def _builtins(names: list[str]) -> set[str]:
 
 @pytest.mark.parametrize(
     "use_e2b, expected",
-    [(False, ["Glob", "Grep", "TodoWrite"]), (True, ["TodoWrite"])],
+    [(False, ["TodoWrite"]), (True, ["TodoWrite"])],
 )
 def test_declares_exactly_the_builtins_the_hook_allows(
     use_e2b: bool, expected: list[str]

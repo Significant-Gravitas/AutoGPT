@@ -21,6 +21,7 @@ class SystemPromptParts(BaseModel):
     base: str
     use_e2b: bool
     expert_session: bool
+    provider: str = ""
     delegation: str
     oversight: str
     team_building: str
@@ -39,6 +40,7 @@ def assemble_system_prompt(parts: SystemPromptParts, *, building_suffix: str) ->
     return (
         parts.base
         + get_sdk_supplement(use_e2b=parts.use_e2b, expert_session=parts.expert_session)
+        + parts.provider
         + parts.delegation
         + parts.oversight
         + parts.team_building

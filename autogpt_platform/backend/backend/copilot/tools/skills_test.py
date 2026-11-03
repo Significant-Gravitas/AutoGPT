@@ -280,7 +280,7 @@ class _FakeWorkspaceManager:
         self.scanned[path] = frozenset(scanned_checksums)
 
     async def write_skill_package(
-        self, *, root, files, removed_paths, scanned_checksums=()
+        self, *, root, files, removed_paths, scanned_checksums=(), config=None
     ):
         """All or nothing, as the real manager's single transaction is: a
         failure part-way puts every file back as it was."""
@@ -877,6 +877,23 @@ async def test_store_user_skill_rejects_an_unknown_origin():
         await store_user_skill(
             "user-1", name="x", description="ok", body="ok", origin="platform"
         )
+
+
+@pytest.mark.asyncio
+async def test_store_user_skill_refuses_a_skill_whose_saved_file_would_not_read_back():
+    fake_manager = _FakeWorkspaceManager()
+    with (
+        _patch_skills_path(fake_manager),
+        pytest.raises(ValueError, match="frontmatter is larger than 16 KiB"),
+    ):
+        await store_user_skill(
+            "user-1",
+            name="tidy",
+            description="ok",
+            body="ok",
+            extra={"metadata": {"notes": "x" * (17 * 1024)}},
+        )
+    assert not any(path.startswith("/skills/tidy/") for path in fake_manager.files)
 
 
 @pytest.mark.asyncio
@@ -2027,7 +2044,7 @@ async def test_read_user_skill_with_body_returns_full_text():
 
 
 # ---------------------------------------------------------------------------
-# COPILOT_SKILLS LaunchDarkly kill-switch — default-on; LD-off must collapse
+# COPILOT_SKILLS PostHog kill-switch — default-on; flag-off must collapse
 # the per-turn ``<available_skills>`` block to empty AND make every MCP tool
 # return a structured ``feature_disabled`` error.  This is the rollback story
 # if the feature regresses in prod.

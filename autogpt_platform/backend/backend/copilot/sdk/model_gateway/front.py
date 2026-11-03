@@ -1,6 +1,8 @@
 """Authenticated loopback front; meters successful and failed requests separately."""
 
 import asyncio
+import hashlib
+import json
 import logging
 import secrets
 import time
@@ -23,6 +25,7 @@ from backend.copilot.sdk.model_gateway.relay import (
     relay,
     write_quietly,
 )
+from backend.copilot.sdk.model_gateway.replay import RecordingResponse, ResponseReplays
 from backend.copilot.sdk.model_gateway.route import GatewayRoute
 from backend.copilot.sdk.model_gateway.sse import encode_event
 from backend.copilot.sdk.model_gateway.stream import (
@@ -39,8 +42,11 @@ from backend.copilot.sdk.model_gateway.usage import (
 
 logger = logging.getLogger(__name__)
 
+GATEWAY_REFUSED_CODE = "gateway_refused"
+GATEWAY_REFUSED_MESSAGE = "The model connection failed on our side — please try again"
+
 # Anthropic's own request-size limit.
-_MAX_REQUEST_BYTES = 32 * 1024 * 1024
+_MAX_REQUEST_BYTES = 64 * 1024 * 1024
 _Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
 
@@ -67,6 +73,14 @@ class ModelGateway:
         self.requests = 0
         self.peak_prompt_tokens = 0
         self.last_failure: ProviderFailure | None = None
+        self.last_refusal: str | None = None
+        self._replays = ResponseReplays()
+
+    @property
+    def reported_usage(self) -> GatewayUsage:
+        if isinstance(self._upstream, CodexResponses):
+            return self._upstream.reported_usage
+        return self.usage.plus(self.failed_usage)
 
     @property
     def base_url(self) -> str:
@@ -118,6 +132,7 @@ class ModelGateway:
             if runner is not None:
                 await asyncio.wait_for(runner.cleanup(), timeout=5)
         finally:
+            await self._replays.close()
             if self._upstream is not None:
                 await self._upstream.aclose()
 
@@ -145,27 +160,60 @@ class ModelGateway:
     async def _messages(self, request: web.Request) -> web.StreamResponse:
         body = await json_body(request)
         if isinstance(body, web.Response):
+            self.last_refusal = (
+                json.loads(body.text or "{}").get("error", {}).get("message")
+            )
             return body
         upstream = self._upstream
         if upstream is None or self._closed:
             return self._failed(
                 GatewayError(503, "api_error", "The model gateway is shutting down")
             )
+        if self._route.adapter == "codex_responses":
+            key = hashlib.sha256(
+                json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            return await self._replays.response(
+                key, lambda: self._respond(request, upstream, body, retain=True)
+            )
+        return await self._respond(request, upstream, body)
+
+    async def _respond(
+        self,
+        request: web.Request,
+        upstream: Upstream,
+        body: Event,
+        *,
+        retain: bool = False,
+    ) -> web.StreamResponse:
         started = time.monotonic()
         meter = UsageMeter()
         streamed = body.get("stream") is True
-        if streamed:
-            response = await self._stream(request, upstream.stream(body), meter)
-        else:
-            response = await self._complete(upstream, body, meter)
-        self._account(meter, response.status, streamed, started)
-        return response
+        status = 499
+        try:
+            if streamed:
+                response = await self._stream(
+                    request, upstream.stream(body), meter, retain=retain
+                )
+            else:
+                response = await self._complete(upstream, body, meter)
+            status = response.status
+            if isinstance(response, RecordingResponse) and meter.failed:
+                response.recording = None
+            return response
+        except BaseException:
+            meter.fail()
+            raise
+        finally:
+            self._account(meter, status, streamed, started)
 
     async def _stream(
         self,
         request: web.Request,
         items: AsyncGenerator[StreamItem, None],
         meter: UsageMeter,
+        *,
+        retain: bool = False,
     ) -> web.StreamResponse:
         try:
             first = await anext(items)
@@ -176,7 +224,9 @@ class ModelGateway:
         except Exception as exc:
             await items.aclose()
             return self._failed(self._as_gateway_error(exc), meter)
-        response = web.StreamResponse(status=200, headers=SSE_HEADERS)
+        response = (RecordingResponse if retain else web.StreamResponse)(
+            status=200, headers=SSE_HEADERS
+        )
         await response.prepare(request)
         try:
             await relay(response, first, items, meter)
@@ -263,6 +313,8 @@ class ModelGateway:
         return error_response(error)
 
     def _note(self, error: GatewayError) -> None:
+        if error.failure is None:
+            self.last_refusal = redact(error.message, self._route.secret_values())
         if error.failure is not None:
             self.last_failure = error.failure.model_copy(
                 update={

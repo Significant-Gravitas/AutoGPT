@@ -166,6 +166,7 @@ async def test_resumed_turn_is_charged_its_own_cost(
         compacted_transcript=None,
         client_side_effect=_client_factory,
         profile=scenario_profile(model, route),
+        write_session=True,
     )
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches:

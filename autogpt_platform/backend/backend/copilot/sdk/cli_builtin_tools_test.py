@@ -17,9 +17,11 @@ from backend.copilot.route_profile import codex_profile
 
 from .cli_openrouter_compat_test import _resolve_cli_path, cli_version
 from .env import GatewayEndpoint, route_launch_env
+from .launch_env import launch_options
 from .service import _build_sdk_tool_options
 from .tool_adapter import (
     SDK_SUBAGENT_TOOLS,
+    create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
 )
@@ -41,7 +43,11 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def _clean_claude_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # A run inside Claude Code inherits its CLAUDE_* flags, which change the tool set.
-    for key in [k for k in os.environ if k.startswith("CLAUDE")]:
+    for key in [
+        k
+        for k in os.environ
+        if k.startswith("CLAUDE") and k != "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"
+    ]:
         monkeypatch.delenv(key)
 
 
@@ -55,7 +61,7 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
         ),
         timeout=60,
     )
-    assert {"Task", "TodoWrite"} <= set(offered), offered
+    assert {"Task", "TodoWrite", "mcp__copilot__bash_exec"} <= set(offered), offered
     # The sub-agent tool is known and deliberately left out of the allowed set.
     unclassified = sorted(set(offered) - set(allowed) - set(SDK_SUBAGENT_TOOLS))
     assert not unclassified, (
@@ -68,11 +74,11 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
 @pytest.mark.parametrize(
     "use_e2b, extra_builtins, whitelist, expected",
     [
-        (False, [], None, {"Glob", "Grep", "TodoWrite"}),
+        (False, [], None, {"TodoWrite"}),
         (True, [], None, {"TodoWrite"}),
         (True, [], ["web_fetch"], set()),
         # The init message names the sub-agent tool "Task"; the wire calls it "Agent".
-        (False, ["Agent"], None, {"Glob", "Grep", "TodoWrite", "Task"}),
+        (False, ["Agent"], None, {"TodoWrite", "Task"}),
         (True, ["Agent"], None, {"TodoWrite", "Task"}),
         # A whitelist naming either alias keeps the re-enabled tool declared.
         (False, ["Agent"], ["Agent", "web_fetch", "TodoWrite"], {"TodoWrite", "Task"}),
@@ -137,11 +143,12 @@ async def _cli_offered_tools(
         tools=tools,
         allowed_tools=allowed,
         disallowed_tools=disallowed,
+        mcp_servers={"copilot": create_copilot_mcp_server()},
         cwd=str(sdk_cwd),
         env=env,
         cli_path=_CLI_PATH,
     )
-    async with ClaudeSDKClient(options) as client:
+    async with ClaudeSDKClient(launch_options(options)) as client:
         await client.query("hi")
         async for message in client.receive_messages():
             if isinstance(message, SystemMessage) and message.subtype == "init":

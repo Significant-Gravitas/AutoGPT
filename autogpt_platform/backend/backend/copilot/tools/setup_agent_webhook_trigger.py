@@ -16,6 +16,8 @@ Credential handling splits into two classes:
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatSession
@@ -31,6 +33,7 @@ from backend.util.exceptions import (
 
 from .base import BaseTool
 from .expert_scope import annotate_expert_grants, require_installed_workflow
+from .external_scope import external_tenancy
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -97,6 +100,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
     @property
     def name(self) -> str:
         return "setup_agent_webhook_trigger"
+
+    @property
+    def allow_external_use(self):
+        # A trigger fires runs, so it needs run permission on top of the write
+        return True, [APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT]
 
     @property
     def description(self) -> str:
@@ -230,7 +238,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if card:
             return card
 
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await get_or_create_library_agent(
+            graph, user_id, *external_tenancy(session)
+        )
         try:
             preset = await triggers_db().setup_triggered_preset(
                 user_id=user_id,

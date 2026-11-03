@@ -52,13 +52,15 @@ export function formatNodeDisplayTitle(data: CustomNodeData): string {
 }
 
 export const nodeStyleBasedOnStatus: Record<AgentExecutionStatus, string> = {
-  INCOMPLETE: "ring-slate-300 bg-slate-300",
-  QUEUED: " ring-blue-300 bg-blue-300",
-  RUNNING: "ring-amber-300 bg-amber-300",
+  INCOMPLETE: "ring-border-strong bg-border-strong",
+  QUEUED: " ring-info/50 bg-info/50",
+  RUNNING: "ring-warning-border bg-warning-border",
+  // oxlint-disable-next-line design-system/no-raw-colors -- mustard yellow has no role; the warning roles are amber, deferred until approved
   REVIEW: "ring-yellow-300 bg-yellow-300",
-  COMPLETED: "ring-green-300 bg-green-300",
+  COMPLETED: "ring-success bg-success",
+  // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; mapping it to warning (amber) is deferred until approved
   TERMINATED: "ring-orange-300 bg-orange-300 ",
-  FAILED: "ring-red-300 bg-red-300",
+  FAILED: "ring-error/40 bg-error/40",
 };
 
 /**

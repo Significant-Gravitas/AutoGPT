@@ -19,7 +19,7 @@ import json
 import os
 import random
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -249,7 +249,10 @@ async def test_a_launch_that_ran_a_tool_is_not_relaunched(
 
 
 @pytest.mark.asyncio
-async def test_random_turns_relaunch_only_what_streamed_nothing(tmp_path, monkeypatch):
+@pytest.mark.parametrize("seed", range(200))
+async def test_random_turns_relaunch_only_what_streamed_nothing(
+    tmp_path, monkeypatch, seed
+):
     """Seeded random turns: every launch does some unseen work (a generation,
     a subagent), maybe shows text or runs a tool, then succeeds, overflows
     the context, or fails transiently with a 529 or a dropped connection.
@@ -259,34 +262,33 @@ async def test_random_turns_relaunch_only_what_streamed_nothing(tmp_path, monkey
     every row it showed; and OpenRouter bills exactly the launches no transient
     retry absorbed.
     """
-    for seed in range(_SEEDS):
-        rng = random.Random(seed)
-        root = tmp_path / str(seed)
-        root.mkdir()
-        turn = _Turn(root, monkeypatch, first_turn=rng.random() < 0.3)
-        sent: list[str] = []
-        plans = [
-            _random_launch(rng, f"{seed}-{n}", turn, sent, monkeypatch)
-            for n in range(_MAX_LAUNCHES)
-        ]
+    rng = random.Random(seed)
+    root = tmp_path / str(seed)
+    root.mkdir()
+    turn = _Turn(root, monkeypatch, first_turn=rng.random() < 0.3)
+    sent: list[str] = []
+    plans = [
+        _random_launch(rng, f"{seed}-{n}", turn, sent, monkeypatch)
+        for n in range(_MAX_LAUNCHES)
+    ]
 
-        await turn.run([plan.steps for plan in plans])
+    await turn.run([plan.steps for plan in plans])
 
-        ran = plans[: len(turn.launched)]
-        context = f"seed {seed}: {[(p.shown, p.end) for p in ran]}"
-        assert len(ran) == _launches_allowed(plans), context
-        assert sent == [p.tool for p in ran if p.tool], context
-        assert turn.streamed_tool_rows() == turn.persisted_tool_rows(), context
-        kept = [p for i, p in enumerate(ran) if i == len(ran) - 1 or not p.transient]
-        billed = [g for p in kept for g in p.live + p.subagent]
-        reconcile = turn.reconcile_mock()
-        if any(p.live for p in kept):
-            reconcile.assert_awaited_once()
-            assert reconcile.await_args.kwargs["cost_usd"] == pytest.approx(
-                sum(_COSTS[g] for g in billed)
-            ), context
-        else:
-            reconcile.assert_not_awaited()
+    ran = plans[: len(turn.launched)]
+    context = f"seed {seed}: {[(p.shown, p.end) for p in ran]}"
+    assert len(ran) == _launches_allowed(plans), context
+    assert sent == [p.tool for p in ran if p.tool], context
+    assert turn.streamed_tool_rows() == turn.persisted_tool_rows(), context
+    kept = [p for i, p in enumerate(ran) if i == len(ran) - 1 or not p.transient]
+    billed = [g for p in kept for g in p.live + p.subagent]
+    reconcile = turn.reconcile_mock()
+    if any(p.live for p in kept):
+        reconcile.assert_awaited_once()
+        assert reconcile.await_args.kwargs["cost_usd"] == pytest.approx(
+            sum(_COSTS[g] for g in billed)
+        ), context
+    else:
+        reconcile.assert_not_awaited()
 
 
 class _AtExit(BaseModel):
@@ -308,7 +310,6 @@ _Step = (
     | _AtExit
 )
 
-_SEEDS = 200
 # Three context attempts, each with one transient retry.
 _MAX_LAUNCHES = 6
 _TRANSIENT_ENDS = ("overloaded", "dropped")
@@ -481,15 +482,20 @@ class _Turn:
             ),
             client_side_effect=self._launch,
             profile=scenario_profile(_MODEL, "openrouter"),
+            write_session=True,
         )
         with contextlib.ExitStack() as stack:
             for target, kwargs in patches:
                 self._mocks[target] = stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(
+                patch(f"{_SVC}.context_refresh.start_refresh", return_value=None)
+            )
             # A resumed turn diffs the user's skills, a first turn loads the
             # user's context, and every turn folds in answered cards and
             # follow-ups: DB, scheduler and Redis round trips, none of them
             # under test.
             for name, value in (
+                ("fetch_warm_context", None),
                 ("build_skills_update_notice", None),
                 ("_first_turn_context_blocks", []),
                 ("inject_context_blocks", None),
@@ -499,6 +505,9 @@ class _Turn:
                 stack.enter_context(
                     patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
                 )
+            stack.enter_context(
+                patch(f"{_SVC}.resolve_answered", new=_no_answered_cards)
+            )
             stack.enter_context(
                 patch(f"{_SVC}._compute_transient_backoff", return_value=0)
             )
@@ -711,3 +720,8 @@ def _reconcile_tasks() -> list[asyncio.Task]:
         for task in sdk_service._background_tasks
         if task.get_loop() is loop and not task.done()
     ]
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

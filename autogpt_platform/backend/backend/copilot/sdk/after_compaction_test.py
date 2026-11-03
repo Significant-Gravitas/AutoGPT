@@ -290,7 +290,6 @@ class TestOversizeBlock:
         # Its items are templates to hire, which `list_team` does not list.
         hiring = render_team_context(
             [],
-            delegation_enabled=True,
             hiring_roster=[_expert(i) for i in range(400)],
         )
         assert hiring is not None
@@ -326,13 +325,11 @@ class TestRenderedBlocksShorten:
         assert short is not None
         return short.text.split("\n")
 
-    @pytest.mark.parametrize("delegation_enabled", [True, False])
     @pytest.mark.parametrize("exclude_expert_id", [None, "exp-0"])
-    def test_team_roster(self, delegation_enabled, exclude_expert_id):
+    def test_team_roster(self, exclude_expert_id):
         experts = [_expert(i) for i in range(40)]
         rendered = render_team_context(
             experts,
-            delegation_enabled=delegation_enabled,
             exclude_expert_id=exclude_expert_id,
         )
         assert rendered is not None
@@ -363,11 +360,13 @@ class TestRenderedBlocksShorten:
 
         lines = self._shorten(rendered)
 
-        closing = -5 if source == "TEMPLATE" else -4
+        closing = next(
+            i for i, line in enumerate(lines) if line.endswith("for all of them.")
+        )
         assert lines[closing].endswith("call `tool:list_routines` for all of them.")
         assert lines[closing - 1].startswith("with a second line (id: routine-")
         if source == "TEMPLATE":
-            assert lines[-4].startswith("The routines marked (proposal)")
+            assert "Routines marked (proposal) are offers" in "\n".join(lines)
 
 
 def test_a_block_of_exactly_the_budget_goes_out_whole():

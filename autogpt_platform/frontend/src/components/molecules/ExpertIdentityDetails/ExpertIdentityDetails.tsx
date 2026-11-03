@@ -41,12 +41,14 @@ export function ExpertIdentityDetails({
 
   return (
     <Container
+      data-slot="expert-identity"
       className={cn(
         "flex min-w-0 flex-col text-left",
         compact ? "gap-0" : "gap-1",
       )}
     >
       <Container
+        data-slot="expert-identity-name-line"
         className={cn(
           "flex min-w-0 gap-2",
           size === "page" && "flex-wrap gap-y-0",
@@ -57,11 +59,12 @@ export function ExpertIdentityDetails({
           as={size === "page" ? "h1" : "span"}
           variant={compact ? "body-medium" : "lead-semibold"}
           tone="primary"
-          unmask={false}
+          data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-[1.125rem]",
+            compact && "leading-4.5",
+            // TODO(tokens): SECRT-3152, no text role for 24px.
             size === "page" && "text-2xl leading-8",
           )}
         >
@@ -72,11 +75,12 @@ export function ExpertIdentityDetails({
             as="span"
             variant="body"
             tone="secondary"
-            unmask={false}
+            data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
               size === "page" ? "max-w-full break-words" : "truncate",
-              size === "card" && "text-[13px]",
+              size === "card" && "text-body-sm leading-inherit",
+              // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
               areaClassName,
             )}
             title={titleOnNameLine}
@@ -85,13 +89,17 @@ export function ExpertIdentityDetails({
               <>
                 {"• "}
                 <span
+                  data-slot="expert-identity-title-text"
                   className={cn(
                     "bg-clip-text font-medium text-transparent",
-                    size === "card" && "text-[15px]",
+                    size === "card" && "text-body-md leading-inherit",
+                    // TODO(tokens): SECRT-3152, no text role for 18px.
                     size === "page" && "text-lg",
                   )}
                   style={{
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, #18181b), color-mix(in srgb, ${areaColor} 85%, #18181b))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-primary))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-primary))))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- glow in the runtime category colour
                     filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
                   }}
                 >
@@ -108,7 +116,12 @@ export function ExpertIdentityDetails({
         {nameAccessory}
       </Container>
       {!area ? (
-        <Text as="span" variant="small" tone="muted">
+        <Text
+          as="span"
+          variant="small"
+          tone="muted"
+          data-slot="expert-identity-subtitle"
+        >
           {isOtto ? "Your personal Head of AI" : "AI Expert"}
         </Text>
       ) : null}
@@ -117,7 +130,8 @@ export function ExpertIdentityDetails({
           as="span"
           variant="small"
           tone="secondary"
-          unmask={false}
+          data-slot="expert-identity-area"
+          // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
           className={cn("truncate leading-4", areaClassName)}
           title={area}
         >

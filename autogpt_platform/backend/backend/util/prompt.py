@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Message prefixes for important system messages that should be protected during compression
 MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
+_IMAGE_TOKEN_ESTIMATE = 4096
 
 # ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
@@ -58,14 +59,11 @@ def _msg_tokens(msg: dict, enc) -> int:
     if msg.get("type") == "function_call_output":
         return (
             WRAPPER
-            + _tok_len(msg.get("output", ""), enc)
+            + _content_tokens(msg.get("output", ""), enc)
             + _tok_len(msg.get("call_id", ""), enc)
         )
 
-    # Count content tokens.  List content is counted block by block below;
-    # tokenizing str(list) here first would encode a base64 image twice.
-    content = msg.get("content")
-    content_tokens = 0 if isinstance(content, list) else _tok_len(content or "", enc)
+    content_tokens = _content_tokens(msg.get("content") or "", enc)
 
     # Count tool call tokens for both OpenAI and Anthropic formats
     tool_call_tokens = 0
@@ -82,35 +80,34 @@ def _msg_tokens(msg: dict, enc) -> int:
                     tool_call["function"].get("arguments", ""), enc
                 )
 
-    # Anthropic format: tool_use within content array
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "tool_use":
-                # Count the tool use structure tokens
-                tool_call_tokens += _tok_len(item.get("id", ""), enc)
-                tool_call_tokens += _tok_len(item.get("name", ""), enc)
-                tool_call_tokens += _tok_len(json.dumps(item.get("input", {})), enc)
-            elif isinstance(item, dict) and item.get("type") == "tool_result":
-                # Count tool result tokens
-                tool_call_tokens += _tok_len(item.get("tool_use_id", ""), enc)
-                tool_call_tokens += _tok_len(item.get("content", ""), enc)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                # Count text block tokens (standard: "text" key, fallback: "content")
-                text_val = item.get("text") or item.get("content", "")
-                tool_call_tokens += _tok_len(text_val, enc)
-            elif isinstance(item, dict) and "content" in item:
-                # Other content types with content field
-                tool_call_tokens += _tok_len(item.get("content", ""), enc)
-            elif isinstance(item, dict):
-                # Images, documents and any other block: count what will be
-                # sent.  Ignoring them let a 1 MB image register as 8 tokens
-                # and pass through compaction whole.  Estimated from the
-                # serialised length rather than tokenized: BPE over a megabyte
-                # of base64 takes seconds, and ~3 characters per token is the
-                # conservative side for that alphabet.
-                tool_call_tokens += len(json.dumps(item, separators=(",", ":"))) // 3
-
     return WRAPPER + content_tokens + tool_call_tokens
+
+
+def _content_tokens(content: Any, enc) -> int:
+    if not isinstance(content, list):
+        return _tok_len(content, enc)
+
+    tokens = 0
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "tool_use":
+            tokens += _tok_len(item.get("id", ""), enc)
+            tokens += _tok_len(item.get("name", ""), enc)
+            tokens += _tok_len(json.dumps(item.get("input", {})), enc)
+        elif item_type == "tool_result":
+            tokens += _tok_len(item.get("tool_use_id", ""), enc)
+            tokens += _content_tokens(item.get("content", ""), enc)
+        elif item_type in ("text", "input_text", "output_text"):
+            tokens += _tok_len(item.get("text") or item.get("content", ""), enc)
+        elif item_type in ("image_url", "image", "input_image"):
+            tokens += _IMAGE_TOKEN_ESTIMATE
+        elif "content" in item:
+            tokens += _content_tokens(item.get("content", ""), enc)
+        else:
+            tokens += len(json.dumps(item, separators=(",", ":"))) // 3
+    return tokens
 
 
 def _is_tool_message(msg: dict) -> bool:
@@ -214,7 +211,7 @@ def estimate_token_count(
     model: str = "gpt-4o",
 ) -> int:
     """
-    Return the true token count of *messages* when encoded for *model*.
+    Count text tokens for *model*, with a bounded estimate per image block.
 
     Parameters
     ----------

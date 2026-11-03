@@ -81,7 +81,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
             id={inputId}
             value={tempValue}
             className={cn(
-              "!min-h-[300px] rounded-2xlarge",
+              "!min-h-[300px]",
               inputType === "json" && "font-mono text-sm",
             )}
             onChange={(e) => setTempValue(e.target.value)}
@@ -98,13 +98,13 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
                 isCopied ? "Copied to clipboard" : "Copy to clipboard"
               }
               className={cn(
-                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
+                "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
                 isCopied &&
-                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
+                  "border-success bg-success-surface hover:border-success hover:bg-success/40",
               )}
             >
               {isCopied ? (
-                <Icon icon={Tick02Icon} size={16} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={16} className="text-success" />
               ) : (
                 <Icon icon={Copy01Icon} size={16} />
               )}

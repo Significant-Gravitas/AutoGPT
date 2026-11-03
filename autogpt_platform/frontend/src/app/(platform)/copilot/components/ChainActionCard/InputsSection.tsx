@@ -4,6 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { formatInputsTitle, type InputsRequest } from "./helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   requests: InputsRequest[];
@@ -22,30 +23,39 @@ export function InputsSection({ requests }: Props) {
       {visible.map((request) => (
         <div
           key={request.id}
-          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white"
+          className="overflow-hidden rounded-3xl border border-separator bg-surface"
         >
-          <div className="flex items-center gap-2.5 border-b border-zinc-100 px-4 py-3">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-900">
+          <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
+            <Icon
+              icon={PencilEdit02Icon}
+              size={18}
+              className="text-foreground-subtle"
+            />
+            <Text variant="body-medium-tight" as="span" tone="primary">
               {request.title
                 ? formatInputsTitle(request.title)
                 : "Fill in the details"}
-            </span>
+            </Text>
             {request.title && (
-              <span className="ml-auto text-xs text-zinc-400">
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="subtle"
+                className="ml-auto"
+              >
                 Fill in the details
-              </span>
+              </Text>
             )}
           </div>
 
           {/* Each RJSF field carries an inline 16px bottom margin — the
               negative margin swallows the last field's so the card edge
               sits ~8px below the form. */}
-          <div className="px-4 pb-0 pt-2">
+          <div className="px-4 pt-2 pb-0">
             {request.schema && (
               <FormRenderer
                 jsonSchema={request.schema}
-                className="-mb-2 mt-0"
+                className="mt-0 -mb-2"
                 handleChange={(v) => request.onChange(v.formData ?? {})}
                 uiSchema={{
                   "ui:submitButtonOptions": { norender: true },
@@ -60,7 +70,7 @@ export function InputsSection({ requests }: Props) {
             {request.hasAdvanced && (
               <button
                 type="button"
-                className="mb-2 mt-1 text-xs text-muted-foreground underline"
+                className="mt-1 mb-2 text-xs text-muted-foreground underline"
                 onClick={request.onToggleAdvanced}
               >
                 {request.showAdvanced

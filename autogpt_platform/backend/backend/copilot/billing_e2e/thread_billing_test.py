@@ -8,7 +8,8 @@ charged the whole chat's spend so far until #15342.
 The provider keeps its own invoice; the ledger records what the platform
 charged. Each turn must charge the user's spend counters and the turn tree
 once, for the turn's own calls, and write one cost-log row whose tokens are
-the provider's.
+the provider's. A turn billed to credits charges the credit balance instead
+of the spend counters.
 
 The SDK scenarios run the pinned Claude Code CLI (``CLAUDE_AGENT_CLI_PATH``,
 else the one bundled with the SDK), so they skip where there is none (the
@@ -29,6 +30,7 @@ from backend.copilot.sdk.cli_openrouter_compat_test import (
 )
 
 from .audit import audit_thread
+from .credit_turns import CreditBilledTurns
 from .ledger import PlatformLedger
 from .m365_turns import MICROSOFT_365_CREDENTIAL_ID, Microsoft365Turns
 from .provider import FakeProvider
@@ -55,6 +57,8 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         pytest.skip("No Claude Code CLI binary available")
     provider.generation_lookups_fail = scenario.generation_lookups_fail
     provider.faults = [scenario.fault] if scenario.fault else []
+    if scenario.credits is not None:
+        ledger.fund(scenario.credits)
     run_turn = _turn_runner(scenario, provider, tmp_path, monkeypatch)
     session = _session(scenario)
     usage_by_turn: list[list[Usage]] = []
@@ -97,11 +101,20 @@ def _turn_runner(
 ) -> SdkTurns | Microsoft365Turns:
     if scenario.engine == "microsoft_365":
         return Microsoft365Turns(monkeypatch, provider)
+    config = _config(sdk_service.config, scenario, provider)
+    if scenario.credits is not None:
+        return CreditBilledTurns(
+            tmp_path,
+            monkeypatch,
+            provider,
+            config,
+            cli_max_retries=scenario.cli_max_retries,
+        )
     return SdkTurns(
         tmp_path,
         monkeypatch,
         provider,
-        _config(sdk_service.config, scenario, provider),
+        config,
         codex=scenario.codex,
         cli_max_retries=scenario.cli_max_retries,
     )

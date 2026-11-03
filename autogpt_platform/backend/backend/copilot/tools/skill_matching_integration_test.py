@@ -1,0 +1,110 @@
+import asyncio
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.response_model import StreamError
+from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.retry_scenarios_test import (
+    TestStreamChatCompletionRetryIntegration as _SdkHarness,
+)
+from backend.copilot.sdk.retry_scenarios_test import (
+    _build_transcript,
+    _make_sdk_patches,
+)
+from backend.copilot.tools import skill_matching_test as skill_fixtures
+
+available_skills = skill_fixtures.available_skills
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resume,retry", [(True, False), (False, False), (False, True)])
+async def test_sdk_matching_survives_resume_disabled_and_context_retry(
+    available_skills: AsyncMock, resume: bool, retry: bool
+) -> None:
+    session = _sdk_session()
+    task = "Find a partner contact"
+    queries: list[str] = []
+    patches = _make_sdk_patches(
+        session,
+        original_transcript=_build_transcript(
+            [("user", "Earlier"), ("assistant", "Ready")]
+        ),
+        compacted_transcript=None,
+        client_side_effect=_sdk_client_factory(queries, retry),
+    )
+    with ExitStack() as stack:
+        for target, kwargs in patches:
+            stack.enter_context(patch(target, **kwargs))
+        _patch_sdk_context(stack, resume)
+        async with asyncio.timeout(10):
+            events = [
+                event
+                async for event in sdk_service.stream_chat_completion_sdk(
+                    session_id=session.session_id,
+                    message=task,
+                    user_id="test-user",
+                    session=session,
+                )
+            ]
+    assert not [event for event in events if isinstance(event, StreamError)]
+    assert len(queries) == (2 if retry else 1)
+    for query in queries:
+        assert "<matched_skills>" in query
+        assert "skill:partner-first-touch-outreach" in query
+        assert query.rindex(task) < query.index("<matched_skills>")
+    assert all("<matched_skills>" not in (m.content or "") for m in session.messages)
+
+
+def _sdk_session() -> ChatSession:
+    session = _SdkHarness()._make_session()
+    session.expert_id = "expert-a"
+    session.title = "Partner research"
+    session.messages = [
+        ChatMessage(role="user", content="Earlier"),
+        ChatMessage(role="assistant", content="Ready"),
+        ChatMessage(role="user", content="Find a partner contact"),
+    ]
+    return session
+
+
+def _sdk_client_factory(queries: list[str], retry: bool):
+    harness = _SdkHarness()
+
+    def client_factory(*args, **kwargs):
+        client = harness._make_client_mock(
+            result_message=harness._make_result_message()
+        )
+
+        async def query(prompt, **kwargs):
+            queries.append(prompt)
+            if retry and len(queries) == 1:
+                raise RuntimeError("prompt is too long (context_length_exceeded)")
+
+        client.__aenter__.return_value.query = query
+        return client
+
+    return client_factory
+
+
+def _patch_sdk_context(stack: ExitStack, resume: bool) -> None:
+    stack.enter_context(
+        patch.object(sdk_service.config, "claude_agent_use_resume", resume)
+    )
+    held_statuses = MagicMock()
+    held_statuses.__aiter__.return_value = []
+    stack.enter_context(
+        patch.object(sdk_service, "resolve_answered", return_value=held_statuses)
+    )
+    for name, result in {
+        "build_expert_identity_suffix": "",
+        "build_skills_update_notice": "",
+        "clear_pending_question": None,
+        "persist_and_record_usage": None,
+        "active_mode": None,
+    }.items():
+        stack.enter_context(
+            patch.object(sdk_service, name, AsyncMock(return_value=result))
+        )

@@ -32,6 +32,8 @@ from backend.copilot.sdk.continued_turn_query_test import _client
 from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
 from backend.copilot.sdk.service import stream_chat_completion_sdk
 
+from .retry_scenarios_test import _no_answered_cards
+
 _SVC = "backend.copilot.sdk.service"
 _SESSION_ID = "test-session-id"
 _USER_ID = "test-user"
@@ -187,7 +189,7 @@ async def _run_engine(
     cm.__aexit__.return_value = None
     patches = _make_sdk_patches(session, transcript, None, lambda *a, **k: cm) + [
         (f"{_SVC}._make_sdk_cwd", dict(return_value=str(tmp_path))),
-        (f"{_SVC}.resolve_answered", dict(new_callable=AsyncMock, return_value=[])),
+        (f"{_SVC}.resolve_answered", dict(new=_no_answered_cards)),
         (f"{_SVC}._update_title_async", dict(new_callable=AsyncMock)),
         (f"{_SVC}.build_turn_budget_block", dict(new=AsyncMock(return_value=""))),
         (f"{_SVC}.build_skills_update_notice", dict(new=AsyncMock(return_value=""))),

@@ -89,10 +89,19 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "verification_url",
     }
 )
+# A user is known to Sentry by their id only, so their email and IP address are
+# filtered wherever else they turn up, such as in extras or a frame's locals.
+# Exact names only: keys like ``email_verified`` stay readable.
+_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
 # Matched case-insensitively against every key in the event, as sentry's
 # EventScrubber does (with its PII list, since send_default_pii is off).
 _SENTRY_SENSITIVE_KEYS = frozenset(
-    field.lower() for field in (*_SENTRY_SENSITIVE_FIELDS, *DEFAULT_PII_DENYLIST)
+    field.lower()
+    for field in (
+        *_SENTRY_SENSITIVE_FIELDS,
+        *DEFAULT_PII_DENYLIST,
+        *_SENTRY_PERSONAL_FIELDS,
+    )
 )
 _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
@@ -107,6 +116,7 @@ _TOKEN_SHAPED_VALUE = re.compile(
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
 )
 _FILTERED_VALUE = "[Filtered]"
+_MAX_LOCAL_REPR = 1024
 
 
 def _scrub_secrets(value: object) -> object:
@@ -285,6 +295,8 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
     _scrub_sentry_event(event)
     return event
 
@@ -292,8 +304,59 @@ def _before_send(event, hint):
 def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
     every WebSocket connection is one."""
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
     _redact_request_urls(event)
     return event
+
+
+# Sentry knows a user by their id only: never their email, name or IP
+# address, whichever code put them on the scope.
+_SENTRY_USER_FIELDS = frozenset({"id"})
+
+
+def _strip_user_pii(event: dict) -> None:
+    user = event.get("user")
+    if user is None:
+        return
+    kept = {
+        field: value for field, value in user.items() if field in _SENTRY_USER_FIELDS
+    }
+    if kept:
+        event["user"] = kept
+    else:
+        del event["user"]
+
+
+# Request headers that carry the visitor's IP address or the location derived
+# from it. The backends sit behind Cloudflare, which adds ``Cf-Connecting-Ip``
+# and its ``Cf-Ip*`` location headers to every request; sentry-sdk only drops
+# ``X-Forwarded-For`` and ``X-Real-Ip`` with PII off.
+_IP_HEADER_MARKERS = (
+    "forwarded",
+    "proxied_for",
+    "real_ip",
+    "connecting_ip",
+    "client_ip",
+    "vercel_ip",
+)
+
+
+def _is_ip_header(name: str) -> bool:
+    key = name.lower().replace("-", "_")
+    return key.startswith("cf_ip") or any(m in key for m in _IP_HEADER_MARKERS)
+
+
+def _strip_ip_headers(event: dict) -> None:
+    request = event.get("request")
+    if not isinstance(request, dict):
+        return
+    headers = request.get("headers")
+    if not isinstance(headers, dict):
+        return
+    request["headers"] = {
+        name: value for name, value in headers.items() if not _is_ip_header(name)
+    }
 
 
 def _sentry_environment() -> str:
@@ -328,14 +391,26 @@ def sentry_init():
         profiles_sample_rate=1.0,
         release=settings.config.sentry_release.strip() or None,
         environment=_sentry_environment(),
+        # The SDK default, pinned: no IP address, request headers with
+        # personal data or cookies.
+        send_default_pii=False,
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
+        custom_repr=_bounded_repr,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
         + optional_integrations,
     )
+
+
+def _bounded_repr(value: object) -> str | None:
+    """The SDK repr()s frame locals in full while holding the GIL, which takes seconds
+    and gigabytes when a traceback holds a large upload."""
+    if isinstance(value, (str, bytes, bytearray)) and len(value) > _MAX_LOCAL_REPR:
+        return f"{value[:_MAX_LOCAL_REPR]!r}... ({len(value):,} long)"
+    return None
 
 
 def _running_under_pytest() -> bool:

@@ -41,6 +41,8 @@ TAGS_WRITTEN_TO_STORED_ROWS = (
 # Blocks that only ever go to the model, never into a stored row: the inbound
 # sanitizer reserves them, the display strip has nothing to peel.
 MODEL_ONLY_BLOCK_TAGS = {
+    "matched_skills",
+    "sandbox_status",
     "seen_capabilities",
     "budget_status",
     "conversation_history",
