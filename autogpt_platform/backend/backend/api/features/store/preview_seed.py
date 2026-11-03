@@ -29,7 +29,6 @@ from pydantic import BaseModel
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks.io import (
     AgentLongTextInputBlock,
-    AgentNumberInputBlock,
     AgentOutputBlock,
     AgentShortTextInputBlock,
 )
@@ -57,6 +56,7 @@ from .preview_seed_content import (
     REVIEWERS,
     SKILLS,
     CalculatorWorkflow,
+    CountWorkflow,
     ReplaceWorkflow,
     SeedListing,
     SeedSkill,
@@ -72,7 +72,6 @@ SEED_NAMESPACE = uuid.UUID("6f1c2d8e-3b4a-4c5d-9e7f-a1b2c3d4e5f6")
 WORKFLOW_BLOCKS = (
     AgentShortTextInputBlock,
     AgentLongTextInputBlock,
-    AgentNumberInputBlock,
     AgentOutputBlock,
     FillTextTemplateBlock,
     CalculatorBlock,
@@ -230,12 +229,12 @@ def build_graph(listing: SeedListing) -> Graph:
         return seed_id("node", listing.slug, role)
 
     workflow = listing.workflow
-    if isinstance(workflow, CalculatorWorkflow):
-        input_block = AgentNumberInputBlock()
-    elif isinstance(workflow, TemplateWorkflow) and not workflow.long_input:
-        input_block = AgentShortTextInputBlock()
-    else:
+    if isinstance(workflow, (ReplaceWorkflow, CountWorkflow)) or (
+        isinstance(workflow, TemplateWorkflow) and workflow.long_input
+    ):
         input_block = AgentLongTextInputBlock()
+    else:
+        input_block = AgentShortTextInputBlock()
 
     # Left to right: (role, block id, input defaults).
     steps: list[tuple[str, str, dict]]
@@ -366,7 +365,14 @@ async def _ensure_listing(
     )
     if existing is not None:
         pending = _unreviewed_pending(existing.Versions or [])
-        if existing.isDeleted or existing.hasApprovedVersion or pending is None:
+        # An earlier run stopped after submitting, or partway through the
+        # approval: it points the listing at the version before marking the
+        # version approved. Either way the version is still pending.
+        if (
+            existing.isDeleted
+            or pending is None
+            or (existing.hasApprovedVersion and existing.activeVersionId != pending.id)
+        ):
             live = (
                 not existing.isDeleted
                 and existing.hasApprovedVersion

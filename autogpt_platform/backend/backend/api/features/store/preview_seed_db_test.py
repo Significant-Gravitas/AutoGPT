@@ -15,6 +15,7 @@ import pytest
 from backend.api.features.orgs.db import get_user_default_team
 
 from . import db as store_db
+from . import model as store_model
 from . import preview_seed, skill_db
 from .preview_seed_content import ADMIN, CREATORS, LISTINGS, SKILLS
 
@@ -176,8 +177,9 @@ async def test_a_listing_rejected_since_stays_rejected(seeded):
     assert after.hasApprovedVersion is False
 
 
-async def test_a_submission_an_interrupted_run_left_pending_is_approved(seeded):
-    listing = LISTINGS[2]
+async def _resubmit(listing) -> store_model.StoreSubmission:
+    """Drop the listing and submit it again, as a run that stopped right after
+    submitting would have left it."""
     graph_id = preview_seed.seed_graph_id(listing)
     owner_id = preview_seed.seed_user_id(
         next(c for c in CREATORS if c.key == listing.creator)
@@ -186,7 +188,7 @@ async def test_a_submission_an_interrupted_run_left_pending_is_approved(seeded):
         where={"agentGraphId": graph_id}
     )
     org_id, _ = await get_user_default_team(owner_id)
-    await store_db.create_store_submission(
+    return await store_db.create_store_submission(
         user_id=owner_id,
         graph_id=graph_id,
         graph_version=1,
@@ -197,13 +199,46 @@ async def test_a_submission_an_interrupted_run_left_pending_is_approved(seeded):
         organization_id=org_id,
     )
 
-    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
-        summary = await preview_seed.seed_marketplace()
 
-    assert summary.listings[listing.slug] == "approved"
+async def _assert_live(listing) -> None:
     row = await prisma.models.StoreListing.prisma().find_unique_or_raise(
-        where={"agentGraphId": graph_id}, include={"ActiveVersion": True}
+        where={"agentGraphId": preview_seed.seed_graph_id(listing)},
+        include={"ActiveVersion": True},
     )
     assert row.hasApprovedVersion
     assert row.ActiveVersion is not None
     assert row.ActiveVersion.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+    creator = next(c for c in CREATORS if c.key == listing.creator)
+    details = await store_db.get_store_agent_details(creator.username, listing.slug)
+    assert details.agent_name == listing.name
+
+
+async def test_a_submission_an_interrupted_run_left_pending_is_approved(seeded):
+    listing = LISTINGS[2]
+    await _resubmit(listing)
+
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        summary = await preview_seed.seed_marketplace()
+
+    assert summary.listings[listing.slug] == "approved"
+    await _assert_live(listing)
+
+
+async def test_an_approval_interrupted_after_pointing_the_listing_is_finished(seeded):
+    listing = LISTINGS[3]
+    submission = await _resubmit(listing)
+    # What review_store_submission has committed when it stops before it marks
+    # the version approved.
+    await prisma.models.StoreListing.prisma().update(
+        where={"id": submission.listing_id},
+        data={
+            "hasApprovedVersion": True,
+            "ActiveVersion": {"connect": {"id": submission.listing_version_id}},
+        },
+    )
+
+    with patch.object(store_db, "ensure_embedding", AsyncMock(return_value=False)):
+        summary = await preview_seed.seed_marketplace()
+
+    assert summary.listings[listing.slug] == "approved"
+    await _assert_live(listing)

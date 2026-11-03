@@ -11,6 +11,7 @@ from backend.blocks import get_block
 from backend.blocks._base import BlockEffect, BlockType
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.graph import Graph, make_graph_model
+from backend.util.type import coerce_inputs_to_schema
 
 from . import model as store_model
 from . import skill_model
@@ -150,13 +151,7 @@ async def test_workflow_turns_its_example_into_the_expected_output(listing):
     result = await _run(build_graph(listing))
 
     if isinstance(workflow, CalculatorWorkflow):
-        apply = {
-            "Add": operator.add,
-            "Subtract": operator.sub,
-            "Multiply": operator.mul,
-            "Divide": operator.truediv,
-        }[workflow.operation]
-        assert result == pytest.approx(apply(workflow.example, workflow.operand))
+        assert result == pytest.approx(_calculate(workflow, float(workflow.example)))
     elif isinstance(workflow, ReplaceWorkflow):
         assert result == workflow.example.replace(workflow.old, workflow.new)
     elif isinstance(workflow, CountWorkflow):
@@ -167,6 +162,21 @@ async def test_workflow_turns_its_example_into_the_expected_output(listing):
         assert "{{" not in result
         if f"{{{{ {workflow.input_name} }}}}" in workflow.template:
             assert workflow.example in result
+
+
+CALCULATORS = [
+    listing for listing in LISTINGS if isinstance(listing.workflow, CalculatorWorkflow)
+]
+
+
+@pytest.mark.parametrize("listing", CALCULATORS, ids=lambda listing: listing.slug)
+async def test_an_amount_keeps_its_cents(listing):
+    workflow = listing.workflow
+    assert isinstance(workflow, CalculatorWorkflow)
+
+    result = await _run(build_graph(listing), entered="100.55")
+
+    assert result == pytest.approx(_calculate(workflow, 100.55))
 
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda skill: skill.slug)
@@ -188,17 +198,31 @@ def test_skill_slugs_stay_out_of_the_catalogs_way():
     assert len({skill.slug for skill in SKILLS}) == len(SKILLS)
 
 
-async def _run(graph: Graph) -> Any:
+def _calculate(workflow: CalculatorWorkflow, amount: float) -> float:
+    apply = {
+        "Add": operator.add,
+        "Subtract": operator.sub,
+        "Multiply": operator.mul,
+        "Divide": operator.truediv,
+    }[workflow.operation]
+    return apply(amount, workflow.operand)
+
+
+async def _run(graph: Graph, entered: str | None = None) -> Any:
     """Run a linear seed workflow in-process, the way the executor feeds each
-    node its defaults plus whatever its incoming links carry."""
+    node its defaults plus whatever its incoming links carry, coerced to the
+    node's input types. ``entered`` replaces the input's default value, as a
+    person filling in the run form would."""
     incoming = defaultdict(list)
     for link in graph.links:
         incoming[link.sink_id].append(link)
     produced: dict[tuple[str, str], Any] = {}
-    for node in graph.nodes:
+    for position, node in enumerate(graph.nodes):
         block = get_block(node.block_id)
         assert block is not None
         data = dict(node.input_default)
+        if position == 0 and entered is not None:
+            data["value"] = entered
         for link in incoming[node.id]:
             data[link.sink_name] = produced[(link.source_id, link.source_name)]
         data = {
@@ -206,6 +230,7 @@ async def _run(graph: Graph) -> Any:
             for name, value in merge_execution_input(data).items()
             if "_#_" not in name
         }
+        coerce_inputs_to_schema(data, block.input_schema)
         async for name, value in block.run(block.input_schema(**data)):
             produced[(node.id, name)] = value
     return produced[(graph.nodes[-1].id, "output")]

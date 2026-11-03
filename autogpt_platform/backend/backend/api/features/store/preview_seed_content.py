@@ -41,11 +41,15 @@ class TemplateWorkflow:
 
 @dataclass(frozen=True)
 class CalculatorWorkflow:
-    """One number input put through a single arithmetic step."""
+    """One amount put through a single arithmetic step.
+
+    The amount is entered as text: the number input holds whole numbers only,
+    so it would drop the cents of a price before the calculator saw them.
+    """
 
     input_name: str
     input_title: str
-    example: int
+    example: str
     operation: Literal["Add", "Subtract", "Multiply", "Divide"]
     operand: float
     output_name: str
@@ -333,7 +337,7 @@ LISTINGS: tuple[SeedListing, ...] = (
         workflow=CalculatorWorkflow(
             input_name="list_price",
             input_title="List price",
-            example=1200,
+            example="1199.99",
             operation="Multiply",
             operand=0.85,
             output_name="discounted_price",
@@ -354,7 +358,7 @@ LISTINGS: tuple[SeedListing, ...] = (
         workflow=CalculatorWorkflow(
             input_name="subtotal",
             input_title="Subtotal",
-            example=2500,
+            example="2499.50",
             operation="Multiply",
             operand=1.08,
             output_name="total",
@@ -375,7 +379,7 @@ LISTINGS: tuple[SeedListing, ...] = (
         workflow=CalculatorWorkflow(
             input_name="annual_budget",
             input_title="Annual budget",
-            example=120000,
+            example="120000",
             operation="Divide",
             operand=12,
             output_name="monthly_budget",
@@ -528,7 +532,7 @@ LISTINGS: tuple[SeedListing, ...] = (
         workflow=CalculatorWorkflow(
             input_name="amount_paid",
             input_title="Amount paid",
-            example=80,
+            example="79.90",
             operation="Multiply",
             operand=0.9,
             output_name="refund",
