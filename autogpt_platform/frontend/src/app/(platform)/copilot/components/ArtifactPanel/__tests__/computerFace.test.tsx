@@ -1,5 +1,3 @@
-// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
-
 import {
   getGetV2GetSessionComputerMockHandler,
   getPostV2StartSessionDesktopMockHandler,
