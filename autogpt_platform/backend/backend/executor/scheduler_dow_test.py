@@ -40,3 +40,11 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
 )
 def test_dow_field_keeps_its_days(dow, expected):
     assert _fire_weekdays(f"0 0 * * {dow}") == expected
+
+
+@pytest.mark.parametrize("dow", ["1/", "0-7/", "*/", "1,3/", "*/0", "8"])
+def test_malformed_dow_field_is_rejected(dow):
+    """A slash with no step, a zero step or a day above 7 must raise instead of
+    being coerced into a schedule that fires on days nobody asked for."""
+    with pytest.raises(ValueError):
+        _build_trigger(cron=f"0 0 * * {dow}", run_at=None, user_timezone="UTC")

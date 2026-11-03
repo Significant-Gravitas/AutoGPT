@@ -290,6 +290,39 @@ async def test_schedule_next_run_lands_on_the_cron_weekdays(
         await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dow", ["1/", "0-7/"])
+async def test_schedule_with_an_empty_dow_step_is_refused_not_saved(
+    server: SpinTestServer, dow: str
+):
+    """A slash with nothing after it is malformed cron. The scheduler service
+    must refuse it (the API turns the ValueError into a 400) instead of saving
+    a Monday or every-day schedule the user never asked for."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    scheduler = get_scheduler_client()
+
+    with pytest.raises(ValueError):
+        await scheduler.add_execution_schedule(
+            graph_id=test_graph.id,
+            user_id=test_user.id,
+            graph_version=1,
+            cron=f"0 9 * * {dow}",
+            input_data={"input": "data"},
+            input_credentials={},
+            user_timezone="UTC",
+        )
+
+    saved = await scheduler.get_execution_schedules(
+        graph_id=test_graph.id, user_id=test_user.id
+    )
+    assert saved == []
+
+
 # ---------------------------------------------------------------------------
 # Community rebuild @expose methods — lightweight unit tests
 #
@@ -1779,11 +1812,14 @@ def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
     assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
 
 
-@pytest.mark.parametrize("raw", ["*/0", "8", "1-9", "9-2", "0-5/0"])
+@pytest.mark.parametrize(
+    "raw", ["*/0", "8", "1-9", "9-2", "0-5/0", "1/", "0-7/", "1,3/"]
+)
 def test_normalize_cron_day_of_week_rejects_what_cron_rejects(raw: str):
-    """A zero step or a day above 7 is invalid cron. Coercing it (``*/0`` to
-    every day, ``8`` to Monday) would save a schedule that fires on days the
-    user never asked for."""
+    """A zero step, a day above 7 or a slash with no step is invalid cron.
+    Coercing it (``*/0`` to every day, ``8`` to Monday, ``1/`` to Monday,
+    ``0-7/`` to every day) would save a schedule that fires on days the user
+    never asked for."""
     with pytest.raises(ValueError):
         _normalize_cron_day_of_week(f"0 9 * * {raw}")
 

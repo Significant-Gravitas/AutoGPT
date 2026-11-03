@@ -2727,7 +2727,11 @@ def _expand_unix_dow(token: str) -> list[int] | None:
     invalid APS ranges like ``0-1/2``. Expanding the day set first and mapping
     each day is unambiguous.
     """
-    body, _, step_s = token.partition("/")
+    body, slash, step_s = token.partition("/")
+    if slash and not step_s:
+        # ``1/`` or ``0-7/``: a slash with nothing after it. APScheduler needs
+        # digits there, so reject it instead of quietly saving a plain ``1``.
+        raise ValueError(f"Missing day-of-week step in {token!r}")
     if step_s and not step_s.isdigit():
         return None
     step = int(step_s) if step_s else 1
