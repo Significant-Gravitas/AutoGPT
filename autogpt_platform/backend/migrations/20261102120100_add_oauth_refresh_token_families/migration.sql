@@ -6,6 +6,14 @@
 ALTER TABLE "OAuthAccessToken"
 ADD COLUMN "refreshFamilyId" TEXT;
 
+-- The database default is load-bearing: during a rolling deploy, servers still
+-- on the previous release insert refresh tokens without a familyId, and every
+-- existing row needs a family of its own. gen_random_uuid() is volatile, so
+-- this rewrites OAuthRefreshToken under an ACCESS EXCLUSIVE lock, and the two
+-- plain index builds below block writes while they run. Both tables were empty
+-- in production on 2026-11-02, so that is instant. If they hold many rows when
+-- this ships, stage it like 20260926160000/20260926160001: nullable column with
+-- the default, backfill, NOT NULL, then indexes built CONCURRENTLY.
 ALTER TABLE "OAuthRefreshToken"
 ADD COLUMN "familyId" TEXT NOT NULL DEFAULT gen_random_uuid(),
 ADD COLUMN "familyRevokedAt" TIMESTAMP(3);

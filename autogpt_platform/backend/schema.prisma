@@ -3350,7 +3350,9 @@ model OAuthRefreshToken {
   scopes APIKeyPermission[]
 
   revokedAt       DateTime? // Set when token is revoked
-  familyId        String    @default(uuid())
+  // The database default fills in rows from servers that predate families,
+  // during a rolling deploy as well as at migration time.
+  familyId        String    @default(dbgenerated("gen_random_uuid()"))
   familyRevokedAt DateTime? // Set on reuse; invalidates every family descendant
 
   @@index([token]) // For token lookup
