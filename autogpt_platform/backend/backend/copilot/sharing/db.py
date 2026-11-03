@@ -7,6 +7,7 @@ viewer can drill into the underlying agent run; the cascade rules are
 encoded here (see :func:`disable_chat_session_share`).
 """
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -487,16 +488,14 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     # live state of the chat — sharing is live, not snapshot-at-enable
     # (see the share-modal warning text), so the numbers under the
     # toggle ARE the numbers that will be visible the moment the
-    # owner clicks "Enable sharing".
-    message_count = await PrismaChatMessage.prisma().count(
-        where={"sessionId": session_id},
+    # owner clicks "Enable sharing".  Read only once the row proved the
+    # session is the user's, and side by side: none needs another's answer.
+    message_count, linked_run_ids, file_count = await asyncio.gather(
+        PrismaChatMessage.prisma().count(where={"sessionId": session_id}),
+        _collect_execution_ids_from_messages(session_id=session_id),
+        _count_referenced_workspace_files(session_id=session_id, user_id=user_id),
     )
-    linked_run_count = len(
-        await _collect_execution_ids_from_messages(session_id=session_id)
-    )
-    file_count = await _count_referenced_workspace_files(
-        session_id=session_id, user_id=user_id
-    )
+    linked_run_count = len(linked_run_ids)
 
     return ChatShareState(
         is_shared=row.isShared,
