@@ -26,17 +26,17 @@ export function RowDetails(props: Props) {
     <div className="flex flex-col gap-3">
       <StepList steps={task.inbox.steps} now={now} />
       {question ? (
-        <div className="flex flex-col gap-0.5 rounded-xl bg-surface-tray px-3 py-2">
+        <div className="flex flex-col gap-0.5 rounded-control bg-surface-wash px-3 py-2">
           <Text variant="small" tone="waiting" weight="medium">
             {question.asked_by.name} asks
           </Text>
-          <Text variant="body" tone="ink" className="text-pretty">
+          <Text variant="inbox" tone="ink" className="text-pretty">
             {question.question}
           </Text>
         </div>
       ) : null}
       {outcome ? (
-        <Text variant="body" tone="text" className="line-clamp-2">
+        <Text variant="inbox" tone="text" className="line-clamp-2">
           {outcome}
         </Text>
       ) : null}

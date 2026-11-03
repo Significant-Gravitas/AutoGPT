@@ -17,10 +17,10 @@ export function InboxEmpty({ tab, hasFilters, onClearFilters }: Props) {
       key={`${tab}-${hasFilters}`}
       className="flex animate-inbox-empty flex-col items-center gap-1 px-6 py-14 text-center"
     >
-      <Text variant="body" tone="ink" weight="medium">
+      <Text variant="inbox-medium" tone="ink">
         {copy.title}
       </Text>
-      <Text variant="small" tone="quiet" className="max-w-xs text-balance">
+      <Text variant="inbox" tone="quiet" className="max-w-xs text-balance">
         {copy.body}
       </Text>
       {hasFilters ? (

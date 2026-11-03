@@ -41,7 +41,7 @@ export function StepList({ steps, now }: Props) {
             >
               <Text
                 as="span"
-                variant="small"
+                variant="inbox"
                 tone={live ? "ink" : "text"}
                 className="truncate"
               >

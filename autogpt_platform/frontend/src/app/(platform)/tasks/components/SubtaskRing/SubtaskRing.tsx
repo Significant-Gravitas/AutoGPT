@@ -49,10 +49,10 @@ export function SubtaskRing({ done, total, size = 16 }: Props) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - progress)}
-          className={cn(isComplete ? "text-success" : "text-info")}
+          className={cn(isComplete ? "text-status-ok" : "text-info")}
         />
       </svg>
-      <Text variant="small" tone="secondary">
+      <Text as="span" variant="small" tone="quiet" tabular>
         {done}/{total}
       </Text>
     </span>

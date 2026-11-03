@@ -23,7 +23,7 @@ export function TaskAssigneeAvatar({
   const label = assigneeLabel(assignee);
   if (!assignee) {
     return withName ? (
-      <Text variant="small" tone="muted">
+      <Text as="span" variant="small" tone="quiet">
         {label}
       </Text>
     ) : null;
@@ -36,7 +36,7 @@ export function TaskAssigneeAvatar({
         size={size}
       />
       {withName ? (
-        <Text variant="small" tone="body" className="truncate">
+        <Text as="span" variant="small" tone="text" className="truncate">
           {label}
         </Text>
       ) : null}

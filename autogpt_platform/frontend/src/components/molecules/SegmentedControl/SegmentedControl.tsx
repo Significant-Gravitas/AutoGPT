@@ -35,7 +35,7 @@ function nextIndex(e: KeyboardEvent, current: number, length: number) {
 }
 
 /**
- * Two to six options on a gray track; a white pill glides to the picked one.
+ * Two to six options on a light wash; a white pill glides to the picked one.
  * A radiogroup: arrow keys, Home and End move and select.
  */
 export function SegmentedControl<T extends string>({
@@ -68,7 +68,7 @@ export function SegmentedControl<T extends string>({
         aria-label={ariaLabel}
         onKeyDown={handleKeyDown}
         className={cn(
-          "inline-flex max-w-full items-center overflow-x-auto rounded-full bg-surface-tray p-0.5",
+          "inline-flex max-w-full items-center overflow-x-auto rounded-control bg-surface-wash p-0.5",
           size === "sm" ? "h-7" : "h-8",
         )}
       >
@@ -86,15 +86,16 @@ export function SegmentedControl<T extends string>({
               tabIndex={active ? 0 : -1}
               onClick={() => onChange(option.value)}
               className={cn(
-                "relative flex h-full shrink-0 items-center rounded-full transition-[background-color,transform] duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
-                size === "sm" ? "px-2.5" : "px-3",
+                "relative flex h-full shrink-0 items-center rounded-control transition-colors duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none",
+                size === "sm" ? "px-2" : "px-2.5",
+                !active && "hover:bg-surface-wash",
               )}
             >
               {active ? (
                 <motion.span
                   layoutId="segmented-pill"
                   transition={reduceMotion ? { duration: 0 } : PILL_TRANSITION}
-                  className="absolute inset-0 rounded-full bg-surface shadow-pill"
+                  className="absolute inset-0 rounded-control bg-surface shadow-pill"
                 />
               ) : null}
               <span className="relative flex items-center gap-1.5">
@@ -108,22 +109,15 @@ export function SegmentedControl<T extends string>({
                 ) : null}
                 <Text
                   as="span"
-                  variant="small"
-                  weight="medium"
-                  tone={active ? "ink" : "quiet"}
+                  variant="inbox-medium"
+                  tone={active ? "ink" : "text"}
                   motion="colors"
                   className="whitespace-nowrap"
                 >
                   {option.label}
                 </Text>
                 {option.count !== undefined ? (
-                  <Text
-                    as="span"
-                    variant="small"
-                    tone="quiet"
-                    tabular
-                    className="rounded-full bg-foreground-ink/5 px-1.5"
-                  >
+                  <Text as="span" variant="small" tone="quiet" tabular>
                     <NumberTicker value={option.count} />
                   </Text>
                 ) : null}

@@ -1,7 +1,7 @@
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import type { Task } from "../../data/types";
 import { InboxRow } from "../InboxRow/InboxRow";
-import { InboxTray } from "./InboxTray";
+import { InboxCard } from "./InboxCard";
 import { useInboxMotion } from "./useInboxMotion";
 
 interface Props {
@@ -22,7 +22,7 @@ export function InboxList({
   const motionProps = useInboxMotion();
 
   return (
-    <InboxTray>
+    <InboxCard>
       <LayoutGroup id="inbox-list">
         <ul aria-label="Tasks" className="divide-y divide-border-hairline">
           <AnimatePresence initial={false}>
@@ -41,6 +41,6 @@ export function InboxList({
           </AnimatePresence>
         </ul>
       </LayoutGroup>
-    </InboxTray>
+    </InboxCard>
   );
 }

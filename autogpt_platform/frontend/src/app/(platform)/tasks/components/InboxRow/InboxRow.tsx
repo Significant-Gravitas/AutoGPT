@@ -39,16 +39,16 @@ export function InboxRow({
       onKeyDown={row.handleKeyDown}
       className={cn(
         "flex flex-col",
-        board && "rounded-xl border border-border-card bg-surface shadow-sm",
-        board && selected && "border-border-strong",
+        board &&
+          "rounded-card bg-surface shadow-card transition-shadow duration-150 ease-out-expo hover:shadow-card-hover motion-reduce:transition-none",
+        board && selected && "shadow-card-hover",
       )}
     >
       <div
         className={cn(
-          "group/row flex items-stretch transition-colors duration-150 ease-out-expo hover:bg-surface-muted motion-reduce:transition-none",
-          board ? "rounded-xl" : "",
-          expanded && !board && "bg-surface-muted",
-          selected && "bg-surface-tray/60 hover:bg-surface-tray/60",
+          "group/row flex items-stretch transition-colors duration-150 ease-out-expo motion-reduce:transition-none",
+          board ? "rounded-card" : "hover:bg-surface-wash",
+          selected && "bg-surface-wash",
         )}
       >
         <button
@@ -57,8 +57,8 @@ export function InboxRow({
           aria-current={selected ? "true" : undefined}
           onClick={onOpen}
           className={cn(
-            "min-w-0 flex-1 text-left transition-transform duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset active:scale-99 motion-reduce:transition-none",
-            board ? "rounded-xl p-3 pr-1" : "py-3 pr-1 pl-4",
+            "min-w-0 flex-1 text-left transition-transform duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset active:scale-99 motion-reduce:transition-none",
+            board ? "rounded-l-card p-3 pr-1" : "py-3 pr-1 pl-4",
           )}
         >
           <RowSummary task={task} elapsed={row.elapsed} variant={variant} />
@@ -70,8 +70,8 @@ export function InboxRow({
           aria-label={expanded ? "Hide steps" : "Show steps"}
           onClick={onToggle}
           className={cn(
-            "flex w-8 shrink-0 items-start justify-center pt-3.5 focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset",
-            board ? "rounded-r-xl" : "mr-1",
+            "flex w-8 shrink-0 items-start justify-center pt-3.5 focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset",
+            board ? "rounded-r-card" : "mr-1 rounded-control",
           )}
         >
           <span

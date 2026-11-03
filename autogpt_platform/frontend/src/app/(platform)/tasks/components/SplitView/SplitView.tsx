@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
-import { PanelTray } from "./components/PanelTray";
+import { PanelCard } from "./components/PanelCard";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { useSplitView } from "./useSplitView";
 
@@ -35,7 +35,7 @@ export function SplitView({ selectedKey, list, panel, onBack }: Props) {
           </Button>
         </div>
         <div id={PANEL_ID} className="min-h-0 flex-1">
-          <PanelTray>{panel}</PanelTray>
+          <PanelCard>{panel}</PanelCard>
         </div>
       </div>
     );
@@ -71,7 +71,7 @@ export function SplitView({ selectedKey, list, panel, onBack }: Props) {
                 handlers={split.handle}
               />
               <div className="min-h-0 min-w-0 flex-1">
-                <PanelTray>{panel}</PanelTray>
+                <PanelCard>{panel}</PanelCard>
               </div>
             </div>
           </motion.aside>
@@ -79,7 +79,7 @@ export function SplitView({ selectedKey, list, panel, onBack }: Props) {
       </AnimatePresence>
       {isOpen && split.isCollapsed ? (
         <div className="flex h-full shrink-0 pl-3">
-          <div className="rounded-3xl bg-surface-tray p-1.5">
+          <div className="rounded-card bg-surface p-1 shadow-card">
             <Button
               variant="icon"
               size="icon-2xs"

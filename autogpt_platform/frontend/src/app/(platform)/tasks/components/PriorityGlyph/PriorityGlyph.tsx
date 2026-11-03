@@ -13,10 +13,10 @@ import type { TaskPriority } from "../../data/types";
 
 const GLYPHS: Record<TaskPriority, { icon: IconSvgElement; tone: Tone }> = {
   urgent: { icon: AlertSquareIcon, tone: "error" },
-  high: { icon: SignalFull02Icon, tone: "emphasis" },
-  medium: { icon: SignalMedium02Icon, tone: "secondary" },
-  low: { icon: SignalLow02Icon, tone: "muted" },
-  none: { icon: SignalNo02Icon, tone: "subtle" },
+  high: { icon: SignalFull02Icon, tone: "text" },
+  medium: { icon: SignalMedium02Icon, tone: "quiet" },
+  low: { icon: SignalLow02Icon, tone: "quiet" },
+  none: { icon: SignalNo02Icon, tone: "faint" },
 };
 
 interface Props {

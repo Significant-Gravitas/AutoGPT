@@ -10,14 +10,14 @@ interface Props {
 
 export function DueChip({ due, isDone = false }: Props) {
   const overdue = !isDone && isOverdue(due);
-  const tone = overdue ? "error" : "secondary";
+  const tone = overdue ? "error" : "quiet";
   return (
     <span
       className="inline-flex items-center gap-1"
       title={overdue ? "Overdue" : "Due date"}
     >
       <Icon icon={Calendar03Icon} size={12} tone={tone} />
-      <Text variant="small" tone={tone}>
+      <Text as="span" variant="small" tone={tone}>
         {formatDue(due)}
       </Text>
     </span>

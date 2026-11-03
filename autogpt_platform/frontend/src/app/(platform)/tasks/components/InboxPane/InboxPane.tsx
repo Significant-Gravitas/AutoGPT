@@ -8,7 +8,7 @@ import { InboxFilters } from "../InboxFilters/InboxFilters";
 import { InboxHeader } from "../InboxHeader/InboxHeader";
 import { InboxList } from "../InboxList/InboxList";
 import { InboxListSkeleton } from "../InboxList/InboxListSkeleton";
-import { InboxTray } from "../InboxList/InboxTray";
+import { InboxCard } from "../InboxList/InboxCard";
 import { LiveRegion } from "../LiveRegion/LiveRegion";
 
 type Page = ReturnType<typeof useTasksPage>;
@@ -41,7 +41,7 @@ export function InboxPane({ page }: Props) {
         />
         <LiveRegion message={describeLiveCounts(page.counts)} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
         <div className="mx-auto w-full max-w-6xl">
           <InboxBody page={page} isBoard={page.view === "board" && isWide} />
         </div>
@@ -68,13 +68,13 @@ function InboxBody({ page, isBoard }: BodyProps) {
   if (page.isLoading) return <InboxListSkeleton />;
   if (page.tasks.length === 0) {
     return (
-      <InboxTray>
+      <InboxCard>
         <InboxEmpty
           tab={page.tab}
           hasFilters={page.filterChips.length > 0 || page.mine}
           onClearFilters={page.clearFilters}
         />
-      </InboxTray>
+      </InboxCard>
     );
   }
   if (isBoard) {

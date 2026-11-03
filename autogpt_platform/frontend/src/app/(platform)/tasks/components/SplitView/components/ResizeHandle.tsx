@@ -35,7 +35,7 @@ export function ResizeHandle({
         aria-valuenow={width}
         aria-valuemin={PANEL_MIN_WIDTH}
         aria-valuemax={maxWidth}
-        className="flex h-full w-full cursor-col-resize touch-none justify-center rounded-full focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none"
+        className="flex h-full w-full cursor-col-resize touch-none justify-center rounded-control focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none"
         {...handlers}
       >
         <span className="h-full w-px bg-transparent transition-colors duration-150 ease-out-expo group-hover:bg-border-hairline" />

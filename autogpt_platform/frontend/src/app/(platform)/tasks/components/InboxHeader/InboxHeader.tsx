@@ -34,16 +34,16 @@ export function InboxHeader({ view, onViewChange, onNewTask }: Props) {
       >
         <NextLink
           href="/team"
-          className="rounded-md transition-colors duration-150 ease-out-expo hover:opacity-80 focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none"
+          className="rounded-control transition-opacity duration-150 ease-out-expo hover:opacity-80 focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none"
         >
-          <Text variant="body" tone="quiet" as="span">
+          <Text variant="inbox" tone="quiet" as="span">
             Experts
           </Text>
         </NextLink>
-        <Text variant="body" tone="faint" as="span" aria-hidden>
+        <Text variant="inbox" tone="faint" as="span" aria-hidden>
           /
         </Text>
-        <Text variant="body" tone="ink" weight="medium" as="h1">
+        <Text variant="inbox-medium" tone="ink" as="h1">
           Tasks
         </Text>
       </nav>

@@ -38,23 +38,22 @@ export function InboxBoard({
           <section
             key={column.id}
             aria-labelledby={`inbox-column-${column.id}`}
-            className="flex flex-col gap-1.5 rounded-3xl bg-surface-tray p-1.5"
+            className="flex min-w-0 flex-col gap-2"
           >
-            <header className="flex items-center justify-between px-2.5 pt-1.5 pb-0.5">
+            <header className="flex items-center gap-1.5 px-1 py-1">
               <Text
-                variant="small"
-                weight="medium"
+                variant="inbox-medium"
                 tone="ink"
                 as="h2"
                 id={`inbox-column-${column.id}`}
               >
                 {column.label}
               </Text>
-              <Text variant="small" tone="quiet" as="span">
+              <Text variant="inbox" tone="quiet" as="span" tabular>
                 <NumberTicker value={column.tasks.length} />
               </Text>
             </header>
-            <ul className="flex min-h-12 flex-col gap-1.5">
+            <ul className="flex min-h-12 flex-col gap-2">
               <AnimatePresence initial={false}>
                 {column.tasks.map((task) => (
                   <BoardItem

@@ -13,7 +13,7 @@ interface Props {
 }
 
 const CHIP_CLASS =
-  "inline-flex animate-inbox-enter items-center gap-1 rounded-full bg-surface-tray py-1 pr-1.5 pl-2.5 transition-[background-color,transform] duration-150 ease-out-expo hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none active:scale-95";
+  "inline-flex h-6 animate-inbox-enter items-center gap-1 rounded-control bg-surface pr-1.5 pl-2 shadow-pill transition-[background-color,transform] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none active:scale-95";
 
 export function ActiveFilters({ chips, onChange }: Props) {
   if (chips.length === 0) return null;
@@ -41,7 +41,7 @@ export function ActiveFilters({ chips, onChange }: Props) {
       <li>
         <button
           type="button"
-          className="rounded-full px-2 py-1 transition-colors duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none"
+          className="h-6 rounded-control px-2 transition-colors duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none"
           onClick={() => onChange(EMPTY_FILTERS)}
         >
           <Text variant="small" tone="quiet" as="span">

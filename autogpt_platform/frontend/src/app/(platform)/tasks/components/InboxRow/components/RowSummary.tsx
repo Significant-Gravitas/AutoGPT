@@ -1,5 +1,4 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { taskKey } from "../../../data/helpers";
 import type { Task } from "../../../data/types";
 import { secondaryLine } from "../helpers";
@@ -27,33 +26,34 @@ export function RowSummary({ task, elapsed, variant }: Props) {
 
   if (variant === "board") {
     return (
-      <span className="flex min-w-0 flex-col gap-2">
+      <span className="flex min-w-0 flex-col gap-1.5">
         <span className="flex min-w-0 items-start gap-2">
           <span className="pt-0.5">
             <StatusGlyph state={task.inbox.state} />
           </span>
           <Text
             as="span"
-            variant="body"
-            weight="medium"
+            variant="inbox-medium"
             tone="ink"
-            className="line-clamp-2 min-w-0 flex-1"
+            className="line-clamp-2 min-w-0 flex-1 break-words"
           >
             {task.title}
           </Text>
         </span>
         {line ? (
-          <Text as="span" variant="small" tone="quiet" className="truncate">
+          <Text as="span" variant="inbox" tone="quiet" className="truncate">
             {line}
           </Text>
         ) : null}
         <span className="flex min-w-0 items-center gap-2">
-          {key}
-          <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-1 overflow-hidden">
             <RowAssignee assignee={task.assignee} />
           </span>
+          {key}
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <StatusTag task={task} />
-          {clock}
+          <span className="ml-auto shrink-0 tabular-nums">{clock}</span>
         </span>
       </span>
     );
@@ -68,8 +68,7 @@ export function RowSummary({ task, elapsed, variant }: Props) {
         <span className="flex min-w-0 items-center gap-2">
           <Text
             as="span"
-            variant="body"
-            weight="medium"
+            variant="inbox-medium"
             tone="ink"
             className="min-w-0 truncate"
           >
@@ -81,7 +80,7 @@ export function RowSummary({ task, elapsed, variant }: Props) {
         {line ? (
           <Text
             as="span"
-            variant="small"
+            variant="inbox"
             tone={task.inbox.needs_you ? "text" : "quiet"}
             className="truncate"
           >
@@ -89,7 +88,7 @@ export function RowSummary({ task, elapsed, variant }: Props) {
           </Text>
         ) : null}
       </span>
-      <span className={cn("flex shrink-0 items-center gap-4 pt-0.5")}>
+      <span className="flex shrink-0 items-center gap-4 pt-0.5">
         <span className="hidden lg:inline-flex">
           <ToolHints tools={task.inbox.tools_used} />
         </span>
