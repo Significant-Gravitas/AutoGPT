@@ -83,6 +83,7 @@ class TestEpisodeSessionIds:
         ):
             await ingest.enqueue_conversation_turn("user-1", "sess-42", "hello")
 
+        assert len(payloads) == 1, "only the user's turn"
         for payload in payloads:
             found = hidden_sessions.episode_session_ids(
                 payload["name"], payload["source_description"], payload["episode_body"]
