@@ -134,9 +134,10 @@ async def test_daemon_preflight_raises_when_ax_denied_on_macos(tmp_path, monkeyp
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted = lambda: False
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
     d = _daemon(config)
-    with pytest.raises(DaemonPreflightError):
+    with pytest.raises(DaemonPreflightError, match="^Accessibility permission not granted"):
         await d._preflight_or_raise()
     assert '"op": "DAEMON_PREFLIGHT_FAILED"' in config.audit_log_path.read_text()
 
@@ -151,8 +152,45 @@ async def test_daemon_preflight_passes_when_ax_granted_on_macos(tmp_path, monkey
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted = lambda: True
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
     await _daemon(config)._preflight_or_raise()
+
+
+def _fake_screen_recording(monkeypatch: pytest.MonkeyPatch, *, granted: bool) -> None:
+    import sys
+
+    fake_quartz = MagicMock()
+    fake_quartz.CGPreflightScreenCaptureAccess = lambda: granted
+    monkeypatch.setitem(sys.modules, "Quartz", fake_quartz)
+
+
+async def test_daemon_preflight_raises_when_screen_recording_denied_on_macos(
+    tmp_path, monkeypatch
+) -> None:
+    """Without Screen Recording, macOS captures show only the wallpaper and
+    menu bar, so computer use can't work; exit 78 as for Accessibility."""
+    import json
+    import sys
+
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    monkeypatch.setattr(
+        "autogpt_local_executor.daemon.platform_info.detect_platform",
+        lambda: "darwin",
+    )
+    fake_appsvc = MagicMock()
+    fake_appsvc.AXIsProcessTrusted = lambda: True
+    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=False)
+    config = _config(tmp_path, enable_computer_use=True)
+
+    with pytest.raises(DaemonPreflightError, match="^Screen Recording permission not granted"):
+        await _daemon(config)._preflight_or_raise()
+
+    [record] = [json.loads(line) for line in config.audit_log_path.read_text().splitlines()]
+    assert record["op"] == "DAEMON_PREFLIGHT_FAILED"
+    assert record["details"]["missing_permissions"] == ["screen_recording"]
 
 
 async def test_daemon_preflight_no_op_on_non_macos(tmp_path, monkeypatch) -> None:
@@ -200,6 +238,7 @@ async def test_daemon_preflight_fails_closed_when_ax_probe_raises(
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted.side_effect = RuntimeError("TCC unavailable")
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
 
     with pytest.raises(DaemonPreflightError, match="Could not verify Accessibility"):

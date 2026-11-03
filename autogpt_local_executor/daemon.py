@@ -1727,31 +1727,42 @@ class ShimDaemon:
         plat = platform_info.detect_platform()
         if plat != "darwin":
             return
+        # Input injection needs Accessibility. Without Screen Recording a
+        # capture silently shows only the wallpaper and menu bar.
         try:
             from ApplicationServices import (  # type: ignore[import-not-found]
                 AXIsProcessTrusted,
             )
+            from Quartz import (  # type: ignore[import-not-found]
+                CGPreflightScreenCaptureAccess,
+            )
         except ImportError:
             await self._fail_preflight(
-                "Cannot verify Accessibility permission because "
-                "pyobjc/ApplicationServices is unavailable. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe"],
+                "Cannot verify Accessibility and Screen Recording permissions because "
+                "pyobjc is unavailable. Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
             )
         try:
-            trusted = bool(AXIsProcessTrusted())
+            granted = {
+                "accessibility": bool(AXIsProcessTrusted()),
+                "screen_recording": bool(CGPreflightScreenCaptureAccess()),
+            }
         except Exception as exc:
             await self._fail_preflight(
-                f"Could not verify Accessibility permission: {exc}. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe"],
+                f"Could not verify Accessibility and Screen Recording permissions: {exc}. "
+                "Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.PERMISSION_PENDING,
             )
-        if trusted:
+        missing = [name for name, ok in granted.items() if not ok]
+        if not missing:
             return
+        labels = {"accessibility": "Accessibility", "screen_recording": "Screen Recording"}
         await self._fail_preflight(
-            "Accessibility permission not granted; computer_use requires it. "
-            "Run `autogpt-shim doctor` to surface the prompt.",
-            missing_permissions=["accessibility"],
+            f"{' and '.join(labels[name] for name in missing)} permission not granted; "
+            "computer_use requires it. Run `autogpt-shim doctor` to surface the prompt.",
+            missing_permissions=missing,
             error_code=ErrorCode.PERMISSION_PENDING,
         )
 
