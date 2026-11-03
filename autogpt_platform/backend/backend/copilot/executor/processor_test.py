@@ -1802,7 +1802,7 @@ class TestSyncFailCloseSession:
                 return_value=cluster_lock,
             ),
             patch("backend.copilot.executor.manager.redis.get_redis"),
-            patch("backend.copilot.executor.manager._maybe_dispatch_engine_switch"),
+            patch("backend.copilot.executor.manager._dispatch_after_turn"),
         ):
             manager._handle_run_message(
                 channel,

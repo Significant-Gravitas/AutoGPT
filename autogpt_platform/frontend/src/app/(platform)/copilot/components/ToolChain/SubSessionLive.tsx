@@ -106,24 +106,27 @@ function useLiveSubSession(
   backgroundExpiresAt?: string | null,
   background = false,
 ) {
-  const [isCapped, setIsCapped] = useState(false);
+  // The cap is keyed on the deadline it was armed for, so a new deadline
+  // starts uncapped without resetting state inside the effect.
+  const capKey = active ? (backgroundExpiresAt ?? "") : null;
+  const [cappedKey, setCappedKey] = useState<string | null>(null);
   useEffect(
     function stopPollingAfterCap() {
-      if (!active) return;
+      if (capKey === null) return;
       const expiresAt = backgroundExpiresAt
         ? Date.parse(backgroundExpiresAt)
         : NaN;
-      setIsCapped(false);
       const timer = setTimeout(
-        () => setIsCapped(true),
+        () => setCappedKey(capKey),
         Number.isFinite(expiresAt)
           ? Math.max(0, expiresAt - Date.now())
           : POLL_CAP_MS,
       );
       return () => clearTimeout(timer);
     },
-    [active, backgroundExpiresAt],
+    [capKey, backgroundExpiresAt],
   );
+  const isCapped = cappedKey !== null && cappedKey === capKey;
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
       enabled: active && !!subSessionId,
@@ -432,8 +435,9 @@ export function useSubSessionEffectiveStatus(
     if (outcome) {
       return outcome === "timed_out" ? "timed out" : outcome;
     }
-    return ["running", "queued"].includes(session.chat_status ?? "")
-      ? session.chat_status
+    const liveStatus = session.chat_status?.toLowerCase();
+    return liveStatus === "running" || liveStatus === "queued"
+      ? liveStatus
       : status;
   }
   return liveStatusOf(session);

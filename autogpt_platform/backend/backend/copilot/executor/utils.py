@@ -966,6 +966,18 @@ async def schedule_chat_turn(
         if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         if user_id and not slot.admitted:
+            # Two sends of one text racing past the in-flight check: the
+            # second only refreshed the first's slot, so it rides that turn,
+            # as the save below would collapse it. Any other text is refused
+            # before it is saved, so the client keeps its message and its id.
+            if (
+                message
+                and not message_already_persisted
+                and await _repeats_trailing_message(
+                    session_id, message, is_user_message
+                )
+            ):
+                return None
             raise SessionNotIdle(session_id)
         is_duplicate = False
         if message and not message_already_persisted:
@@ -1017,6 +1029,32 @@ async def schedule_chat_turn(
             impersonated=impersonated,
         )
         return turn_id
+
+
+async def _repeats_trailing_message(
+    session_id: str, message: str, is_user_message: bool
+) -> bool:
+    """Whether ``message`` is the text the chat's current turn already holds.
+
+    Read under the lock the save takes, so a double send that lost the slot
+    race sees the row the winning send wrote rather than a stale cache.
+    """
+    from backend.copilot.model import (
+        _get_session_from_db,
+        _get_session_lock,
+        get_chat_session,
+        is_message_duplicate,
+    )
+
+    async with _get_session_lock(session_id) as locked:
+        session = (
+            await get_chat_session(session_id)
+            if locked
+            else await _get_session_from_db(session_id)
+        )
+    return session is not None and is_message_duplicate(
+        session.messages, "user" if is_user_message else "assistant", message
+    )
 
 
 async def enqueue_cancel_task(session_id: str) -> None:
