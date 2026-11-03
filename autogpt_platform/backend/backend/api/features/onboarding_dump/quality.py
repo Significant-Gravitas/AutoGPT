@@ -26,6 +26,7 @@ failure in this pipeline.
 import logging
 import os
 import zlib
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel
@@ -77,7 +78,8 @@ MAX_COMPRESSION_RATIO = 2.4
 # Both are measured on the opening only. A loop shows within its first few
 # sentences, but over a whole long answer zlib finds ever more shared
 # substrings and the vocabulary keeps repeating: a real typed answer of
-# about 18,000 characters compressed like a loop.
+# about 18,000 characters compressed like a loop. A loop that starts inside
+# the opening still counts against it.
 REPETITION_WINDOW_CHARS = 1000
 
 _PROMPT = """A new user of an automation platform was asked to describe \
@@ -174,15 +176,20 @@ def _words(text: str) -> list[str]:
 def _compression_ratio(text: str) -> float:
     """How far zlib collapses ``text`` — high means the decoder was looping.
 
-    Characters per compressed byte, with each distinct character coded as
-    one symbol first, so the ratio measures repetition and not the script.
-    On raw UTF-8 a Devanagari, Bengali or Tamil letter is three bytes that
-    share a lead byte, and an ordinary Hindi answer scored like a loop
-    while the same answer in English scored 1.8.
+    Characters per compressed byte, with each character coded by its rank
+    first, so the ratio measures repetition and not the script. On raw
+    UTF-8 a Devanagari, Bengali or Tamil letter is three bytes that share a
+    lead byte, and an ordinary Hindi answer scored like a loop while the
+    same answer in English scored 1.8. The 255 most frequent characters
+    take one byte and only rarer ones an escape, so a varied opening does
+    not lower the score of a loop inside it.
     """
-    codes = {ch: code for code, ch in enumerate(dict.fromkeys(text))}
-    width = 1 if len(codes) <= 256 else 2
-    symbols = b"".join(codes[ch].to_bytes(width, "big") for ch in text)
+    ranked = [ch for ch, _ in Counter(text).most_common()]
+    codes = {
+        ch: bytes([rank]) if rank < 255 else b"\xff" + (rank - 255).to_bytes(2, "big")
+        for rank, ch in enumerate(ranked)
+    }
+    symbols = b"".join(codes[ch] for ch in text)
     return len(text) / len(zlib.compress(symbols))
 
 

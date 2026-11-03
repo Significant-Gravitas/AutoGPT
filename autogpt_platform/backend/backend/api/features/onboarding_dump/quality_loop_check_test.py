@@ -157,12 +157,29 @@ async def test_a_loop_still_rejects_in_any_script(language: str):
 
 
 @pytest.mark.asyncio
+async def test_a_mostly_looping_opening_rejects_however_varied_the_rest():
+    """More than 256 distinct characters must not lower a loop's score.
+
+    Coding every character in two bytes once there are that many dropped
+    this opening below the threshold, although most of it is a loop.
+    """
+    varied = "".join(chr(0x4E00 + (i * 7919) % 20000) for i in range(270))
+    transcript = varied + LOOPS["chinese"] * 40
+    opening = transcript[: quality.REPETITION_WINDOW_CHARS]
+    assert len(set(opening)) > 256
+    assert await quality.check_transcript_quality(transcript) == DETERMINISTIC
+
+
+@pytest.mark.asyncio
 async def test_what_follows_a_real_opening_cannot_make_it_unusable():
     """A recorder left running after the answer must not discard the answer.
 
-    The tail here is a loop, so the whole text compresses far past the
-    threshold; a long real answer gets there on length alone.
+    Only the opening is measured, so once a real answer fills it, the loop
+    after it cannot reject the take; a long real answer would cross the
+    threshold on length alone. A loop that starts inside the opening still
+    counts against it.
     """
     opening = " ".join(ANSWERS[language] for language in ("english", "russian"))
+    assert len(opening) > quality.REPETITION_WINDOW_CHARS
     transcript = opening + " " + LOOPS["english"] * 20
     assert await quality.check_transcript_quality(transcript) is None
