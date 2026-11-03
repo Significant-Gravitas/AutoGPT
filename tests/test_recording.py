@@ -136,6 +136,15 @@ def _consent(broker: ConsentBroker, mode: str = "copilot") -> str:
     return broker.issue_consent_token(mode=mode, interpretation_route="extract_then_cloud")
 
 
+# With only the floor channel (no structured text, no OCR, no local model),
+# screenshots_to_cloud is the one interpretation route the probe can offer.
+FLOOR_ROUTE = "screenshots_to_cloud"
+
+
+def _floor_consent(broker: ConsentBroker, mode: str = "copilot") -> str:
+    return broker.issue_consent_token(mode=mode, interpretation_route=FLOOR_ROUTE)
+
+
 def _approve_consent(broker: ConsentBroker, *, mode: str, interpretation_route: str) -> str:
     return broker.issue_consent_token(mode=mode, interpretation_route=interpretation_route)
 
@@ -629,7 +638,10 @@ async def test_one_recording_at_a_time(tmp_path: Path) -> None:
         id=new_id(),
         ts=now_ts(),
         payload=StartRecordingPayload(
-            mode="copilot", channels=["floor"], consent_token=_consent(broker)
+            interpretation_route=FLOOR_ROUTE,
+            mode="copilot",
+            channels=["floor"],
+            consent_token=_floor_consent(broker),
         ),
     )
     r1 = await handler.handle(start1, send=None)
@@ -639,7 +651,10 @@ async def test_one_recording_at_a_time(tmp_path: Path) -> None:
         id=new_id(),
         ts=now_ts(),
         payload=StartRecordingPayload(
-            mode="copilot", channels=["floor"], consent_token=_consent(broker)
+            interpretation_route=FLOOR_ROUTE,
+            mode="copilot",
+            channels=["floor"],
+            consent_token=_floor_consent(broker),
         ),
     )
     r2 = await handler.handle(start2, send=None)
@@ -815,7 +830,10 @@ async def test_start_with_valid_token_succeeds(tmp_path: Path) -> None:
         id=new_id(),
         ts=now_ts(),
         payload=StartRecordingPayload(
-            mode="copilot", channels=["floor"], consent_token=_consent(broker)
+            interpretation_route=FLOOR_ROUTE,
+            mode="copilot",
+            channels=["floor"],
+            consent_token=_floor_consent(broker),
         ),
     )
     resp = await handler.handle(start, send=None)
@@ -861,10 +879,9 @@ async def test_audit_entry_is_content_free(tmp_path: Path) -> None:
         ts=now_ts(),
         payload=StartRecordingPayload(
             mode="demonstration",
+            interpretation_route=FLOOR_ROUTE,
             channels=["floor"],
-            consent_token=broker.issue_consent_token(
-                mode="demonstration", interpretation_route="extract_then_cloud"
-            ),
+            consent_token=_floor_consent(broker, mode="demonstration"),
         ),
     )
     started = await handler.handle(start, send=None)
@@ -935,10 +952,9 @@ async def test_demonstration_mode_does_not_stream(tmp_path: Path) -> None:
         ts=now_ts(),
         payload=StartRecordingPayload(
             mode="demonstration",
+            interpretation_route=FLOOR_ROUTE,
             channels=["floor"],
-            consent_token=broker.issue_consent_token(
-                mode="demonstration", interpretation_route="extract_then_cloud"
-            ),
+            consent_token=_floor_consent(broker, mode="demonstration"),
         ),
     )
     started = await handler.handle(start, send=_send)
@@ -984,7 +1000,10 @@ async def test_copilot_mode_streams_recording_steps(tmp_path: Path) -> None:
         id=new_id(),
         ts=now_ts(),
         payload=StartRecordingPayload(
-            mode="copilot", channels=["floor"], consent_token=_consent(broker)
+            interpretation_route=FLOOR_ROUTE,
+            mode="copilot",
+            channels=["floor"],
+            consent_token=_floor_consent(broker),
         ),
     )
     started = await handler.handle(start, send=_send)
@@ -1016,9 +1035,10 @@ async def test_handler_review_changes_later_fetch(tmp_path: Path) -> None:
             id=new_id(),
             ts=now_ts(),
             payload=StartRecordingPayload(
+                interpretation_route=FLOOR_ROUTE,
                 mode="demonstration",
                 channels=["floor"],
-                consent_token=_consent(broker, mode="demonstration"),
+                consent_token=_floor_consent(broker, mode="demonstration"),
             ),
         ),
         send=None,
@@ -1142,9 +1162,10 @@ async def test_finalized_recordings_are_retained_by_id_with_bounded_eviction(
                 id=new_id(),
                 ts=now_ts(),
                 payload=StartRecordingPayload(
+                    interpretation_route=FLOOR_ROUTE,
                     mode="demonstration",
                     channels=["floor"],
-                    consent_token=_consent(broker, mode="demonstration"),
+                    consent_token=_floor_consent(broker, mode="demonstration"),
                 ),
             ),
             send=None,
@@ -1208,3 +1229,32 @@ async def test_fetch_unknown_recording_returns_not_found(tmp_path: Path) -> None
     resp = await handler.handle(fetch, send=None)
     assert isinstance(resp, ErrorMessage)
     assert resp.payload.code == ErrorCode.RECORDING_NOT_FOUND
+
+
+async def test_start_refuses_a_route_other_than_the_consented_one(tmp_path: Path) -> None:
+    """A token approves one interpretation route. A machine that can't honor
+    it must not fall back to another under that approval: the fallback can be
+    screenshots_to_cloud, which sends frames off the machine."""
+    broker = ConsentBroker()
+    handler = RecordingHandler(
+        _make_config(tmp_path),
+        consent_broker=broker,
+        capture_factory=_capture_factory([]),
+        recording_cipher=_TEST_CIPHER,
+    )
+    token = broker.issue_consent_token(mode="copilot", interpretation_route="local_vlm")
+    start = StartRecordingMessage(
+        id=new_id(),
+        ts=now_ts(),
+        payload=StartRecordingPayload(
+            mode="copilot",
+            interpretation_route="local_vlm",
+            channels=["floor"],
+            consent_token=token,
+        ),
+    )
+
+    response = await handler.handle(start, send=None)
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.CONSENT_REQUIRED
