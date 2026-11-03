@@ -1,0 +1,47 @@
+name: Benchmark backend checkout
+on:
+  push:
+    branches: [codex/ci-checkout-benchmark-20261103-1702]
+permissions:
+  contents: read
+jobs:
+  checkout:
+    name: Backend checkout (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: full-history
+            depth: 0
+          - mode: exact-base
+            depth: 1
+    steps:
+      - name: Start measurement
+        run: echo "BENCHMARK_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Checkout tested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: cbc80b5d7c748bcf7202dda521b0a62cf29ed579
+          fetch-depth: ${{ matrix.depth }}
+          filter: blob:none
+          submodules: true
+      - name: Read base and head Poetry requirements
+        env:
+          BASE_SHA: e6e182d5986ee8a814076ca55a2296485ce1b36c
+          MODE: ${{ matrix.mode }}
+        working-directory: autogpt_platform/backend
+        run: |
+          if [[ "$MODE" == exact-base ]]; then
+            git fetch --no-tags --depth=1 --filter=blob:none origin "$BASE_SHA"
+          fi
+          base_lock=$(git show "$BASE_SHA:autogpt_platform/backend/poetry.lock")
+          base_version=$(printf '%s\n' "$base_lock" | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)
+          head_version=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          [[ "$(git rev-parse HEAD)" == cbc80b5d7c748bcf7202dda521b0a62cf29ed579 ]]
+          [[ -z "$(git status --porcelain)" ]]
+          [[ "$base_version" == 2.5.1 ]]
+          [[ "$head_version" == 2.5.1 ]]
+          elapsed=$(($(date +%s)-BENCHMARK_STARTED))
+          echo "::notice title=checkout-measurement::{\"mode\":\"$MODE\",\"elapsed_seconds\":$elapsed,\"head\":\"cbc80b5d7c748bcf7202dda521b0a62cf29ed579\",\"base\":\"$BASE_SHA\",\"base_poetry\":\"$base_version\",\"head_poetry\":\"$head_version\"}"
