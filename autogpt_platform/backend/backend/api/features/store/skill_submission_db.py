@@ -222,7 +222,10 @@ async def review_skill_submission(
             listing = (
                 await prisma.models.SkillListing.prisma(tx).update(
                     where={"id": listing.id},
-                    data={"activeVersionId": updated.id, "hasApprovedVersion": True},
+                    data={
+                        "ActiveVersion": {"connect": {"id": updated.id}},
+                        "hasApprovedVersion": True,
+                    },
                 )
                 or listing
             )

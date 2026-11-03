@@ -36,6 +36,7 @@ import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.registry import get_model, load_catalog
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +172,7 @@ async def retire_model(
                         "sourceModelSlug": slug,
                         "targetModelSlug": replacement_slug,
                         "reason": reason,
-                        "migratedNodeIds": json.dumps(migrated_node_ids),
+                        "migratedNodeIds": SafeJson(migrated_node_ids),
                         "nodeCount": len(migrated_node_ids),
                     }
                 )

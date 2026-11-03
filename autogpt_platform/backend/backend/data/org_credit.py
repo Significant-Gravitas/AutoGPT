@@ -10,8 +10,8 @@ import logging
 from datetime import datetime, timezone
 
 import stripe
-from prisma.enums import CreditTransactionType
-from prisma.types import OrgCreditTransactionWhereInput
+from prisma.enums import CreditTransactionType, SeatStatus, SeatType
+from prisma.types import OrgCreditTransactionCreateInput, OrgCreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -180,7 +180,7 @@ async def spend_org_credits(
     new_balance = result[0]["balance"]
 
     # Record the transaction
-    tx_data: dict = {
+    tx_data: OrgCreditTransactionCreateInput = {
         "orgId": org_id,
         "initiatedByUserId": user_id,
         "amount": -amount,
@@ -241,7 +241,7 @@ async def top_up_org_credits(
     new_balance = result[0]["balance"]
 
     # Record the transaction
-    tx_data: dict = {
+    tx_data: OrgCreditTransactionCreateInput = {
         "orgId": org_id,
         "amount": amount,
         "type": CreditTransactionType.TOP_UP,
@@ -321,7 +321,7 @@ async def get_seat_info(org_id: str) -> dict:
 async def assign_seat(
     org_id: str,
     user_id: str,
-    seat_type: str = "FREE",
+    seat_type: SeatType = SeatType.FREE,
     assigned_by: str | None = None,
 ) -> dict:
     """Assign a seat to a user in the organization."""
@@ -337,12 +337,12 @@ async def assign_seat(
                 "organizationId": org_id,
                 "userId": user_id,
                 "seatType": seat_type,
-                "status": "ACTIVE",
+                "status": SeatStatus.ACTIVE,
                 "assignedByUserId": assigned_by,
             },
             "update": {
                 "seatType": seat_type,
-                "status": "ACTIVE",
+                "status": SeatStatus.ACTIVE,
                 "assignedByUserId": assigned_by,
             },
         },
@@ -363,7 +363,7 @@ async def unassign_seat(org_id: str, user_id: str) -> None:
                 "userId": user_id,
             }
         },
-        data={"status": "INACTIVE"},
+        data={"status": SeatStatus.INACTIVE},
     )
 
 

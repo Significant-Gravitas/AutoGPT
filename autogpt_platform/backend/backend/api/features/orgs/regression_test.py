@@ -2833,9 +2833,11 @@ class TestPR16Transfers:
         call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
         assert call["data"] == {"status": "REJECTED"}
         # Conditional, so it can't overwrite a transfer that just completed.
-        assert call["where"]["status"] == {
-            "not_in": ["COMPLETED", "REJECTED", "CANCELLED"]
-        }
+        assert call["where"]["NOT"] == [
+            {"status": "COMPLETED"},
+            {"status": "REJECTED"},
+            {"status": "CANCELLED"},
+        ]
 
     @pytest.mark.asyncio
     async def test_list_transfers_returns_both_directions(self):

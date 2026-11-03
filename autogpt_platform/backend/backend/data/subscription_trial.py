@@ -152,7 +152,7 @@ async def record_subscription_trial_cost(
         return
     where: SubscriptionTrialWhereInput = {"userId": user_id, "status": "trialing"}
     if trial_id is not None:
-        where = {"userId": user_id, "id": trial_id, "consumedAt": {"not": None}}
+        where = {"userId": user_id, "id": trial_id, "NOT": [{"consumedAt": None}]}
     updated = await SubscriptionTrial.prisma().update_many(
         where=where,
         data={"costMicrodollars": {"increment": cost_microdollars}},

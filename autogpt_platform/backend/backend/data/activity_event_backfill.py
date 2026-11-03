@@ -16,6 +16,7 @@ import asyncio
 import logging
 import re
 
+import prisma.enums
 import prisma.models
 import prisma.types
 
@@ -59,7 +60,10 @@ async def _backfill_batch(
         return 0
 
     existing = await prisma.models.ActivityEvent.prisma().find_many(
-        where={"category": "FILE", "objectId": {"in": [f.id for f in agent_files]}}
+        where={
+            "category": prisma.enums.ActivityEventCategory.FILE,
+            "objectId": {"in": [f.id for f in agent_files]},
+        }
     )
     seen_file_ids = {event.objectId for event in existing}
 
@@ -88,7 +92,7 @@ async def _backfill_batch(
                 "organizationId": session.organizationId if session else None,
                 "expertId": session.expertId if session else None,
                 "sessionId": session.id if session else None,
-                "category": "FILE",
+                "category": prisma.enums.ActivityEventCategory.FILE,
                 "eventType": "file.created",
                 "objectId": file.id,
                 "title": file.name,
@@ -106,7 +110,7 @@ async def _backfill_batch(
     if dry_run:
         for row in rows:
             logger.info(
-                "Would create event for file %s (%s)", row["title"], row["userId"]
+                "Would create event for file %s (%s)", row["title"], row.get("userId")
             )
         return len(rows)
     if rows:

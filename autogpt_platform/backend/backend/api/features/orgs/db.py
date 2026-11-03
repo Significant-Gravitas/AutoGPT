@@ -4,7 +4,19 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from prisma.enums import (
+    OrgAliasType,
+    OrgMemberStatus,
+    SeatStatus,
+    SeatType,
+    TeamJoinPolicy,
+)
 from prisma.errors import UniqueViolationError
+from prisma.types import (
+    OrganizationProfileUpdateInput,
+    OrganizationUpdateInput,
+    OrgMemberUpdateInput,
+)
 
 from backend.data.db import prisma, transaction
 from backend.data.org_credit import forget_personal_org_owner
@@ -33,7 +45,7 @@ async def _find_personal_org_member(user_id: str):
         where={
             "userId": user_id,
             "isOwner": True,
-            "Org": {"isPersonal": True, "deletedAt": None},
+            "Org": {"is": {"isPersonal": True, "deletedAt": None}},
         },
         order={"createdAt": "asc"},
     )
@@ -298,7 +310,6 @@ async def create_org(
                 "description": description,
                 "isPersonal": False,
                 "bootstrapUserId": user_id,
-                "settings": "{}",
             }
         )
 
@@ -308,7 +319,7 @@ async def create_org(
                 "userId": user_id,
                 "isOwner": True,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -317,7 +328,7 @@ async def create_org(
                 "name": "Default",
                 "orgId": org.id,
                 "isDefault": True,
-                "joinPolicy": "OPEN",
+                "joinPolicy": TeamJoinPolicy.OPEN,
                 "createdByUserId": user_id,
             }
         )
@@ -327,7 +338,7 @@ async def create_org(
                 "teamId": workspace.id,
                 "userId": user_id,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -343,8 +354,8 @@ async def create_org(
             data={
                 "organizationId": org.id,
                 "userId": user_id,
-                "seatType": "FREE",
-                "status": "ACTIVE",
+                "seatType": SeatType.FREE,
+                "status": SeatStatus.ACTIVE,
                 "assignedByUserId": user_id,
             }
         )
@@ -360,8 +371,8 @@ async def list_user_orgs(user_id: str) -> list[OrgResponse]:
     memberships = await prisma.orgmember.find_many(
         where={
             "userId": user_id,
-            "status": "ACTIVE",
-            "Org": {"deletedAt": None},
+            "status": OrgMemberStatus.ACTIVE,
+            "Org": {"is": {"deletedAt": None}},
         },
         include={"Org": True},
     )
@@ -387,7 +398,7 @@ async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
 
     Only accepts the structured UpdateOrgData model — no arbitrary dict keys.
     """
-    update_dict: dict = {}
+    update_dict: OrganizationUpdateInput = {}
     if data.name is not None:
         update_dict["name"] = data.name
     if data.description is not None:
@@ -417,7 +428,7 @@ async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
                 data={
                     "organizationId": org_id,
                     "aliasSlug": old_org.slug,
-                    "aliasType": "RENAME",
+                    "aliasType": OrgAliasType.RENAME,
                 }
             )
         update_dict["slug"] = data.slug
@@ -428,7 +439,7 @@ async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
     await prisma.organization.update(where={"id": org_id}, data=update_dict)
 
     # Sync OrganizationProfile when name or slug changes
-    profile_update: dict = {}
+    profile_update: OrganizationProfileUpdateInput = {}
     if data.name is not None:
         profile_update["displayName"] = data.name
     if data.slug is not None:
@@ -504,7 +515,7 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
 async def list_org_members(org_id: str) -> list[OrgMemberResponse]:
     """List all active members of an organization."""
     members = await prisma.orgmember.find_many(
-        where={"orgId": org_id, "status": "ACTIVE"},
+        where={"orgId": org_id, "status": OrgMemberStatus.ACTIVE},
         include={"User": True},
     )
     return [OrgMemberResponse.from_db(m) for m in members]
@@ -531,7 +542,7 @@ async def add_org_member(
             "userId": user_id,
             "isAdmin": is_admin,
             "isBillingManager": is_billing_manager,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
             "invitedByUserId": invited_by,
         },
         include={"User": True},
@@ -548,7 +559,7 @@ async def add_org_member(
                 # Org admins get workspace admin on the default workspace,
                 # matching what org creation grants the owner.
                 "isAdmin": is_admin,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -569,7 +580,7 @@ async def update_org_member(
             "Cannot change the owner's role flags directly. Use transfer-ownership."
         )
 
-    update_data: dict = {}
+    update_data: OrgMemberUpdateInput = {}
     if is_admin is not None:
         update_data["isAdmin"] = is_admin
     if is_billing_manager is not None:
@@ -627,9 +638,9 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     other_memberships = await prisma.orgmember.count(
         where={
             "userId": user_id,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
             "orgId": {"not": org_id},
-            "Org": {"deletedAt": None},
+            "Org": {"is": {"deletedAt": None}},
         }
     )
     if other_memberships == 0:
@@ -724,7 +735,7 @@ async def create_org_alias(
         data={
             "organizationId": org_id,
             "aliasSlug": alias_slug,
-            "aliasType": "MANUAL",
+            "aliasType": OrgAliasType.MANUAL,
             "createdByUserId": user_id,
         }
     )

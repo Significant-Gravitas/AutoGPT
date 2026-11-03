@@ -5891,6 +5891,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # transcript at turn-end via ``append_user(current_message)``.
         # Adding each pending to the transcript here would triple-count
         # them in the next turn's ``--resume`` context.
+        persisted_ok = False
         if pending_messages:
             # Persist FIRST.  Only fold pending into the model's prompt
             # when persistence succeeded — if the helper rolled back and
@@ -6886,12 +6887,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if _graphiti_ingest_allowed(
-            expert_identity_validated=expert_identity_validated,
-            graphiti_enabled=graphiti_enabled,
-            user_id=user_id,
-            message=message,
-            is_user_message=is_user_message,
+        if (
+            user_id
+            and message
+            and _graphiti_ingest_allowed(
+                expert_identity_validated=expert_identity_validated,
+                graphiti_enabled=graphiti_enabled,
+                user_id=user_id,
+                message=message,
+                is_user_message=is_user_message,
+            )
         ):
             # Extract last assistant message from THIS TURN only (not all
             # session history) to avoid distilling stale content from prior

@@ -3,9 +3,14 @@
 import logging
 
 from prisma import Prisma
+from prisma.enums import OrgMemberStatus, TeamJoinPolicy
 from prisma.errors import UniqueViolationError
 from prisma.models import TeamMember
-from prisma.types import TeamMemberWhereUniqueInput
+from prisma.types import (
+    TeamMemberUpdateInput,
+    TeamMemberWhereUniqueInput,
+    TeamUpdateInput,
+)
 
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import ConflictError, NotFoundError
@@ -20,7 +25,7 @@ async def create_team(
     name: str,
     user_id: str,
     description: str | None = None,
-    join_policy: str = "OPEN",
+    join_policy: TeamJoinPolicy = TeamJoinPolicy.OPEN,
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
     ws = await prisma.team.create(
@@ -39,7 +44,7 @@ async def create_team(
             "teamId": ws.id,
             "userId": user_id,
             "isAdmin": True,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
         }
     )
 
@@ -53,8 +58,12 @@ async def list_teams(org_id: str, user_id: str) -> list[TeamResponse]:
             "orgId": org_id,
             "archivedAt": None,
             "OR": [
-                {"joinPolicy": "OPEN"},
-                {"Members": {"some": {"userId": user_id, "status": "ACTIVE"}}},
+                {"joinPolicy": TeamJoinPolicy.OPEN},
+                {
+                    "Members": {
+                        "some": {"userId": user_id, "status": OrgMemberStatus.ACTIVE}
+                    }
+                },
             ],
         },
         order={"createdAt": "asc"},
@@ -72,19 +81,18 @@ async def get_team(ws_id: str, expected_org_id: str | None = None) -> TeamRespon
     return TeamResponse.from_db(ws)
 
 
-async def update_team(ws_id: str, data: dict) -> TeamResponse:
+async def update_team(ws_id: str, data: TeamUpdateInput) -> TeamResponse:
     """Update workspace fields. Guards the default workspace join policy."""
-    update_data = {k: v for k, v in data.items() if v is not None}
-    if not update_data:
+    if not data:
         return await get_team(ws_id)
 
     # Guard: default workspace joinPolicy cannot be changed
-    if "joinPolicy" in update_data:
+    if "joinPolicy" in data:
         ws = await prisma.team.find_unique(where={"id": ws_id})
         if ws and ws.isDefault:
             raise ValueError("Cannot change the default workspace's join policy")
 
-    await prisma.team.update(where={"id": ws_id}, data=update_data)
+    await prisma.team.update(where={"id": ws_id}, data=data)
     return await get_team(ws_id)
 
 
@@ -127,7 +135,7 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
         data={
             "teamId": ws_id,
             "userId": user_id,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
         }
     )
     return TeamResponse.from_db(ws)
@@ -159,7 +167,7 @@ async def leave_team(ws_id: str, user_id: str) -> None:
 async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
     """List all active members of a workspace."""
     members = await prisma.teammember.find_many(
-        where={"teamId": ws_id, "status": "ACTIVE"},
+        where={"teamId": ws_id, "status": OrgMemberStatus.ACTIVE},
         include={"User": True},
     )
     return [TeamMemberResponse.from_db(m) for m in members]
@@ -210,7 +218,7 @@ async def add_team_member(
                 "userId": user_id,
                 "isAdmin": is_admin,
                 "isBillingManager": is_billing_manager,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
                 "invitedByUserId": invited_by,
             },
             include={"User": True},
@@ -231,7 +239,7 @@ async def update_team_member(
     where: TeamMemberWhereUniqueInput = {
         "teamId_userId": {"teamId": ws_id, "userId": user_id}
     }
-    update_data: dict = {}
+    update_data: TeamMemberUpdateInput = {}
     if is_admin is not None:
         update_data["isAdmin"] = is_admin
     if is_billing_manager is not None:
@@ -309,7 +317,7 @@ async def _lock_team_admins(tx: Prisma, ws_id: str) -> None:
 
 async def _count_active_admins(tx: Prisma, ws_id: str) -> int:
     return await tx.teammember.count(
-        where={"teamId": ws_id, "isAdmin": True, "status": "ACTIVE"}
+        where={"teamId": ws_id, "isAdmin": True, "status": OrgMemberStatus.ACTIVE}
     )
 
 

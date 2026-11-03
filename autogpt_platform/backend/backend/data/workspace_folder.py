@@ -15,6 +15,12 @@ import pydantic
 from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile, UserWorkspaceFolder
+from prisma.types import (
+    UserWorkspaceFileWhereInput,
+    UserWorkspaceFolderCreateInput,
+    UserWorkspaceFolderUpdateManyMutationInput,
+    UserWorkspaceFolderWhereInput,
+)
 
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
@@ -94,9 +100,9 @@ async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, in
         count=True,
     )
     return {
-        row["folderId"]: int((row.get("_count") or {}).get("_all") or 0)
+        folder_id: int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
-        if row.get("folderId")
+        if (folder_id := row.get("folderId"))
     }
 
 
@@ -160,7 +166,7 @@ async def create_folder(
     check against a live parent and an insert under it must not straddle a
     delete of that parent's subtree.
     """
-    create_data: dict = {
+    create_data: UserWorkspaceFolderCreateInput = {
         "name": name,
         "Workspace": {"connect": {"id": workspace_id}},
     }
@@ -199,7 +205,7 @@ async def _name_taken(
     — so this check exists to answer 409 rather than a unique violation, and
     the indexes are the race-safe backstop.
     """
-    where: dict = {
+    where: UserWorkspaceFolderWhereInput = {
         "workspaceId": workspace_id,
         "name": name,
         "parentId": parent_id,
@@ -275,7 +281,7 @@ async def apply_folder_update(
         ):
             raise FolderAlreadyExistsError("A folder with this name already exists")
 
-        data: dict = {}
+        data: UserWorkspaceFolderUpdateManyMutationInput = {}
         if moving:
             data["parentId"] = destination
         if name is not None:
@@ -451,7 +457,7 @@ async def bulk_move_files_to_folder(
 
     # Move and read back in one transaction so the returned list reflects
     # exactly what this call moved, even under concurrent writes.
-    scope: dict = {
+    scope: UserWorkspaceFileWhereInput = {
         "id": {"in": file_ids},
         "workspaceId": workspace_id,
         "isDeleted": False,

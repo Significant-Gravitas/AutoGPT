@@ -6,11 +6,14 @@ be retried safely.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
+from prisma.types import OnboardingBrainDumpCreateInput
+
+from backend.util.json import SafeJson
 
 
 async def get_dump(user_id: str) -> OnboardingBrainDump | None:
@@ -45,6 +48,46 @@ _PROCESSING_STATUSES = frozenset(
 # of the pipeline. ``failed`` is deliberately absent: retrying it must reset it.
 _IN_FLIGHT_STATUSES = _PROCESSING_STATUSES | {BrainDumpStatus.completed}
 
+
+# The columns a take's pipeline writes after the claim.
+class _TakeUpdate(TypedDict, total=False):
+    status: BrainDumpStatus
+    audioPath: str | None
+    mimeType: str | None
+    sizeBytes: int | None
+    durationSecs: float | None
+    transcript: str | None
+    transcriptLang: str | None
+    greeting: str | None
+    errorCode: str | None
+    errorReason: str | None
+    suggestedPrompts: Json
+    recommendedProviders: Json
+    recommendedExperts: Json
+
+
+class _TakeClaim(TypedDict):
+    recordingId: str
+    status: BrainDumpStatus
+    inputMode: BrainDumpInputMode
+    errorCode: None
+    errorReason: None
+
+
+class _TakeOwnedReset(TypedDict):
+    audioPath: None
+    mimeType: None
+    sizeBytes: None
+    durationSecs: None
+    transcript: None
+    transcriptLang: None
+    greeting: None
+    suggestedPrompts: Json
+    recommendedProviders: Json
+    recommendedExperts: Json
+    greetingSeen: bool
+
+
 # Everything a single take owns. One row per user means a new take
 # inherits whatever the last one left here, so unless these are cleared
 # ``/recording``, ``/intro``, ``/recommended-providers`` and
@@ -58,7 +101,7 @@ _IN_FLIGHT_STATUSES = _PROCESSING_STATUSES | {BrainDumpStatus.completed}
 # it is only safe *because* the transcript goes too: a take that never
 # produces a greeting leaves nothing to reflect back, so the intro falls
 # through to Path B rather than waiting on a greeting that isn't coming.
-_TAKE_OWNED_RESET: dict[str, Any] = {
+_TAKE_OWNED_RESET: _TakeOwnedReset = {
     "audioPath": None,
     "mimeType": None,
     "sizeBytes": None,
@@ -100,24 +143,27 @@ async def start_dump(
         return existing
 
     is_new_take = existing is None or existing.recordingId != recording_id
-    fields: dict[str, Any] = {
+    claim: _TakeClaim = {
         "recordingId": recording_id,
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
         "errorReason": None,
-        **(_TAKE_OWNED_RESET if is_new_take else {}),
     }
     return await OnboardingBrainDump.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id, **_TAKE_OWNED_RESET, **fields},
-            "update": fields,
+            "create": {"userId": user_id, **_TAKE_OWNED_RESET, **claim},
+            "update": ({**claim, **_TAKE_OWNED_RESET} if is_new_take else {**claim}),
         },
     )
 
 
-async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
+async def update_dump(
+    user_id: str,
+    recording_id: str,
+    **fields: Unpack[_TakeUpdate],
+) -> bool:
     """Advance one take's row, and only that take's.
 
     ``recordingId`` is part of the ``WHERE`` on purpose. There is one row
@@ -134,7 +180,7 @@ async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
     """
     updated = await OnboardingBrainDump.prisma().update_many(
         where={"userId": user_id, "recordingId": recording_id},
-        data=fields,
+        data={**fields},
     )
     return updated == 1
 
@@ -145,7 +191,7 @@ async def claim_transition(
     *,
     expected: BrainDumpStatus,
     new: BrainDumpStatus,
-    **fields: Any,
+    **fields: Unpack[_TakeUpdate],
 ) -> bool:
     """Move a take from ``expected`` to ``new``, once.
 
@@ -206,7 +252,7 @@ async def ensure_dump(user_id: str) -> OnboardingBrainDump:
     )
 
 
-def _greeting_only_row(user_id: str) -> dict[str, Any]:
+def _greeting_only_row(user_id: str) -> OnboardingBrainDumpCreateInput:
     return {
         "userId": user_id,
         **_TAKE_OWNED_RESET,
@@ -226,7 +272,7 @@ async def replace_suggested_prompts(
     """
     updated = await OnboardingBrainDump.prisma().update_many(
         where={"userId": user_id, "updatedAt": read_at},
-        data={"suggestedPrompts": Json(prompts)},
+        data={"suggestedPrompts": SafeJson(prompts)},
     )
     return updated == 1
 

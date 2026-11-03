@@ -149,7 +149,10 @@ def _raised_identity(name: str) -> str:
 
 # Postgres promises no row order without this, so the profile's workflow grid
 # could reshuffle between loads; createdAt keeps the roster's authored order.
-_WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
+_WORKFLOW_ORDER: list[prisma.types.ExpertWorkflowOrderByInput] = [
+    {"createdAt": "asc"},
+    {"id": "asc"},
+]
 
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     # AgentGraph carries the name/description of a user-created library agent;
@@ -157,7 +160,7 @@ _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     "LibraryAgent": {"include": {"AgentGraph": {"include": {"Nodes": True}}}},
     "StoreListingVersion": True,
 }
-_WORKFLOW_INCLUDE = {
+_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {"include": _WORKFLOW_ROW_INCLUDE, "order_by": _WORKFLOW_ORDER}
 }
 _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
@@ -800,7 +803,7 @@ async def _classify_run_outputs(
         where={
             "agentGraphExecutionId": {"in": execution_ids},
             "Node": {"is": {"agentBlockId": {"in": list(get_output_block_ids())}}},
-            "executionStatus": {"not": prisma.enums.AgentExecutionStatus.INCOMPLETE},
+            "NOT": [{"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}],
         },
         include={"Input": True},
     )
@@ -2001,26 +2004,33 @@ async def update_soul_fields_if_current(
         voice_preferences=voice_preferences,
         boundaries=boundaries,
     )
-    comparisons: dict[str, str] = {}
-    for field, value, expected in (
+    where: prisma.types.ExpertWhereInput = {
+        "id": expert_id,
+        "ownerUserId": user_id,
+        "isTemplate": False,
+        "isArchived": False,
+    }
+    soul_fields: tuple[
+        tuple[
+            Literal["identity", "voicePreferences", "boundaries"],
+            str | None,
+            str | None,
+        ],
+        ...,
+    ] = (
         ("identity", identity, expected_identity),
         ("voicePreferences", voice_preferences, expected_voice_preferences),
         ("boundaries", boundaries, expected_boundaries),
-    ):
+    )
+    for field, value, expected in soul_fields:
         if value is None:
             continue
         if expected is None:
             raise ValueError(f"Expected value required for {field}")
-        comparisons[field] = expected
+        where[field] = expected
 
     updated = await prisma.models.Expert.prisma().update_many(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-            **comparisons,
-        },
+        where=where,
         data=data,
     )
     if updated != 1:

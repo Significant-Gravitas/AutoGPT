@@ -13,6 +13,7 @@ transparently routed via ``DatabaseManagerAsyncClient``.
 import logging
 from datetime import datetime, timezone
 
+from prisma.enums import PlatformType
 from prisma.models import BotEvent, BotGuild
 
 from backend.platform_linking.models import BotEventInput, BotGuildInput, Platform
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def record_bot_event(event: BotEventInput) -> None:
     await BotEvent.prisma().create(
         data={
-            "platform": event.platform.value,
+            "platform": PlatformType(event.platform.value),
             "eventType": event.event_type,
             "serverId": event.server_id,
             "channelType": event.channel_type,
@@ -39,13 +40,13 @@ async def record_guild_joined(guild: BotGuildInput) -> None:
     await BotGuild.prisma().upsert(
         where={
             "platform_serverId": {
-                "platform": guild.platform.value,
+                "platform": PlatformType(guild.platform.value),
                 "serverId": guild.server_id,
             }
         },
         data={
             "create": {
-                "platform": guild.platform.value,
+                "platform": PlatformType(guild.platform.value),
                 "serverId": guild.server_id,
                 "name": guild.name,
             },
@@ -61,7 +62,7 @@ async def record_guild_joined(guild: BotGuildInput) -> None:
 async def mark_guild_left(platform: Platform, server_id: str) -> None:
     await BotGuild.prisma().update_many(
         where={
-            "platform": platform.value,
+            "platform": PlatformType(platform.value),
             "serverId": server_id,
             "leftAt": None,
         },
@@ -77,7 +78,7 @@ async def sync_guild_presence(platform: Platform, guilds: list[BotGuildInput]) -
 
     present = {guild.server_id for guild in guilds}
     joined = await BotGuild.prisma().find_many(
-        where={"platform": platform.value, "leftAt": None}
+        where={"platform": PlatformType(platform.value), "leftAt": None}
     )
     stale_ids = [row.id for row in joined if row.serverId not in present]
     if stale_ids:
