@@ -29,8 +29,7 @@ from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
 )
-from backend.data.org_credit import get_personal_org_owner
-from backend.data.tenancy import get_user_team_ids
+from backend.data.tenancy import get_user_team_ids, is_own_personal_org
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.settings import Settings
@@ -72,10 +71,12 @@ async def build_home_dashboard(
 ) -> HomeDashboardResponse:
     now = datetime.now(timezone.utc)
     week_start = now - timedelta(days=7)
+    personal_workspace = await _is_personal_workspace(user_id, organization_id)
     data = await _load_home_source_data(
         user_id=user_id,
         organization_id=organization_id,
         team_id=team_id,
+        personal_workspace=personal_workspace,
         ctx=ctx,
         now=now,
         week_start=week_start,
@@ -100,7 +101,7 @@ async def build_home_dashboard(
         ),
         _persisted_briefing(
             user_id=user_id,
-            organization_id=organization_id,
+            personal_workspace=personal_workspace,
             timezone_name=data.timezone_name,
             now=now,
         ),
@@ -125,10 +126,29 @@ async def build_home_dashboard(
     )
 
 
+async def _is_personal_workspace(user_id: str, organization_id: str | None) -> bool:
+    """Whether this Home is the caller's own: no org, or their own personal org.
+
+    The stored briefing and the activity log belong to the user, untagged by
+    org, so a team org's Home leaves both out. A check that cannot answer
+    leaves them out too: it costs those two cards, not the page.
+    """
+    if organization_id is None:
+        return True
+    try:
+        return await is_own_personal_org(user_id, organization_id)
+    except Exception:
+        logger.warning(
+            "Home could not check the workspace for user %s",
+            user_id[:_LOG_ID_CHARS],
+        )
+        return False
+
+
 async def _persisted_briefing(
     *,
     user_id: str,
-    organization_id: str | None,
+    personal_workspace: bool,
     timezone_name: str,
     now: datetime,
 ) -> BriefingContent | None:
@@ -151,16 +171,8 @@ async def _persisted_briefing(
     card would then look up tomorrow's row for a dashboard composed against
     yesterday.
     """
-    if organization_id is not None:
-        try:
-            if await get_personal_org_owner(organization_id) != user_id:
-                return None
-        except Exception:
-            logger.warning(
-                "Home could not verify briefing scope for user %s",
-                user_id[:_LOG_ID_CHARS],
-            )
-            return None
+    if not personal_workspace:
+        return None
     briefing_date = now.astimezone(ZoneInfo(timezone_name)).date()
     try:
         record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
@@ -188,6 +200,7 @@ async def _load_home_source_data(
     user_id: str,
     organization_id: str | None,
     team_id: str | None,
+    personal_workspace: bool,
     ctx: RequestContext | None,
     now: datetime,
     week_start: datetime,
@@ -256,7 +269,7 @@ async def _load_home_source_data(
     )
     work_events_task = asyncio.create_task(
         _get_work_events(
-            user_id=user_id, since=week_start, organization_id=organization_id
+            user_id=user_id, since=week_start, personal_workspace=personal_workspace
         )
     )
     paused_chats_task = asyncio.create_task(
@@ -380,16 +393,13 @@ async def _get_pending_questions(
 
 
 async def _get_work_events(
-    *, user_id: str, since: datetime, organization_id: str | None = None
+    *, user_id: str, since: datetime, personal_workspace: bool
 ) -> list[activity_db.ActivityEvent]:
+    if not personal_workspace:
+        return []
     # Fail-soft like schedules and credits: a broken audit read costs the
     # Recent work card, not the page.
     try:
-        if (
-            organization_id is not None
-            and await get_personal_org_owner(organization_id) != user_id
-        ):
-            return []
         events = await activity_db.list_activity_events(
             user_id,
             since=since,

@@ -54,8 +54,8 @@ def home_dependencies(mocker: MockerFixture):
         AsyncMock(return_value=["team-1"]),
     )
     mocker.patch(
-        "backend.api.features.home.service.get_personal_org_owner",
-        AsyncMock(return_value="user-1"),
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(return_value=True),
     )
     mocker.patch(
         "backend.api.features.home.service.experts_db.list_experts",
@@ -322,23 +322,94 @@ async def test_schedules_receive_the_selected_organization_scope(
 async def test_team_organization_never_reads_a_personal_stored_briefing(
     mocker: MockerFixture, home_dependencies
 ) -> None:
-    owner = mocker.patch(
-        "backend.api.features.home.service.get_personal_org_owner",
-        AsyncMock(return_value="another-user"),
+    own = mocker.patch(
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(return_value=False),
     )
     briefing = mocker.patch(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date",
         AsyncMock(return_value=MagicMock(content=_stored_briefing())),
+    )
+    work = mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
     )
 
     dashboard = await build_home_dashboard(
         user_id="user-1", organization_id="org-1", team_id="team-1"
     )
 
-    # The briefing and Recent work each check the (cached) owner of org-1.
-    assert {call.args for call in owner.await_args_list} == {("org-1",)}
+    # One check answers both the briefing and Recent work.
+    own.assert_awaited_once_with("user-1", "org-1")
     briefing.assert_not_awaited()
+    work.assert_not_awaited()
     assert dashboard.briefing.source == "live"
+
+
+@pytest.mark.asyncio
+async def test_own_personal_org_shows_its_briefing_and_work_after_one_check(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    own = mocker.patch(
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(return_value=True),
+    )
+    _patch_stored_briefing(mocker, _stored_briefing().model_dump(mode="json"))
+    work = mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
+
+    dashboard = await build_home_dashboard(
+        user_id="user-1",
+        organization_id="personal-org",
+        ctx=_org_ctx(org_id="personal-org", is_org_owner=True),
+    )
+
+    own.assert_awaited_once_with("user-1", "personal-org")
+    assert dashboard.briefing.source == "persisted"
+    work.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_workspace_check_hides_personal_items_and_keeps_the_page(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    mocker.patch(
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(side_effect=RuntimeError("database is down")),
+    )
+    briefing = mocker.patch(
+        "backend.api.features.home.service.briefing_db.get_briefing_for_date",
+        AsyncMock(return_value=MagicMock(content=_stored_briefing())),
+    )
+    work = mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1", organization_id="org-1")
+
+    briefing.assert_not_awaited()
+    work.assert_not_awaited()
+    assert dashboard.briefing.source == "live"
+    assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
+async def test_no_organization_needs_no_workspace_check(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    own = mocker.patch(
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(return_value=False),
+    )
+    _patch_stored_briefing(mocker, _stored_briefing().model_dump(mode="json"))
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    own.assert_not_awaited()
+    assert dashboard.briefing.source == "persisted"
 
 
 @pytest.mark.asyncio
@@ -346,8 +417,8 @@ async def test_home_passes_exact_workspace_scope_to_roster_and_library(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.home.service.get_personal_org_owner",
-        AsyncMock(return_value="another-user"),
+        "backend.api.features.home.service.is_own_personal_org",
+        AsyncMock(return_value=False),
     )
     experts = mocker.patch(
         "backend.api.features.home.service.experts_db.list_experts",
@@ -371,6 +442,7 @@ async def test_home_passes_exact_workspace_scope_to_roster_and_library(
     refs.assert_awaited_once_with(
         "user-1",
         ["graph-1"],
+        include_deleted=True,
         organization_id="org-1",
         team_id_restriction="team-1",
     )
@@ -623,7 +695,9 @@ async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture
     )
 
     events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
+        user_id="user-1",
+        since=datetime(2026, 10, 16, tzinfo=timezone.utc),
+        personal_workspace=True,
     )
 
     assert [event.title for event in events] == ["sticker-01.png"]
@@ -647,7 +721,9 @@ async def test_recent_work_keeps_actions_when_the_file_check_fails(
     )
 
     events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
+        user_id="user-1",
+        since=datetime(2026, 10, 16, tzinfo=timezone.utc),
+        personal_workspace=True,
     )
 
     assert [event.title for event in events] == ["Airtable Create Table"]

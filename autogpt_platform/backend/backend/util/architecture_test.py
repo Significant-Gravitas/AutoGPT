@@ -996,14 +996,6 @@ _ORG_LEDGER_CALL_SITES: dict[str, tuple[int, str]] = {
     "api/external/v2/library/helpers.py assert_can_pay get_credit_model": (1, _GATES),
     "api/external/v2/mcp_calls.py check_tool_limits get_credit_model": (1, _GATES),
     "api/features/graphs/routes.py execute_graph get_credit_model": (1, _GATES),
-    **{
-        f"api/features/home/service.py {function} get_personal_org_owner": (
-            1,
-            "Home shows a personal org's own briefing and work to its owner only, "
-            "outside any run",
-        )
-        for function in ("_get_work_events", "_persisted_briefing")
-    },
     "copilot/credit_billing.py _balance get_org_credits": (1, _PINNED),
     "copilot/credit_billing.py _debit spend_org_credits": (1, _PINNED),
     "copilot/credit_billing.py bill_to_credits get_personal_org_owner": (1, _ADMITS),

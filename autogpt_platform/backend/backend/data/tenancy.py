@@ -1167,7 +1167,16 @@ async def writable_organization_ids(
     org, so changing them from another org would change what the personal org
     runs. ``None`` in the result stands for untagged rows.
     """
-    personal = await prisma.orgmember.find_first(
+    if await is_own_personal_org(user_id, organization_id):
+        return frozenset({organization_id, None})
+    return frozenset({organization_id})
+
+
+async def is_own_personal_org(user_id: str, organization_id: str) -> bool:
+    """Whether *organization_id* is *user_id*'s own personal org: a personal,
+    undeleted org they own. A tenancy question, so ask it here rather than of
+    the billing ledger's cached owner lookup."""
+    membership = await prisma.orgmember.find_first(
         where={
             "userId": user_id,
             "orgId": organization_id,
@@ -1175,9 +1184,7 @@ async def writable_organization_ids(
             "Org": {"isPersonal": True, "deletedAt": None},
         }
     )
-    if personal is None:
-        return frozenset({organization_id})
-    return frozenset({organization_id, None})
+    return membership is not None
 
 
 def organization_filter(
