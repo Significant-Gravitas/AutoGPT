@@ -2436,6 +2436,41 @@ async def test_an_attach_the_machine_never_answered_is_undone(
     delete.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_a_cloud_chat_that_won_the_id_survives_the_local_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Cloud create for the same id takes no Local PC lock. If it inserts
+    first, this create's insert fails, and the cleanup must leave the Cloud
+    chat that won alone."""
+
+    async def insert_after_the_cloud_create(user_id, *, session_id, **_):
+        raise RuntimeError("Unique constraint failed on the fields: (`id`)")
+
+    detach, delete = _patch_failing_local_activation(
+        mocker, create=insert_after_the_cloud_create
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        side_effect=lambda session_id, user_id: ChatSession.new(
+            user_id, dry_run=False, session_id=session_id
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Unique constraint"):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    detach.assert_awaited_once()
+    delete.assert_not_awaited()
+
+
 _LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
     machine_id="machine-1",
     expected_connection_id="connection-1",
@@ -2499,10 +2534,22 @@ def _patch_failing_local_activation(
         new_callable=AsyncMock,
         side_effect=attach_error or _attach,
     )
+    saved: dict[str, ChatSession] = {}
+
+    async def _insert(*args, **kwargs):
+        row = await (create or _create)(*args, **kwargs)
+        saved[row.session_id] = row
+        return row
+
     mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",
         new_callable=AsyncMock,
-        side_effect=create or _create,
+        side_effect=_insert,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        side_effect=lambda session_id, user_id: saved.get(session_id),
     )
     mocker.patch(
         "backend.api.features.chat.routes.activate_machine_session",
@@ -2969,6 +3016,23 @@ async def test_local_session_creation_cancellation_still_compensates(
         "backend.api.features.chat.routes.create_chat_session",
         new_callable=AsyncMock,
         side_effect=asyncio.CancelledError,
+    )
+    # The insert committed before the cancellation landed, so the row there is
+    # this request's own, bound to the folder it attached.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=ChatSession.new(
+            "user-1",
+            dry_run=False,
+            execution_target=chat_routes.LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            ),
+        ),
     )
     detach = mocker.patch(
         "backend.api.features.chat.routes.detach_machine_session",

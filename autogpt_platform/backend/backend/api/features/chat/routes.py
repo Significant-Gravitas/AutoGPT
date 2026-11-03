@@ -679,15 +679,23 @@ async def _compensate_local_session_creation(
     user_id: str,
     organization_id: str | None,
     attach_to_undo: bool,
-    row_to_delete: bool,
+    inserted_target: LocalExecutionTargetMetadata | None,
 ) -> None:
     """Undo only what this request may have done: detach an attach it made
-    or may have made, and delete the row only once it tried to insert one."""
+    or may have made, and delete the row only if it is the one this request
+    inserted, bound to exactly ``inserted_target``."""
     if attach_to_undo:
         await _best_effort_detach_local_session(presence, session_id)
-    if not row_to_delete:
+    if inserted_target is None:
         return
     try:
+        # A Cloud create for the same id takes no Local PC lock, so it can
+        # win the insert; that row is not this request's to delete. Once a
+        # row exists nothing else can take its id, so checking it first is
+        # safe.
+        saved = await get_chat_session_metadata(session_id, user_id)
+        if saved is None or saved.metadata.execution_target != inserted_target:
+            return
         await delete_chat_session(
             session_id,
             user_id,
@@ -766,7 +774,7 @@ async def _create_local_chat_session(
     # create_chat_session resolves a private expert's tenancy again, so undo
     # under the tenancy the row was saved with once it exists.
     saved_organization_id = organization_id
-    create_attempted = False
+    inserted_target: LocalExecutionTargetMetadata | None = None
     try:
         try:
             attached = await attach_machine_session(
@@ -795,7 +803,7 @@ async def _create_local_chat_session(
             root_grant=attached.root_grant,
             revision=attached.revision,
         )
-        create_attempted = True
+        inserted_target = execution_target
         session = await create_chat_session(
             user_id,
             dry_run=dry_run,
@@ -841,7 +849,7 @@ async def _create_local_chat_session(
                 user_id=user_id,
                 organization_id=saved_organization_id,
                 attach_to_undo=attached is not None or attach_unconfirmed,
-                row_to_delete=create_attempted,
+                inserted_target=inserted_target,
             )
         )
         try:
