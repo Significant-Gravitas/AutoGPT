@@ -6,6 +6,7 @@ string path.
 
 import pytest
 
+import backend.util.truncate as truncate_module
 from backend.util.truncate import _truncate_value, truncate
 
 OMISSION_MARKER = "… (omitted"
@@ -45,6 +46,21 @@ class TestAlreadyFittingPayloads:
 
             assert measured(result) <= size_limit
             assert result == value
+
+    def test_a_fitting_payload_is_probed_once(self, monkeypatch):
+        value = {"response": "y" * 84}
+        probes = []
+        real = truncate_module._truncate_value
+
+        def spy(val, *limits):
+            if val is value:
+                probes.append(limits)
+            return real(val, *limits)
+
+        monkeypatch.setattr(truncate_module, "_truncate_value", spy)
+
+        assert truncate(value, 100) == value
+        assert probes == [(100, 2**12)]
 
     def test_empty_and_scalar_payloads_are_untouched(self):
         for value in ({}, [], {"a": [], "b": {}, "c": ""}, 0, False, None):
