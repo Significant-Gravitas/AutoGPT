@@ -60,13 +60,14 @@ RUN python3 -m venv $POETRY_HOME/venv \
 COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
-RUN poetry install --no-ansi --no-root
+RUN poetry install --no-ansi --no-root --compile
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
 COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
-RUN poetry run prisma generate && poetry run gen-prisma-stub
+RUN poetry run prisma generate && poetry run gen-prisma-stub \
+    && .venv/bin/python -m compileall -q .venv/lib/python3.13/site-packages/prisma
 
 # =============================== DB MIGRATOR =============================== #
 
