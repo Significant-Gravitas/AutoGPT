@@ -15,6 +15,8 @@ on:
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/frontend_typecheck.py"
+      - ".github/scripts/test_frontend_typecheck.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
@@ -98,6 +100,7 @@ jobs:
             ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
+            ../../.github/scripts/test_frontend_typecheck.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
@@ -125,6 +128,11 @@ jobs:
 
       - name: Set up Frontend - Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Set up Frontend - Set up Bun type checker
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
 
       - name: Set up Frontend - Format OpenAPI schema
         id: format-schema
@@ -161,7 +169,7 @@ jobs:
         if: success() || (steps.format-schema.outcome == 'success')
 
       - name: Check for TypeScript errors
-        run: pnpm types
+        run: python3 ../../.github/scripts/frontend_typecheck.py
         if: success() || (steps.generate-api-client.outcome == 'success')
 
       - name: Upload validator test report
@@ -635,6 +643,7 @@ jobs:
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_CHANGELOG_FIXTURE: "true"
           # One worker per vCPU on the 4-vCPU standard runner; the CI default of 8 starves the stack.
           PLAYWRIGHT_WORKERS: "4"
           # Matches EXECUTION_COST_COUNT_THRESHOLD=1 from hosted_journeys_env.py.

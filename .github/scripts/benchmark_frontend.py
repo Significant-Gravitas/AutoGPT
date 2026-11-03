@@ -12,6 +12,8 @@ from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree
 
+from frontend_typecheck import compatibility_config
+
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "autogpt_platform/frontend"
 
@@ -148,30 +150,10 @@ class Benchmark:
         config = self.temporary(
             "tsconfig.benchmark.json",
             json.dumps(
-                {
-                    "extends": "./tsconfig.json",
-                    "compilerOptions": {
-                        "incremental": False,
-                        "types": options.get(
-                            "types",
-                            json.loads(
-                                (self.output / "ts5-implicit-types.log").read_text()
-                            ),
-                        ),
-                        "noUncheckedSideEffectImports": options.get(
-                            "noUncheckedSideEffectImports", False
-                        ),
-                        "paths": {
-                            name: [
-                                path
-                                if path.startswith(("./", "../", "/"))
-                                else f"./{path}"
-                                for path in paths
-                            ]
-                            for name, paths in options.get("paths", {}).items()
-                        },
-                    },
-                },
+                compatibility_config(
+                    options,
+                    json.loads((self.output / "ts5-implicit-types.log").read_text()),
+                ),
                 indent=2,
             ),
         )
@@ -226,11 +208,13 @@ class Benchmark:
         flat = self.temporary(
             "eslint.benchmark.cjs",
             """const { createRequire } = require("node:module");
+const { dirname } = require("node:path");
 const eslintRequire = createRequire(require.resolve("eslint"));
 const { FlatCompat } = eslintRequire("@eslint/eslintrc");
 const js = eslintRequire("@eslint/js");
 module.exports = new FlatCompat({
   baseDirectory: __dirname,
+  resolvePluginsRelativeTo: dirname(require.resolve("eslint-config-next")),
   recommendedConfig: js.configs.recommended,
   allConfig: js.configs.all,
 }).extends("./.eslintrc.json");

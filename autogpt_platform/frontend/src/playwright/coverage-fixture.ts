@@ -1,6 +1,8 @@
 import { test as base } from "@playwright/test";
 import { markChangelogSeen } from "./utils/changelog";
 import { addCoverageReport } from "monocart-reporter";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 const test = base.extend<{ autoTestFixture: void; changelogSeen: void }>({
   autoTestFixture: [
@@ -29,8 +31,19 @@ const test = base.extend<{ autoTestFixture: void; changelogSeen: void }>({
     { scope: "test", auto: true },
   ],
   changelogSeen: [
-    async ({ context }, use) => {
-      await markChangelogSeen(context);
+    async ({ context, baseURL }, use) => {
+      let markdown: string | undefined;
+      if (process.env.PLAYWRIGHT_CHANGELOG_FIXTURE === "true") {
+        const hostname = new URL(baseURL ?? "").hostname;
+        if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) {
+          throw new Error("Changelog fixtures require a local test app");
+        }
+        markdown = await readFile(
+          path.join(__dirname, "fixtures/changelog.md"),
+          "utf8",
+        );
+      }
+      await markChangelogSeen(context, markdown);
       await use();
     },
     { scope: "test", auto: true },

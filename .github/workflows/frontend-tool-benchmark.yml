@@ -7,6 +7,8 @@ on:
       - ".github/workflows/frontend-tool-benchmark.yml"
       - ".github/scripts/benchmark_frontend.py"
       - ".github/scripts/test_frontend_benchmark.py"
+      - ".github/scripts/frontend_typecheck.py"
+      - ".github/scripts/test_frontend_typecheck.py"
   push:
     branches: [dev, master]
     paths:
@@ -50,12 +52,15 @@ jobs:
       - name: Install baseline dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
       - name: Test benchmark safeguards
-        run: python3 -m unittest discover -s ../../.github/scripts -p test_frontend_benchmark.py
+        run: |
+          python3 -m unittest discover -s ../../.github/scripts -p test_frontend_benchmark.py
+          python3 -m unittest discover -s ../../.github/scripts -p test_frontend_typecheck.py
       - name: Lint benchmark helpers
         run: |
           version=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py ruff ../backend/poetry.lock)
           pipx run --spec "ruff==$version" ruff check --select E4,E7,E9,F,I \
-            ../../.github/scripts/benchmark_frontend.py ../../.github/scripts/test_frontend_benchmark.py
+            ../../.github/scripts/benchmark_frontend.py ../../.github/scripts/test_frontend_benchmark.py \
+            ../../.github/scripts/frontend_typecheck.py ../../.github/scripts/test_frontend_typecheck.py
       - name: Compare tools and inject known lint and type errors
         run: python3 ../../.github/scripts/benchmark_frontend.py tools --output "$RUNNER_TEMP/frontend-tools-report"
         env:
