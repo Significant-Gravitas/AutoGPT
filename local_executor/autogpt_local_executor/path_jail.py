@@ -208,6 +208,33 @@ def assert_inside_jail(
     )
 
 
+def assert_entry_inside_jail(
+    requested_path: str | os.PathLike[str],
+    allowed_root: str | os.PathLike[str],
+) -> Path:
+    """Return the directory entry `requested_path` names, for operations on the
+    entry itself (delete, move), which must not follow a final symlink to its
+    target.
+
+    The entry's directory is resolved and must be inside `allowed_root`; its
+    name is kept as given. That rules out the root itself, whose entry lives in
+    the directory above it. Callers check `assert_inside_jail` too, so a link
+    whose target is outside the root stays refused.
+    """
+    raw = str(requested_path)
+    lex = Path(raw).expanduser()
+    if lex.name in ("", ".."):
+        raise PathJailError("PATH_INVALID_CHARS", f"Path {raw!r} does not name an entry")
+    try:
+        directory = assert_inside_jail(lex.parent, allowed_root)
+    except PathJailError as exc:
+        raise PathJailError(
+            exc.code,
+            f"Path {raw!r} names an entry outside allowed_root {str(allowed_root)!r}",
+        ) from exc
+    return directory / lex.name
+
+
 def _assert_safe_content_stat(info: os.stat_result) -> None:
     if not stat.S_ISREG(info.st_mode):
         raise PathJailError("CAPABILITY_NOT_GRANTED", "Content access requires a regular file")
@@ -253,6 +280,7 @@ def open_jail_file(
 
 __all__ = [
     "PathJailError",
+    "assert_entry_inside_jail",
     "assert_inside_jail",
     "is_inside_jail",
     "open_jail_file",

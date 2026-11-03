@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from autogpt_local_executor.computer_use.backends import linux as linux_backend
+from autogpt_local_executor.computer_use.backends._common import PASTE_THRESHOLD_CHARS
 from autogpt_local_executor.computer_use.backends.linux import LinuxBackend
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
@@ -191,3 +192,28 @@ def test_permissions_check_wayland_denies_tcc_keys(tmp_path, monkeypatch) -> Non
     b = LinuxBackend(_config(tmp_path))
     out = b.permissions_check(["accessibility", "screen_recording"])
     assert out == {"accessibility": "denied", "screen_recording": "denied"}
+
+
+# ── Paste with preserve_clipboard (Q3/Q4) ───────────────────────────────
+
+
+def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypatch) -> None:
+    """The user's clipboard goes back after the paste, and it is still theirs:
+    a writeback-only read must not return it."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    state = {"content": "user secret"}
+
+    def _write(text: str) -> None:
+        state["content"] = text
+
+    monkeypatch.setattr(b, "_write_clipboard_text", _write)
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert state["content"] == "user secret"
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()

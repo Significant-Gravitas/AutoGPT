@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from autogpt_local_executor.computer_use.backends._common import PASTE_THRESHOLD_CHARS
 from autogpt_local_executor.computer_use.backends.macos import (
     CONCEALED_PB_TYPES,
     MacOSBackend,
@@ -422,3 +423,149 @@ def test_permissions_check_unknown_keys_are_not_applicable(tmp_path, monkeypatch
     monkeypatch.setattr(b, "_screen_capture_allowed", lambda: True)
     out = b.permissions_check(["camera", "microphone"])
     assert out == {"camera": "not_applicable", "microphone": "not_applicable"}
+
+
+# ── Paste with preserve_clipboard (Q3/Q4) ───────────────────────────────
+
+
+def _fake_pasteboard(b: MacOSBackend, monkeypatch, *, content: str, types=()) -> dict:
+    state: dict = {"content": content, "seq": 1, "types": list(types), "writes": []}
+
+    def _write(text: str) -> int:
+        state["content"] = text
+        state["seq"] += 1
+        state["writes"].append(text)
+        return state["seq"]
+
+    monkeypatch.setattr(b, "_write_pasteboard_text", _write)
+    monkeypatch.setattr(b, "_read_pasteboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: state["types"])
+    return state
+
+
+def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypatch) -> None:
+    """The user's clipboard goes back after the paste, and it is still theirs:
+    a writeback-only read must not return it."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user secret")
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["content"] == "user secret"
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
+
+
+def test_a_concealed_clipboard_is_left_alone_and_the_text_typed(tmp_path, monkeypatch) -> None:
+    """Restoring would drop the concealed marker, so the clipboard is never
+    read or replaced."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(
+        b, monkeypatch, content="password", types=["org.nspasteboard.ConcealedType"]
+    )
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
+# ── Window focus through Accessibility (WINDOW_FOCUS) ──────────────────
+
+
+def _focusable(b: MacOSBackend, monkeypatch, *, cg_frame, cg_title, ax_windows) -> dict:
+    """One CoreGraphics window to focus, and the app's Accessibility windows
+    as (frame, title) pairs."""
+    fp = WindowFingerprint(pid=4242, class_name="Editor", creation_timestamp=None)
+    window_id = b.window_registry.mint(7, fp, extra={"bounds": (0, 0, 10, 10)})
+    app = MagicMock()
+    appkit = MagicMock()
+    appkit.NSRunningApplication.runningApplicationWithProcessIdentifier_.return_value = app
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _handle: fp)
+    monkeypatch.setattr(b, "_cg_window_frame", lambda _handle: (cg_frame, cg_title))
+    monkeypatch.setattr(b, "_ax_windows", lambda pid: list(range(len(ax_windows))))
+    monkeypatch.setattr(b, "_ax_frame", lambda window: ax_windows[window][0])
+    monkeypatch.setattr(b, "_ax_title", lambda window: ax_windows[window][1])
+    raised: list[int] = []
+    monkeypatch.setattr(b, "_ax_raise", lambda window: raised.append(window) or True)
+    return {"window_id": window_id, "app": app, "raised": raised}
+
+
+def test_window_focus_raises_the_chosen_window_not_just_its_app(tmp_path, monkeypatch) -> None:
+    b = MacOSBackend(_config(tmp_path))
+    focus = _focusable(
+        b,
+        monkeypatch,
+        cg_frame=(400, 300, 800, 600),
+        cg_title="",
+        ax_windows=[((0, 25, 800, 600), "Notes"), ((400, 300, 800, 600), "Report")],
+    )
+
+    b.window_focus(focus["window_id"])
+
+    assert focus["raised"] == [1]
+    focus["app"].activateWithOptions_.assert_called_once()
+
+
+def test_window_focus_tells_same_frame_windows_apart_by_title(tmp_path, monkeypatch) -> None:
+    b = MacOSBackend(_config(tmp_path))
+    focus = _focusable(
+        b,
+        monkeypatch,
+        cg_frame=(0, 25, 800, 600),
+        cg_title="Draft 2",
+        ax_windows=[((0, 25, 800, 600), "Draft 1"), ((0, 25, 800, 600), "Draft 2")],
+    )
+
+    b.window_focus(focus["window_id"])
+
+    assert focus["raised"] == [1]
+
+
+def test_window_focus_reports_a_window_it_cannot_single_out(tmp_path, monkeypatch) -> None:
+    """Acknowledging would let the next keystrokes land in another window."""
+    b = MacOSBackend(_config(tmp_path))
+    focus = _focusable(
+        b,
+        monkeypatch,
+        cg_frame=(0, 25, 800, 600),
+        cg_title="",
+        ax_windows=[((0, 25, 800, 600), "Draft 1"), ((0, 25, 800, 600), "Draft 2")],
+    )
+
+    with pytest.raises(WindowStaleError):
+        b.window_focus(focus["window_id"])
+
+    assert focus["raised"] == []
+    focus["app"].activateWithOptions_.assert_not_called()
+
+
+def test_the_accessibility_names_used_for_focus_exist() -> None:
+    """The focus path's pyobjc calls only run on macOS; check their names there."""
+    services = pytest.importorskip("ApplicationServices")
+    for name in (
+        "AXUIElementCopyAttributeValue",
+        "AXUIElementCreateApplication",
+        "AXUIElementPerformAction",
+        "AXUIElementSetAttributeValue",
+        "AXValueGetValue",
+        "kAXErrorSuccess",
+        "kAXMainAttribute",
+        "kAXPositionAttribute",
+        "kAXRaiseAction",
+        "kAXSizeAttribute",
+        "kAXTitleAttribute",
+        "kAXValueCGPointType",
+        "kAXValueCGSizeType",
+        "kAXWindowsAttribute",
+    ):
+        assert hasattr(services, name), name

@@ -604,6 +604,9 @@ Used in place of shell `rm` / `del`.
 Responds with `ACK`. Shim's recycle-bin mode (see SECURITY.md Layer 5 —
 optional) moves to `~/.autogpt-trash/` instead of unlinking.
 
+A symlink or junction is removed itself; its target is untouched. The allowed
+root itself cannot be deleted.
+
 #### `FILE_MOVE` (platform → shim)
 
 Used in place of shell `mv` / `move`. Also covers renames.
@@ -624,6 +627,8 @@ Used in place of shell `mv` / `move`. Also covers renames.
 **Both `src` and `dst` are path-jail checked.** Moves use filesystem rename
 or replacement only. Cross-device moves return an error without copying file
 contents or pre-deleting the destination. Successful moves respond with `ACK`.
+A symlink `src` is moved itself, and with `overwrite` a symlink `dst` is
+replaced itself; neither target changes.
 
 ---
 

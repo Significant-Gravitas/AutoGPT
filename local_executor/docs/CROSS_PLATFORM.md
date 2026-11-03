@@ -96,7 +96,7 @@ paths only; navigation and selection use short-lived opaque references.
 |---|---|---|---|---|
 | Graceful terminate | `SIGTERM` | `SIGTERM` | `CTRL_BREAK_EVENT` for console apps; `TerminateProcess` for GUI apps | Shim picks per-OS in command runner. |
 | Hard kill | `SIGKILL` | `SIGKILL` | `TerminateProcess` | Always available. |
-| Timeout enforcement | `asyncio.wait_for` + SIGTERM → wait 2s → SIGKILL | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → TerminateProcess | Common timeout sequence; per-OS signal differs. |
+| Timeout enforcement | `asyncio.wait_for` + SIGTERM to the group → SIGKILL to whatever is left of it after 2s, even once the command itself has exited | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → TerminateProcess | Common timeout sequence; per-OS signal differs. |
 | Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag | So we kill child processes spawned by the command. |
 
 ### Environment variables
@@ -326,6 +326,11 @@ overwriting a nonempty directory also fails. This prevents a move from reading
 linked or special-file content indirectly during a cross-device copy. An
 in-root hard-link entry may still be listed, statted, unlinked, or renamed;
 these operations do not grant content access, and its content remains blocked.
+
+FILE_DELETE and FILE_MOVE act on the entry a path names: a symlink or junction
+is removed, renamed or replaced itself, never its target. The path must still
+resolve inside the root, and so must the entry's directory, so neither
+operation can act on the root itself.
 
 ### What the algorithm catches
 

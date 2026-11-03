@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from autogpt_local_executor.computer_use.backends._common import PASTE_THRESHOLD_CHARS
 from autogpt_local_executor.computer_use.backends.windows import (
     CF_PRIVATEFIRST,
     WindowsBackend,
@@ -176,3 +177,47 @@ def test_app_launch_requires_executable_path(tmp_path) -> None:
     b = WindowsBackend(_config(tmp_path))
     with pytest.raises(FeatureNotSupportedError):
         b.app_launch(bundle_id="com.example.app")
+
+
+# ── Paste with preserve_clipboard (Q3/Q4) ───────────────────────────────
+
+
+def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=False) -> dict:
+    state: dict = {"content": content, "seq": 1, "writes": []}
+
+    def _write(text: str) -> int:
+        state["content"] = text
+        state["seq"] += 1
+        state["writes"].append(text)
+        return state["seq"]
+
+    monkeypatch.setattr(b, "_write_clipboard_text", _write)
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_has_private_format", lambda: private)
+    return state
+
+
+def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypatch) -> None:
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    clipboard = _fake_clipboard(b, monkeypatch, content="user secret")
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert clipboard["content"] == "user secret"
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
+
+
+def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monkeypatch) -> None:
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="password", private=True)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()

@@ -29,6 +29,10 @@ import json
 import logging
 import os
 import secrets
+import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -155,23 +159,29 @@ class AuditWriter:
         self._default_session_id = session_id
         self._default_machine_id = machine_id
         self._lock = asyncio.Lock()
-        if self.path.exists():
-            try:
-                violations = self.verify(self.path, audit_key)
-            except Exception as exc:
-                raise RuntimeError(
-                    "Existing audit log cannot be verified; refusing to append"
-                ) from exc
-            if violations:
-                raise RuntimeError("Existing audit log failed verification; refusing to append")
-        self._seq, self._prev_hmac = self._load_tail_state(self.path)
-        # 0600 on POSIX; on Windows the file inherits the user-only ACL.
+        # The daemon and `autogpt-shim audit` commands each have a writer for
+        # one log, so every read of the chain state, append and rotation also
+        # holds this lock file. Its name keeps it out of list_rotated_files.
+        self._file_lock_path = self.path.with_name(f".{self.path.name}.lock")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            # Create empty so first write can fsync against an existing inode
-            # and we can set 0600 once instead of after every append.
-            self.path.touch()
-            _chmod_owner_only(self.path)
+        with _file_lock(self._file_lock_path):
+            if self.path.exists():
+                try:
+                    violations = self.verify(self.path, audit_key)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Existing audit log cannot be verified; refusing to append"
+                    ) from exc
+                if violations:
+                    raise RuntimeError("Existing audit log failed verification; refusing to append")
+            self._seq, self._prev_hmac = self._load_tail_state(self.path)
+            # 0600 on POSIX; on Windows the file inherits the user-only ACL.
+            if not self.path.exists():
+                # Create empty so first write can fsync against an existing inode
+                # and we can set 0600 once instead of after every append.
+                self.path.touch()
+                _chmod_owner_only(self.path)
+            self._file_state = _file_identity(self.path)
 
     # ── Defaults wiring ──────────────────────────────────────────────────
 
@@ -214,9 +224,26 @@ class AuditWriter:
         details: dict[str, Any],
         result: dict[str, Any],
     ) -> None:
-        # Rotate before writing if we'd cross a threshold. Rotation resets the
-        # in-memory chain state.
-        self._maybe_rotate()
+        with _file_lock(self._file_lock_path):
+            # Another writer may have rotated or appended since this one last
+            # wrote; chain onto what the file holds now.
+            if _file_identity(self.path) != self._file_state:
+                self._seq, self._prev_hmac = self._load_tail_state(self.path)
+            # Rotate before writing if we'd cross a threshold. Rotation resets
+            # the in-memory chain state.
+            self._maybe_rotate()
+            self._append_record(op, session_id, machine_id, request_id, details, result)
+            self._file_state = _file_identity(self.path)
+
+    def _append_record(
+        self,
+        op: str,
+        session_id: str,
+        machine_id: str,
+        request_id: str | None,
+        details: dict[str, Any],
+        result: dict[str, Any],
+    ) -> None:
         record = {
             "ts": _now_ts(),
             "session_id": session_id,
@@ -231,7 +258,11 @@ class AuditWriter:
         }
         hmac_hex = hmac.new(self.audit_key, canonical_bytes(record), sha256).hexdigest()
         record["hmac"] = hmac_hex
-        line = json.dumps(record, ensure_ascii=False) + "\n"
+        self._append(json.dumps(record, ensure_ascii=False) + "\n")
+        self._prev_hmac = hmac_hex
+        self._seq += 1
+
+    def _append(self, line: str) -> None:
         # Open-append-fsync per record. Slow for high throughput but the
         # audit log is one-line-per-shim-event, not a hot path.
         with open(self.path, "a", encoding="utf-8") as f:
@@ -242,8 +273,6 @@ class AuditWriter:
             except OSError:
                 # Best-effort: some filesystems (procfs, etc.) reject fsync.
                 logger.debug("fsync failed on audit log", exc_info=True)
-        self._prev_hmac = hmac_hex
-        self._seq += 1
 
     # ── Rotation ────────────────────────────────────────────────────────
 
@@ -264,11 +293,12 @@ class AuditWriter:
     def force_rotate(self) -> Path | None:
         """Caller-initiated rotation. Returns the rotated-file path, or None
         if the current file was empty (nothing to rotate)."""
-        with open(self.path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            if f.tell() == 0:
-                return None
-        return self._rotate(reason="explicit")
+        with _file_lock(self._file_lock_path):
+            with open(self.path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                if f.tell() == 0:
+                    return None
+            return self._rotate(reason="explicit")
 
     def _rotate(self, *, reason: str) -> Path:
         # If a file with the same timestamp suffix already exists (sub-second
@@ -289,6 +319,7 @@ class AuditWriter:
         _chmod_owner_only(self.path)
         self._seq = 1
         self._prev_hmac = None
+        self._file_state = _file_identity(self.path)
         logger.info("Rotated audit log (%s) → %s", reason, target.name)
         return target
 
@@ -698,6 +729,45 @@ def _chmod_owner_only(path: Path) -> None:
         os.chmod(path, 0o600)
     except OSError:
         logger.debug("chmod 0600 failed for %s", path, exc_info=True)
+
+
+def _file_identity(path: Path) -> tuple[int, int, int] | None:
+    """Which file is at `path` and how long it is, to notice another writer."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return info.st_dev, info.st_ino, info.st_size
+
+
+@contextmanager
+def _file_lock(path: Path) -> Iterator[None]:
+    """Hold an exclusive lock on `path`, across processes, while the block runs."""
+    with open(path, "a+b") as handle:
+        if sys.platform == "win32":
+            import msvcrt
+
+            # LK_LOCK gives up after ten seconds; wait as long as it takes.
+            while True:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def list_rotated_files(current: Path) -> list[Path]:

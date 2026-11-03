@@ -17,7 +17,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={shim_executable_path} --config {config_path} start
+ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:{stdout_log}

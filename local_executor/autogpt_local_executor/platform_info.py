@@ -108,13 +108,35 @@ def available_recording_channels() -> list[str]:
     return []
 
 
+# The third-party modules each computer-use backend imports. The
+# computer-use extra installs them, and tests/test_computer_use_requirements.py
+# keeps the backends, this list and the extra in step.
+_COMPUTER_USE_MODULES = ("pyautogui", "PIL", "mss")
+_COMPUTER_USE_PLATFORM_MODULES = {
+    "darwin": ("Quartz", "AppKit", "Cocoa", "ApplicationServices"),
+    "windows": (
+        "win32api",
+        "win32clipboard",
+        "win32con",
+        "win32gui",
+        "win32process",
+        "win32ui",
+    ),
+}
+
+
+def computer_use_modules(platform_name: str) -> tuple[str, ...]:
+    return (*_COMPUTER_USE_MODULES, *_COMPUTER_USE_PLATFORM_MODULES.get(platform_name, ()))
+
+
 def _can_do_computer_use() -> bool:
-    """Per CROSS_PLATFORM.md: Wayland blocks input injection — only
-    advertise computer_use when pyautogui is present AND (not on Wayland).
+    """Advertise computer_use only when every module its backend imports is
+    installed and, per CROSS_PLATFORM.md, not on Wayland, which blocks input
+    injection.
     """
-    if not _module_available("pyautogui"):
-        return False
     plat = detect_platform()
+    if not all(_module_available(name) for name in computer_use_modules(plat)):
+        return False
     if plat in ("linux",):
         # Wayland sessions can't inject — see CROSS_PLATFORM.md row.
         if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":

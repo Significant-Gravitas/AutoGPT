@@ -297,7 +297,12 @@ trips IME/autocomplete on web forms.
    `changeCount` / clipboard-sequence-number advanced between snapshot
    and restore.** A bumped sequence number means the user (or another
    app) copied something during the paste, and clobbering that with the
-   pre-paste snapshot would lose their action.
+   pre-paste snapshot would lose their action. The restored contents
+   are still the user's: they are not recorded as a shim write, so a
+   writeback-only `CLIPBOARD_READ` refuses them. A clipboard carrying a
+   concealed marker (`ConcealedType` / `CF_PRIVATE`) is never read or
+   restored, because a text-only restore would drop the marker; the
+   text is typed instead.
 4. **Race window.** Snapshot → write → hotkey → wait-for-paste → restore
    is 50–500 ms wall-time depending on OS and target app. During that
    window other apps see the pasted text on the clipboard. This is **not
@@ -517,6 +522,11 @@ Responds with `ACK`. On macOS this is `AXRaise` on the AXUIElementRef; on
 Windows, `SetForegroundWindow` (best-effort per Win32's foreground-lock
 rules — cua-driver flagged this as a known caveat); on Linux X11,
 `XRaiseWindow` + `_NET_ACTIVE_WINDOW`.
+
+On macOS the shim finds the window's AXUIElementRef among its app's
+Accessibility windows by frame, and by title when frames tie. When no
+single window matches, or the raise fails, it answers `WINDOW_STALE`
+instead of `ACK`, so later input never lands in another window.
 
 ### Deliberately omitted from v1
 

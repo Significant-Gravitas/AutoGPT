@@ -680,8 +680,11 @@ class WindowsBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            self._do_paste(text, preserve_clipboard=preserve_clipboard)
-            return
+            # A CF_PRIVATE clipboard would lose that format when restored, so
+            # one that must be preserved is left alone and the text is typed.
+            if not (preserve_clipboard and self._has_private_format()):
+                self._do_paste(text, preserve_clipboard=preserve_clipboard)
+                return
         pyautogui.write(text, interval=0.02)
 
     def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
@@ -700,8 +703,9 @@ class WindowsBackend(ComputerUseBackend):
             if previous is not None and prev_seq is not None and current_seq is not None:
                 if current_seq > prev_seq + 1:
                     return
+                # The restored contents are the user's, not ours, so they are
+                # not recorded as a writeback: a writeback-only read refuses them.
                 self._write_clipboard_text(previous)
-                self.clipboard_writeback.record_write(previous)
 
     # ── Permissions ──────────────────────────────────────────────────
 

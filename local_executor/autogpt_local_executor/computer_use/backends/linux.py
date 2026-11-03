@@ -601,8 +601,9 @@ class LinuxBackend(ComputerUseBackend):
             # the CLI utilities; the changeCount-skip-restore protection
             # falls back to "restore unconditionally" here. Documented in
             # COMPUTER_USE.md Q4 as a race window.
+            # The restored contents are the user's, not ours, so they are not
+            # recorded as a writeback: a writeback-only read refuses them.
             self._write_clipboard_text(snapshot[0])
-            self.clipboard_writeback.record_write(snapshot[0])
 
     # ── Permissions ──────────────────────────────────────────────────
 
