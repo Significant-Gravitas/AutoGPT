@@ -88,13 +88,58 @@ describe("MessageResponse math", () => {
   it.each([
     [
       "a pasted shell command",
-      '$ for p in $(sudo lsns -t net -n -o PID); do echo "== netns of PID $p ($(ps -o comm= -p $p))"; done',
+      '$ for f in $(ls logs); do echo "== $f ($(wc -l < $f))"; done',
     ],
     ["shell variables in prose", "Both $HOME and $PATH are set."],
+    [
+      "two variables joined by a separator",
+      "Run as $USER:$GROUP from $HOME/$DIR.",
+    ],
   ])("leaves %s as literal text", async (_, markdown) => {
     const container = await renderReply(markdown);
 
     expect(container.querySelector(".katex")).toBeNull();
     expect(proseOf(container)).toBe(markdown);
+  });
+
+  it.each([
+    ["a fenced block in a blockquote", "> ~~~bash\n> echo $HOME\n> ~~~", "pre"],
+    ["an HTML block", "<div>echo $HOME</div>", "div"],
+    [
+      "a code span that wraps a line",
+      "Run `echo $HOME\nand $PATH` now.",
+      "code",
+    ],
+  ])("leaves dollars in %s unescaped", async (_, markdown, selector) => {
+    const container = await renderReply(markdown);
+
+    await waitFor(() =>
+      expect(container.querySelector(selector)?.textContent).toMatch(
+        /echo \$HOME/,
+      ),
+    );
+    expect(container.textContent).not.toContain("\\$");
+  });
+
+  it.each([
+    ["an autolink", "<https://example.org/odata/$metadata>"],
+    ["a bare URL", "See https://example.org/odata/$metadata now."],
+  ])("keeps the dollar in %s's address", async (_, markdown) => {
+    const container = await renderReply(markdown);
+
+    // Link safety renders a link as a button labelled with its address.
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-streamdown="link"]')?.textContent,
+      ).toBe("https://example.org/odata/$metadata"),
+    );
+  });
+
+  it("renders math whose \\left delimiter has no partner", async () => {
+    const container = await renderReply("Take $\\left( x \\right.$ here.");
+
+    await waitFor(() =>
+      expect(texOf(container)).toEqual(["\\left( x \\right."]),
+    );
   });
 });

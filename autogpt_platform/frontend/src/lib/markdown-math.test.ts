@@ -131,7 +131,7 @@ describe("escapeLiteralDollars", () => {
   });
 
   it.each([
-    ["$ for p in $(ls); do echo $p ($(ps -p $p)); done"],
+    ['$ for f in $(ls logs); do echo "== $f ($(wc -l < $f))"; done'],
     ["Both $HOME and $PATH are set."],
     ["Spaced $ x $ is not math."],
   ])("escapes every lone dollar in %s", (markdown) => {
