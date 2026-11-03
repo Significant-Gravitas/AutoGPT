@@ -1,3 +1,5 @@
+// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
+
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

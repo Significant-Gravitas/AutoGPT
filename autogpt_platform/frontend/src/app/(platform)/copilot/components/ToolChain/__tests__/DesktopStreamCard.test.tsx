@@ -1,3 +1,5 @@
+// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
+
 import { render } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";

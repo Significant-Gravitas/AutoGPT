@@ -1,3 +1,5 @@
+// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
+
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { act, cleanup, render } from "@/tests/integrations/test-utils";
