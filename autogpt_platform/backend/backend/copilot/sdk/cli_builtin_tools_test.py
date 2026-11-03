@@ -57,7 +57,11 @@ async def test_cli_offers_only_allowed_tools(use_e2b: bool, tmp_path: Path):
     allowed = get_copilot_tool_names(use_e2b=use_e2b)
     offered = await asyncio.wait_for(
         _cli_offered_tools(
-            allowed, get_sdk_disallowed_tools(use_e2b=use_e2b), None, tmp_path
+            allowed,
+            get_sdk_disallowed_tools(use_e2b=use_e2b),
+            None,
+            tmp_path,
+            use_e2b=use_e2b,
         ),
         timeout=60,
     )
@@ -109,6 +113,7 @@ async def test_cli_declares_exactly_the_session_builtins(
             tool_options["disallowed_tools"],
             tool_options["tools"],
             tmp_path,
+            use_e2b=use_e2b,
         ),
         timeout=60,
     )
@@ -120,6 +125,8 @@ async def _cli_offered_tools(
     disallowed: list[str],
     tools: list[str] | None,
     tmp_path: Path,
+    *,
+    use_e2b: bool,
 ) -> list[str]:
     """The tool list in the CLI's ``init`` message, which precedes any API call.
 
@@ -143,7 +150,7 @@ async def _cli_offered_tools(
         tools=tools,
         allowed_tools=allowed,
         disallowed_tools=disallowed,
-        mcp_servers={"copilot": create_copilot_mcp_server()},
+        mcp_servers={"copilot": create_copilot_mcp_server(use_e2b=use_e2b)},
         cwd=str(sdk_cwd),
         env=env,
         cli_path=_CLI_PATH,

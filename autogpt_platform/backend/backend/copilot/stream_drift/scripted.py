@@ -143,7 +143,6 @@ async def sdk_service_turn(
         "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
-        "propagate_attributes": MagicMock(),
         "_build_system_prompt": AsyncMock(return_value="System prompt"),
         "fetch_business_understanding": AsyncMock(return_value=None),
         "download_transcript": AsyncMock(return_value=None),

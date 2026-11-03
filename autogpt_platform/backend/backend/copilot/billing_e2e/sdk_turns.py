@@ -135,6 +135,9 @@ class SdkTurns:
                 return_value="You are a test assistant. Reply briefly."
             ),
             "fetch_business_understanding": AsyncMock(return_value=None),
+            "_graphiti_enabled": MagicMock(return_value=False),
+            "_fetch_graphiti_context": AsyncMock(return_value=(False, "")),
+            "_enqueue_graphiti_turn": AsyncMock(),
             "_first_turn_context_blocks": AsyncMock(return_value=[]),
             "build_skills_update_notice": AsyncMock(return_value=None),
             "inject_context_blocks": AsyncMock(return_value=None),
