@@ -38,11 +38,12 @@ export function FilterMenu({ filters, onChange, experts }: Props) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
-          size="xs"
-          leftIcon={<Icon icon={FilterHorizontalIcon} size={14} />}
+          variant="toggle"
+          size="icon-xs"
+          aria-label="Filter tasks"
+          withTooltip={false}
         >
-          Filter
+          <Icon icon={FilterHorizontalIcon} size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

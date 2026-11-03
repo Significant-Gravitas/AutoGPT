@@ -1,14 +1,112 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "./data/helpers";
 import type {
   ExpertOption,
+  InboxState,
   Task,
+  TaskCounts,
   TaskFilters,
   TaskPriority,
   TaskStatus,
 } from "./data/types";
 
-export const TASK_VIEWS = ["board", "list", "mine"] as const;
+export const TASK_VIEWS = ["list", "board"] as const;
 export type TasksView = (typeof TASK_VIEWS)[number];
+
+export const INBOX_TABS = [
+  "all",
+  "needs_you",
+  "running",
+  "waiting",
+  "done",
+  "failed",
+] as const;
+export type InboxTab = (typeof INBOX_TABS)[number];
+
+export const INBOX_TAB_LABELS: Record<InboxTab, string> = {
+  all: "All",
+  needs_you: "Needs you",
+  running: "Running",
+  waiting: "Waiting",
+  done: "Done",
+  failed: "Failed",
+};
+
+export const BOARD_MIN_WIDTH = 620;
+
+export function tabCount(counts: TaskCounts | undefined, tab: InboxTab) {
+  return counts ? counts[tab] : 0;
+}
+
+export function matchesTab(task: Task, tab: InboxTab) {
+  if (tab === "all") return true;
+  if (tab === "needs_you") return task.inbox.needs_you;
+  return task.inbox.state === tab;
+}
+
+const STATE_RANK: Record<InboxState, number> = {
+  running: 1,
+  waiting: 2,
+  failed: 3,
+  done: 4,
+};
+
+function inboxRank(task: Task) {
+  return task.inbox.needs_you ? 0 : STATE_RANK[task.inbox.state];
+}
+
+export function sortForInbox(tasks: Task[]) {
+  return [...tasks].sort((a, b) => inboxRank(a) - inboxRank(b));
+}
+
+export function filterInbox(tasks: Task[], tab: InboxTab) {
+  return sortForInbox(tasks.filter((t) => matchesTab(t, tab)));
+}
+
+export type BoardColumnID = "running" | "waiting" | "done" | "failed";
+
+export interface InboxColumn {
+  id: BoardColumnID;
+  label: string;
+  tasks: Task[];
+}
+
+const COLUMN_LABELS: Record<BoardColumnID, string> = {
+  running: "Running",
+  waiting: "Waiting",
+  done: "Done",
+  failed: "Failed",
+};
+
+function boardColumnFor(task: Task, splitFailed: boolean): BoardColumnID {
+  const state = task.inbox.state;
+  if (task.inbox.needs_you) return "waiting";
+  if (state === "failed") return splitFailed ? "failed" : "waiting";
+  return state;
+}
+
+export function buildBoardColumns(tasks: Task[], tab: InboxTab) {
+  const splitFailed = tab === "failed";
+  const ids: BoardColumnID[] = splitFailed
+    ? ["running", "waiting", "done", "failed"]
+    : ["running", "waiting", "done"];
+  const sorted = sortForInbox(tasks);
+  return ids.map(
+    (id): InboxColumn => ({
+      id,
+      label: COLUMN_LABELS[id],
+      tasks: sorted.filter((t) => boardColumnFor(t, splitFailed) === id),
+    }),
+  );
+}
+
+export function inboxRowID(taskID: string) {
+  return `inbox-row-${taskID}`;
+}
+
+export function describeLiveCounts(counts: TaskCounts | undefined) {
+  if (!counts) return "";
+  return `${counts.needs_you} need you, ${counts.running} running`;
+}
 
 export type DueFilter = "overdue" | "today" | "week";
 
@@ -36,14 +134,6 @@ export const ALL_STATUSES: TaskStatus[] = [
   "cancelled",
 ];
 
-export const VISIBLE_STATUSES: TaskStatus[] = [
-  "todo",
-  "in_progress",
-  "blocked",
-  "in_review",
-  "done",
-];
-
 export const ALL_PRIORITIES: TaskPriority[] = [
   "urgent",
   "high",
@@ -60,31 +150,16 @@ export const DUE_LABELS: Record<DueFilter, string> = {
 
 export function buildListFilters(args: {
   filters: PageFilters;
-  showHidden: boolean;
-  view: TasksView;
+  mine: boolean;
 }): TaskFilters {
-  const { filters, showHidden, view } = args;
-  const status = filters.status.length
-    ? filters.status
-    : showHidden
-      ? ALL_STATUSES
-      : undefined;
+  const { filters, mine } = args;
   return {
-    status,
+    status: filters.status.length ? filters.status : undefined,
     priority: filters.priority.length ? filters.priority : undefined,
     assignee_ids: filters.assigneeIDs.length ? filters.assigneeIDs : undefined,
     due: filters.due,
-    mine: view === "mine" ? true : undefined,
+    mine: mine ? true : undefined,
   };
-}
-
-export function groupByStatuses<
-  T extends { id: string; statuses: TaskStatus[] },
->(tasks: Task[], columns: T[]) {
-  return columns.map((column) => ({
-    ...column,
-    tasks: tasks.filter((t) => column.statuses.includes(t.status)),
-  }));
 }
 
 export interface FilterChip {
