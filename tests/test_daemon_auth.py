@@ -469,3 +469,32 @@ async def test_clean_disconnect_uses_backoff_before_reconnect(
 
     assert calls == 2
     assert delays == [1.5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [True, False])
+async def test_a_legacy_session_creates_its_allowed_root_on_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy: bool
+) -> None:
+    """CROSS_PLATFORM.md: the shim creates the default root on first run. A
+    persistent control session picks folders per chat and has none."""
+    root = tmp_path / "autogpt-workspace"
+    config = ShimConfig(
+        session_id="session-1" if legacy else None,
+        allowed_root=root,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    daemon = ShimDaemon(
+        config,
+        token_store=object(),
+        audit=MagicMock(spec=AuditWriter),
+        manage_audit_lifecycle=False,
+    )
+    monkeypatch.setattr(
+        daemon, "_session", AsyncMock(side_effect=DaemonAuthenticationError("stop here"))
+    )
+
+    with pytest.raises(DaemonAuthenticationError):
+        await daemon.run()
+
+    assert root.is_dir() is legacy
