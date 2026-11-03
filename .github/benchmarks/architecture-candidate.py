@@ -11,6 +11,7 @@ import collections
 import functools
 import pathlib
 import sys
+import unicodedata
 from collections.abc import Iterable
 
 import pytest
@@ -18,13 +19,14 @@ import pytest
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-def _parse_backend_file(path: pathlib.Path) -> ast.Module:
-    return _parse_backend_source(path.read_text(encoding="utf-8"), str(path))
-
-
-@functools.lru_cache(maxsize=4096)
-def _parse_backend_source(source: str, filename: str) -> ast.Module:
-    return ast.parse(source, filename=filename)
+def _parse_backend_file_if_named(
+    path: pathlib.Path, names: tuple[str, ...]
+) -> ast.Module | None:
+    source = path.read_text(encoding="utf-8")
+    normalized = unicodedata.normalize("NFKC", source)
+    if not any(name in normalized for name in names):
+        return None
+    return ast.parse(source, filename=str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -159,10 +161,12 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
 def _dataclass_imports(path: pathlib.Path) -> list[tuple[int, str]]:
     """Return (lineno, description) for every stdlib ``dataclasses`` import."""
     try:
-        tree = _parse_backend_file(path)
+        tree = _parse_backend_file_if_named(path, ("dataclasses",))
     except SyntaxError:
         return []
     offenses: list[tuple[int, str]] = []
+    if tree is None:
+        return []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -354,8 +358,10 @@ def _global_clock_patches() -> tuple[tuple[str, str, int], ...]:
     found: list[tuple[str, str, int]] = []
     for py in _iter_backend_py_files():
         try:
-            tree = _parse_backend_file(py)
+            tree = _parse_backend_file_if_named(py, ("patch", "setattr"))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         package = _package_of(rel)
@@ -458,7 +464,7 @@ def _module_tree(module: str) -> tuple[ast.Module, str] | None:
     ):
         if path.is_file():
             try:
-                return _parse_backend_file(path), package
+                return ast.parse(path.read_text(encoding="utf-8")), package
             except SyntaxError:
                 return None
     return None
@@ -725,7 +731,7 @@ def _workdir_file_calls() -> list[tuple[str, int]]:
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         if py.name.endswith("_test.py") or rel == "copilot/host_fs.py":
             continue
-        tree = _parse_backend_file(py)
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         found += [
             (f"{rel} {fn} {call}", lineno) for fn, call, lineno in _file_calls_in(tree)
         ]
@@ -842,8 +848,10 @@ def test_no_process_cached_loop_bound_clients():
     offenders: list[str] = []
     for py in _iter_backend_py_files():
         try:
-            tree = _parse_backend_file(py)
+            tree = _parse_backend_file_if_named(py, ("cached",))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -903,7 +911,7 @@ def test_only_cli_io_writes_to_the_cli_stdin():
         if rel == _CLI_IO_MODULE or py.name.endswith("_test.py"):
             continue
         try:
-            tree = _parse_backend_file(py)
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         except SyntaxError:
             continue
         if not _imports_claude_agent_sdk(tree):
@@ -977,7 +985,7 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
         if py.name.endswith("_test.py"):
             continue
         try:
-            tree = _parse_backend_file(py)
+            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         except SyntaxError:
             continue
         for call, line in _uncapped_archive_reads(tree):
@@ -1114,7 +1122,7 @@ def test_api_routes_do_not_iterate_block_execute():
     for py in _API_PACKAGE.rglob("*.py"):
         if "__pycache__" in py.parts or py.name.endswith("_test.py"):
             continue
-        tree = _parse_backend_file(py)
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         offenders.extend(
             f"{py.relative_to(BACKEND_ROOT).as_posix()}:{node.lineno}"
             for node in ast.walk(tree)
@@ -1224,7 +1232,7 @@ def _org_ledger_call_sites() -> collections.Counter[str]:
             or name == "conftest.py"
         ):
             continue
-        tree = _parse_backend_file(py)
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         for function, call in _calls_by_function(tree):
             called = _decorator_name(call.func)
             if called in _ORG_LEDGER_CALLS:

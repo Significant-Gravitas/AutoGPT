@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     backend = Path.cwd()
     scripts = backend / "../../.github/scripts"
-    candidate = backend / "../../.github/benchmarks/architecture-cached.py"
+    candidate = backend / "../../.github/benchmarks/architecture-candidate.py"
     target = backend / "backend/util/architecture_test.py"
     original = target.read_bytes()
     output = Path(os.environ["RUNNER_TEMP"]) / "architecture-comparison"
@@ -86,6 +86,7 @@ def main():
             probe = """
 import tempfile
 from pathlib import Path
+import backend.util.architecture_test as architecture
 from backend.util.architecture_test import _dataclass_imports
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / 'edited.py'
@@ -104,6 +105,30 @@ with tempfile.TemporaryDirectory() as directory:
         pass
     else:
         raise AssertionError('deleted source was reused')
+    for source in (
+        'import dataclasses as dc',
+        'import ｄａｔａｃｌａｓｓｅｓ as dc',
+        'from dataclasses ' + chr(92) + chr(10) + ' import dataclass',
+    ):
+        path.write_text(source, encoding='utf-8')
+        assert _dataclass_imports(path), source
+    architecture.BACKEND_ROOT = Path(directory)
+    for spelling in ('cached', 'ｃａｃｈｅｄ'):
+        path.write_text('@' + spelling + '()\\ndef client() -> AsyncClient: pass\\n', encoding='utf-8')
+        try:
+            architecture.test_no_process_cached_loop_bound_clients()
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError('cache violation was hidden: ' + spelling)
+    for spelling in ('patch', 'ｐａｔｃｈ'):
+        path.write_text('from unittest.mock import ' + spelling + ' as p\\np("time.sleep")\\n', encoding='utf-8')
+        architecture._global_clock_patches.cache_clear()
+        assert architecture._global_clock_patches(), 'aliased patch was hidden'
+    for spelling in ('setattr', 'ｓｅｔａｔｔｒ'):
+        path.write_text('import time\\n' + spelling + '(time, "sleep", lambda: None)\\n', encoding='utf-8')
+        architecture._global_clock_patches.cache_clear()
+        assert architecture._global_clock_patches(), 'setattr was hidden'
 """
             subprocess.run(
                 ["poetry", "run", "python", "-c", probe], env=env, check=True
