@@ -126,7 +126,7 @@ Paths below are relative to `autogpt_platform/`. Model references identify the i
 
 ## Stream inventory
 
-The stream enum in `backend/backend/copilot/response_model.py` contains **26 values**. Comments and terminal markers are wire behavior in addition to the JSON event discriminators.
+The stream enum in `backend/backend/copilot/response_model.py` contains **27 values**, reconciled against `867ac9d9a9f4` on 2026-11-02. Comments and terminal markers are wire behavior in addition to the JSON event discriminators.
 
 | Enum                     | Wire value              |
 | ------------------------ | ----------------------- |
@@ -155,6 +155,7 @@ The stream enum in `backend/backend/copilot/response_model.py` contains **26 val
 | `MODE_CHANGED`           | `data-mode-changed`     |
 | `COMPACTION`             | `data-compaction`       |
 | `PROVIDER_FAILURE`       | `data-provider-failure` |
+| `TURN_PAUSED`            | `data-turn-paused`      |
 | `CHECKPOINT`             | `data-checkpoint`       |
 
 ## Coverage outside the enum

@@ -41,7 +41,7 @@ The native contract must cover three sources together:
 2. Conversation parts outside the ordinary tool chain: expert intake/changes, held-call outcomes, compaction, attachments, and expert-run metadata.
 3. SDK and historical outputs: strings, file diffs, older tool names and outputs that do not use the current enum.
 
-There are **25** stream enum values in `backend/copilot/response_model.py`, including comment-only heartbeat/usage and deprecated cursor behavior. Stream frames, comments, checkpoint digests, history reseeding and terminal markers need separate coverage. The web reconnect implementation in `frontend/src/app/(platform)/copilot/stream/turnRuntime.ts` is reference behavior, not code the app should embed in a WebView.
+There are **27** stream enum values in `backend/copilot/response_model.py`, including comment-only heartbeat/usage and deprecated cursor behavior. Stream frames, comments, checkpoint digests, history reseeding and terminal markers need separate coverage. The web reconnect implementation in `frontend/src/app/(platform)/copilot/stream/turnRuntime.ts` is reference behavior, not code the app should embed in a WebView.
 
 Response model `type` fields are generally `ResponseType` with defaults, not narrow `Literal` declarations. The existing union is not by itself an unambiguous generated native decoder. The contract design must resolve this explicitly.
 
