@@ -527,7 +527,10 @@ class MacOSBackend(ComputerUseBackend):
             raise FeatureNotSupportedError("window.list", reason=str(exc)) from exc
 
         opts = kCGWindowListExcludeDesktopElements
-        if not include_offscreen:
+        # Minimized windows are off screen. Telling them apart from windows on
+        # other Spaces needs each window's Accessibility state, so both are
+        # listed and is_minimized stays false.
+        if not (include_offscreen or include_minimized):
             opts |= kCGWindowListOptionOnScreenOnly
         info = CGWindowListCopyWindowInfo(opts, kCGNullWindowID)
         # Clear stale mappings — the Q2 contract says window_ids are
@@ -798,37 +801,30 @@ class MacOSBackend(ComputerUseBackend):
         args: list[str] | None = None,
         activate: bool = True,
     ) -> int:
-        # Prefer NSWorkspace.openApplication for bundle-id launches; fall
-        # back to `open -a` for paths, and finally raw Popen.
-        try:
-            from AppKit import NSWorkspace  # type: ignore[import-not-found]
-        except ImportError:
-            NSWorkspace = None  # type: ignore[assignment]
-        if bundle_id and NSWorkspace is not None:
+        if bundle_id:
+            # `open` passes launch arguments and honours activation (-g keeps
+            # the app in the background); NSWorkspace.openURL_ took neither.
+            command = ["open", "-b", bundle_id]
+            if not activate:
+                command.append("-g")
+            if args:
+                command += ["--args", *args]
             try:
-                ws = NSWorkspace.sharedWorkspace()
-                url = ws.URLForApplicationWithBundleIdentifier_(bundle_id)
-                if url is None:
-                    raise FeatureNotSupportedError(
-                        "app.launch", reason=f"bundle {bundle_id!r} not installed"
-                    )
-                # Use the synchronous open variant — async needs a config block.
-                ok = ws.openURL_(url)
-                if not ok:
-                    raise FeatureNotSupportedError(
-                        "app.launch", reason=f"failed to launch {bundle_id!r}"
-                    )
-                # Resolve pid via NSRunningApplication scan.
-                for _ in range(20):
-                    pid = self._pid_for_bundle(bundle_id)
-                    if pid:
-                        return pid
-                    time.sleep(0.05)
-                return 0
-            except FeatureNotSupportedError:
-                raise
-            except Exception as exc:
+                result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+            except (OSError, subprocess.SubprocessError) as exc:
                 raise FeatureNotSupportedError("app.launch", reason=str(exc)) from exc
+            if result.returncode != 0:
+                reason = result.stderr.decode("utf-8", errors="replace").strip()
+                raise FeatureNotSupportedError(
+                    "app.launch", reason=reason or f"open exited with {result.returncode}"
+                )
+            # Resolve pid via NSRunningApplication scan.
+            for _ in range(20):
+                pid = self._pid_for_bundle(bundle_id)
+                if pid:
+                    return pid
+                time.sleep(0.05)
+            return 0
         if executable_path:
             proc = subprocess.Popen(
                 [executable_path, *(args or [])],

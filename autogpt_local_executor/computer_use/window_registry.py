@@ -27,8 +27,11 @@ class WindowFingerprint:
     creation_timestamp: float | None
 
     def matches(self, other: WindowFingerprint) -> bool:
-        # All three fields must match. None on either side is considered a
-        # "couldn't read" — we don't try to be clever and treat it as a match.
+        # All three fields must be equal, so None matches None: macOS and
+        # Windows expose no window creation time, and those fingerprints rest
+        # on the pid and class. A reused Windows HWND has the same value only
+        # after its handle-table slot is reused 65,536 times, and window_ids
+        # last one LIST/USE cycle.
         return (
             self.pid == other.pid
             and self.class_name == other.class_name

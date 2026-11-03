@@ -617,3 +617,83 @@ def test_input_bounds_are_in_points_on_a_retina_display(tmp_path, monkeypatch) -
 
     fake_pg.click.assert_called_once_with(1400, 880)
     assert ei.value.details["displays"] == [{"index": 0, "origin": [0, 0], "size": [1440, 900]}]
+
+
+# ── App launch by bundle ID ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("args", "activate", "expected"),
+    [
+        (None, True, ["open", "-b", "com.apple.TextEdit"]),
+        (
+            ["/Users/a/notes.txt"],
+            False,
+            ["open", "-b", "com.apple.TextEdit", "-g", "--args", "/Users/a/notes.txt"],
+        ),
+    ],
+)
+def test_bundle_launch_passes_args_and_activation(
+    tmp_path, monkeypatch, args, activate, expected
+) -> None:
+    import subprocess
+
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    b = MacOSBackend(_config(tmp_path))
+    commands: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(macos_backend.subprocess, "run", run)
+    monkeypatch.setattr(b, "_pid_for_bundle", lambda _bundle: 4242)
+
+    pid = b.app_launch(bundle_id="com.apple.TextEdit", args=args, activate=activate)
+
+    assert pid == 4242
+    assert commands == [expected]
+
+
+def test_bundle_launch_reports_an_app_open_cannot_find(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(
+        macos_backend.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 1, stdout=b"", stderr=b"Unable to find application named 'x'"
+        ),
+    )
+
+    with pytest.raises(FeatureNotSupportedError, match="Unable to find application"):
+        b.app_launch(bundle_id="com.example.missing")
+
+
+# ── Window list: include_minimized ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("include_minimized", "include_offscreen", "on_screen_only"),
+    [(False, False, True), (True, False, False), (False, True, False)],
+)
+def test_window_list_asks_for_off_screen_windows_when_minimized_ones_are_wanted(
+    tmp_path, monkeypatch, include_minimized, include_offscreen, on_screen_only
+) -> None:
+    """Minimized windows are off screen, so on-screen-only listing never has them."""
+    fake_qz = MagicMock()
+    fake_qz.kCGWindowListExcludeDesktopElements = 0x10
+    fake_qz.kCGWindowListOptionOnScreenOnly = 0x1
+    fake_qz.CGWindowListCopyWindowInfo.return_value = []
+    monkeypatch.setitem(sys.modules, "Quartz", fake_qz)
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_focused_pid", lambda: None)
+
+    b.window_list(include_minimized=include_minimized, include_offscreen=include_offscreen)
+
+    options = fake_qz.CGWindowListCopyWindowInfo.call_args.args[0]
+    assert bool(options & 0x1) is on_screen_only
