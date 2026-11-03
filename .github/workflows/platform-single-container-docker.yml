@@ -156,6 +156,22 @@ jobs:
           --output "$REPORT_DIR/publication-policy.xml"
           -- bash .github/scripts/platform-single-container-publish.sh self-test
 
+      - name: Give each Bake target a distinct source mount
+        id: source-contexts
+        shell: bash
+        run: |
+          {
+            echo 'set<<CONTEXT_EOF'
+            for target in backend-server-base backend-server single-container; do
+              path="$RUNNER_TEMP/context-$target"
+              ln -s "$GITHUB_WORKSPACE" "$path"
+              [[ "$(readlink -f "$path")" == "$(readlink -f "$GITHUB_WORKSPACE")" ]]
+              printf '%s.context=%s\n' "$target" "$path"
+            done
+            echo CONTEXT_EOF
+          } >> "$GITHUB_OUTPUT"
+          git diff --exit-code
+
       - name: Build image without publishing
         id: build-image
         background: true
@@ -172,6 +188,7 @@ jobs:
             single-container.output=type=docker,compression=uncompressed
             single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
             ${{ steps.cache.outputs.set }}
+            ${{ steps.source-contexts.outputs.set }}
 
       - name: Wait for image build
         wait: build-image
