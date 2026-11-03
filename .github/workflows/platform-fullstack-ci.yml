@@ -5,6 +5,9 @@ on:
     branches: [master, dev]
     paths:
       - ".github/workflows/platform-fullstack-ci.yml"
+      - ".github/ci-projects.json"
+      - ".github/scripts/ci_affected.py"
+      - ".github/scripts/test_ci_affected.py"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
@@ -12,25 +15,24 @@ on:
       - ".github/scripts/test_e2e_seed_cache_contract.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
+      - ".github/scripts/frontend_typecheck.py"
+      - ".github/scripts/test_frontend_typecheck.py"
+      - ".github/scripts/frontend_ci_env.py"
+      - ".github/scripts/test_frontend_ci_env.py"
+      - ".github/scripts/verify_smoke_shards.py"
+      - ".github/scripts/test_verify_smoke_shards.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
-  pull_request:
-    paths:
-      - ".github/workflows/platform-fullstack-ci.yml"
-      - ".github/scripts/validate_playwright_json.py"
-      - ".github/scripts/test_validate_playwright_json.py"
-      - ".github/scripts/validate_cobertura.py"
-      - ".github/scripts/test_validate_cobertura.py"
-      - ".github/scripts/test_e2e_seed_cache_contract.py"
-      - ".github/scripts/hosted_journeys_env.py"
-      - ".github/scripts/test_hosted_journeys_env.py"
-      - ".github/scripts/docker-pull-with-retry.sh"
-      - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
-      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
-      - "autogpt_platform/**"
-  merge_group:
+  workflow_call:
+    inputs:
+      e2e_suite:
+        description: Select smoke or advisory journeys; other values run both
+        type: string
+        default: all
+  schedule:
+    - cron: "23 7 * * *"
   workflow_dispatch:
     inputs:
       publish_build_cache:
@@ -45,7 +47,7 @@ on:
         type: number
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-dispatch-{1}', github.workflow, github.run_id) || format('{0}-{1}', github.workflow, github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-dispatch-{1}', github.workflow, github.run_id) || format('{0}-{1}', github.workflow, github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}-${{ inputs.e2e_suite || 'all' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -58,6 +60,7 @@ permissions:
 
 jobs:
   check-api-types:
+    if: inputs.e2e_suite != 'journeys'
     name: check API types
     runs-on: ubuntu-latest
 
@@ -101,6 +104,9 @@ jobs:
             ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
+            ../../.github/scripts/test_frontend_typecheck.py \
+            ../../.github/scripts/test_frontend_ci_env.py \
+            ../../.github/scripts/test_verify_smoke_shards.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
@@ -128,6 +134,11 @@ jobs:
 
       - name: Set up Frontend - Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Set up Frontend - Set up Bun type checker
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
 
       - name: Set up Frontend - Format OpenAPI schema
         id: format-schema
@@ -164,7 +175,7 @@ jobs:
         if: success() || (steps.format-schema.outcome == 'success')
 
       - name: Check for TypeScript errors
-        run: pnpm types
+        run: python3 ../../.github/scripts/frontend_typecheck.py
         if: success() || (steps.generate-api-client.outcome == 'success')
 
       - name: Upload validator test report
@@ -176,45 +187,21 @@ jobs:
           if-no-files-found: error
 
   e2e_test:
-    name: end-to-end tests (${{ matrix.suite }})
+    name: end-to-end tests (${{ matrix.suite }}${{ matrix.suite == 'smoke' && format(', shard {0}/4', matrix.partition) || '' }})
+    # Preserve the existing advisory journeys policy when called by platform-ci.
+    continue-on-error: ${{ matrix.suite == 'journeys' }}
     # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Today's smoke suite on the self-hosted configuration. The only leg
-          # that writes the shared build caches.
-          - suite: smoke
-            config: playwright.config.ts
-            playwright_args: ""
-            # Pinned inventory: 28 tests in 9 files; raise when adding E2E tests.
-            min_tests: 28
-            embeddings: true
-            seed: true
-            hosted: false
-            scripted_model: false
-            known_failures: false
-          # Holistic *-journey.spec.ts flows on the hosted configuration:
-          # hosted feature flags, credits on. Advisory until proven stable
-          # (ADVISORY_CHECK_RUNS in check_actions_status.py). No OpenAI key,
-          # so the seed skips embeddings and finishes in ~30 s.
-          - suite: journeys
-            config: playwright.journeys.config.ts
-            # selfhost-journey asserts nothing hosted-only exists; it needs a
-            # self-hosted stack (TODO in src/playwright/journeys/README.md).
-            playwright_args: --project hosted
-            min_tests: 11
-            embeddings: false
-            # Journeys sign up their own users and need no seeded data.
-            seed: false
-            hosted: true
-            # AutoPilot answers from scripts (autogpt_platform/scripted_model)
-            # instead of CHAT_TEST_MODE's canned reply, so journeys run the
-            # real copilot pipeline: tools, persistence, streaming, cost.
-            scripted_model: true
-            # Journeys may pin a known bug with test.fail(); it must still fail.
-            known_failures: true
+        # Each caller can run smoke or advisory journeys independently; standalone runs keep both.
+        include: >-
+          ${{ fromJSON(
+            inputs.e2e_suite == 'smoke' && '[{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=1/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":1},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=2/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":2},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=3/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":3},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=4/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":4}]'
+            || inputs.e2e_suite == 'journeys' && '[{"suite":"journeys","config":"playwright.journeys.config.ts","playwright_args":"--project hosted","min_tests":11,"embeddings":false,"seed":false,"hosted":true,"scripted_model":true,"known_failures":true,"partition":0}]'
+            || '[{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=1/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":1},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=2/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":2},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=3/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":3},{"suite":"smoke","config":"playwright.config.ts","playwright_args":"--shard=4/4","min_tests":1,"embeddings":true,"seed":true,"hosted":false,"scripted_model":false,"known_failures":false,"partition":4},{"suite":"journeys","config":"playwright.journeys.config.ts","playwright_args":"--project hosted","min_tests":11,"embeddings":false,"seed":false,"hosted":true,"scripted_model":true,"known_failures":true,"partition":0}]'
+          ) }}
     permissions:
       contents: read
       # Only dev pushes and the merge queue write the GHCR build cache. Every
@@ -223,8 +210,8 @@ jobs:
     env:
       BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache
       E2E_SEED_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-seed
-      # Both legs build the same images; only smoke writes them.
-      WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
+      # Every leg builds the same images; only the first smoke shard writes them.
+      WRITE_BUILD_CACHE: ${{ matrix.suite == 'smoke' && matrix.partition == 1 && ((github.event_name == 'push' && github.ref == 'refs/heads/dev') || github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache)) }}
       BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
     steps:
@@ -233,6 +220,12 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
 
       # The seed dump is an image in GHCR, not an Actions cache entry.
       # The key hashes only what changes the dump's content: the seed script
@@ -273,6 +266,10 @@ jobs:
             } | sha256sum | cut -c1-40
           )
           echo "tag=v4-${EMBEDDINGS}-${inputs_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify application source and test fixtures are present
+        working-directory: .
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
@@ -362,10 +359,10 @@ jobs:
             sed -i '/NEXT_PUBLIC_PW_TEST/a\        NEXT_PUBLIC_SOURCEMAPS: "true"' docker-compose.resolved.yml
           fi
 
-          # frontend/.env is in the frontend image's build context, and a fresh
-          # BETTER_AUTH_SECRET every run made every frontend layer miss the cache.
-          # The resolved compose file already hands the secret to the container.
-          sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=/' frontend/.env
+          # Generated runtime credentials must not invalidate the build cache.
+          cp frontend/.env "$RUNNER_TEMP/frontend-test.env"
+          python ../.github/scripts/frontend_ci_env.py \
+            --compose docker-compose.resolved.yml --env frontend/.env
 
           # Pull requests read the cache and never write it
           write_cache=()
@@ -390,28 +387,6 @@ jobs:
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
             network=host
-
-      # The frontend Dockerfile keeps Next.js's webpack cache in a BuildKit cache
-      # mount. A fresh builder starts empty, so seed the mount from the last run.
-      - name: Set up Platform - Restore Next.js build cache
-        id: next-build-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: /tmp/next-build-cache
-          # Next.js drops the whole cache when next.config.mjs or its dependencies change
-          key: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-          restore-keys: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-
-
-      - name: Set up Platform - Load Next.js build cache into BuildKit
-        if: steps.next-build-cache.outputs.cache-matched-key != ''
-        working-directory: /tmp/next-build-cache
-        run: |
-          docker buildx build --progress=plain -f - . <<'EOF'
-          FROM node:24.22.1-alpine3.23
-          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
-              --mount=type=bind,target=/seed \
-              cp -a /seed/. /app/.next/cache/
-          EOF
 
       # The runner has 15.6 GiB and a cold `next build` peaks near 8 GiB; a runner
       # that runs out leaves no other memory readings (SECRT-3254).
@@ -446,7 +421,8 @@ jobs:
           echo "Baking: $targets"
           # The UTC date re-runs the backend's package installs once a day
           # (APT_REFRESH), so E2E tests the OS packages that ship.
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml \
+            --set '*.output=type=docker,compression=uncompressed' \
             --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
 
       - name: Set up Platform - Build frontend Docker image
@@ -455,7 +431,8 @@ jobs:
         background: true
         run: |
           # Lint and type checks run in their own jobs, so the e2e build skips them
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml \
+            --set frontend.output=type=docker,compression=uncompressed \
             --set frontend.args.NEXT_SKIP_BUILD_CHECKS=true frontend
         env:
           NEXT_PUBLIC_PW_TEST: true
@@ -558,6 +535,9 @@ jobs:
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
 
+      - name: Restore runtime configuration for Playwright
+        run: cp "$RUNNER_TEMP/frontend-test.env" .env
+
       - name: Set up Platform - Start (all other services)
         run: |
           # Everything but the frontend, which starts once the seed is in
@@ -656,12 +636,33 @@ jobs:
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
 
+      - name: Discover the complete unsharded smoke suite
+        if: matrix.suite == 'smoke'
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: smoke-inventory.json
+        run: pnpm exec playwright test --config playwright.config.ts --list --reporter=json --retries=0
+
+      - name: Verify the complete suite before publishing a fresh seed
+        id: e2e-seed-suite
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-create.outputs.publishable == 'true' && steps.e2e-seed-verify.outcome == 'success'
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: smoke-seed-verification.json
+          PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_CHANGELOG_FIXTURE: "true"
+          PLAYWRIGHT_WORKERS: "4"
+        run: |
+          pnpm exec playwright test --config playwright.config.ts --retries=0 \
+            --reporter=json --output="$RUNNER_TEMP/seed-smoke-output"
+          python3 ../../.github/scripts/verify_smoke_shards.py seed \
+            smoke-inventory.json smoke-seed-verification.json
+
       - name: Run Playwright E2E suite
         id: e2e-playwright
         run: pnpm exec playwright test --config ${{ matrix.config }} ${{ matrix.playwright_args }} ${{ matrix.suite == 'journeys' && format('--repeat-each={0}', inputs.journeys_repeat_each || 1) || '' }} --retries=0 --trace=retain-on-failure
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_CHANGELOG_FIXTURE: "true"
           # One worker per vCPU on the 4-vCPU standard runner; the CI default of 8 starves the stack.
           PLAYWRIGHT_WORKERS: "4"
           # Matches EXECUTION_COST_COUNT_THRESHOLD=1 from hosted_journeys_env.py.
@@ -669,26 +670,6 @@ jobs:
           # Payments are on in the hosted leg; journey users get a paid tier
           # without Stripe (src/playwright/journeys/subscription-tier.ts).
           PLAYWRIGHT_JOURNEY_TIER: ${{ matrix.hosted && 'PRO' || '' }}
-
-      - name: Export Next.js build cache from BuildKit
-        id: next-build-cache-export
-        # Copying ~3.7 GB competes with the browser tests, so it waits for them
-        if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group' }}
-        continue-on-error: true
-        working-directory: /tmp
-        background: true
-        run: |
-          rm -rf /tmp/next-build-cache
-          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
-          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
-          FROM node:24.22.1-alpine3.23 AS export
-          ARG RUN_ID
-          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
-              mkdir /out && cp -a /app/.next/cache/. /out/
-          FROM scratch
-          COPY --from=export /out /
-          EOF
-          du -sh /tmp/next-build-cache
 
       - name: Validate Playwright JSON report
         id: e2e-playwright-report
@@ -705,7 +686,7 @@ jobs:
       # so only a dump the whole suite passed on is published. Pull requests
       # only read it.
       - name: Push E2E test data to GHCR
-        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-create.outputs.publishable == 'true' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success'
+        if: matrix.seed && env.WRITE_BUILD_CACHE == 'true' && steps.e2e-seed-create.outcome == 'success' && steps.e2e-seed-create.outputs.publishable == 'true' && steps.e2e-seed-verify.outcome == 'success' && steps.e2e-playwright.outcome == 'success' && steps.e2e-playwright-report.outcome == 'success' && steps.e2e-seed-suite.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
         working-directory: /tmp
@@ -729,7 +710,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
-          name: e2e-${{ matrix.suite }}
+          name: e2e-${{ matrix.suite }}-${{ matrix.partition }}
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           disable_search: true
 
@@ -737,7 +718,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report-${{ matrix.suite }}
+          name: playwright-report-${{ matrix.suite }}${{ matrix.suite == 'smoke' && format('-{0}', matrix.partition) || '' }}
           path: autogpt_platform/frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 3
@@ -746,9 +727,11 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-test-results-${{ matrix.suite }}
+          name: playwright-test-results-${{ matrix.suite }}${{ matrix.suite == 'smoke' && format('-{0}', matrix.partition) || '' }}
           path: |
             autogpt_platform/frontend/test-results
+            autogpt_platform/frontend/smoke-inventory.json
+            autogpt_platform/frontend/smoke-seed-verification.json
             autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           if-no-files-found: error
           retention-days: 3
@@ -757,13 +740,28 @@ jobs:
         if: always()
         run: docker compose -f ../docker-compose.resolved.yml logs
 
-      - name: Wait for Next.js build cache export
-        wait: [next-build-cache-export]
-
-      - name: Save Next.js build cache
-        if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
-        continue-on-error: true
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+  validate-smoke-shards:
+    name: Validate complete smoke shards
+    if: ${{ always() && !cancelled() && inputs.e2e_suite != 'journeys' }}
+    needs: e2e_test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          path: /tmp/next-build-cache
-          key: ${{ steps.next-build-cache.outputs.cache-primary-key }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: playwright-test-results-smoke-*
+          path: smoke-reports
+      - name: Require every smoke test and shard report
+        env:
+          SHARD_RESULT: ${{ needs.e2e_test.result }}
+        run: |
+          [[ "$SHARD_RESULT" == success ]]
+          python3 .github/scripts/verify_smoke_shards.py shards smoke-reports

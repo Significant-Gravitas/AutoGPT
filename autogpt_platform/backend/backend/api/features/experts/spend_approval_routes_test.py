@@ -5,6 +5,7 @@ unpublished, and nothing else happens. Chat's ``run_block`` path is covered in
 copilot turns open a session scoped to the expert (their own tests pin that)
 and then spend through these same seams."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -140,16 +141,24 @@ async def test_run_agent_from_expert_chat_is_parked_and_says_so(mocker, parked) 
     )
     mocker.patch.object(run_agent_mod, "emit_tool_display_name")
     mocker.patch.object(run_agent_mod, "_safe_link_to_chat_share", AsyncMock())
+    mocker.patch.object(
+        run_agent_mod,
+        "orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=("org", "team"))
+        ),
+    )
     session = make_session(user_id="owner", expert_id="expert-1")
 
-    response = await run_agent_mod.RunAgentTool()._run_agent(
-        user_id="owner",
-        session=session,
-        graph=MagicMock(id="g"),
-        graph_credentials={},
-        inputs={},
-        dry_run=False,
-    )
+    async with asyncio.timeout(30):
+        response = await run_agent_mod.RunAgentTool()._run_agent(
+            user_id="owner",
+            session=session,
+            graph=MagicMock(id="g"),
+            graph_credentials={},
+            inputs={},
+            dry_run=False,
+        )
 
     assert isinstance(response, ExecutionStartedResponse)
     assert response.status == "REVIEW"

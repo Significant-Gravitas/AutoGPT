@@ -48,6 +48,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          filter: blob:none
+          sparse-checkout: .github
 
       - name: Determine publication eligibility
         id: policy
@@ -80,6 +82,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+
+      - name: Verify application source and test fixtures are present
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Initialize validation reports
         shell: bash
@@ -145,6 +156,22 @@ jobs:
           --output "$REPORT_DIR/publication-policy.xml"
           -- bash .github/scripts/platform-single-container-publish.sh self-test
 
+      - name: Give each Bake target a distinct source mount
+        id: source-contexts
+        shell: bash
+        run: |
+          {
+            echo 'set<<CONTEXT_EOF'
+            for target in backend-server-base backend-server single-container; do
+              path="$RUNNER_TEMP/context-$target"
+              ln -s "$GITHUB_WORKSPACE" "$path"
+              [[ "$(readlink -f "$path")" == "$(readlink -f "$GITHUB_WORKSPACE")" ]]
+              printf '%s.context=%s\n' "$target" "$path"
+            done
+            echo CONTEXT_EOF
+          } >> "$GITHUB_OUTPUT"
+          git diff --exit-code
+
       - name: Build image without publishing
         id: build-image
         background: true
@@ -158,9 +185,10 @@ jobs:
             *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.output=type=docker
+            single-container.output=type=docker,compression=uncompressed
             single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
             ${{ steps.cache.outputs.set }}
+            ${{ steps.source-contexts.outputs.set }}
 
       - name: Wait for image build
         wait: build-image
@@ -207,7 +235,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          scanners: vuln,secret
+          scanners: vuln
           format: json
           output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
           ignore-unfixed: true

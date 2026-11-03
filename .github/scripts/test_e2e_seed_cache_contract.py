@@ -1,9 +1,12 @@
+import json
 import os
 import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+
+from verify_smoke_shards import SMOKE_TEST_FLOOR
 
 SEED_KEY_STEP = "Set up tests - Compute E2E test data cache key"
 SEED_PULL_STEP = "Set up tests - Pull cached E2E test data from GHCR"
@@ -45,8 +48,18 @@ def _step(workflow: str, name: str) -> str:
 
 def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
     e2e_job = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
-    leg = e2e_job.split(f"- suite: {suite}\n", 1)[1].split("- suite:", 1)[0]
-    return dict(re.findall(r"^\s+(\w+): (\S+)$", leg, re.MULTILINE))
+    candidates = [
+        json.loads(value) for value in re.findall(r"'(\[\{[^\n]+\}\])'", e2e_job)
+    ]
+    assert len(candidates) == 3, "smoke, journeys and standalone matrices are required"
+    assert (
+        candidates[0] + candidates[1] == candidates[2]
+    ), "standalone and called suites must match"
+    leg = next(row for row in candidates[2] if row["suite"] == suite)
+    return {
+        name: value if isinstance(value, str) else json.dumps(value)
+        for name, value in leg.items()
+    }
 
 
 def _e2e_step_names(workflow: str) -> list[str]:
@@ -71,11 +84,7 @@ class E2EMatrixContractTests(unittest.TestCase):
             line for line in workflow.splitlines() if "WRITE_BUILD_CACHE: ${{" in line
         )
         self.assertIn("matrix.suite == 'smoke' &&", write_cache)
-        for step in (
-            "Export Next.js build cache from BuildKit",
-            "Save Next.js build cache",
-            "Set up tests - Cache Playwright browsers",
-        ):
+        for step in ("Set up tests - Cache Playwright browsers",):
             with self.subTest(step=step):
                 body = workflow.split(f"- name: {step}\n", 1)[1].split(
                     "\n      - name:", 1
@@ -295,7 +304,8 @@ class E2ESeedCacheContractTests(unittest.TestCase):
                 "steps.e2e-seed-create.outputs.publishable == 'true' && "
                 "steps.e2e-seed-verify.outcome == 'success' && "
                 "steps.e2e-playwright.outcome == 'success' && "
-                "steps.e2e-playwright-report.outcome == 'success'"
+                "steps.e2e-playwright-report.outcome == 'success' && "
+                "steps.e2e-seed-suite.outcome == 'success'"
             ],
         )
         self.assertIn("continue-on-error: true", save)
@@ -374,7 +384,8 @@ class E2ECoverageContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
-        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "1")
+        self.assertGreaterEqual(SMOKE_TEST_FLOOR, 28)
         self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "11")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

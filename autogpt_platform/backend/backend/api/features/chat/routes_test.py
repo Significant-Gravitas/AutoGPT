@@ -3699,7 +3699,7 @@ def test_delete_session_kills_sandbox_in_background(
 def _mock_validate_session(
     mocker: pytest_mock.MockerFixture, *, session_id: str = "sess-1"
 ):
-    """Mock _validate_and_get_session to return a dummy session."""
+    """Supply a session and isolate the pending-message storage boundary."""
     from backend.copilot.model import ChatSession
 
     dummy = ChatSession.new(TEST_USER_ID, dry_run=False)
@@ -3708,6 +3708,9 @@ def _mock_validate_session(
         new_callable=AsyncMock,
         return_value=dummy,
     )
+    return mocker.patch.object(
+        chat_routes, "clear_pending_messages_unsafe", new_callable=AsyncMock
+    )
 
 
 def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> None:
@@ -3715,7 +3718,7 @@ def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> Non
     stream exists AND the orphan-reset age gate isn't satisfied (e.g.
     DB ``chatStatus='idle'`` or a fresh admit racing this read).  The
     separate test below covers the orphan-release branch."""
-    _mock_validate_session(mocker)
+    clear_pending = _mock_validate_session(mocker)
     mocker.patch(
         "backend.copilot.turn_queue.cancel_queued_turn",
         new=AsyncMock(return_value=False),
@@ -3748,6 +3751,7 @@ def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> Non
     data = response.json()
     assert data["cancelled"] is True
     assert data["reason"] == "no_active_session"
+    clear_pending.assert_awaited_once_with("sess-1")
 
 
 def test_cancel_session_releases_orphan_running(

@@ -145,7 +145,7 @@ class TestCountsAndExitCodes:
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def owner():
+async def owner(server):
     user_id = str(uuid4())
     await User.prisma().create(
         data={"id": user_id, "email": f"{user_id}@first-turn-memory.test"}

@@ -469,6 +469,7 @@ async def test_expert_avatar_upload_works_without_moderation(
         ("image/gif", b"GIF89a", 400),
         ("image/png", b"\x89PNG\r\n\x1a\n" + b"x" * (5 * 1024 * 1024), 413),
     ],
+    ids=["unsupported-type", "over-size-limit"],
 )
 async def test_expert_avatar_still_enforces_type_and_size(
     mock_settings, mock_storage_client, content_type, content, status

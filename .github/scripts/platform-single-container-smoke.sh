@@ -102,6 +102,10 @@ record_boot_milestones() {
       *"[single-container] RabbitMQ application user is present"*) milestone=rabbitmq-user-ready ;;
       *"[single-container] ensuring platform database schemas exist"*) milestone=database-schemas-start ;;
       *"[single-container] applying Prisma migrations"*) milestone=prisma-migrations-start ;;
+      *"[single-container] publishing the skills catalog"*) milestone=skills-catalog-start ;;
+      *"[single-container] skills catalog published"*) milestone=skills-catalog-finished ;;
+      *"[single-container] skills catalog publish disabled"*) milestone=skills-catalog-disabled ;;
+      *"[single-container] WARNING: skills catalog publish failed"*) milestone=skills-catalog-failed ;;
       *"[single-container] configuring least-privilege frontend database role"*) milestone=frontend-role-start ;;
       *"[single-container] bootstrap complete"*) milestone=bootstrap-complete ;;
       *"[single-container] starting database-manager"*) milestone=database-manager-start ;;

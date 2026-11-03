@@ -1,11 +1,19 @@
 name: AutoGPT Platform - Backend CI
+run-name: Backend CI (${{ inputs.test_layout || 'paths' }}, ${{ github.event_name }})
 
 on:
   push:
     branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/ci-projects.json"
+      - ".github/scripts/ci_affected.py"
+      - ".github/scripts/test_ci_affected.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/test_backend_poetry_version.py"
+      - ".github/scripts/install_backend_ci.sh"
+      - ".github/workflows/scripts/check_actions_status.py"
+      - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
@@ -13,27 +21,19 @@ on:
       - ".github/scripts/test_validate_backend_skips.py"
       - ".github/scripts/backend_test_shard.py"
       - ".github/scripts/test_backend_test_shard.py"
+      - ".github/scripts/backend_shard_*.py"
+      - ".github/scripts/test_backend_shard_weights.py"
+      - ".github/scripts/backend-test-durations.json"
+      - ".github/scripts/update_backend_test_durations.py"
+      - ".github/scripts/report_backend_coverage.py"
+      - ".github/scripts/test_report_backend_coverage.py"
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
-  pull_request:
-    branches: [master, dev, release-*]
-    paths:
-      - ".github/workflows/platform-backend-ci.yml"
-      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
-      - ".github/scripts/docker-pull-with-retry.sh"
-      - ".github/scripts/validate_junit.py"
-      - ".github/scripts/test_validate_junit.py"
-      - ".github/scripts/validate_backend_skips.py"
-      - ".github/scripts/test_validate_backend_skips.py"
-      - ".github/scripts/backend_test_shard.py"
-      - ".github/scripts/test_backend_test_shard.py"
-      - ".github/scripts/backend-allowed-skips.json"
-      - "autogpt_platform/backend/**"
-      - "autogpt_platform/autogpt_libs/**"
-      - "autogpt_platform/frontend/public/integrations/**"
-  merge_group:
+  workflow_call:
+  schedule:
+    - cron: "23 7 * * *"
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the
   # automatic push/pull_request runs are skipped) but you still want to run the
@@ -47,6 +47,15 @@ on:
         description: "Open PR number to attach coverage to. Leave blank for a branch run."
         required: false
         type: string
+      test_layout:
+        description: "Backend shard layout to measure on this revision"
+        type: choice
+        options: [paths, weighted]
+        default: paths
+      benchmark:
+        description: "Keep coverage artifacts without sending benchmark uploads to Codecov"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.event_name == 'workflow_dispatch' && github.run_id || (github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha)) }}
@@ -112,6 +121,34 @@ jobs:
 
       - name: Run Linters
         run: poetry run lint --skip-pyright
+
+      - name: Test PR status checker
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/workflows/scripts -p 'test_check_actions_status.py'
+
+      - name: Test backend skip policy helpers
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_validate_backend_skips.py'
+
+      - name: Test backend Poetry selection against pinned Git revisions
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_backend_poetry_version.py'
+
+      - name: Test weighted shard collection
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_backend_shard_weights.py'
+
+      - name: Test deferred coverage reporting
+        run: |
+          poetry run ruff check --select E4,E7,E9,F,I \
+            ../../.github/scripts/report_backend_coverage.py \
+            ../../.github/scripts/test_report_backend_coverage.py
+          poetry run python -m unittest discover \
+            -s ../../.github/scripts -p 'test_report_backend_coverage.py'
 
     env:
       CI: true
@@ -183,7 +220,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     runs-on: ubuntu-latest
 
     steps:
@@ -225,19 +262,31 @@ jobs:
       PLAIN_OUTPUT: True
 
   test:
-    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
+    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }}, part ${{ matrix.partition }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
-    # groups run on separate standard runners. The cap is a hang guard, not a
+    # Each Python leg splits the eight fixture groups into 31 whole-file
+    # partitions on standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        python-version: ["3.12", "3.13"]
+        partition: [1, 2, 3, 4]
+        exclude:
+          - test-shard: billing-threads
+            partition: 4
+        test-shard:
+          - data
+          - copilot
+          - memory-experts
+          - sdk-billing
+          - billing-threads
+          - util-executor
+          - api
+          - remainder
     runs-on: ubuntu-latest
 
     services:
@@ -280,7 +329,7 @@ jobs:
       # FalkorDB backs the Graphiti knowledge graph the copilot uses for
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
-      # ``GraphitiConfig`` defaults (``localhost:6380``) work unchanged. The
+      # the default Graphiti port is available on the runner. The
       # password is derived from the run, like the broker login below, and
       # the job's ``GRAPHITI_FALKORDB_PASSWORD`` gives the tests the same one.
       # ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
@@ -314,16 +363,20 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
-          # Full ref history is needed so the "Install Poetry" step below can
-          # read poetry.lock off the base branch. `filter: blob:none` keeps
-          # every ref reachable while skipping the blob download for all of
-          # them, then lazily fetches the one blob that step actually reads.
-          # Without it this checkout has been measured at 429s vs 27s for a
-          # sibling matrix leg in the same run - enough variance on its own to
-          # blow the job budget.
-          fetch-depth: 0
+          # Poetry reads the event's exact base commit below. The test runner
+          # does not need the history of every branch and tag.
+          fetch-depth: 1
           filter: blob:none
           submodules: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+
+      - name: Verify application source and test fixtures are present
+        working-directory: .
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
@@ -333,12 +386,15 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: Significant-Gravitas/skills-catalog
+          # Update the roster-content assertions alongside this catalog snapshot.
+          ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
           path: skills-catalog
 
       - name: Configure test shard
         shell: bash
         env:
           MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
+          MATRIX_TEST_PARTITION: ${{ matrix.partition }}
         run: |
           # The trial tests' safety guard only accepts localhost:5432/postgres
           # under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway —
@@ -347,11 +403,8 @@ jobs:
             data)
               database_name="postgres"
               ;;
-            copilot|remainder)
-              database_name="ci_${MATRIX_TEST_SHARD}"
-              ;;
-            util-executor)
-              database_name="ci_util_executor"
+            copilot|memory-experts|sdk-billing|billing-threads|util-executor|api|remainder)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -360,7 +413,7 @@ jobs:
           esac
 
           {
-            echo "TEST_SHARD=$MATRIX_TEST_SHARD"
+            echo "TEST_SHARD=${MATRIX_TEST_SHARD}-${MATRIX_TEST_PARTITION}"
             echo "DATABASE_NAME=${database_name}"
             echo "RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}"
             echo "REDIS_PORT=17000"
@@ -514,21 +567,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Set up Python dependency cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
-
-      - name: Install Poetry
+      - name: Select Poetry version
+        id: poetry-version
         run: |
           # Extract Poetry version from backend/poetry.lock
           HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
           echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
 
           if [ -n "$BASE_REF" ]; then
-            BASE_BRANCH=${BASE_REF/refs\/heads\//}
-            if ! BASE_LOCK=$(git show "origin/$BASE_BRANCH":./poetry.lock); then
+            if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Missing or invalid base commit for ${BASE_REF}" >&2
+              exit 1
+            fi
+            git fetch --no-tags --no-recurse-submodules --depth=1 --filter=blob:none origin "$BASE_SHA"
+            if ! BASE_LOCK=$(git show "${BASE_SHA}:autogpt_platform/backend/poetry.lock"); then
               echo "Could not read poetry.lock from ${BASE_REF}" >&2
               exit 1
             fi
@@ -540,18 +592,24 @@ jobs:
           fi
           echo "Using Poetry version ${POETRY_VERSION}"
 
-          # Install Poetry
-          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
-
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            PATH="$HOME/.local/bin:$PATH"
-            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          fi
+          echo "version=$POETRY_VERSION" >> "$GITHUB_OUTPUT"
         env:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
 
-      - name: Install Python dependencies
-        run: poetry install
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      - name: Install Python dependencies from the Poetry lock
+        run: bash ../../.github/scripts/install_backend_ci.sh
+        env:
+          POETRY_VERSION: ${{ steps.poetry-version.outputs.version }}
+          UV_CACHE_DIR: ${{ runner.temp }}/backend-uv-cache
+          UV_TOOL_DIR: ${{ runner.temp }}/backend-uv-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/backend-uv-bin
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
@@ -574,9 +632,12 @@ jobs:
           echo "INTERNAL_API_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$GITHUB_ENV"
 
       - name: Test shard
+        timeout-minutes: 10
         shell: bash
         env:
-          COVERAGE_FILE: .coverage-${{ matrix.test-shard }}
+          COVERAGE_FILE: .coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+          PYTHONUNBUFFERED: "1"
+          BACKEND_TEST_METRICS: shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
           EXECUTION_MANAGER_PORT: "18002"
           DATABASE_API_PORT: "18005"
@@ -584,25 +645,51 @@ jobs:
           EXECUTION_SCHEDULER_PORT: "18003"
           NOTIFICATION_SERVICE_PORT: "18007"
           REDIS_HOST: localhost
+          GRAPHITI_FALKORDB_HOST: 127.0.0.1
           TRIAL_TEST_DATABASE: "1"
+          TEST_LAYOUT: ${{ inputs.test_layout || 'paths' }}
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
           pytest_args=(
             -p no:cacheprovider
+            --durations=30
             --cov=backend
             --cov-branch
             --cov-report=
-            --cov-report="xml:coverage-${TEST_SHARD}.xml"
             --junitxml="junit-${TEST_SHARD}.xml"
           )
           if [[ "${{ runner.debug }}" == "1" ]]; then
             pytest_args+=(-s -vv -o log_cli=true -o log_cli_level=DEBUG)
           else
-            pytest_args+=(-q)
+            pytest_args+=(-v)
           fi
 
-          python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
+          unit="ci-backend-${TEST_SHARD}.scope"
+          preserve_env=$(python -c 'import os; print(",".join(os.environ))')
+          set +e
+          sudo --preserve-env="$preserve_env" systemd-run --scope --expand-environment=no --unit="$unit" \
+            -p RuntimeMaxSec=8min -p TimeoutStopSec=15s -p KillMode=control-group \
+            /usr/bin/setpriv --reuid "$(id -u)" --regid "$(id -g)" --init-groups \
+            /usr/bin/env PATH="$PATH" HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" /usr/bin/time -v \
+            python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
+          status=$?
+          if [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == loaded ]]; then
+            if ! sudo systemctl stop "$unit"; then
+              [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == not-found ]] || status=1
+            fi
+          fi
+          sudo systemctl show "$unit" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent || true
+          exit "$status"
+
+      - name: Generate coverage XML once
+        if: ${{ always() }}
+        # pytest-cov first analyzes every source file for a discarded summary
+        # when XML is requested. Reporting separately avoids that duplicate pass.
+        run: >-
+          poetry run python ../../.github/scripts/report_backend_coverage.py
+          --data-file ".coverage-${TEST_SHARD}"
+          --output "coverage-${TEST_SHARD}.xml"
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -631,20 +718,24 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}
+          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}-${{ matrix.partition }}
           path: |
-            autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
-            autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+            autogpt_platform/backend/junit-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+            autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+            autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
+            autogpt_platform/backend/.coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.benchmark }}
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
           override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
-          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+          disable_search: true
+          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
 
     env:
       CI: true
@@ -664,7 +755,7 @@ jobs:
   validate-skip-policy:
     name: Validate backend skip policy
     needs: test
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     permissions:
       contents: read
       actions: read
@@ -679,6 +770,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          sparse-checkout: .github
 
       - name: Download backend shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -697,4 +789,4 @@ jobs:
           fi
           python3 .github/scripts/validate_backend_skips.py \
             --allow-skips-from .github/scripts/backend-allowed-skips.json \
-            --reports-dir backend-shard-reports
+            --reports-dir backend-shard-reports --partitioned

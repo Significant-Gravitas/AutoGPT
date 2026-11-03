@@ -1,0 +1,18 @@
+{
+  "backend": [
+    "autogpt_platform/backend/",
+    "autogpt_platform/autogpt_libs/",
+    "autogpt_platform/frontend/public/integrations/",
+    "autogpt_platform/docker-compose.yml",
+    "autogpt_platform/docker-compose.platform.yml"
+  ],
+  "frontend": [
+    "autogpt_platform/frontend/",
+    "autogpt_platform/backend/schema.prisma",
+    "autogpt_platform/backend/Dockerfile",
+    "autogpt_platform/docker-compose.yml",
+    "autogpt_platform/docker-compose.platform.yml"
+  ],
+  "fullstack": ["autogpt_platform/"],
+  "unrelated": ["docs/", "classic/", ".github/ISSUE_TEMPLATE/"]
+}

@@ -11,11 +11,22 @@ import collections
 import functools
 import pathlib
 import sys
+import unicodedata
 from collections.abc import Iterable
 
 import pytest
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def _parse_backend_file_if_named(
+    path: pathlib.Path, names: tuple[str, ...]
+) -> ast.Module | None:
+    source = path.read_text(encoding="utf-8")
+    normalized = unicodedata.normalize("NFKC", source)
+    if not any(name in normalized for name in names):
+        return None
+    return ast.parse(source, filename=str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +161,12 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
 def _dataclass_imports(path: pathlib.Path) -> list[tuple[int, str]]:
     """Return (lineno, description) for every stdlib ``dataclasses`` import."""
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_backend_file_if_named(path, ("dataclasses",))
     except SyntaxError:
         return []
     offenses: list[tuple[int, str]] = []
+    if tree is None:
+        return []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -222,7 +235,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
     "copilot/optimize_blocks_test.py asyncio.sleep": 3,
     "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
-    "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
     "copilot/sdk/retry_scenarios_test.py asyncio.sleep": 3,
     "copilot/tools/e2b_sandbox_test.py asyncio.sleep": 11,
     "copilot/tools/e2b_sandbox_test.py time.time": 1,
@@ -346,8 +358,10 @@ def _global_clock_patches() -> tuple[tuple[str, str, int], ...]:
     found: list[tuple[str, str, int]] = []
     for py in _iter_backend_py_files():
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(py, ("patch", "setattr"))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         package = _package_of(rel)
@@ -834,8 +848,10 @@ def test_no_process_cached_loop_bound_clients():
     offenders: list[str] = []
     for py in _iter_backend_py_files():
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(py, ("cached",))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

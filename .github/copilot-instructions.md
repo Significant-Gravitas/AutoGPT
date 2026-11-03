@@ -13,7 +13,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
 
 **Primary Languages & Frameworks:**
 
-- **Backend**: Python 3.10-3.13, FastAPI, Prisma ORM, PostgreSQL, RabbitMQ
+- **Backend**: Python 3.12-3.13, FastAPI, Prisma ORM, PostgreSQL, RabbitMQ
 - **Frontend**: TypeScript, Next.js 15, React, Tailwind CSS, Radix UI
 - **Development**: Docker, Poetry, pnpm, Playwright, Storybook
 
@@ -56,7 +56,7 @@ This file provides comprehensive onboarding information for GitHub Copilot codin
 cd autogpt_platform && docker compose --profile local up deps --build --detach
 ```
 
-**Python Version:** Use Python 3.11 (required; managed by Poetry via pyproject.toml)
+**Python Version:** Use Python 3.13 (Python 3.12 is also supported; managed by Poetry via pyproject.toml)
 **Node.js Version:** Use Node.js 21+ with pnpm package manager
 
 ### Development Commands
@@ -296,7 +296,7 @@ Agents are built using a visual block-based system where each block performs a s
 
 The repository has comprehensive CI workflows that test:
 
-- **Backend**: Python 3.11-3.13, services (Redis/RabbitMQ/ClamAV), Prisma migrations, Poetry lock validation
+- **Backend**: Python 3.12-3.13, services (Redis/RabbitMQ/ClamAV), Prisma migrations, Poetry lock validation
 - **Frontend**: Node.js 21, pnpm, Playwright with Docker Compose stack, API schema validation
 - **Integration**: Full-stack type checking and E2E testing
 
