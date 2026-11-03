@@ -47,7 +47,8 @@ export function useCredentialMentionEditor(
     onMultilineRef.current = onMultilineChange;
   });
 
-  // Stable so React does not detach and re-attach it on every render. The
+  // Stable so React does not detach and re-attach it on every render (kept as
+  // a memo with the compiler on: a callback ref's identity is behaviour). The
   // textarea that replaces the editor only reports wrapping it measures, so
   // the stacked layout is released here, in the mutation phase before the
   // textarea's layout effect can claim it again.

@@ -1,11 +1,14 @@
 import json
-from typing import cast
+from typing import cast, get_args
 from unittest.mock import AsyncMock
 
+import pydantic
 import pytest
+from annotated_types import MaxLen
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api import model as api_model
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
 from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
@@ -63,6 +66,61 @@ def test_websocket_server_uses_cors_helper(mocker) -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+def test_websocket_server_limits_incoming_message_size(mocker) -> None:
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+
+    with override_config(settings, "app_env", AppEnvironment.LOCAL):
+        WebsocketServer().run()
+
+    assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
+
+
+def test_every_websocket_request_string_is_length_bounded() -> None:
+    """Client-supplied ids become Redis channel names, so each is bounded."""
+    requests = [
+        model
+        for name, model in vars(api_model).items()
+        if name.startswith("WS")
+        and name.endswith("Request")
+        and isinstance(model, type)
+        and issubclass(model, pydantic.BaseModel)
+    ]
+    assert requests, "found no WebSocket request models"
+    unbounded = [
+        f"{model.__name__}.{field_name}"
+        for model in requests
+        for field_name, field in model.model_fields.items()
+        if str in (field.annotation, *get_args(field.annotation))
+        and not any(isinstance(m, MaxLen) for m in field.metadata)
+    ]
+    assert unbounded == []
+
+
+def test_an_overlong_id_is_refused() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        api_model.WSSubscribeGraphExecutionsRequest.model_validate(
+            {"graph_id": "g" * (api_model.WS_ID_MAX_LENGTH + 1)}
+        )
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_stops_when_the_handshake_is_refused(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mock_manager.connect_socket.return_value = False
+    mock_websocket.receive_text.side_effect = WebSocketDisconnect()
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_websocket.receive_text.assert_not_called()
+    mock_manager.disconnect_socket.assert_not_called()
 
 
 def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
@@ -223,6 +281,60 @@ async def test_websocket_router_invalid_method(
     mock_manager.disconnect_socket.assert_called_once_with(
         mock_websocket, user_id=DEFAULT_USER_ID
     )
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_answers_a_subscribe_that_failed(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """The client waits for an ack; silence leaves it with no live updates."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+    mock_manager.subscribe_graph_exec.side_effect = ConnectionError("internal detail")
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    reply = WSMessage.model_validate_json(mock_websocket.send_text.call_args[0][0])
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert "internal detail" not in (reply.error or "")
+
+
+@pytest.mark.asyncio
+async def test_websocket_router_sends_nothing_after_the_client_left(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """A second send on a closed socket raises out of the loop as a traceback."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+    mock_manager.subscribe_graph_exec.side_effect = WebSocketDisconnect()
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    mock_websocket.send_text.assert_not_called()
+    mock_manager.disconnect_socket.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -569,56 +681,11 @@ def test_get_connection_manager_singleton() -> None:
     assert isinstance(a, ConnectionManager)
 
 
-# ---------- Lifespan: Prisma connect/disconnect ----------
-
-
-@pytest.mark.asyncio
-async def test_lifespan_connects_and_disconnects_prisma(mocker) -> None:
-    """Lifespan must both connect() and disconnect() db — the subscribe path
-    resolves graph_id via Prisma so a missing connect() is the regression bug."""
-    from fastapi import FastAPI
-
-    from backend.api.ws_api import lifespan
-
-    mock_db = mocker.patch("backend.api.ws_api.db")
-    mock_db.connect = AsyncMock()
-    mock_db.disconnect = AsyncMock()
-
-    dummy_app = FastAPI()
-    async with lifespan(dummy_app):
-        mock_db.connect.assert_awaited_once()
-        mock_db.disconnect.assert_not_called()
-    mock_db.disconnect.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
-    """If the app raises inside the yield, Prisma must still disconnect."""
-    from fastapi import FastAPI
-
-    from backend.api.ws_api import lifespan
-
-    mock_db = mocker.patch("backend.api.ws_api.db")
-    mock_db.connect = AsyncMock()
-    mock_db.disconnect = AsyncMock()
-
-    dummy_app = FastAPI()
-
-    class _Boom(Exception):
-        pass
-
-    with pytest.raises(_Boom):
-        async with lifespan(dummy_app):
-            raise _Boom()
-
-    mock_db.disconnect.assert_awaited_once()
-
-
 # ---------- Health endpoint ----------
 
 
 def test_health_endpoint_returns_ok() -> None:
-    # TestClient triggers lifespan — stub it out so Prisma isn't hit.
+    # TestClient triggers lifespan — stub it out so Redis isn't hit.
     from contextlib import asynccontextmanager
 
     from fastapi.testclient import TestClient

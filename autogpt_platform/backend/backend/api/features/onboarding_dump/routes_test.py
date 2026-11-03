@@ -207,6 +207,8 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "assemble_parts": AsyncMock(return_value=b"opus-audio-bytes"),
         "store_audio": AsyncMock(return_value="brain-dumps/rec-1.webm"),
         "discard_parts": AsyncMock(),
+        "mark_discarded": AsyncMock(),
+        "was_discarded": AsyncMock(return_value=False),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
         "audio_available": AsyncMock(return_value=True),
         "delete_audio": AsyncMock(),

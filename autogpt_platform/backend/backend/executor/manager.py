@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -23,8 +23,10 @@ from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -39,6 +41,8 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    Credentials,
+    CredentialsMetaInput,
     GraphExecutionStats,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -55,7 +59,10 @@ from backend.executor.cost_tracking import (
 )
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json, product_analytics, tracing
@@ -104,7 +111,12 @@ from .node_tracing import (
     output_transaction,
     record_node_result,
 )
-from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
+from .simulator import (
+    get_dry_run_credentials,
+    prepare_dry_run,
+    simulate_block,
+    track_dry_run_block_cost,
+)
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
@@ -112,6 +124,7 @@ from .utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
     LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    NODE_UNWIND_GRACE_SECONDS,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -138,7 +151,7 @@ def _get_execution_credit_balance(
     graph_exec: GraphExecutionEntry,
 ) -> int:
     """Return the balance for the wallet billed by this execution."""
-    organization_id = graph_exec.execution_context.organization_id
+    organization_id = billing.billed_org_id(graph_exec.execution_context)
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
@@ -262,6 +275,11 @@ SKIPPED_NODE_STATUSES = (ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED)
 # pod died dispatches them without a second charge; gaps: #15327, Known limits.
 BILLED_REDISPATCH_STATUSES = (ExecutionStatus.REVIEW, ExecutionStatus.RUNNING)
 
+# The most nodes one node output registers at once. Each registration makes
+# several database-manager calls, and a graph may wire one output into any
+# number of nodes.
+MAX_SINKS_REGISTERED_AT_ONCE = 8
+
 
 def _propagate_node_failure(
     graph_stats: GraphExecutionStats,
@@ -305,6 +323,24 @@ def execute_graph(
 
 
 T = TypeVar("T")
+
+
+async def _finish_despite_cancel(work: Awaitable[T]) -> T:
+    """Await ``work`` to its end even if the caller is cancelled meanwhile,
+    any number of times, then re-raise the cancel. A failure of ``work``
+    itself wins over the cancel, since it is the more useful error to
+    surface."""
+    task = asyncio.ensure_future(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        task.result()
+        raise
 
 
 async def execute_node(
@@ -387,7 +423,14 @@ async def execute_node(
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
-        _mcp_data = MCPToolBlock.Input(**node.input_default)
+        _mcp_input = dict(node.input_default)
+        # Read from the per-node masks, not input_data: tool arguments share
+        # input_data's namespace and a tool may declare its own `credentials`.
+        if run_credentials := ((nodes_input_masks or {}).get(node_id) or {}).get(
+            "credentials"
+        ):
+            _mcp_input["credentials"] = run_credentials
+        _mcp_data = MCPToolBlock.Input(**_mcp_input)
         # Dynamic tool fields are flattened to top-level by validate_exec
         # (via get_input_defaults). Collect them back into tool_arguments.
         tool_schema = _mcp_data.tool_input_schema
@@ -439,14 +482,23 @@ async def execute_node(
     # Check for dry-run platform credentials (OrchestratorBlock uses the
     # platform's OpenRouter key instead of user credentials).
     _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+    # A dry run skips credits, so a block it runs for real on the platform's
+    # key is bounded by the user's allowance instead.
+    if _dry_run_creds is not None and (
+        refusal := await platform_spend_refusal(user_id)
+    ):
+        log_metadata.warning(f"Dry-run block not run: {refusal}")
+        yield "error", refusal
+        return
 
-    # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
-    # changes during execution. ⚠️ This means a set of credentials can only be used by
-    # one (running) block at a time; simultaneous execution of blocks using same
-    # credentials is not supported.
+    # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
+    # that stops them being refreshed or replaced during execution. ⚠️ This means
+    # an OAuth credential can only be used by one (running) block at a time;
+    # simultaneous execution of blocks using the same one is not supported.
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
+    expert_allowed_credentials: set[str] | None = None
     try:
         # Handle regular credentials fields
         for field_name, input_type in input_model.get_credentials_fields().items():
@@ -475,6 +527,22 @@ async def execute_node(
                 continue  # Block runs without credentials
 
             credentials_meta = input_type(**field_value)
+            # An expert run uses only the credentials granted to it.
+            if execution_context.expert_id is not None and not is_system_credential(
+                credentials_meta.id
+            ):
+                if expert_allowed_credentials is None:
+                    expert_allowed_credentials = set(
+                        await experts_db().expert_allowed_credential_ids(
+                            user_id, execution_context.expert_id
+                        )
+                    )
+                if credentials_meta.id not in expert_allowed_credentials:
+                    raise ValueError(
+                        f"Credentials #{credentials_meta.id} in field "
+                        f"'{field_name}' have not been granted to this expert. "
+                        f"Grant them on the expert's Integrations page."
+                    )
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
@@ -499,7 +567,9 @@ async def execute_node(
                     await enforce_codex_access(user_id)
                 continue
             try:
-                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+                credentials, lease = await _get_node_credentials(
+                    creds_manager, user_id, credentials_meta
+                )
             except ValueError:
                 # Credential was deleted or doesn't exist.
                 # If the field has a default, run without credentials.
@@ -511,8 +581,8 @@ async def execute_node(
                     input_data[field_name] = None
                     continue
                 raise
-            credential_leases[field_name] = lease
-            credentials = lease.credentials
+            if lease is not None:
+                credential_leases[field_name] = lease
             if not (
                 provider_matches(
                     credentials.provider,
@@ -525,8 +595,8 @@ async def execute_node(
                 )
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
-            extra_exec_kwargs[field_name] = lease.credentials
-            if _uses_provider_runtime(lease):
+            extra_exec_kwargs[field_name] = credentials
+            if lease is not None and _uses_provider_runtime(lease):
                 runtime_credential_leases[field_name] = lease
 
         # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -589,6 +659,15 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
+        # Stats and the Sentry scope first: the node is billed on the stats, and a
+        # second cancel landing in one of the awaits below would skip both.
+        if execution_stats is not None:
+            execution_stats += node_block.execution_stats
+            execution_stats.input_size = input_size
+            execution_stats.output_size = output_size
+        scope._user = original_user
+        scope._tags = original_tags
+
         # Ensure all credentials are released even if execution fails
         await _release_credential_leases(list(credential_leases.values()), log_metadata)
         for creds_lock in creds_locks:
@@ -602,15 +681,38 @@ async def execute_node(
                 except Exception as e:
                     log_metadata.error(f"Failed to release credentials lock: {e}")
 
-        # Update execution stats
-        if execution_stats is not None:
-            execution_stats += node_block.execution_stats
-            execution_stats.input_size = input_size
-            execution_stats.output_size = output_size
+        if _dry_run_creds is not None:
+            await track_dry_run_block_cost(
+                node_block.execution_stats,
+                user_id=user_id,
+                model=input_data.get("model"),
+            )
 
-        # Restore scope AFTER error has been captured
-        scope._user = original_user
-        scope._tags = original_tags
+
+async def _get_node_credentials(
+    creds_manager: IntegrationCredentialsManager,
+    user_id: str,
+    credentials_meta: CredentialsMetaInput,
+) -> tuple[Credentials, CredentialLease | None]:
+    """Load a node's credentials, leased only if they can change mid-run.
+
+    Only OAuth credentials change under a running block: a refresh replaces the
+    tokens, and a provider runtime checkpoints rotated ones through the lease.
+    A lease on any other kind would protect nothing, and would make every other
+    node on the same credential wait for this one, up to the lock's 60 s TTL,
+    including the tools an Orchestrator runs on its own API key. The caller
+    checks that the stored type matches ``credentials_meta``, so an OAuth
+    credential never runs unleased.
+    """
+    if credentials_meta.type == "oauth2":
+        lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+        return lease.credentials, lease
+    credentials = await creds_manager.get(user_id, credentials_meta.id)
+    if credentials is None:
+        raise ValueError(
+            f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+        )
+    return credentials, None
 
 
 async def _release_credential_leases(
@@ -788,11 +890,24 @@ async def _enqueue_next_nodes(
                 )
             return enqueued_executions
 
-    return [
-        execution
-        for link in node.output_links
-        for execution in await register_next_executions(link)
-    ]
+    # A link only touches its own sink: that node's lock, input rows and queued
+    # status. So links into different nodes register side by side, up to
+    # MAX_SINKS_REGISTERED_AT_ONCE nodes at a time, while links into one node
+    # keep their order; the result keeps the links' order too.
+    links = node.output_links
+    registered: list[list[NodeExecutionEntry]] = [[] for _ in links]
+    links_by_sink: dict[str, list[int]] = {}
+    for index, link in enumerate(links):
+        links_by_sink.setdefault(link.sink_id, []).append(index)
+    room = asyncio.Semaphore(MAX_SINKS_REGISTERED_AT_ONCE)
+
+    async def register_sink(indexes: list[int]) -> None:
+        async with room:
+            for index in indexes:
+                registered[index] = await register_next_executions(links[index])
+
+    await asyncio.gather(*(register_sink(i) for i in links_by_sink.values()))
+    return [execution for executions in registered for execution in executions]
 
 
 class ExecutionProcessor:
@@ -834,15 +949,22 @@ class ExecutionProcessor:
         transaction named after its block."""
         block = get_block(node_exec.block_id)
         with node_transaction(node_exec, block) as span:
-            return await self._run_node(
-                node_exec,
-                block,
-                node_exec_progress,
-                nodes_input_masks,
-                graph_stats_pair,
-                nodes_to_skip,
-                span,
+            # Its own task, even when a caller such as the Orchestrator runs a
+            # tool node inline from a longer-lived task: a stop's cleanup waits
+            # for this task (see wait_for_done), so it must end with the node.
+            node_run = asyncio.ensure_future(
+                self._run_node(
+                    node_exec,
+                    block,
+                    node_exec_progress,
+                    nodes_input_masks,
+                    graph_stats_pair,
+                    nodes_to_skip,
+                    span,
+                )
             )
+            node_exec_progress.track_unwinding(node_exec.node_exec_id, node_run)
+            return await node_run
 
     async def _run_node(
         self,
@@ -884,6 +1006,37 @@ class ExecutionProcessor:
         execution_stats.cputime = timing_info.cpu_time
         record_node_result(span, status, execution_stats)
 
+        # A stop cancels this task, even after the block has finished. The
+        # block's charge, its final status and the run's totals must still be
+        # written, so a cancel arriving now waits for them before it is
+        # re-raised. The run's cleanup waits for them too (see wait_for_done):
+        # its terminal sweep would otherwise fail the node first.
+        settle = asyncio.ensure_future(
+            self._settle_node(
+                node=node,
+                node_exec=node_exec,
+                status=status,
+                execution_stats=execution_stats,
+                graph_stats_pair=graph_stats_pair,
+                db_client=db_client,
+                log_metadata=log_metadata,
+                stopped=node_exec_progress.stop_requested,
+            )
+        )
+        node_exec_progress.track_settling(node_exec.node_exec_id, settle)
+        return await _finish_despite_cancel(settle)
+
+    async def _settle_node(
+        self,
+        node: Node,
+        node_exec: NodeExecutionEntry,
+        status: ExecutionStatus,
+        execution_stats: NodeExecutionStats,
+        graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        db_client: "DatabaseManagerAsyncClient",
+        log_metadata: LogMetadata,
+        stopped: bool = False,
+    ) -> NodeExecutionStats:
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
@@ -893,7 +1046,8 @@ class ExecutionProcessor:
         # Reconcile on FAILED / TERMINATED too — partial work consumed real
         # provider tokens, and the pre-flight charge should be refunded down
         # to the actually-tracked usage rather than being absorbed wholesale
-        # by the user.
+        # by the user. A stop request mid LLM request also bills that
+        # request's estimated input tokens (see billing.bills_stop_estimate).
         if status in (
             ExecutionStatus.COMPLETED,
             ExecutionStatus.FAILED,
@@ -916,6 +1070,7 @@ class ExecutionProcessor:
                     node_exec=node_exec,
                     stats=execution_stats,
                     pre_flight_charge=node_exec.pre_flight_charge,
+                    bill_stop_estimate=billing.bills_stop_estimate(status, stopped),
                 )
                 if reconciled_delta != 0:
                     execution_stats.reconciled_cost_delta += reconciled_delta
@@ -1067,10 +1222,21 @@ class ExecutionProcessor:
                 status = ExecutionStatus.TERMINATED
 
         finally:
+            # The block is done, so from here the node's own task (started in
+            # on_node_execution) is its bookkeeping, which the run's cleanup
+            # waits for in full rather than for the unwind grace.
+            if task := asyncio.current_task():
+                node_exec_progress.track_settling(node_exec.node_exec_id, task)
             if status == ExecutionStatus.FAILED and stats.error is not None:
-                await persist_output(
-                    "error", str(stats.error) or type(stats.error).__name__
-                )
+                try:
+                    await _finish_despite_cancel(
+                        persist_output(
+                            "error", str(stats.error) or type(stats.error).__name__
+                        )
+                    )
+                except asyncio.CancelledError:
+                    # The block has already failed: settle it, don't end here.
+                    pass
             tracing.set_data("executor.node.output_count", outputs)
         return status
 
@@ -1596,16 +1762,22 @@ class ExecutionProcessor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node executions to complete
+        # Cancel and wait for all node executions to complete. Only a stop
+        # request ends a run TERMINATED, and its nodes are billed for the
+        # requests it cuts off (see billing.bills_stop_estimate).
+        stop_requested = execution_status == ExecutionStatus.TERMINATED
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
                 continue
             log_metadata.info(f"Stopping node execution {node_id}")
-            inflight_exec.stop()
+            inflight_exec.stop(stop_requested=stop_requested)
 
+        # One unwind grace for all nodes together, so several blocks that
+        # ignore the cancel can't add up past stop_graph_execution's wait.
+        unwind_until = time.time() + NODE_UNWIND_GRACE_SECONDS
         for node_id, inflight_exec in running_node_execution.items():
             try:
-                inflight_exec.wait_for_done(timeout=3600.0)
+                inflight_exec.wait_for_done(timeout=3600.0, unwind_until=unwind_until)
             except TimeoutError:
                 log_metadata.exception(
                     f"Node execution #{node_id} did not stop in time, "

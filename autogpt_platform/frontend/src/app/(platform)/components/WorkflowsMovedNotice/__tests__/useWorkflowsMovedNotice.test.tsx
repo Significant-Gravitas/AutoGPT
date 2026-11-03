@@ -162,18 +162,18 @@ describe("migration notice eligibility", () => {
         );
       });
       expect(result.current.migration.isOpen).toBe(false);
-      expect(result.current.welcome.isWelcomeOpen).toBe(true);
+      expect(result.current.welcome.isFirstRunPending).toBe(true);
       expect(peekIntroPath()).toBeNull();
 
       rerender();
       await waitFor(() =>
-        expect(result.current.welcome.isWelcomeOpen).toBe(true),
+        expect(result.current.welcome.isFirstRunPending).toBe(true),
       );
       expect(result.current.migration.isOpen).toBe(false);
       expect(peekIntroPath()).toBeNull();
 
-      act(() => result.current.welcome.closeWelcome());
-      expect(result.current.welcome.isWelcomeOpen).toBe(false);
+      act(() => result.current.welcome.finishFirstRun({ wasShown: true }));
+      expect(result.current.welcome.isFirstRunPending).toBe(false);
       expect(result.current.migration.isOpen).toBe(false);
       context.pathname = "/team";
       rerender();

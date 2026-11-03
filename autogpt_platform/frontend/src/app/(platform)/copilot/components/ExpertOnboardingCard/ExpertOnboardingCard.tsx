@@ -38,13 +38,13 @@ export function ExpertOnboardingCard({ part }: Props) {
       part.state === "output-error" || part.state === "output-available";
     if (isSettled) {
       return (
-        <div className="py-2 text-sm text-zinc-500">
+        <div className="py-2 text-body text-foreground-tertiary">
           Couldn&apos;t open the setup questions.
         </div>
       );
     }
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-body text-muted-foreground">
         <MorphingTextAnimation text="Getting set up…" />
       </div>
     );
@@ -110,11 +110,12 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     });
     return (
       <div className="flex flex-col gap-1 py-2">
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-zinc-400"
+            tone="subtle"
+            className="shrink-0"
           />
           Setup questions from {name}
         </div>
@@ -131,7 +132,8 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     <div
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] outline-none"
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
+      className="w-full max-w-xl overflow-hidden rounded-lg border border-border-base bg-surface shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] outline-none"
     >
       <div
         role="progressbar"
@@ -142,10 +144,10 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
         aria-valuetext={
           isReview ? "Check your answers" : `Question ${shown} of ${total}`
         }
-        className="h-1 bg-zinc-100"
+        className="h-1 bg-surface-hover"
       >
         <div
-          className="h-full bg-zinc-800 transition-[width] duration-300 ease-out"
+          className="h-full bg-action transition-[width] duration-300 ease-out"
           style={{ width: `${(shown / total) * 100}%` }}
         />
       </div>
@@ -163,10 +165,10 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           {currentStep ? (
             <>
               <span className="flex flex-col gap-1">
-                <span className="flex gap-2 text-base font-medium leading-snug text-zinc-900 sm:text-lg">
+                <span className="flex gap-2 text-body-lg leading-snug font-medium text-foreground-strong sm:text-lead">
                   <span
                     aria-hidden="true"
-                    className="flex shrink-0 items-center gap-0.5 text-sm text-zinc-400"
+                    className="flex shrink-0 items-center gap-0.5 text-body text-foreground-subtle"
                   >
                     {current + 1}
                     <Icon icon={ArrowRight01Icon} size={12} />
@@ -174,7 +176,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
                   <span id={labelId}>{currentStep.question}</span>
                 </span>
                 {currentStep.allow_multiple && (
-                  <span className="text-sm text-zinc-500">
+                  <span className="text-body text-foreground-tertiary">
                     Choose as many as you like
                   </span>
                 )}

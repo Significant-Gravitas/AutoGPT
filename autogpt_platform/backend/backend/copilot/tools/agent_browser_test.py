@@ -6,6 +6,7 @@ All subprocess calls are mocked — no agent-browser binary or real browser need
 import asyncio
 import json
 import os
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1420,9 +1421,10 @@ class TestEnsureSession:
 
 class TestCloseBrowserSession:
     @pytest.mark.asyncio
-    async def test_calls_close_command(self):
+    async def test_closes_a_browser_this_process_runs(self):
         from . import agent_browser as _mod
 
+        _mod._touched_sessions.add("close-sess")
         _mod._alive_sessions.add("close-sess")
         with patch(
             "backend.copilot.tools.agent_browser._run",
@@ -1484,13 +1486,47 @@ class TestCloseBrowserSession:
 
     @pytest.mark.asyncio
     async def test_error_is_swallowed(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("bad-sess")
         with patch(
             "backend.copilot.tools.agent_browser._run",
             new_callable=AsyncMock,
             side_effect=RuntimeError("gone"),
-        ):
+        ) as mock_run:
             # Should not raise
             await close_browser_session("bad-sess")
+
+        mock_run.assert_awaited_once()
+        assert "bad-sess" not in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_session_with_no_browser_here_starts_no_process(self):
+        """The API server deletes sessions whose browsers ran on an executor.
+        There, `close` would start a daemon and launch Chromium only to shut
+        them down, while the saved cookies must still be deleted."""
+        mock_mgr = _make_mock_manager()
+        mock_mgr.get_file_info_by_path.return_value = MagicMock(id="state-file-1")
+        mock_mgr.delete_file = AsyncMock(return_value=True)
+        # Only the argv is kept: a failure message must not print the
+        # environment the process would have been given.
+        started: list[tuple[str, ...]] = []
+
+        async def spawn(*argv: str, **_kwargs: Any):
+            started.append(argv)
+            raise FileNotFoundError
+
+        with (
+            patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr),
+            patch(
+                "backend.copilot.tools.agent_browser.asyncio.create_subprocess_exec",
+                spawn,
+            ),
+        ):
+            await close_browser_session("elsewhere-sess", user_id="user1")
+
+        assert started == []
+        mock_mgr.delete_file.assert_called_once_with("state-file-1")
 
 
 # ---------------------------------------------------------------------------
@@ -1693,6 +1729,7 @@ class TestCloseBrowserDaemon:
             _mod._touched_sessions.add(session_name)
             return _run_result(rc=0)
 
+        _mod._touched_sessions.add("deleted-sess")
         with patch("backend.copilot.tools.agent_browser._run", run):
             await close_browser_session("deleted-sess")
 

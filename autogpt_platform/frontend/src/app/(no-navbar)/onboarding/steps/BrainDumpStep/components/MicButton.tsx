@@ -128,12 +128,9 @@ export function MicButton({
         isActive={isFolding && !reduceMotion}
       >
         <motion.div
-          style={{
-            scale: bodyScale,
-            opacity: bodyOpacity,
-            transformOrigin: `${CENTRE.x}px ${CENTRE.y}px`,
-            willChange: "transform, opacity",
-          }}
+          className="origin-center will-change-[transform,opacity]"
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion MotionValues
+          style={{ scale: bodyScale, opacity: bodyOpacity }}
         >
           <AutopilotAvatar size={AVATAR_SIZE} transparent />
         </motion.div>

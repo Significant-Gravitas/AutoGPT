@@ -67,6 +67,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="secondary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -74,12 +75,14 @@ export function ExpertSchedulesSection({
             </Button>
           ) : null}
           <ToolbarSearch
+            textSize="body-md"
             id="expert-schedules-search"
             label="Search schedules"
             value={query}
             onChange={setQuery}
           />
           <PillFilterMenu
+            textSize="body-md"
             label="Filter schedules"
             value={filter}
             defaultValue="all"
@@ -91,24 +94,16 @@ export function ExpertSchedulesSection({
       {schedules.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            <Icon
-              key="clock"
-              icon={Clock01Icon}
-              size={22}
-              className="text-sky-500"
-            />,
-            <Icon
-              key="repeat"
-              icon={RepeatIcon}
-              size={22}
-              className="text-emerald-500"
-            />,
-            <Icon
-              key="calendar"
-              icon={Calendar03Icon}
-              size={22}
-              className="text-violet-500"
-            />,
+            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
+            <span key="clock" className="inline-flex text-sky-500">
+              <Icon icon={Clock01Icon} size={22} />
+            </span>,
+            <span key="repeat" className="inline-flex text-success">
+              <Icon icon={RepeatIcon} size={22} />
+            </span>,
+            <span key="calendar" className="inline-flex text-brand">
+              <Icon icon={Calendar03Icon} size={22} />
+            </span>,
           ]}
           title="No schedules yet"
           description={`Put a workflow on a schedule and ${expertName} runs it for you, on time, every time.`}
@@ -117,6 +112,7 @@ export function ExpertSchedulesSection({
             <Button
               variant="primary"
               size="small"
+              textSize="body-md"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -125,7 +121,7 @@ export function ExpertSchedulesSection({
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No schedules match.
         </Text>
       ) : (
@@ -133,6 +129,7 @@ export function ExpertSchedulesSection({
           {visible.map((schedule) => (
             <li key={schedule.id}>
               <GraphScheduleListItem
+                textSize="body-md"
                 schedule={schedule}
                 className="rounded-2xl border-0 smooth-shadow-ring-sm"
                 iconClassName={accentClassName}

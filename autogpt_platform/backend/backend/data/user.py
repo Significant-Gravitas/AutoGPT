@@ -37,6 +37,7 @@ from backend.data.notifications import (
 )
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.product_mail_audience import product_mail_audience_where
 from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
@@ -236,9 +237,9 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
 
 
 class AuthUserFlagFields(BaseModel):
-    """Minimal AuthUser attributes used to build a LaunchDarkly context.
+    """Minimal AuthUser attributes used to build a feature flag context.
 
-    A plain serializable shape (not an ``ldclient.Context``) so it can cross
+    A plain serializable shape (not the flag module's context) so it can cross
     the DatabaseManager RPC boundary — feature-flag evaluation runs in
     Prisma-less workers (scheduler, copilot-executor) that reach the auth
     table via the RPC client rather than a locally-connected Prisma engine.
@@ -250,7 +251,7 @@ class AuthUserFlagFields(BaseModel):
 
 
 async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
-    """Fetch the AuthUser fields used for LaunchDarkly targeting.
+    """Fetch the AuthUser fields used for feature flag targeting.
 
     Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
     window) so the caller can avoid caching a not-found as an anonymous
@@ -833,8 +834,7 @@ def forget_user_email_verification(user_id: str) -> None:
 
 @cache_user_lookup
 async def _user_proved_email(user_id: str) -> bool:
-    """A verified auth identity, or a Google sign-in. Only ever called
-    positionally, so ``forget_user_email_verification`` hits its one key."""
+    """A verified auth identity, or a Google sign-in."""
     try:
         identity = await AuthUser.prisma().find_unique(where={"id": user_id})
         if identity is None:
@@ -1291,6 +1291,11 @@ async def get_briefing_candidates(
             "briefingFrequency": {"not": BriefingFrequency.OFF},
             "timezone": {"in": timezones},
         }
+        # The consumer drops a briefing for anyone outside the audience, so
+        # don't queue the work for them.
+        audience = product_mail_audience_where(datetime.now(timezone.utc))
+        if audience is not None:
+            where["AND"] = [audience]
         if after_id:
             where["id"] = {"gt": after_id}
         rows = await prisma.user.find_many(where=where, take=limit, order={"id": "asc"})

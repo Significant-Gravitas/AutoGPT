@@ -21,7 +21,7 @@ interface Props {
 }
 
 export const EXPERT_CARD_CLASS =
-  "flex h-full flex-col gap-2 rounded-2xl border bg-white p-4 text-left transition-colors";
+  "flex h-full flex-col gap-2 rounded-2xl border bg-surface p-4 text-left transition-colors";
 
 export function RecommendedExpertCard({
   expert,
@@ -38,7 +38,7 @@ export function RecommendedExpertCard({
       className={cn(
         EXPERT_CARD_CLASS,
         "relative isolate",
-        isHired ? "border-zinc-900" : "border-zinc-200",
+        isHired ? "border-action-hover" : "border-border-base",
       )}
       data-testid="hire-step-expert"
       data-hired={isHired || undefined}
@@ -53,19 +53,17 @@ export function RecommendedExpertCard({
           aria-label={`Include ${expert.name}`}
           disabled={disabled}
           onClick={onToggleIncluded}
-          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          className="absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
         >
           <span
             className={cn(
-              "flex size-4 items-center justify-center rounded-full border transition-colors",
+              "flex size-4 items-center justify-center rounded-full border text-action-foreground transition-colors",
               isIncluded
-                ? "border-zinc-900 bg-zinc-900"
-                : "border-zinc-300 bg-white",
+                ? "border-action-hover bg-action-hover"
+                : "border-border-strong bg-surface",
             )}
           >
-            {isIncluded ? (
-              <Icon icon={Tick02Icon} size={10} className="text-white" />
-            ) : null}
+            {isIncluded ? <Icon icon={Tick02Icon} size={10} /> : null}
           </span>
         </button>
       )}
@@ -90,31 +88,28 @@ export function RecommendedExpertCard({
         </div>
       </div>
       {expert.reason ? (
-        <Text
-          variant="body"
-          tone="secondary"
-          className={cn(
-            "line-clamp-2 text-pretty transition-opacity",
-            isLeftOut && "opacity-50",
-          )}
-        >
-          {expert.reason}
-        </Text>
+        <div className={cn("transition-opacity", isLeftOut && "opacity-50")}>
+          <Text
+            variant="body"
+            tone="secondary"
+            className="line-clamp-2 text-pretty"
+          >
+            {expert.reason}
+          </Text>
+        </div>
       ) : null}
       {isHired ? (
-        <Text
-          variant="small"
-          as="span"
-          className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-zinc-900"
-        >
+        <span className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-foreground-strong">
           <Icon icon={Tick02Icon} size={14} />
-          Hired
-        </Text>
+          <Text variant="small" as="span" tone="primary">
+            Hired
+          </Text>
+        </span>
       ) : (
         <Button
           variant="primary"
           size="xs"
-          className="mt-auto self-start rounded-full"
+          className="mt-auto self-start"
           disabled={disabled}
           loading={isHiringThis}
           onClick={onHire}

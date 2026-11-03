@@ -45,7 +45,7 @@ The `migrate` service, or `make migrate` outside Docker, then applies the migrat
 
 The platform uses Redis for caching, distributed locks, rate limits, and the streams that carry agent output to the browser.
 
-The Docker Compose stack runs its own Redis Cluster: three `redis:7` shards on ports `17000` to `17002`, joined by a one-shot `redis-init` service. `make start-core` starts it along with the other dependencies.
+The Docker Compose stack runs its own Redis Cluster: three `redis:7` shards on ports `17000` to `17002` of `127.0.0.1`, joined by a one-shot `redis-init` service. They require the `REDIS_PASSWORD` that `make init-env` generates in `backend/.env`. `make start-core` starts it along with the other dependencies.
 
 ### Using an external Redis cluster
 
@@ -59,7 +59,7 @@ The cluster also needs:
 
 Point `REDIS_HOST` and `REDIS_PORT` at any node of the cluster, and set `REDIS_PASSWORD` if the cluster has one.
 
-In the Compose stack, `REDIS_HOST`, `REDIS_PORT` and `REDIS_USE_ANNOUNCED_ADDRESS` are set in the `x-backend-env` block of `autogpt_platform/docker-compose.platform.yml`, which takes precedence over `backend/.env`, so change them there. `REDIS_PASSWORD` is read from `backend/.env`. The bundled shards still start, because the backend services wait for `redis-0` to be healthy.
+In the Compose stack, `REDIS_HOST`, `REDIS_PORT` and `REDIS_USE_ANNOUNCED_ADDRESS` are set in the `x-backend-env` block of `autogpt_platform/docker-compose.platform.yml`, which takes precedence over `backend/.env`, so change them there. `REDIS_PASSWORD` is read from `backend/.env`. Point `backend/.env` at the cluster too, with `REDIS_HOST` or with `REDIS_CLUSTER_HOST`, which the backend reads first: while the one it reads names the bundled cluster (`localhost`, as `.env.default` has it), `make init-env` gives a blank `REDIS_PASSWORD` a generated value, which a cluster without a password refuses. The bundled shards still start, because the backend services wait for `redis-0` to be healthy.
 
 ## AutoGPT Agent Server Advanced set up
 

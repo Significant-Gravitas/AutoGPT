@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useContext, useEffect, useId, useMemo, useState } from "react";
+import { useContext, useEffect, useId, useState } from "react";
 import {
   ChainActionsContext,
   type ChainActions,
@@ -99,13 +99,10 @@ export function SetupRequirementsCard({
     (requirements as Record<string, unknown>)?.inputs,
   );
 
-  // Stabilised on the raw prop: `expectedInputs` is rebuilt every render.
-  const initialValues = useMemo(
-    () =>
-      extractInitialValues(
-        coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
-      ),
-    [requirements],
+  // Derived from the raw prop, so the compiler caches it on `requirements`:
+  // `expectedInputs` is rebuilt every render.
+  const initialValues = extractInitialValues(
+    coerceExpectedInputs((requirements as Record<string, unknown>)?.inputs),
   );
 
   const [inputValues, setInputValues] =
@@ -132,16 +129,12 @@ export function SetupRequirementsCard({
   // Build siblingInputs for credential modal host prefill. In edit mode we also
   // include the live form values; in preview mode there is no form so only
   // discriminator-derived values contribute.
-  const siblingInputs = useMemo(() => {
-    const fromCreds = buildSiblingInputsFromCredentials(
-      output.setup_info.user_readiness?.missing_credentials,
-    );
-    return isEditMode ? { ...inputValues, ...fromCreds } : fromCreds;
-  }, [
+  const fromCreds = buildSiblingInputsFromCredentials(
     output.setup_info.user_readiness?.missing_credentials,
-    inputValues,
-    isEditMode,
-  ]);
+  );
+  const siblingInputs = isEditMode
+    ? { ...inputValues, ...fromCreds }
+    : fromCreds;
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -211,9 +204,11 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
-      onSend(message),
-    );
+    void reportCredentialPicks(
+      sessionID,
+      inputCredentials,
+      credentialFields,
+    ).then(() => onSend(message));
   }
 
   // Inside a chain this card renders no Proceed of its own — the chain only
@@ -267,7 +262,7 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   const registerWithChain = useStableCallback((actions: ChainActions) => {
-    actions.register({
+    actions.register(actionId, {
       id: actionId,
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
@@ -277,7 +272,8 @@ export function SetupRequirementsCard({
       // A trigger's line carries the chosen credential ids, and an edit-mode
       // card's may carry run inputs; only a bare confirmation is shareable.
       credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
-      beforeSend: () => reportCredentialPicks(sessionID, inputCredentials),
+      beforeSend: () =>
+        reportCredentialPicks(sessionID, inputCredentials, credentialFields),
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -342,10 +338,12 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
-            {credentialsLabel ??
-              (isEditMode ? "Credentials" : "Workflow credentials")}
-          </Text>
+          <div className="w-fit border-b">
+            <Text tone="muted" variant="small">
+              {credentialsLabel ??
+                (isEditMode ? "Credentials" : "Workflow credentials")}
+            </Text>
+          </div>
           <div className="mt-6">
             <CredentialsGroupedView
               credentialFields={credentialFields}
@@ -362,13 +360,15 @@ export function SetupRequirementsCard({
           renders in the card below it, not inside the accordion. */}
       {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
-          <Text variant="small" className="w-fit border-b text-zinc-500">
-            Inputs
-          </Text>
+          <div className="w-fit border-b">
+            <Text tone="muted" variant="small">
+              Inputs
+            </Text>
+          </div>
           {inputSchema && (
             <FormRenderer
               jsonSchema={inputSchema}
-              className="mb-3 mt-3"
+              className="mt-3 mb-3"
               handleChange={(v) =>
                 setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
               }
@@ -385,7 +385,7 @@ export function SetupRequirementsCard({
           {hasAdvancedFields && (
             <button
               type="button"
-              className="text-xs text-muted-foreground underline"
+              className="text-caption text-muted-foreground underline"
               onClick={() => setShowAdvanced((v) => !v)}
             >
               {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
@@ -396,14 +396,12 @@ export function SetupRequirementsCard({
 
       {!isEditMode && expectedInputs.length > 0 && (
         <div className="rounded-2xl border bg-background p-3">
-          <ContentCardTitle className="text-xs">
-            Expected inputs
-          </ContentCardTitle>
+          <ContentCardTitle size="small">Expected inputs</ContentCardTitle>
           <div className="mt-2 grid gap-2">
             {expectedInputs.map((input) => (
               <div key={input.name} className="rounded-xl border p-2">
                 <div className="flex items-center justify-between gap-2">
-                  <ContentCardTitle className="text-xs">
+                  <ContentCardTitle size="small">
                     {input.title}
                   </ContentCardTitle>
                   <ContentBadge>

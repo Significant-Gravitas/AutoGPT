@@ -12,7 +12,7 @@ import { SelectionBar } from "../SelectionBar/SelectionBar";
 import { FileRow } from "./FileRow";
 import { FolderRows } from "./FolderRows";
 import { SkeletonRow } from "./SkeletonRow";
-import { DATE_CELL_CLASS, ROW_GRID_CLASS, SIZE_CELL_CLASS } from "./row-layout";
+import { ROW_GRID_CLASS } from "./row-layout";
 import { useFileSelection } from "./useFileSelection";
 
 interface Props {
@@ -59,20 +59,22 @@ export function ArtifactsTable({
         />
       ) : (
         <div className={cn(ROW_GRID_CLASS, "px-2 pb-2")}>
-          <Text variant="body" as="span" className="text-zinc-500">
+          <Text variant="body" as="span" tone="muted">
             Name
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(DATE_CELL_CLASS, "text-zinc-500")}
+            tone="muted"
+            className="hidden truncate sm:block"
           >
             Modified
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(SIZE_CELL_CLASS, "text-zinc-500")}
+            tone="muted"
+            className="hidden md:block"
           >
             Size
           </Text>
@@ -82,7 +84,7 @@ export function ArtifactsTable({
       <TooltipProvider delayDuration={450} skipDelayDuration={300}>
         <motion.ul
           key={listKey}
-          className="divide-y divide-zinc-100"
+          className="divide-y divide-separator"
           data-testid="artifacts-list"
           variants={reduceMotion ? undefined : LIST_VARIANTS}
           initial={reduceMotion ? false : "hidden"}
@@ -96,7 +98,7 @@ export function ArtifactsTable({
           ) : null}
           {isLoading ? (
             <li
-              className="divide-y divide-zinc-100"
+              className="divide-y divide-separator"
               data-testid="artifacts-loading"
             >
               {Array.from({ length: 6 }).map((_, i) => (

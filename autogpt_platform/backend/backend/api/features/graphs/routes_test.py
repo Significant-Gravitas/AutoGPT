@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -13,7 +14,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
@@ -23,14 +24,13 @@ from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import GraphValidationError
 
 app = fastapi.FastAPI()
 app.include_router(router)
-# Mirror rest_api.py's GraphActivationError -> 400 mapping so the atomicity
-# tests verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same handler set as the real app (GraphActivationError -> 400 included), so
+# the atomicity tests verify the behaviour it actually exposes.
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -64,6 +64,14 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker: pytest_mock.MockFixture, test_user_id):
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.graph_owner_id",
+        new=AsyncMock(return_value=test_user_id),
+    )
 
 
 def _execution_meta() -> execution_db.GraphExecutionMeta:
@@ -229,7 +237,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")
@@ -571,7 +579,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
         "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
     )
     update_lib_agent_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.graphs.routes.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
 
@@ -1172,3 +1180,39 @@ def test_execute_graph_records_a_failure_and_re_raises(
         client.post("/graphs/graph-1/execute/1", json={})
 
     assert record.call_args.kwargs["status"] == "error"
+
+
+def test_execute_graph_refuses_an_input_nested_too_deep(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """#15648: an input nested ~1000 levels deep answered 422 but still saved
+    an INCOMPLETE run whose ``inputs`` column held a string, which broke every
+    later listing of the user's runs. The real ``add_graph_execution`` must
+    refuse it as a validation error before anything is written."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
+    )
+    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    created = mocker.patch(
+        "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+    value: Any = "abyss"
+    for _ in range(300):
+        value = [value]
+
+    response = client.post(
+        "/graphs/graph-1/execute/1", json={"inputs": {"shift_tags": value}}
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["type"] == "validation_error"
+    assert "shift_tags" in detail["message"]
+    created.assert_not_awaited()

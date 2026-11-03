@@ -285,31 +285,27 @@ export function useChatSession({
   // Expose active_stream info so the caller can trigger manual resume
   // after hydration completes (rather than relying on AI SDK's built-in
   // resume which fires before hydration).
-  const hasActiveStream = useMemo(() => {
-    return !!freshSessionData?.active_stream;
-  }, [freshSessionData]);
+  const hasActiveStream = !!freshSessionData?.active_stream;
 
   // Backend-reported start time of the active turn. Used to seed the
   // elapsed-time counter on mount so restored sessions show honest
   // "time since the backend started the turn" rather than "time since
   // this mount subscribed to the SSE".
-  const activeStreamStartedAt = useMemo(() => {
-    return freshSessionData?.active_stream?.started_at ?? null;
-  }, [freshSessionData]);
+  const activeStreamStartedAt =
+    freshSessionData?.active_stream?.started_at ?? null;
 
   // Pagination metadata from the initial page load
-  const hasMoreMessages = useMemo(() => {
-    return !!freshSessionData?.has_more_messages;
-  }, [freshSessionData]);
+  const hasMoreMessages = !!freshSessionData?.has_more_messages;
 
-  const oldestSequence = useMemo(() => {
-    return freshSessionData?.oldest_sequence ?? null;
-  }, [freshSessionData]);
+  const oldestSequence = freshSessionData?.oldest_sequence ?? null;
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
+  // Kept as a memo with the compiler on: effects depend on this array, and
+  // useHydrateOnStreamEnd compares it by reference to tell a fresh refetch
+  // from the snapshot it saw when the stream ended.
   const { hydratedMessages, historicalTurnStats, activeTurnStartMessageId } =
     useMemo(() => {
       if (!freshSessionData || !sessionId)
@@ -458,10 +454,9 @@ export function useChatSession({
   // Design intent: the global isDryRun store is only used when creating NEW
   // sessions. Once a session exists, its dry_run flag is immutable and should
   // be read from here rather than from the store, which may have changed.
-  const sessionDryRun = useMemo(
-    () => (freshSessionData ? resolveSessionDryRun(sessionQuery.data) : false),
-    [sessionQuery.data, freshSessionData],
-  );
+  const sessionDryRun = freshSessionData
+    ? resolveSessionDryRun(sessionQuery.data)
+    : false;
 
   const sessionChatStatus = (
     freshSessionData as { chat_status?: string } | undefined

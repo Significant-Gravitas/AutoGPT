@@ -48,7 +48,11 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
-from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
+from backend.copilot.llm_attribution import (
+    current_turn_origin,
+    is_turn_impersonated,
+    turn_trace_id,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import (
     SubscriptionTier,
@@ -72,6 +76,7 @@ from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
 )
+from backend.util import platform_payment
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
@@ -281,7 +286,9 @@ class TestExecuteAsyncScheduledTurnContext:
     Every tool test sets those directly, so this seam is checked here."""
 
     @staticmethod
-    async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
+    async def _seen_by_the_turn(
+        entry: CoPilotExecutionEntry, session: ChatSession | None = None
+    ) -> dict:
         from backend.copilot.context import is_unattended_turn
         from backend.copilot.credential_selection import turn_credential_pins
 
@@ -292,6 +299,7 @@ class TestExecuteAsyncScheduledTurnContext:
             seen["pins"] = dict(turn_credential_pins())
             seen["impersonated"] = is_turn_impersonated()
             seen["trace_id"] = turn_trace_id()
+            seen["turn_origin"] = current_turn_origin()
             seen["span_id"] = current_span_id()
             return MagicMock()
 
@@ -314,7 +322,9 @@ class TestExecuteAsyncScheduledTurnContext:
             ),
             patch(
                 "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+                new=AsyncMock(
+                    return_value=session or ChatSession.new("user-1", dry_run=False)
+                ),
             ),
         ):
             await asyncio.create_task(
@@ -340,6 +350,7 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {"exa": pin},
             "impersonated": False,
             "trace_id": "turn-1",
+            "turn_origin": "scheduled",
             "span_id": "turn-1",
         }
 
@@ -352,8 +363,21 @@ class TestExecuteAsyncScheduledTurnContext:
             "pins": {},
             "impersonated": False,
             "trace_id": "turn-1",
+            "turn_origin": "chat",
             "span_id": "turn-1",
         }
+
+    @pytest.mark.asyncio
+    async def test_a_workflow_blocks_turn_is_not_tagged_as_typed(self) -> None:
+        """An AutoPilot block dispatches like a typed message; what dispatched
+        the turn says nobody wrote the prompt."""
+        session = ChatSession.new("user-1", dry_run=False, origin="automation")
+        entry = _make_entry().model_copy(update={"tool_name": "autopilot_block"})
+
+        seen = await self._seen_by_the_turn(entry, session)
+
+        assert seen["turn_origin"] == "automation"
+        assert seen["unattended"] is True
 
     @pytest.mark.asyncio
     async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
@@ -450,10 +474,7 @@ async def test_turn_setup_shares_one_usage_state_read_until_the_model_answers() 
             "backend.copilot.rate_limit.get_feature_flag_value",
             new=AsyncMock(return_value=None),
         ),
-        patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ),
+        patch.object(platform_payment.settings.config, "enable_platform_payment", True),
         # The real gate, whose own reads are the ones it must share.
         patch(
             "backend.copilot.executor.processor.refusal_for",

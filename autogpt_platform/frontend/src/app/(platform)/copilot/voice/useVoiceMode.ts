@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { isMicrophonePermissionDenied } from "@/lib/microphone";
 import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
 import { primeAudioContext } from "./audioContext";
@@ -469,10 +470,10 @@ export function useVoiceMode({
       // has nobody to tell; a toast here lands on whatever page is showing.
       if (mine !== activation.current) return null;
       report(error);
-      const denied =
-        error instanceof DOMException && error.name === "NotAllowedError";
       trackVoiceMode(
-        denied ? "voice_mode_permission_denied" : "voice_mode_error",
+        isMicrophonePermissionDenied(error)
+          ? "voice_mode_permission_denied"
+          : "voice_mode_error",
         { stage: "vad_start" },
       );
       return null;

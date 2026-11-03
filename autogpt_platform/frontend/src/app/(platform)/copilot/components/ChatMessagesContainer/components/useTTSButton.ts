@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useInsertionEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 import { useTextToSpeech } from "@/components/contextual/Chat/components/ChatMessage/useTextToSpeech";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -26,7 +20,7 @@ interface Args {
 }
 
 export function useTTSButton({ text, sessionID }: Args) {
-  const cleanText = useMemo(() => stripMarkdownForSpeech(text), [text]);
+  const cleanText = stripMarkdownForSpeech(text);
   const browser = useTextToSpeech(cleanText);
   const server = useServerSpeech(cleanText, sessionID);
 

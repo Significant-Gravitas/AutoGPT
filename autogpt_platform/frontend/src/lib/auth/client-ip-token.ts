@@ -1,4 +1,6 @@
-import { environment } from "@/services/environment";
+import { getIPFromHeader } from "@better-auth/core/utils/ip";
+
+import { isForwardedForTrusted, trustedProxies } from "./client-ip";
 import { mintServiceToken } from "./service-token";
 
 export const CLIENT_IP_SCOPE = "client-ip";
@@ -32,13 +34,12 @@ export async function getClientIPToken(requestHeaders: Headers) {
   }
 }
 
-// x-forwarded-for is the visitor's address only where the proxy in front of this
-// server overwrites it: Vercel's edge does, and so does one an operator vouches for
-// with TRUST_X_FORWARDED_FOR. Next's own server keeps whatever the caller sent.
+// Through Better Auth's own resolver, so the backend counts a visitor by the same
+// address the sign-in log and the auth limits use: the first hop from the right
+// that TRUSTED_PROXIES does not list.
 function readClientIP(requestHeaders: Headers) {
-  if (!environment.isVercel() && process.env.TRUST_X_FORWARDED_FOR !== "true") {
-    return null;
-  }
-  const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return ip && /^[0-9A-Fa-f:.]{2,45}$/.test(ip) ? ip : null;
+  if (!isForwardedForTrusted()) return null;
+  const forwarded = requestHeaders.get("x-forwarded-for");
+  if (!forwarded) return null;
+  return getIPFromHeader(forwarded, { trustedProxies: trustedProxies() });
 }

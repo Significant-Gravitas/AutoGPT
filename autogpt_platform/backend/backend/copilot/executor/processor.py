@@ -8,7 +8,6 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-import subprocess
 import threading
 import time
 import uuid
@@ -43,7 +42,11 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.llm_attribution import (
+    set_turn_impersonated,
+    set_turn_origin,
+    set_turn_trace_id,
+)
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -55,7 +58,6 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.copilot.sdk.launch_env import inherited_env
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
@@ -64,9 +66,9 @@ from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_tracing import (
     MODEL_OUTPUT_CHUNKS,
     TurnTrace,
+    turn_origin,
     turn_transaction,
 )
-from backend.data.model import OAuth2Credentials
 from backend.data.user import is_user_banned
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -74,10 +76,9 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.microsoft_365_copilot.service import (
     stream_chat_completion_microsoft_365,
 )
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
-from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -442,59 +443,11 @@ class CoPilotProcessor:
         # already version-matched to the SDK package.
         os.environ.setdefault("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
 
-        # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
-        # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
-        # Read cli_path directly from env here so _prewarm_cli does not have
-        # to construct a ChatConfig() (which can raise and abort the worker).
-        # Priority: CHAT_CLAUDE_AGENT_CLI_PATH (prefixed) first, then
-        # CLAUDE_AGENT_CLI_PATH (unprefixed) — matches config.py's validator
-        # order so both paths resolve to the same binary.
-        cli_path = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH") or os.getenv(
-            "CLAUDE_AGENT_CLI_PATH"
-        )
-        self._prewarm_cli(cli_path=cli_path or None)
+        # The CLI binary is warmed once per process at executor start
+        # (``cli_warmup``), not here: this runs when a thread takes its
+        # first turn, so work here delays that turn.
 
         logger.info(f"Worker {self.tid} started")
-
-    def _prewarm_cli(self, cli_path: str | None = None) -> None:
-        """Run the Claude Code CLI binary once to warm OS page caches.
-
-        Accepts an explicit ``cli_path`` so the caller can pass the value
-        already resolved at startup rather than constructing a full
-        ``ChatConfig()`` here (which reads env vars, runs validators, and
-        can raise — aborting the worker prewarm silently).  Falls back to
-        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
-        vars (same precedence as ``ChatConfig``), and then to the SDK's
-        bundled binary when neither is set.
-        """
-        try:
-            if not cli_path:
-                from claude_agent_sdk._internal.transport.subprocess_cli import (
-                    SubprocessCLITransport,
-                )
-
-                # _find_bundled_cli is an instance method that never touches
-                # self (pure __file__-based lookup) — safe to call unbound.
-                finder = cast(
-                    Callable[[object], str | None],
-                    SubprocessCLITransport._find_bundled_cli,
-                )
-                cli_path = finder(None)
-            if cli_path:
-                result = subprocess.run(
-                    [cli_path, "-v"],
-                    capture_output=True,
-                    timeout=10,
-                    env=inherited_env(),
-                )
-                if result.returncode == 0:
-                    logger.info(f"CLI pre-warm done: {cli_path}")
-                else:
-                    logger.warning(
-                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
-                    )
-        except Exception as e:
-            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -721,6 +674,10 @@ class CoPilotProcessor:
             session = await get_chat_session(entry.session_id, entry.user_id)
             if session is None:
                 raise RuntimeError("copilot_session_not_found")
+            # Known once the session is: a workflow's AutoPilot block opens an
+            # automation chat, and a turn there was not typed by anyone.
+            origin = turn_origin(entry, session.metadata.origin)
+            turn.set_origin(origin)
             if (
                 session.metadata.llm_auth_provider != entry.llm_auth_provider
                 or session.metadata.llm_credential_id != entry.llm_credential_id
@@ -741,7 +698,7 @@ class CoPilotProcessor:
                     pause = await refusal_for(entry.user_id)
                     if pause is not None:
                         # Billed to the tenancy the turn runs under (as
-                        # streamed below), as the graph's other blocks are.
+                        # streamed below), decided when the turn starts.
                         is_expert_session = session.expert_id is not None
                         credit_turn = await bill_to_credits(
                             user_id=entry.user_id,
@@ -849,14 +806,7 @@ class CoPilotProcessor:
                         )
                     )
                     credentials = credential_lease.credentials
-                    required_scopes = set(
-                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
-                    )
-                    if (
-                        not isinstance(credentials, OAuth2Credentials)
-                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
-                        or not required_scopes.issubset(credentials.scopes)
-                    ):
+                    if not is_microsoft_365_copilot_credential(credentials):
                         raise ValueError("invalid Microsoft 365 Copilot credential")
                 except asyncio.CancelledError:
                     raise
@@ -879,7 +829,7 @@ class CoPilotProcessor:
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
-                # Choose service based on LaunchDarkly flag.
+                # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
                 config = ChatConfig()
 
@@ -933,6 +883,7 @@ class CoPilotProcessor:
             set_turn_impersonated(entry.impersonated)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
+            set_turn_origin(origin)
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
@@ -986,8 +937,9 @@ class CoPilotProcessor:
                     if scheduled_watch is not None:
                         scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
-                    # the error message (stream_and_publish yields but does
-                    # not publish StreamError — that's done by mark_session_completed).
+                    # the error message and code (stream_and_publish yields but
+                    # does not publish StreamError — that's done by
+                    # mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         error_code = chunk.code
@@ -1005,7 +957,9 @@ class CoPilotProcessor:
                 log.info("Stream cancelled by user")
 
         except BaseException as e:
-            # Handle all exceptions (including CancelledError) with appropriate logging
+            # Handle all exceptions (including CancelledError) with appropriate logging.
+            # This failure replaces any StreamError the stream ended on, code too.
+            error_code = None
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE

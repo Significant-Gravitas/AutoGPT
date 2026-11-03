@@ -26,7 +26,10 @@ import {
   shouldClearKickoffParam,
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
-import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import {
+  concatWithAssistantMerge,
+  type TurnStatsMap,
+} from "./helpers/convertChatSessionToUiMessages";
 import {
   forgetHeldFollowUp,
   rememberHeldFollowUp,
@@ -64,6 +67,15 @@ function hasAssistantTail(messages: UIMessage[]) {
     (message) => message.role === "user",
   );
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
+}
+
+function mergeTurnStats(
+  pagedTurnStats: TurnStatsMap,
+  currentTurnStats: TurnStatsMap | undefined,
+) {
+  const merged = new Map(pagedTurnStats);
+  currentTurnStats?.forEach((v, k) => merged.set(k, v));
+  return merged;
 }
 
 function readCachedSessionMessages(sessionId: string | null) {
@@ -160,14 +172,10 @@ function useCopilotPageSession() {
   // NEXT session will address, and it is absent whenever a thread is reached
   // from global search, a bookmark or a shared link.
   const activeExpertId = sessionId ? sessionExpertId : expertId;
-  const expertIdentity = useMemo(
-    () =>
-      resolveExpertIdentity(activeExpertId, expertsById, {
-        settled: hasExpertsSettled,
-        errored: hasExpertsErrored,
-      }),
-    [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
-  );
+  const expertIdentity = resolveExpertIdentity(activeExpertId, expertsById, {
+    settled: hasExpertsSettled,
+    errored: hasExpertsErrored,
+  });
   const isResolvingExpertIdentity = Boolean(
     activeExpertId && !hasExpertsSettled,
   );
@@ -308,11 +316,7 @@ function useCopilotPageChat(
   const currentTurnStats = runtimeStream
     ? runtimeStream.turnStats
     : historicalTurnStats;
-  const turnStats = useMemo(() => {
-    const merged = new Map(pagedTurnStats);
-    currentTurnStats?.forEach((v, k) => merged.set(k, v));
-    return merged;
-  }, [pagedTurnStats, currentTurnStats]);
+  const turnStats = mergeTurnStats(pagedTurnStats, currentTurnStats);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated on every commit, before any effect or handler runs, so it always
@@ -376,11 +380,16 @@ function useCopilotPageChat(
   // the current page.
   // Memoised on their inputs so the stripReplayPrefix memos below only re-run
   // when the messages actually change, not on every render once older pages
-  // are loaded.
+  // are loaded. The memos in this chain stay with the compiler on: effects
+  // here and in the chat (queued chips, voice mode, the stream snapshot)
+  // depend on the identity of the lists they produce.
   const rawMessages = useMemo(
     () => concatWithAssistantMerge(pagedMessages, currentMessages),
     [pagedMessages, currentMessages],
   );
+  // Kept as a memo: this reads the stream store outside React, which rewrites
+  // the snapshot as messages arrive; the restore view keeps the copy it read
+  // when the chat opened.
   const cachedSessionMessages = useMemo(
     () => readCachedSessionMessages(sessionId),
     [sessionId],

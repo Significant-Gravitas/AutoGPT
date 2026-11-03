@@ -38,6 +38,7 @@ from typing import Any
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
+from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
 from backend.util.request import validate_url_host
 
@@ -231,7 +232,7 @@ _session_locks: dict[str, asyncio.Lock] = {}
 _session_locks_mutex = asyncio.Lock()
 
 # Workspace filename for persisted browser state (auto-scoped to session).
-# Dot-prefixed so it is hidden from user workspace listings.
+# Written as a working file, so the user's file lists leave it out.
 _STATE_FILENAME = "._browser_state.json"
 
 # Maximum concurrent subprocesses during cookie/storage restore.
@@ -336,6 +337,7 @@ async def _save_browser_state(
             filename=_STATE_FILENAME,
             mime_type="application/json",
             overwrite=True,
+            metadata=WORKING_FILE_METADATA,
         )
     except Exception:
         logger.warning(
@@ -535,10 +537,15 @@ async def close_browser_daemon(session_name: str) -> bool:
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
-    """Shut down the local agent-browser daemon and clean up stored state.
+    """Clean up a deleted session's stored browser state, and close its
+    browser if this process runs one.
 
     Deletes ``._browser_state.json`` from workspace storage so cookies and
     other credentials do not linger after the session is deleted.
+
+    The daemon is closed only for a session in ``_touched_sessions``. For any
+    other session, ``close`` would start a daemon and launch Chromium just to
+    shut them down again.
 
     Best-effort: errors are logged but never raised.
     """
@@ -560,6 +567,8 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
                 exc_info=True,
             )
 
+    if session_name not in _touched_sessions:
+        return
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:

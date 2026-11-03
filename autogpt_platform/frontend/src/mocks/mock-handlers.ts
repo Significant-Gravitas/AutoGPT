@@ -18,12 +18,16 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
+import { getGetPlatformConfigMockHandler } from "@/app/api/__generated__/endpoints/platform-config/platform-config.msw";
 import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
-import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getExpertsMock,
+  getGetExpertOnboardingMockHandler200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -47,8 +51,13 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No published releases unless a test provides some.
+  http.get("/api/changelog", () => HttpResponse.text("")),
+  http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
+  // Payment off unless a test turns it on.
+  getGetPlatformConfigMockHandler({ payment_enabled: false }),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),
@@ -85,6 +94,9 @@ export const mockHandlers = [
   ...getExecutionsMock(),
   // Nobody is enrolled by default, so every test sees the control experience.
   getGetExperimentsGetExperimentAssignmentMockHandler(null),
+  // No setup questions waiting unless a test sets some up; a random chat id
+  // would pull every empty expert chat into that chat.
+  getGetExpertOnboardingMockHandler200(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),

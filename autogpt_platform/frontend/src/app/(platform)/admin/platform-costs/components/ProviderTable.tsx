@@ -19,8 +19,8 @@ interface Props {
 function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+      <table className="w-full text-left text-body">
+        <thead className="border-b text-caption text-muted-foreground uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               Provider
@@ -62,7 +62,10 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               className="px-4 py-3 text-right"
               title="Per-session only"
             >
-              Rate <span className="text-[10px] font-normal">(unsaved)</span>
+              {"Rate "}
+              <span className="text-tiny leading-inherit font-normal">
+                (unsaved)
+              </span>
             </th>
           </tr>
         </thead>
@@ -122,7 +125,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         step="0.0001"
                         min="0"
                         aria-label={`Rate for ${row.provider} (${tt})`}
-                        className="w-24 rounded border px-2 py-1 text-right text-xs"
+                        className="w-24 rounded border px-2 py-1 text-right text-caption"
                         placeholder={fallback !== null ? String(fallback) : "0"}
                         value={currentRate ?? ""}
                         onChange={(e) => {
@@ -133,14 +136,16 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
                         }}
                       />
                       <span
-                        className="text-[10px] text-muted-foreground"
+                        className="text-tiny leading-inherit text-muted-foreground"
                         title={rateUnitLabel(tt)}
                       >
                         {rateUnitLabel(tt)}
                       </span>
                     </div>
                   ) : (
-                    <span className="text-xs text-muted-foreground">auto</span>
+                    <span className="text-caption text-muted-foreground">
+                      auto
+                    </span>
                   )}
                 </td>
               </tr>

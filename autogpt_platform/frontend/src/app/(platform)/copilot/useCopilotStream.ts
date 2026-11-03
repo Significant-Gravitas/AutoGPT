@@ -34,6 +34,7 @@ import {
   deduplicateMessages,
   extractSendMessageText,
   extractSendMessageAttachments,
+  getEffectiveChatStatus,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -147,6 +148,8 @@ export function useCopilotStream({
     setRateLimitMessage(null);
     setPlatformLimitFailure(null);
   }
+  // Kept as a memo: taking the runtime can reset a stale one, so it must run
+  // once per session, not whenever the compiler would recompute it.
   const chatRuntime = useMemo(
     () => (sessionId ? takeCopilotChatRuntime(sessionId) : null),
     [sessionId],
@@ -194,12 +197,16 @@ export function useCopilotStream({
   // resumeStream" is resolved by deferring both through refs.
   const resumeStreamRef = useRef<() => void>(() => {});
   const handleReconnectRef = useRef<() => void>(() => {});
+  // Resumes asked for and not yet over. AI SDK 7 reports a resume only once
+  // its GET has returned a stream; until then the turn being resumed still
+  // counts as in flight, so a held follow-up cannot go out beside it.
+  const [pendingResumes, setPendingResumes] = useState(0);
 
   const {
     messages: rawMessages,
     sendMessage: sdkSendMessage,
     stop: sdkStop,
-    status,
+    status: sdkStatus,
     error,
     setMessages,
     resumeStream,
@@ -212,6 +219,11 @@ export function useCopilotStream({
       : {
           id: "new",
         },
+  );
+  const status = getEffectiveChatStatus(
+    sdkStatus,
+    rawMessages,
+    pendingResumes > 0,
   );
 
   useEffect(() => {
@@ -519,7 +531,8 @@ export function useCopilotStream({
       }
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
-    resumeStream();
+    setPendingResumes((count) => count + 1);
+    void resumeStream().finally(() => setPendingResumes((count) => count - 1));
   }
   const sessionIdRef = useRef(sessionId);
 
@@ -566,7 +579,13 @@ export function useCopilotStream({
       isReconnectScheduled: reconnectScheduledRef.current,
       lastSubmittedText: coord?.lastSubmittedMessageText ?? null,
       messages: chatRuntime?.chat.messages ?? rawMessages,
-      status: chatRuntime?.chat.status ?? status,
+      status: chatRuntime
+        ? getEffectiveChatStatus(
+            chatRuntime.chat.status,
+            chatRuntime.chat.messages,
+            pendingResumes > 0,
+          )
+        : status,
     });
 
     if (suppressReason === "reconnecting") {
@@ -602,7 +621,9 @@ export function useCopilotStream({
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
   // Memoised so `messages` keeps its identity across renders that did not
-  // change the chat, instead of being a new array every render.
+  // change the chat, instead of being a new array every render. Kept with the
+  // compiler on: the snapshot effect below, and the page's effects, depend on
+  // this array.
   const messages = useMemo(
     () => deduplicateMessages(rawMessages),
     [rawMessages],
@@ -675,18 +696,7 @@ export function useCopilotStream({
   // watchdog. Counts messages, the last message's parts, and the total
   // text length on the last message so in-place part updates (token
   // streaming) also tick the signal.
-  const streamActivityToken = useMemo(() => {
-    const last = rawMessages[rawMessages.length - 1];
-    let textLen = 0;
-    if (last) {
-      for (const part of last.parts) {
-        if ("text" in part && typeof part.text === "string") {
-          textLen += part.text.length;
-        }
-      }
-    }
-    return `${rawMessages.length}:${last?.parts.length ?? 0}:${textLen}`;
-  }, [rawMessages]);
+  const streamActivityToken = getStreamActivityToken(rawMessages);
 
   const stopSdkStream = sdkStopStream(sdkStop, setMessages);
   const stop = useCopilotStop({
@@ -939,7 +949,10 @@ export function useCopilotStream({
     sendMessage,
     stop,
     status,
-    error: isReconnecting || isUserStopping ? undefined : error,
+    error:
+      isReconnecting || isUserStopping || pendingResumes > 0
+        ? undefined
+        : error,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,
@@ -960,4 +973,17 @@ export function useCopilotStream({
     },
     dismissRateLimit,
   };
+}
+
+function getStreamActivityToken(messages: UIMessage[]) {
+  const last = messages[messages.length - 1];
+  let textLen = 0;
+  if (last) {
+    for (const part of last.parts) {
+      if ("text" in part && typeof part.text === "string") {
+        textLen += part.text.length;
+      }
+    }
+  }
+  return `${messages.length}:${last?.parts.length ?? 0}:${textLen}`;
 }
