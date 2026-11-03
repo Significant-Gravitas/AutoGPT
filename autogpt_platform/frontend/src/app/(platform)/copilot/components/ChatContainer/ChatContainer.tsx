@@ -145,6 +145,8 @@ export interface ChatContainerProps {
   /** Which layout floats its controls over the chat's top-left corner on
    *  small viewports; the thread header lines up with them. */
   floatingControls?: FloatingControls;
+  /** The chat runs on the user's Local PC, so it has no cloud computer. */
+  isLocalSession?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -194,6 +196,7 @@ export const ChatContainer = ({
   isKickoffStarting,
   onBackendTurn,
   floatingControls,
+  isLocalSession = false,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -513,6 +516,7 @@ export const ChatContainer = ({
                   sessionId={sessionId}
                   expert={chatExpert}
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
+                  hideComputer={isLocalSession}
                 />
               </div>
               <ChatMessagesContainer

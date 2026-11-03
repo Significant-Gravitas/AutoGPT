@@ -5038,6 +5038,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "The chat runs on a Local PC, not in a cloud box"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

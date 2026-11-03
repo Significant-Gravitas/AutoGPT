@@ -1330,6 +1330,7 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        409: {"description": "The chat runs on a Local PC, not in a cloud box"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1347,6 +1348,13 @@ async def start_session_desktop(
     # expert's box (the archive already killed it, and nothing would kill
     # the new one).
     session = await _validate_and_get_writable_session(session_id, user_id)
+    # A Local PC chat's commands run on the user's computer; a cloud box here
+    # would be a second machine the panel calls the chat's own.
+    if session.metadata.execution_target.kind == "local":
+        raise HTTPException(
+            status_code=409,
+            detail="This chat runs on your Local PC, so it has no cloud desktop.",
+        )
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
         raise HTTPException(

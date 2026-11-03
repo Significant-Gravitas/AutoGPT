@@ -5788,6 +5788,37 @@ def test_start_session_desktop_without_e2b_is_503(
     assert client.post("/sessions/sess-1/desktop").status_code == 503
 
 
+def test_start_session_desktop_is_refused_for_a_local_pc_chat(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Local PC chat's commands run on the user's computer, so the panel must
+    not start a cloud box and show it as that chat's machine."""
+    session = _session_like(None)
+    session.metadata.execution_target = chat_routes.LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    open_desktop = mocker.patch(
+        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+    )
+
+    response = client.post("/sessions/sess-1/desktop")
+
+    assert response.status_code == 409
+    assert "Local PC" in response.json()["detail"]
+    open_desktop.assert_not_awaited()
+
+
 def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

@@ -6,6 +6,7 @@ import pytest
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH, DesktopStream
 from backend.blocks.desktop._common import expert_volume_name, user_volume_name
+from backend.copilot.model import LocalExecutionTargetMetadata
 
 from ._test_data import make_session
 from .models import DesktopStreamToolResponse, ErrorResponse
@@ -108,6 +109,25 @@ class TestStartDesktop:
             result = await tool._execute(user_id=_USER, session=session)
         assert isinstance(result, ErrorResponse)
         assert result.error == "e2b_unconfigured"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_local_pc_chat_never_starts_a_cloud_box(self):
+        tool = StartDesktopTool()
+        session = make_session(user_id=_USER)
+        session.metadata.execution_target = LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        )
+        box = _Box()
+
+        result = await _run(tool, box, user_id=_USER, session=session)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "local_pc_session"
+        box.get_box.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_turns_the_screen_on_in_the_sessions_box(self):

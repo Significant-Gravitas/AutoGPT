@@ -204,6 +204,7 @@ function ChatHostView({
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
           floatingControls={floatingControls}
+          isLocalSession={isLocalSession}
         />
       </div>
       <RateLimitGate

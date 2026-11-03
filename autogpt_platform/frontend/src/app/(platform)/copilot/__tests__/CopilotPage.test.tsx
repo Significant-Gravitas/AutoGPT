@@ -16,7 +16,12 @@ vi.mock("@/providers/onboarding/onboarding-provider", () => ({
 
 // Mock child components that are complex and not under test here
 vi.mock("../components/ChatContainer/ChatContainer", () => ({
-  ChatContainer: () => <div data-testid="chat-container" />,
+  ChatContainer: ({ isLocalSession }: { isLocalSession?: boolean }) => (
+    <div
+      data-testid="chat-container"
+      data-local-session={String(!!isLocalSession)}
+    />
+  ),
 }));
 vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
   DeleteChatDialog: () => null,
@@ -292,6 +297,10 @@ describe("CopilotPage test-mode banner", () => {
     render(<CopilotPage />);
 
     expect(screen.getByTestId("local-pc-computer-use-consent")).toBeDefined();
+    // The chat gets no Computer toggle: a cloud box is not its machine.
+    expect(screen.getByTestId("chat-container").dataset.localSession).toBe(
+      "true",
+    );
   });
 
   it("does not mount computer-use consent for an established Cloud session", () => {
@@ -306,5 +315,8 @@ describe("CopilotPage test-mode banner", () => {
     render(<CopilotPage />);
 
     expect(screen.queryByTestId("local-pc-computer-use-consent")).toBeNull();
+    expect(screen.getByTestId("chat-container").dataset.localSession).toBe(
+      "false",
+    );
   });
 });

@@ -2864,9 +2864,9 @@ class TestHiddenShortNamesForPermissions:
 @pytest.mark.parametrize(
     ("platform", "capabilities", "expected"),
     [
-        ("linux", ["files"], {"bash_exec", "grep"}),
-        ("windows", ["files", "shell"], {"grep"}),
-        ("darwin", ["files", "shell"], set()),
+        ("linux", ["files"], {"bash_exec", "grep", "start_desktop"}),
+        ("windows", ["files", "shell"], {"grep", "start_desktop"}),
+        ("darwin", ["files", "shell"], {"start_desktop"}),
     ],
 )
 def test_local_pc_shell_tools_follow_hello_capabilities(

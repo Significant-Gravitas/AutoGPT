@@ -76,6 +76,17 @@ class StartDesktopTool(BaseTool):
                 message="No active session to turn a screen on for.",
                 error="session_unavailable",
             )
+        # Local PC turns never register this tool; this guards every other
+        # way in, since a cloud box is not the machine this chat runs on.
+        if session.metadata.execution_target.kind == "local":
+            return ErrorResponse(
+                message=(
+                    "This chat runs on the user's Local PC, so there is no "
+                    "cloud desktop to turn on."
+                ),
+                error="local_pc_session",
+                session_id=session_id,
+            )
         api_key = chat_config.active_e2b_api_key
         if not api_key:
             return ErrorResponse(
