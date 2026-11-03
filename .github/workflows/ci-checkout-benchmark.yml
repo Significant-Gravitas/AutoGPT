@@ -1,68 +1,54 @@
-name: Paired CI gate checkout
+name: Validate sparse report gates
 on:
   push:
     branches: [codex/ci-checkout-benchmark-20261103-1702]
 permissions:
   contents: read
+  actions: read
 jobs:
-  compare:
-    name: Gate checkout (${{ matrix.order }})
+  reports:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        order: [whole-first, sparse-first]
     steps:
-      - name: Start checkout 1
-        run: echo "BENCHMARK_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Checkout 1
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: a208edc6689e71f8a499f1a97c81e7d10ae5c06e
-          path: checkout-1
-          filter: blob:none
-          fetch-depth: 0
+          sparse-checkout: .github
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: ${{ matrix.order == 'sparse-first' && format('/.github/{0}/autogpt_platform/backend/poetry.lock', fromJSON('"\n"')) || '' }}
-      - name: Measure checkout 1 and verify the complete selector
-        env:
-          MODE: ${{ matrix.order == 'sparse-first' && 'sparse' || 'whole' }}
-        working-directory: checkout-1
+      - name: Run report and sparse selection contracts
         run: |
-          elapsed=$(($(date +%s)-BENCHMARK_STARTED))
-          echo "::notice title=checkout-comparison::{\"order\":\"${{ matrix.order }}\",\"mode\":\"$MODE\",\"seconds\":$elapsed}"
-          git count-objects -v
-          if [[ "$MODE" == sparse ]]; then
-            test ! -d docs
-            test ! -d autogpt_platform/frontend
-            test -f autogpt_platform/backend/poetry.lock
-          fi
-          python3 -m unittest discover -s .github/scripts -p test_ci_affected.py -v
-      - name: Start checkout 2
-        run: echo "BENCHMARK_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Checkout 2
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+          test ! -d autogpt_platform
+          test ! -d docs
+          python3 -m venv "$RUNNER_TEMP/gate-tests"
+          "$RUNNER_TEMP/gate-tests/bin/pip" install PyYAML==6.0.3
+          for pattern in test_ci_affected.py test_validate_backend_skips.py test_validate_junit.py test_validate_cobertura.py test_verify_smoke_shards.py; do
+            "$RUNNER_TEMP/gate-tests/bin/python" -m unittest discover -s .github/scripts -p "$pattern" -v
+          done
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          ref: a208edc6689e71f8a499f1a97c81e7d10ae5c06e
-          path: checkout-2
-          filter: blob:none
-          fetch-depth: 0
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: ${{ matrix.order == 'whole-first' && format('/.github/{0}/autogpt_platform/backend/poetry.lock', fromJSON('"\n"')) || '' }}
-      - name: Measure checkout 2 and verify the complete selector
-        env:
-          MODE: ${{ matrix.order == 'whole-first' && 'sparse' || 'whole' }}
-        working-directory: checkout-2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 41682459760
+          pattern: backend-test-reports-py*
+          path: backend-shard-reports
+      - name: Verify all 62 real backend reports
+        run: python3 .github/scripts/validate_backend_skips.py --allow-skips-from .github/scripts/backend-allowed-skips.json --reports-dir backend-shard-reports --partitioned
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 41682459760
+          pattern: playwright-test-results-smoke-*
+          path: smoke-reports
+      - name: Verify complete real smoke inventory and shard union
+        run: python3 .github/scripts/verify_smoke_shards.py shards smoke-reports
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 41682459760
+          pattern: frontend-integration-shard-*-of-16
+          path: frontend-shard-reports
+      - name: Verify all 16 real frontend reports
         run: |
-          elapsed=$(($(date +%s)-BENCHMARK_STARTED))
-          echo "::notice title=checkout-comparison::{\"order\":\"${{ matrix.order }}\",\"mode\":\"$MODE\",\"seconds\":$elapsed}"
-          git count-objects -v
-          if [[ "$MODE" == sparse ]]; then
-            test ! -d docs
-            test ! -d autogpt_platform/frontend
-            test -f autogpt_platform/backend/poetry.lock
-          fi
-          python3 -m unittest discover -s .github/scripts -p test_ci_affected.py -v
+          for shard in $(seq 1 16); do
+            report="frontend-shard-reports/frontend-integration-shard-${shard}-of-16"
+            python3 .github/scripts/validate_junit.py --require-no-skips "$report/junit.xml"
+            python3 .github/scripts/validate_cobertura.py "$report/coverage/cobertura-coverage.xml"
+          done
