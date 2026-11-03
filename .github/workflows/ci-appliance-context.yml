@@ -1,0 +1,77 @@
+name: Inspect appliance build context
+'on':
+  push:
+    branches:
+    - codex/ci-appliance-context-20261103-1909
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout-cone-mode: false
+        sparse-checkout: '/*
+
+          !/docs/platform/.gitbook/assets/*.png
+
+          !/docs/platform/.gitbook/assets/*.gif
+
+          '
+    - name: Snapshot frontend before appliance helper tests
+      env:
+        SNAPSHOT_PHASE: before
+      run: "python3 - <<'PY'\nimport hashlib, json, os, stat, subprocess\nfrom pathlib import Path\nroot=Path('autogpt_platform/frontend')\n\
+        data={}\nfor p in root.rglob('*'):\n    st=p.lstat()\n    if p.is_symlink(): content=os.readlink(p)\n\
+        \    elif p.is_file(): content=hashlib.sha256(p.read_bytes()).hexdigest()\n    else: content=None\n\
+        \    data[str(p)]={'mode':stat.S_IMODE(st.st_mode),'uid':st.st_uid,'gid':st.st_gid,'content':content}\n\
+        out=Path(os.environ['RUNNER_TEMP'])/'context-audit'\nout.mkdir(exist_ok=True)\n(out/(os.environ['SNAPSHOT_PHASE']+'.json')).write_text(json.dumps(data,sort_keys=True))\n\
+        if os.environ['SNAPSHOT_PHASE']=='after':\n    before=json.loads((out/'before.json').read_text())\n\
+        \    changes={p:{'before':before.get(p),'after':data.get(p)} for p in before.keys()|data.keys()\
+        \ if before.get(p)!=data.get(p)}\n    print('Frontend context mutations:',json.dumps(changes,sort_keys=True))\n\
+        \    subprocess.run(['git','status','--short'],check=True)\nPY\n"
+    - name: Initialize validation reports
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
+        \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
+        \n"
+    - name: Test appliance runtime helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
+        --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+        --output "$REPORT_DIR/runtime-helpers.xml"
+    - name: Test publication helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
+        --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
+        self-test
+    - name: Snapshot frontend after appliance helper tests
+      env:
+        SNAPSHOT_PHASE: after
+      run: "python3 - <<'PY'\nimport hashlib, json, os, stat, subprocess\nfrom pathlib import Path\nroot=Path('autogpt_platform/frontend')\n\
+        data={}\nfor p in root.rglob('*'):\n    st=p.lstat()\n    if p.is_symlink(): content=os.readlink(p)\n\
+        \    elif p.is_file(): content=hashlib.sha256(p.read_bytes()).hexdigest()\n    else: content=None\n\
+        \    data[str(p)]={'mode':stat.S_IMODE(st.st_mode),'uid':st.st_uid,'gid':st.st_gid,'content':content}\n\
+        out=Path(os.environ['RUNNER_TEMP'])/'context-audit'\nout.mkdir(exist_ok=True)\n(out/(os.environ['SNAPSHOT_PHASE']+'.json')).write_text(json.dumps(data,sort_keys=True))\n\
+        if os.environ['SNAPSHOT_PHASE']=='after':\n    before=json.loads((out/'before.json').read_text())\n\
+        \    changes={p:{'before':before.get(p),'after':data.get(p)} for p in before.keys()|data.keys()\
+        \ if before.get(p)!=data.get(p)}\n    print('Frontend context mutations:',json.dumps(changes,sort_keys=True))\n\
+        \    subprocess.run(['git','status','--short'],check=True)\nPY\n"
+    - name: Retain metadata
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: appliance-context-metadata
+        path: ${{ runner.temp }}/context-audit
+        retention-days: 3
