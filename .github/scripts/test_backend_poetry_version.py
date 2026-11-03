@@ -32,9 +32,9 @@ class BackendPoetryVersionTests(unittest.TestCase):
         step = next(
             step
             for step in workflow["jobs"]["test"]["steps"]
-            if step.get("name") == "Install Poetry"
+            if step.get("name") == "Select Poetry version"
         )
-        self.select_version = step["run"].split("# Install Poetry", 1)[0]
+        self.select_version = step["run"]
 
     def git(self, directory, *args):
         return subprocess.run(
@@ -71,6 +71,7 @@ class BackendPoetryVersionTests(unittest.TestCase):
                 **os.environ,
                 "BASE_REF": base_ref,
                 "BASE_SHA": base_sha,
+                "GITHUB_OUTPUT": (Path(self.directory.name) / "output").as_posix(),
                 "PATH": str(Path(sys.executable).parent)
                 + os.pathsep
                 + os.environ["PATH"],

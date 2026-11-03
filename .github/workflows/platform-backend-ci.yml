@@ -11,6 +11,7 @@ on:
       - ".github/scripts/test_ci_affected.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - ".github/scripts/test_backend_poetry_version.py"
+      - ".github/scripts/install_backend_ci.sh"
       - ".github/workflows/scripts/check_actions_status.py"
       - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
@@ -130,6 +131,11 @@ jobs:
         run: >-
           poetry run python -m unittest discover
           -s ../../.github/scripts -p 'test_validate_backend_skips.py'
+
+      - name: Test backend Poetry selection against pinned Git revisions
+        run: >-
+          poetry run python -m unittest discover
+          -s ../../.github/scripts -p 'test_backend_poetry_version.py'
 
       - name: Test weighted shard collection
         run: >-
@@ -561,13 +567,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Set up Python dependency cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
-
-      - name: Install Poetry
+      - name: Select Poetry version
+        id: poetry-version
         run: |
           # Extract Poetry version from backend/poetry.lock
           HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
@@ -591,19 +592,24 @@ jobs:
           fi
           echo "Using Poetry version ${POETRY_VERSION}"
 
-          # Install Poetry
-          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
-
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            PATH="$HOME/.local/bin:$PATH"
-            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          fi
+          echo "version=$POETRY_VERSION" >> "$GITHUB_OUTPUT"
         env:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
 
-      - name: Install Python dependencies
-        run: poetry install
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      - name: Install Python dependencies from the Poetry lock
+        run: bash ../../.github/scripts/install_backend_ci.sh
+        env:
+          POETRY_VERSION: ${{ steps.poetry-version.outputs.version }}
+          UV_CACHE_DIR: ${{ runner.temp }}/backend-uv-cache
+          UV_TOOL_DIR: ${{ runner.temp }}/backend-uv-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/backend-uv-bin
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub

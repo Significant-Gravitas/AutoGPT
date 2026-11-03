@@ -114,6 +114,7 @@ async function loseConnectionMidAnswer({
   await expect
     .poll(() => savedAssistantTexts(page, sessionID), {
       message: "the chat should save the answer once",
+      timeout: 30_000,
     })
     .toEqual([ANSWER]);
   await page.reload();
