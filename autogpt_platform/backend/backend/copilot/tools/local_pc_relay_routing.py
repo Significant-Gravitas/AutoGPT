@@ -84,7 +84,18 @@ class RelayResponseRouter:
             if reply_id in active
         }
         for reply_id in active:
-            await self._append(raw, reply_id)
+            try:
+                await self._append(raw, reply_id)
+            except RelayBacklogExceeded:
+                # STATUS is advisory. A full reply stream belongs to a worker
+                # that stopped reading; ending the shim connection over it
+                # would drop every other worker's requests. Stop broadcasting
+                # to it until it shows activity again.
+                self._reply_activity.pop(reply_id, None)
+                logger.warning(
+                    "Skipping STATUS for a full Local PC reply stream %s",
+                    reply_id[:8],
+                )
 
     async def _route_recording_step(self, raw: str, message: dict[str, Any]) -> None:
         recording_id = message["payload"].get("recording_id")

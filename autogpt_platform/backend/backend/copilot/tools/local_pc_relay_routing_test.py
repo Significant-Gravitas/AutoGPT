@@ -93,3 +93,43 @@ async def test_expired_request_correlation_is_pruned(
 
     with pytest.raises(ValueError, match="no outstanding request"):
         await router.route(json.dumps(late), late)
+
+
+@pytest.mark.asyncio
+async def test_status_broadcast_survives_a_reply_stream_nobody_drains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker that finished its request and stopped reading leaves a reply
+    stream that fills up. STATUS is advisory, so that full stream must not end
+    the shim connection for everyone else, and stops receiving broadcasts."""
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    finished, live = "a" * 32, "b" * 32
+    router.register_request(_message("FILE_READ", "request-1"), finished)
+    done = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
+    await router.route(json.dumps(done), done)
+    router.register_request(_message("FILE_READ", "request-2"), live)
+
+    full_key = response_stream_key("session-1", "connection-1", finished)
+    attempts: list[str] = []
+    real_append = relay_routing.append_response
+
+    async def append(redis_: Any, key: str, raw: str) -> None:
+        attempts.append(key)
+        if key == full_key:
+            raise RelayBacklogExceeded("full")
+        await real_append(redis_, key, raw)
+
+    monkeypatch.setattr(relay_routing, "append_response", append)
+
+    status = _message("STATUS", "status-1", {"pending_capacity": 2})
+    await router.route(json.dumps(status), status)
+    await router.route(json.dumps(status), status)
+
+    live_key = response_stream_key("session-1", "connection-1", live)
+    assert [
+        json.loads(fields["envelope"])["type"] for _, fields in redis.streams[live_key]
+    ] == ["STATUS", "STATUS"]
+    assert attempts.count(full_key) == 1
