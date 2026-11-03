@@ -50,7 +50,8 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
               <Icon
                 icon={ArrowRight01Icon}
                 size={14}
-                className="shrink-0 transition-transform group-data-[state=open]:rotate-90"
+                motion="transform"
+                className="shrink-0 group-data-[state=open]:rotate-90"
               />
             )}
             Reasoning

@@ -63,8 +63,9 @@ export function SampleCard({
           <Icon
             icon={CheckmarkCircle02Icon}
             size={18}
+            tone={labelClassName ? undefined : "brand"}
             // oxlint-disable-next-line design-system/require-static-classes -- the accent colour class comes from the caller (an expert's colour)
-            className={cn("shrink-0", labelClassName ?? "text-accent")}
+            className={cn("shrink-0", labelClassName)}
           />
         ) : null}
       </div>

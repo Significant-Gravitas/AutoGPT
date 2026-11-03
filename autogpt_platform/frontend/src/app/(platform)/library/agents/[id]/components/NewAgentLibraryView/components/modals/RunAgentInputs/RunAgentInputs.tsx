@@ -332,10 +332,10 @@ export function RunAgentInputs({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="small"
+                        size="icon-sm"
+                        shape="pill"
                         onClick={() => removeRow(rowIndex)}
-                        // oxlint-disable-next-line design-system/no-restyle -- a 32px round remove button; icon-sm would make its hover a rounded square
-                        className="h-8 w-8 p-0"
+                        className="min-w-[5.5rem]"
                       >
                         <Icon icon={Cancel01Icon} className="h-4 w-4" />
                       </Button>

@@ -56,7 +56,7 @@ function captureRequests() {
   server.use(
     getPostV2SubmitMessageFeedbackMockHandler200(async ({ request }) => {
       bodies.push((await request.json()) as MessageFeedbackRequest);
-      return { id: "feedback-1", langfuse_target: "trace" };
+      return { id: "feedback-1" };
     }),
   );
   return bodies;
@@ -105,7 +105,7 @@ describe("AssistantMessageActions feedback", () => {
       getPostV2SubmitMessageFeedbackMockHandler200(async ({ request }) => {
         bodies.push((await request.json()) as MessageFeedbackRequest);
         await responseHeld;
-        return { id: "feedback-1", langfuse_target: "trace" };
+        return { id: "feedback-1" };
       }),
     );
     render(

@@ -43,7 +43,7 @@ export function RenewalDetails({ terms }: Props) {
         >
           Full renewal terms
         </summary>
-        <Text variant="small" tone="secondary" className="mt-3 leading-relaxed">
+        <Text variant="small-relaxed" tone="secondary" className="mt-3">
           {terms.renewal_terms}
         </Text>
         {terms.renewal_tax?.rates?.map((rate, index) => (

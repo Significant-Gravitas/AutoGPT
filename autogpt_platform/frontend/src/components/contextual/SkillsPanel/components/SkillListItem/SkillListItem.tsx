@@ -50,11 +50,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-accent-surface">
-          <Icon
-            icon={BookOpen01Icon}
-            size={18}
-            className="text-accent-strong"
-          />
+          <Icon icon={BookOpen01Icon} size={18} tone="accent" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
