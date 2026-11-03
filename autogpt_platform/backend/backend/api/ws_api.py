@@ -4,6 +4,7 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -95,6 +96,10 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         if exc.status_code == 503:
             await _close_authentication_failure(
                 websocket, code=1013, reason="Authentication service unavailable"
+            )
+        elif exc.status_code == 403 and exc.detail == ACCOUNT_BANNED_DETAIL:
+            await _close_authentication_failure(
+                websocket, code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned"
             )
         else:
             await _close_authentication_failure(

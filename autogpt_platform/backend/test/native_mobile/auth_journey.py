@@ -147,7 +147,7 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "change", ["expire", "ban", "past_ban", "future_ban", "change_owner"]
+    "change", ["expire", "ban", "revoked_ban", "past_ban", "future_ban", "change_owner"]
 )
 async def test_backend_rechecks_session_authority(
     auth_service: tuple[AsyncClient, str], change: str
@@ -163,19 +163,21 @@ async def test_backend_rechecks_session_authority(
             where={"userId": user.id},
             data={"expiresAt": datetime.now(timezone.utc) - timedelta(seconds=1)},
         )
-    elif change in {"ban", "past_ban", "future_ban"}:
+    elif change in {"ban", "revoked_ban", "past_ban", "future_ban"}:
         await AuthUser.prisma().update(
             where={"id": user.id},
             data={
                 "banned": True,
                 "banExpires": (
                     None
-                    if change == "ban"
+                    if change in {"ban", "revoked_ban"}
                     else datetime.now(timezone.utc)
                     + timedelta(seconds=-60 if change == "past_ban" else 60)
                 ),
             },
         )
+        if change == "revoked_ban":
+            await AuthSession.prisma().delete_many(where={"userId": user.id})
     else:
         second_email = f"{prefix}-second@example.test"
         await sign_in_native(client, second_email)
@@ -187,11 +189,14 @@ async def test_backend_rechecks_session_authority(
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://backend"
     ) as backend:
-        assert (
-            await backend.get(
-                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
-            )
-        ).status_code == (200 if change == "past_ban" else 401)
+        response = await backend.get(
+            "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+        )
+        if change in {"ban", "revoked_ban", "future_ban"}:
+            assert response.status_code == 403
+            assert response.json()["detail"]["code"] == "account_banned"
+        else:
+            assert response.status_code == (200 if change == "past_ban" else 401)
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import pytest_asyncio
 import uvicorn
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException, WebSocket
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
@@ -55,6 +56,7 @@ async def websocket_server(
     [
         ("unavailable", 1013, "Authentication service unavailable"),
         ("revoked", 4003, "Session expired or revoked"),
+        ("banned", 4004, "Banned"),
         ("invalid-token", 4003, "Invalid token"),
         ("missing-sub", 4002, "Invalid token"),
         ("missing-token", 4001, "Missing authentication token"),
@@ -74,6 +76,8 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
     validate = AsyncMock()
     if failure in {"unavailable", "revoked"}:
         validate.side_effect = HTTPException(503 if failure == "unavailable" else 401)
+    elif failure == "banned":
+        validate.side_effect = HTTPException(403, detail=ACCOUNT_BANNED_DETAIL)
     monkeypatch.setattr(ws_api, "parse_jwt_token_async", parse)
     monkeypatch.setattr(ws_api, "require_active_auth_session", validate)
     track_connection = Mock()

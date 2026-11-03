@@ -3,9 +3,11 @@ import logging
 from time import time
 from typing import Any
 
+from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from backend.data import user as user_store
 from backend.data.db_accessors import auth_session_db
 from backend.util.settings import Settings
 
@@ -32,9 +34,11 @@ async def require_active_auth_session(payload: dict[str, Any]) -> None:
         raise HTTPException(status_code=401, detail="Invalid session token") from exc
     try:
         active = await asyncio.wait_for(
-            auth_session_db().is_auth_session_active(claims.sid, claims.sub),
+            _session_is_active(claims),
             timeout=_SESSION_LOOKUP_TIMEOUT,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning("Auth session lookup unavailable (%s)", type(exc).__name__)
         raise HTTPException(
@@ -44,3 +48,9 @@ async def require_active_auth_session(payload: dict[str, Any]) -> None:
         ) from exc
     if not active:
         raise HTTPException(status_code=401, detail="Session expired or revoked")
+
+
+async def _session_is_active(claims: SessionTokenClaims) -> bool:
+    if await user_store.is_user_banned(claims.sub):
+        raise HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    return await auth_session_db().is_auth_session_active(claims.sid, claims.sub)
