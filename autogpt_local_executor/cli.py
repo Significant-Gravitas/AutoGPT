@@ -92,6 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="autogpt-shim",
         description="EXPERIMENTAL: AutoGPT Local PC Executor shim",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_installed_version()}")
     parser.add_argument(
         "--allowed-root",
         type=Path,
@@ -164,7 +165,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Reserved design-preview flag; currently fails startup closed on every OS.",
     )
-    sub.add_parser("status", help="Show connection + autostart status")
+    sub.add_parser("status", help="Show the configuration and autostart status")
     sub.add_parser("revoke", help="Revoke tokens and disconnect")
     sub.add_parser(
         "doctor",
@@ -211,6 +212,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _installed_version() -> str:
+    """The installed distribution's version, which releases are tagged with;
+    the package's own `__version__` when running from a source tree."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("autogpt-local-executor")
+    except PackageNotFoundError:
+        from . import __version__
+
+        return __version__
 
 
 def _build_config(args):
@@ -293,8 +307,7 @@ async def _cmd_start(config) -> int:
 
 
 def _cmd_status(config, args) -> None:
-    # TODO: check pidfile / unix socket for running daemon status.
-    print("Status check not yet implemented.")
+    print("This shows the configuration; your service manager reports whether the daemon runs.")
     print(f"Configured platform: {config.platform_url}")
     if config.session_id and config.session_id.strip():
         print(f"Legacy session: {config.session_id.strip()}")
@@ -422,8 +435,9 @@ def _audit_tail(path: Path) -> int:
 
 
 def _audit_show(current: Path, seq: int) -> int:
-    """Find one record by seq across current + rotated files and pretty-print
-    it. Useful for jumping to a specific event referenced in a bug report
+    """Print every record with this seq across current + rotated files. seq
+    restarts at 1 in each file, so each match is printed with its file name.
+    Useful for jumping to a specific event referenced in a bug report
     without leaving the terminal."""
     import json
 
@@ -433,6 +447,7 @@ def _audit_show(current: Path, seq: int) -> int:
     if current.is_file():
         candidates.append(current)
     candidates.extend(list_rotated_files(current))
+    found = False
     for path in candidates:
         with open(path, "rb") as f:
             for raw in f:
@@ -445,9 +460,11 @@ def _audit_show(current: Path, seq: int) -> int:
                 if rec.get("seq") == seq:
                     print(f"# from {path.name}")
                     print(json.dumps(rec, indent=2, ensure_ascii=False))
-                    return 0
-    print(f"No record with seq={seq} in {current} or rotated files.")
-    return 1
+                    found = True
+    if not found:
+        print(f"No record with seq={seq} in {current} or rotated files.")
+        return 1
+    return 0
 
 
 def _audit_verify(current: Path) -> int:
@@ -559,7 +576,11 @@ def _audit_rotate(current: Path) -> int:
         print(f"Could not load audit key: {exc}")
         return 2
     writer = AuditWriter(path=current, audit_key=key)
-    rotated = writer.force_rotate()
+    try:
+        rotated = writer.force_rotate()
+    except OSError as exc:
+        print(f"Could not rotate {current}: {exc}")
+        return 1
     if rotated is None:
         print("Audit log was empty; nothing to rotate.")
         return 0
@@ -600,7 +621,11 @@ def _audit_prune(current: Path, older_than: str) -> int:
             lines = [ln for ln in tail.split(b"\n") if ln.strip()]
             if not lines:
                 continue
-            newest_ts = float(json.loads(lines[-1]).get("ts", 0))
+            newest_ts = json.loads(lines[-1]).get("ts")
+            if newest_ts is None:
+                print(f"Kept {path.name}: its newest record has no timestamp.")
+                continue
+            newest_ts = float(newest_ts)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
         if newest_ts < cutoff:

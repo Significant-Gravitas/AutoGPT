@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -388,3 +390,91 @@ async def test_ctrl_c_stops_the_daemon_and_exits_cleanly(
     assert await start == 0
     assert stopped == [True]
     assert "Shim stopped." in capsys.readouterr().out
+
+
+# ── audit subcommands and --version ──────────────────────────────────────────
+
+AUDIT_KEY = b"\x01" * 32
+
+
+@pytest.fixture
+def audit_key(monkeypatch: pytest.MonkeyPatch) -> bytes:
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: AUDIT_KEY)
+    return AUDIT_KEY
+
+
+@pytest.mark.asyncio
+async def test_audit_show_prints_every_record_with_that_seq(
+    tmp_path: Path, audit_key: bytes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """seq restarts at 1 in every file, so the current log must not hide a
+    rotated record with the same seq."""
+    from autogpt_local_executor.audit import AuditWriter
+
+    writer = AuditWriter(path=tmp_path / "audit.log", audit_key=audit_key)
+    await writer.write("EXECUTE_COMMAND", request_id="before-rotation", details={})
+    rotated = writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="after-rotation", details={})
+    assert rotated is not None
+
+    assert cli._audit_show(writer.path, 1) == 0
+
+    output = capsys.readouterr().out
+    assert f"# from {writer.path.name}\n" in output
+    assert f"# from {rotated.name}\n" in output
+    assert "before-rotation" in output
+    assert "after-rotation" in output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX directory permissions")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes")
+@pytest.mark.asyncio
+async def test_a_failed_rotation_is_reported_as_a_failure(
+    tmp_path: Path, audit_key: bytes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from autogpt_local_executor.audit import AuditWriter
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    writer = AuditWriter(path=log_dir / "audit.log", audit_key=audit_key)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={})
+    log_dir.chmod(0o500)
+    try:
+        exit_code = cli._audit_rotate(writer.path)
+    finally:
+        log_dir.chmod(0o700)
+
+    assert exit_code == 1
+    assert "Could not rotate" in capsys.readouterr().out
+    assert [p.name for p in log_dir.iterdir() if not p.name.startswith(".")] == ["audit.log"]
+
+
+def test_audit_prune_keeps_a_file_whose_newest_record_has_no_timestamp(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    undated = tmp_path / "audit.log.20240101-000000"
+    undated.write_text('{"seq": 1, "op": "SHIM_START"}\n')
+    old = tmp_path / "audit.log.20240102-000000"
+    old.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert undated.exists()
+    assert not old.exists()
+    assert "no timestamp" in capsys.readouterr().out
+
+
+def test_version_prints_the_installed_version(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from importlib.metadata import version
+
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--version"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"autogpt-shim {version('autogpt-local-executor')}"

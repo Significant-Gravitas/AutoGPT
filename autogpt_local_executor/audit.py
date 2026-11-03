@@ -281,18 +281,25 @@ class AuditWriter:
             stat = self.path.stat()
         except OSError:
             return
+        reason = None
         if stat.st_size >= ROTATE_MAX_BYTES:
-            self._rotate(reason="size")
+            reason = "size"
+        elif stat.st_size > 0:
+            first_ts = _read_first_ts(self.path)
+            if first_ts is not None and (_now_ts() - first_ts) > ROTATE_MAX_AGE_SECONDS:
+                reason = "age"
+        if reason is None:
             return
-        if stat.st_size == 0:
-            return
-        first_ts = _read_first_ts(self.path)
-        if first_ts is not None and (_now_ts() - first_ts) > ROTATE_MAX_AGE_SECONDS:
-            self._rotate(reason="age")
+        try:
+            self._rotate(reason=reason)
+        except OSError as exc:
+            # Keep appending to the current file; the next write retries.
+            logger.warning("Audit rotation failed (%s): %s", reason, exc)
 
     def force_rotate(self) -> Path | None:
         """Caller-initiated rotation. Returns the rotated-file path, or None
-        if the current file was empty (nothing to rotate)."""
+        if the current file was empty (nothing to rotate). Raises OSError if
+        the file could not be rotated."""
         with _file_lock(self._file_lock_path):
             with open(self.path, "rb") as f:
                 f.seek(0, os.SEEK_END)
@@ -310,11 +317,7 @@ class AuditWriter:
         while target.exists():
             target = self.path.with_name(f"{self.path.name}.{stamp}-{counter}")
             counter += 1
-        try:
-            os.replace(self.path, target)
-        except OSError as exc:
-            logger.warning("Audit rotation failed (%s): %s", reason, exc)
-            return target
+        os.replace(self.path, target)
         self.path.touch()
         _chmod_owner_only(self.path)
         self._seq = 1
