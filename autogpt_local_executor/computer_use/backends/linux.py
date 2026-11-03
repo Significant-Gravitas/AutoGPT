@@ -39,6 +39,7 @@ from ..errors import (
 from ..window_registry import WindowFingerprint
 from ._common import (
     PASTE_THRESHOLD_CHARS,
+    capture_fields,
     image_to_base64,
     in_any_rect,
     normalize_displays_for_error,
@@ -147,12 +148,13 @@ class LinuxBackend(ComputerUseBackend):
         displays = self.display_info()
         if not displays:
             raise FeatureNotSupportedError("screenshot", reason="no displays detected")
-        if monitor < 0 or monitor >= len(displays):
+        # PROTOCOL.md: monitor -1 captures every monitor stitched together.
+        stitched = monitor == -1
+        if not stitched and not 0 <= monitor < len(displays):
             monitor = 0
-        target = displays[monitor]
 
         with mss.mss() as sct:
-            mon = sct.monitors[monitor + 1]
+            mon = sct.monitors[0 if stitched else monitor + 1]
             if region is not None:
                 rx1, ry1, rx2, ry2 = region
                 mx, my, mw, mh = mon["left"], mon["top"], mon["width"], mon["height"]
@@ -167,10 +169,20 @@ class LinuxBackend(ComputerUseBackend):
                     )
                 raw = sct.grab({"left": cx1, "top": cy1, "width": cx2 - cx1, "height": cy2 - cy1})
                 origin = (cx1, cy1)
+                grabbed_width = cx2 - cx1
             else:
                 raw = sct.grab(mon)
                 origin = (mon["left"], mon["top"])
+                grabbed_width = mon["width"]
             img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+        index, scale, logical_size = capture_fields(
+            displays,
+            monitor,
+            stitched=stitched,
+            virtual_desktop=mon,
+            grabbed_width=grabbed_width,
+            image_width=img.width,
+        )
 
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
@@ -178,12 +190,12 @@ class LinuxBackend(ComputerUseBackend):
             mime_type=mime,
             width=img.width,
             height=img.height,
-            monitor=target.index,
+            monitor=index,
             region=region,
-            display_scale=target.scale,
-            logical_size=target.logical_size,
+            display_scale=scale,
+            logical_size=logical_size,
             origin=origin,
-            display_id=target.index,
+            display_id=index,
         )
 
     # ── Input ────────────────────────────────────────────────────────

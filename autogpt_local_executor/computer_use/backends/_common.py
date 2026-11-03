@@ -8,7 +8,30 @@ import base64
 import io
 from typing import Any
 
+from ...protocol import DisplayMonitor
+
 PASTE_THRESHOLD_CHARS = 200  # Q4 — paste:true only honored when text >= 200 chars.
+
+
+def capture_fields(
+    displays: list[DisplayMonitor],
+    monitor: int,
+    *,
+    stitched: bool,
+    virtual_desktop: dict[str, int],
+    grabbed_width: int,
+    image_width: int,
+) -> tuple[int, float, tuple[int, int] | None]:
+    """`monitor`, `display_scale` and `logical_size` for a screenshot.
+
+    The stitched desktop (`monitor: -1`) is no single display, so it reports
+    its own logical size and the scale the capture actually came back at.
+    """
+    if not stitched:
+        target = displays[monitor]
+        return target.index, target.scale, target.logical_size
+    scale = round(image_width / grabbed_width, 2) if grabbed_width else 1.0
+    return -1, scale, (int(virtual_desktop["width"]), int(virtual_desktop["height"]))
 
 
 def image_to_base64(img: Any, *, format: str = "jpeg", quality: int = 75) -> tuple[bytes, str]:
