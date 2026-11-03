@@ -8,7 +8,11 @@ ADD COLUMN "refreshFamilyId" TEXT;
 
 -- The database default is load-bearing: during a rolling deploy, servers still
 -- on the previous release insert refresh tokens without a familyId, and every
--- existing row needs a family of its own. gen_random_uuid() is volatile, so
+-- existing row needs a family of its own. A token an old server rotates
+-- therefore starts a new family, so replaying its parent on a new server
+-- revokes the parent's family but not that token. Until every server runs this
+-- release, those tokens keep the old protection only: the consumed parent is
+-- still refused. gen_random_uuid() is volatile, so
 -- this rewrites OAuthRefreshToken under an ACCESS EXCLUSIVE lock, and the two
 -- plain index builds below block writes while they run. Both tables were empty
 -- in production on 2026-11-02, so that is instant. If they hold many rows when
