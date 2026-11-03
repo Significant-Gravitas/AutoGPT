@@ -77,10 +77,15 @@ export class BackendWebSocket {
       return;
     }
     try {
-      const { token, error } = await getWebSocketToken();
+      const { token, error, retryable } = await getWebSocketToken();
       if (generation !== this.generation) return;
-      if (!token || error || hasDisconnectIntent()) {
+      if (hasDisconnectIntent()) {
         this.finishConnecting();
+        return;
+      }
+      if (!token || error) {
+        if (retryable) this.scheduleRetry(generation);
+        else this.finishConnecting();
         return;
       }
       const socket = new WebSocket(
@@ -90,8 +95,8 @@ export class BackendWebSocket {
       this.attach(socket, generation);
     } catch (error) {
       if (generation !== this.generation) return;
-      this.finishConnecting();
       console.warn("[BackendAPI] Could not connect WebSocket:", error);
+      this.scheduleRetry(generation);
     }
   }
 
@@ -183,10 +188,17 @@ export class BackendWebSocket {
     else this.pendingConnection();
     if (!intentional && connected) this.handlers.onDisconnect();
     if (terminal || generation !== this.generation || this.stopped) return;
+    this.scheduleRetry(generation);
+  }
+
+  private scheduleRetry(generation: number) {
+    if (generation !== this.generation || this.stopped) return;
     if (hasDisconnectIntent()) {
       this.finishConnecting();
       return;
     }
+    this.pendingConnection();
+    clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(
       () => void this.open(generation),
       this.retryDelay,

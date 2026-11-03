@@ -82,7 +82,10 @@ describe("WebSocket authentication and recovery", () => {
     );
   });
 
-  it.each([{ token: null }, { token: null, error: "unavailable" }])(
+  it.each([
+    { token: null },
+    { token: null, error: "Session rejected", retryable: false },
+  ])(
     "settles without connecting when no token is issued: %s",
     async (result) => {
       vi.mocked(getWebSocketToken).mockResolvedValueOnce(result);
@@ -96,12 +99,16 @@ describe("WebSocket authentication and recovery", () => {
     },
   );
 
-  it("settles a failed token request without opening a socket", async () => {
+  it("settles pending token recovery when explicitly disconnected", async () => {
     vi.mocked(getWebSocketToken).mockRejectedValueOnce(
       new Error("unavailable"),
     );
-    await api.connectWebSocket();
+    const pending = api.connectWebSocket();
+    await vi.advanceTimersByTimeAsync(0);
+    api.disconnectWebSocket();
+    await pending;
     expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("does not fetch a token while logout intent is present", async () => {

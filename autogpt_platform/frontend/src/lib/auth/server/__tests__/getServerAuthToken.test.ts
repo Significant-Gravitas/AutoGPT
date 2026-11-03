@@ -129,4 +129,20 @@ describe("getServerAuthToken", () => {
 
     expect(token).toBeNull();
   });
+
+  it("preserves issuance failures for callers that need to retry", async () => {
+    cookiesMock.mockResolvedValue(
+      cookieStore([
+        { name: "better-auth.session_token", value: "session-error" },
+      ]),
+    );
+    const unavailable = new Error("issuer unavailable");
+    getTokenMock
+      .mockRejectedValueOnce(unavailable)
+      .mockResolvedValueOnce({ token: "recovered" });
+    const { readServerAuthToken } = await importModule();
+
+    await expect(readServerAuthToken()).rejects.toBe(unavailable);
+    await expect(readServerAuthToken()).resolves.toBe("recovered");
+  });
 });
