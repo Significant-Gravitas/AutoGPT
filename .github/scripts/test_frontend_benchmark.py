@@ -4,11 +4,27 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from benchmark_frontend import read_test_inventory
+from benchmark_frontend import ROOT, Benchmark, read_test_inventory
 
 
 class FrontendBenchmarkTests(unittest.TestCase):
+    def test_unavailable_candidate_is_recorded_and_other_measurements_continue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch("benchmark_frontend.FRONTEND", ROOT):
+                benchmark = Benchmark(output)
+                self.assertEqual(
+                    benchmark.run("missing", [str(output / "does-not-exist")]), 127
+                )
+                self.assertEqual(
+                    benchmark.run("next", [sys.executable, "-c", "print('measured')"]),
+                    0,
+                )
+            self.assertIn("Cannot start", (output / "missing.log").read_text())
+            self.assertEqual((output / "next.log").read_text().strip(), "measured")
+
     def test_inventory_preserves_counts_and_rejects_incomplete_or_nonpassing_reports(
         self,
     ):

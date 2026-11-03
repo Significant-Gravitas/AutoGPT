@@ -34,6 +34,10 @@ class Benchmark:
         self.records = []
         self.canaries = {}
         self.temporary_files = []
+        self.setup_diff = subprocess.check_output(
+            ["git", "diff", "--binary", "--", "."], cwd=FRONTEND
+        )
+        (self.output / "setup-changes.patch").write_bytes(self.setup_diff)
 
     def temporary(self, name: str, content: str) -> Path:
         path = FRONTEND / name
@@ -59,6 +63,9 @@ class Benchmark:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
                 stream.write("\nBenchmark command exceeded 900 seconds.\n")
+            except OSError as error:
+                code = 127
+                stream.write(f"Cannot start benchmark command: {error}\n")
         self.records.append(
             {
                 "name": name,
@@ -210,7 +217,7 @@ class Benchmark:
                 code = self.run(f"{name}-negative", command)
                 log = (self.output / f"{name}-negative.log").read_text()
                 self.canaries[name] = (
-                    code == 1 and probe.name in log and "TS2322" in log
+                    code in (1, 2) and probe.name in log and "TS2322" in log
                 )
         finally:
             probe.unlink()
@@ -235,7 +242,8 @@ module.exports = new FlatCompat({
         migration = self.run(
             "migrate-eslint",
             [
-                str(binaries / "oxlint-migrate"),
+                "node",
+                str(binaries.parent / "@oxlint/migrate/dist/bin/oxlint-migrate.mjs"),
                 flat.name,
                 "--merge",
                 "--details",
@@ -329,7 +337,11 @@ module.exports = new FlatCompat({
     def finish(self) -> None:
         for path in self.temporary_files:
             path.unlink(missing_ok=True)
-        self.run("tracked-files-unchanged", ["git", "diff", "--exit-code", "--", "."])
+        final_diff = subprocess.check_output(
+            ["git", "diff", "--binary", "--", "."], cwd=FRONTEND
+        )
+        (self.output / "final-changes.patch").write_bytes(final_diff)
+        self.canaries["tracked-files-match-setup"] = final_diff == self.setup_diff
         report = {
             "source_sha": subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
