@@ -8,9 +8,11 @@ import {
   SheetTitle,
 } from "@/components/molecules/Sheet/Sheet";
 import { ActivityFeed } from "./components/ActivityFeed/ActivityFeed";
+import { InboxStatus } from "./components/InboxStatus/InboxStatus";
 import { CommentComposer } from "./components/CommentComposer/CommentComposer";
 import { LiveStrip } from "./components/LiveStrip/LiveStrip";
 import { QuestionCard } from "./components/QuestionCard/QuestionCard";
+import { SheetSection } from "./components/SheetSection/SheetSection";
 import { SubtaskList } from "./components/SubtaskList/SubtaskList";
 import { TaskHeader } from "./components/TaskHeader/TaskHeader";
 import { TaskOutcome } from "./components/TaskOutcome/TaskOutcome";
@@ -38,56 +40,67 @@ export function TaskSheet({ taskId, onOpenChange, onOpenTask }: Props) {
       <SheetContent
         side="right"
         aria-describedby={undefined}
-        className="flex w-full flex-col sm:max-w-xl"
+        className="flex w-full flex-col gap-1.5 bg-surface-tray p-1.5 data-[state=open]:ease-out-expo sm:max-w-xl"
       >
         <SheetTitle className="sr-only">{task?.title ?? "Task"}</SheetTitle>
-        {isLoading || (!task && !isError) ? (
-          <SheetSkeleton />
-        ) : isError || !task ? (
-          <div>
-            <Text variant="body" tone="muted">
-              This task could not be loaded.
-            </Text>
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-6 pb-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-card bg-surface shadow-sm">
+          {isLoading || (!task && !isError) ? (
+            <SheetSkeleton />
+          ) : isError || !task ? (
+            <div className="px-5 py-5">
+              <Text variant="body" tone="quiet">
+                This task could not be loaded.
+              </Text>
+            </div>
+          ) : (
+            <div className="flex-1 divide-y divide-border-hairline overflow-y-auto">
+              <header className="flex flex-col gap-4 py-5 pr-12 pl-5">
                 <TaskHeader task={task} experts={experts} onUpdate={update} />
-                {task.open_question ? (
+                <InboxStatus task={task} />
+              </header>
+              {task.open_question ? (
+                <div className="px-5 py-4">
                   <QuestionCard
                     taskId={task.id}
                     question={task.open_question}
                   />
-                ) : null}
-                {task.status === "in_progress" && task.live ? (
+                </div>
+              ) : null}
+              {task.status === "in_progress" && task.live ? (
+                <div className="px-5 py-4">
                   <LiveStrip live={task.live} metrics={task.metrics} />
-                ) : null}
+                </div>
+              ) : null}
+              <SheetSection label="Description">
                 {task.description ? (
                   <Text
                     variant="body-tight"
-                    tone="body"
+                    tone="text"
                     className="whitespace-pre-wrap"
                   >
                     {task.description}
                   </Text>
                 ) : (
-                  <Text variant="body-tight" tone="subtle">
+                  <Text variant="body-tight" tone="faint">
                     No description
                   </Text>
                 )}
-                {task.status === "done" ? <TaskOutcome task={task} /> : null}
-                <SubtaskList task={task} onOpenTask={onOpenTask} />
-                <ActivityFeed
-                  items={activity}
-                  isLoading={isActivityLoading}
-                  experts={experts}
-                />
-              </div>
+              </SheetSection>
+              {task.status === "done" ? <TaskOutcome task={task} /> : null}
+              <SubtaskList task={task} onOpenTask={onOpenTask} />
+              <ActivityFeed
+                items={activity}
+                isLoading={isActivityLoading}
+                experts={experts}
+              />
             </div>
+          )}
+        </div>
+        {task ? (
+          <div className="rounded-2xl border border-border-card bg-surface p-3 shadow-sm">
             <CommentComposer taskId={task.id} experts={experts} />
-          </>
-        )}
+          </div>
+        ) : null}
       </SheetContent>
     </Sheet>
   );
@@ -95,7 +108,7 @@ export function TaskSheet({ taskId, onOpenChange, onOpenTask }: Props) {
 
 function SheetSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-5 py-5">
       <Skeleton className="h-4 w-16" />
       <Skeleton className="h-7 w-3/4" />
       <div className="flex gap-2">

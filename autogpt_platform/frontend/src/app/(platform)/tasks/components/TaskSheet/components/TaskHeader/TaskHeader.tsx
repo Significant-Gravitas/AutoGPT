@@ -68,22 +68,22 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
   const isOverdue = isTaskOverdue(task.due_date, task.status);
 
   return (
-    <div className="flex flex-col gap-3 pr-8">
-      <Text variant="small-mono" tone="muted">
+    <div className="flex flex-col gap-2">
+      <Text variant="small-mono" tone="faint">
         {taskKey(task.number)}
       </Text>
-      <Text variant="h4" as="h2">
+      <Text variant="h4" as="h2" tone="ink" className="text-pretty">
         {task.title}
       </Text>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 pt-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="outline"
+              variant="secondary"
               size="xs"
               aria-label="Change status"
               leftIcon={<Icon icon={status.icon} tone={status.tone} />}
-              rightIcon={<Icon icon={ArrowDown01Icon} tone="muted" />}
+              rightIcon={<Icon icon={ArrowDown01Icon} tone="faint" />}
             >
               {STATUS_LABELS[task.status]}
             </Button>
@@ -109,7 +109,7 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="outline"
+              variant="secondary"
               size="xs"
               aria-label="Change assignee"
               leftIcon={<AssigneeAvatar assignee={task.assignee} size={16} />}
@@ -146,13 +146,13 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              variant="outline"
+              variant="secondary"
               size="xs"
               aria-label="Change priority"
               leftIcon={
                 <Icon
                   icon={Flag02Icon}
-                  tone={task.priority === "urgent" ? "warning" : "muted"}
+                  tone={task.priority === "urgent" ? "waiting" : "quiet"}
                 />
               }
             >
@@ -172,14 +172,15 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
         </DropdownMenu>
 
         {task.due_date ? (
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-base px-2.5">
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-md bg-surface-tray px-2.5">
             <Icon
               icon={Calendar03Icon}
-              tone={isOverdue ? "warning" : "muted"}
+              tone={isOverdue ? "waiting" : "quiet"}
             />
             <Text
-              variant="small-medium"
-              tone={isOverdue ? "warning" : "secondary"}
+              variant="small"
+              weight="medium"
+              tone={isOverdue ? "waiting" : "text"}
             >
               {isOverdue ? "Overdue · " : "Due "}
               {formatDueDate(task.due_date)}

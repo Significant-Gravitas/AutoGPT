@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function useLiveStrip() {
+export function useNow() {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -8,5 +8,5 @@ export function useLiveStrip() {
     return () => window.clearInterval(id);
   }, []);
 
-  return { now };
+  return now;
 }

@@ -86,7 +86,7 @@ export function SegmentedControl<T extends string>({
               tabIndex={active ? 0 : -1}
               onClick={() => onChange(option.value)}
               className={cn(
-                "relative flex h-full shrink-0 items-center rounded-full transition-[background-color,transform] duration-150 ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                "relative flex h-full shrink-0 items-center rounded-full transition-[background-color,transform] duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
                 size === "sm" ? "px-2.5" : "px-3",
               )}
             >

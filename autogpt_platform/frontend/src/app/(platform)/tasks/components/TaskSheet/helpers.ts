@@ -11,6 +11,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import type { Tone } from "@/components/styles/tones";
 import type {
   AssigneeType,
+  Task,
   ExpertOption,
   TaskAssignee,
   TaskStatus,
@@ -20,13 +21,13 @@ export const STATUS_ICONS: Record<
   TaskStatus,
   { icon: IconSvgElement; tone: Tone }
 > = {
-  backlog: { icon: DashedLineCircleIcon, tone: "subtle" },
-  todo: { icon: CircleIcon, tone: "muted" },
+  backlog: { icon: DashedLineCircleIcon, tone: "faint" },
+  todo: { icon: CircleIcon, tone: "quiet" },
   in_progress: { icon: Loading03Icon, tone: "info" },
-  blocked: { icon: AlertCircleIcon, tone: "warning-bright" },
+  blocked: { icon: AlertCircleIcon, tone: "waiting" },
   in_review: { icon: EyeIcon, tone: "info" },
-  done: { icon: CheckmarkCircle02Icon, tone: "success" },
-  cancelled: { icon: CancelCircleIcon, tone: "subtle" },
+  done: { icon: CheckmarkCircle02Icon, tone: "ok" },
+  cancelled: { icon: CancelCircleIcon, tone: "faint" },
 };
 
 export interface AssigneeChoice {
@@ -115,4 +116,33 @@ export function isTypingTarget(target: EventTarget | null) {
 export function isTaskOverdue(dueDate: string | null, status: TaskStatus) {
   if (!dueDate || status === "done" || status === "cancelled") return false;
   return new Date(dueDate).getTime() < Date.now();
+}
+
+export type StepStatus = "completed" | "running" | "error" | null;
+
+export const STEP_STATUS: Record<
+  "completed" | "running" | "error",
+  { icon: IconSvgElement; tone: Tone; label: string }
+> = {
+  completed: { icon: CheckmarkCircle02Icon, tone: "ok", label: "Done" },
+  running: { icon: Loading03Icon, tone: "info", label: "Running" },
+  error: { icon: AlertCircleIcon, tone: "error", label: "Failed" },
+};
+
+export function getInboxStateLabel(task: Task) {
+  const { state, needs_you } = task.inbox;
+  if (state === "running") return { label: "Running", tone: "info" as Tone };
+  if (state === "done") return { label: "Done", tone: "ok" as Tone };
+  if (state === "failed") return { label: "Failed", tone: "error" as Tone };
+  return {
+    label: needs_you ? "Needs you" : "Waiting",
+    tone: (needs_you ? "waiting" : "quiet") as Tone,
+  };
+}
+
+export function formatClock(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

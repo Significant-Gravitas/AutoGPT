@@ -28,25 +28,21 @@ export function TaskOutcome({ task }: Props) {
   return (
     <section
       aria-label="Outcome"
-      className="flex flex-col gap-3 rounded-xl border border-border-base bg-success-surface p-4"
+      className="flex animate-inbox-enter flex-col gap-2.5 px-5 py-4"
     >
-      <div className="flex items-center gap-2">
-        <Icon icon={CheckmarkCircle02Icon} tone="success" aria-hidden />
-        <Text variant="small-semibold" tone="success-strong">
+      <div className="flex items-center gap-1.5">
+        <Icon icon={CheckmarkCircle02Icon} tone="ok" size={14} aria-hidden />
+        <Text as="h3" variant="small" weight="medium" tone="ok">
           Outcome
         </Text>
       </div>
       {task.outcome_summary ? (
-        <Text
-          variant="body-tight"
-          tone="primary"
-          className="whitespace-pre-wrap"
-        >
+        <Text variant="body-tight" tone="ink" className="whitespace-pre-wrap">
           {task.outcome_summary}
         </Text>
       ) : null}
       {task.artifacts.length ? (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-xl border border-border-card">
           {task.artifacts.map((artifact) => (
             <li key={artifact.id}>
               <ArtifactLink artifact={artifact} />
@@ -61,16 +57,21 @@ export function TaskOutcome({ task }: Props) {
 function ArtifactLink({ artifact }: { artifact: TaskArtifact }) {
   const content = (
     <>
-      <Icon icon={ARTIFACT_ICONS[artifact.kind]} tone="muted" aria-hidden />
-      <Text variant="body-tight" tone="body" as="span" className="truncate">
+      <Icon
+        icon={ARTIFACT_ICONS[artifact.kind]}
+        tone="quiet"
+        size={14}
+        aria-hidden
+      />
+      <Text variant="small" tone="text" as="span" className="truncate">
         {artifact.title}
       </Text>
     </>
   );
   const className =
-    "flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none";
+    "flex items-center gap-2.5 px-3 py-2 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset";
   if (!artifact.url || !/^(https?:\/\/|\/)/.test(artifact.url)) {
-    return <div className="flex items-center gap-2 px-2 py-1">{content}</div>;
+    return <div className="flex items-center gap-2.5 px-3 py-2">{content}</div>;
   }
   const isExternal = /^https?:\/\//.test(artifact.url);
   return (

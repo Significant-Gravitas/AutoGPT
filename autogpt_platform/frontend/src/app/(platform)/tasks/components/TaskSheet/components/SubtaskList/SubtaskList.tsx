@@ -10,6 +10,7 @@ import { isKey } from "@/lib/keyboard";
 import { STATUS_LABELS, taskKey } from "../../../../data/helpers";
 import type { TaskDetail } from "../../../../data/types";
 import { STATUS_ICONS } from "../../helpers";
+import { SheetSection } from "../SheetSection/SheetSection";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 import { useSubtaskList } from "./useSubtaskList";
 
@@ -48,43 +49,36 @@ export function SubtaskList({ task, onOpenTask }: Props) {
   }
 
   return (
-    <section aria-label="Sub-tasks" className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Text variant="small-semibold" tone="secondary">
-          Sub-tasks
-        </Text>
-        {subtasks.length ? (
-          <Text variant="small" tone="muted" tabular>
-            {doneCount} of {subtasks.length} done
-          </Text>
-        ) : null}
-      </div>
+    <SheetSection
+      label="Sub-tasks"
+      meta={
+        subtasks.length ? `${doneCount} of ${subtasks.length} done` : undefined
+      }
+    >
       {subtasks.length ? (
-        <ul className="flex flex-col overflow-hidden rounded-lg border border-border-base">
+        <ul className="flex flex-col divide-y divide-border-hairline overflow-hidden rounded-xl border border-border-card">
           {subtasks.map((subtask) => {
             const status = STATUS_ICONS[subtask.status];
             return (
-              <li
-                key={subtask.id}
-                className="border-b border-border-base last:border-b-0"
-              >
+              <li key={subtask.id}>
                 <button
                   type="button"
                   onClick={() => onOpenTask?.(subtask.id)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
                 >
                   <Icon
                     icon={status.icon}
                     tone={status.tone}
+                    size={14}
                     aria-label={STATUS_LABELS[subtask.status]}
                   />
-                  <Text variant="small-mono" tone="muted" as="span">
+                  <Text variant="small-mono" tone="faint" as="span">
                     {taskKey(subtask.number)}
                   </Text>
                   <Text
-                    variant="body-tight"
+                    variant="small"
                     as="span"
-                    tone={subtask.status === "done" ? "muted" : "primary"}
+                    tone={subtask.status === "done" ? "quiet" : "ink"}
                     className="min-w-0 flex-1 truncate"
                   >
                     {subtask.title}
@@ -147,6 +141,6 @@ export function SubtaskList({ task, onOpenTask }: Props) {
           The sub-task could not be added. Try again.
         </Text>
       ) : null}
-    </section>
+    </SheetSection>
   );
 }

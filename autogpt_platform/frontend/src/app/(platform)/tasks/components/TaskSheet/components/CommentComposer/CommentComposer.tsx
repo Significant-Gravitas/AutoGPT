@@ -32,14 +32,14 @@ export function CommentComposer({ taskId, experts }: Props) {
   const listboxId = `task-mentions-${taskId}`;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border-base pt-4">
+    <div className="flex flex-col gap-2">
       <div className="relative">
         {isMenuOpen ? (
           <ul
             id={listboxId}
             role="listbox"
             aria-label="Mention an expert"
-            className="absolute bottom-full left-0 z-10 mb-1 flex w-64 flex-col gap-0.5 rounded-lg border border-border-base bg-surface p-1 shadow-md"
+            className="absolute bottom-full left-0 z-10 mb-1.5 flex w-64 animate-inbox-enter flex-col gap-0.5 rounded-xl border border-border-card bg-surface p-1 shadow-md"
           >
             {suggestions.map((expert, index) => (
               <li
@@ -52,10 +52,10 @@ export function CommentComposer({ taskId, experts }: Props) {
                   selectExpert(expert);
                 }}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5",
+                  "flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color] duration-150 ease-out-expo",
                   index === activeIndex
-                    ? "bg-surface-hover"
-                    : "hover:bg-surface-hover",
+                    ? "bg-surface-tray"
+                    : "hover:bg-surface-tray",
                 )}
               >
                 <AssigneeAvatar
@@ -67,7 +67,7 @@ export function CommentComposer({ taskId, experts }: Props) {
                   }}
                   size={18}
                 />
-                <Text variant="small-medium" tone="primary" as="span">
+                <Text variant="small" weight="medium" tone="ink" as="span">
                   {expert.name}
                 </Text>
               </li>
@@ -99,7 +99,7 @@ export function CommentComposer({ taskId, experts }: Props) {
         />
       </div>
       <div className="flex items-center justify-between gap-2">
-        <Text variant="small" tone={isError ? "error" : "subtle"}>
+        <Text variant="small" tone={isError ? "error" : "faint"}>
           {isError
             ? "Your comment could not be posted. Try again."
             : "⌘/Ctrl + Enter to send"}

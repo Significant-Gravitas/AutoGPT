@@ -27,15 +27,15 @@ export function QuestionCard({ taskId, question }: Props) {
   return (
     <section
       aria-label="Question for you"
-      className="flex flex-col gap-3 rounded-xl border border-warning-border bg-warning-surface p-4"
+      className="flex animate-inbox-enter flex-col gap-3 rounded-xl border border-status-waiting/20 bg-status-waiting/5 p-4"
     >
       <div className="flex items-center gap-2">
-        <Icon icon={AlertCircleIcon} tone="warning-bright" />
-        <Text variant="small-semibold" tone="warning">
+        <Icon icon={AlertCircleIcon} tone="waiting" size={14} />
+        <Text variant="small" weight="medium" tone="waiting">
           Needs you · {question.asked_by.name} asks
         </Text>
       </div>
-      <Text variant="body-tight" tone="primary" className="whitespace-pre-wrap">
+      <Text variant="body-tight" tone="ink" className="whitespace-pre-wrap">
         {question.question}
       </Text>
       {options.length ? (

@@ -1,24 +1,18 @@
 "use client";
 
-import {
-  AlertCircleIcon,
-  ArrowDown01Icon,
-  CheckmarkCircle02Icon,
-  Loading03Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { useId, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CollapsibleContent,
-  CollapsibleRoot,
-  CollapsibleTrigger,
-} from "@/components/molecules/Collapsible/Collapsible";
+import { cn } from "@/lib/utils";
 import { formatMetrics } from "../../../../../../data/helpers";
-import type {
-  TaskActivity,
-  ToolCallSummary,
-} from "../../../../../../data/types";
+import type { TaskActivity } from "../../../../../../data/types";
+import type { StepStatus } from "../../../../helpers";
+import { Fold } from "../../../Fold/Fold";
+import { LiveTimer } from "../../../LiveTimer/LiveTimer";
+import { StepRow } from "../../../StepRow/StepRow";
+import { ToolCallRow } from "../ToolCallRow/ToolCallRow";
 
 type TurnActivity = Extract<TaskActivity, { kind: "turn" }>;
 
@@ -26,99 +20,86 @@ interface Props {
   item: TurnActivity;
 }
 
-const TOOL_STATUS = {
-  ok: { icon: CheckmarkCircle02Icon, tone: "success", label: "Done" },
-  error: { icon: AlertCircleIcon, tone: "error", label: "Failed" },
-  running: { icon: Loading03Icon, tone: "info", label: "Running" },
-} as const;
+function getTurnStatus(item: TurnActivity): StepStatus {
+  if (item.tool_calls.some((call) => call.status === "running"))
+    return "running";
+  if (item.tool_calls.some((call) => call.status === "error")) return "error";
+  return "completed";
+}
 
+/** A turn of work, styled like a tool-call card: one line that folds open. */
 export function TurnRow({ item }: Props) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const status = getTurnStatus(item);
+
   return (
-    <CollapsibleRoot className="group w-full">
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
-        >
-          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-            <Text variant="small-medium" tone="secondary" as="span">
-              {item.actor.name}
-            </Text>
-            <Text variant="small" tone="muted" as="span" tabular>
-              {formatMetrics(item.metrics)}
-            </Text>
-            <Text variant="small" tone="subtle" as="span">
+    <div className="overflow-hidden rounded-xl border border-border-card bg-surface">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-[background-color] duration-150 ease-out-expo hover:bg-surface-tray focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none focus-visible:ring-inset"
+      >
+        <StepRow
+          status={status}
+          label={
+            <>
+              <Text as="span" variant="small" weight="medium" tone="ink">
+                {item.actor.name}
+              </Text>
+              <Text as="span" variant="small" tone="quiet" tabular>
+                {" "}
+                · {formatMetrics(item.metrics)}
+              </Text>
+            </>
+          }
+          trailing={
+            status === "running" ? (
+              <LiveTimer since={item.created_at} />
+            ) : (
               <RelativeTime date={item.created_at} />
-            </Text>
-          </span>
-          <Icon
-            icon={ArrowDown01Icon}
-            tone="muted"
-            motion="transform"
-            aria-hidden
-            className="group-data-[state=open]:rotate-180"
-          />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="overflow-hidden">
-        <div className="flex flex-col gap-2 pt-2 pl-2">
+            )
+          }
+        />
+        <Icon
+          icon={ArrowDown01Icon}
+          tone="faint"
+          size={14}
+          motion="transform"
+          aria-hidden
+          className={cn(open && "rotate-180")}
+        />
+      </button>
+      <Fold open={open} id={bodyId}>
+        <div className="flex flex-col border-t border-border-hairline">
           {item.summary ? (
-            <Text variant="small" tone="body" className="whitespace-pre-wrap">
+            <Text
+              variant="small"
+              tone="text"
+              className="px-3 py-2.5 whitespace-pre-wrap"
+            >
               {item.summary}
             </Text>
           ) : null}
           {item.tool_calls.length ? (
-            item.tool_calls.map((call) => (
-              <ToolCallCard key={call.id} call={call} />
-            ))
+            <div className="flex flex-col divide-y divide-border-hairline border-t border-border-hairline first:border-t-0">
+              {item.tool_calls.map((call) => (
+                <ToolCallRow
+                  key={call.id}
+                  call={call}
+                  since={item.created_at}
+                />
+              ))}
+            </div>
           ) : (
-            <Text variant="small" tone="muted">
+            <Text variant="small" tone="quiet" className="px-3 py-2.5">
               No tool calls in this step.
             </Text>
           )}
         </div>
-      </CollapsibleContent>
-    </CollapsibleRoot>
-  );
-}
-
-function ToolCallCard({ call }: { call: ToolCallSummary }) {
-  const status = TOOL_STATUS[call.status];
-  return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border-base bg-surface p-3">
-      <div className="flex items-center gap-2">
-        <Icon
-          icon={status.icon}
-          tone={status.tone}
-          spin={call.status === "running"}
-          aria-label={status.label}
-        />
-        <Text variant="small-medium" tone="primary" className="truncate">
-          {call.name}
-        </Text>
-      </div>
-      {call.input_preview ? (
-        <div className="rounded-md bg-surface-muted px-2 py-1">
-          <Text
-            variant="small-mono"
-            tone="muted"
-            className="line-clamp-3 break-all whitespace-pre-wrap"
-          >
-            {call.input_preview}
-          </Text>
-        </div>
-      ) : null}
-      {call.output_preview ? (
-        <div className="rounded-md bg-surface-muted px-2 py-1">
-          <Text
-            variant="small-mono"
-            tone="muted"
-            className="line-clamp-4 break-all whitespace-pre-wrap"
-          >
-            {call.output_preview}
-          </Text>
-        </div>
-      ) : null}
+      </Fold>
     </div>
   );
 }

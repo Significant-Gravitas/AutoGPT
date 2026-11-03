@@ -40,7 +40,7 @@ export function NumberTicker({ value, className }: Props) {
 
   return (
     <span
-      className={cn("inline-flex tabular-nums leading-none", className)}
+      className={cn("inline-flex leading-none tabular-nums", className)}
       data-slot="number-ticker"
     >
       <span className="sr-only">{formatted}</span>
