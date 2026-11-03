@@ -205,6 +205,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
+| [SpecStream Approve And Run](block-integrations/specstream/approve_and_run.md#specstream-approve-and-run) | Approves a SpecStream quote at the stated maximum and starts the dataset run |
+| [SpecStream Create Dataset Request](block-integrations/specstream/dataset_request.md#specstream-create-dataset-request) | Reads a dataset request in plain words and returns a signed quote with the most it can cost |
+| [SpecStream Get Run Status](block-integrations/specstream/run_status.md#specstream-get-run-status) | Reads the status of a SpecStream dataset run |
+| [SpecStream List Rows](block-integrations/specstream/list_rows.md#specstream-list-rows) | Reads the rows of a SpecStream dataset run |
+| [SpecStream Wait For Run](block-integrations/specstream/run_status.md#specstream-wait-for-run) | Waits for a SpecStream dataset run to end by checking its status |
 | [Stripe Link Create Card Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-card-spend-request) | Create a Stripe Link spend request for a one-time virtual card |
 | [Stripe Link Create Token Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-token-spend-request) | MPP step 2 of 3: ask the user to authorize a payment to a merchant that answers HTTP 402, and provision a Shared Payment Token for it |
 | [Stripe Link Get Payment Challenge](block-integrations/stripe_link/mpp.md#stripe-link-get-payment-challenge) | MPP step 1 of 3: read a merchant's HTTP 402 payment challenge to learn its network ID and amount |
