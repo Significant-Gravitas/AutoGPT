@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.copilot import budget_gate
+from backend.copilot import after_turn, budget_gate
 from backend.copilot.ai_spans import current_span_id
 from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.engine import resolve_use_sdk
@@ -1802,7 +1802,14 @@ class TestSyncFailCloseSession:
                 return_value=cluster_lock,
             ),
             patch("backend.copilot.executor.manager.redis.get_redis"),
-            patch("backend.copilot.executor.manager._dispatch_after_turn"),
+            # The done-callback's registry bookkeeping without its Redis-backed
+            # engine switch: a turn left registered would defer later wakes.
+            patch(
+                "backend.copilot.executor.manager._dispatch_after_turn",
+                new=lambda _session_id, turn_id, _error: after_turn.turn_finished(
+                    turn_id
+                ),
+            ),
         ):
             manager._handle_run_message(
                 channel,

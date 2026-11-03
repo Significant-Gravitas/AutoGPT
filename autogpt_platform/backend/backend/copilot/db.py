@@ -1632,13 +1632,19 @@ async def admit_chat_session_turn(
 
 
 async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
-    """Persist the dispatched turn's identity independently of Redis stream TTLs."""
+    """Persist the dispatched turn's identity independently of Redis stream TTLs.
+
+    Admission clears the identity, so one admission records one turn: a
+    dispatcher that stalled until orphan recovery freed its slot finds the
+    successor's identity in place and refuses itself instead of overwriting it.
+    """
     return bool(
         await db.execute_raw_with_schema(
             """UPDATE {schema_prefix}"ChatSession" SET metadata=
             COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
             "updatedAt"=CURRENT_TIMESTAMP
-            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running' """,
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND metadata->>'_active_turn_id' IS NULL """,
             session_id,
             user_id,
             turn_id,

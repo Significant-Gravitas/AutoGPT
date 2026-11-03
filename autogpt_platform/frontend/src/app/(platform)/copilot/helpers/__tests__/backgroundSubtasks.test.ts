@@ -2,13 +2,6 @@ import { describe, expect, it } from "vitest";
 import { backgroundRefreshInterval } from "../backgroundSubtasks";
 import { convertChatSessionMessagesToUiMessages } from "../convertChatSessionToUiMessages";
 
-const accepted = {
-  role: "tool",
-  content: JSON.stringify({
-    background_task_id: "task",
-    background_expires_at: "2026-10-19T12:10:00Z",
-  }),
-};
 const wake = {
   role: "user",
   content: "Internal prompt containing untrusted subtask output",
@@ -22,10 +15,10 @@ const wake = {
 const now = Date.parse("2026-10-19T12:00:00Z");
 
 describe("background subtask delivery", () => {
-  it.each([undefined, null, {}, "unavailable"])(
-    "does not poll absent message history (%s)",
-    (messages) => {
-      expect(backgroundRefreshInterval(messages, now)).toBe(false);
+  it.each([undefined, null, {}, { background_pending_until: null }])(
+    "does not poll a chat with nothing pending (%s)",
+    (session) => {
+      expect(backgroundRefreshInterval(session, now)).toBe(false);
     },
   );
 
@@ -45,68 +38,18 @@ describe("background subtask delivery", () => {
     },
   );
 
-  it("keeps checking after the original reply and through a queued wake", () => {
-    expect(
-      backgroundRefreshInterval(
-        [accepted, { role: "assistant", content: "I'll follow up." }],
-        now,
-      ),
-    ).toBe(3000);
-    expect(backgroundRefreshInterval([accepted, wake], now)).toBe(3000);
-    expect(
-      backgroundRefreshInterval(
-        [accepted, wake, { role: "assistant", content: "Here is the result." }],
-        now,
-      ),
-    ).toBe(false);
-  });
-
-  it.each(["expert_run", "scheduled_chat_notice"])(
-    "keeps checking when a standalone %s arrives before the follow-up",
-    (kind) => {
-      const messages = [
-        accepted,
-        wake,
-        {
-          role: "assistant",
-          content: "An unrelated update.",
-          metadata: { kind },
-        },
-      ];
-      expect(backgroundRefreshInterval(messages, now)).toBe(3000);
-      expect(
-        backgroundRefreshInterval(
-          [...messages, { role: "assistant", content: "Here is the result." }],
-          now,
-        ),
-      ).toBe(false);
+  it.each([
+    "2026-10-19T12:10:00Z",
+    "2026-10-19T12:10:00+00:00",
+    new Date("2026-10-19T12:10:00Z"),
+  ])(
+    "keeps checking until the follow-up window the server reports has passed (%s)",
+    (background_pending_until) => {
+      const session = { background_pending_until };
+      expect(backgroundRefreshInterval(session, now)).toBe(3000);
+      expect(backgroundRefreshInterval(session, now + 11 * 60_000)).toBe(false);
     },
   );
-
-  it("does not poll foreground chats or expired background requests", () => {
-    expect(
-      backgroundRefreshInterval(
-        [{ role: "tool", content: '{"status":"running"}' }],
-        now,
-      ),
-    ).toBe(false);
-    expect(backgroundRefreshInterval([accepted], now + 11 * 60_000)).toBe(
-      false,
-    );
-    expect(
-      backgroundRefreshInterval(
-        [
-          accepted,
-          {
-            role: "assistant",
-            metadata: { background_task_notice: "task" },
-            content: "Follow-up expired.",
-          },
-        ],
-        now,
-      ),
-    ).toBe(false);
-  });
 
   it("labels an automatic wake as Otto's update without exposing its internal prompt", () => {
     const result = convertChatSessionMessagesToUiMessages(

@@ -174,8 +174,23 @@ def followup_message(task: BackgroundTask) -> str:
 async def _recover_followup(task: BackgroundTask, now: datetime) -> None:
     status = await chat_db().get_chat_session_status(task.parent_session_id)
     if status == "idle":
+        # The turn may have answered and only failed to record that, so a
+        # completion Redis still holds for the wake counts, as for a child.
+        completion = (
+            await stream_registry.get_session(task.parent_session_id)
+            if task.followup_started_at is not None
+            else None
+        )
+        delivered = completion is not None and (
+            completion.user_id,
+            completion.turn_id,
+            completion.status,
+        ) == (task.user_id, task.wake_id, "completed")
         await background_task_db().finish_background_turn(
-            task.user_id, task.parent_session_id, task.wake_id, "Follow-up interrupted"
+            task.user_id,
+            task.parent_session_id,
+            task.wake_id,
+            None if delivered else "Follow-up interrupted",
         )
         return
     envelope = await background_task_db().get_background_followup_envelope(
@@ -226,7 +241,7 @@ async def _stop_running_turn(
 ) -> None:
     active = await stream_registry.get_session(session_id)
     if active and active.status == "running" and active.turn_id == turn_id:
-        await enqueue_cancel_task(session_id)
+        await enqueue_cancel_task(session_id, turn_id)
         if datetime.now(UTC) > deadline + timedelta(seconds=5):
             await stream_registry.mark_session_completed(
                 session_id, error_message="Background work timed out.", turn_id=turn_id

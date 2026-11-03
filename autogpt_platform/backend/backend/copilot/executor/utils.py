@@ -390,6 +390,8 @@ class CancelCoPilotEvent(BaseModel):
 
     session_id: str
     """Session ID to cancel"""
+    turn_id: str | None = None
+    """Only this turn; a stop that names none takes whichever the session runs."""
 
 
 # ============ Queue Publishing Helpers ============ #
@@ -1057,15 +1059,17 @@ async def _repeats_trailing_message(
     )
 
 
-async def enqueue_cancel_task(session_id: str) -> None:
+async def enqueue_cancel_task(session_id: str, turn_id: str | None = None) -> None:
     """Publish a cancel request for a running CoPilot session.
 
     Sends a ``CancelCoPilotEvent`` to the FANOUT exchange so all executor
-    pods receive the cancellation signal.
+    pods receive the cancellation signal. ``turn_id`` binds the stop to that
+    turn: a scheduler stopping expired work must not catch the newer turn a
+    user started in the same chat meanwhile.
     """
     from backend.util.clients import get_async_copilot_queue
 
-    event = CancelCoPilotEvent(session_id=session_id)
+    event = CancelCoPilotEvent(session_id=session_id, turn_id=turn_id)
     queue_client = await get_async_copilot_queue()
     await queue_client.publish_message(
         routing_key="",  # FANOUT ignores routing key

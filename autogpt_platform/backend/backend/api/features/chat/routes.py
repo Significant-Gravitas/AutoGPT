@@ -35,6 +35,7 @@ from backend.copilot.background_delivery import (
     cancel_background_subtasks,
     cancel_orphaned_background_subtasks,
 )
+from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -560,6 +561,10 @@ class SessionDetailResponse(BaseModel):
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
+    # From the background-task record, not the transcript page: a child's
+    # outcome, and until when a parent may still receive a follow-up.
+    background_outcome: str | None = None
+    background_pending_until: str | None = None
 
 
 class SessionSummaryResponse(BaseModel):
@@ -1412,9 +1417,11 @@ async def get_session(
 
     # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
+    background = BackgroundSessionState()
     if before_sequence is None:
-        active_session, last_message_id = await stream_registry.get_active_session(
-            session_id, user_id
+        (active_session, last_message_id), background = await asyncio.gather(
+            stream_registry.get_active_session(session_id, user_id),
+            background_task_db().get_session_background_state(session_id, user_id),
         )
         if active_session:
             active_stream_info = ActiveStreamInfo(
@@ -1465,6 +1472,10 @@ async def get_session(
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
+        background_outcome=background.outcome,
+        background_pending_until=(
+            background.pending_until.isoformat() if background.pending_until else None
+        ),
     )
 
 

@@ -61,6 +61,13 @@ class BackgroundTask(BaseModel):
         return operation_id(self.id, "followup")
 
 
+class BackgroundSessionState(BaseModel):
+    """What a chat shows about background work without its transcript."""
+
+    outcome: BackgroundOutcome | None = None
+    pending_until: datetime | None = None
+
+
 def operation_id(parent: str, operation: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"background-subtask:{parent}:{operation}"))
 

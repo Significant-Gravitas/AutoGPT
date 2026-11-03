@@ -61,7 +61,12 @@ Dispatch records the active turn identity in session metadata in Postgres.
 If Redis stream metadata is lost, parent Stop cancels that turn's children and
 suppresses their wakes in the same transaction that releases the parent slot.
 Recovery checks the observed session timestamp under a row lock, so a stale
-Stop cannot cancel a later turn's work.
+Stop cannot cancel a later turn's work. A scheduler stop names the turn it
+expires, and the worker ignores a stop whose turn is no longer the one running.
+The session endpoint reports `background_outcome` for a child chat and
+`background_pending_until` for a parent chat from the task record, so the cards
+and the parent's late-reply polling do not depend on the launch or acceptance
+rows staying within the transcript page.
 
 ## Budget semantics
 

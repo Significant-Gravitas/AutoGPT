@@ -20,6 +20,7 @@ from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
+from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import AutopilotMode, ChatSession
@@ -82,7 +83,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         chat_routes,
         "background_task_db",
         return_value=MagicMock(
-            cancel_queued_background_followup=AsyncMock(return_value=False)
+            cancel_queued_background_followup=AsyncMock(return_value=False),
+            get_session_background_state=AsyncMock(
+                return_value=BackgroundSessionState()
+            ),
         ),
     )
 
@@ -4603,6 +4607,38 @@ def test_get_session_returns_backward_paginated(
     assert data["oldest_sequence"] == 0
     assert "forward_paginated" not in data
     assert "newest_sequence" not in data
+
+
+def test_get_session_reports_background_state_from_the_durable_record(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A child's outcome and a parent's follow-up window come from the task
+    record, so they survive the marker rows paging out of the transcript."""
+    _make_paginated_messages(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    until = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
+    mocker.patch.object(
+        chat_routes,
+        "background_task_db",
+        return_value=MagicMock(
+            get_session_background_state=AsyncMock(
+                return_value=BackgroundSessionState(
+                    outcome="completed", pending_until=until
+                )
+            )
+        ),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["background_outcome"] == "completed"
+    assert data["background_pending_until"] == until.isoformat()
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(

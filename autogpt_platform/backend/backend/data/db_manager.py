@@ -776,6 +776,7 @@ class DatabaseManager(AppService):
 
     # ============ CoPilot Chat Sessions ============ #
     get_background_task = _(background_task_db.get_background_task)
+    get_session_background_state = _(background_task_db.get_session_background_state)
     create_background_task = _(background_task_db.create_background_task)
     claim_background_turn = _(background_task_db.claim_background_turn)
     finish_background_turn = _(background_task_db.finish_background_turn)
@@ -1343,6 +1344,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
     get_background_task = d.get_background_task
+    get_session_background_state = d.get_session_background_state
     create_background_task = d.create_background_task
     claim_background_turn = d.claim_background_turn
     finish_background_turn = d.finish_background_turn

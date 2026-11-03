@@ -129,5 +129,5 @@ async def finish_background_execution(
         )
     if entry.user_id and (entry.message_metadata or {}).get(BACKGROUND_TASK_KEY):
         await background_task_db().finish_background_turn(
-            entry.user_id, entry.session_id, entry.turn_id, error
+            entry.user_id, entry.session_id, entry.turn_id, error, turn_held=True
         )

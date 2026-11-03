@@ -35,6 +35,8 @@ from backend.copilot.background_execution import (
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
     DELIVERY_SECONDS,
+    FOLLOWUP_SECONDS,
+    BackgroundSessionState,
     BackgroundTask,
 )
 from backend.copilot.context import set_current_turn_id, set_execution_context
@@ -1230,6 +1232,21 @@ async def test_failed_dispatch_only_cleans_up_its_own_stream_metadata(
     replacement_turn_id = str(uuid4())
     slot = TurnSlot(world.user_id, world.parent.session_id)
     slot.admitted = True
+    # The parent still records its launch turn; a dispatch follows an
+    # admission, which clears that identity for the turn it then records.
+    actual_db = chat_db()
+    await actual_db.update_chat_session_status(
+        session_id=world.parent.session_id, status="idle"
+    )
+    assert (
+        await actual_db.admit_chat_session_turn(
+            session_id=world.parent.session_id,
+            user_id=world.user_id,
+            expect_status="idle",
+            capacity=5,
+        )
+        == "admitted"
+    )
     if failure_stage == "before_meta":
         monkeypatch.setattr(
             utils,
@@ -1659,3 +1676,127 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
         await User.prisma().delete(where={"id": user_id})
         if not connected:
             await db.disconnect()
+
+
+async def test_session_state_reports_the_outcome_and_the_followup_window(
+    world: World,
+):
+    task = await world.launch()
+    parent_id, child_id = world.parent.session_id, task.child_session_id
+    state = background_task_db.get_session_background_state
+
+    assert await state(child_id, world.user_id) == BackgroundSessionState()
+    assert await state(parent_id, world.user_id) == BackgroundSessionState(
+        pending_until=task.deadline
+        + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
+    )
+    assert await state(child_id, str(uuid4())) == BackgroundSessionState()
+
+    await world.finish_parent()
+    await world.finish_child(task)
+    await background_delivery.reconcile_background_subtasks()
+    assert (await state(child_id, world.user_id)).outcome == "completed"
+    assert (await state(parent_id, world.user_id)).pending_until is not None
+
+    entry = world.entry(parent_id)
+    assert await claim_background_execution(entry)
+    await finish_background_execution(entry, None)
+    assert await state(parent_id, world.user_id) == BackgroundSessionState()
+
+
+@pytest.mark.parametrize("completion", ["matching", "missing", "wrong_turn"])
+async def test_followup_recovery_keeps_a_delivered_summary(
+    world: World, completion: str
+):
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    entry = world.entry(task.parent_session_id)
+    assert await claim_background_execution(entry)
+    # The follow-up answered and closed its turn, but the write recording that
+    # failed, which leaves the handoff queued for recovery.
+    await append_and_save_message(
+        task.parent_session_id,
+        ChatMessage(role="assistant", content="The background result is 42."),
+    )
+    await stream_registry.mark_session_completed(
+        task.parent_session_id, turn_id=task.wake_id
+    )
+    await chat_db().update_chat_session_status(
+        session_id=task.parent_session_id, expect_status="running", status="idle"
+    )
+    redis = await get_redis_async()
+    key = stream_registry.get_session_meta_key(task.parent_session_id)
+    if completion == "missing":
+        await redis.delete(key)
+    elif completion == "wrong_turn":
+        await redis.hset(key, "turn_id", str(uuid4()))
+
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.followup_state == "finished"
+    notices = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(notices) == (0 if completion == "matching" else 1)
+
+
+@pytest.mark.parametrize("turn_held", [True, False])
+async def test_result_selection_bounds_by_the_turn_the_worker_still_holds(
+    world: World, turn_held: bool
+):
+    """A clarification the child drained mid-turn is a user row. The worker
+    that still holds the turn keeps the answer after it; recovery, which may
+    run after the chat moved on, stops at that row."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    for role, content in (
+        ("assistant", "Working on it."),
+        ("user", "Use metric units."),
+        ("assistant", "The answer is 42 km."),
+    ):
+        await append_and_save_message(
+            task.child_session_id, ChatMessage(role=role, content=content)
+        )
+
+    if turn_held:
+        await finish_background_execution(entry, None)
+    else:
+        await background_task_db.finish_background_turn(
+            world.user_id, task.child_session_id, task.child_turn_id, None
+        )
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "completed"
+    assert stored.result == ("The answer is 42 km." if turn_held else "Working on it.")
+
+
+async def test_a_dispatcher_that_lost_its_admission_cannot_record_its_turn(
+    world: World,
+):
+    """Admission clears the recorded identity, so a dispatcher that stalled
+    until orphan recovery freed its slot finds the successor's turn in place
+    and refuses itself instead of overwriting it."""
+    session_id, user_id = world.parent.session_id, world.user_id
+    actual_db = chat_db()
+    await actual_db.update_chat_session_status(session_id=session_id, status="idle")
+    assert (
+        await actual_db.admit_chat_session_turn(
+            session_id=session_id, user_id=user_id, expect_status="idle", capacity=5
+        )
+        == "admitted"
+    )
+
+    assert await actual_db.record_chat_session_turn(session_id, user_id, "successor")
+    assert not await actual_db.record_chat_session_turn(session_id, user_id, "stale")
+
+    rows = await db.query_raw_with_schema(
+        """SELECT metadata->>'_active_turn_id' AS turn
+        FROM {schema_prefix}"ChatSession" WHERE id=$1""",
+        session_id,
+    )
+    assert rows[0]["turn"] == "successor"

@@ -119,13 +119,8 @@ describe("SubSessionLive", () => {
           id: "sub-1",
           chat_status: stopped ? "idle" : "running",
           active_stream: null,
-          messages: [
-            {
-              role: "user",
-              content: "Work",
-              metadata: stopped ? { background_task_outcome: "cancelled" } : {},
-            },
-          ],
+          background_outcome: stopped ? "cancelled" : null,
+          messages: [{ role: "user", content: "Work" }],
         }),
       ),
       http.post(`${SESSION_ROUTE}/cancel`, () => {

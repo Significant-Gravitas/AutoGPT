@@ -163,7 +163,7 @@ export function useChatSession({
       refetchInterval: (query) => {
         const response = query.state.data;
         return response?.status === 200
-          ? backgroundRefreshInterval(response.data.messages)
+          ? backgroundRefreshInterval(response.data)
           : false;
       },
       retry: (failureCount, error) =>

@@ -1,39 +1,20 @@
-import { asObject } from "../components/ToolChain/resultHelpers";
-import { getStandaloneBubbleMetadata } from "./standaloneMessages";
-
-export function backgroundRefreshInterval(messages: unknown, now = Date.now()) {
-  if (!Array.isArray(messages)) return false;
-  const pending = new Map<string, number>();
-  let followup: string | null = null;
-  for (const raw of messages) {
-    const message = asObject(raw);
-    if (!message) continue;
-    const metadata = asObject(message.metadata);
-    if (message.role === "tool") {
-      const output = asObject(message.content);
-      if (
-        typeof output?.background_task_id === "string" &&
-        typeof output.background_expires_at === "string"
-      ) {
-        pending.set(
-          output.background_task_id,
-          Date.parse(output.background_expires_at),
-        );
-      }
-    }
-    if (typeof metadata?.background_task_notice === "string") {
-      followup = metadata.background_task_notice;
-    }
-    if (
-      message.role === "assistant" &&
-      followup &&
-      !getStandaloneBubbleMetadata(metadata)
-    ) {
-      pending.delete(followup);
-      followup = null;
-    }
-  }
-  return [...pending.values()].some((expires) => expires > now) ? 3000 : false;
+// The API client revives Z-suffixed timestamps into Dates and leaves the
+// backend's +00:00 form as text, so both shapes reach this.
+export function backgroundRefreshInterval(
+  session:
+    | { background_pending_until?: Date | string | null }
+    | null
+    | undefined,
+  now = Date.now(),
+) {
+  const until = session?.background_pending_until;
+  const at =
+    until instanceof Date
+      ? until.getTime()
+      : typeof until === "string"
+        ? Date.parse(until)
+        : NaN;
+  return at > now ? 3000 : false;
 }
 
 export function backgroundNotice(metadata: Record<string, unknown> | null) {

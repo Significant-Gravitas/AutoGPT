@@ -12,14 +12,12 @@ function idleSession(outcome?: string) {
     id: "sub-1",
     chat_status: "idle",
     active_stream: null,
+    background_outcome: outcome ?? null,
     messages: [
       {
         role: "user",
         content: "Work",
-        metadata: {
-          background_task_id: "task",
-          background_task_outcome: outcome,
-        },
+        metadata: { background_task_id: "task" },
       },
       { role: "assistant", content: "Partial result before recovery." },
     ],
