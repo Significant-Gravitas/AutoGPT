@@ -619,6 +619,33 @@ async def get_pending_reviews_for_chat_session(
     )
 
 
+async def chat_sessions_awaiting_review(
+    user_id: str, chat_session_ids: list[str]
+) -> set[str]:
+    """The chats among *chat_session_ids* holding a review the user must answer."""
+    if not chat_session_ids:
+        return set()
+    legacy = {f"{COPILOT_SESSION_PREFIX}{sid}": sid for sid in chat_session_ids}
+    rows = await PendingHumanReview.prisma().find_many(
+        where={
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+            "OR": [
+                {"chatSessionId": {"in": chat_session_ids}},
+                # Rows an older deploy wrote in the synthetic-graph shape.
+                {"graphExecId": {"in": list(legacy)}},
+            ],
+        },
+    )
+    waiting: set[str] = set()
+    for row in rows:
+        if row.chatSessionId:
+            waiting.add(row.chatSessionId)
+        elif row.graphExecId in legacy:
+            waiting.add(legacy[row.graphExecId])
+    return waiting
+
+
 async def _steps_waiting_in_chat(user_id: str) -> list[str]:
     """A workflow step whose card waits in the chat is one decision: Home shows
     the card, not the step's row as well."""

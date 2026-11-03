@@ -7,6 +7,7 @@ This module defines the main v2 router that aggregates all v2 API endpoints.
 from fastapi import APIRouter
 from starlette import status
 
+from .autopilot import autopilot_router
 from .blocks import blocks_router
 from .credits import credits_router
 from .errors import ErrorResponse
@@ -39,6 +40,7 @@ ERROR_RESPONSES: dict[int | str, dict] = {
 v2_router = APIRouter(responses=ERROR_RESPONSES)
 
 # Include all sub-routers
+v2_router.include_router(autopilot_router, prefix="/autopilot")
 v2_router.include_router(blocks_router, prefix="/blocks")
 v2_router.include_router(credits_router, prefix="/credits")
 v2_router.include_router(file_workspace_router, prefix="/files")

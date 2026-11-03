@@ -141,6 +141,7 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `DELETE_INTEGRATIONS` | Delete credentials. |
 | `READ_STORE` | Read your marketplace profile and submissions. |
 | `WRITE_STORE` | Edit your marketplace profile; create, edit and delete submissions; upload their media. |
+| `READ_AUTOPILOT` | `GET /autopilot/sessions`: list your AutoPilot sessions, default and expert, with their live status. |
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
 | `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
