@@ -288,7 +288,7 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
         jobs = self.workflow["jobs"]
         aggregate = jobs["validate-skip-policy"]
         self.assertEqual(aggregate["needs"], "test")
-        self.assertEqual(aggregate["if"], "${{ always() }}")
+        self.assertEqual(aggregate["if"], "${{ always() && !cancelled() }}")
         self.assertEqual(aggregate["runs-on"], "ubuntu-latest")
         download = next(
             step

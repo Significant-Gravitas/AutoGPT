@@ -1,54 +1,96 @@
-name: Validate sparse report gates
+name: Verify cancellable fail-closed gates
 on:
   push:
     branches: [codex/ci-checkout-benchmark-20261103-1702]
 permissions:
   contents: read
-  actions: read
 jobs:
-  reports:
+  contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           sparse-checkout: .github
           persist-credentials: false
-      - name: Run report and sparse selection contracts
-        run: |
-          test ! -d autogpt_platform
-          test ! -d docs
+      - run: |
           python3 -m venv "$RUNNER_TEMP/gate-tests"
           "$RUNNER_TEMP/gate-tests/bin/pip" install PyYAML==6.0.3
-          for pattern in test_ci_affected.py test_validate_backend_skips.py test_validate_junit.py test_validate_cobertura.py test_verify_smoke_shards.py; do
+          for pattern in test_ci_affected.py test_validate_backend_skips.py test_verify_smoke_shards.py; do
             "$RUNNER_TEMP/gate-tests/bin/python" -m unittest discover -s .github/scripts -p "$pattern" -v
           done
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+  fixture_success:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
+  gate_success:
+    needs: fixture_success
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 41682459760
-          pattern: backend-test-reports-py*
-          path: backend-shard-reports
-      - name: Verify all 62 real backend reports
-        run: python3 .github/scripts/validate_backend_skips.py --allow-skips-from .github/scripts/backend-allowed-skips.json --reports-dir backend-shard-reports --partitioned
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Apply the required-job validator
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/ci_affected.py jobs --required-jobs fixture_success
+  fixture_failure:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'false'
+  gate_failure:
+    needs: fixture_failure
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 41682459760
-          pattern: playwright-test-results-smoke-*
-          path: smoke-reports
-      - name: Verify complete real smoke inventory and shard union
-        run: python3 .github/scripts/verify_smoke_shards.py shards smoke-reports
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Apply the required-job validator
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/ci_affected.py jobs --required-jobs fixture_failure
+  fixture_skipped:
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - run: 'true'
+  gate_skipped:
+    needs: fixture_skipped
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 41682459760
-          pattern: frontend-integration-shard-*-of-16
-          path: frontend-shard-reports
-      - name: Verify all 16 real frontend reports
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Apply the required-job validator
+        env:
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/ci_affected.py jobs --required-jobs fixture_skipped
+  verify:
+    needs: [contracts, gate_success, gate_failure, gate_skipped]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify real failure and skip cases remain failures
+        env:
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          for shard in $(seq 1 16); do
-            report="frontend-shard-reports/frontend-integration-shard-${shard}-of-16"
-            python3 .github/scripts/validate_junit.py --require-no-skips "$report/junit.xml"
-            python3 .github/scripts/validate_cobertura.py "$report/coverage/cobertura-coverage.xml"
-          done
+          python3 - <<'PY'
+          import json,os
+          actual={key:value['result'] for key,value in json.loads(os.environ['RESULTS']).items()}
+          expected={'contracts':'success','gate_success':'success','gate_failure':'failure','gate_skipped':'failure'}
+          assert actual==expected,(actual,expected)
+          print('::notice title=gate-contracts::'+json.dumps(actual))
+          PY
+  cancel_gate:
+    needs: verify
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for the cancellation probe
+        run: python3 -c 'import time; print("Cancellation probe running", flush=True); time.sleep(240)'

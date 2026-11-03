@@ -87,7 +87,7 @@ jobs:
 
   required:
     name: Validate affected platform CI
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs: [changes, backend, frontend, fullstack]
     runs-on: ubuntu-latest
     timeout-minutes: 5

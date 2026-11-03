@@ -127,6 +127,7 @@ class SmokeShardTests(unittest.TestCase):
         gate = workflow["jobs"]["validate-smoke-shards"]
         self.assertEqual(gate["needs"], "e2e_test")
         self.assertIn("always()", gate["if"])
+        self.assertIn("!cancelled()", gate["if"])
         steps = workflow["jobs"]["e2e_test"]["steps"]
         seed = next(step for step in steps if step.get("id") == "e2e-seed-suite")
         shard = next(step for step in steps if step.get("id") == "e2e-playwright")

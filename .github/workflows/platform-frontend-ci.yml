@@ -38,7 +38,7 @@ defaults:
 jobs:
   validate-required:
     name: Validate required frontend checks and shard reports
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs: [lint, tooltip-browser, integration_test]
     permissions:
       contents: read
