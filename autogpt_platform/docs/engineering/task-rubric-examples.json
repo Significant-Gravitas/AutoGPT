@@ -1,0 +1,352 @@
+[
+  {
+    "id": 1,
+    "input": "Hire 5 more AI experts",
+    "verdict": "Task",
+    "rule": "6 / batch",
+    "why": "One Task, no sub-tasks; the 5 hires run in parallel inside it"
+  },
+  {
+    "id": 2,
+    "input": "Hire an SEO expert",
+    "verdict": "Task",
+    "rule": "6d",
+    "why": "Creates a lasting team member; tracked like any hire"
+  },
+  {
+    "id": 3,
+    "input": "What's an expert?",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Explanation"
+  },
+  {
+    "id": 4,
+    "input": "Thanks!",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Chit-chat"
+  },
+  {
+    "id": 5,
+    "input": "Research our top 10 competitors' pricing and make a comparison doc",
+    "verdict": "Task",
+    "rule": "6a,b,e",
+    "why": "Long, multi-step, artifact"
+  },
+  {
+    "id": 6,
+    "input": "What's the capital of Australia?",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Quick fact"
+  },
+  {
+    "id": 7,
+    "input": "Write a launch blog post and have the editor expert review it",
+    "verdict": "Task",
+    "rule": "6c,e",
+    "why": "Handoff and review"
+  },
+  {
+    "id": 8,
+    "input": "Write unit tests for the billing module and open a PR",
+    "verdict": "Task",
+    "rule": "6a,e",
+    "why": "Coding, PR to review"
+  },
+  {
+    "id": 9,
+    "input": "Build a scraper that pulls Product Hunt launches into a sheet",
+    "verdict": "Task",
+    "rule": "6a,b",
+    "why": "Build and verify"
+  },
+  {
+    "id": 10,
+    "input": "Every Monday send me a summary of new signups",
+    "verdict": "Routine",
+    "rule": "2",
+    "why": "Recurring"
+  },
+  {
+    "id": 11,
+    "input": "Let me know when competitor X changes pricing",
+    "verdict": "Routine",
+    "rule": "2",
+    "why": "Monitor/trigger"
+  },
+  {
+    "id": 12,
+    "input": "Plan our Q1 launch: blog, email, social, landing page",
+    "verdict": "Parent+sub-tasks",
+    "rule": "6 / split",
+    "why": "4 separable deliverables"
+  },
+  {
+    "id": 13,
+    "input": "Change my timezone to IST",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Single reversible setting"
+  },
+  {
+    "id": 14,
+    "input": "Book a flight to Delhi next Friday under 8k",
+    "verdict": "Task",
+    "rule": "6b,d",
+    "why": "Search, compare, approval to pay"
+  },
+  {
+    "id": 15,
+    "input": "Buy 1,000 more credits",
+    "verdict": "Not a task",
+    "rule": "3, 0",
+    "why": "One action; confirm inline before paying"
+  },
+  {
+    "id": 16,
+    "input": "Do something about growth",
+    "verdict": "Ask then task",
+    "rule": "7",
+    "why": "No done test"
+  },
+  {
+    "id": 17,
+    "input": "Make my business better",
+    "verdict": "Ask then task",
+    "rule": "7",
+    "why": "Too vague"
+  },
+  {
+    "id": 18,
+    "input": "On T-12, the tone is too formal",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "Comment on T-12"
+  },
+  {
+    "id": 19,
+    "input": "Mark T-4 done",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "Status change"
+  },
+  {
+    "id": 20,
+    "input": "For the onboarding plan, go with option B",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "Answers request_input"
+  },
+  {
+    "id": 21,
+    "input": "Also add a FAQ to the landing page task",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "New sub-task on that parent"
+  },
+  {
+    "id": 22,
+    "input": "Audit our site for SEO issues and fix the top 10",
+    "verdict": "Task",
+    "rule": "6a,b",
+    "why": "Audit then fixes"
+  },
+  {
+    "id": 23,
+    "input": "Summarize these 40 customer interviews into themes with quotes",
+    "verdict": "Task",
+    "rule": "6a,e",
+    "why": "Long, artifact"
+  },
+  {
+    "id": 24,
+    "input": "Clean this CSV, dedupe it and email it to sales",
+    "verdict": "Task",
+    "rule": "6b,d",
+    "why": "Multi-step, send needs approval"
+  },
+  {
+    "id": 25,
+    "input": "What's 18% of 4,250?",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Calculation"
+  },
+  {
+    "id": 26,
+    "input": "Draft a reply to this email",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Short draft inline"
+  },
+  {
+    "id": 27,
+    "input": "Reply to all 30 unread support emails",
+    "verdict": "Task",
+    "rule": "6a,d",
+    "why": "Batch, approval to send"
+  },
+  {
+    "id": 28,
+    "input": "Migrate our blog from WordPress to Webflow",
+    "verdict": "Parent+sub-tasks",
+    "rule": "6 / split",
+    "why": "Export, rebuild, redirects, QA are separable"
+  },
+  {
+    "id": 29,
+    "input": "Remind me tomorrow at 9 to call Ravi",
+    "verdict": "Routine",
+    "rule": "2",
+    "why": "Timed reminder = schedule"
+  },
+  {
+    "id": 30,
+    "input": "Add \"call Ravi\" to my tasks",
+    "verdict": "Task",
+    "rule": "5",
+    "why": "Explicit tracking, assigned to me"
+  },
+  {
+    "id": 31,
+    "input": "Why did the last run fail?",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Diagnose inline; offer fix task"
+  },
+  {
+    "id": 32,
+    "input": "Fix the failing invoice sync and rerun it",
+    "verdict": "Task",
+    "rule": "6a,b",
+    "why": "Fix, rerun, verify"
+  },
+  {
+    "id": 33,
+    "input": "Send me a Linear standup digest every morning",
+    "verdict": "Routine",
+    "rule": "2",
+    "why": "Recurring"
+  },
+  {
+    "id": 34,
+    "input": "Hire a writer, editor and designer and make our first newsletter",
+    "verdict": "Task",
+    "rule": "6 / batch",
+    "why": "One Task: hires run in parallel, then the issue is drafted"
+  },
+  {
+    "id": 35,
+    "input": "Write a 5-part email course for new users",
+    "verdict": "Task",
+    "rule": "6e / batch",
+    "why": "One session writes all 5"
+  },
+  {
+    "id": 36,
+    "input": "Pick the best name and register the domain",
+    "verdict": "Task",
+    "rule": "6b,d",
+    "why": "Choice then purchase approval"
+  },
+  {
+    "id": 37,
+    "input": "Maybe we should try TikTok someday",
+    "verdict": "Not a task",
+    "rule": "4",
+    "why": "Not committed"
+  },
+  {
+    "id": 38,
+    "input": "Run the lead enrichment expert on these 2,000 leads",
+    "verdict": "Task",
+    "rule": "6a",
+    "why": "Long background run to track"
+  },
+  {
+    "id": 39,
+    "input": "Run lead enrichment on this one email",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Quick single Run"
+  },
+  {
+    "id": 40,
+    "input": "Translate this paragraph to Hindi",
+    "verdict": "Not a task",
+    "rule": "3",
+    "why": "Inline"
+  },
+  {
+    "id": 41,
+    "input": "Translate the help center into Hindi, Spanish and German",
+    "verdict": "Parent+sub-tasks",
+    "rule": "6 / split",
+    "why": "Distinct outcome and review per language"
+  },
+  {
+    "id": 42,
+    "input": "Is T-7 done yet?",
+    "verdict": "Not a task",
+    "rule": "1, 3",
+    "why": "Read-only status answer"
+  },
+  {
+    "id": 43,
+    "input": "Cancel the onboarding task",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "Status change"
+  },
+  {
+    "id": 44,
+    "input": "Do the same as T-9 but for Europe",
+    "verdict": "Task",
+    "rule": "6, edge",
+    "why": "New outcome, linked to T-9"
+  },
+  {
+    "id": 45,
+    "input": "Retry T-15",
+    "verdict": "Update existing task",
+    "rule": "1",
+    "why": "Restart, no duplicate"
+  },
+  {
+    "id": 46,
+    "input": "Set up our Shopify store: products, payments, shipping",
+    "verdict": "Parent+sub-tasks",
+    "rule": "6 / split",
+    "why": "3 separable setups"
+  },
+  {
+    "id": 47,
+    "input": "Ask the design expert to review the pricing page by Friday",
+    "verdict": "Task",
+    "rule": "5, 6c",
+    "why": "Handoff with due date"
+  },
+  {
+    "id": 48,
+    "input": "Compare laptops under 80k and shortlist 3 in a doc",
+    "verdict": "Task",
+    "rule": "6b,e",
+    "why": "Research and artifact"
+  },
+  {
+    "id": 49,
+    "input": "Prepare the board pack: financials, KPIs, deck, CFO sign-off",
+    "verdict": "Parent+sub-tasks",
+    "rule": "6 / split",
+    "why": "Separate deliverables plus approval"
+  },
+  {
+    "id": 50,
+    "input": "Whenever a lead fills the form, enrich it and add to CRM",
+    "verdict": "Routine",
+    "rule": "2",
+    "why": "Event trigger"
+  }
+]
