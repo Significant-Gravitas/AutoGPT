@@ -1670,6 +1670,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "ExpertRunPausedError",
     "ExpertTemplateNotFoundError",
     "ExpertWriteNotReadableError",
+    "GraphActivationError",
     "GraphNotAccessibleError",
     "GraphNotFoundError",
     "GraphNotInLibraryError",
