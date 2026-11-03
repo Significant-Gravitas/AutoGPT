@@ -22,17 +22,9 @@ export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
         {variant === "agent" ? (
-          <Icon
-            icon={Robot01Icon}
-            size={15}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={Robot01Icon} size={15} tone="secondary" />
         ) : (
-          <Icon
-            icon={PlayIcon}
-            size={13}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={PlayIcon} size={13} tone="secondary" />
         )}
       </div>
       <Text

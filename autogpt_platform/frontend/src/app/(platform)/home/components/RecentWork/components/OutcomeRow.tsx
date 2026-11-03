@@ -40,9 +40,9 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
         />
       </span>
       <Text
-        variant="body"
+        variant="body-tight"
         tone="secondary"
-        className="min-w-0 flex-1 truncate leading-5"
+        className="min-w-0 flex-1 truncate"
       >
         {outcome.title}
       </Text>

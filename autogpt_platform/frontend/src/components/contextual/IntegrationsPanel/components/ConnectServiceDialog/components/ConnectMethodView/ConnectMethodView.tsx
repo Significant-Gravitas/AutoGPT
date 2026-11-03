@@ -210,11 +210,7 @@ export function ConnectMethodView({
                       }
                     >
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface shadow-sm">
-                        <Icon
-                          icon={copy.icon}
-                          size={22}
-                          className="text-foreground-body"
-                        />
+                        <Icon icon={copy.icon} size={22} tone="body" />
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex items-center gap-2">

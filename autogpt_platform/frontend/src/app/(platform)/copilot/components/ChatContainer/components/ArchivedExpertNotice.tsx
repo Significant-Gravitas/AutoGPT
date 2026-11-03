@@ -37,7 +37,7 @@ export function ArchivedExpertNotice({ expertName, reason }: Props) {
               size={16}
             />
           </AttentionCard.Icon>
-          <Text variant="small" className="text-muted-foreground">
+          <Text variant="small" tone="muted">
             {NOTICE_COPY[reason](expertName)}
           </Text>
         </AttentionCard.Row>

@@ -166,8 +166,8 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           variant="small"
           as="span"
           tone={counterTone}
-          // oxlint-disable-next-line design-system/no-restyle -- the bio counter uses tabular figures and fades between tones
-          className="tabular-nums transition-colors duration-150"
+          tabular
+          motion="colors"
         >
           {Math.max(remaining, 0)} left
         </Text>
