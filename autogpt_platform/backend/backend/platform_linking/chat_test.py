@@ -1,5 +1,6 @@
 """Tests for chat-turn orchestration — esp. the duplicate-message guard."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 from types import SimpleNamespace
@@ -34,6 +35,15 @@ def _request(**overrides) -> BotChatRequest:
     )
     defaults.update(overrides)
     return BotChatRequest(**defaults)
+
+
+@pytest.fixture(autouse=True)
+def _default_chat_route():
+    with patch(
+        "backend.platform_linking.chat.resolve_default_chat_route",
+        new=AsyncMock(return_value=("platform", None)),
+    ) as route:
+        yield route
 
 
 class TestStartChatTurn:
@@ -103,10 +113,6 @@ class TestStartChatTurn:
                 "backend.platform_linking.chat.append_and_save_message",
                 new=mock_append,
             ),
-            patch(
-                "backend.platform_linking.chat.resolve_default_chat_route",
-                new=AsyncMock(return_value=("platform", None)),
-            ),
             patch("backend.platform_linking.chat.dispatch_turn", new=mock_dispatch),
         ):
             handle = await start_chat_turn(_request())
@@ -155,14 +161,16 @@ class TestStartChatTurn:
                 new=AsyncMock(),
             ) as mock_enqueue,
         ):
-
-            with pytest.raises(DuplicateChatMessageError):
-                await start_chat_turn(_request())
+            async with asyncio.timeout(30):
+                with pytest.raises(DuplicateChatMessageError):
+                    await start_chat_turn(_request())
 
         mock_enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_happy_path_dispatches_inside_the_held_slot(self, turn_slot):
+    async def test_happy_path_dispatches_inside_the_held_slot(
+        self, turn_slot, _default_chat_route
+    ):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         session = MagicMock(session_id="sess-new")
@@ -195,6 +203,9 @@ class TestStartChatTurn:
         create_call = mock_create_chat_session.await_args
         assert create_call is not None
         assert create_call.kwargs["source_platform"] == "discord"
+        assert create_call.kwargs["llm_auth_provider"] == "platform"
+        assert create_call.kwargs["llm_credential_id"] is None
+        _default_chat_route.assert_awaited_once_with("owner-1")
         mock_enqueue.assert_awaited_once()
         assert mock_enqueue.await_args.args == (turn_slot.slot,)
         assert mock_enqueue.await_args.kwargs["turn_id"] == handle.turn_id

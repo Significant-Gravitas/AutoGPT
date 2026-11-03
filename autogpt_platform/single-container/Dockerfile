@@ -29,7 +29,8 @@ ENV NODE_ENV=production \
     DATABASE_URL="postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
 
 RUN pnpm run generate:api \
-    && NODE_OPTIONS="--max-old-space-size=8192" pnpm build --turbopack \
+    && pnpm run copy:vad-assets \
+    && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec next build --turbopack \
     && rm -f .env .env.local .env.production
 
 FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime

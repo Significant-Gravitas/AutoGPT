@@ -649,7 +649,8 @@ jobs:
             pytest_args+=(-v)
           fi
 
-          python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
+          timeout --verbose --kill-after=15s 8m \
+            python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
 
       - name: Generate coverage XML once
         if: ${{ always() }}

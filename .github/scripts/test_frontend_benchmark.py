@@ -44,11 +44,11 @@ class FrontendBenchmarkTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_test_inventory(path)
 
-    def test_dependency_and_worker_benchmarks_refuse_local_execution(self):
+    def test_benchmarks_refuse_local_execution(self):
         env = {
             key: value for key, value in os.environ.items() if key != "GITHUB_ACTIONS"
         }
-        for mode in ("tools", "tests"):
+        for mode in ("tools", "tests", "builds"):
             result = subprocess.run(
                 [
                     sys.executable,

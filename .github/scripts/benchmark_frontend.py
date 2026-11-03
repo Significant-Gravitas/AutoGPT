@@ -12,6 +12,7 @@ from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree
 
+from benchmark_frontend_builds import compare_builds
 from frontend_typecheck import compatibility_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +31,8 @@ def read_test_inventory(path: Path) -> Counter:
 
 
 class Benchmark:
-    def __init__(self, output: Path):
+    def __init__(self, output: Path, *, mode: str = "tools"):
+        self.mode = mode
         self.output = output.resolve()
         self.output.mkdir(parents=True, exist_ok=True)
         self.records = []
@@ -327,6 +329,7 @@ module.exports = new FlatCompat({
         (self.output / "final-changes.patch").write_bytes(final_diff)
         self.canaries["tracked-files-match-setup"] = final_diff == self.setup_diff
         report = {
+            "mode": self.mode,
             "source_sha": subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
             ).strip(),
@@ -350,6 +353,14 @@ module.exports = new FlatCompat({
                 "A single paired sample cannot establish repeatability or eliminate order-dependent leaks.",
             ],
         }
+        if self.mode == "builds":
+            report["limitations"] = [
+                "Compiler command timings exclude dependency setup, Docker export, test execution and queueing.",
+                "Each runner compares both compilers; the matrix reverses ordering to expose warm-up effects.",
+                "Warm cases preserve only .next/cache and rebuild all output; the edited case changes one imported source file.",
+                "Matching route inventories, standalone output and source maps are structural checks, not runtime equivalence.",
+                "A compiler change still needs full runtime and coverage validation before adoption.",
+            ]
         (self.output / "measurements.json").write_text(
             json.dumps(report, indent=2) + "\n"
         )
@@ -370,22 +381,29 @@ module.exports = new FlatCompat({
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["tools", "tests"])
+    parser.add_argument("mode", choices=["tools", "tests", "builds"])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--shard", type=int, choices=range(1, 5))
+    parser.add_argument(
+        "--first-compiler", choices=["webpack", "turbopack"], default="webpack"
+    )
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true" or sys.platform != "linux":
         parser.error("Dependency benchmarks run only on hosted Linux CI")
     if args.mode == "tests" and args.shard is None:
         parser.error("tests requires --shard")
-    benchmark = Benchmark(args.output)
+    benchmark = Benchmark(args.output, mode=args.mode)
     try:
         if args.mode == "tools":
             benchmark.tools()
+        elif args.mode == "builds":
+            compare_builds(benchmark, FRONTEND, args.first_compiler)
         else:
             benchmark.tests(args.shard)
     finally:
         benchmark.finish()
+    if args.mode == "builds" and not all(benchmark.canaries.values()):
+        raise SystemExit("Build comparison failed validation; inspect its artifacts")
 
 
 if __name__ == "__main__":
