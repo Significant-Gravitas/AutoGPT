@@ -14,11 +14,13 @@ class _LockRedis:
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}
 
     async def set(self, key: str, value: str, *, nx: bool, ex: int) -> bool:
         if nx and key in self.values:
             return False
         self.values[key] = value
+        self.ttls[key] = ex
         return True
 
     async def get(self, key: str) -> str | None:
@@ -113,3 +115,20 @@ async def test_a_resend_gives_up_when_the_first_create_never_finishes(
 
     assert exc_info.value.status_code == 503
     assert redis.values["copilot:local-session-create:user-1:session-1"] == "stuck"
+
+
+@pytest.mark.asyncio
+async def test_the_lock_lease_outlasts_a_create_and_the_resends_wait(
+    redis: _LockRedis,
+) -> None:
+    """The lease must outlive the slowest create, or a resend could adopt a
+    session the first attempt is about to delete. It must also outlive the
+    resend's own wait, so a resend gives up before the lease runs out."""
+    async with client_named_local_create("user-1", "session-1"):
+        ttl = redis.ttls["copilot:local-session-create:user-1:session-1"]
+
+    # Attach and activate (10 s each), the data channel (8 s) and the
+    # compensating detach (5 s), each bounded by its own deadline.
+    assert ttl == local_create_lock._LOCK_TTL_SECONDS
+    assert ttl > 10 + 10 + 8 + 5
+    assert ttl > local_create_lock._WAIT_SECONDS
