@@ -229,8 +229,10 @@ async def test_write_no_parents_returns_error(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     target = tmp_path / "missing-dir" / "c.txt"
     resp = await h.handle_write(_write_msg(target, "hi", create_parents=False))
-    # Parent doesn't exist → write should fail with an OSError surfaced.
-    assert isinstance(resp, (ErrorMessage,)) or not target.exists()
+
+    assert isinstance(resp, ErrorMessage)
+    assert resp.payload.code == ErrorCode.PATH_NOT_FOUND
+    assert not target.parent.exists()
 
 
 @pytest.mark.asyncio
