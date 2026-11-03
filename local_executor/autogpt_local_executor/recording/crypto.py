@@ -15,10 +15,12 @@ keeps the retained buffer from sitting in plaintext between capture and review.
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import logging
 import os
 import secrets
+import stat
 from hashlib import sha256
 from pathlib import Path
 
@@ -121,13 +123,43 @@ def _fallback_recording_key() -> bytes:
     salt = secrets.token_bytes(16)
     stream = _kdf(passphrase.encode("utf-8"), salt, 32)
     ct = bytes(p ^ s for p, s in zip(key, stream))
-    fallback_path.write_text(f"{salt.hex()}:{ct.hex()}", encoding="utf-8")
-    if os.name != "nt":
-        try:
-            os.chmod(fallback_path, 0o600)
-        except OSError:
-            pass
+    _write_owner_only(fallback_path, f"{salt.hex()}:{ct.hex()}".encode("ascii"))
     return key
+
+
+def _write_owner_only(path: Path, data: bytes) -> None:
+    """Write `data` to `path` so that no other local account can ever read it.
+
+    The bytes go into a new temporary file, created owner-only (O_CREAT |
+    O_EXCL, mode 0o600) before anything is written to it, and that file then
+    replaces `path`. An existing file at `path` is replaced, never rewritten in
+    place with its old permissions. If the filesystem leaves the new file
+    readable by others anyway, nothing is written and this raises. On Windows
+    the mode is a no-op and the file inherits the directory's ACL.
+    """
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(tmp, flags, 0o600)
+    try:
+        with open(fd, "wb") as handle:
+            if os.name != "nt":
+                mode = stat.S_IMODE(os.fstat(handle.fileno()).st_mode)
+                if mode & 0o077:
+                    raise RuntimeError(
+                        f"Refusing to store the recording key in {path.parent}: the "
+                        f"filesystem does not keep files private to this user (mode "
+                        f"{mode:o}). Install a keyring backend or point "
+                        "AUTOGPT_SHIM_FALLBACK_DIR at a directory that supports POSIX "
+                        "permissions."
+                    )
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def _fallback_path() -> Path:

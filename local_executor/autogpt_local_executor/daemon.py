@@ -284,6 +284,15 @@ class ShimDaemon:
         # Fail closed on incomplete preview capabilities and missing OS
         # permissions before opening the WebSocket.
         await self._preflight_or_raise()
+        if not self._control_mode:
+            # A legacy session is jailed to allowed_root, which the shim
+            # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
+            try:
+                self.config.allowed_root.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise DaemonPreflightError(
+                    f"Could not create allowed_root {self.config.allowed_root}: {exc}"
+                ) from exc
         if self._manage_audit_lifecycle:
             await self._audit_shim_start()
         self._running = True
@@ -1727,31 +1736,42 @@ class ShimDaemon:
         plat = platform_info.detect_platform()
         if plat != "darwin":
             return
+        # Input injection needs Accessibility. Without Screen Recording a
+        # capture silently shows only the wallpaper and menu bar.
         try:
             from ApplicationServices import (  # type: ignore[import-not-found]
                 AXIsProcessTrusted,
             )
+            from Quartz import (  # type: ignore[import-not-found]
+                CGPreflightScreenCaptureAccess,
+            )
         except ImportError:
             await self._fail_preflight(
-                "Cannot verify Accessibility permission because "
-                "pyobjc/ApplicationServices is unavailable. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe"],
+                "Cannot verify Accessibility and Screen Recording permissions because "
+                "pyobjc is unavailable. Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
             )
         try:
-            trusted = bool(AXIsProcessTrusted())
+            granted = {
+                "accessibility": bool(AXIsProcessTrusted()),
+                "screen_recording": bool(CGPreflightScreenCaptureAccess()),
+            }
         except Exception as exc:
             await self._fail_preflight(
-                f"Could not verify Accessibility permission: {exc}. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe"],
+                f"Could not verify Accessibility and Screen Recording permissions: {exc}. "
+                "Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.PERMISSION_PENDING,
             )
-        if trusted:
+        missing = [name for name, ok in granted.items() if not ok]
+        if not missing:
             return
+        labels = {"accessibility": "Accessibility", "screen_recording": "Screen Recording"}
         await self._fail_preflight(
-            "Accessibility permission not granted; computer_use requires it. "
-            "Run `autogpt-shim doctor` to surface the prompt.",
-            missing_permissions=["accessibility"],
+            f"{' and '.join(labels[name] for name in missing)} permission not granted; "
+            "computer_use requires it. Run `autogpt-shim doctor` to surface the prompt.",
+            missing_permissions=missing,
             error_code=ErrorCode.PERMISSION_PENDING,
         )
 

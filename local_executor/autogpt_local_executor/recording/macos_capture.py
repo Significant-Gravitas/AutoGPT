@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 _MOUSE_DOWN_TYPES: set[int] = set()
 _KEY_DOWN_TYPE: int | None = None
 
+# Longest the tap thread runs its run loop before it re-checks the stop flag.
+# This bounds how long a stop() that races the thread's startup can take.
+_RUN_LOOP_SLICE_SECONDS = 0.25
+
 
 class MacInputCaptureSource(CaptureSource):
     """Observes real mouse-down / key-down events via a Quartz CGEventTap.
@@ -99,15 +103,33 @@ class MacInputCaptureSource(CaptureSource):
         return True
 
     def _run_tap(self) -> None:
+        """Service the tap until stop(), then disable and invalidate it.
+
+        CFRunLoopStop does nothing unless the run loop is running at that
+        moment, so a stop() that lands between the flag check and the start of
+        the loop would be lost and the tap would keep observing input. The
+        loop therefore runs in short slices and re-checks the flag between
+        them.
+        """
         import Quartz
 
+        tap = self._tap
         self._runloop = Quartz.CFRunLoopGetCurrent()
-        source = Quartz.CFMachPortCreateRunLoopSource(None, self._tap, 0)
-        Quartz.CFRunLoopAddSource(self._runloop, source, Quartz.kCFRunLoopCommonModes)
-        Quartz.CGEventTapEnable(self._tap, True)
-        if self._stop.is_set():
-            return
-        Quartz.CFRunLoopRun()  # blocks until CFRunLoopStop
+        try:
+            source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+            Quartz.CFRunLoopAddSource(self._runloop, source, Quartz.kCFRunLoopCommonModes)
+            Quartz.CGEventTapEnable(tap, True)
+            while not self._stop.is_set():
+                result = Quartz.CFRunLoopRunInMode(
+                    Quartz.kCFRunLoopDefaultMode, _RUN_LOOP_SLICE_SECONDS, False
+                )
+                if result == Quartz.kCFRunLoopRunFinished:
+                    break  # nothing left to service; don't spin
+        finally:
+            # Invalidating the port removes the tap from the event stream and
+            # its source from the run loop.
+            Quartz.CGEventTapEnable(tap, False)
+            Quartz.CFMachPortInvalidate(tap)
 
     def _on_event(self, proxy, etype, event, refcon):
         """CGEventTap callback (runloop thread). Enqueue a plain dict; convert
@@ -137,6 +159,7 @@ class MacInputCaptureSource(CaptureSource):
         if self._runloop is not None:
             import Quartz
 
+            # Ends the current slice early; the flag catches a stop that this misses.
             Quartz.CFRunLoopStop(self._runloop)
         if self._thread is not None:
             self._thread.join(timeout=2.0)

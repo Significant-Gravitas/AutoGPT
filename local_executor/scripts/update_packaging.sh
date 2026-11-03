@@ -6,14 +6,19 @@
 #   scripts/update_packaging.sh v0.0.1
 #
 # Workflow:
-#   1. Tag + push v0.0.1 → release.yml builds, publishes to PyPI, attaches
-#      dists to the GitHub release.
+#   1. Tag + push v0.0.1 → release.yml (in the
+#      Significant-Gravitas/autogpt-local-executor repo) builds, publishes
+#      to PyPI, attaches dists to the GitHub release.
 #   2. Run this script locally with the tag.
-#   3. Copy the rendered files into the homebrew tap / scoop bucket repo
+#   3. Run `brew update-python-resources` on the formula to add its
+#      dependency resource blocks. This script does not do that, and the
+#      formula does not install a working shim without them.
+#   4. Copy the rendered files into the homebrew tap / scoop bucket repo
 #      and open a PR there.
 #
 # The repo's own packaging/ stubs are also updated in place so they stay
-# usable for ad-hoc testing.
+# usable for ad-hoc testing. Re-running the script replaces the values
+# from the previous run.
 
 set -euo pipefail
 
@@ -25,15 +30,22 @@ fi
 TAG="$1"
 VERSION="${TAG#v}"
 PKG="autogpt-local-executor"
-PKG_UNDERSCORE="${PKG//-/_}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOMEBREW_FORMULA="$REPO_ROOT/packaging/homebrew/${PKG}.rb"
 SCOOP_MANIFEST="$REPO_ROOT/packaging/scoop/${PKG}.json"
 
 # Fetch sdist + wheel from PyPI and compute sha256s.
+# macOS has shasum but not sha256sum.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR"' EXIT
 
 # Resolve the PyPI download URLs via the JSON API (avoids hardcoding the
 # Files hosted layout, which has changed shape historically).
@@ -63,11 +75,11 @@ fi
 
 echo "Fetching sdist: $SDIST_URL"
 curl -fsSL "$SDIST_URL" -o "$TMPDIR/sdist.tar.gz"
-SDIST_SHA=$(sha256sum "$TMPDIR/sdist.tar.gz" | awk '{print $1}')
+SDIST_SHA=$(sha256_of "$TMPDIR/sdist.tar.gz")
 
 echo "Fetching wheel: $WHEEL_URL"
 curl -fsSL "$WHEEL_URL" -o "$TMPDIR/wheel.whl"
-WHEEL_SHA=$(sha256sum "$TMPDIR/wheel.whl" | awk '{print $1}')
+WHEEL_SHA=$(sha256_of "$TMPDIR/wheel.whl")
 
 echo "sdist sha256 = $SDIST_SHA"
 echo "wheel sha256 = $WHEEL_SHA"
@@ -77,13 +89,23 @@ echo "wheel sha256 = $WHEEL_SHA"
 python3 - "$HOMEBREW_FORMULA" "$VERSION" "$SDIST_URL" "$SDIST_SHA" <<'PY'
 import re, sys
 path, version, url, sha = sys.argv[1:]
-src = open(path).read()
-src = re.sub(r'url "PLACEHOLDER-[^"]*"', f'url "{url}"', src)
-src = re.sub(r'sha256 "PLACEHOLDER-[^"]*"', f'sha256 "{sha}"', src)
-src = re.sub(r'version "[^"]*"', f'version "{version}"', src)
-# Also patch any non-placeholder values from a prior run.
-src = re.sub(r'url "https://files\.pythonhosted\.org/[^"]*"', f'url "{url}"', src)
-open(path, "w").write(src)
+with open(path) as f:
+    src = f.read()
+# Replace whatever value the formula's own url / sha256 / version lines hold,
+# so a second run overwrites the first. Only lines indented two spaces match:
+# `resource` blocks are indented four, so their url / sha256 stay as they are.
+for field, value in (("url", url), ("sha256", sha), ("version", version)):
+    src, count = re.subn(
+        rf'^(  {field} )"[^"]*"$',
+        lambda m, value=value: f'{m.group(1)}"{value}"',
+        src,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count != 1:
+        sys.exit(f"{path}: found no top-level `{field} \"...\"` line to update")
+with open(path, "w") as f:
+    f.write(src)
 PY
 
 # --- Update Scoop manifest ---
@@ -104,10 +126,24 @@ echo ""
 echo "Updated:"
 echo "  $HOMEBREW_FORMULA"
 echo "  $SCOOP_MANIFEST"
+
+# Homebrew installs the package with `pip --no-deps`, so the formula must
+# list every dependency as a `resource` block.
+if ! grep -Eq '^[[:space:]]*resource[[:space:]]+"[^"]+"[[:space:]]+do' "$HOMEBREW_FORMULA"; then
+  echo "" >&2
+  echo "WARNING: $HOMEBREW_FORMULA has no resource blocks." >&2
+  echo "  Without them, brew install leaves out pydantic, websockets, httpx," >&2
+  echo "  keyring and the rest, and autogpt-shim fails to start." >&2
+  echo "  Do step 2 below before you copy the formula to the tap." >&2
+fi
+
 echo ""
 echo "Next:"
 echo "  1. Review the diffs."
-echo "  2. Copy them into the tap / bucket repos:"
+echo "  2. Generate the formula's resource blocks (needs Homebrew). Do this"
+echo "     on every release, because the dependencies change:"
+echo "       brew update-python-resources $HOMEBREW_FORMULA"
+echo "  3. Copy the files into the tap / bucket repos:"
 echo "     - Significant-Gravitas/homebrew-tap → Formula/${PKG}.rb"
 echo "     - Significant-Gravitas/scoop-bucket → bucket/${PKG}.json"
-echo "  3. Open PRs against those repos."
+echo "  4. Open PRs against those repos."

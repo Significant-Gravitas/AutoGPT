@@ -99,6 +99,8 @@ def test_computer_use_is_not_advertised_without_a_module_its_backend_needs(
     """pyautogui alone is not enough: screenshots and display bounds need mss,
     and each OS's window and clipboard operations need its native bindings."""
     monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
     monkeypatch.setattr(platform_info, "_module_available", lambda name: name != missing)
 
@@ -110,6 +112,8 @@ def test_computer_use_is_advertised_with_every_module_installed(
     monkeypatch: pytest.MonkeyPatch, platform_name: str
 ) -> None:
     monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
     monkeypatch.setattr(platform_info, "_module_available", lambda name: True)
 

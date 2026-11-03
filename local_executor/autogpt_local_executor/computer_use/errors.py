@@ -92,6 +92,15 @@ class ClipboardConcealedError(BackendError):
         )
 
 
+class ClipboardWriteError(BackendError):
+    """The clipboard could not be written, e.g. another app holds it open."""
+
+    code = ErrorCode.INTERNAL_ERROR
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Could not write the clipboard: {reason}", details={"reason": reason})
+
+
 class InputOutOfBoundsError(BackendError):
     code = ErrorCode.INPUT_OUT_OF_BOUNDS
 
@@ -112,6 +121,7 @@ class InputOutOfBoundsError(BackendError):
 __all__ = [
     "BackendError",
     "ClipboardConcealedError",
+    "ClipboardWriteError",
     "FeatureNotSupportedError",
     "InputOutOfBoundsError",
     "PermissionPendingError",

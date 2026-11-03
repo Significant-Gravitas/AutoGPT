@@ -52,6 +52,12 @@ class CaptureSource(ABC):
     """A source of TrajectorySteps. The single seam between OS-specific capture
     and the OS-agnostic recording pipeline."""
 
+    #: Whether each step's `cursor` is where the action landed. A producer that
+    #: cannot observe the pointer sets this False, and ScreenshotActionFloor
+    #: then fills `cursor` from the live pointer. Never inferred from the value:
+    #: (0, 0) is a real position, the display origin.
+    reports_cursor: bool = True
+
     @abstractmethod
     def steps(self) -> AsyncIterator[TrajectoryStep]:
         """Yield steps until the source is exhausted or stopped.
@@ -89,7 +95,7 @@ class ScreenshotActionFloor(CaptureSource):
       * mints a screenshot stub id (the real frame is buffered out-of-band; the
         wire carries only the stub ref, never inline bytes — §1);
       * fills `cursor` from the backend's live cursor position when the
-        producer left it at the origin;
+        producer cannot observe the pointer (`reports_cursor` is False);
       * leaves enrichment as kind:none (the floor never enriches — that's the
         A11yEnricher / browser channel's job).
 
@@ -138,9 +144,9 @@ class ScreenshotActionFloor(CaptureSource):
     async def steps(self) -> AsyncIterator[TrajectoryStep]:
         async for event in self._input_events.steps():
             # The producer supplies action + active_app/window. The floor owns
-            # screenshot_ref and may refine cursor from the live backend.
+            # screenshot_ref, and the cursor when the producer can't see it.
             cursor = event.cursor
-            if cursor == (0, 0):
+            if not self._input_events.reports_cursor:
                 cursor = self._snapshot_cursor(cursor)
             # TODO(os-native): capture the real pre-action frame here and buffer
             # it under this stub id. We never inline bytes on the wire (§1).

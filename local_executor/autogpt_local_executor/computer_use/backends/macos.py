@@ -26,6 +26,7 @@ from ..backend import ClipboardReadResult, ComputerUseBackend, ScreenshotResult
 from ..display import displays_to_bounds_list, displays_via_mss
 from ..errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     PermissionPendingError,
@@ -526,7 +527,10 @@ class MacOSBackend(ComputerUseBackend):
             raise FeatureNotSupportedError("window.list", reason=str(exc)) from exc
 
         opts = kCGWindowListExcludeDesktopElements
-        if not include_offscreen:
+        # Minimized windows are off screen. Telling them apart from windows on
+        # other Spaces needs each window's Accessibility state, so both are
+        # listed and is_minimized stays false.
+        if not (include_offscreen or include_minimized):
             opts |= kCGWindowListOptionOnScreenOnly
         info = CGWindowListCopyWindowInfo(opts, kCGNullWindowID)
         # Clear stale mappings — the Q2 contract says window_ids are
@@ -797,37 +801,30 @@ class MacOSBackend(ComputerUseBackend):
         args: list[str] | None = None,
         activate: bool = True,
     ) -> int:
-        # Prefer NSWorkspace.openApplication for bundle-id launches; fall
-        # back to `open -a` for paths, and finally raw Popen.
-        try:
-            from AppKit import NSWorkspace  # type: ignore[import-not-found]
-        except ImportError:
-            NSWorkspace = None  # type: ignore[assignment]
-        if bundle_id and NSWorkspace is not None:
+        if bundle_id:
+            # `open` passes launch arguments and honours activation (-g keeps
+            # the app in the background); NSWorkspace.openURL_ took neither.
+            command = ["open", "-b", bundle_id]
+            if not activate:
+                command.append("-g")
+            if args:
+                command += ["--args", *args]
             try:
-                ws = NSWorkspace.sharedWorkspace()
-                url = ws.URLForApplicationWithBundleIdentifier_(bundle_id)
-                if url is None:
-                    raise FeatureNotSupportedError(
-                        "app.launch", reason=f"bundle {bundle_id!r} not installed"
-                    )
-                # Use the synchronous open variant — async needs a config block.
-                ok = ws.openURL_(url)
-                if not ok:
-                    raise FeatureNotSupportedError(
-                        "app.launch", reason=f"failed to launch {bundle_id!r}"
-                    )
-                # Resolve pid via NSRunningApplication scan.
-                for _ in range(20):
-                    pid = self._pid_for_bundle(bundle_id)
-                    if pid:
-                        return pid
-                    time.sleep(0.05)
-                return 0
-            except FeatureNotSupportedError:
-                raise
-            except Exception as exc:
+                result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+            except (OSError, subprocess.SubprocessError) as exc:
                 raise FeatureNotSupportedError("app.launch", reason=str(exc)) from exc
+            if result.returncode != 0:
+                reason = result.stderr.decode("utf-8", errors="replace").strip()
+                raise FeatureNotSupportedError(
+                    "app.launch", reason=reason or f"open exited with {result.returncode}"
+                )
+            # Resolve pid via NSRunningApplication scan.
+            for _ in range(20):
+                pid = self._pid_for_bundle(bundle_id)
+                if pid:
+                    return pid
+                time.sleep(0.05)
+            return 0
         if executable_path:
             proc = subprocess.Popen(
                 [executable_path, *(args or [])],
@@ -919,18 +916,23 @@ class MacOSBackend(ComputerUseBackend):
         except Exception:
             return None, None
 
-    def _write_pasteboard_text(self, content: str) -> int | None:
+    def _write_pasteboard_text(self, content: str) -> int:
+        """Write `content` and return the new changeCount; raise if the text
+        did not land, so nothing acknowledges or pastes a stale clipboard."""
         pb = self._pasteboard()
         if pb is None:
-            return None
+            raise ClipboardWriteError("the pasteboard is unavailable")
         try:
             from AppKit import NSPasteboardTypeString  # type: ignore[import-not-found]
 
             pb.clearContents()
-            pb.setString_forType_(content, NSPasteboardTypeString)
-            return int(pb.changeCount())
-        except Exception:
-            return None
+            written = pb.setString_forType_(content, NSPasteboardTypeString)
+            change_count = int(pb.changeCount())
+        except Exception as exc:
+            raise ClipboardWriteError(str(exc)) from exc
+        if not written:
+            raise ClipboardWriteError("the pasteboard refused the text")
+        return change_count
 
     def _read_pasteboard_types(self) -> list[str]:
         pb = self._pasteboard()
@@ -979,7 +981,10 @@ class MacOSBackend(ComputerUseBackend):
                     return
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
-                self._write_pasteboard_text(previous)
+                try:
+                    self._write_pasteboard_text(previous)
+                except ClipboardWriteError:
+                    logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

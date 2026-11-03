@@ -120,7 +120,9 @@ def _check_keychain() -> CheckResult:
         return CheckResult(
             "WARN",
             "keychain",
-            f"unavailable: {exc} (encrypted-file fallback will be used)",
+            f"unavailable: {exc}. `autogpt-shim auth` needs a keychain to store "
+            "sign-in tokens; only the audit key can fall back to a file, and only "
+            "when AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE is set",
         )
 
 
@@ -294,7 +296,9 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
             CheckResult(
                 "WARN",
                 "display_server",
-                f"could not detect session type (XDG_SESSION_TYPE={session!r})",
+                "no display session found (XDG_SESSION_TYPE, DISPLAY and "
+                "WAYLAND_DISPLAY are unset); computer_use needs an X11 session",
+                blocking=config.enable_computer_use,
             )
         )
 

@@ -174,7 +174,9 @@ def build_context(config_path: Path | None) -> AutostartContext:
     cfg = config_path or default_config_path()
     return AutostartContext(
         shim_command=resolve_shim_command(),
-        config_path=str(cfg),
+        # The service manager starts the shim in its own working directory.
+        # abspath, not resolve(): a config that is a symlink stays one.
+        config_path=os.path.abspath(cfg.expanduser()),
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
     )

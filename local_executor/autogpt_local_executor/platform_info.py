@@ -138,8 +138,12 @@ def _can_do_computer_use() -> bool:
     if not all(_module_available(name) for name in computer_use_modules(plat)):
         return False
     if plat in ("linux",):
-        # Wayland sessions can't inject — see CROSS_PLATFORM.md row.
-        if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        # Computer use needs an X display, and Wayland sessions can't inject
+        # input even into XWayland apps — see CROSS_PLATFORM.md row.
+        wayland = os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" or bool(
+            os.environ.get("WAYLAND_DISPLAY")
+        )
+        if wayland or not os.environ.get("DISPLAY"):
             return False
     if plat == "wsl2":
         return False

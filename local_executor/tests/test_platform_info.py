@@ -104,8 +104,26 @@ def test_default_audit_log_path_windows(monkeypatch: pytest.MonkeyPatch) -> None
         assert "audit.log" in str(p)
 
 
-def test_resolve_shell_unknown_returns_none() -> None:
-    assert platform_info.resolve_shell("powershell") is None or sys.platform == "win32"
+@pytest.mark.parametrize("platform_name", ["darwin", "linux", "windows"])
+def test_resolve_shell_unknown_returns_none(
+    monkeypatch: pytest.MonkeyPatch, platform_name: str
+) -> None:
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
+    monkeypatch.setattr(platform_info.shutil, "which", lambda name: f"/bin/{name}")
+
+    assert platform_info.resolve_shell("fish") is None
+
+
+def test_powershell_resolves_only_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(platform_info.shutil, "which", lambda name: f"/bin/{name}")
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "windows")
+    assert platform_info.resolve_shell("powershell") == (
+        "/bin/powershell.exe",
+        ["-NoLogo", "-NoProfile", "-Command"],
+    )
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    assert platform_info.resolve_shell("powershell") is None
 
 
 def _fake_open(file_contents: dict[str, str]):
@@ -121,3 +139,42 @@ def _fake_open(file_contents: dict[str, str]):
         return real_open(file, mode, *args, **kwargs)
 
     return _open
+
+
+_SESSION_VARIABLES = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE")
+
+
+def _linux_session(monkeypatch: pytest.MonkeyPatch, **env: str) -> None:
+    for name in _SESSION_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(platform_info, "_module_available", lambda _name: True)
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {},
+        {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"},
+        {"DISPLAY": ":0", "XDG_SESSION_TYPE": "wayland"},
+    ],
+    ids=["headless", "xwayland", "wayland-session"],
+)
+def test_linux_computer_use_needs_an_x11_display(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
+) -> None:
+    """Without an X display there is no screen, and Wayland blocks input
+    injection even for XWayland apps."""
+    _linux_session(monkeypatch, **env)
+
+    assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+def test_linux_computer_use_is_advertised_in_an_x11_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
+
+    assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)

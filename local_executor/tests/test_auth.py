@@ -293,6 +293,39 @@ def test_callback_validates_state_without_logging_code(
     assert "the-code" not in captured.err
 
 
+def test_callback_wait_outlasts_requests_for_other_paths(tmp_path: Path) -> None:
+    """A browser asks for /favicon.ico; that must not end the wait."""
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+    statuses: list[int] = []
+
+    def browse() -> None:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/favicon.ico", timeout=30)
+        except urllib.error.HTTPError as exc:
+            statuses.append(exc.code)
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
+        ) as response:
+            statuses.append(response.status)
+
+    thread = threading.Thread(target=browse)
+    thread.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=60) == "the-code"
+    finally:
+        thread.join(timeout=30)
+    assert statuses == [404, 200]
+
+
+def test_callback_wait_gives_up_at_its_deadline(tmp_path: Path) -> None:
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, _port = flow._bind_callback_server(expected_state="state")
+
+    with pytest.raises(ValueError, match="timed out"):
+        flow._wait_for_callback(server, codes, errors, timeout=0.2)
+
+
 def test_callback_rejects_state_mismatch(tmp_path: Path) -> None:
     flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
     server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")

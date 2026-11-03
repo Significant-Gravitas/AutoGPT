@@ -165,6 +165,11 @@ Semantics:
 top-left-origin virtual-display pixels.** Always. There is no
 region-local or window-local coordinate mode.
 
+On a HiDPI display these are the OS's logical units (points on macOS),
+the space `DISPLAY_INFO` origins and `logical_size` use. A screenshot can
+be larger than that by its `display_scale`, so divide a point in the
+image by `display_scale` before sending it as a `coordinate`.
+
 - `region` on a screenshot request only crops the **image returned**;
   it does not shift any subsequent `INPUT_ACTION.coordinate`. The shim
   never owns coordinate state. If the platform asks for a 800×500 crop
@@ -420,6 +425,10 @@ the others — same posture for us.
 }
 ```
 
+On macOS, `include_minimized` also lists windows on other Spaces, and
+`is_minimized` is always false: telling the two apart needs each
+window's Accessibility state, which v1 does not read.
+
 ```json
 {
   "type": "WINDOW_LIST_RESPONSE",
@@ -647,7 +656,10 @@ multi-app workflow is half-blind without clipboard access.
 }
 ```
 
-Responds with `ACK`.
+Responds with `ACK`, or `INTERNAL_ERROR` when the text did not land on
+the clipboard (for example, another app holds it open). A paste with
+`paste: true` stops before the paste keystroke in that case, so it never
+pastes what was already there.
 
 Both clipboard directions are bounded by
 `HELLO_ACK.max_file_size_bytes`. `CLIPBOARD_READ` rejects an oversized backend
@@ -804,7 +816,9 @@ agent loop:
 
 2. **Daemon refuses to bind WS when consent is missing.** If
    `computer_use` is in the shim config's requested capabilities AND
-   `AXIsProcessTrusted()` returns false, the daemon writes a structured
+   `AXIsProcessTrusted()` or `CGPreflightScreenCaptureAccess()` returns
+   false (without Screen Recording, macOS captures show only the
+   wallpaper and menu bar), the daemon writes a structured
    record to the audit log (`code: PERMISSION_PENDING`, the missing
    permissions, a hint that the user should run `autogpt-shim doctor`),
    logs to stderr, and exits with code `78`. Without `computer_use` in
@@ -964,14 +978,20 @@ that originate from a screen position; v2's `DRAG_FILE` covers drags
 that originate from a *file* and need to look to the target app like a
 Finder drag.
 
-### Multi-monitor coordinate normalization
+### Monitor- and window-relative coordinates
 
-v1 keeps `coordinate` in *primary-monitor logical pixels with origin at
-top-left*. Multi-monitor setups need per-monitor coordinates or a global
-virtual coordinate space. The right call depends on how the model emits
-coordinates after seeing a multi-monitor `screenshot.region` — likely
-v2 adds `coordinate_space: "global"|"monitor"|"window"` and a
-`monitor_index` / `window_id` qualifier.
+v1 already uses one display-global, top-left-origin coordinate space
+across all monitors ([Q1](#q1--coordinate-space-locked)), not
+primary-monitor coordinates. Each backend checks a `coordinate` against
+the union of the display rects from `DISPLAY_INFO` and passes it to
+pyautogui unchanged, so a point on a secondary monitor is valid. What
+v1 lacks is a way to give a point relative to one monitor or one
+window. After a cropped or per-monitor screenshot, the platform maps a
+point in that image to a global one itself, using `meta.origin` (and
+`display_scale` on HiDPI displays). v2 may add
+`coordinate_space: "global"|"monitor"|"window"` with a
+`monitor_index` / `window_id` qualifier, keeping `"global"` as the
+default.
 
 ### Notifications, system events, IME state
 

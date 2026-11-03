@@ -28,6 +28,7 @@ from ..backend import ClipboardReadResult, ComputerUseBackend, ScreenshotResult
 from ..display import displays_to_bounds_list, displays_via_mss
 from ..errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
 )
@@ -205,32 +206,39 @@ class WindowsBackend(ComputerUseBackend):
         bmp = win32ui.CreateBitmap()
         bmp.CreateCompatibleBitmap(mfc_dc, w, h)
         save_dc.SelectObject(bmp)
-        # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
         try:
-            import ctypes
+            # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
+            # It returns 0 when the window did not render into the bitmap.
+            try:
+                import ctypes
 
-            ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
-                hwnd, save_dc.GetSafeHdc(), 0x02
+                printed = ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
+                    hwnd, save_dc.GetSafeHdc(), 0x02
+                )
+            except Exception as exc:
+                raise FeatureNotSupportedError(
+                    "screenshot.window", reason=f"PrintWindow failed: {exc}"
+                ) from exc
+            if not printed:
+                raise FeatureNotSupportedError(
+                    "screenshot.window", reason="PrintWindow could not capture the window"
+                )
+            info = bmp.GetInfo()
+            bits = bmp.GetBitmapBits(True)
+            img = Image.frombuffer(
+                "RGB",
+                (info["bmWidth"], info["bmHeight"]),
+                bits,
+                "raw",
+                "BGRX",
+                0,
+                1,
             )
-        except Exception as exc:
-            raise FeatureNotSupportedError(
-                "screenshot.window", reason=f"PrintWindow failed: {exc}"
-            ) from exc
-        info = bmp.GetInfo()
-        bits = bmp.GetBitmapBits(True)
-        img = Image.frombuffer(
-            "RGB",
-            (info["bmWidth"], info["bmHeight"]),
-            bits,
-            "raw",
-            "BGRX",
-            0,
-            1,
-        )
-        win32gui.DeleteObject(bmp.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
+        finally:
+            win32gui.DeleteObject(bmp.GetHandle())
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
 
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
@@ -635,6 +643,8 @@ class WindowsBackend(ComputerUseBackend):
             return None, None
 
     def _write_clipboard_text(self, content: str) -> int | None:
+        """Write `content` and return the new sequence number; raise if the
+        text did not land, so nothing acknowledges or pastes a stale clipboard."""
         try:
             import win32clipboard  # type: ignore[import-not-found]
             import win32con  # type: ignore[import-not-found]
@@ -645,9 +655,9 @@ class WindowsBackend(ComputerUseBackend):
                 win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, content)
             finally:
                 win32clipboard.CloseClipboard()
-            return self._clipboard_sequence()
-        except Exception:
-            return None
+        except Exception as exc:
+            raise ClipboardWriteError(str(exc)) from exc
+        return self._clipboard_sequence()
 
     def _clipboard_sequence(self) -> int | None:
         try:
@@ -705,7 +715,10 @@ class WindowsBackend(ComputerUseBackend):
                     return
                 # The restored contents are the user's, not ours, so they are
                 # not recorded as a writeback: a writeback-only read refuses them.
-                self._write_clipboard_text(previous)
+                try:
+                    self._write_clipboard_text(previous)
+                except ClipboardWriteError:
+                    logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

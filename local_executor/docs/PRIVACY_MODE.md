@@ -29,8 +29,8 @@ list of TODOs / dates come back as the tool result.
 
 **Privacy mode:**
 1. Platform calls `FILE_READ(path, mode="stub")` over the wire.
-2. Shim returns a `FileStub` — `{path, size, mime_type, sha256,
-   schema_preview}`. No content.
+2. Shim returns a `FileStub` — `{path, size, mime_type, sha256}`. No
+   content, not even the first bytes.
 3. Claude sees the stub and decides what it wants to know about the
    file ("summarize" / "extract dates" / "is this a valid CSV").
 4. Platform sends a `LOCAL_LLM_TURN` wire op carrying the task
@@ -58,8 +58,7 @@ Existing `FILE_READ` payload grows `mode: "content" | "stub"`. Default
   "ts": 1234567890.0,
   "payload": {
     "path": "/Users/alice/medical-records.pdf",
-    "mode": "stub",
-    "schema_preview_bytes": 256    // optional; first N bytes for type-detection only
+    "mode": "stub"
   }
 }
 ```
@@ -79,11 +78,15 @@ When `mode == "stub"`, the response carries no content:
     "size_bytes": 482_310,
     "mime_type": "application/pdf",
     "sha256": "9c81f4a2…",          // content fingerprint
-    "schema_preview": "%PDF-1.7\n...",  // first schema_preview_bytes, base64-encoded
     "stub_id": "stub_<uuid>"        // opaque handle for LOCAL_LLM_TURN reference
   }
 }
 ```
+
+The shim works out `mime_type` on the machine, from the file's first
+bytes, and does not send those bytes. The stub has no preview field: any
+raw bytes in it would reach the platform and Claude, which privacy mode
+rules out.
 
 `stub_id` is the same shim-minted-UUID pattern locked in Q2: never
 reused, wiped on HELLO. Subsequent `LOCAL_LLM_TURN` ops reference the
@@ -176,8 +179,8 @@ class PrivacyRouter:
 
 The router also strips file-content references from the conversation
 history that flows to Claude. The cloud LLM only ever sees
-`{stub_id, sha256, size, mime_type, schema_preview}` for privacy-mode
-files — never the file body itself.
+`{stub_id, sha256, size, mime_type}` for privacy-mode files — never the
+file body or any part of it.
 
 ---
 

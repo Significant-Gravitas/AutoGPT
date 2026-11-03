@@ -15,6 +15,7 @@ from autogpt_local_executor.computer_use.backends.windows import (
 )
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     WindowStaleError,
@@ -221,3 +222,47 @@ def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monke
     assert clipboard["writes"] == []
     pyautogui.write.assert_called_once_with(text, interval=0.02)
     pyautogui.hotkey.assert_not_called()
+
+
+def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
+    """Another window holding the clipboard makes OpenClipboard fail; pasting
+    then would paste whatever the user had copied."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = MagicMock()
+    clipboard.OpenClipboard.side_effect = OSError("Access is denied.")
+    monkeypatch.setitem(sys.modules, "win32clipboard", clipboard)
+    monkeypatch.setitem(sys.modules, "win32con", MagicMock())
+
+    with pytest.raises(ClipboardWriteError):
+        b.clipboard_write(content="hello")
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) -> None:
+    """PrintWindow returns 0 when the window did not render; the bitmap is
+    then blank, so it must not be sent as a screenshot."""
+    import ctypes
+
+    b = WindowsBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
+    window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
+    win32gui = MagicMock()
+    win32gui.IsWindow.return_value = True
+    win32gui.GetWindowRect.return_value = (0, 0, 100, 50)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    monkeypatch.setitem(sys.modules, "win32ui", MagicMock())
+    monkeypatch.setitem(sys.modules, "PIL", MagicMock())
+    windll = MagicMock()
+    windll.user32.PrintWindow.return_value = 0
+    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+
+    with pytest.raises(FeatureNotSupportedError, match="could not capture"):
+        b._screenshot_window(window_id, quality=75, format="jpeg")
+
+    win32gui.ReleaseDC.assert_called_once()

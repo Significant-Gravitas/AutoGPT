@@ -15,6 +15,7 @@ from .backend import (
 from .errors import (
     BackendError,
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     PermissionPendingError,
@@ -24,6 +25,7 @@ from .errors import (
 __all__ = [
     "BackendError",
     "ClipboardConcealedError",
+    "ClipboardWriteError",
     "ClipboardReadResult",
     "ComputerUseBackend",
     "FeatureNotSupportedError",

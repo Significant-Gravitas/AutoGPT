@@ -22,6 +22,7 @@ from autogpt_local_executor.computer_use.backends.macos import (
 )
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
     PermissionPendingError,
@@ -569,3 +570,130 @@ def test_the_accessibility_names_used_for_focus_exist() -> None:
         "kAXWindowsAttribute",
     ):
         assert hasattr(services, name), name
+
+
+def test_a_failed_pasteboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
+    """Pasting after a failed write would paste whatever the user had copied."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    monkeypatch.setitem(sys.modules, "AppKit", MagicMock())
+    pasteboard = MagicMock()
+    pasteboard.setString_forType_.return_value = False
+    monkeypatch.setattr(b, "_pasteboard", lambda: pasteboard)
+
+    with pytest.raises(ClipboardWriteError):
+        b.clipboard_write(content="hello")
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_input_bounds_are_in_points_on_a_retina_display(tmp_path, monkeypatch) -> None:
+    """Quartz gives origins and logical sizes in points, and pixel counts twice
+    as large; pyautogui clicks in points, so the bounds must be in points too."""
+    retina = [
+        DisplayMonitor(
+            index=0,
+            primary=True,
+            physical_size=(2880, 1800),
+            logical_size=(1440, 900),
+            scale=2.0,
+            origin=(0, 0),
+        )
+    ]
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: retina)
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    fake_pg = MagicMock()
+    fake_pg.FAILSAFE = True
+    monkeypatch.setitem(sys.modules, "pyautogui", fake_pg)
+
+    b.input_action("left_click", coordinate=(1400, 880))
+    with pytest.raises(InputOutOfBoundsError) as ei:
+        b.input_action("left_click", coordinate=(2000, 1000))
+
+    fake_pg.click.assert_called_once_with(1400, 880)
+    assert ei.value.details["displays"] == [{"index": 0, "origin": [0, 0], "size": [1440, 900]}]
+
+
+# ── App launch by bundle ID ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("args", "activate", "expected"),
+    [
+        (None, True, ["open", "-b", "com.apple.TextEdit"]),
+        (
+            ["/Users/a/notes.txt"],
+            False,
+            ["open", "-b", "com.apple.TextEdit", "-g", "--args", "/Users/a/notes.txt"],
+        ),
+    ],
+)
+def test_bundle_launch_passes_args_and_activation(
+    tmp_path, monkeypatch, args, activate, expected
+) -> None:
+    import subprocess
+
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    b = MacOSBackend(_config(tmp_path))
+    commands: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(macos_backend.subprocess, "run", run)
+    monkeypatch.setattr(b, "_pid_for_bundle", lambda _bundle: 4242)
+
+    pid = b.app_launch(bundle_id="com.apple.TextEdit", args=args, activate=activate)
+
+    assert pid == 4242
+    assert commands == [expected]
+
+
+def test_bundle_launch_reports_an_app_open_cannot_find(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(
+        macos_backend.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 1, stdout=b"", stderr=b"Unable to find application named 'x'"
+        ),
+    )
+
+    with pytest.raises(FeatureNotSupportedError, match="Unable to find application"):
+        b.app_launch(bundle_id="com.example.missing")
+
+
+# ── Window list: include_minimized ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("include_minimized", "include_offscreen", "on_screen_only"),
+    [(False, False, True), (True, False, False), (False, True, False)],
+)
+def test_window_list_asks_for_off_screen_windows_when_minimized_ones_are_wanted(
+    tmp_path, monkeypatch, include_minimized, include_offscreen, on_screen_only
+) -> None:
+    """Minimized windows are off screen, so on-screen-only listing never has them."""
+    fake_qz = MagicMock()
+    fake_qz.kCGWindowListExcludeDesktopElements = 0x10
+    fake_qz.kCGWindowListOptionOnScreenOnly = 0x1
+    fake_qz.CGWindowListCopyWindowInfo.return_value = []
+    monkeypatch.setitem(sys.modules, "Quartz", fake_qz)
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_focused_pid", lambda: None)
+
+    b.window_list(include_minimized=include_minimized, include_offscreen=include_offscreen)
+
+    options = fake_qz.CGWindowListCopyWindowInfo.call_args.args[0]
+    assert bool(options & 0x1) is on_screen_only

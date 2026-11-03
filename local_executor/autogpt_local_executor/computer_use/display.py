@@ -56,12 +56,17 @@ def displays_via_mss() -> list[DisplayMonitor] | None:
 
 
 def displays_to_bounds_list(displays: list[DisplayMonitor]) -> list[dict[str, Any]]:
-    """Shape for in_any_rect / normalize_displays_for_error."""
+    """Shape for in_any_rect / normalize_displays_for_error.
+
+    Origins and input coordinates are in the display-global logical space
+    (points on macOS), so each rect uses the logical size. The physical
+    size only maps screenshot pixels on HiDPI displays.
+    """
     return [
         {
             "index": d.index,
             "origin": (d.origin[0], d.origin[1]),
-            "size": (d.physical_size[0], d.physical_size[1]),
+            "size": (d.logical_size[0], d.logical_size[1]),
         }
         for d in displays
     ]

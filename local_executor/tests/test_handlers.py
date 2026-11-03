@@ -229,8 +229,10 @@ async def test_write_no_parents_returns_error(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     target = tmp_path / "missing-dir" / "c.txt"
     resp = await h.handle_write(_write_msg(target, "hi", create_parents=False))
-    # Parent doesn't exist → write should fail with an OSError surfaced.
-    assert isinstance(resp, (ErrorMessage,)) or not target.exists()
+
+    assert isinstance(resp, ErrorMessage)
+    assert resp.payload.code == ErrorCode.PATH_NOT_FOUND
+    assert not target.parent.exists()
 
 
 @pytest.mark.asyncio
@@ -368,6 +370,41 @@ async def test_stat_outside_jail_is_distinguishable_from_missing(tmp_path: Path)
     resp = await h.handle_stat(msg)
     assert isinstance(resp, ErrorMessage)
     assert resp.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+
+
+def _stat_msg(path: Path, **kw) -> FileStatMessage:
+    return FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path=str(path), **kw))
+
+
+@pytest.mark.asyncio
+async def test_stat_without_following_describes_the_symlink_itself(tmp_path: Path) -> None:
+    target = tmp_path / "data.csv"
+    target.write_text("a,b\n")
+    link = tmp_path / "latest.csv"
+    _symlink_or_skip(link, target)
+    handler = FileHandler(make_config(tmp_path))
+
+    unfollowed = await handler.handle_stat(_stat_msg(link, follow_symlinks=False))
+    followed = await handler.handle_stat(_stat_msg(link, follow_symlinks=True))
+
+    assert isinstance(unfollowed, FileStatResponseMessage)
+    assert unfollowed.payload.is_symlink is True
+    assert unfollowed.payload.is_file is False
+    assert unfollowed.payload.path == os.path.join(os.path.realpath(tmp_path), "latest.csv")
+    assert isinstance(followed, FileStatResponseMessage)
+    assert followed.payload.is_file is True
+    assert followed.payload.path == os.path.realpath(target)
+
+
+@pytest.mark.asyncio
+async def test_stat_without_following_still_describes_the_root(tmp_path: Path) -> None:
+    response = await FileHandler(make_config(tmp_path)).handle_stat(
+        _stat_msg(tmp_path, follow_symlinks=False)
+    )
+
+    assert isinstance(response, FileStatResponseMessage)
+    assert response.payload.exists is True
+    assert response.payload.is_dir is True
 
 
 # ── FILE_LIST ────────────────────────────────────────────────────────────────

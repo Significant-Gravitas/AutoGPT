@@ -13,6 +13,7 @@ from autogpt_local_executor.computer_use.backends._common import PASTE_THRESHOLD
 from autogpt_local_executor.computer_use.backends.linux import LinuxBackend
 from autogpt_local_executor.computer_use.errors import (
     ClipboardConcealedError,
+    ClipboardWriteError,
     FeatureNotSupportedError,
     InputOutOfBoundsError,
 )
@@ -217,3 +218,45 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
     assert state["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    def fail(command, **_kwargs):
+        raise linux_backend.subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(linux_backend.subprocess, "run", fail)
+
+    with pytest.raises(ClipboardWriteError):
+        b.clipboard_write(content="hello")
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
+    pyautogui.hotkey.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("helper", "argument"),
+    [("gtk-launch", "org.gnome.Calculator"), ("dex", "/opt/apps/org.gnome.Calculator.desktop")],
+)
+def test_desktop_files_launch_with_the_argument_each_helper_takes(
+    tmp_path, monkeypatch, helper: str, argument: str
+) -> None:
+    """gtk-launch takes a desktop file ID; dex takes the file's path."""
+    monkeypatch.setattr(
+        linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}" if name == helper else None
+    )
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    pid = b.app_launch(executable_path="/opt/apps/org.gnome.Calculator.desktop")
+
+    assert pid == 4321
+    assert popen.call_args.args[0] == [helper, argument]

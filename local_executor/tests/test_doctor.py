@@ -134,9 +134,10 @@ async def test_daemon_preflight_raises_when_ax_denied_on_macos(tmp_path, monkeyp
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted = lambda: False
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
     d = _daemon(config)
-    with pytest.raises(DaemonPreflightError):
+    with pytest.raises(DaemonPreflightError, match="^Accessibility permission not granted"):
         await d._preflight_or_raise()
     assert '"op": "DAEMON_PREFLIGHT_FAILED"' in config.audit_log_path.read_text()
 
@@ -151,8 +152,45 @@ async def test_daemon_preflight_passes_when_ax_granted_on_macos(tmp_path, monkey
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted = lambda: True
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
     await _daemon(config)._preflight_or_raise()
+
+
+def _fake_screen_recording(monkeypatch: pytest.MonkeyPatch, *, granted: bool) -> None:
+    import sys
+
+    fake_quartz = MagicMock()
+    fake_quartz.CGPreflightScreenCaptureAccess = lambda: granted
+    monkeypatch.setitem(sys.modules, "Quartz", fake_quartz)
+
+
+async def test_daemon_preflight_raises_when_screen_recording_denied_on_macos(
+    tmp_path, monkeypatch
+) -> None:
+    """Without Screen Recording, macOS captures show only the wallpaper and
+    menu bar, so computer use can't work; exit 78 as for Accessibility."""
+    import json
+    import sys
+
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    monkeypatch.setattr(
+        "autogpt_local_executor.daemon.platform_info.detect_platform",
+        lambda: "darwin",
+    )
+    fake_appsvc = MagicMock()
+    fake_appsvc.AXIsProcessTrusted = lambda: True
+    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=False)
+    config = _config(tmp_path, enable_computer_use=True)
+
+    with pytest.raises(DaemonPreflightError, match="^Screen Recording permission not granted"):
+        await _daemon(config)._preflight_or_raise()
+
+    [record] = [json.loads(line) for line in config.audit_log_path.read_text().splitlines()]
+    assert record["op"] == "DAEMON_PREFLIGHT_FAILED"
+    assert record["details"]["missing_permissions"] == ["screen_recording"]
 
 
 async def test_daemon_preflight_no_op_on_non_macos(tmp_path, monkeypatch) -> None:
@@ -200,7 +238,40 @@ async def test_daemon_preflight_fails_closed_when_ax_probe_raises(
     fake_appsvc = MagicMock()
     fake_appsvc.AXIsProcessTrusted.side_effect = RuntimeError("TCC unavailable")
     monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
+    _fake_screen_recording(monkeypatch, granted=True)
     config = _config(tmp_path, enable_computer_use=True)
 
     with pytest.raises(DaemonPreflightError, match="Could not verify Accessibility"):
         await _daemon(config)._preflight_or_raise()
+
+
+def test_doctor_linux_blocks_when_no_display_session_is_detected(tmp_path, monkeypatch) -> None:
+    """Without XDG_SESSION_TYPE, DISPLAY or WAYLAND_DISPLAY there is no screen to
+    use, which blocks computer use just as Wayland and WSL2 do."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("XDG_SESSION_TYPE", "DISPLAY", "WAYLAND_DISPLAY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == doctor.EX_CONFIG
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=False)) == 0
+
+
+def test_doctor_keychain_warning_states_the_real_requirement(monkeypatch) -> None:
+    """OAuth tokens have no file fallback; only the audit key does, and only
+    with a passphrase."""
+    import sys
+
+    keyring = MagicMock()
+    keyring.get_keyring.side_effect = RuntimeError("no backend")
+    monkeypatch.setitem(sys.modules, "keyring", keyring)
+
+    result = doctor._check_keychain()
+
+    assert result.marker == "WARN"
+    assert "fallback will be used" not in result.detail
+    assert "sign-in" in result.detail
+    assert "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE" in result.detail
