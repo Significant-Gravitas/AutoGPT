@@ -51,7 +51,15 @@ class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
         # Skip OS push for onboarding step toasts — those are in-page only.
         # TODO: remove once the onboarding/wallet rework lands and decides
         # per-event whether a system notification is desired.
-        if event.payload.model_dump().get("type") == "onboarding":
+        dumped = event.payload.model_dump()
+        if dumped.get("type") == "onboarding":
+            return
+        # Task board updates stream constantly; only "needs you" and "done"
+        # are worth a system notification.
+        if dumped.get("type") == "task_event" and dumped.get("event") not in (
+            "task_needs_input",
+            "task_completed",
+        ):
             return
         # Fan out to web push subscriptions in parallel. Fire-and-forget so
         # publishers never wait on the push service; held in _push_tasks so

@@ -1172,7 +1172,24 @@ async def mark_session_completed(
                     f"for session {session_id}: {e}"
                 )
 
+    _notify_task_turn_finished(session_id, status)
     return True
+
+
+_task_hooks: set[asyncio.Task] = set()
+
+
+def _notify_task_turn_finished(session_id: str, status: str) -> None:
+    """Best-effort Tasks v1 hook; a no-op for chats that are not work chats."""
+    try:
+        # Deferred: the tasks package reaches back into the copilot package.
+        from backend.api.features.tasks.dispatch import on_work_turn_finished
+
+        task = asyncio.create_task(on_work_turn_finished(session_id, status))
+        _task_hooks.add(task)
+        task.add_done_callback(_task_hooks.discard)
+    except Exception as e:
+        logger.warning(f"Task turn hook failed for session {session_id}: {e}")
 
 
 async def _trim_to_last_checkpoint(redis: Any, turn_id: str) -> None:

@@ -154,6 +154,12 @@ class ResponseType(str, Enum):
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
 
+    # Tasks v1
+    TASK_LIST = "task_list"
+    TASK_UPDATED = "task_updated"
+    TASK_PLAN = "task_plan"
+    TASK_PLAN_CONFIRMED = "task_plan_confirmed"
+
 
 # Base response model
 class ToolResponseBase(ImageCarrier):
@@ -1556,3 +1562,34 @@ class ChatPlatformEditedResponse(ToolResponseBase):
     platform: str
     channel_id: str
     ref_id: str
+
+
+class TaskListToolResponse(ToolResponseBase):
+    """Tasks v1: tasks assigned to the caller."""
+
+    type: ResponseType = ResponseType.TASK_LIST
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TaskUpdatedToolResponse(ToolResponseBase):
+    """Tasks v1: a task (and optionally one activity row) after a change."""
+
+    type: ResponseType = ResponseType.TASK_UPDATED
+    task: dict[str, Any] | None = None
+    activity: dict[str, Any] | None = None
+    attachment: dict[str, Any] | None = None
+
+
+class TaskPlanToolResponse(ToolResponseBase):
+    """Tasks v1: a proposed plan; the chat renders it as the approval card."""
+
+    type: ResponseType = ResponseType.TASK_PLAN
+    plan: dict[str, Any]
+
+
+class TaskPlanConfirmedToolResponse(ToolResponseBase):
+    """Tasks v1: a confirmed plan and the parent task it created."""
+
+    type: ResponseType = ResponseType.TASK_PLAN_CONFIRMED
+    plan: dict[str, Any]
+    parent_task: dict[str, Any]

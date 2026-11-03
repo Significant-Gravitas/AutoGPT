@@ -57,6 +57,7 @@ class FrontendFlag(str, Enum):
     # The share of chat sessions whose stream is shadowed and checked, 0 to 1.
     COPILOT_STREAM_SHADOW = "copilot-stream-shadow"
     COPILOT_STREAM_RUNTIME = "copilot-stream-runtime"
+    TASKS_V1 = Flag.TASKS_V1.value
 
     @classmethod
     def __get_pydantic_json_schema__(
