@@ -18,6 +18,7 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
+import { getGetPlatformConfigMockHandler } from "@/app/api/__generated__/endpoints/platform-config/platform-config.msw";
 import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
@@ -55,6 +56,8 @@ export const mockHandlers = [
   http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
+  // Payment off unless a test turns it on.
+  getGetPlatformConfigMockHandler({ payment_enabled: false }),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),

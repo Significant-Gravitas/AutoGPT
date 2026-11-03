@@ -316,6 +316,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/internal/oauth/introspect",
     "POST /api/internal/oauth/revoke",
     "POST /api/internal/oauth/token",
+    "GET /api/internal/platform-config",
     "GET /api/internal/public/shared/chats/{share_token}",
     "GET /api/internal/public/shared/chats/{share_token}/files/{file_id}/download",
     "GET /api/internal/public/shared/chats/{share_token}/messages",

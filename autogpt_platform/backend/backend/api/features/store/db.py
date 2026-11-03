@@ -212,13 +212,15 @@ async def _fallback_store_agent_search(
         elif sorted_by == StoreAgentsSortOptions.UPDATED_AT:
             order_by.append({"updated_at": "desc"})
 
-        db_agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=where_clause,
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
+        db_agents, total = await asyncio.gather(
+            prisma.models.StoreAgent.prisma().find_many(
+                where=where_clause,
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            ),
+            prisma.models.StoreAgent.prisma().count(where=where_clause),
         )
-        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
         return [store_model.StoreAgent.from_db(a) for a in db_agents], total
 
     # Text search using ad-hoc tsvector on StoreAgent view fields
@@ -571,12 +573,6 @@ async def get_store_creators(
         if not isinstance(page_size, int) or page_size < 1 or page_size > 100:
             raise DatabaseError("Invalid page size")
 
-        # Get total count for pagination using sanitized where clause
-        total = await prisma.models.Creator.prisma().count(
-            where=prisma.types.CreatorWhereInput(**where)
-        )
-        total_pages = (total + page_size - 1) // page_size
-
         # Add pagination with validated parameters
         skip = (page - 1) * page_size
         take = page_size
@@ -595,13 +591,19 @@ async def get_store_creators(
             )
         )
 
-        # Execute query with sanitized parameters
-        creators = await prisma.models.Creator.prisma().find_many(
-            where=prisma.types.CreatorWhereInput(**where),
-            skip=skip,
-            take=take,
-            order=order,
+        # The total for pagination and the page, both from the sanitized where
+        total, creators = await asyncio.gather(
+            prisma.models.Creator.prisma().count(
+                where=prisma.types.CreatorWhereInput(**where)
+            ),
+            prisma.models.Creator.prisma().find_many(
+                where=prisma.types.CreatorWhereInput(**where),
+                skip=skip,
+                take=take,
+                order=order,
+            ),
         )
+        total_pages = (total + page_size - 1) // page_size
 
         # Convert to response model
         creator_models = [
@@ -1455,15 +1457,16 @@ async def get_my_agents(
         else:
             order = [{"updatedAt": "desc"}]
 
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=search_filter,
-            order=order,
-            skip=(page - 1) * page_size,
-            take=page_size,
-            include={"AgentGraph": True},
+        library_agents, total = await asyncio.gather(
+            prisma.models.LibraryAgent.prisma().find_many(
+                where=search_filter,
+                order=order,
+                skip=(page - 1) * page_size,
+                take=page_size,
+                include={"AgentGraph": True},
+            ),
+            prisma.models.LibraryAgent.prisma().count(where=search_filter),
         )
-
-        total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
         total_pages = (total + page_size - 1) // page_size
 
         my_agents = [

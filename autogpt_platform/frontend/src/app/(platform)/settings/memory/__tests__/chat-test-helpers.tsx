@@ -64,18 +64,12 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
   };
 });
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT &&
-      mocks.config.billingEnabled,
-  };
-});
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: mocks.config.billingEnabled,
+    isResolved: true,
+  }),
+}));
 
 function MemoryPageHarness() {
   const [visible, setVisible] = useState(true);
