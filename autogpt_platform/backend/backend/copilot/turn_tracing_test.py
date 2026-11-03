@@ -150,7 +150,8 @@ def test_a_turn_that_never_reached_its_engine_sends_nothing(capture: MagicMock):
 
 def test_a_load_test_accounts_turn_says_so(capture: MagicMock):
     with turn_transaction(_entry()) as turn:
-        turn.engine_started("dummy", load_test="dummy")
+        turn.load_test_account("dummy")
+        turn.engine_started("dummy")
         turn.set_outcome(None, CANCELLED)
 
     properties = capture.call_args.args[2]
@@ -164,3 +165,12 @@ def test_a_persons_turn_carries_no_load_test_property(capture: MagicMock):
         turn.set_outcome(None, CANCELLED)
 
     assert "load_test" not in capture.call_args.args[2]
+
+
+def test_a_load_test_turn_that_fails_before_its_engine_is_still_tagged():
+    span = MagicMock()
+    from backend.copilot.turn_tracing import TurnTrace
+
+    TurnTrace(span).load_test_account("scripted")
+
+    span.set_tag.assert_called_once_with("copilot.load_test", "scripted")

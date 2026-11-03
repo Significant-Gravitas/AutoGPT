@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.sdk.env import cli_prompt_text, cli_user_message
+from backend.copilot.sdk.env import build_sdk_env, cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -845,8 +845,6 @@ class TestBuildSdkEnvStandInModel:
             base_url="https://openrouter.ai/api/v1",
         )
         with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
             result = build_sdk_env(
                 session_id="sess-1",
                 user_id="user-1",
@@ -871,8 +869,6 @@ class TestBuildSdkEnvStandInModel:
         assert result["no_proxy"] == result["NO_PROXY"]
 
     def test_a_turn_has_one_model_endpoint(self):
-        from backend.copilot.sdk.env import build_sdk_env
-
         with pytest.raises(ValueError, match="one model endpoint"):
             build_sdk_env(
                 codex_gateway_url="http://127.0.0.1:43210",
@@ -881,7 +877,5 @@ class TestBuildSdkEnvStandInModel:
             )
 
     def test_the_stand_in_must_be_an_http_url(self):
-        from backend.copilot.sdk.env import build_sdk_env
-
         with pytest.raises(ValueError, match="http"):
             build_sdk_env(stand_in_model_url="scripted-model:4010/api/v1")

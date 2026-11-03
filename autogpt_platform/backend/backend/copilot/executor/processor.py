@@ -805,6 +805,8 @@ class CoPilotProcessor:
                 config = ChatConfig()
                 if not config.test_mode:
                     load_test = await load_test_engine(entry.user_id, config)
+                    if load_test is not None:
+                        turn.load_test_account(load_test)
 
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
@@ -816,8 +818,8 @@ class CoPilotProcessor:
                     log.info("Using DUMMY service: load-test account")
                 elif load_test == "scripted":
                     if not config.load_test_model_url:
-                        # The account exists to spend nothing, so it never
-                        # falls through to a real model.
+                        # The account's turns exist to reach no real model,
+                        # so without the scripted model they fail instead.
                         raise RuntimeError("load_test_model_url_unset")
                     stream_fn = cast(
                         Callable,
@@ -879,7 +881,7 @@ class CoPilotProcessor:
             set_turn_origin(origin)
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
-            turn.engine_started(engine, load_test=load_test)
+            turn.engine_started(engine)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,

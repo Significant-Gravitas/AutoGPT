@@ -3461,6 +3461,69 @@ class TestStreamChatCompletionRetryIntegration:
         assert len(queries) == 1, "a refused auto-continue must not query again"
         drain.assert_awaited_once()  # the turn-start drain only
 
+    @pytest.mark.asyncio
+    async def test_a_load_test_accounts_queued_messages_stay_on_the_scripted_model(
+        self,
+    ):
+        """A load-test account's turn talks to the scripted model
+        (``backend/copilot/load_test.py``), and so does the continuation that
+        answers what the user queued during it: neither query gets the
+        deployment's provider."""
+        from backend.copilot.pending_messages import PendingMessage
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        queries: list[int] = []
+
+        def _client_factory(*args, **kwargs):
+            queries.append(1)
+            return self._make_client_mock(result_message=result_msg)
+
+        drains: list[int] = []
+
+        async def _drain(*args, **kwargs):
+            # Queued after the turn-start drain: the auto-continue picks it up.
+            drains.append(1)
+            if len(drains) == 2:
+                return [PendingMessage(content="and one more thing")]
+            return []
+
+        stand_in = "http://scripted-model:4010/api/v1"
+        env = MagicMock(return_value={})
+        patches = [
+            p
+            for p in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript(
+                    [("user", "prior question"), ("assistant", "prior answer")]
+                ),
+                compacted_transcript=None,
+                client_side_effect=_client_factory,
+            )
+            if p[0] not in {f"{_SVC}.build_sdk_env", f"{_SVC}.drain_pending_safe"}
+        ]
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.build_sdk_env", new=env))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=_drain))
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+                stand_in_model_url=stand_in,
+            ):
+                pass
+
+        assert len(queries) == 2, "the queued message should start a second query"
+        assert [c.kwargs["stand_in_model_url"] for c in env.call_args_list] == [
+            stand_in,
+            stand_in,
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Pre-query compaction row — timing and lifecycle at generator level

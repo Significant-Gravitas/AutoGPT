@@ -2195,10 +2195,5 @@ class TestExecuteAsyncLoadTestAccounts:
     async def test_a_scripted_account_never_falls_through_to_a_real_model(
         self,
     ) -> None:
-        try:
-            calls = await self._engines_run("scripted", model_url="")
-        except RuntimeError as error:
-            assert str(error) == "load_test_model_url_unset"
-            calls = {}
-
-        assert calls == {}
+        with pytest.raises(RuntimeError, match="load_test_model_url_unset"):
+            await self._engines_run("scripted", model_url="")

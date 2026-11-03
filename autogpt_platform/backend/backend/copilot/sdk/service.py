@@ -5463,6 +5463,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         if (
             not is_codex_transport
+            and stand_in_model_url is None
             and not config.api_key
             and not config.use_claude_code_subscription
         ):
@@ -7160,6 +7161,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     credential_lease=credential_lease,
                     turn_start=turn_start,
                     continued_pending=_auto_pending_messages,
+                    # A load-test account's continuation stays on the
+                    # scripted model; dropping this would hand it to the
+                    # deployment's provider.
+                    stand_in_model_url=stand_in_model_url,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False
