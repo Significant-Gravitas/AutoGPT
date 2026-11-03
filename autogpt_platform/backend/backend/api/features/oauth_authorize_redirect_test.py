@@ -74,7 +74,8 @@ def _request(redirect_uri: str, *, response_type: str = "code"):
         scopes=[APIKeyPermission.READ_GRAPH.value],
         state="state-1",
         response_type=response_type,
-        code_challenge="challenge",
+        # RFC 7636 appendix B: a valid S256 challenge.
+        code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
     )
 
 

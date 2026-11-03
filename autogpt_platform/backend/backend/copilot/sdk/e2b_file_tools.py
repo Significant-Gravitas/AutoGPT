@@ -1061,15 +1061,15 @@ def _image_result(raw: bytes, offset: int, limit: int | None) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the execution workspace (the cloud sandbox's "
-        "/home/user or /tmp, or the Local PC folder this chat is bound to). "
+        "Read a file in the execution workspace: /home/user or /tmp in the "
+        "cloud, or this chat's Local PC folder. "
         "Use offset and limit for large text files. " + IMAGE_READ_DESCRIPTION,
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path to read. Relative paths resolve against the workspace root.",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "offset": {
                     "type": "integer",
@@ -1094,7 +1094,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path to write. Relative paths resolve against the workspace root.",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -1110,7 +1110,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path to edit. Relative paths resolve against the workspace root.",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},
@@ -1134,7 +1134,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory to search. Defaults to the workspace root.",
+                    "description": "Directory to search. Default: workspace root.",
                 },
             },
         },
@@ -1149,7 +1149,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
                 "pattern": {"type": "string", "description": "Regex pattern."},
                 "path": {
                     "type": "string",
-                    "description": "File or directory. Defaults to the workspace root.",
+                    "description": "File or directory. Default: workspace root.",
                 },
                 "include": {
                     "type": "string",

@@ -231,6 +231,47 @@ def test_directory_browse_returns_frontend_contract() -> None:
     assert response.json()["entries"][0]["path"] == "C:\\Projects"
 
 
+def test_directory_browse_never_echoes_an_invalid_listing() -> None:
+    """A listing that fails validation is the companion's data, which can
+    name anything on the user's machine; the 502 must not repeat it."""
+    presence = RelayPresence(
+        session_id="machine-scope",
+        connection_id="connection-1",
+        user_id="owner-1",
+        client_id="autogpt-local-executor",
+        hello={"connection_kind": "machine", "machine_id": "machine-1"},
+        expires_at=9_999_999_999,
+    )
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_machine_presence",
+            AsyncMock(return_value=presence),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.machine_rpc",
+            AsyncMock(
+                return_value={
+                    "type": "DIRECTORY_LIST_RESPONSE",
+                    "payload": {
+                        "browse_id": "browse-1",
+                        "entries": [{"name": "tax-return-2026.pdf"}],
+                    },
+                }
+            ),
+        ),
+    ):
+        response = _make_client().post(
+            "/api/copilot/executors/machine-1/directories",
+            json={"expected_connection_id": "connection-1"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "The Local PC executor returned an invalid folder listing"
+    )
+    assert "tax-return" not in response.text
+
+
 def test_executor_status_requires_session_owner() -> None:
     client = _make_client()
     get_session = AsyncMock(return_value=None)

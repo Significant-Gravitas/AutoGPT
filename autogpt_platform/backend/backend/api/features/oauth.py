@@ -40,6 +40,7 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
 from backend.data.auth.oauth import (
@@ -277,7 +278,18 @@ async def authorize(
     """
     # Raises before any redirect is built, so nothing below can send the user to
     # a URI no registered, active client vouches for.
-    app = await _get_valid_authorization_app(request.client_id, request.redirect_uri)
+    try:
+        app = await _get_valid_authorization_app(
+            request.client_id, request.redirect_uri
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        ) from e
 
     try:
         if request.response_type != "code":
@@ -628,14 +640,10 @@ async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
         safe_errors = [
             {
                 "type": error["type"],
-                "loc": ("body", *error["loc"]),
+                "loc": ["body", *error["loc"]],
                 "msg": "Invalid OAuth token request",
             }
-            for error in exc.errors(
-                include_url=False,
-                include_context=False,
-                include_input=False,
-            )
+            for error in bounded_validation_errors(exc)
         ]
     raise RequestValidationError(safe_errors)
 

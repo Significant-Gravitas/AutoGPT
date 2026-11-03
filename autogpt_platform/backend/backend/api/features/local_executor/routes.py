@@ -6,7 +6,8 @@ import logging
 from typing import Annotated, NoReturn
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from pydantic import ValidationError
 
 from backend.api.features.local_executor.consent import (
     get_computer_use_consent,
@@ -42,6 +43,7 @@ from backend.api.features.local_executor.state import (
 from backend.api.features.local_executor.websocket import router as websocket_router
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.sdk.recording_tools import (
     register_recording_reviewed,
     register_recording_started,
@@ -112,6 +114,7 @@ async def list_local_executors(
     "/api/copilot/executors/{machine_id}/directories",
     response_model=DirectoryListResponse,
     tags=["copilot"],
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def list_local_executor_directories(
     machine_id: MachineID,
@@ -150,6 +153,12 @@ async def list_local_executor_directories(
         raise HTTPException(
             status_code=status_code,
             detail={"code": exc.code, "message": str(exc), "details": exc.details},
+        ) from exc
+    except ValidationError as exc:
+        # The listing is the companion's data; never echo it back.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The Local PC executor returned an invalid folder listing",
         ) from exc
     except ValueError as exc:
         raise HTTPException(
@@ -247,6 +256,7 @@ async def set_session_computer_use_consent(
 @router.post(
     "/api/copilot/sessions/{session_id}/executor/recording/start",
     tags=["copilot"],
+    dependencies=[Depends(enforce_payment_paywall)],
 )
 async def start_session_recording(
     session_id: SessionID,
