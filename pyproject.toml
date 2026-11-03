@@ -28,6 +28,11 @@ dependencies = [
 computer-use = [
     "pyautogui>=0.9.54",
     "Pillow>=10.0",
+    "mss>=9.0",
+    "pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 hardware = [
     "pyserial>=3.5",
