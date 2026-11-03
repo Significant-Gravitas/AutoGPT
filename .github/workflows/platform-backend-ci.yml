@@ -10,6 +10,7 @@ on:
       - ".github/scripts/ci_affected.py"
       - ".github/scripts/test_ci_affected.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/test_backend_poetry_version.py"
       - ".github/workflows/scripts/check_actions_status.py"
       - ".github/workflows/scripts/test_check_actions_status.py"
       - ".github/scripts/docker-pull-with-retry.sh"
@@ -356,14 +357,9 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
-          # Full ref history is needed so the "Install Poetry" step below can
-          # read poetry.lock off the base branch. `filter: blob:none` keeps
-          # every ref reachable while skipping the blob download for all of
-          # them, then lazily fetches the one blob that step actually reads.
-          # Without it this checkout has been measured at 429s vs 27s for a
-          # sibling matrix leg in the same run - enough variance on its own to
-          # blow the job budget.
-          fetch-depth: 0
+          # Poetry reads the event's exact base commit below. The test runner
+          # does not need the history of every branch and tag.
+          fetch-depth: 1
           filter: blob:none
           submodules: true
 
@@ -569,8 +565,12 @@ jobs:
           echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
 
           if [ -n "$BASE_REF" ]; then
-            BASE_BRANCH=${BASE_REF/refs\/heads\//}
-            if ! BASE_LOCK=$(git show "origin/$BASE_BRANCH":./poetry.lock); then
+            if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Missing or invalid base commit for ${BASE_REF}" >&2
+              exit 1
+            fi
+            git fetch --no-tags --no-recurse-submodules --depth=1 --filter=blob:none origin "$BASE_SHA"
+            if ! BASE_LOCK=$(git show "${BASE_SHA}:autogpt_platform/backend/poetry.lock"); then
               echo "Could not read poetry.lock from ${BASE_REF}" >&2
               exit 1
             fi
@@ -591,6 +591,7 @@ jobs:
           fi
         env:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
 
       - name: Install Python dependencies
         run: poetry install
