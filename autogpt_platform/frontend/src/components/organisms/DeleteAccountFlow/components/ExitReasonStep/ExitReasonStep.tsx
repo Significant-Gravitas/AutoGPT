@@ -75,7 +75,7 @@ export function ExitReasonStep({ origin, onClose, onContinue }: Props) {
           onChange={(event) => setText(event.target.value)}
           // A textarea so the placeholder wraps at 320px; the overrides beat
           // the atom's own 14px, one-line textarea classes.
-          className="!min-h-16 resize-none scroll-mb-20 !text-base lg:!min-h-[2.875rem] lg:!text-sm [@media(max-height:300px)]:scroll-mb-0"
+          className="!min-h-16 resize-none scroll-mb-20 !text-body-lg lg:!min-h-[2.875rem] lg:!text-body [@media(max-height:300px)]:scroll-mb-0"
           wrapperClassName="mb-0"
         />
       </div>

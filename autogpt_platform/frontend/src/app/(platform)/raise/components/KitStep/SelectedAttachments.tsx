@@ -27,7 +27,7 @@ export function SelectedAttachments({ attachments, color, onRemove }: Props) {
           type="button"
           onClick={() => onRemove(attachmentKey(attachment))}
           className={cn(
-            "group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm text-foreground",
+            "group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-body text-foreground",
             "transition-transform duration-200 hover:scale-[1.03] active:scale-95 motion-reduce:transition-none motion-reduce:hover:scale-100",
             // Chips pop in as they are picked, so the jump from the results
             // list up to the tray reads as one continuous move.
@@ -40,7 +40,8 @@ export function SelectedAttachments({ attachments, color, onRemove }: Props) {
             icon={Cancel01Icon}
             size={12}
             aria-hidden
-            className="opacity-50 transition-opacity duration-200 group-hover:opacity-100 motion-reduce:transition-none"
+            motion="opacity"
+            className="opacity-50 group-hover:opacity-100"
           />
           <span className="sr-only">Remove {attachment.name}</span>
         </button>

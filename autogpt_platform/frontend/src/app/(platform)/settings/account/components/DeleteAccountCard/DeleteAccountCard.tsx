@@ -48,9 +48,9 @@ export function DeleteAccountCard({ index = 0 }: Props) {
           type="button"
           size="small"
           variant="secondary"
+          tone="danger"
           onClick={openFlow}
-          // oxlint-disable-next-line design-system/no-restyle -- Button has no danger-label variant; the red marks the destructive action, in Text's danger colour
-          className="shrink-0 text-error-hover"
+          className="shrink-0"
         >
           Delete account
         </Button>

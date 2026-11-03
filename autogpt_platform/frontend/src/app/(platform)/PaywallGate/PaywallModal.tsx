@@ -67,11 +67,10 @@ export function PaywallModal() {
             )}
           >
             <Button
-              variant="ghost"
+              variant="ghost-muted"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-surface/90 text-foreground-tertiary hover:text-foreground-body"
             >
               Log out
             </Button>
@@ -99,7 +98,7 @@ export function PaywallModal() {
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="flex flex-col items-center gap-3">
-                    <p className="text-center text-sm text-foreground-tertiary">
+                    <p className="text-center text-body text-foreground-tertiary">
                       Subscriptions are temporarily unavailable. Please try
                       again shortly.
                     </p>

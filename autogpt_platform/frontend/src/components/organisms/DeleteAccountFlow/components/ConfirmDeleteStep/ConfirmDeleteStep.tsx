@@ -51,7 +51,7 @@ export function ConfirmDeleteStep({ source, onClose, onBusyChange }: Props) {
             value={typedEmail}
             onChange={(event) => setTypedEmail(event.target.value)}
             disabled={isDeleting}
-            className="scroll-mb-20 text-base lg:text-sm [@media(max-height:300px)]:scroll-mb-0"
+            className="scroll-mb-20 text-body-lg lg:text-body [@media(max-height:300px)]:scroll-mb-0"
             wrapperClassName="mb-0"
           />
           <Text variant="small" tone="muted">

@@ -28,7 +28,7 @@ export function CycleToggle({ value, onChange, disabled }: Props) {
             disabled={disabled}
             onClick={() => onChange(cycle)}
             className={cn(
-              "rounded-full border-none px-3 py-1 text-xs font-medium transition-all",
+              "rounded-full border-none px-3 py-1 text-caption font-medium transition-all",
               selected
                 ? "bg-surface text-foreground-strong shadow-sm"
                 : "bg-transparent text-foreground-tertiary hover:text-foreground-body",

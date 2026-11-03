@@ -101,7 +101,7 @@ export function QuestionOptionList({
                 onClick={() => onChange(option)}
                 onKeyDown={(event) => handleKeyDown(event, index)}
                 className={
-                  "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pl-4 text-left text-base leading-snug transition-all " +
+                  "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pl-4 text-left text-body-lg leading-snug transition-all " +
                   (showPencil ? "pr-12 " : "pr-4 ") +
                   (isSelected
                     ? "bg-surface text-foreground-strong ring-2 ring-action"

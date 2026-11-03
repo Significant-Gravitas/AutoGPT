@@ -12,7 +12,7 @@ import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
 import { assertNotBannedAddress } from "./ban-record";
-import { getTrustedClientIP } from "./client-ip";
+import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
@@ -318,6 +318,9 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // Behind a proxy chain the client IP is only resolvable from the hops the
+    // operator lists; without them every such caller shares one rate-limit bucket.
+    ipAddress: { trustedProxies: trustedProxies() },
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
       // pre-migration ids are Supabase UUIDs.

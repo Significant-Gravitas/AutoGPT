@@ -101,6 +101,14 @@ describe("DraftRecoveryPopup", () => {
       fireEvent.click(buttons[0]);
       expect(mockOnDiscard).toHaveBeenCalledOnce();
     });
+
+    it("shows only the popup's own tooltip on the discard button", async () => {
+      renderWithProviders(<DraftRecoveryPopup isInitialLoadComplete={true} />);
+      const discard = screen.getByRole("button", { name: "Discard changes" });
+      fireEvent.focus(discard);
+      expect(await screen.findByRole("tooltip")).toBeDefined();
+      expect(document.querySelector('[data-slot="button-tooltip"]')).toBeNull();
+    });
   });
 
   describe("when closed", () => {
