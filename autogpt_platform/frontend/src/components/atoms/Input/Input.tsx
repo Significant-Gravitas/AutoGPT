@@ -314,19 +314,23 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
       className={cn("relative mb-6 w-full", wrapperClassName)}
     >
       {input}
-      <Text
-        data-slot="input-error"
-        variant="small-medium"
-        as="span"
-        tone="error"
+      <span
         className={cn(
           "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
-        {error || " "}{" "}
-        {/* Always render with space to maintain consistent height calculation */}
-      </Text>
+        <Text
+          data-slot="input-error"
+          variant="small-medium"
+          as="span"
+          tone="error"
+          className="block"
+        >
+          {error || " "}{" "}
+          {/* Always render with space to maintain consistent height calculation */}
+        </Text>
+      </span>
     </div>
   );
 
@@ -344,8 +348,9 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
               data-slot="input-label-text"
               variant={labelVariant}
               as="span"
+              tone="base"
               // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
-              className={cn("text-foreground-base", labelClassName)}
+              className={labelClassName}
             >
               {label}
             </Text>

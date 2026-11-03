@@ -1,6 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -205,6 +206,7 @@ class TestRunValidation:
             team_id=None,
             llm_auth_provider="platform",
             llm_credential_id=None,
+            expert_id=None,
         )
 
     @pytest.mark.asyncio
@@ -233,6 +235,101 @@ class TestRunValidation:
 # ---------------------------------------------------------------------------
 # Block registration / ID tests
 # ---------------------------------------------------------------------------
+
+
+class TestExpertScope:
+    """A session the block opens or resumes acts as the run's expert, so the
+    expert's grants and tool limits follow the graph run into the chat."""
+
+    _RESULT = (
+        "ok",
+        [],
+        "[]",
+        "sess-x",
+        {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    )
+
+    @pytest.fixture
+    def block(self):
+        block = AutoPilotBlock()
+        block.execute_copilot = AsyncMock(return_value=self._RESULT)
+        return block
+
+    def _context(self, expert_id: str | None) -> ExecutionContext:
+        ctx = _make_context()
+        ctx.expert_id = expert_id
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_a_new_session_is_opened_for_the_runs_expert(self, block):
+        create_session = AsyncMock(return_value="sess-x")
+        block.create_session = create_session
+        input_data = block.Input(prompt="hi", max_recursion_depth=3)
+        async for _ in block.run(input_data, execution_context=self._context("e-1")):
+            pass
+        assert create_session.await_args is not None
+        assert create_session.await_args.kwargs["expert_id"] == "e-1"
+
+    @pytest.mark.asyncio
+    async def test_create_session_hands_the_expert_to_the_chat(self, block):
+        create = AsyncMock(return_value=SimpleNamespace(session_id="sess-x"))
+        with patch("backend.copilot.model.create_chat_session", create):
+            assert (
+                await block.create_session("user-1", dry_run=False, expert_id="e-1")
+                == "sess-x"
+            )
+        assert create.await_args is not None
+        assert create.await_args.kwargs["expert_id"] == "e-1"
+        assert create.await_args.kwargs["origin"] == "automation"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("session_expert", "run_expert", "resumes"),
+        [
+            ("e-1", "e-1", True),
+            (None, None, True),
+            ("e-1", None, False),
+            ("e-2", "e-1", False),
+            (None, "e-1", False),
+        ],
+        ids=[
+            "same expert",
+            "both personal",
+            "expert session, personal run",
+            "another expert's session",
+            "personal session, expert run",
+        ],
+    )
+    async def test_a_session_is_resumed_only_by_a_run_of_its_own_expert(
+        self, block, session_expert, run_expert, resumes
+    ):
+        existing = SimpleNamespace(
+            expert_id=session_expert,
+            metadata=SimpleNamespace(
+                origin="automation",
+                llm_auth_provider="platform",
+                llm_credential_id=None,
+            ),
+        )
+        input_data = block.Input(
+            prompt="continue", session_id="sess-x", max_recursion_depth=3
+        )
+        with patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=existing),
+        ):
+            outputs = {
+                name: value
+                async for name, value in block.run(
+                    input_data, execution_context=self._context(run_expert)
+                )
+            }
+        if resumes:
+            assert "error" not in outputs
+            block.execute_copilot.assert_awaited_once()
+        else:
+            assert "different assistant" in outputs["error"]
+            block.execute_copilot.assert_not_awaited()
 
 
 class TestBlockRegistration:

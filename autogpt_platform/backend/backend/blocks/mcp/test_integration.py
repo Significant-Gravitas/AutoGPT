@@ -24,8 +24,6 @@ from backend.blocks.mcp.protocol import (
 from backend.blocks.mcp.test_server import MODERN_EXTRA_TOOLS, create_test_mcp_app
 from backend.data.model import OAuth2Credentials
 
-pytestmark = pytest.mark.usefixtures("no_stored_mcp_credentials")
-
 MOCK_USER_ID = "test-user-integration"
 
 
@@ -377,6 +375,7 @@ class TestMCPToolBlockIntegration:
             refresh_token=SecretStr(""),
             scopes=[],
             title="Test MCP credential",
+            metadata={"mcp_server_url": url},
         )
 
         outputs = []

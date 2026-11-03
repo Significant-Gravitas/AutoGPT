@@ -44,7 +44,9 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
               <Icon
                 icon={PencilEdit02Icon}
                 size={16}
-                className="mt-0.5 shrink-0 text-foreground-subtle transition-colors group-hover:text-foreground-secondary"
+                tone="subtle"
+                motion="colors"
+                className="mt-0.5 shrink-0 group-hover:text-foreground-secondary"
               />
             </button>
           </li>

@@ -114,7 +114,7 @@ function WalkthroughControl({ player }: { player: Player }) {
         className={
           player.hasStarted
             ? "absolute right-3 bottom-2.5"
-            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
+            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
         }
       >
         <Icon icon={icon} size={player.hasStarted ? 14 : 26} aria-hidden />

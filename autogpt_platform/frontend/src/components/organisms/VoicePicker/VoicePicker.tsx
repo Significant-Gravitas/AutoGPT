@@ -140,7 +140,6 @@ export function VoicePicker({
           onClick={submit}
           disabled={!canSubmit}
           loading={isSubmitting}
-          className="rounded-full"
         >
           Use this voice
         </Button>

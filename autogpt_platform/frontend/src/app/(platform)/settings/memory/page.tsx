@@ -110,6 +110,7 @@ function MemorySettings() {
         status={chatPanel.status}
         error={chatPanel.error}
         queuedMessages={chatPanel.queuedMessages}
+        isTurnSettling={chatPanel.isTurnSettling}
         onSend={chatPanel.onSend}
         onStop={chatPanel.stop}
         onRetry={chatPanel.retryStart}

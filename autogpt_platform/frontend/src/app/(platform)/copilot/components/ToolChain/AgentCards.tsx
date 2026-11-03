@@ -65,11 +65,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={Robot01Icon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={Robot01Icon} size={15} tone="secondary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
@@ -101,11 +97,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                   )}
                   {rating !== null && (
                     <span className="flex items-center gap-1">
-                      <Icon
-                        icon={StarIcon}
-                        size={10}
-                        className="text-warning"
-                      />
+                      <Icon icon={StarIcon} size={10} tone="warning-bright" />
                       {rating.toFixed(1)}
                     </span>
                   )}
@@ -132,11 +124,7 @@ export function AgentSavedCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <Text
         variant="body-sm-medium-inherit"
@@ -171,11 +159,7 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
         <Text

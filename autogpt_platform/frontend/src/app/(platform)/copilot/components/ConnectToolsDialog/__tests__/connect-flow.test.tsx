@@ -379,6 +379,7 @@ describe("ConnectToolsPanel — inline user/password flow", () => {
     );
 
     await user.type(await screen.findByLabelText("Name"), "Mail relay");
+    await user.type(screen.getByLabelText("Server"), "smtp.example.com:587");
     await user.type(screen.getByLabelText("Username"), "postmaster");
     await user.type(
       screen.getByLabelText("Password", { selector: "input" }),
@@ -395,6 +396,7 @@ describe("ConnectToolsPanel — inline user/password flow", () => {
       title: "Mail relay",
       username: "postmaster",
       password: "<test-password>",
+      scope: "smtp://smtp.example.com:587",
     });
   });
 });

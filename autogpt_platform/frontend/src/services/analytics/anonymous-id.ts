@@ -1,16 +1,11 @@
 /**
  * One first-party anonymous identity for the whole analytics stack.
  *
- * PostHog and LaunchDarkly each mint their own visitor id, which is why
- * LaunchDarkly could only bucket by user id (every logged-out visitor shared
- * the literal key "anonymous") and nothing could tie a pre-signup flag arm
- * to a post-signup PostHog person. This module owns that id instead:
+ * Analytics tools each mint their own visitor id, so nothing could tie a
+ * pre-signup visitor to the user they became. This module owns that id instead:
  *
  * - PostHog is bootstrapped with it as the anonymous distinct id, so identify()
  *   merges it into the user as usual.
- * - LaunchDarkly gets it as the anonymous user key before login and as a
- *   `device` context after login, so rules bucketed by device stay stable
- *   across signup.
  * - The backend stores it on the user at signup (`UserAttribution`), which is
  *   the join key for everything else.
  *

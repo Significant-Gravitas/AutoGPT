@@ -1,7 +1,6 @@
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
-import { cn } from "@/lib/utils";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { CircleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -34,10 +33,8 @@ const InputNodeHandle = ({
           icon={CircleIcon}
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
-          className={cn(
-            "text-handle opacity-100",
-            isInputBroken && "text-error",
-          )}
+          tone={isInputBroken ? "error" : undefined}
+          className={isInputBroken ? undefined : "text-handle"}
         />
       </div>
     </Handle>
@@ -72,7 +69,8 @@ const OutputNodeHandle = ({
           icon={CircleIcon}
           size={16}
           color={isOutputConnected ? hexColor : "gray"}
-          className={cn("text-handle opacity-100", isBroken && "text-error")}
+          tone={isBroken ? "error" : undefined}
+          className={isBroken ? undefined : "text-handle"}
         />
       </div>
     </Handle>

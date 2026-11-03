@@ -1009,11 +1009,17 @@ describe("InvoicesCard", () => {
 
 describe("AutopilotUsageCard", () => {
   it("renders today + week percent values", async () => {
+    // Pin the plan: the default mock's random tier can be TRIAL, which shows
+    // the error card when it lands before the usage response.
     server.use(
       jsonHandler("get", "/api/chat/usage", {
         daily: { percent_used: 12, resets_at: null },
         weekly: { percent_used: 35, resets_at: null },
       }),
+      jsonHandler("get", "/api/credits/subscription", { tier: "PRO" }),
+      getGetTrialsGetTrialStatusMockHandler200(
+        trialResponse({ active: false, status: null }),
+      ),
     );
 
     render(<AutopilotUsageCard />);
