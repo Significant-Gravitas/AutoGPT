@@ -40,7 +40,7 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
         ) : null}
         {showTrialCard ? <TrialCard /> : null}
         {isConfirmingPlan ? (
-          <Text variant="small" tone="secondary" role="status" className="px-4">
+          <Text variant="small" tone="secondary" role="status" className="mx-4">
             Finishing your new plan…
           </Text>
         ) : null}

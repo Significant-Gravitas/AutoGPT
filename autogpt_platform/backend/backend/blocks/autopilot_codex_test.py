@@ -99,6 +99,7 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         team_id=None,
         llm_auth_provider="codex",
         llm_credential_id="cred-1",
+        expert_id=None,
     )
     execute_copilot.assert_awaited_once()
 
@@ -110,11 +111,12 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         (None, "session was not found"),
         (
             SimpleNamespace(
+                expert_id=None,
                 metadata=SimpleNamespace(
                     origin="automation",
                     llm_auth_provider="codex",
                     llm_credential_id="different-credential",
-                )
+                ),
             ),
             "different transport or connection",
         ),
@@ -123,11 +125,12 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         # accepts — `create_session` stamps "automation" precisely to stop that.
         (
             SimpleNamespace(
+                expert_id=None,
                 metadata=SimpleNamespace(
                     origin="interactive",
                     llm_auth_provider="codex",
                     llm_credential_id="cred-1",
-                )
+                ),
             ),
             "started by a person",
         ),
@@ -223,7 +226,9 @@ async def test_autopilot_block_resumes_every_session_a_person_did_not_start(
             {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         )
     )
-    existing = SimpleNamespace(metadata=_persisted_metadata(raw_metadata))
+    existing = SimpleNamespace(
+        expert_id=None, metadata=_persisted_metadata(raw_metadata)
+    )
     input_data = AutoPilotBlock.Input(
         prompt="continue",
         session_id="session-1",
@@ -428,6 +433,7 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
     session = MagicMock()
+    session.expert_id = None
     session.metadata.origin = "automation"
     session.metadata.llm_auth_provider = "codex"
     session.metadata.llm_credential_id = "cred-1"

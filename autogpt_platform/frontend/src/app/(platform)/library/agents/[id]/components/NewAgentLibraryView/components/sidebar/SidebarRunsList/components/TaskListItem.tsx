@@ -25,84 +25,44 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
+const PENDING_COLORS =
+  // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
+  "border-warning-surface bg-warning-surface text-yellow-700";
+
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
-    <IconWrapper className="border-error-surface bg-error-surface">
-      <Icon
-        icon={AlertCircleIcon}
-        size={16}
-        className="text-error-foreground"
-      />
+    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+      <Icon icon={AlertCircleIcon} size={16} />
     </IconWrapper>
   ),
   QUEUED: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={Clock01Icon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={Clock01Icon} size={16} />
     </IconWrapper>
   ),
   RUNNING: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={PauseCircleIcon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={PauseCircleIcon} size={16} />
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-yellow-50 (#FEF9E6), bg-yellow-50 (#FEF9E6)
-      className="border-yellow-50 bg-yellow-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-yellow-700 (#AE8800)
-        icon={PauseCircleIcon}
-        size={16}
-        className="text-yellow-700"
-      />
+    <IconWrapper className={PENDING_COLORS}>
+      <Icon icon={PauseCircleIcon} size={16} />
     </IconWrapper>
   ),
   COMPLETED: (
-    <IconWrapper className="border-success-surface bg-success-surface">
-      <Icon
-        icon={CheckmarkCircle02Icon}
-        size={16}
-        className="text-success-foreground"
-      />
+    <IconWrapper className="border-success-surface bg-success-surface text-success-foreground">
+      <Icon icon={CheckmarkCircle02Icon} size={16} />
     </IconWrapper>
   ),
   TERMINATED: (
-    <IconWrapper
-      // TODO(tokens): no exact role for border-slate-50 (#F7F8F9), bg-slate-50 (#F7F8F9)
-      className="border-slate-50 bg-slate-50"
-    >
-      <Icon
-        // TODO(tokens): no exact role for text-slate-700 (#475263)
-        icon={StopCircleIcon}
-        size={16}
-        className="text-slate-700"
-      />
+    <IconWrapper className="border-surface-muted bg-surface-muted text-foreground-body">
+      <Icon icon={StopCircleIcon} size={16} />
     </IconWrapper>
   ),
   FAILED: (
-    <IconWrapper className="border-error-surface bg-error-surface">
-      <Icon
-        icon={CancelCircleIcon}
-        size={16}
-        className="text-error-foreground"
-      />
+    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+      <Icon icon={CancelCircleIcon} size={16} />
     </IconWrapper>
   ),
 };
@@ -117,8 +77,8 @@ interface Props {
 }
 
 const completedWithErrorsIcon = (
-  <IconWrapper className="border-warning-surface bg-warning-surface">
-    <Icon icon={Alert02Icon} size={16} className="text-warning-foreground" />
+  <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+    <Icon icon={Alert02Icon} size={16} />
   </IconWrapper>
 );
 
@@ -132,12 +92,8 @@ export function TaskListItem({
 }: Props) {
   const withErrors = isCompletedWithErrors(run);
   const icon = run.is_dry_run ? (
-    <IconWrapper className="border-warning-surface bg-warning-surface">
-      <Icon
-        icon={FlaskConicalIcon}
-        size={16}
-        className="text-warning-foreground"
-      />
+    <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+      <Icon icon={FlaskConicalIcon} size={16} />
     </IconWrapper>
   ) : withErrors ? (
     completedWithErrorsIcon

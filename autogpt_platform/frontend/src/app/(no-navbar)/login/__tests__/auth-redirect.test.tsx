@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@/tests/integrations/test-utils";
 import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import LoginPage from "../page";

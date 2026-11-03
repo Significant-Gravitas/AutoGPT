@@ -9,11 +9,10 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-// TODO(tokens): no exact role: text-amber-600 #D97706; no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
 const getRequirementsHtml = () => `
-  <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-amber-200 rounded-2xl">
-    <p id="requirements-title" class="text-body leading-5 font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
-    <ul id="requirements-list" class="text-body-sm leading-inherit text-amber-600 m-0 pl-4 space-y-1">
+  <div id="requirements-box" class="mt-3 p-3 bg-warning-surface ring-1 ring-warning-border rounded-2xl">
+    <p id="requirements-title" class="text-body leading-5 font-medium text-warning-foreground m-0 mb-2">⚠️ Required to continue:</p>
+    <ul id="requirements-list" class="text-body-sm leading-inherit text-warning-foreground m-0 pl-4 space-y-1">
       <li id="req-a" class="flex items-center gap-2">
         <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
       </li>
@@ -33,12 +32,9 @@ const updateToSuccessState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
-    reqBox.classList.remove("bg-warning-surface", "ring-amber-200");
-    // TODO(tokens): no exact role: ring-green-200 #94D5AC
-    reqBox.classList.add("bg-success-surface", "ring-green-200");
-    // TODO(tokens): no exact role: text-amber-600 #D97706
-    reqTitle.classList.remove("text-amber-600");
+    reqBox.classList.remove("bg-warning-surface", "ring-warning-border");
+    reqBox.classList.add("bg-success-surface", "ring-success/40");
+    reqTitle.classList.remove("text-warning-foreground");
     reqTitle.classList.add("text-success");
     reqTitle.innerHTML = "🎉 Hurray! All values are completed!";
     if (reqList) {
@@ -53,13 +49,10 @@ const updateToWarningState = () => {
   const reqList = document.querySelector("#requirements-list");
 
   if (reqBox && reqTitle) {
-    // TODO(tokens): no exact role: ring-green-200 #94D5AC
-    reqBox.classList.remove("bg-success-surface", "ring-green-200");
-    // TODO(tokens): no fitting role for ring-amber-200 #FDE68A; #FDE68A is warning-border (a border colour), and this is a ring (QUALITY 41(b))
-    reqBox.classList.add("bg-warning-surface", "ring-amber-200");
+    reqBox.classList.remove("bg-success-surface", "ring-success/40");
+    reqBox.classList.add("bg-warning-surface", "ring-warning-border");
     reqTitle.classList.remove("text-success");
-    // TODO(tokens): no exact role: text-amber-600 #D97706
-    reqTitle.classList.add("text-amber-600");
+    reqTitle.classList.add("text-warning-foreground");
     reqTitle.innerHTML = "⚠️ Required to continue:";
     if (reqList) {
       reqList.classList.remove("hidden");
@@ -129,18 +122,15 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
 
           if (reqAEl) {
             reqAEl.classList.toggle("text-success", hasA);
-            // TODO(tokens): no exact role: text-amber-600 #D97706
-            reqAEl.classList.toggle("text-amber-600", !hasA);
+            reqAEl.classList.toggle("text-warning-foreground", !hasA);
           }
           if (reqBEl) {
             reqBEl.classList.toggle("text-success", hasB);
-            // TODO(tokens): no exact role: text-amber-600 #D97706
-            reqBEl.classList.toggle("text-amber-600", !hasB);
+            reqBEl.classList.toggle("text-warning-foreground", !hasB);
           }
           if (reqOpEl) {
             reqOpEl.classList.toggle("text-success", hasOp);
-            // TODO(tokens): no exact role: text-amber-600 #D97706
-            reqOpEl.classList.toggle("text-amber-600", !hasOp);
+            reqOpEl.classList.toggle("text-warning-foreground", !hasOp);
           }
 
           if (allComplete && !wasComplete) {

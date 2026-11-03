@@ -54,11 +54,12 @@ export function PaidWelcome({
           onClick={onContinue}
           loading={isProcessing}
           disabled={isProcessing || isBlocked}
-          className="h-12 w-full text-base"
+          textSize="body-md"
+          className="h-12 w-full"
         >
           Continue to checkout
         </Button>
-        <Text variant="small" tone="muted" className="text-balance text-center">
+        <Text variant="small" tone="muted" className="text-center text-balance">
           <Icon
             icon={SquareLock02Icon}
             size={13}

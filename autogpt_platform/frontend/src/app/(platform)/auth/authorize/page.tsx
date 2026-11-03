@@ -134,7 +134,7 @@ export default function AuthorizePage() {
         <AuthCard title="Loading...">
           <div className="flex flex-col items-center gap-4 py-8">
             <LoadingSpinner size="large" />
-            <Text variant="body" className="text-center text-slate-500">
+            <Text variant="body" tone="secondary" className="text-center">
               Loading application information...
             </Text>
           </div>
@@ -204,23 +204,23 @@ export default function AuthorizePage() {
           {/* App info */}
           <div className="flex flex-col items-center text-center">
             {/* App logo */}
-            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-slate-100">
+            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-surface-hover">
               {appInfo.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                // eslint-disable-next-line @next/next/no-img-element -- an OAuth app logo can come from any host, which next/image only loads from listed ones
                 <img
                   src={appInfo.logo_url}
                   alt={`${appInfo.name} logo`}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon icon={Image01Icon} className="h-8 w-8 text-slate-400" />
+                <Icon icon={Image01Icon} tone="subtle" className="h-8 w-8" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
               {appInfo.name}
             </Text>
             {appInfo.description && (
-              <Text variant="body" className="text-slate-600">
+              <Text variant="body" tone="secondary">
                 {appInfo.description}
               </Text>
             )}
@@ -236,7 +236,8 @@ export default function AuthorizePage() {
                 <li key={scopeKey} className="flex items-start gap-3">
                   <Icon
                     icon={CheckmarkBadge01Icon}
-                    className="mt-0.5 text-green-600"
+                    tone="success"
+                    className="mt-0.5"
                   />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
@@ -261,7 +262,8 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -269,14 +271,15 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Deny
             </Button>
           </div>
 
           {/* Warning */}
-          <Text variant="small" className="text-center text-slate-500">
+          <Text variant="small" tone="secondary" className="text-center">
             By authorizing, you allow this application to access your AutoGPT
             account with the permissions listed above.
           </Text>

@@ -81,3 +81,4 @@ This strategy allows us to share previously closed-source components, fostering 
 
 * **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
 * **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.
+* **Build on it:** Run and build agents from your own code with the [AutoGPT Platform API](integrating/api-guide.md), or give Claude, Cursor or another AI tool access through its [MCP server](integrating/mcp-server.md).

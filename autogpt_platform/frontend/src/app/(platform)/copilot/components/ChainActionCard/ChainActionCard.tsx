@@ -2,13 +2,9 @@
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { PlugSocketIcon } from "@hugeicons/core-free-icons";
 import { isAnswered } from "../../tools/clarifying-questions";
-import { useCopilotModal } from "../../useCopilotModal";
-import { ConnectorRow } from "./ConnectorRow";
+import { ConnectionsSection } from "./ConnectionsSection";
 import { InputsSection } from "./InputsSection";
-import { McpConnectorRow } from "./McpConnectorRow";
 import { QuestionsSection } from "./QuestionsSection";
 import {
   toConnectorRows,
@@ -44,7 +40,6 @@ export function ChainActionCard({
   isReady,
   onProceed,
 }: Props) {
-  const { openModal } = useCopilotModal();
   const providersQuery = useGetV1ListProviders({
     query: {
       select: (response) => (response.status === 200 ? response.data : []),
@@ -52,18 +47,6 @@ export function ChainActionCard({
   });
 
   const rows = toConnectorRows(connectors, providersQuery.data ?? []);
-  // Two tool calls against the same MCP server ask once — connecting it
-  // satisfies both hidden cards via their live-credential re-check.
-  const mcpRows = mcp.filter(
-    (request, i) =>
-      mcp.findIndex((other) => other.serverUrl === request.serverUrl) === i,
-  );
-  // Everything the chain is still waiting on, so a half-connected card says
-  // what is left instead of looking stalled.
-  const remaining = [
-    ...rows.filter((row) => !row.selected).map((row) => row.displayName),
-    ...mcpRows.filter((request) => !request.connected).map((r) => r.service),
-  ];
   const hasInputs = inputs.some(
     (request) => request.schema !== null || request.hasAdvanced,
   );
@@ -83,43 +66,7 @@ export function ChainActionCard({
   return (
     <div className="my-2 flex flex-col gap-2">
       {(rows.length > 0 || mcp.length > 0) && (
-        <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
-          <div className="flex items-center gap-2.5 border-b border-separator px-4 py-3">
-            <Icon
-              icon={PlugSocketIcon}
-              size={18}
-              className="text-foreground-subtle"
-            />
-            <span className="text-sm font-medium text-foreground-strong">
-              Plug in what this needs
-            </span>
-          </div>
-          {rows.map((row) => (
-            <ConnectorRow key={row.provider} row={row} />
-          ))}
-          {mcpRows.map((request) => (
-            <McpConnectorRow key={request.id} request={request} />
-          ))}
-          {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
-            <div className="border-t border-separator px-4 py-2.5">
-              <span className="text-sm text-foreground-tertiary">
-                Still to connect: {remaining.join(", ")}
-              </span>
-            </div>
-          )}
-          <div className="border-t border-separator px-4 py-3">
-            <span className="text-sm text-foreground-tertiary">
-              Looking for something else?{" "}
-              <button
-                type="button"
-                onClick={() => openModal("integrations")}
-                className="font-medium text-foreground-strong underline underline-offset-2"
-              >
-                Browse all connectors
-              </button>
-            </span>
-          </div>
-        </div>
+        <ConnectionsSection rows={rows} mcp={mcp} />
       )}
 
       <InputsSection requests={inputs} />
