@@ -181,7 +181,7 @@ def require_rate_limit(
 
 # Ready-made dependencies for the two tiers. Every ``/v1`` route carries one
 # of these, so they are defined once here rather than repeating the eight-line
-# ``Depends(require_rate_limit(...))`` block at each of the twelve call sites.
+# ``Depends(require_rate_limit(...))`` block at each call site.
 READ_LIMIT = Depends(
     require_rate_limit(
         max_requests=READ_MAX_REQUESTS,

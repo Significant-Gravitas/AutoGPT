@@ -272,8 +272,11 @@ def test_disabled_block_still_403(monkeypatch: pytest.MonkeyPatch):
 
 def test_registry_blocks_needing_a_workflow_are_refused(
     monkeypatch: pytest.MonkeyPatch,
+    v1_counter: AsyncMock,
 ):
-    """The registry's own blocks are refused before they are charged or run."""
+    """Check graph-only blocks before charging or running, independent of quota."""
+    v1_counter.side_effect = None
+    v1_counter.return_value = 1
     ran: list[str] = []
 
     async def _record_run(self, _data, **_kwargs):
