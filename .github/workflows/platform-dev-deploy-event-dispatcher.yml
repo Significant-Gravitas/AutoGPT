@@ -163,11 +163,7 @@ jobs:
               per_page: 100
             });
 
-            // Only commands the live listener would have acted on count: the
-            // same OWNER/MEMBER/COLLABORATOR gate and bot allowlist as above.
-            // Otherwise anyone who can comment could leave a `!undeploy` after
-            // a maintainer's `!deploy` and keep the preview environment alive
-            // past the PR's close.
+            // Same trust gate as the comment handler: only commands it would have acted on count.
             const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
             const isTrusted = (comment) => (
               ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association) ||
@@ -254,10 +250,9 @@ jobs:
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
-            // Unlike the close/undeploy scan, this path TRIGGERS a deploy, so
-            // only commands from authorized authors count — otherwise a
-            // drive-by !deploy comment (ignored by the comment handler's
-            // permission gate) would arm auto-redeploy for the next push.
+            // Only commands from authorized authors count: a drive-by !deploy,
+            // ignored by the comment handler's permission gate, would otherwise
+            // arm auto-redeploy for the next push.
             const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
             // Trusted bots comment as 'NONE'; allowlist by login (see comment handler).
             const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
