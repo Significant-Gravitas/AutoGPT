@@ -2561,18 +2561,15 @@ async def stream_chat_completion_baseline(
         ):
             yield held_status
         held_results = [*unsaved_held]
-        # The helper appends the rows before its first await, so from here the
-        # session carries them.
-        unsaved_held.clear()
         folded = bool(held_results) and await persist_pending_as_user_rows(
             session, transcript_builder, held_results, log_prefix="[Baseline]"
         )
+        unsaved_held.clear()
     except BaseException:
         # Stopped before the finally below: save what already ran, its approval
         # spent, and end the counted turn on the box.
         await persist_unfolded_rows(session, unsaved_held, log_prefix="[Baseline]")
         if held_results:
-            # Cut inside the fold's own save: its rows are on the session only.
             await persist_session_safe(session, "[Baseline]")
         if e2b_sandbox is not None:
             _pause_counted_box(e2b_sandbox, session_id, session.expert_id)
