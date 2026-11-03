@@ -547,7 +547,7 @@ async def test_files_bucket_leaves_out_ottos_working_files(mocker):
         new=AsyncMock(return_value=MagicMock(id="ws-1")),
     )
 
-    await service._files_bucket("u1", limit=5, query="build_state")
+    await service._files_bucket("u1", "org-1", "team-1", limit=5, query="build_state")
 
     assert mock_manager.list_files.await_args.kwargs["include_internal"] is False
 

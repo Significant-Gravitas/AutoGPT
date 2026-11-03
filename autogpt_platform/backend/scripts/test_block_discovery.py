@@ -23,7 +23,10 @@ def test_block_discovery_does_not_import_tests(tmp_path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
+    # The cost sync's lazy import resolves here, before `import_module` (which
+    # every import machinery call shares) is replaced.
     with (
+        patch("backend.sdk.cost_integration.sync_all_provider_costs"),
         patch("backend.blocks.__file__", str(tmp_path / "__init__.py")),
         patch("backend.blocks._all_subclasses", return_value=[]),
         patch("backend.blocks.importlib.import_module") as import_module,

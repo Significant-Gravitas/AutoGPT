@@ -1,6 +1,7 @@
 """Tests for the credit ledger routes."""
 
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import ANY, AsyncMock, Mock
 
@@ -51,6 +52,21 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@asynccontextmanager
+async def _live_access_held(*_args, **_kwargs):
+    yield True
+
+
+@pytest.fixture(autouse=True)
+def _live_access(monkeypatch):
+    """The role check on the faked context still runs; only its live re-check
+    against the database is held open, since these TestClient requests have no
+    database (as in v1_credits_authz_test)."""
+    monkeypatch.setattr(
+        "backend.api.live_auth.live_org_permission_barrier", _live_access_held
+    )
 
 
 @pytest.fixture(autouse=True)

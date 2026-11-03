@@ -335,7 +335,8 @@ async def test_team_organization_never_reads_a_personal_stored_briefing(
         user_id="user-1", organization_id="org-1", team_id="team-1"
     )
 
-    owner.assert_awaited_once_with("org-1")
+    # The briefing and Recent work each check the (cached) owner of org-1.
+    assert {call.args for call in owner.await_args_list} == {("org-1",)}
     briefing.assert_not_awaited()
     assert dashboard.briefing.source == "live"
 

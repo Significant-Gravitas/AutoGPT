@@ -1,6 +1,7 @@
 """Tests for the graph routes."""
 
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
@@ -63,6 +64,27 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def allow_live_scope(mocker: pytest_mock.MockFixture):
+    """The live tenancy barriers read memberships, and the graph attachment
+    barriers take advisory locks, in the database; these tests pin the
+    routes, not the barriers, so the scope is held open and unlocked."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    @asynccontextmanager
+    async def unlocked(*_args, **_kwargs):
+        yield
+
+    routes = "backend.api.features.graphs.routes"
+    mocker.patch("backend.api.live_auth.live_resource_permission_barrier", allowed)
+    mocker.patch(f"{routes}.live_resource_access_barrier", allowed)
+    mocker.patch(f"{routes}.agent_graph_attachment_barrier", unlocked)
+    mocker.patch(f"{routes}.agent_graph_attachment_barriers", unlocked)
 
 
 @pytest.fixture(autouse=True)

@@ -10,10 +10,11 @@ import pytest
 from backend.cli import onboarding_role_backfill as cli
 from backend.data.onboarding_role import OnboardingRole, save_onboarding_role
 from backend.util.json import SafeJson
+from backend.util.test import SpinTestServer
 
 
 @pytest.fixture
-async def account():
+async def account(server: SpinTestServer):
     user_id = str(uuid.uuid4())
     await prisma.models.User.prisma().create(
         data={"id": user_id, "email": f"{user_id}@example.com"}

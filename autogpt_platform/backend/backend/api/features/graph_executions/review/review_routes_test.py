@@ -14,6 +14,8 @@ from fastapi import HTTPException
 from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features.library import db as library_db
+from backend.api.features.orgs.db import get_user_default_team
 from backend.api.rest_api import app
 from backend.blocks.github._auth import TEST_CREDENTIALS
 from backend.blocks.github.issues import GithubMakeIssueBlock
@@ -1802,7 +1804,7 @@ async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
         test_user_id,
     )
     graph.reassign_ids(user_id=test_user_id, reassign_graph_id=True)
-    await create_graph(graph, user_id=test_user_id)
+    workspace = await _save_to_library(graph, test_user_id)
     # The user's library setting that asks for irreversible actions to pause.
     mocker.patch(
         "backend.api.features.graph_executions.review.service.get_graph_settings",
@@ -1819,6 +1821,7 @@ async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
         starting_nodes_input=[(node_id, input_data)],
         inputs={},
         user_id=test_user_id,
+        **workspace,
     )
     node_exec_id = graph_exec.node_executions[0].node_exec_id
 
@@ -1881,6 +1884,19 @@ async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
     create_issue.assert_not_awaited()
 
 
+async def _save_to_library(graph: Graph, user_id: str) -> dict[str, str | None]:
+    """Saves *graph* in the user's own workspace with its library entry, which
+    a run needs here, and returns that workspace for the run."""
+    organization_id, team_id = await get_user_default_team(user_id)
+    created = await create_graph(
+        graph, user_id=user_id, organization_id=organization_id, team_id=team_id
+    )
+    await library_db.create_library_agent(
+        created, user_id, organization_id=organization_id, team_id=team_id
+    )
+    return {"organization_id": organization_id, "team_id": team_id}
+
+
 async def _paused_issue_run(mocker, test_user_id: str, nodes: int):
     """A run of ``nodes`` irreversible GitHub steps whose first step is parked
     for review, as in the test above; returns what the tests below drive."""
@@ -1907,7 +1923,7 @@ async def _paused_issue_run(mocker, test_user_id: str, nodes: int):
         test_user_id,
     )
     graph.reassign_ids(user_id=test_user_id, reassign_graph_id=True)
-    await create_graph(graph, user_id=test_user_id)
+    workspace = await _save_to_library(graph, test_user_id)
     mocker.patch(
         "backend.api.features.graph_executions.review.service.get_graph_settings",
         new=mocker.AsyncMock(
@@ -1921,6 +1937,7 @@ async def _paused_issue_run(mocker, test_user_id: str, nodes: int):
         starting_nodes_input=[(node.id, input_data) for node in graph.nodes],
         inputs={},
         user_id=test_user_id,
+        **workspace,
     )
     steps = [(ne.node_id, ne.node_exec_id) for ne in graph_exec.node_executions]
 

@@ -7,9 +7,11 @@ A new route fails ``test_every_route_checks_the_paywall_or_is_listed_open``
 until it does one or the other.
 """
 
+from contextlib import asynccontextmanager
+
 import fastapi.testclient
 import pytest
-from autogpt_libs.auth import requires_admin_user
+from autogpt_libs.auth import get_request_context, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
@@ -410,16 +412,32 @@ def test_the_open_lists_name_only_routes_that_exist():
     assert OPEN_WHILE_PAYWALLED.isdisjoint(CHECKED_IN_HANDLER)
 
 
+@asynccontextmanager
+async def _live_access_held(*_args, **_kwargs):
+    yield True
+
+
 @pytest.mark.parametrize("call", CLOSED_SAMPLES)
 def test_an_account_without_a_plan_gets_402_from_a_closed_route(
     call: str, mock_jwt_user, paywalled_user, mocker
 ):
+    # Some routes resolve the caller's workspace before the paywall answers
+    # (the experts router's scope check; global search checks in its handler),
+    # so the caller is signed in to a workspace whose live access holds.
+    mocker.patch(
+        "backend.api.live_auth.live_resource_permission_barrier", _live_access_held
+    )
+    # Restored, not cleared: this is the real app, and the session-scoped
+    # SpinTestServer fixture keeps its own get_user_id override on it.
+    previous = dict(app.dependency_overrides)
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     try:
         method, path = call.split(" ", 1)
         response = fastapi.testclient.TestClient(app).request(method, path)
     finally:
         app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
     assert response.status_code == 402, response.text
     assert "subscription is required" in response.json()["detail"]

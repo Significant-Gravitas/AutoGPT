@@ -1,9 +1,11 @@
 import io
 from collections import Counter
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 from PIL import Image, UnidentifiedImageError
 
@@ -12,6 +14,37 @@ from backend.api.features.store import image_gen, local_media, media, routes
 from backend.blocks.ideogram import TEST_CREDENTIALS, IdeogramModelBlock
 from backend.data.graph import GraphBaseMeta
 from backend.util.settings import Settings
+
+
+def _org(user_id: str) -> str:
+    return f"personal-org-{user_id}"
+
+
+def _ctx(user_id: str) -> RequestContext:
+    """The caller in their own personal workspace."""
+    return RequestContext(
+        user_id=user_id,
+        org_id=_org(user_id),
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
+@pytest.fixture(autouse=True)
+def live_workspace(monkeypatch):
+    """The caller's workspace stays live through every write these tests make."""
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        yield True
+
+    monkeypatch.setattr(routes, "live_resource_lease", lease)
+    monkeypatch.setattr(library_db, "live_resource_lease", lease)
 
 
 @pytest.fixture
@@ -66,11 +99,15 @@ def graph_and_library_update(monkeypatch):
     monkeypatch.setattr(
         routes.backend.data.graph, "get_graph", AsyncMock(return_value=graph)
     )
-    update = AsyncMock(return_value=Mock())
+    update = AsyncMock(return_value=1)
     monkeypatch.setattr(
         library_db.prisma.models.LibraryAgent,
         "prisma",
-        Mock(return_value=Mock(update=update)),
+        Mock(
+            return_value=Mock(
+                find_first=AsyncMock(return_value=Mock()), update_many=update
+            )
+        ),
     )
     return graph, update
 
@@ -114,15 +151,26 @@ async def test_generated_thumbnail_upload_and_reuse(
     )
     for _ in range(2):
         if caller == "marketplace":
-            result = await routes.generate_image(graph.id, user_id="test-user")
+            result = await routes.generate_image(
+                graph.id, user_id="test-user", ctx=_ctx("test-user")
+            )
             assert result.image_url == expected_url
         else:
             result = await library_db.add_generated_agent_image(
-                graph, "test-user", "library-agent-1"
+                graph, "test-user", "library-agent-1", _org("test-user"), None
             )
             assert result is not None
             update.assert_awaited_with(
-                where={"id": "library-agent-1"}, data={"imageUrl": expected_url}
+                where={
+                    "id": "library-agent-1",
+                    "userId": "test-user",
+                    "organizationId": _org("test-user"),
+                    "teamId": None,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "isDeleted": False,
+                },
+                data={"imageUrl": expected_url},
             )
 
     generate.assert_awaited_once()
@@ -159,7 +207,9 @@ async def test_invalid_generated_image_is_not_uploaded(
     monkeypatch.setattr(image_gen, "Requests", Mock(return_value=Mock(get=download)))
 
     with pytest.raises(UnidentifiedImageError):
-        await routes.generate_image(graph.id, user_id="test-user")
+        await routes.generate_image(
+            graph.id, user_id="test-user", ctx=_ctx("test-user")
+        )
     scanner.assert_not_awaited()
     assert not objects
     assert not local_media.media_root().exists()
@@ -201,7 +251,9 @@ async def test_generate_image_regenerates_when_the_existence_check_fails(
         media, "check_media_exists", AsyncMock(side_effect=RuntimeError("GCS is down"))
     )
 
-    result = await routes.generate_image(graph.id, user_id="test-user")
+    result = await routes.generate_image(
+        graph.id, user_id="test-user", ctx=_ctx("test-user")
+    )
 
     generate.assert_awaited_once()
     assert result.image_url.endswith("users/test-user/images/agent_graph-1.jpeg")
@@ -235,6 +287,8 @@ async def test_generated_images_stop_at_each_users_daily_limit(
             GraphBaseMeta(id=f"graph-{i}", name="Agent", description=""),
             "test-user",
             f"library-agent-{i}",
+            _org("test-user"),
+            None,
         )
         for i in range(5)
     ]
@@ -242,10 +296,12 @@ async def test_generated_images_stop_at_each_users_daily_limit(
     assert [result is not None for result in results] == [True] * 3 + [False] * 2
     assert generate.call_count == update.await_count == 3
     with pytest.raises(HTTPException) as exc_info:
-        await routes.generate_image("graph-4", user_id="test-user")
+        await routes.generate_image(
+            "graph-4", user_id="test-user", ctx=_ctx("test-user")
+        )
     assert exc_info.value.status_code == 429
     assert generate.call_count == 3
-    await routes.generate_image("graph-4", user_id="other-user")
+    await routes.generate_image("graph-4", user_id="other-user", ctx=_ctx("other-user"))
     assert generate.call_count == 4
 
 
@@ -265,12 +321,14 @@ async def test_no_image_is_generated_when_the_limit_cannot_be_checked(
     )
 
     result = await library_db.add_generated_agent_image(
-        graph, "test-user", "library-agent-1"
+        graph, "test-user", "library-agent-1", _org("test-user"), None
     )
 
     assert result is None
     with pytest.raises(HTTPException) as exc_info:
-        await routes.generate_image(graph.id, user_id="test-user")
+        await routes.generate_image(
+            graph.id, user_id="test-user", ctx=_ctx("test-user")
+        )
     assert exc_info.value.status_code == 503
     generate.assert_not_awaited()
     update.assert_not_awaited()

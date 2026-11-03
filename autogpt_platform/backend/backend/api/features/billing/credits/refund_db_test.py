@@ -18,6 +18,8 @@ from prisma.models import CreditRefundRequest, CreditTransaction, User
 from backend.api.features.billing.credits.routes import router
 from backend.api.rest_api import app as rest_app
 from backend.data.credit import UserCredit
+from backend.data.org_migration import ensure_personal_org
+from backend.data.user import get_user_personal_organization_id
 from backend.util.json import SafeJson
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -61,6 +63,9 @@ async def client(
     users: tuple[str, str], mocker: pytest_mock.MockFixture
 ) -> AsyncIterator[httpx.AsyncClient]:
     caller_id, _ = users
+    # Billing routes re-check the caller's live role in the organization, so
+    # the caller asks from the personal organization it really owns.
+    personal_org_id = await get_user_personal_organization_id(caller_id)
 
     def jwt_payload() -> dict[str, str]:
         return {"sub": caller_id, "role": "user", "email": f"{caller_id}@example.com"}
@@ -68,7 +73,7 @@ async def client(
     def request_context() -> RequestContext:
         return RequestContext(
             user_id=caller_id,
-            org_id="personal-org",
+            org_id=personal_org_id,
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,
@@ -99,6 +104,7 @@ async def users(server) -> AsyncIterator[tuple[str, str]]:
         await User.prisma().create(
             data={"id": user_id, "email": f"{user_id}@example.com"}
         )
+        await ensure_personal_org(user_id)
     yield ids[0], ids[1]
     await CreditRefundRequest.prisma().delete_many(where={"userId": {"in": ids}})
     await CreditTransaction.prisma().delete_many(where={"userId": {"in": ids}})
