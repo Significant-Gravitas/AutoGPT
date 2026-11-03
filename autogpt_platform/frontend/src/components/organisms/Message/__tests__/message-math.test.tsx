@@ -114,10 +114,22 @@ describe("MessageResponse math", () => {
     ],
     ["an HTML block", "<div>echo $HOME</div>", "div", "echo $HOME"],
     [
+      "an HTML comment block holding a browser comment end",
+      "<!-- a --!>\necho $HOME\n-->",
+      "div",
+      "echo $HOME -->",
+    ],
+    [
       "a code span that wraps a line",
       "Run `echo $HOME\nand $PATH` now.",
       "code",
       "echo $HOME and $PATH",
+    ],
+    [
+      "a code span wrapping past an indented backtick line",
+      "Run `echo $HOME\n    ```\nand $PATH` now.",
+      "code",
+      "echo $HOME ``` and $PATH",
     ],
     [
       "a code span holding a longer backtick run",

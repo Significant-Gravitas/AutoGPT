@@ -18,7 +18,7 @@ const AUTOLINK_RE = /<[A-Za-z][\w+.-]{1,31}:[^\s<>]*>/y;
 const INLINE_TAG_RE = /<\/?[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/y;
 const BARE_URL_RE = /(?:https?:\/\/|www\.)[^\s<]+/iy;
 
-type HTMLBlockEnd = RegExp | "blank";
+type HTMLBlockEnd = { closer: string } | "blank";
 
 interface CodeSpan {
   run: string | null;
@@ -62,8 +62,8 @@ export function escapeLiteralDollars(markdown: string): string {
       openFence = null;
     }
 
-    if (htmlEnd instanceof RegExp) {
-      if (htmlEnd.test(line)) htmlEnd = null;
+    if (typeof htmlEnd === "object" && htmlEnd) {
+      if (closesHTMLBlock(line, htmlEnd)) htmlEnd = null;
       return line;
     }
 
@@ -118,7 +118,10 @@ export function escapeLiteralDollars(markdown: string): string {
 
     const html = startsBlock ? htmlBlockEnd(content, inParagraph) : null;
     if (html) {
-      htmlEnd = html instanceof RegExp && html.test(content) ? null : html;
+      htmlEnd =
+        typeof html === "object" && closesHTMLBlock(content, html)
+          ? null
+          : html;
       inParagraph = false;
       return line;
     }
@@ -229,11 +232,17 @@ function indexOfRun(text: string, run: string, from: number): number {
 function paragraphAfter(lines: string[], at: number): string {
   let end = at + 1;
   while (end < lines.length) {
-    const line = lines[end].replace(QUOTE_PREFIX_RE, "").trim();
-    if (!line || OPENING_FENCE_RE.test(line)) break;
+    const line = lines[end].replace(QUOTE_PREFIX_RE, "");
+    if (!line.trim()) break;
+    // A fence indented four columns is paragraph text, not a block.
+    if (indentWidth(line) < 4 && OPENING_FENCE_RE.test(line.trim())) break;
     end += 1;
   }
   return lines.slice(at + 1, end).join("\n");
+}
+
+function closesHTMLBlock(line: string, end: { closer: string }): boolean {
+  return line.toLowerCase().includes(end.closer);
 }
 
 function htmlBlockEnd(
@@ -241,9 +250,9 @@ function htmlBlockEnd(
   inParagraph: boolean,
 ): HTMLBlockEnd | null {
   const raw = HTML_RAW_RE.exec(content);
-  if (raw) return new RegExp(`</${raw[1]}>`, "i");
-  // Browsers also end a comment at "--!>".
-  if (content.startsWith("<!--")) return /--!?>/;
+  if (raw) return { closer: `</${raw[1].toLowerCase()}>` };
+  // CommonMark keeps a comment block raw until "-->", even past a "--!>".
+  if (content.startsWith("<!--")) return { closer: "-->" };
   if (HTML_BLOCK_TAG_RE.test(content)) return "blank";
   // Any other tag starts a block only on a line of its own, outside a paragraph.
   return !inParagraph && HTML_TAG_LINE_RE.test(content) ? "blank" : null;
