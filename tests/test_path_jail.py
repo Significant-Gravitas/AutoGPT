@@ -19,6 +19,30 @@ from autogpt_local_executor.path_jail import (
 # ── Happy path ───────────────────────────────────────────────────────────────
 
 
+def test_a_path_outside_the_root_leaves_no_trace_outside_it(tmp_path: Path) -> None:
+    """Probing case sensitivity creates and deletes a file in the probed
+    directory, so only the root may be probed. Probing the requested path's
+    own directory would write wherever a rejected path points."""
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    probed: list[str] = []
+
+    def probe(path: str | os.PathLike[str]) -> bool:
+        probed.append(os.path.realpath(str(path)))
+        return False
+
+    with patch("autogpt_local_executor.path_jail.is_case_insensitive_fs", probe):
+        with pytest.raises(PathJailError) as exc:
+            assert_inside_jail(outside / "secret.txt", root)
+
+    assert exc.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
+    real_root = os.path.realpath(str(root))
+    assert probed and all(path == real_root for path in probed)
+    assert list(outside.iterdir()) == []
+
+
 def test_allows_file_inside_root(tmp_path: Path) -> None:
     file = tmp_path / "ok.txt"
     file.write_text("hi")
