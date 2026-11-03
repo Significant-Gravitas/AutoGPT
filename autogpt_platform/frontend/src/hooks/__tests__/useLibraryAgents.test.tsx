@@ -111,4 +111,85 @@ describe("useLibraryAgents", () => {
     expect(requested).toHaveLength(20);
     expect(result.current.agents).toHaveLength(20);
   });
+
+  it("retries an initial error when a consumer remounts", async () => {
+    const failed = servePages({ totalItems: 1, failPage: 1, latencyMs: 0 });
+    const wrapper = makeWrapper();
+    const first = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => {
+      expect(first.result.current.isError).toBe(true);
+      expect(first.result.current.isFetching).toBe(false);
+    });
+    expect(failed).toEqual([1, 1, 1]);
+    first.unmount();
+
+    const recovered = servePages({ totalItems: 1, latencyMs: 0 });
+    const second = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => expect(second.result.current.agents).toHaveLength(1));
+    expect(recovered).toEqual([1]);
+    expect(second.result.current.isError).toBe(false);
+  });
+
+  it("keeps a successful cached page when a consumer remounts", async () => {
+    const requested = servePages({ totalItems: 1, latencyMs: 0 });
+    const wrapper = makeWrapper();
+    const first = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => expect(first.result.current.agents).toHaveLength(1));
+    first.unmount();
+
+    const second = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => expect(second.result.current.agents).toHaveLength(1));
+    await settle();
+    expect(requested).toEqual([1]);
+  });
+
+  it("does not restart a failed next page when a consumer remounts", async () => {
+    const requested = servePages({ totalItems: 350, failPage: 2 });
+    const wrapper = makeWrapper();
+    const first = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => expect(first.result.current.isError).toBe(true));
+    first.unmount();
+
+    const second = renderHook(() => useLibraryAgents(), { wrapper });
+    await waitFor(() => expect(second.result.current.isError).toBe(true));
+    await settle();
+    expect(second.result.current.agents).toHaveLength(100);
+    expect(requested).toEqual([1, 2, 2, 2]);
+  });
+
+  it("keeps one entry per agent ID across overlapping pages", async () => {
+    const requested: number[] = [];
+    const repeated = Array.from({ length: 100 }, (_, i) => ({
+      ...template,
+      id: `repeated-${i}`,
+      graph_id: `graph-${i}`,
+    }));
+    server.use(
+      http.get("*/api/library/agents", ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        requested.push(page);
+        return HttpResponse.json({
+          agents: repeated,
+          pagination: {
+            total_items: 300,
+            total_pages: 3,
+            current_page: page,
+            page_size: 100,
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useLibraryAgents(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => {
+      expect(requested).toEqual([1, 2, 3]);
+      expect(result.current.isFetching).toBe(false);
+    });
+    expect(result.current.agents).toHaveLength(100);
+    expect(new Set(result.current.agents.map((agent) => agent.id)).size).toBe(
+      100,
+    );
+  });
 });

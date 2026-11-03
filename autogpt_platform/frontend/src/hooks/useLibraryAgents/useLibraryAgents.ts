@@ -27,7 +27,6 @@ export function useLibraryAgents() {
         initialPageParam: 1,
         getNextPageParam: getNextLibraryPage,
         retry: 2,
-        retryOnMount: false,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         staleTime: 5 * 60 * 1000,
