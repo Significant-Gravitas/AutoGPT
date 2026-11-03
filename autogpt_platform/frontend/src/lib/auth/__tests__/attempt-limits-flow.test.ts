@@ -108,11 +108,15 @@ function refusedFor(wait: string) {
   return `Too many attempts. Please try again in ${wait}.`;
 }
 
-async function createAuth({ trustForwardedFor = true } = {}) {
+async function createAuth({
+  trustForwardedFor = true,
+  trustedProxies = "",
+} = {}) {
   vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
   vi.stubEnv("TRUST_X_FORWARDED_FOR", String(trustForwardedFor));
+  vi.stubEnv("TRUSTED_PROXIES", trustedProxies);
   vi.doUnmock("../auth");
   vi.resetModules();
   testDB.current = {
@@ -369,6 +373,37 @@ describe("sign-in through the login page", () => {
       true,
     );
     expect(Math.max(...identifiers.map((id) => id.length))).toBeLessThan(100);
+  });
+});
+
+describe("sign-in behind a proxy that appends to X-Forwarded-For", () => {
+  it("counts two visitors behind a listed proxy separately", async () => {
+    const { login } = await createAuth({
+      trustForwardedFor: false,
+      trustedProxies: "10.0.0.1, 192.168.0.0/16",
+    });
+
+    fromIP("203.0.113.7, 192.168.1.5, 10.0.0.1");
+    for (let i = 0; i < signIn.perIP.max; i++) {
+      expect(await login(`guess-${i}@example.com`, wrongPassword)).toEqual(
+        INVALID,
+      );
+    }
+    const exhausted = await login("another@example.com", wrongPassword);
+    fromIP("203.0.113.8, 192.168.1.5, 10.0.0.1");
+    const neighbour = await login("neighbour@example.com", wrongPassword);
+
+    expect(exhausted).toEqual({
+      success: false,
+      error: refusedFor("10 seconds"),
+    });
+    expect(neighbour).toEqual(INVALID);
+  });
+
+  it("refuses to start on an entry that is not an IP or CIDR range", async () => {
+    await expect(
+      createAuth({ trustedProxies: "10.0.0.1, 10.0.0.0/99" }),
+    ).rejects.toThrow("cannot parse: 10.0.0.0/99");
   });
 });
 

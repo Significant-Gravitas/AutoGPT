@@ -191,9 +191,9 @@ export default function LibraryFolderCreationDialog() {
                       <Text variant="small" tone="muted">
                         Selected:
                       </Text>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-2xl">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-base bg-surface-muted text-heading-md">
                         {form.watch("folderIcon") || (
-                          <span className="text-sm text-foreground-subtle">
+                          <span className="text-body text-foreground-subtle">
                             —
                           </span>
                         )}

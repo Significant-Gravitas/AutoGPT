@@ -47,7 +47,7 @@ export function PaywallPlanChoices({
             >
               {value === "monthly" ? "Monthly" : "Yearly"}
               {value === "yearly" && (
-                <span className="text-xs text-success">
+                <span className="text-caption text-success">
                   Save {Math.round((1 - YEARLY_PRICE_FACTOR) * 100)}%
                 </span>
               )}

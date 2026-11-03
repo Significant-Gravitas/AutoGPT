@@ -98,7 +98,7 @@ export function PaywallModal() {
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="flex flex-col items-center gap-3">
-                    <p className="text-center text-sm text-foreground-tertiary">
+                    <p className="text-center text-body text-foreground-tertiary">
                       Subscriptions are temporarily unavailable. Please try
                       again shortly.
                     </p>

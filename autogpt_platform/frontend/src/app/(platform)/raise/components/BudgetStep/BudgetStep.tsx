@@ -39,7 +39,7 @@ export function BudgetStep({
         onSelect={budget.selectPreset}
         onCustomChange={budget.changeCustomAmount}
       />
-      <p className="max-w-[42rem] text-right text-xs text-muted-foreground">
+      <p className="max-w-[42rem] text-right text-caption text-muted-foreground">
         Skip to use the default {creditsToUsdLabel(DEFAULT_BUDGET_CREDITS)} a
         week. $0 disables the weekly limit.
       </p>
