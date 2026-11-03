@@ -803,6 +803,57 @@ async def test_invalid_token_request_does_not_echo_or_log_secrets(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("grant_type", "right_secret", "status_code"),
+    [
+        ("authorization_code", False, 401),
+        ("authorization_code", True, 400),
+        ("refresh_token", False, 401),
+        ("refresh_token", True, 400),
+    ],
+)
+async def test_failed_grants_do_not_echo_or_log_secrets(
+    client: httpx.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+    test_oauth_app: dict,
+    grant_type: str,
+    right_secret: bool,
+    status_code: int,
+):
+    """A request that parses reaches the grant itself, whose client and grant
+    errors build their own details; none may carry what the client sent."""
+    sentinels = {
+        "code": "sentinel-code-secret",
+        "refresh_token": "sentinel-refresh-secret",
+        "code_verifier": "sentinel-verifier-secret",
+    }
+    client_secret = (
+        test_oauth_app["client_secret"] if right_secret else "sentinel-client-secret"
+    )
+    data = {
+        "grant_type": grant_type,
+        "client_id": test_oauth_app["client_id"],
+        "client_secret": client_secret,
+        **(
+            {
+                "code": sentinels["code"],
+                "redirect_uri": test_oauth_app["redirect_uri"],
+                "code_verifier": sentinels["code_verifier"],
+            }
+            if grant_type == "authorization_code"
+            else {"refresh_token": sentinels["refresh_token"]}
+        ),
+    }
+
+    response = await client.post("/api/oauth/token", data=data)
+
+    assert response.status_code == status_code
+    for sentinel in [*sentinels.values(), client_secret]:
+        assert sentinel not in response.text
+        assert sentinel not in caplog.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_public_client_form_rejects_wrong_pkce_verifier(
     client: httpx.AsyncClient,
     test_public_oauth_app: dict,
