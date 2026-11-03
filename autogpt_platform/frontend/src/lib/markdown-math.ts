@@ -4,7 +4,6 @@ const CLOSING_FENCE_RE = /^(`{3,}|~{3,})[ \t]*$/;
 const QUOTE_PREFIX_RE = /^(?: {0,3}>[ \t]?)*/;
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
 const TEX_COMMAND_RE = /\\[A-Za-z]/;
-const SHELL_VARIABLE_RE = /^[A-Za-z_]\w*[^\w\s]$/;
 const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
 const HEADING_RE = /^#{1,6}(?:\s|$)/;
 const THEMATIC_BREAK_RE = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
@@ -16,6 +15,7 @@ const HTML_BLOCK_TAG_RE =
 const HTML_TAG_LINE_RE =
   /^(?:<[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>|<\/[A-Za-z][\w-]*\s*>)\s*$/;
 const AUTOLINK_RE = /<[A-Za-z][\w+.-]{1,31}:[^\s<>]*>/y;
+const INLINE_TAG_RE = /<\/?[A-Za-z][\w-]*(?:\s[^<>]*)?\/?>/y;
 const BARE_URL_RE = /(?:https?:\/\/|www\.)[^\s<]+/iy;
 
 type HTMLBlockEnd = RegExp | "blank";
@@ -28,7 +28,7 @@ interface CodeSpan {
 // or shell text like "$f ($" became formulas. Only a "$…$" span on one line that
 // reads as math is kept for it; every other lone "$" in prose is escaped.
 export function escapeLiteralDollars(markdown: string): string {
-  const lines = markdown.split("\n");
+  const lines = markdown.split(/\r?\n/);
   let openFence: { fence: string; depth: number } | null = null;
   let codeIndent: number | null = null;
   let htmlEnd: HTMLBlockEnd | null = null;
@@ -83,7 +83,7 @@ export function escapeLiteralDollars(markdown: string): string {
     const startsItem = marker !== null && indent < listIndent() + 4;
     // A lazy paragraph line stays in its list item; anything else closes the
     // items it is not indented into.
-    if (startsItem || !inParagraph) {
+    if (startsItem || !inParagraph || HEADING_RE.test(content)) {
       while (listIndents.length && listIndent() > indent) listIndents.pop();
     }
 
@@ -147,7 +147,7 @@ function escapeLiteralDollarsInLine(
   let index = 0;
 
   if (codeSpan.run) {
-    const close = line.indexOf(codeSpan.run);
+    const close = indexOfRun(line, codeSpan.run, 0);
     if (close === -1) return line;
     index = close + codeSpan.run.length;
     result = line.slice(0, index);
@@ -166,9 +166,9 @@ function escapeLiteralDollarsInLine(
       index += 2;
     } else if (char === "`") {
       const run = backtickRun(line, index);
-      const close = line.indexOf(run, index + run.length);
+      const close = indexOfRun(line, run, index + run.length);
       // A code span may close on a later line of its paragraph.
-      if (close === -1 && rest().includes(run)) {
+      if (close === -1 && indexOfRun(rest(), run, 0) !== -1) {
         codeSpan.run = run;
         return result + line.slice(index);
       }
@@ -191,18 +191,21 @@ function escapeLiteralDollarsInLine(
   return result;
 }
 
-// An autolink or a bare URL keeps a backslash in its address, so it is copied as is.
+// An autolink, a bare URL or an inline HTML tag keeps a backslash in its
+// address, so it is copied as is.
 function endOfLink(line: string, start: number): number | null {
-  const pattern =
+  const patterns =
     line[start] === "<"
-      ? AUTOLINK_RE
+      ? [AUTOLINK_RE, INLINE_TAG_RE]
       : /[hw]/i.test(line[start]) && !/\w/.test(line[start - 1] ?? "")
-        ? BARE_URL_RE
-        : null;
-  if (!pattern) return null;
-  pattern.lastIndex = start;
-  const match = pattern.exec(line);
-  return match ? start + match[0].length : null;
+        ? [BARE_URL_RE]
+        : [];
+  for (const pattern of patterns) {
+    pattern.lastIndex = start;
+    const match = pattern.exec(line);
+    if (match) return start + match[0].length;
+  }
+  return null;
 }
 
 function backtickRun(line: string, start: number): string {
@@ -211,14 +214,26 @@ function backtickRun(line: string, start: number): string {
   return line.slice(start, end);
 }
 
+// A code span closes only on a backtick run of exactly the opening length.
+function indexOfRun(text: string, run: string, from: number): number {
+  for (let at = text.indexOf(run, from); at !== -1; ) {
+    let end = at;
+    while (text[end] === "`") end += 1;
+    if (text[at - 1] !== "`" && end - at === run.length) return at;
+    at = text.indexOf(run, end);
+  }
+  return -1;
+}
+
 // The rest of the paragraph after line `at`, up to a blank line or a fence.
 function paragraphAfter(lines: string[], at: number): string {
-  const rest = lines.slice(at + 1);
-  const end = rest.findIndex((raw) => {
-    const line = raw.replace(QUOTE_PREFIX_RE, "").trim();
-    return !line || OPENING_FENCE_RE.test(line);
-  });
-  return rest.slice(0, end === -1 ? undefined : end).join("\n");
+  let end = at + 1;
+  while (end < lines.length) {
+    const line = lines[end].replace(QUOTE_PREFIX_RE, "").trim();
+    if (!line || OPENING_FENCE_RE.test(line)) break;
+    end += 1;
+  }
+  return lines.slice(at + 1, end).join("\n");
 }
 
 function htmlBlockEnd(
@@ -236,8 +251,8 @@ function htmlBlockEnd(
 
 // Pandoc's delimiter rule (no space just inside either "$", no digit right after
 // the closer), plus: a span opening on a digit is a price unless it carries LaTeX
-// syntax, "$HOME/$" joins two shell variables, and a span with unbalanced
-// brackets and no TeX command is shell text such as "$f ($".
+// syntax, a closer that starts the next shell variable ends shell text, and a
+// span with unbalanced brackets and no TeX command is shell text such as "$f ($".
 function closingDollar(line: string, open: number): number | null {
   const first = line[open + 1] ?? "";
   if (!first || /\s/.test(first)) return null;
@@ -252,8 +267,13 @@ function closingDollar(line: string, open: number): number | null {
 
   const body = line.slice(open + 1, close);
   if (/\d/.test(first) && !LATEX_SYNTAX_RE.test(body)) return null;
-  if (SHELL_VARIABLE_RE.test(body) && /[A-Za-z_{(]/.test(after)) return null;
+  if (startsShellVariable(after, body)) return null;
   return TEX_COMMAND_RE.test(body) || bracketsBalance(body) ? close : null;
+}
+
+// "$HOME/bin:$PATH", "${A}:${B}", "$HOME$PATH"; a one-letter body keeps "$n$th".
+function startsShellVariable(after: string, body: string): boolean {
+  return /[A-Za-z_{(]/.test(after) && body.length > 1;
 }
 
 // Openers and closers of either kind count alike, so "[0, 1)" balances.
