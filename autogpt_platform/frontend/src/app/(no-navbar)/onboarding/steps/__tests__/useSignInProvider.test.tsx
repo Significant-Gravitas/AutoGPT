@@ -103,6 +103,8 @@ describe("useSignInProvider", () => {
 
     expect(result.current.isReady).toBe(true);
     expect(result.current.provider).toBeNull();
+    // The retry ran, in what was left of the 5 seconds.
+    expect(lookups).toBe(2);
   });
 
   it("tries once more after a lookup that fails quickly", async () => {
