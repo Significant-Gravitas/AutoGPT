@@ -1917,6 +1917,10 @@ async def _apply_building_mode_restart(
             log_prefix,
             session.session_id,
         )
+    # The relaunch reads its expert again instead of reusing the turn's check:
+    # it comes after the turn's own work, by when the user may have archived
+    # the expert.
+    forget_expert_checks()
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
