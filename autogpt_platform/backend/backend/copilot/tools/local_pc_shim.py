@@ -13,6 +13,7 @@ import time
 import unicodedata
 import uuid
 import weakref
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -607,6 +608,35 @@ class ShimConnectionManager:
             if transport is not None:
                 self.unregister(session_id, websocket=transport)
 
+    async def push_token_revocation(self, user_id: str, client_id: str) -> int:
+        """After one of the user's tokens for ``client_id`` is revoked, close
+        only the connections that used it.
+
+        Each computer signs in on its own, so revoking one computer's tokens
+        must leave the user's other computers connected. Relay connections
+        recheck their own token at once and close with 4428 only if it is no
+        longer active. Connections served directly in this process have no
+        token watcher, so they are revoked outright, as before.
+        """
+        delivery_failures: list[Exception] = []
+        notified = await self._revoke_direct_connections(
+            user_id, client_id, reason="user_revoked", failures=delivery_failures
+        )
+        try:
+            async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
+                relay_notified = await self._relay.request_token_recheck(
+                    user_id, client_id
+                )
+        except Exception as exc:
+            delivery_failures.append(exc)
+            relay_notified = 0
+        if delivery_failures:
+            raise RuntimeError(
+                "Failed to deliver a Local PC token recheck through "
+                f"{len(delivery_failures)} transport operation(s)"
+            ) from delivery_failures[0]
+        return max(notified, relay_notified)
+
     async def revoke_user_shims(
         self,
         user_id: str,
@@ -616,25 +646,51 @@ class ShimConnectionManager:
     ) -> int:
         """Push SESSION_REVOKED to every shim owned by (user_id, client_id).
 
-        Returns the count of shims actually notified. Called by
-        ``/auth/revoke`` after a successful token revocation so the user's
-        connected shims tear down their WS without waiting for the next
-        op to 401. The SESSION_REVOKED frame shape mirrors the shim's
-        ``protocol.SessionRevokedPayload`` — see PROTOCOL.md Session
-        ownership section. The shim daemon audits the event, closes the
-        WS, does NOT auto-reconnect.
+        Returns the count of shims actually notified. The SESSION_REVOKED
+        frame shape mirrors the shim's ``protocol.SessionRevokedPayload`` —
+        see PROTOCOL.md Session ownership section. The shim daemon audits the
+        event, closes the WS, does NOT auto-reconnect.
 
         ``client_id=None`` means "all of this user's shims, any app."
         Used for platform-level revocations (e.g. account-wide kill
-        switch) rather than per-OAuth-token revocations.
+        switch). A revoked OAuth token uses :meth:`push_token_revocation`,
+        which leaves the user's other computers connected.
         """
+        delivery_failures: list[Exception] = []
+        notified = await self._revoke_direct_connections(
+            user_id, client_id, reason=reason, failures=delivery_failures
+        )
+        try:
+            async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
+                relay_notified = await self._relay.revoke_owner(
+                    user_id, client_id, reason=reason
+                )
+        except Exception as exc:
+            delivery_failures.append(exc)
+            relay_notified = 0
+        if delivery_failures:
+            raise RuntimeError(
+                "Failed to deliver Local PC session revocation through "
+                f"{len(delivery_failures)} transport operation(s)"
+            ) from delivery_failures[0]
+        return max(notified, relay_notified)
+
+    async def _revoke_direct_connections(
+        self,
+        user_id: str,
+        client_id: str | None,
+        *,
+        reason: str,
+        failures: list[Exception],
+    ) -> int:
+        """Send SESSION_REVOKED to, and close, the owner's in-process
+        connections. Delivery errors are appended to ``failures``."""
         if client_id is not None:
             target_owners: list[tuple[str | None, str | None]] = [(user_id, client_id)]
         else:
             target_owners = [k for k in self._by_owner if k[0] == user_id]
 
         notified = 0
-        delivery_failures: list[Exception] = []
         for owner in target_owners:
             # Snapshot — sending SESSION_REVOKED eventually closes the WS,
             # which calls unregister, which mutates _by_owner.
@@ -653,7 +709,7 @@ class ShimConnectionManager:
                         await ws.send_text(json.dumps(envelope))
                     notified += 1
                 except Exception as exc:
-                    delivery_failures.append(exc)
+                    failures.append(exc)
                     logger.debug(
                         "[LocalPC] SESSION_REVOKED send failed for session %s "
                         "(ws likely already closed)",
@@ -665,7 +721,7 @@ class ShimConnectionManager:
                     async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
                         await ws.close(code=4428, reason="Token revoked")
                 except Exception as exc:
-                    delivery_failures.append(exc)
+                    failures.append(exc)
                     logger.debug(
                         "[LocalPC] SESSION_REVOKED close failed for session %s",
                         session_id[:12],
@@ -680,20 +736,7 @@ class ShimConnectionManager:
                 user_id[:12] if user_id else "?",
                 client_id or "*",
             )
-        try:
-            async with asyncio.timeout(_REVOCATION_OPERATION_TIMEOUT_SECONDS):
-                relay_notified = await self._relay.revoke_owner(
-                    user_id, client_id, reason=reason
-                )
-        except Exception as exc:
-            delivery_failures.append(exc)
-            relay_notified = 0
-        if delivery_failures:
-            raise RuntimeError(
-                "Failed to deliver Local PC session revocation through "
-                f"{len(delivery_failures)} transport operation(s)"
-            ) from delivery_failures[0]
-        return max(notified, relay_notified)
+        return notified
 
     async def wait_for(self, session_id: str, timeout: float = 30.0) -> TextTransport:
         direct = self._connections.get(session_id)
@@ -827,6 +870,7 @@ class ShimConnectionManager:
         *,
         user_id: str,
         client_id: str,
+        on_token_recheck: Callable[[], None] | None = None,
     ) -> None:
         await self._relay.serve_websocket(
             session_id,
@@ -834,6 +878,7 @@ class ShimConnectionManager:
             hello=hello.model_dump(mode="json"),
             user_id=user_id,
             client_id=client_id,
+            on_token_recheck=on_token_recheck,
         )
 
 

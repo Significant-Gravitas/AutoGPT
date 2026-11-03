@@ -75,14 +75,15 @@ router = APIRouter()
 
 
 async def _push_shim_revocation(user_id: str, client_id: str) -> None:
-    """Push SESSION_REVOKED to connected LocalPC shims for this user and app."""
+    """Have this user's Local PC connections for the app recheck their tokens.
+
+    Each computer signs in on its own, so only the connections whose own token
+    was revoked close; the user's other computers stay connected."""
     try:
-        notified = await get_shim_manager().revoke_user_shims(
-            user_id, client_id, reason="user_revoked"
-        )
+        notified = await get_shim_manager().push_token_revocation(user_id, client_id)
     except Exception:
         logger.exception(
-            "Failed to push Local PC session revocation for user #%s app %s; "
+            "Failed to push Local PC token revocation for user #%s app %s; "
             "the durable OAuth revocation remains effective",
             user_id,
             client_id,
@@ -90,7 +91,8 @@ async def _push_shim_revocation(user_id: str, client_id: str) -> None:
         return
     if notified:
         logger.info(
-            "Pushed SESSION_REVOKED to %d shim(s) for user #%s app %s",
+            "Asked %d Local PC connection(s) for user #%s app %s to recheck "
+            "their tokens",
             notified,
             user_id,
             client_id,

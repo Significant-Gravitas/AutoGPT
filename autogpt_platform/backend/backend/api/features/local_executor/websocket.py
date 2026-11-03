@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -86,6 +87,7 @@ async def local_executor_machine_ws(websocket: WebSocket) -> None:
     relay_hello = hello.model_dump(mode="json")
     relay_hello["allowed_root"] = None
     relay_hello["connection_kind"] = "machine"
+    token_recheck = asyncio.Event()
     relay_task = asyncio.create_task(
         get_local_pc_relay().serve_websocket(
             scope_id,
@@ -94,10 +96,11 @@ async def local_executor_machine_ws(websocket: WebSocket) -> None:
             user_id=identity.user_id,
             client_id=identity.client_id,
             connection_id=connection_id,
+            on_token_recheck=token_recheck.set,
         )
     )
     expiry_task = asyncio.create_task(
-        _close_when_token_ends(websocket, identity.expires_at)
+        _close_when_token_ends(websocket, identity.expires_at, token_recheck)
     )
     try:
         await _serve_until_either_ends(relay_task, expiry_task)
@@ -139,6 +142,7 @@ async def local_executor_ws(
         hello.machine_id[:12] if hello.machine_id else "?",
     )
 
+    token_recheck = asyncio.Event()
     relay_task = asyncio.create_task(
         manager.serve_websocket(
             session_id,
@@ -146,10 +150,11 @@ async def local_executor_ws(
             hello,
             user_id=user_id,
             client_id=client_id,
+            on_token_recheck=token_recheck.set,
         )
     )
     expiry_task = asyncio.create_task(
-        _close_when_token_ends(websocket, identity.expires_at)
+        _close_when_token_ends(websocket, identity.expires_at, token_recheck)
     )
     try:
         await _serve_until_either_ends(relay_task, expiry_task)
@@ -315,19 +320,32 @@ async def _deny(
     )
 
 
-async def _close_when_token_ends(websocket: WebSocket, expires_at: int) -> None:
+async def _close_when_token_ends(
+    websocket: WebSocket, expires_at: int, recheck: asyncio.Event | None = None
+) -> None:
     """Close the connection when its access token expires or stops being active.
 
-    Revoking the token also pushes SESSION_REVOKED through Redis. Rechecking it
-    bounds how long a connection outlives a revocation that push missed, or one
-    that never pushes, such as a refresh family revoked on reuse."""
+    Revoking one of the owner's tokens sets ``recheck`` through Redis, so the
+    check runs at once, and only a connection whose own token was revoked
+    closes. The periodic check bounds how long a connection outlives a
+    revocation that push missed."""
     while (remaining := expires_at - time.time()) > 0:
-        await sleep(min(remaining, _TOKEN_RECHECK_SECONDS))
+        await _wait_for_recheck(recheck, min(remaining, _TOKEN_RECHECK_SECONDS))
         if expires_at - time.time() > 0 and not await _token_still_active(websocket):
-            # 4428, like a pushed revocation, tells the companion not to reconnect.
+            # 4428 tells the companion not to reconnect.
             await websocket.close(code=4428, reason="Token revoked")
             return
     await websocket.close(code=4401, reason="Access token expired")
+
+
+async def _wait_for_recheck(recheck: asyncio.Event | None, timeout: float) -> None:
+    """Wait ``timeout`` seconds, or less if a revocation asks for a check."""
+    if recheck is None:
+        await sleep(timeout)
+        return
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(recheck.wait(), timeout)
+    recheck.clear()
 
 
 async def _token_still_active(websocket: WebSocket) -> bool:

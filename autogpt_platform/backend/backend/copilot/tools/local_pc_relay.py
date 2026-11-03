@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from backend.data.redis_client import get_redis_async
@@ -20,6 +21,7 @@ from .local_pc_relay_presence import (
 )
 from .local_pc_relay_protocol import (
     SHIM_RESPONSE_TYPES,
+    TOKEN_RECHECK,
     RelayConnectionReplaced,
     RelayPresence,
     RelayWebSocket,
@@ -99,14 +101,21 @@ class RedisShimRelay:
         await clear_presence(await self.redis(), presence)
 
     async def _publish_control(self, presence: RelayPresence, *, reason: str) -> None:
+        await self._publish_control_message(
+            presence, "SESSION_REVOKED", {"reason": reason}
+        )
+
+    async def _publish_control_message(
+        self, presence: RelayPresence, message_type: str, payload: dict[str, Any]
+    ) -> None:
         redis = await self.redis()
         key = stream_key(presence.session_id, presence.connection_id, "control")
         envelope = json.dumps(
             {
-                "type": "SESSION_REVOKED",
+                "type": message_type,
                 "id": str(uuid.uuid4()),
                 "ts": time.time(),
-                "payload": {"reason": reason},
+                "payload": payload,
             }
         )
         await append_stream_envelope(redis, key, envelope, maxlen=10)
@@ -120,6 +129,7 @@ class RedisShimRelay:
         user_id: str,
         client_id: str,
         connection_id: str | None = None,
+        on_token_recheck: Callable[[], None] | None = None,
     ) -> None:
         presence, previous = await self._register_presence(
             session_id,
@@ -199,6 +209,10 @@ class RedisShimRelay:
                         continue
                     try:
                         message = json.loads(envelope)
+                        if message.get("type") == TOKEN_RECHECK:
+                            if on_token_recheck is not None:
+                                on_token_recheck()
+                            continue
                         await send_to_shim(envelope)
                     finally:
                         await delete_stream_entry(redis, key, message_id)
@@ -260,6 +274,19 @@ class RedisShimRelay:
             await self._publish_control(presence, reason=reason)
             notified += 1
         return notified
+
+    async def request_token_recheck(self, user_id: str, client_id: str) -> int:
+        """Have each of the owner's connections recheck its own token now.
+
+        Revoking one token must close only the connections that use it: each
+        computer signs in on its own, so the owner's other computers stay
+        connected. Returns how many connections were asked."""
+        redis = await self.redis()
+        asked = 0
+        async for presence in owner_presences(redis, user_id, client_id):
+            await self._publish_control_message(presence, TOKEN_RECHECK, {})
+            asked += 1
+        return asked
 
 
 _relay: RedisShimRelay | None = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -112,6 +112,9 @@ EXPECTED_RESPONSE_TYPES: dict[str, frozenset[str]] = {
 }
 UNSOLICITED_RESPONSE_TYPES = frozenset({"STATUS", "RECORDING_STEP"})
 NONTERMINAL_RESPONSE_TYPES = frozenset({"LOCAL_LLM_COMPLETION_CHUNK"})
+# A control message the relay handles itself and never forwards: one of the
+# owner's tokens was revoked, so the connection rechecks its own token now.
+TOKEN_RECHECK = "TOKEN_RECHECK"
 _REPLY_ID_PATTERN = r"^[0-9a-f]{32}$"
 
 
@@ -159,11 +162,14 @@ class RelayBackend(Protocol):
         user_id: str,
         client_id: str,
         connection_id: str | None = None,
+        on_token_recheck: Callable[[], None] | None = None,
     ) -> None: ...
 
     async def revoke_owner(
         self, user_id: str, client_id: str | None, *, reason: str
     ) -> int: ...
+
+    async def request_token_recheck(self, user_id: str, client_id: str) -> int: ...
 
 
 class RelayConnectionReplaced(ConnectionError):

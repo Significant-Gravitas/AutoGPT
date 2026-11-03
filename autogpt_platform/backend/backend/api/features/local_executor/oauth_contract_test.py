@@ -44,11 +44,16 @@ _PKCE_VERIFIER = "a" * 43
 class _NoopRelay:
     def __init__(self) -> None:
         self.revocations = 0
+        self.rechecks = 0
 
     async def revoke_owner(
         self, user_id: str, client_id: str | None, *, reason: str
     ) -> int:
         self.revocations += 1
+        return 0
+
+    async def request_token_recheck(self, user_id: str, client_id: str) -> int:
+        self.rechecks += 1
         return 0
 
 
@@ -370,7 +375,7 @@ def test_revocation_push_failure_does_not_change_oauth_result() -> None:
     )
     revoke_token = AsyncMock(return_value=SimpleNamespace(user_id="user-1"))
     manager = MagicMock()
-    manager.revoke_user_shims = AsyncMock(
+    manager.push_token_revocation = AsyncMock(
         side_effect=[ConnectionError("relay unavailable"), 0]
     )
     payload = {
@@ -393,7 +398,7 @@ def test_revocation_push_failure_does_not_change_oauth_result() -> None:
     assert first_response.status_code == 200
     assert retry_response.status_code == 200
     assert revoke_token.await_count == 2
-    assert manager.revoke_user_shims.await_count == 2
+    assert manager.push_token_revocation.await_count == 2
 
 
 def test_direct_revocation_delivery_failure_does_not_change_oauth_result() -> None:
@@ -434,7 +439,9 @@ def test_direct_revocation_delivery_failure_does_not_change_oauth_result() -> No
     assert retry_response.status_code == 200
     assert websocket.send_attempts == 2
     assert websocket.close_attempts == 2
-    assert relay.revocations == 2
+    # Relay connections are asked to recheck their own tokens, not revoked.
+    assert relay.rechecks == 2
+    assert relay.revocations == 0
     assert manager.get("session-1") is None
 
 
@@ -451,7 +458,7 @@ def test_refresh_replay_push_failure_does_not_change_oauth_result() -> None:
 
     refresh = AsyncMock(side_effect=[refresh_error(), refresh_error()])
     manager = MagicMock()
-    manager.revoke_user_shims = AsyncMock(
+    manager.push_token_revocation = AsyncMock(
         side_effect=[ConnectionError("relay unavailable"), 0]
     )
     payload = {
@@ -475,4 +482,4 @@ def test_refresh_replay_push_failure_does_not_change_oauth_result() -> None:
     assert retry_response.status_code == 400
     assert "family has been revoked" in retry_response.json()["detail"]
     assert refresh.await_count == 2
-    assert manager.revoke_user_shims.await_count == 2
+    assert manager.push_token_revocation.await_count == 2
