@@ -91,7 +91,8 @@ def main() -> int:
         [
             "poetry",
             "run",
-            "pytest",
+            *( ["python", str(Path(__file__).with_name("preload_prisma_pytest.py"))]
+                if os.environ.get("BENCHMARK_PRELOAD_PRISMA") == "1" else ["pytest"] ),
             "-p",
             "backend_shard_plugin",
             *selected,
