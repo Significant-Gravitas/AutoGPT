@@ -81,10 +81,9 @@ describe("the type scale", () => {
 
   it("generates nothing for Tailwind's own sizes", async () => {
     const root = await compile();
+    // Plain names (`text-sm` ... `text-9xl`): nothing to escape in a selector.
     for (const raw of RAW_CLASSES) {
-      expect(declarations(root, `.${raw.replace(/[[\].]/g, "\\$&")}`)).toEqual(
-        {},
-      );
+      expect(declarations(root, `.${raw}`)).toEqual({});
     }
   });
 
