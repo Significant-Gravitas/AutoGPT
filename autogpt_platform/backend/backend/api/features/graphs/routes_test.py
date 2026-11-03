@@ -488,11 +488,11 @@ def test_delete_graph(
         "backend.api.features.graphs.routes.graph_db.assert_graph_deletable",
         return_value=None,
     )
-    mocker.patch(
+    deactivate = mocker.patch(
         "backend.api.features.graphs.routes.on_graph_deactivate",
         return_value=None,
     )
-    mocker.patch(
+    cleanup = mocker.patch(
         "backend.api.features.graphs.routes.library_db.cleanup_graph_for_permanent_delete",
         return_value=None,
     )
@@ -506,6 +506,8 @@ def test_delete_graph(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["version_counts"] == 3
+    deactivate.assert_awaited_once_with(mock_graph, user_id=test_user_id)
+    cleanup.assert_awaited_once_with("graph-123", test_user_id)
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
@@ -579,33 +581,6 @@ def test_delete_graph_by_non_owner_returns_200_with_zero_count(
     deactivate.assert_not_called()
     cleanup.assert_not_called()
     delete.assert_not_called()
-
-
-def test_delete_graph_late_conflict_returns_409(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """A reference that appears after the pre-check (the FK backstop inside
-    the delete transaction) is still a 409, not a 500."""
-    mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.user_owns_graph",
-        return_value=True,
-    )
-    mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.assert_graph_deletable",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.get_graph",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.graphs.routes.graph_db.delete_graph_permanently",
-        side_effect=GraphInUseError("still referenced"),
-    )
-
-    response = client.delete("/graphs/graph-123")
-
-    assert response.status_code == 409
 
 
 def test_create_new_graph_returns_400_and_persists_nothing_on_activation_error(

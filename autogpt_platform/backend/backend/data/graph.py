@@ -22,6 +22,7 @@ from prisma.errors import ForeignKeyViolationError
 from prisma.models import (
     AgentGraph,
     AgentNode,
+    AgentNodeExecutionInputOutput,
     AgentNodeLink,
     AgentPreset,
     LibraryAgent,
@@ -59,7 +60,7 @@ from backend.util.request import parse_url
 from backend.util.text import split_camelcase
 
 from .block import BlockInput
-from .db import BaseDbModel, execute_raw_with_schema, transaction
+from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
 from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
@@ -2114,12 +2115,12 @@ async def assert_graph_deletable(
     row = rows[0] if rows else {}
     if row.get("listed"):
         raise GraphInUseError(
-            f"Graph #{graph_id} has been submitted to the store and can't be "
+            f"Workflow #{graph_id} has been submitted to the store and can't be "
             "permanently deleted; remove it from your library instead."
         )
     if row.get("shared"):
         raise GraphInUseError(
-            f"Graph #{graph_id} is in use by other users and can't be "
+            f"Workflow #{graph_id} is in use by other users and can't be "
             "permanently deleted; remove it from your library instead."
         )
 
@@ -2142,6 +2143,13 @@ async def delete_graph_permanently(
             where = _owned_graph_where(graph_id, user_id, organization_id)
             if not await AgentGraph.prisma(tx).count(where=where):
                 return 0
+            # A preset's saved inputs only lose their link (ON DELETE SET
+            # NULL), so they go explicitly, as in update_preset.
+            await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
+                where={
+                    "AgentPreset": {"is": {"agentGraphId": graph_id, "userId": user_id}}
+                }
+            )
             await AgentPreset.prisma(tx).delete_many(
                 where={"agentGraphId": graph_id, "userId": user_id}
             )
@@ -2153,7 +2161,7 @@ async def delete_graph_permanently(
         # Backstop: a reference created after the check (e.g. a concurrent
         # store install) still blocks the delete; report it as a conflict.
         raise GraphInUseError(
-            f"Graph #{graph_id} is still referenced elsewhere and can't be "
+            f"Workflow #{graph_id} is still referenced elsewhere and can't be "
             "permanently deleted."
         ) from e
 

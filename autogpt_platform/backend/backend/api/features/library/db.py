@@ -1326,14 +1326,9 @@ async def cleanup_graph_for_permanent_delete(graph_id: str, user_id: str) -> Non
     `graph_db.delete_graph_permanently`."""
     await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
     await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
-    # Triggers don't have triggers: as in delete_library_agent, only an
-    # action (non-hidden) agent gets its trigger agents cleaned up.
-    if await prisma.models.LibraryAgent.prisma().count(
-        where={"agentGraphId": graph_id, "userId": user_id, "isHidden": False}
-    ):
-        await _cleanup_trigger_agents_for_graph(
-            action_graph_id=graph_id, user_id=user_id, soft_delete=False
-        )
+    await _cleanup_trigger_agents_for_graph(
+        action_graph_id=graph_id, user_id=user_id, soft_delete=False
+    )
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
