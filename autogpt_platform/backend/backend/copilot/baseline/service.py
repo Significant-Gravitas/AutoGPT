@@ -2649,6 +2649,17 @@ async def stream_chat_completion_baseline(
     # that should fire.
     text_len_before_final_round: list[int] = [0]
 
+    async def _drain_pending_mid_loop() -> list[PendingMessage]:
+        try:
+            return await drain_pending_messages(session_id)
+        except Exception:
+            logger.warning(
+                "[Baseline] mid-loop drain_pending_messages failed for session %s",
+                session_id,
+                exc_info=True,
+            )
+            return []
+
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
         # closure doesn't need to ``nonlocal session`` — pyright can't narrow
@@ -2708,7 +2719,7 @@ async def stream_chat_completion_baseline(
                 # fallback uses this anchor to detect a silent finish.
                 text_len_before_final_round[0] = len(state.assistant_text)
                 async with recover_pending_on_failure(
-                    session_id, drain_pending_messages(session_id)
+                    session_id, _drain_pending_mid_loop()
                 ) as pending:
                     if pending:
                         # Flush any buffered assistant/tool messages from completed
