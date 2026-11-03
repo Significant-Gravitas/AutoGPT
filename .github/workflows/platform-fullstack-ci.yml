@@ -3,6 +3,10 @@ run-name: Full-stack smoke baseline and four shards
 
 on:
   workflow_dispatch:
+    inputs:
+      journeys_repeat_each:
+        type: number
+        default: 1
 
 permissions:
   contents: read
