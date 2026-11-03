@@ -80,10 +80,7 @@ class RuntimeConfigTest(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_first_boot_honors_explicit_values(self) -> None:
-        vapid_private = base64.urlsafe_b64encode(b"p" * 32).rstrip(b"=").decode()
-        vapid_public = (
-            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
-        )
+        vapid_private, vapid_public = _matching_vapid_pair()
         environment = {
             "POSTGRES_PASSWORD": "p" * 40,
             "RABBITMQ_DEFAULT_USER": "self_hosted",
@@ -207,6 +204,32 @@ class RuntimeConfigTest(unittest.TestCase):
                     Path(directory) / "runtime.env", environment
                 )
 
+    def test_rejects_an_environment_pair_whose_keys_do_not_match(self) -> None:
+        """Subscriptions would be taken under one key and pushes signed with
+        another, which every push service rejects, so the pair is refused
+        where a half-set one is. A private key that is not a P-256 scalar
+        is left for validation to name."""
+        private, _ = _matching_vapid_pair()
+        other_public = (
+            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "not the public key of"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": other_public},
+            )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "exactly 32 bytes"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": "p" * 40, "VAPID_PUBLIC_KEY": other_public},
+            )
+
     def test_a_published_pair_in_the_environment_does_not_stop_the_next_boot(
         self,
     ) -> None:
@@ -246,14 +269,7 @@ class RuntimeConfigTest(unittest.TestCase):
         digests = frozenset(
             runtime_config._vapid_key_digest(value) for value in published.values()
         )
-        theirs = {
-            "VAPID_PRIVATE_KEY": base64.urlsafe_b64encode(b"p" * 32)
-            .rstrip(b"=")
-            .decode(),
-            "VAPID_PUBLIC_KEY": base64.urlsafe_b64encode(b"\x04" + b"q" * 64)
-            .rstrip(b"=")
-            .decode(),
-        }
+        theirs = dict(zip(runtime_config.VAPID_KEY_SETTINGS, _matching_vapid_pair()))
         for environment in ({}, theirs):
             with (
                 self.subTest(environment=environment),
@@ -972,10 +988,17 @@ class FillEnvSecretsTest(unittest.TestCase):
                 for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT
             }
             for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
-                # Blank is only safe if setup can actually fill it back in.
+                # Blank is only safe if setup can actually fill it back in. The
+                # frontend's copy of the push key is the one exception: blank,
+                # the app fetches the backend's key, so setup leaves it blank.
+                fillable = [
+                    name
+                    for name in names
+                    if name != runtime_config.FRONTEND_VAPID_PUBLIC_KEY
+                ]
                 self.assertEqual(
                     sorted(runtime_config.fill_env_blanks(env_files[relative_path])),
-                    sorted(names),
+                    sorted(fillable),
                 )
 
 
@@ -1826,6 +1849,14 @@ def _write_config_lines(path: Path, values: dict[str, str]) -> None:
 
 
 _BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _matching_vapid_pair() -> tuple[str, str]:
+    """A fixed P-256 private key and the public key that belongs to it, in
+    the Base64url form the settings take."""
+    private = b"p" * 32
+    public = runtime_config._p256_public_point(int.from_bytes(private, "big"))
+    return runtime_config._base64url(private), runtime_config._base64url(public)
 
 
 def _with_other_unused_bits(key: str) -> str:

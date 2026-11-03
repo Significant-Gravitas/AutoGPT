@@ -846,7 +846,28 @@ def _configured_or_generated_vapid(
         raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together")
     if not private or not public or _is_unset_vapid_key(private):
         return _generate_vapid_keypair()
+    expected = _public_key_for(private)
+    if expected is not None and expected != _canonical_vapid_key(public):
+        # Subscriptions would be taken under one key and pushes signed with
+        # another, and every push service would reject them.
+        raise ValueError(
+            "VAPID_PUBLIC_KEY is not the public key of VAPID_PRIVATE_KEY; set "
+            "both from one generated pair"
+        )
     return private, public
+
+
+def _public_key_for(private: str) -> str | None:
+    """The Base64url public key of a Base64url P-256 private key, or None when
+    `private` is not one, which validation reports in its own words."""
+    try:
+        raw = _decode_base64url(private)
+    except ValueError:
+        return None
+    scalar = int.from_bytes(raw, "big")
+    if len(raw) != 32 or not 0 < scalar < _P256_N:
+        return None
+    return _base64url(_p256_public_point(scalar))
 
 
 def _generate_vapid_keypair() -> tuple[str, str]:
@@ -1022,7 +1043,14 @@ BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
         "GRAPHITI_FALKORDB_PASSWORD",
         *VAPID_KEY_SETTINGS,
     ),
-    "frontend/.env.default": ("BETTER_AUTH_SECRET", "DATABASE_URL"),
+    # The frontend's copy of the public key stays blank by design: the app
+    # fetches the backend's key, and setup clears a published value rather
+    # than filling one in.
+    "frontend/.env.default": (
+        "BETTER_AUTH_SECRET",
+        "DATABASE_URL",
+        FRONTEND_VAPID_PUBLIC_KEY,
+    ),
 }
 
 
