@@ -200,7 +200,7 @@ def record_handshake_failure(stage: str) -> None:
 
 
 def record_rpc(op: str, *, outcome: str, duration_seconds: float) -> None:
-    """Record a wire-op roundtrip. Called from ``LocalPCShim._rpc``."""
+    """Record one wire-op attempt. Called from ``LocalPCShim._send_and_wait``."""
     LOCAL_PC_SHIM_RPC_DURATION.labels(
         op=_normalize_enum_label(
             op, PLATFORM_REQUEST_TYPES, fallback="UNKNOWN", uppercase=True

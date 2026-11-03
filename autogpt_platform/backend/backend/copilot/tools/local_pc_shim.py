@@ -22,7 +22,7 @@ from backend.copilot.local_executor import LocalPCExecutorMarker
 from .local_pc_errors import translate_shim_error
 from .local_pc_llm import LocalLLMError
 from .local_pc_llm import LocalLLMProxy as _LocalLLMProxy
-from .local_pc_metrics import record_rpc_retry
+from .local_pc_metrics import record_rpc, record_rpc_error, record_rpc_retry
 from .local_pc_relay import get_local_pc_relay
 from .local_pc_relay_protocol import (
     EXPECTED_RESPONSE_TYPES,
@@ -2016,22 +2016,36 @@ class LocalPCShim(LocalPCExecutorMarker):
         if expected_types is None:
             raise ShimProtocolError(f"No response contract is defined for {msg_type}")
         self._pending[msg_id] = (expected_types, fut)
+        started = time.monotonic()
+        # Stays None on cancellation, which says nothing about the machine.
+        outcome: str | None = None
         try:
             await websocket.send_text(json.dumps(msg))
-            return await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
+            response = await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
+            outcome = _record_response_outcome(msg_type, response)
+            return response
         except ShimProtocolError:
+            outcome = "error"
             raise
         except asyncio.TimeoutError as exc:
+            outcome = "timeout"
             # Tag the timeout with the wire id so the caller can convert it
             # into a typed OpUnconfirmedError (non-idempotent ops) or trigger
             # a single auto-retry (idempotent ops).
             raise _RpcAttemptFailed(msg_id, msg_type, timed_out=True) from exc
         except Exception as exc:
+            outcome = "error"
             # WS disconnect / send error / recv loop closure — the response
             # cannot arrive on this connection. Surface as unconfirmed so the
             # caller decides retry vs. raise based on idempotency.
             raise _RpcAttemptFailed(msg_id, msg_type, timed_out=False) from exc
         finally:
+            if outcome is not None:
+                record_rpc(
+                    msg_type,
+                    outcome=outcome,
+                    duration_seconds=time.monotonic() - started,
+                )
             pending = self._pending.pop(msg_id, None)
             if pending is not None and not fut.done():
                 fut.cancel()
@@ -2493,3 +2507,13 @@ class LocalPCShim(LocalPCExecutorMarker):
                 pass
         if self._manager is not None:
             self._manager.remove_shim(self.sandbox_id, self)
+
+
+def _record_response_outcome(msg_type: str, response: dict) -> str:
+    """Count a wire ERROR under its code; return the attempt's outcome."""
+    if response.get("type") != "ERROR":
+        return "ok"
+    payload = response.get("payload")
+    code = payload.get("code") if isinstance(payload, dict) else None
+    record_rpc_error(msg_type, str(code or "INTERNAL_ERROR"))
+    return "error"
