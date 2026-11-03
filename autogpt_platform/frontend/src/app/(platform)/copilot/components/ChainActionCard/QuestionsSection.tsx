@@ -71,7 +71,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         <button
           type="button"
           onClick={() => requests.forEach((req) => req.onSkip())}
-          className="rounded-full px-2 py-0.5 text-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -86,7 +86,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       >
         <span
           id={labelId}
-          className="text-lg leading-snug font-medium text-foreground-strong"
+          className="text-lead leading-snug font-medium text-foreground-strong"
         >
           {question.question}
         </span>

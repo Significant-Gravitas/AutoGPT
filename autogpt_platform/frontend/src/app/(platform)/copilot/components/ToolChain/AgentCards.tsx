@@ -230,7 +230,7 @@ export function SubSessionCard({
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-foreground-tertiary">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption text-foreground-tertiary">
           {response}
         </p>
       )}

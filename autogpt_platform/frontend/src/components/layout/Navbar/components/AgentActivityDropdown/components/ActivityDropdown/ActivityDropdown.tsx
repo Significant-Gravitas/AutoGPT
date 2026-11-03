@@ -107,7 +107,7 @@ export function ActivityDropdown({
             </div>
           ) : (
             <div className={`${styles.headerContainer} py-0.5`}>
-              <span className="text-xs font-medium text-foreground-tertiary uppercase">
+              <span className="text-caption font-medium text-foreground-tertiary uppercase">
                 Workflow Activity
               </span>
               {withSearch ? (

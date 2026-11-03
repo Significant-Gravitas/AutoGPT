@@ -104,7 +104,7 @@ export function WorkspaceFolderRows({
                 onToggleAttach(folder, subfolderCount);
               }}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
+                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-body transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none",
                 isSelected
                   ? "text-brand"

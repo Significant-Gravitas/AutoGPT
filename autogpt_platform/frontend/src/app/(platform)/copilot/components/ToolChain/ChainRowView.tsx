@@ -142,7 +142,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       }
       shimmer={row.state === "running" || stillWorking}
       className={cn(
-        "max-w-full text-sm transition-colors duration-300",
+        "max-w-full text-body transition-colors duration-300",
         row.state === "error"
           ? "text-error"
           : row.held &&
@@ -217,7 +217,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
+          <p className="animate-fade-in truncate text-caption text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}

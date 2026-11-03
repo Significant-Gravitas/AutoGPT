@@ -71,7 +71,7 @@ export function TourUpsellCard({ surface }: Props) {
           leftIcon={<Icon icon={GithubIcon} size={14} aria-hidden />}
           tone="secondary"
           // oxlint-disable-next-line design-system/no-restyle -- quiet 12px link; no Button size has caption text at this height
-          className="w-full text-xs"
+          className="w-full text-caption"
         >
           Self-host instead
         </Button>

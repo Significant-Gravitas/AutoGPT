@@ -23,7 +23,7 @@ export function AnalyticsResultsTable({ results }: Props) {
 
   const createCopyableId = (value: string, label: string) => (
     <div
-      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-foreground-tertiary hover:text-foreground-body"
+      className="group flex cursor-pointer items-center gap-1 font-mono text-caption text-foreground-tertiary hover:text-foreground-body"
       onClick={() => {
         navigator.clipboard.writeText(value);
         toast({
@@ -134,7 +134,7 @@ export function AnalyticsResultsTable({ results }: Props) {
         <Text variant="h3" className="mb-3">
           Analytics Summary
         </Text>
-        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 text-body md:grid-cols-5">
           <div>
             <Text variant="body" tone="secondary">
               Total Executions:

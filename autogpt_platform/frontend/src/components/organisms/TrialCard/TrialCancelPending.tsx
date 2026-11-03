@@ -32,7 +32,7 @@ export function TrialCancelPending({
         <TrialTitle>Your trial</TrialTitle>
         <span
           data-slot="trial-cancel-pending-status"
-          className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-body"
+          className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-body"
         >
           <span
             aria-hidden
