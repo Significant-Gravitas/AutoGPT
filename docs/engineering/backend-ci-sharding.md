@@ -45,3 +45,24 @@ python .github/scripts/update_backend_test_durations.py <reports-directory>
 The updater includes measured module collection costs and refuses failed, duplicate, mixed-revision, mixed-layout, or incomplete shard sets. Review the generated file, run the helper tests, and commit the calibration. Do not mix reports from multiple runs in one directory.
 
 This experiment does not cache test results, disable test isolation, change Python support, or increase runner count. Setup caching is a separate experiment so its effect can be measured independently.
+
+## Rust tooling comparison
+
+`backend-tool-benchmark.yml` measures installation, formatting, import sorting, and type checking on hosted Python 3.12 and 3.13. It runs when its benchmark files change in a PR, or on manual dispatch. It does not replace the normal CI checks or change the shard layout.
+
+The paired measurements use the same checkout and runner:
+
+- Poetry installs the existing lock into `.venv`. The official Poetry export plugin exports that lock for `uv pip sync` into a second environment, including the editable shared library and pinned Git dependency. The benchmark compares package versions, source URLs, commit IDs, and editable status; only the virtualenv bootstrap package `pip` is excluded. It records dependency checks and runs the shard-selection helper tests under both interpreters. Runtime compatibility still requires the full backend suite.
+- Black versus Ruff formatting, and isort versus Ruff import sorting, receive the same tracked Python file list, excluding vendored test fixtures. Output is retained; formatter differences require a deliberate migration, not suppression of failing checks.
+- Pyright versus ty use the same installed dependencies, generated Prisma stubs, Python version, and backend source root. Existing Pyright ignore paths become ty diagnostic overrides. Their rule sets differ, so timing alone does not establish equivalent checking.
+
+Artifacts retain every command, duration, exit status, source revision, package inventory, file list, and diagnostic log. The job succeeds when it collects the evidence; candidate failures are recorded and are not approvals to switch tools. The export tool uses a separate download cache; include export time and the bootstrap Actions steps when estimating installation savings. The warm install sample reuses an installed environment. Repeat on fresh runners before treating a small difference as a win.
+
+Candidates checked against upstream documentation:
+
+- [uv's locked-environment installation](https://docs.astral.sh/uv/pip/compile/) preserves the Poetry lock via the [official export plugin](https://github.com/python-poetry/poetry-plugin-export); this is not a project-wide lockfile migration.
+- [Ruff documents formatting differences from Black](https://docs.astral.sh/ruff/formatter/black/). Ruff already checks backend code and formats the shared library; the remaining replacement opportunity is backend Black/isort.
+- [ty](https://docs.astral.sh/ty/coming-from-mypy-or-pyright/) and [Pyrefly](https://pyrefly.org/en/docs/migrating-from-pyright/) are Rust type-checker alternatives. The first hosted probe uses ty; neither has been accepted as a replacement for Pyright.
+- [Oxlint](https://oxc.rs/docs/guide/usage/linter/migrate-from-eslint.html) already handles the frontend's design-system rules. Replacing its remaining ESLint checks requires preserving the React Compiler, keyboard/IME, Storybook, and TanStack rules.
+- [pytest-rs](https://github.com/Yasu-umi/pytest-rs) is alpha and requires CPython 3.13+. Its distribution conflicts with the installed pytest package and bundled plugin packages. It cannot replace the current 3.12–3.13 matrix without a separate migration and plugin/coverage conformance proof. [Karva](https://github.com/MatthewMckee4/karva) explicitly has a narrower scope than pytest.
+- [ast-grep](https://ast-grep.github.io/) can implement structural architecture checks in Rust, but the existing Python AST rules contain alias handling and exceptions that require matched fixtures before a rewrite can replace them.

@@ -1,0 +1,77 @@
+name: Backend tool benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/backend-tool-benchmark.yml"
+      - ".github/scripts/benchmark_backend_tools.py"
+      - ".github/scripts/test_backend_tool_benchmark.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-tool-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark tooling (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      - name: Test benchmark report validation
+        run: python -m unittest discover -s .github/scripts -p test_backend_tool_benchmark.py
+
+      - name: Lint benchmark scripts
+        run: |
+          version=$(python .github/workflows/scripts/get_package_version_from_lockfile.py ruff autogpt_platform/backend/poetry.lock)
+          uv tool run --from "ruff==$version" ruff check --select E4,E7,E9,F,I \
+            .github/scripts/benchmark_backend_tools.py \
+            .github/scripts/test_backend_tool_benchmark.py
+
+      - name: Install baseline Poetry
+        working-directory: autogpt_platform/backend
+        run: |
+          version=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -fsSL https://install.python-poetry.org | POETRY_VERSION="$version" python3 -
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Measure tools and retain compatibility diagnostics
+        run: python .github/scripts/benchmark_backend_tools.py run --output "$RUNNER_TEMP/tool-benchmark"
+        env:
+          CI: "true"
+          PLAIN_OUTPUT: "true"
+          POETRY_VIRTUALENVS_IN_PROJECT: "true"
+          POETRY_CACHE_DIR: ${{ runner.temp }}/poetry-benchmark-cache
+          UV_CACHE_DIR: ${{ runner.temp }}/uv-benchmark-cache
+          UV_TOOL_DIR: ${{ runner.temp }}/uv-benchmark-tools
+          BLACK_CACHE_DIR: ${{ runner.temp }}/black-benchmark-cache
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Upload timings, inventories, and diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-tool-benchmark-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/tool-benchmark
+          if-no-files-found: error
