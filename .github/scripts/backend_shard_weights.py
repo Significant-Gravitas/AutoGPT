@@ -9,6 +9,34 @@ from backend_test_shard import SHARDS
 DEFAULT_FILE_SECONDS = 1.0
 
 
+def path_shard(path: str) -> str:
+    """Keep each file in its existing most-specific fixture group."""
+    candidates = [
+        (len(parent), shard)
+        for shard, paths in SHARDS.items()
+        for parent in paths
+        if PurePosixPath(path).is_relative_to(parent)
+    ]
+    return max(candidates)[1] if candidates else "remainder"
+
+
+def partition_files(
+    files: list[str], weights: dict[str, float], count: int
+) -> dict[str, int]:
+    """Balance whole files, including new files, without sharing process state."""
+    if count < 1:
+        raise ValueError("A shard needs at least one partition")
+    loads = dict.fromkeys(range(1, count + 1), 0.0)
+    assignments = {}
+    for path in sorted(
+        set(files), key=lambda p: (-weights.get(p, DEFAULT_FILE_SECONDS), p)
+    ):
+        owner = min(loads, key=lambda part: (loads[part], part))
+        assignments[path] = owner
+        loads[owner] += max(weights.get(path, DEFAULT_FILE_SECONDS), 0.001)
+    return assignments
+
+
 def assign_files(
     files: list[str],
     weights: dict[str, float],

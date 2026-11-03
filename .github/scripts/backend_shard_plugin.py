@@ -11,9 +11,11 @@ from backend_shard_weights import (
     discover_files,
     load_weights,
     owner_for,
+    partition_files,
+    path_shard,
     relative_file,
 )
-from backend_test_shard import SHARDS
+from backend_test_shard import PARTITIONS, SHARDS
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -36,7 +38,11 @@ class ShardMetrics:
         self.item_files: dict[str, str] = {}
         self.files: dict[str, dict[str, float]] = {}
         self.assignments: dict[str, str] = {}
-        if layout == "weighted":
+        self.partition = int(os.environ.get("BACKEND_TEST_PARTITION", "0"))
+        if not 0 <= self.partition <= PARTITIONS[shard]:
+            raise pytest.UsageError("Invalid backend partition")
+        self.partitions: dict[str, int] = {}
+        if layout == "weighted" or self.partition:
             weights = load_weights(
                 Path(
                     os.environ.get(
@@ -48,13 +54,30 @@ class ShardMetrics:
             files = discover_files(
                 self.root, config.getini("python_files"), config.getini("norecursedirs")
             )
-            self.assignments = assign_files(files, weights)
+            if layout == "weighted":
+                self.assignments = assign_files(files, weights)
+            if self.partition:
+                selected = [
+                    path
+                    for path in files
+                    if (
+                        owner_for(path, self.assignments)
+                        if layout == "weighted"
+                        else path_shard(path)
+                    )
+                    == shard
+                ]
+                self.partitions = partition_files(selected, weights, PARTITIONS[shard])
 
     def pytest_ignore_collect(self, collection_path: Path) -> bool | None:
-        if self.layout != "weighted" or collection_path.is_dir():
+        if collection_path.is_dir():
             return None
-        owner = owner_for(relative_file(collection_path, self.root), self.assignments)
-        return True if owner != self.shard else None
+        path = relative_file(collection_path, self.root)
+        if self.partition and path in self.partitions:
+            return True if self.partitions[path] != self.partition else None
+        if self.layout == "weighted":
+            return True if owner_for(path, self.assignments) != self.shard else None
+        return None
 
     @pytest.hookimpl(wrapper=True)
     def pytest_make_collect_report(self, collector: pytest.Collector):
@@ -83,6 +106,27 @@ class ShardMetrics:
                 target.append(item)
             items[:] = selected
             config.hook.pytest_deselected(items=deselected)
+        if self.partition:
+            unexpected = [
+                item.nodeid
+                for item in items
+                if relative_file(item.path, self.root) not in self.partitions
+            ]
+            if unexpected:
+                raise pytest.UsageError(
+                    f"Tests escaped partition selection: {unexpected}"
+                )
+            selected, deselected = [], []
+            for item in items:
+                target = (
+                    selected
+                    if self.partitions[relative_file(item.path, self.root)]
+                    == self.partition
+                    else deselected
+                )
+                target.append(item)
+            items[:] = selected
+            config.hook.pytest_deselected(items=deselected)
         self.nodeids = [item.nodeid for item in items]
         for item in items:
             path = relative_file(item.path, self.root)
@@ -99,6 +143,7 @@ class ShardMetrics:
             "version": 1,
             "layout": self.layout,
             "shard": self.shard,
+            "partition": self.partition,
             "exit_code": int(exitstatus),
             "pytest_seconds": time.perf_counter() - self.started,
             "source_sha": source_sha(self.root),

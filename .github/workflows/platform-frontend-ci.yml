@@ -58,12 +58,12 @@ jobs:
           CI_RESULTS: ${{ toJSON(needs) }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: frontend-integration-shard-*-of-4
+          pattern: frontend-integration-shard-*-of-16
           path: frontend-shard-reports
       - name: Require passing tests and coverage from every shard
         run: |
-          for shard in 1 2 3 4; do
-            report="frontend-shard-reports/frontend-integration-shard-${shard}-of-4"
+          for shard in $(seq 1 16); do
+            report="frontend-shard-reports/frontend-integration-shard-${shard}-of-16"
             python3 .github/scripts/validate_junit.py --require-no-skips "$report/junit.xml"
             python3 .github/scripts/validate_cobertura.py "$report/coverage/cobertura-coverage.xml"
           done
@@ -214,12 +214,12 @@ jobs:
           exitOnceUploaded: true
 
   integration_test:
-    name: integration_test (shard ${{ matrix.shard }}/4)
+    name: integration_test (shard ${{ matrix.shard }}/16)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
     steps:
       - name: Checkout repository
@@ -256,7 +256,7 @@ jobs:
           pnpm exec vitest run
           --coverage
           --coverage.reportOnFailure
-          --shard=${{ matrix.shard }}/4
+          --shard=${{ matrix.shard }}/16
           --reporter=default
           --reporter=github-actions
           --reporter=junit
@@ -281,7 +281,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: frontend-integration-shard-${{ matrix.shard }}-of-4
+          name: frontend-integration-shard-${{ matrix.shard }}-of-16
           path: |
             autogpt_platform/frontend/junit.xml
             autogpt_platform/frontend/coverage/cobertura-coverage.xml
@@ -295,4 +295,4 @@ jobs:
           flags: platform-frontend
           files: ./autogpt_platform/frontend/coverage/cobertura-coverage.xml
           disable_search: true
-          name: frontend-shard-${{ matrix.shard }}-of-4
+          name: frontend-shard-${{ matrix.shard }}-of-16

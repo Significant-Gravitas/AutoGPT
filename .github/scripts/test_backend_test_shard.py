@@ -9,7 +9,7 @@ from xml.etree import ElementTree
 
 import backend_test_shard
 import yaml
-from backend_test_shard import SHARDS, shard_args
+from backend_test_shard import PARTITIONS, SHARDS, report_shards, shard_args
 
 
 class BackendShardTests(unittest.TestCase):
@@ -167,6 +167,7 @@ class BackendShardTests(unittest.TestCase):
                         env={
                             **os.environ,
                             "MATRIX_TEST_SHARD": shard,
+                            "MATRIX_TEST_PARTITION": "1",
                             "GITHUB_ENV": str(environment),
                         },
                         capture_output=True,
@@ -181,7 +182,7 @@ class BackendShardTests(unittest.TestCase):
                         line.split("=", 1)
                         for line in environment.read_text().splitlines()
                     )
-                    self.assertEqual(values["TEST_SHARD"], shard)
+                    self.assertEqual(values["TEST_SHARD"], f"{shard}-1")
                     self.assertRegex(values["DATABASE_NAME"], r"^[a-z_][a-z0-9_]*$")
                     self.assertEqual(
                         values["DATABASE_NAME"] == "postgres", shard == "data"
@@ -198,7 +199,15 @@ class BackendShardTests(unittest.TestCase):
         )
         matrix = workflow["jobs"]["test"]["strategy"]["matrix"]
         codecov = yaml.safe_load((root / "codecov.yml").read_text())
+        parts = {
+            f"{shard}-{part}"
+            for shard in matrix["test-shard"]
+            for part in matrix["partition"]
+            if {"test-shard": shard, "partition": part} not in matrix["exclude"]
+        }
+        self.assertEqual(parts, set(report_shards(partitioned=True)))
+        self.assertEqual(len(parts), sum(PARTITIONS.values()))
         self.assertEqual(
             codecov["flags"]["platform-backend"]["after_n_builds"],
-            len(matrix["python-version"]) * len(matrix["test-shard"]),
+            len(matrix["python-version"]) * len(parts),
         )

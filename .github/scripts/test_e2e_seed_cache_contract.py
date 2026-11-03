@@ -82,11 +82,7 @@ class E2EMatrixContractTests(unittest.TestCase):
             line for line in workflow.splitlines() if "WRITE_BUILD_CACHE: ${{" in line
         )
         self.assertIn("matrix.suite == 'smoke' &&", write_cache)
-        for step in (
-            "Export Next.js build cache from BuildKit",
-            "Save Next.js build cache",
-            "Set up tests - Cache Playwright browsers",
-        ):
+        for step in ("Set up tests - Cache Playwright browsers",):
             with self.subTest(step=step):
                 body = workflow.split(f"- name: {step}\n", 1)[1].split(
                     "\n      - name:", 1

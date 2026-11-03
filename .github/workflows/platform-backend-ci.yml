@@ -245,11 +245,11 @@ jobs:
       PLAIN_OUTPUT: True
 
   test:
-    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
+    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }}, part ${{ matrix.partition }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its eight disjoint path
-    # groups run on separate standard runners. The cap is a hang guard, not a
+    # Each Python leg splits the eight fixture groups into 31 whole-file
+    # partitions on standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
     timeout-minutes: 35
@@ -257,6 +257,10 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+        partition: [1, 2, 3, 4]
+        exclude:
+          - test-shard: billing-threads
+            partition: 4
         test-shard:
           - data
           - copilot
@@ -369,6 +373,7 @@ jobs:
         shell: bash
         env:
           MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
+          MATRIX_TEST_PARTITION: ${{ matrix.partition }}
         run: |
           # The trial tests' safety guard only accepts localhost:5432/postgres
           # under GITHUB_ACTIONS, and the per-shard names are cosmetic anyway —
@@ -387,7 +392,7 @@ jobs:
           esac
 
           {
-            echo "TEST_SHARD=$MATRIX_TEST_SHARD"
+            echo "TEST_SHARD=${MATRIX_TEST_SHARD}-${MATRIX_TEST_PARTITION}"
             echo "DATABASE_NAME=${database_name}"
             echo "RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}"
             echo "REDIS_PORT=17000"
@@ -603,7 +608,8 @@ jobs:
       - name: Test shard
         shell: bash
         env:
-          COVERAGE_FILE: .coverage-${{ matrix.test-shard }}
+          COVERAGE_FILE: .coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+          BACKEND_TEST_METRICS: shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
           EXECUTION_MANAGER_PORT: "18002"
           DATABASE_API_PORT: "18005"
@@ -632,7 +638,7 @@ jobs:
             pytest_args+=(-q)
           fi
 
-          python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" "$TEST_SHARD" -- "${pytest_args[@]}"
+          python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -661,11 +667,11 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}
+          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}-${{ matrix.partition }}
           path: |
-            autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
-            autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
-            autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}.json
+            autogpt_platform/backend/junit-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+            autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
+            autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
           if-no-files-found: error
 
       - name: Upload coverage reports to Codecov
@@ -675,7 +681,8 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
           override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
-          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+          disable_search: true
+          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
 
     env:
       CI: true
@@ -728,4 +735,4 @@ jobs:
           fi
           python3 .github/scripts/validate_backend_skips.py \
             --allow-skips-from .github/scripts/backend-allowed-skips.json \
-            --reports-dir backend-shard-reports
+            --reports-dir backend-shard-reports --partitioned

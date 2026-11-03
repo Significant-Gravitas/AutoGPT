@@ -5,15 +5,16 @@ import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
-from backend_test_shard import SHARDS
+from backend_test_shard import report_shards
 from validate_junit import load_skip_policy, validate_path
 
 
 def validate_shard_reports(
-    directory: Path, version: str, allowed_skips: set[str]
+    directory: Path, version: str, allowed_skips: set[str], partitioned: bool = False
 ) -> set[str]:
     observed = set()
-    for shard in (*SHARDS, "remainder"):
+    cases_seen = set()
+    for shard in report_shards(partitioned):
         report = (
             directory
             / f"backend-test-reports-py{version}-{shard}"
@@ -24,6 +25,13 @@ def validate_shard_reports(
             root = ElementTree.parse(report).getroot()
         except (OSError, ElementTree.ParseError, ValueError) as exc:
             raise ValueError(f"Python {version}, shard {shard}: {exc}") from exc
+        cases = [
+            f"{case.get('classname', '')}.{case.get('name', '')}"
+            for case in root.iter("testcase")
+        ]
+        if len(cases) != len(set(cases)) or cases_seen.intersection(cases):
+            raise ValueError(f"Python {version}, shard {shard}: duplicate test cases")
+        cases_seen.update(cases)
         observed.update(
             f"{case.get('classname', '')}.{case.get('name', '')}"
             for case in root.iter("testcase")
@@ -36,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--allow-skips-from", type=Path, required=True)
     parser.add_argument("--reports-dir", type=Path, required=True)
+    parser.add_argument("--partitioned", action="store_true")
     args = parser.parse_args(argv)
     try:
         policy = load_skip_policy(args.allow_skips_from)
@@ -44,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         expected = {
             f"backend-test-reports-py{version}-{shard}"
             for version in policy.python_versions
-            for shard in (*SHARDS, "remainder")
+            for shard in report_shards(args.partitioned)
         }
         actual = {
             path.name for path in args.reports_dir.glob("backend-test-reports-py*")
@@ -61,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
             allowed = policy.for_python_version(version)
             try:
                 observed = validate_shard_reports(
-                    args.reports_dir, version, allowed | policy.secret_gated_ids()
+                    args.reports_dir,
+                    version,
+                    allowed | policy.secret_gated_ids(),
+                    args.partitioned,
                 )
                 if stale := allowed - observed:
                     raise ValueError(
@@ -73,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
                 problems.append(str(exc))
                 continue
             print(
-                f"Python {version}: all {len(SHARDS) + 1} shard reports "
+                f"Python {version}: all {len(report_shards(args.partitioned))} shard reports "
                 f"match {len(allowed)} skip IDs"
             )
         if problems:

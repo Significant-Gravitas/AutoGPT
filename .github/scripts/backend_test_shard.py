@@ -22,6 +22,17 @@ SHARDS = {
     "util-executor": ["backend/util", "backend/executor"],
     "api": ["backend/api"],
 }
+PARTITIONS = {shard: 4 for shard in (*SHARDS, "remainder")}
+PARTITIONS["billing-threads"] = 3
+
+
+def report_shards(partitioned: bool = False) -> list[str]:
+    """Enumerate every required report identity independently of uploaded files."""
+    return [
+        f"{shard}-{part}" if partitioned else shard
+        for shard, count in PARTITIONS.items()
+        for part in range(1, (count if partitioned else 1) + 1)
+    ]
 
 
 def shard_args(shard: str) -> list[str]:
@@ -51,9 +62,12 @@ def shard_args(shard: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--layout", choices=["paths", "weighted"], default="paths")
+    parser.add_argument("--partition", type=int, default=0)
     parser.add_argument("shard", choices=[*SHARDS, "remainder"])
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if not 0 <= args.partition <= PARTITIONS[args.shard]:
+        parser.error("partition is outside the configured shard range")
     pytest_args = args.pytest_args
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
@@ -61,6 +75,7 @@ def main() -> int:
         os.environ["E2E_REDIS_CLUSTER_RESTART"] = "1"
     os.environ["BACKEND_TEST_SHARD"] = args.shard
     os.environ["BACKEND_TEST_LAYOUT"] = args.layout
+    os.environ["BACKEND_TEST_PARTITION"] = str(args.partition)
     scripts = str(Path(__file__).resolve().parent)
     os.environ["PYTHONPATH"] = os.pathsep.join(
         part for part in (scripts, os.environ.get("PYTHONPATH", "")) if part

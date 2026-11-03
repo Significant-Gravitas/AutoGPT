@@ -12,7 +12,17 @@ PR selection compares the merge base with the PR head. Merge groups compare thei
 
 The safety check separately reads Git's diff and applies a conservative policy that does not consult the selector's graph or file list. The final job repeats this check and requires every selected suite to succeed. A missing, cancelled or skipped selected suite fails. The CLI tests deliberately remove a backend change from the graph, produce an empty selection, supply successful selection plus skipped suite results, and require rejection. They also cover renames, deletions, base-only changes, schema dependencies, failed selection and nightly/full dispatches.
 
-This is project selection, not individual test selection. The full backend matrix and all four frontend shards still execute whenever their project is affected. The existing advisory journeys policy is preserved; smoke, API types and all required tests still block.
+This is project selection, not individual test selection. The full backend matrix and all sixteen frontend shards still execute whenever their project is affected. The existing advisory journeys policy is preserved; smoke, API types and all required tests still block.
+
+## Five-minute target: pending hosted validation
+
+The last fully passing baseline, [run `41578935067` on `797627a`](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/41578935067), took 18 m 34 s. Its smoke job took 17 m 31 s, including an 8 m 46 s frontend image build. The slowest backend and frontend jobs took 14 m 47 s and 11 m 42 s. The separate AMD64 appliance build/smoke/scan job took 18 m 38 s, and the required PR-status job took 18 m 47 s. Overlapping job times must not be added.
+
+The next candidate splits backend files within their existing fixture groups into 31 partitions per Python and frontend integration tests into sixteen isolated shards. Coverage upload counts and required artifact gates expand with the matrices. No test files or assertions are removed.
+
+Both Docker frontend build paths use `next build --turbopack`, supported by the installed Next 15.5 release. The obsolete Webpack cache mount and its restore/import/export/save steps are removed. Docker layer and dependency caches remain. The appliance vulnerability scan now scans vulnerabilities only; the separate high/critical secret scan retains its previous scope and failure gate. This avoids scanning secrets twice.
+
+These changes need complete hosted builds, source-map coverage, test inventories, appliance lifecycle tests and final status validation before a speedup can be claimed. Measure trigger-to-green time, including scheduling and setup, against the baseline. More shards may increase scheduling delay, and appliance startup/restart remains a separate cost. Five-minute CI and merge-queue performance are not yet established.
 
 ## Hosted frontend comparison
 

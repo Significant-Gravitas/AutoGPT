@@ -4,7 +4,7 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
-from backend_test_shard import SHARDS
+from backend_test_shard import report_shards
 
 
 def weights_from_reports(paths: list[Path]) -> dict:
@@ -17,17 +17,23 @@ def weights_from_reports(paths: list[Path]) -> dict:
         raise ValueError("Use one source revision and one layout per calibration")
     observations = defaultdict(list)
     versions = defaultdict(set)
+    partitioned = any(report.get("partition", 0) for report in reports)
     for report in reports:
         version = ".".join(report["python"].split(".")[:2])
-        if report["shard"] in versions[version]:
+        shard = (
+            f"{report['shard']}-{report.get('partition', 0)}"
+            if partitioned
+            else report["shard"]
+        )
+        if shard in versions[version]:
             raise ValueError(f"Duplicate shard for Python {version}")
-        versions[version].add(report["shard"])
+        versions[version].add(shard)
         for name, values in report["files"].items():
             if values["cases"]:
                 observations[name].append(
                     values["collection_seconds"] + values["test_seconds"]
                 )
-    if any(shards != {*SHARDS, "remainder"} for shards in versions.values()):
+    if any(shards != set(report_shards(partitioned)) for shards in versions.values()):
         raise ValueError("Calibration requires every shard for each Python version")
     return {
         "version": 1,

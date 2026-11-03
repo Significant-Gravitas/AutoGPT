@@ -9,7 +9,7 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 
 import yaml
-from backend_test_shard import SHARDS
+from backend_test_shard import PARTITIONS, SHARDS, report_shards
 from validate_backend_skips import main
 from validate_junit import load_skip_policy
 from validate_junit import main as validate_junit_main
@@ -53,7 +53,7 @@ class AggregateSkipTests(unittest.TestCase):
             / f"junit-{shard}.xml"
         )
 
-    def run_validator(self):
+    def run_validator(self, partitioned=False):
         self.policy_file.write_text(json.dumps(self.policy))
         with patch("sys.stderr") as stderr:
             result = main(
@@ -62,12 +62,28 @@ class AggregateSkipTests(unittest.TestCase):
                     str(self.policy_file),
                     "--reports-dir",
                     str(self.reports),
+                    *(["--partitioned"] if partitioned else []),
                 ]
             )
         return result, "".join(call.args[0] for call in stderr.write.call_args_list)
 
     def test_entry_used_only_by_a_different_shard_passes(self):
         self.assertEqual(self.run_validator()[0], 0)
+
+    def test_missing_partition_cannot_hide_behind_other_passing_reports(self):
+        self.reports = self.directory / "partition-reports"
+        for version in self.policy["python_versions"]:
+            for shard in report_shards(partitioned=True):
+                skips = ["test_shared"] if shard == "remainder-1" else []
+                self.write_report(version, shard, skips)
+        self.assertEqual(self.run_validator(partitioned=True)[0], 0)
+        missing = self.report_path("3.13", "copilot-4")
+        missing.unlink()
+        missing.parent.rmdir()
+        result, diagnostic = self.run_validator(partitioned=True)
+        self.assertEqual(result, 1)
+        self.assertIn("missing", diagnostic)
+        self.assertIn("copilot-4", diagnostic)
 
     def test_entry_used_by_no_shard_fails_with_actionable_diagnostic(self):
         self.policy["common"].append("backend.example.test_removed")
@@ -169,6 +185,13 @@ class AggregateSkipTests(unittest.TestCase):
         result, diagnostic = self.run_validator()
         self.assertEqual(result, 1)
         self.assertIn("unapproved skipped test IDs", diagnostic)
+
+    def test_duplicate_execution_cannot_replace_missing_coverage(self):
+        report = self.report_path("3.12", "copilot")
+        report.write_bytes(self.report_path("3.12", "data").read_bytes())
+        result, diagnostic = self.run_validator()
+        self.assertEqual(result, 1)
+        self.assertIn("duplicate test cases", diagnostic)
 
     def test_secret_gated_skip_passes_whether_or_not_the_run_had_the_secret(self):
         self.policy["secret_gated"] = {
@@ -281,11 +304,16 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
         matrix = jobs["test"]["strategy"]["matrix"]
         for version in matrix["python-version"]:
             for shard in matrix["test-shard"]:
-                artifact = upload.replace(
-                    "${{ matrix.python-version }}", version
-                ).replace("${{ matrix.test-shard }}", shard)
-                self.assertEqual(artifact, f"backend-test-reports-py{version}-{shard}")
-                self.assertTrue(fnmatch.fnmatchcase(artifact, download["pattern"]))
+                for part in range(1, PARTITIONS[shard] + 1):
+                    artifact = (
+                        upload.replace("${{ matrix.python-version }}", version)
+                        .replace("${{ matrix.test-shard }}", shard)
+                        .replace("${{ matrix.partition }}", str(part))
+                    )
+                    self.assertEqual(
+                        artifact, f"backend-test-reports-py{version}-{shard}-{part}"
+                    )
+                    self.assertTrue(fnmatch.fnmatchcase(artifact, download["pattern"]))
 
     def test_aggregate_step_refuses_partial_reports_from_unsuccessful_jobs(self):
         job = self.workflow["jobs"]["validate-skip-policy"]
@@ -320,7 +348,9 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
                         self.assertEqual(
                             arguments[0], ".github/scripts/validate_backend_skips.py"
                         )
-                        self.assertEqual(arguments[-1], "backend-shard-reports")
+                        self.assertEqual(
+                            arguments[-2:], ["backend-shard-reports", "--partitioned"]
+                        )
                     else:
                         self.assertNotEqual(run.returncode, 0)
                         self.assertIn("reports may be incomplete", run.stderr)
