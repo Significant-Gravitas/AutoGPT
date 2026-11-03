@@ -23,6 +23,8 @@ on:
       - ".github/scripts/test_backend_shard_weights.py"
       - ".github/scripts/backend-test-durations.json"
       - ".github/scripts/update_backend_test_durations.py"
+      - ".github/scripts/report_backend_coverage.py"
+      - ".github/scripts/test_report_backend_coverage.py"
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
@@ -132,6 +134,14 @@ jobs:
         run: >-
           poetry run python -m unittest discover
           -s ../../.github/scripts -p 'test_backend_shard_weights.py'
+
+      - name: Test deferred coverage reporting
+        run: |
+          poetry run ruff check --select E4,E7,E9,F,I \
+            ../../.github/scripts/report_backend_coverage.py \
+            ../../.github/scripts/test_report_backend_coverage.py
+          poetry run python -m unittest discover \
+            -s ../../.github/scripts -p 'test_report_backend_coverage.py'
 
     env:
       CI: true
@@ -630,7 +640,6 @@ jobs:
             --cov=backend
             --cov-branch
             --cov-report=
-            --cov-report="xml:coverage-${TEST_SHARD}.xml"
             --junitxml="junit-${TEST_SHARD}.xml"
           )
           if [[ "${{ runner.debug }}" == "1" ]]; then
@@ -640,6 +649,15 @@ jobs:
           fi
 
           python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
+
+      - name: Generate coverage XML once
+        if: ${{ always() }}
+        # pytest-cov first analyzes every source file for a discarded summary
+        # when XML is requested. Reporting separately avoids that duplicate pass.
+        run: >-
+          poetry run python ../../.github/scripts/report_backend_coverage.py
+          --data-file ".coverage-${TEST_SHARD}"
+          --output "coverage-${TEST_SHARD}.xml"
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -673,6 +691,8 @@ jobs:
             autogpt_platform/backend/junit-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
             autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
             autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
+            autogpt_platform/backend/.coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Upload coverage reports to Codecov

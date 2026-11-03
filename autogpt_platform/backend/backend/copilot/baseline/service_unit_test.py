@@ -3472,15 +3472,24 @@ async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
             "backend.copilot.baseline.service._refresh_follow_up_warm_context",
             new=capture,
         ),
+        patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service.build_matched_skills_notice",
+            new=AsyncMock(return_value=""),
+        ),
         pytest.raises(_StopAtWarmContextRefresh),
     ):
-        async for _ in stream_chat_completion_baseline(
-            session_id=session.session_id,
-            message="restart the executor and redeploy staging",
-            user_id="user-1",
-            session=session,
-        ):
-            pass
+        async with asyncio.timeout(30):
+            async for _ in stream_chat_completion_baseline(
+                session_id=session.session_id,
+                message="restart the executor and redeploy staging",
+                user_id="user-1",
+                session=session,
+            ):
+                pass
 
     assert seen["graphiti_enabled"] is True
     assert seen["user_id"] == "user-1"

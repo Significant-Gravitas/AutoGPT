@@ -30,6 +30,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 class ShardMetrics:
     def __init__(self, config: pytest.Config, shard: str, layout: str):
+        self.config = config
         self.root = config.rootpath
         self.shard = shard
         self.layout = layout
@@ -152,6 +153,11 @@ class ShardMetrics:
             path = relative_file(item.path, self.root)
             self.item_files[item.nodeid] = path
             self.file_metrics(path)["cases"] += 1
+
+    def pytest_runtest_logstart(self, nodeid: str) -> None:
+        reporter = self.config.pluginmanager.getplugin("terminalreporter")
+        if reporter is not None:
+            reporter.write_line(f"Starting backend test: {nodeid}")
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         path = self.item_files.get(report.nodeid)
