@@ -486,16 +486,20 @@ class LinuxBackend(ComputerUseBackend):
             raise FeatureNotSupportedError(
                 "app.launch", reason="executable_path is required on Linux"
             )
-        # .desktop files: prefer gtk-launch / dex if available.
+        # .desktop files: prefer gtk-launch, which takes the desktop file ID,
+        # then dex, which takes the file's path.
         if executable_path.endswith(".desktop"):
-            for helper in ("gtk-launch", "dex"):
-                if shutil.which(helper):
-                    cmd = [helper, os.path.basename(executable_path).removesuffix(".desktop")]
-                    proc = subprocess.Popen(cmd, start_new_session=True)
-                    return proc.pid
-            raise FeatureNotSupportedError(
-                "app.launch", reason=".desktop launch needs gtk-launch or dex"
-            )
+            if shutil.which("gtk-launch"):
+                desktop_id = os.path.basename(executable_path).removesuffix(".desktop")
+                cmd = ["gtk-launch", desktop_id]
+            elif shutil.which("dex"):
+                cmd = ["dex", executable_path]
+            else:
+                raise FeatureNotSupportedError(
+                    "app.launch", reason=".desktop launch needs gtk-launch or dex"
+                )
+            proc = subprocess.Popen(cmd, start_new_session=True)
+            return proc.pid
         proc = subprocess.Popen([executable_path, *(args or [])], start_new_session=True)
         return proc.pid
 

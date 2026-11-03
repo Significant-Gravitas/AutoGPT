@@ -238,3 +238,25 @@ def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeyp
         b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
 
     pyautogui.hotkey.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("helper", "argument"),
+    [("gtk-launch", "org.gnome.Calculator"), ("dex", "/opt/apps/org.gnome.Calculator.desktop")],
+)
+def test_desktop_files_launch_with_the_argument_each_helper_takes(
+    tmp_path, monkeypatch, helper: str, argument: str
+) -> None:
+    """gtk-launch takes a desktop file ID; dex takes the file's path."""
+    monkeypatch.setattr(
+        linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}" if name == helper else None
+    )
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    pid = b.app_launch(executable_path="/opt/apps/org.gnome.Calculator.desktop")
+
+    assert pid == 4321
+    assert popen.call_args.args[0] == [helper, argument]

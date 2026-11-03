@@ -206,32 +206,39 @@ class WindowsBackend(ComputerUseBackend):
         bmp = win32ui.CreateBitmap()
         bmp.CreateCompatibleBitmap(mfc_dc, w, h)
         save_dc.SelectObject(bmp)
-        # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
         try:
-            import ctypes
+            # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
+            # It returns 0 when the window did not render into the bitmap.
+            try:
+                import ctypes
 
-            ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
-                hwnd, save_dc.GetSafeHdc(), 0x02
+                printed = ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
+                    hwnd, save_dc.GetSafeHdc(), 0x02
+                )
+            except Exception as exc:
+                raise FeatureNotSupportedError(
+                    "screenshot.window", reason=f"PrintWindow failed: {exc}"
+                ) from exc
+            if not printed:
+                raise FeatureNotSupportedError(
+                    "screenshot.window", reason="PrintWindow could not capture the window"
+                )
+            info = bmp.GetInfo()
+            bits = bmp.GetBitmapBits(True)
+            img = Image.frombuffer(
+                "RGB",
+                (info["bmWidth"], info["bmHeight"]),
+                bits,
+                "raw",
+                "BGRX",
+                0,
+                1,
             )
-        except Exception as exc:
-            raise FeatureNotSupportedError(
-                "screenshot.window", reason=f"PrintWindow failed: {exc}"
-            ) from exc
-        info = bmp.GetInfo()
-        bits = bmp.GetBitmapBits(True)
-        img = Image.frombuffer(
-            "RGB",
-            (info["bmWidth"], info["bmHeight"]),
-            bits,
-            "raw",
-            "BGRX",
-            0,
-            1,
-        )
-        win32gui.DeleteObject(bmp.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
+        finally:
+            win32gui.DeleteObject(bmp.GetHandle())
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
 
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
