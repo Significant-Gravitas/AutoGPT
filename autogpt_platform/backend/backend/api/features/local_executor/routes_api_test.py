@@ -748,7 +748,45 @@ def test_recording_start_stops_capture_when_shared_state_fails() -> None:
         )
 
     assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "RECORDING_STATE_UNAVAILABLE"
     recording.stop.assert_awaited_once_with("rec-orphan")
+    shim.close_recording.assert_called_once_with("rec-orphan")
+
+
+def test_recording_start_says_when_the_rollback_stop_is_unconfirmed() -> None:
+    """The response must not claim the recording stopped when the stop
+    failed, and carries its id, the only handle left on it."""
+    client = _make_client()
+    recording = SimpleNamespace(
+        start_with_consent=AsyncMock(return_value="rec-orphan"),
+        effective_route_for=MagicMock(return_value="extract_then_cloud"),
+        stop=AsyncMock(side_effect=TimeoutError("shim did not answer")),
+    )
+    shim = SimpleNamespace(
+        capabilities=["recording"],
+        recording=recording,
+        close_recording=MagicMock(),
+    )
+
+    with (
+        patch(
+            "backend.api.features.local_executor.routes._require_owned_shim",
+            AsyncMock(return_value=shim),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.mark_recording_started",
+            AsyncMock(side_effect=ConnectionError("redis unavailable")),
+        ),
+    ):
+        response = client.post(
+            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+        )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "RECORDING_STOP_UNCONFIRMED"
+    assert "was stopped" not in detail["message"]
+    assert detail["details"] == {"recording_id": "rec-orphan"}
     shim.close_recording.assert_called_once_with("rec-orphan")
 
 

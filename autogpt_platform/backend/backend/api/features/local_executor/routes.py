@@ -293,8 +293,10 @@ async def start_session_recording(
             channels=list(request.channels),
         )
     except Exception as exc:
+        stopped = False
         try:
             await shim.recording.stop(recording_id)
+            stopped = True
         except Exception:
             logger.exception(
                 "Failed to stop recording %s after state persistence failed",
@@ -304,7 +306,25 @@ async def start_session_recording(
             shim.close_recording(recording_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Recording state could not be persisted; recording was stopped",
+            detail=(
+                {
+                    "code": "RECORDING_STATE_UNAVAILABLE",
+                    "message": (
+                        "Recording state could not be saved, so the recording "
+                        "was stopped."
+                    ),
+                    "details": {"recording_id": recording_id},
+                }
+                if stopped
+                else {
+                    "code": "RECORDING_STOP_UNCONFIRMED",
+                    "message": (
+                        "Recording state could not be saved, and stopping the "
+                        "recording could not be confirmed."
+                    ),
+                    "details": {"recording_id": recording_id},
+                }
+            ),
         ) from exc
     register_recording_started(
         shim,
