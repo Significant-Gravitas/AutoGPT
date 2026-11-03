@@ -885,11 +885,21 @@ async def _enqueue_next_nodes(
                 )
             return enqueued_executions
 
-    return [
-        execution
-        for link in node.output_links
-        for execution in await register_next_executions(link)
-    ]
+    # A link only touches its own sink: that node's lock, input rows and queued
+    # status. So links into different nodes register side by side, while links
+    # into one node keep their order; the result keeps the links' order too.
+    links = node.output_links
+    registered: list[list[NodeExecutionEntry]] = [[] for _ in links]
+    links_by_sink: dict[str, list[int]] = {}
+    for index, link in enumerate(links):
+        links_by_sink.setdefault(link.sink_id, []).append(index)
+
+    async def register_sink(indexes: list[int]) -> None:
+        for index in indexes:
+            registered[index] = await register_next_executions(links[index])
+
+    await asyncio.gather(*(register_sink(i) for i in links_by_sink.values()))
+    return [execution for executions in registered for execution in executions]
 
 
 class ExecutionProcessor:
