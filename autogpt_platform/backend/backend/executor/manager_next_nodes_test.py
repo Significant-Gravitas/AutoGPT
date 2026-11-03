@@ -38,8 +38,14 @@ def _link(sink_id: str, sink_name: str) -> Link:
     )
 
 
-async def _enqueue(events: list[str], meeting: Rendezvous, links: list[Link]):
-    """Register ``links``; every upsert but a ``late`` pin's meets the others.
+async def _enqueue(
+    events: list[str],
+    meeting: Rendezvous,
+    links: list[Link],
+    failing: frozenset[str] = frozenset(),
+):
+    """Register ``links``; every upsert but a ``late`` pin's meets the others,
+    and a ``failing`` pin's upsert raises once it has.
 
     The stand-ins yield after each write, so a registration that overlapped
     one it should have waited for would interleave its events with it."""
@@ -52,6 +58,8 @@ async def _enqueue(events: list[str], meeting: Rendezvous, links: list[Link]):
         events.append(f"start {node_id}:{input_name}")
         if not input_name.startswith("late"):
             await meeting.arrive()
+        if input_name in failing:
+            raise RuntimeError(f"upsert failed for {input_name}")
         events.append(f"end {node_id}:{input_name}")
         await asyncio.sleep(0)
         return MagicMock(node_exec_id=f"{node_id}:{input_name}"), {
@@ -106,6 +114,21 @@ async def test_links_into_different_nodes_register_side_by_side(
         {"y": "hello"},
         {"z": "hello"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_node_that_fails_to_register_leaves_the_others_queued(
+    enqueue_stand_ins: None,
+) -> None:
+    """``b``'s upsert raises while ``a`` and ``c`` are in flight beside it."""
+    entries = await _enqueue(
+        [],
+        Rendezvous(3),
+        [_link("a", "x"), _link("b", "y"), _link("c", "z")],
+        failing=frozenset({"y"}),
+    )
+
+    assert [entry.node_exec_id for entry in entries] == ["a:x", "c:z"]
 
 
 @pytest.mark.asyncio
