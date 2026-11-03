@@ -28,13 +28,27 @@ class BackendCoverageReportTests(unittest.TestCase):
         (backend / "unexecuted.py").write_text("value = 2\n")
         (backend / "omitted.py").write_text("value = 3\n")
         (backend / "syntax_fixture.py").write_text("invalid syntax :=\n")
+        nested = backend / "nested"
+        nested.mkdir()
+        (nested / "__init__.py").touch()
+        (nested / "executed.py").write_text(
+            "def branch(value):\n"
+            "    if value:\n"
+            "        return 7\n"
+            "    return 9\n"
+        )
+        (nested / "unexecuted.py").write_text("value = 4\n")
+        (nested / "excluded.py").write_text("value = 5  # pragma: no cover\n")
         (self.root / "test_sample.py").write_text(
             "from backend.sample import branch\n"
+            "from backend.nested.executed import branch as nested_branch\n"
             "def test_branch():\n"
             "    assert branch(True) == 1\n"
+            "    assert nested_branch(False) == 9\n"
         )
         (self.root / "pyproject.toml").write_text(
-            '[tool.coverage.run]\nomit = ["backend/omitted.py"]\n'
+            '[tool.coverage.run]\nsource = ["backend"]\n'
+            'omit = ["backend/omitted.py"]\n'
         )
         self.env = {
             **os.environ,
@@ -73,7 +87,9 @@ class BackendCoverageReportTests(unittest.TestCase):
             self.reporter, "--data-file", data_file, "--output", "actual.xml"
         )
 
-    def test_deferred_xml_preserves_all_lines_branches_and_unexecuted_files(self):
+    def test_parallel_xml_preserves_all_lines_branches_packages_and_unexecuted_files(
+        self,
+    ):
         self.run_tests("xml:expected.xml")
         result = self.run_tests("")
         self.assertNotIn("coverage:", result.stdout)
@@ -95,9 +111,43 @@ class BackendCoverageReportTests(unittest.TestCase):
             for item in ElementTree.parse(self.root / "actual.xml").iter("class")
         }
         self.assertEqual(classes["unexecuted.py"].get("line-rate"), "0")
+        self.assertEqual(classes["nested/unexecuted.py"].get("line-rate"), "0")
+        self.assertEqual(classes["nested/excluded.py"].get("line-rate"), "1")
         self.assertNotIn("omitted.py", classes)
         self.assertNotIn("syntax_fixture.py", classes)
         self.assertIn('condition-coverage="50% (1/2)"', actual)
+
+    def test_combined_workers_preserve_complementary_branches(self):
+        self.run_tests("xml:expected.xml")
+        (self.root / ".coverage").rename(self.root / ".coverage.first")
+        (self.root / "test_sample.py").write_text(
+            "from backend.sample import branch\n"
+            "from backend.nested.executed import branch as nested_branch\n"
+            "def test_branch():\n"
+            "    assert branch(False) == 0\n"
+            "    assert nested_branch(True) == 7\n"
+        )
+        self.run_tests("")
+        (self.root / ".coverage").rename(self.root / ".coverage.second")
+        combined = self.run_command("-m", "coverage", "combine", "--keep")
+        self.assertEqual(combined.returncode, 0, combined.stdout + combined.stderr)
+        expected = self.run_command("-m", "coverage", "xml", "-i", "-o", "expected.xml")
+        self.assertEqual(expected.returncode, 0, expected.stdout + expected.stderr)
+        (self.root / ".coverage").unlink()
+        result = self.report()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            ElementTree.canonicalize(
+                from_file=self.root / "actual.xml",
+                strip_text=True,
+                exclude_attrs={"timestamp"},
+            ),
+            ElementTree.canonicalize(
+                from_file=self.root / "expected.xml",
+                strip_text=True,
+                exclude_attrs={"timestamp"},
+            ),
+        )
 
     def test_combines_suffixed_data_from_pytest_cov(self):
         self.run_tests("")
