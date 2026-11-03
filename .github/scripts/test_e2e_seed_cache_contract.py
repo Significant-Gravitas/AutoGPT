@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from verify_smoke_shards import SMOKE_TEST_FLOOR
+
 SEED_KEY_STEP = "Set up tests - Compute E2E test data cache key"
 SEED_PULL_STEP = "Set up tests - Pull cached E2E test data from GHCR"
 SEED_RESTORE_STEP = "Set up tests - Load cached E2E test data"
@@ -302,7 +304,8 @@ class E2ESeedCacheContractTests(unittest.TestCase):
                 "steps.e2e-seed-create.outputs.publishable == 'true' && "
                 "steps.e2e-seed-verify.outcome == 'success' && "
                 "steps.e2e-playwright.outcome == 'success' && "
-                "steps.e2e-playwright-report.outcome == 'success'"
+                "steps.e2e-playwright-report.outcome == 'success' && "
+                "steps.e2e-seed-suite.outcome == 'success'"
             ],
         )
         self.assertIn("continue-on-error: true", save)
@@ -381,7 +384,8 @@ class E2ECoverageContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
-        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "1")
+        self.assertGreaterEqual(SMOKE_TEST_FLOOR, 28)
         self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "11")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

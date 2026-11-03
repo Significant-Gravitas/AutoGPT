@@ -659,7 +659,9 @@ jobs:
             python ../../.github/scripts/backend_test_shard.py --layout "$TEST_LAYOUT" --partition "${{ matrix.partition }}" "${{ matrix.test-shard }}" -- "${pytest_args[@]}"
           status=$?
           if [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == loaded ]]; then
-            sudo systemctl stop "$unit" || status=1
+            if ! sudo systemctl stop "$unit"; then
+              [[ "$(sudo systemctl show "$unit" --property=LoadState --value)" == not-found ]] || status=1
+            fi
           fi
           sudo systemctl show "$unit" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent || true
           exit "$status"

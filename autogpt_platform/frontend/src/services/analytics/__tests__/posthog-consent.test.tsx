@@ -57,6 +57,7 @@ let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
 let capturedEvents: CaptureResult[] = [];
 let clients: PostHog[] = [];
+let resetCaptureQueues: (() => void)[] = [];
 
 interface RenderOptions {
   user?: User | null;
@@ -87,13 +88,16 @@ async function renderPostHog({
     { resetAnalyticsIdentity },
     { setAnalyticsIdentitySignedIn },
     { buildAttributionPayload },
+    { resetPostHogCaptureQueueForTests },
   ] = await Promise.all([
     import("@/providers/posthog/posthog-provider"),
     import("@/services/onboarding/tab-intro-analytics"),
     import("@/services/analytics/reset-identity"),
     import("@/services/analytics/anonymous-id"),
     import("@/services/analytics/attribution-payload"),
+    import("@/services/analytics/posthog-capture"),
   ]);
+  resetCaptureQueues.push(resetPostHogCaptureQueueForTests);
   // What the auth store reports once the session is known.
   if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
@@ -235,6 +239,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetCaptureQueues.forEach((reset) => reset());
+  resetCaptureQueues = [];
   // A client from an earlier test would otherwise keep writing (and
   // deleting) the next test's cookies when a late response arrives.
   clients.forEach((client) => client.set_config({ persistence: "memory" }));

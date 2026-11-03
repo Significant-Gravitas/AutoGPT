@@ -52,6 +52,7 @@ flags:
     paths:
       - autogpt_platform/frontend/src/
     carryforward: true
+    after_n_builds: 4
   autogpt-libs:
     paths:
       - autogpt_platform/autogpt_libs/

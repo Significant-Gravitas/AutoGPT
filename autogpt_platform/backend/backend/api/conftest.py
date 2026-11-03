@@ -194,7 +194,7 @@ def auth_row(mocker, real_ban_lookup):
         return_value=SimpleNamespace(
             get=cache_entries.get,
             setex=cache_setex,
-            delete=lambda key: cache_entries.pop(key, None),
+            delete=lambda key: int(cache_entries.pop(key, None) is not None),
         ),
     )
 
