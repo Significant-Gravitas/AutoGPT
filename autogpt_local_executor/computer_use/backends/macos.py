@@ -641,8 +641,123 @@ class MacOSBackend(ComputerUseBackend):
             from ..errors import WindowStaleError
 
             raise WindowStaleError(window_id)
-        # NSApplicationActivateAllWindows = 1; activateIgnoringOtherApps=YES.
-        app.activateWithOptions_(1)
+        # Activating the app alone brings forward whichever of its windows was
+        # last in front, so the chosen window is raised through Accessibility.
+        window = self._ax_window_for(live.pid, entry.native_handle)
+        if window is None or not self._ax_raise(window):
+            from ..errors import WindowStaleError
+
+            raise WindowStaleError(
+                window_id,
+                message=f"window_id {window_id} could not be raised through Accessibility",
+            )
+        # NSApplicationActivateIgnoringOtherApps = 2: the app comes to the
+        # front with the raised window on top.
+        app.activateWithOptions_(2)
+
+    def _ax_window_for(self, pid: int, cg_window_id: Any) -> Any | None:
+        """The app's Accessibility window that is this CoreGraphics window: the
+        one with its frame, and its title when frames alone don't single one
+        out. None unless exactly one matches."""
+        target = self._cg_window_frame(cg_window_id)
+        if target is None:
+            return None
+        frame, title = target
+        matches = [w for w in self._ax_windows(pid) if self._ax_frame(w) == frame]
+        if len(matches) > 1 and title:
+            matches = [w for w in matches if self._ax_title(w) == title]
+        return matches[0] if len(matches) == 1 else None
+
+    def _cg_window_frame(self, cg_window_id: Any) -> tuple[tuple[int, int, int, int], str] | None:
+        try:
+            from Quartz import (  # type: ignore[import-not-found]
+                CGWindowListCopyWindowInfo,
+                kCGWindowListOptionIncludingWindow,
+            )
+
+            info = CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, int(cg_window_id))
+            if not info:
+                return None
+            bounds = info[0].get("kCGWindowBounds") or {}
+            frame = (
+                round(bounds.get("X", 0)),
+                round(bounds.get("Y", 0)),
+                round(bounds.get("Width", 0)),
+                round(bounds.get("Height", 0)),
+            )
+            return frame, str(info[0].get("kCGWindowName") or "")
+        except Exception:
+            return None
+
+    def _ax_windows(self, pid: int) -> list[Any]:
+        try:
+            from ApplicationServices import (  # type: ignore[import-not-found]
+                AXUIElementCreateApplication,
+                kAXWindowsAttribute,
+            )
+        except ImportError:
+            return []
+        windows = self._ax_attribute(AXUIElementCreateApplication(pid), kAXWindowsAttribute)
+        return list(windows or [])
+
+    def _ax_frame(self, window: Any) -> tuple[int, int, int, int] | None:
+        try:
+            from ApplicationServices import (  # type: ignore[import-not-found]
+                AXValueGetValue,
+                kAXPositionAttribute,
+                kAXSizeAttribute,
+                kAXValueCGPointType,
+                kAXValueCGSizeType,
+            )
+
+            position = self._ax_attribute(window, kAXPositionAttribute)
+            size = self._ax_attribute(window, kAXSizeAttribute)
+            if position is None or size is None:
+                return None
+            has_point, point = AXValueGetValue(position, kAXValueCGPointType, None)
+            has_size, extent = AXValueGetValue(size, kAXValueCGSizeType, None)
+            if not (has_point and has_size):
+                return None
+            return round(point.x), round(point.y), round(extent.width), round(extent.height)
+        except Exception:
+            return None
+
+    def _ax_title(self, window: Any) -> str:
+        try:
+            from ApplicationServices import kAXTitleAttribute  # type: ignore[import-not-found]
+        except ImportError:
+            return ""
+        return str(self._ax_attribute(window, kAXTitleAttribute) or "")
+
+    def _ax_raise(self, window: Any) -> bool:
+        try:
+            from ApplicationServices import (  # type: ignore[import-not-found]
+                AXUIElementPerformAction,
+                AXUIElementSetAttributeValue,
+                kAXErrorSuccess,
+                kAXMainAttribute,
+                kAXRaiseAction,
+            )
+
+            if AXUIElementPerformAction(window, kAXRaiseAction) != kAXErrorSuccess:
+                return False
+            AXUIElementSetAttributeValue(window, kAXMainAttribute, True)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _ax_attribute(element: Any, name: Any) -> Any | None:
+        try:
+            from ApplicationServices import (  # type: ignore[import-not-found]
+                AXUIElementCopyAttributeValue,
+                kAXErrorSuccess,
+            )
+
+            error, value = AXUIElementCopyAttributeValue(element, name, None)
+        except Exception:
+            return None
+        return value if error == kAXErrorSuccess else None
 
     # ── Apps ─────────────────────────────────────────────────────────
 

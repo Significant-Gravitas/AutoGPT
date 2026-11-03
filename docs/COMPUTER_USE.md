@@ -523,6 +523,11 @@ Windows, `SetForegroundWindow` (best-effort per Win32's foreground-lock
 rules — cua-driver flagged this as a known caveat); on Linux X11,
 `XRaiseWindow` + `_NET_ACTIVE_WINDOW`.
 
+On macOS the shim finds the window's AXUIElementRef among its app's
+Accessibility windows by frame, and by title when frames tie. When no
+single window matches, or the raise fails, it answers `WINDOW_STALE`
+instead of `ACK`, so later input never lands in another window.
+
 ### Deliberately omitted from v1
 
 - `get_window_state` — covered by `WINDOW_LIST_RESPONSE` already.
