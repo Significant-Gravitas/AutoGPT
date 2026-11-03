@@ -28,6 +28,20 @@ jobs:
           pip install requests pyyaml
       - name: Test status checker
         run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
+      # The steps above and below run the base branch's scripts, so a pull
+      # request can't change the check that gates it. Its own workflows and
+      # scripts still need testing (a new release workflow without a tag check
+      # would otherwise pass here and fail every later pull request), so run
+      # the same tests on its head too, in a separate checkout with no token.
+      - name: Check out the pull request's head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          path: pr-head
+          persist-credentials: false
+      - name: Test the pull request's workflows and scripts
+        working-directory: pr-head
+        run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
       - name: Check PR Status
         run: |
           echo "Current directory before running Python script:"
