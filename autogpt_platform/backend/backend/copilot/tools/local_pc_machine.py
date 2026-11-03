@@ -143,13 +143,6 @@ async def machine_rpc(
     timeout: float = 10.0,
 ) -> dict[str, Any]:
     relay = get_local_pc_relay()
-    current = await relay.get_presence(presence.session_id)
-    if current is None or current.connection_id != presence.connection_id:
-        raise MachineConnectionStaleError(
-            "MACHINE_CONNECTION_STALE",
-            "The Local PC executor reconnected before the request was sent",
-        )
-
     transport = await relay.open_transport(presence)
     message_id = str(uuid.uuid4())
     envelope = json.dumps(
@@ -162,8 +155,16 @@ async def machine_rpc(
         separators=(",", ":"),
     )
     try:
-        await transport.send_text(envelope)
+        # The deadline covers the Redis calls before the send too, so a
+        # stalled Redis can't hold the caller past it.
         async with asyncio.timeout(timeout):
+            current = await relay.get_presence(presence.session_id)
+            if current is None or current.connection_id != presence.connection_id:
+                raise MachineConnectionStaleError(
+                    "MACHINE_CONNECTION_STALE",
+                    "The Local PC executor reconnected before the request was sent",
+                )
+            await transport.send_text(envelope)
             async for raw in transport.iter_text():
                 message = validate_envelope(raw, SHIM_RESPONSE_TYPES)
                 if message["id"] != message_id:

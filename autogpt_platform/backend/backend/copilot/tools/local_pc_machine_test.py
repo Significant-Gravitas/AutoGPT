@@ -235,3 +235,35 @@ async def test_only_the_machines_own_error_reply_counts_as_a_refusal():
 
     assert (refused.code, refused.refused) == ("SESSION_ALREADY_ACTIVE", True)
     assert (unanswered.code, unanswered.refused) == ("MACHINE_REQUEST_TIMEOUT", False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stalled", ["presence", "send"])
+async def test_the_rpc_deadline_covers_the_redis_calls_before_the_send(stalled: str):
+    """A Redis call that stalls before the request goes out still ends at the
+    RPC's deadline, not at whatever the Redis client's own timeout is."""
+
+    async def stall(*_args: object) -> None:
+        await asyncio.Event().wait()
+
+    transport = MagicMock()
+    transport.close = AsyncMock()
+    transport.send_text = AsyncMock(side_effect=stall if stalled == "send" else None)
+    relay = MagicMock()
+    relay.get_presence = AsyncMock(
+        side_effect=stall if stalled == "presence" else None,
+        return_value=_presence(),
+    )
+    relay.open_transport = AsyncMock(return_value=transport)
+
+    with patch(
+        "backend.copilot.tools.local_pc_machine.get_local_pc_relay", return_value=relay
+    ):
+        with pytest.raises(MachineControlError) as error:
+            await asyncio.wait_for(
+                machine_rpc(_presence(), "DIRECTORY_LIST_REQUEST", {}, timeout=0.05),
+                timeout=5,
+            )
+
+    assert error.value.code == "MACHINE_REQUEST_TIMEOUT"
+    transport.close.assert_awaited_once()
