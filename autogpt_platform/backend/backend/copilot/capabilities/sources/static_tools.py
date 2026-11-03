@@ -63,6 +63,15 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Tasks v1: the work-thread kickoff names these directly.
+        "list_my_tasks",
+        "update_task_status",
+        "comment_on_task",
+        "request_input",
+        "link_artifact",
+        "create_task",
+        "propose_plan",
+        "confirm_task_plan",
     }
 )
 
