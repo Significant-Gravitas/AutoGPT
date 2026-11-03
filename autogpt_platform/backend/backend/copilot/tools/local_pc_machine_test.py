@@ -1,3 +1,4 @@
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -192,3 +193,45 @@ async def test_binding_response_must_match_requested_session(operation: str):
             else:
                 await restore_machine_session(_presence(), _binding())
     assert error.value.code == "INVALID_MACHINE_RESPONSE"
+
+
+@pytest.mark.asyncio
+async def test_only_the_machines_own_error_reply_counts_as_a_refusal():
+    """A refusal proves the machine applied nothing; a request it never
+    answered may have been applied, and callers must undo it."""
+
+    def transport_answering(reply):
+        transport = MagicMock()
+        transport.send_text = AsyncMock()
+        transport.close = AsyncMock()
+
+        async def responses():
+            request = json.loads(transport.send_text.await_args.args[0])
+            if reply is None:
+                await asyncio.Event().wait()
+            yield json.dumps({"id": request["id"], **reply})
+
+        transport.iter_text = responses
+        return transport
+
+    async def call(transport):
+        relay = MagicMock()
+        relay.get_presence = AsyncMock(return_value=_presence())
+        relay.open_transport = AsyncMock(return_value=transport)
+        with patch(
+            "backend.copilot.tools.local_pc_machine.get_local_pc_relay",
+            return_value=relay,
+        ):
+            with pytest.raises(MachineControlError) as error:
+                await machine_rpc(_presence(), "ATTACH_SESSION", {}, timeout=0.05)
+        return error.value
+
+    refused = await call(
+        transport_answering(
+            {"type": "ERROR", "payload": {"code": "SESSION_ALREADY_ACTIVE"}}
+        )
+    )
+    unanswered = await call(transport_answering(None))
+
+    assert (refused.code, refused.refused) == ("SESSION_ALREADY_ACTIVE", True)
+    assert (unanswered.code, unanswered.refused) == ("MACHINE_REQUEST_TIMEOUT", False)

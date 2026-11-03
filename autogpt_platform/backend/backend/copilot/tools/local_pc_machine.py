@@ -30,10 +30,14 @@ class MachineControlError(RuntimeError):
         message: str,
         *,
         details: dict[str, Any] | None = None,
+        refused: bool = False,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.details = details or {}
+        # Only the machine's own ERROR reply proves it applied nothing; any
+        # other failure may have reached it first.
+        self.refused = refused
 
 
 class MachineNotConnectedError(MachineControlError):
@@ -183,6 +187,7 @@ async def machine_rpc(
                             if isinstance(response_payload.get("details"), dict)
                             else None
                         ),
+                        refused=True,
                     )
                 current = await relay.get_presence(presence.session_id)
                 if current is None or current.connection_id != presence.connection_id:

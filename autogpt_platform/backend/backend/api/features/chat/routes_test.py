@@ -2402,6 +2402,37 @@ async def test_local_session_cleanup_deletes_under_the_tenancy_it_was_saved_with
     assert delete.await_args.kwargs["organization_id"] == "org-moved"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("attach_error", "undone"),
+    [
+        (MachineControlError("MACHINE_REQUEST_TIMEOUT", "no reply"), True),
+        (
+            MachineControlError("SESSION_ALREADY_ACTIVE", "busy", refused=True),
+            False,
+        ),
+    ],
+)
+async def test_an_attach_the_machine_never_answered_is_undone(
+    mocker: pytest_mock.MockerFixture, attach_error: MachineControlError, undone: bool
+) -> None:
+    """An attach that timed out may have happened on the machine, and would
+    refuse the user's retry as SESSION_ALREADY_ACTIVE; undo it. One the
+    machine refused changed nothing there, so leave the machine alone."""
+    detach, _ = _patch_failing_local_activation(mocker, attach_error=attach_error)
+
+    with pytest.raises(fastapi.HTTPException):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    assert detach.await_count == (1 if undone else 0)
+
+
 _LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
     machine_id="machine-1",
     expected_connection_id="connection-1",
@@ -2410,7 +2441,12 @@ _LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
 )
 
 
-def _patch_failing_local_activation(mocker: pytest_mock.MockerFixture, *, create=None):
+def _patch_failing_local_activation(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    create=None,
+    attach_error: BaseException | None = None,
+):
     """Stub a Local PC create through attach and save, failing at activation.
 
     The default ``create`` saves the row under the tenancy it is given, as
@@ -2458,7 +2494,7 @@ def _patch_failing_local_activation(mocker: pytest_mock.MockerFixture, *, create
     mocker.patch(
         "backend.api.features.chat.routes.attach_machine_session",
         new_callable=AsyncMock,
-        side_effect=_attach,
+        side_effect=attach_error or _attach,
     )
     mocker.patch(
         "backend.api.features.chat.routes.create_chat_session",

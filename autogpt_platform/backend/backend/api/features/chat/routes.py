@@ -753,18 +753,29 @@ async def _create_local_chat_session(
 
     # The machine refuses a second attach of a live session id, so a request
     # whose attach succeeded owns that id, including a row its create may have
-    # committed before a cancellation; one whose attach failed owns nothing.
+    # committed before a cancellation. One the machine refused owns nothing.
+    # One it never answered (a timeout, a lost connection, a cancellation)
+    # may still have attached, so it is undone too: the create lock leaves no
+    # other attempt that could hold the id.
     attached: MachineSessionBinding | None = None
+    attach_unconfirmed = False
     # create_chat_session resolves a private expert's tenancy again, so undo
     # under the tenancy the row was saved with once it exists.
     saved_organization_id = organization_id
     try:
-        attached = await attach_machine_session(
-            presence,
-            session_id=session_id,
-            browse_id=target.browse_id,
-            directory_ref=target.directory_ref,
-        )
+        try:
+            attached = await attach_machine_session(
+                presence,
+                session_id=session_id,
+                browse_id=target.browse_id,
+                directory_ref=target.directory_ref,
+            )
+        except MachineControlError as exc:
+            attach_unconfirmed = not exc.refused
+            raise
+        except BaseException:
+            attach_unconfirmed = True
+            raise
         if attached.session_id != session_id or attached.revision != 1:
             raise MachineControlError(
                 "INVALID_SESSION_BINDING",
@@ -823,7 +834,7 @@ async def _create_local_chat_session(
                 session_id,
                 user_id=user_id,
                 organization_id=saved_organization_id,
-                owned=attached is not None,
+                owned=attached is not None or attach_unconfirmed,
             )
         )
         try:
