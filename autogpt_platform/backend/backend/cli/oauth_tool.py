@@ -169,6 +169,8 @@ def format_sql_insert(creds: dict) -> str:
     - YOUR_USER_ID_HERE: Replace with the owner's user ID
     """
     now_iso = datetime.now(timezone.utc).isoformat()
+    # The name also goes into a line comment, which a line break would end.
+    comment_name = " ".join(creds["name"].split())
 
     redirect_uris_pg = _postgres_array_literal(creds["redirect_uris"])
     grant_types_pg = _postgres_array_literal(creds["grant_types"])
@@ -188,7 +190,7 @@ def format_sql_insert(creds: dict) -> str:
 
     sql = f"""
 -- ============================================================
--- OAuth Application: {creds['name']}
+-- OAuth Application: {comment_name}
 -- Generated: {now_iso} UTC
 -- ============================================================
 

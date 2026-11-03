@@ -26,6 +26,22 @@ def test_generate_public_app_with_explicit_client_id() -> None:
     assert '\'{"USE_TOOLS"}\'::"APIKeyPermission"[]' in sql
 
 
+def test_a_line_break_in_the_name_cannot_end_the_header_comment() -> None:
+    """The name is also written into a SQL comment; a line break there would
+    turn the rest of the name into SQL whoever runs the file executes."""
+    credentials = generate_app_credentials(
+        name='Evil\nDROP TABLE "User"; --\r\nmore',
+        redirect_uris=["http://localhost:41899/callback"],
+        scopes=["USE_TOOLS"],
+    )
+
+    sql = format_sql_insert(credentials)
+
+    header = sql.split("INSERT INTO")[0].strip().splitlines()
+    assert all(line.startswith("--") for line in header)
+    assert "-- OAuth Application: Evil DROP TABLE" in sql
+
+
 def test_generate_app_rejects_unsafe_explicit_client_id() -> None:
     with pytest.raises(ValueError, match="client_id"):
         generate_app_credentials(
