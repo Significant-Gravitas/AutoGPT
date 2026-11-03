@@ -74,15 +74,19 @@ export function InboxRow({
             board ? "rounded-r-xl" : "mr-1",
           )}
         >
-          <Icon
-            icon={ArrowDown01Icon}
-            size={16}
-            tone={expanded ? "ink" : "faint"}
+          <span
+            aria-hidden
             className={cn(
-              "transition-transform duration-300 ease-out-expo motion-reduce:transition-none",
+              "flex transition-transform duration-300 ease-out-expo motion-reduce:transition-none",
               expanded && "rotate-180",
             )}
-          />
+          >
+            <Icon
+              icon={ArrowDown01Icon}
+              size={16}
+              tone={expanded ? "ink" : "faint"}
+            />
+          </span>
         </button>
       </div>
       <AnimatePresence initial={false}>
