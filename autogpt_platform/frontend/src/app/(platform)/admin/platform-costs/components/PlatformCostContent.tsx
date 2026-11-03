@@ -136,28 +136,31 @@ export function PlatformCostContent({ searchParams }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3 rounded-lg border p-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="start-date" className="text-sm text-muted-foreground">
+          <label
+            htmlFor="start-date"
+            className="text-body text-muted-foreground"
+          >
             Start Date{" "}
-            <span className="text-xs">
+            <span className="text-caption">
               (local time — defaults to last 30 days)
             </span>
           </label>
           <input
             id="start-date"
             type="datetime-local"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={startInput}
             onChange={(e) => setStartInput(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="end-date" className="text-sm text-muted-foreground">
-            End Date <span className="text-xs">(local time)</span>
+          <label htmlFor="end-date" className="text-body text-muted-foreground">
+            End Date <span className="text-caption">(local time)</span>
           </label>
           <input
             id="end-date"
             type="datetime-local"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={endInput}
             onChange={(e) => setEndInput(e.target.value)}
           />
@@ -165,7 +168,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="provider-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Provider
           </label>
@@ -173,7 +176,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="provider-filter"
             type="text"
             placeholder="e.g. openai"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={providerInput}
             onChange={(e) => setProviderInput(e.target.value)}
           />
@@ -181,7 +184,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="user-id-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             User ID
           </label>
@@ -189,7 +192,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="user-id-filter"
             type="text"
             placeholder="Filter by user"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
           />
@@ -197,7 +200,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="model-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Model
           </label>
@@ -205,7 +208,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="model-filter"
             type="text"
             placeholder="e.g. gpt-4o"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={modelInput}
             onChange={(e) => setModelInput(e.target.value)}
           />
@@ -213,7 +216,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="block-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Block
           </label>
@@ -221,7 +224,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="block-filter"
             type="text"
             placeholder="e.g. LLMBlock"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={blockInput}
             onChange={(e) => setBlockInput(e.target.value)}
           />
@@ -229,7 +232,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="type-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Type
           </label>
@@ -237,7 +240,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="type-filter"
             type="text"
             placeholder="e.g. tokens"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={typeInput}
             onChange={(e) => setTypeInput(e.target.value)}
           />
@@ -245,7 +248,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="execution-id-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Execution ID
           </label>
@@ -253,7 +256,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             id="execution-id-filter"
             type="text"
             placeholder="Filter by execution"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={executionIDInput}
             onChange={(e) => setExecutionIDInput(e.target.value)}
           />
@@ -261,13 +264,13 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="execution-path-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Path
           </label>
           <select
             id="execution-path-filter"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={executionPathInput}
             onChange={(e) => setExecutionPathInput(e.target.value)}
           >
@@ -282,13 +285,13 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="source-filter"
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
           >
             Source
           </label>
           <select
             id="source-filter"
-            className="rounded border px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-body"
             value={sourceInput}
             onChange={(e) => setSourceInput(e.target.value)}
           >
@@ -299,7 +302,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         </div>
         <button
           onClick={handleFilter}
-          className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
+          className="rounded bg-primary px-4 py-1.5 text-body text-primary-foreground hover:bg-primary/90"
         >
           Apply
         </button>
@@ -329,7 +332,7 @@ export function PlatformCostContent({ searchParams }: Props) {
               page: "1",
             });
           }}
-          className="rounded border px-4 py-1.5 text-sm hover:bg-muted"
+          className="rounded border px-4 py-1.5 text-body hover:bg-muted"
         >
           Clear
         </button>
@@ -370,7 +373,7 @@ export function PlatformCostContent({ searchParams }: Props) {
 
               {dashboard.cost_buckets && dashboard.cost_buckets.length > 0 && (
                 <div className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-medium">
+                  <h3 className="mb-3 text-body font-medium">
                     Cost Distribution by Bucket
                   </h3>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
@@ -379,10 +382,10 @@ export function PlatformCostContent({ searchParams }: Props) {
                         key={b.bucket}
                         className="flex flex-col items-center rounded border p-2 text-center"
                       >
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-caption text-muted-foreground">
                           {b.bucket}
                         </span>
-                        <span className="text-lg font-semibold">
+                        <span className="text-lead font-semibold">
                           {b.count.toLocaleString()}
                         </span>
                       </div>
@@ -406,7 +409,7 @@ export function PlatformCostContent({ searchParams }: Props) {
                 aria-selected={tab === t}
                 aria-controls={`tabpanel-${t}`}
                 onClick={() => updateUrl({ tab: t, page: "1" })}
-                className={`px-4 py-2 text-sm font-medium ${tab === t ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-4 py-2 text-body font-medium ${tab === t ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {t === "overview"
                   ? "By Provider"

@@ -171,10 +171,10 @@ function UsageBar({
           <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-subtle uppercase">
             {day.date}
           </span>
-          <span className="text-sm font-medium text-action-foreground tabular-nums">
+          <span className="text-body font-medium text-action-foreground tabular-nums">
             ${day.amount.toFixed(2)}
           </span>
-          <span className="text-xs text-foreground-subtle tabular-nums">
+          <span className="text-caption text-foreground-subtle tabular-nums">
             {day.runs} runs
           </span>
         </div>

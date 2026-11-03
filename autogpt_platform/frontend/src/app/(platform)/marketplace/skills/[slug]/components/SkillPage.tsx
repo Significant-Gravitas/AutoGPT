@@ -106,7 +106,7 @@ export function SkillPage({ slug }: Props) {
             {icon && skill.categories[0] ? (
               <span
                 className={cn(
-                  "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+                  "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption font-medium",
                   accent.pill,
                 )}
               >
@@ -238,7 +238,7 @@ export function SkillPage({ slug }: Props) {
               {skill.triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-sm font-medium text-foreground-secondary"
+                  className="rounded-lg bg-surface-hover px-2.5 py-1 text-body font-medium text-foreground-secondary"
                 >
                   {trigger}
                 </span>

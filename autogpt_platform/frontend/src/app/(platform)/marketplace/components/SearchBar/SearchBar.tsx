@@ -42,7 +42,7 @@ export function SearchBar({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className="flex-grow border-none bg-transparent text-base font-normal text-foreground-base placeholder:text-base placeholder:font-normal placeholder:text-foreground-subtle focus:outline-none md:text-lg md:placeholder:text-lg"
+        className="flex-grow border-none bg-transparent text-body-lg font-normal text-foreground-base placeholder:text-body-lg placeholder:font-normal placeholder:text-foreground-subtle focus:outline-none md:text-lead md:placeholder:text-lead"
         data-testid="store-search-input"
       />
     </form>

@@ -16,7 +16,7 @@ interface Props {
 
 export function QueueFooter({ rejectAll, onContinue, busy }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-separator bg-surface-muted/60 px-4 py-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 border-t border-separator bg-surface-muted/60 px-4 py-2 text-body">
       {rejectAll?.confirming ? (
         <>
           <span role="alert" className="text-foreground-body">

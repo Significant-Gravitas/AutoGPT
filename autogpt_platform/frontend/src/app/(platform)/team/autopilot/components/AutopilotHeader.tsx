@@ -28,7 +28,7 @@ export function AutopilotHeader() {
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-heading text-foreground-strong">
+            <h1 className="text-heading-md font-semibold tracking-heading text-foreground-strong">
               {AUTOPILOT_NAME}
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border-base bg-surface-muted px-2.5 py-0.5 font-sans text-caption font-medium text-foreground-body">

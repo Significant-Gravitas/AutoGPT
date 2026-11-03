@@ -32,7 +32,7 @@ export function BillingToggle({ billing, onBillingChange }: Props) {
           {cycle === "yearly" && (
             <span
               data-slot="billing-toggle-savings"
-              className="text-xs text-success"
+              className="text-caption text-success"
             >
               Save 15%
             </span>

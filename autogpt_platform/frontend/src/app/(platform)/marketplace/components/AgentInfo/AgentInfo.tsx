@@ -107,7 +107,7 @@ export const AgentInfo = ({
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-info/20 px-1.5 py-0.5 text-xs font-medium text-info-foreground">
+              <span className="rounded bg-info/20 px-1.5 py-0.5 text-caption font-medium text-info-foreground">
                 Current
               </span>
             )}
@@ -168,7 +168,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-foreground-secondary sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div className="mb-4 line-clamp-2 w-full text-body-lg leading-normal font-normal text-foreground-secondary sm:text-lead lg:mb-5 lg:text-lead lg:leading-7">
             {shortDescription}
           </div>
 

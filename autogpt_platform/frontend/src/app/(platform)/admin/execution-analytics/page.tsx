@@ -8,7 +8,7 @@ function ExecutionAnalyticsDashboard() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Execution Analytics</h1>
+            <h1 className="text-heading font-bold">Execution Analytics</h1>
             <p className="text-foreground-tertiary">
               Generate missing activity summaries and success scores for agent
               executions
@@ -17,7 +17,7 @@ function ExecutionAnalyticsDashboard() {
         </div>
 
         <div className="rounded-lg border bg-surface p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold">
+          <h2 className="mb-4 text-lead font-semibold">
             Execution Analytics & Accuracy Monitoring
           </h2>
           <p className="mb-6 text-foreground-secondary">

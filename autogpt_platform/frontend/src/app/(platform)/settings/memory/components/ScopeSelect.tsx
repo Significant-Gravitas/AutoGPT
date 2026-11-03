@@ -42,7 +42,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
           type="button"
           aria-label="Memory scope"
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-medium border border-border-base bg-surface px-3 py-2 text-sm font-medium text-foreground-base",
+            "flex w-full items-center gap-2.5 rounded-medium border border-border-base bg-surface px-3 py-2 text-body font-medium text-foreground-base",
             "transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:outline-none",
             "data-[state=open]:border-brand",
           )}
@@ -76,10 +76,10 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
         >
           <AutopilotAvatar size={28} />
           <span className="flex min-w-0 flex-col leading-snug">
-            <span className="text-sm font-medium text-foreground-base">
+            <span className="text-body font-medium text-foreground-base">
               Otto
             </span>
-            <span className="text-xs text-foreground-tertiary">
+            <span className="text-caption text-foreground-tertiary">
               Your account memory — everything you do together
             </span>
           </span>
@@ -106,11 +106,11 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
                   size={28}
                 />
                 <span className="flex min-w-0 flex-col leading-snug">
-                  <span className="truncate text-sm font-medium text-foreground-base">
+                  <span className="truncate text-body font-medium text-foreground-base">
                     {expert.name}
                   </span>
                   {expert.role && (
-                    <span className="truncate text-xs text-foreground-tertiary">
+                    <span className="truncate text-caption text-foreground-tertiary">
                       {expert.role}
                     </span>
                   )}
