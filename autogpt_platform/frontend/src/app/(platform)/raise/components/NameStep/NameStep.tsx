@@ -54,7 +54,7 @@ export function NameStep({
       {selectedName ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-caps text-muted-foreground"
+          className="mr-4 text-xs font-medium tracking-caps text-muted-foreground uppercase"
         >
           or
         </span>
@@ -77,7 +77,8 @@ export function NameStep({
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Name me
           </Button>

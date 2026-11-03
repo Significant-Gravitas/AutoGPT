@@ -5,6 +5,7 @@ import {
   COOKIEBOT_SCRIPT_ID,
   getCookiebotAPI,
   parseCookieConsentHeader,
+  readCookieConsentIdentity,
   type CookiebotConsent,
 } from "./cookiebot";
 
@@ -59,6 +60,25 @@ export function getConsentAnswer(): ConsentState | null {
   if (!isConsentManagerConfigured()) return null;
   const answer = readBrowserConsent();
   return answer ? toConsentState(answer) : null;
+}
+
+/**
+ * Identifies the visitor's stored answer; a new answer, even the same choice
+ * given again, gets a new one. Null without a stored answer.
+ */
+export function getConsentAnswerIdentity(): string | null {
+  if (typeof document === "undefined") return null;
+  return readCookieConsentIdentity(document.cookie);
+}
+
+/**
+ * Whether the answer so far is only the stored cookie's while uc.js may still
+ * arrive and withdraw it (see readBrowserConsent).
+ */
+export function isConsentAnswerUnconfirmed(): boolean {
+  if (typeof window === "undefined") return true;
+  if (!isConsentManagerConfigured() || getCookiebotAPI()) return false;
+  return msSincePageLoaded() < COOKIEBOT_LOAD_GRACE_MS;
 }
 
 export function hasConsentFor(category: ConsentCategory): boolean {

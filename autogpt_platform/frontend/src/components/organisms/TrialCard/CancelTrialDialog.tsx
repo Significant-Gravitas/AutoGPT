@@ -40,11 +40,11 @@ export function CancelTrialDialog({ trial, isCanceling, onCancel }: Props) {
           data-slot="cancel-trial-dialog-body"
           className="flex flex-col gap-3"
         >
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body" tone="emphasis">
             Your trial won&apos;t convert to a paid plan and your card
             won&apos;t be charged.
           </Text>
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body" tone="emphasis">
             You keep full access until{" "}
             <strong
               data-slot="cancel-trial-dialog-end-date"

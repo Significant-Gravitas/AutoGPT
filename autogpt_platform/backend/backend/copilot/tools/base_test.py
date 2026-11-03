@@ -140,7 +140,9 @@ class TestPersistAndSummarize:
 
         assert 'workspace_path="tool-outputs/tc-123.json">' in result
         assert "format=" not in result
-        assert "to read any section. To process the file" in result
+        assert "to read any section." in result
+        assert "continue from the returned end offset" in result
+        assert "To process the file" in result
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +192,26 @@ class TestBaseToolExecuteLargeOutput:
         assert "<tool-output-truncated" in str(result.output)
         assert "read_workspace_file" in str(result.output)
         mock_manager.write_file.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [55_000, 75_000, 200_000])
+    async def test_output_the_cli_would_spill_reaches_the_workspace(self, size):
+        """The Claude CLI moves any result over 50,000 chars to a host folder
+        bash_exec can't open (SECRT-3181). The workspace copy has to come
+        first, and the preview the model gets has to stay under that line."""
+        tool = _HugeOutputTool(output_size=size)
+        session = MagicMock()
+        session.session_id = "s-1"
+        session.external_caller = False
+        manager = AsyncMock()
+        db_patch, mgr_patch = _workspace_patches(manager)
+
+        with db_patch, mgr_patch:
+            result = await tool.execute("user-1", session, "tc-spill")
+
+        manager.write_file.assert_awaited_once()
+        assert "save_to_path" in str(result.output)
+        assert len(str(result.output)) < 50_000
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("size", [_LARGE_OUTPUT_THRESHOLD + 10_000, 200_000])
@@ -380,6 +402,7 @@ class TestDigestThreshold:
         # And the way back names the tool and its arguments.
         assert 'read_workspace_file(path="tool-outputs/tc-digest.json"' in output
         assert "offset=<offset>, length=<length>" in output
+        assert "continue from the returned end offset" in output
         # Without this the model reads the outline as a prefix of the output.
         assert "not a literal prefix" in output
         # A flat length= wider than the file turns one "narrow" read into a
@@ -616,6 +639,39 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestRefusalStatus:
+    """Chat's engines hand the model a refusal as the tool's result, while an
+    MCP client reads it from the call's status."""
+
+    @pytest.mark.parametrize("external_caller", [False, True])
+    @pytest.mark.asyncio
+    async def test_a_refusal_fails_the_call_only_for_an_external_caller(
+        self, external_caller: bool
+    ):
+        class _Refuses(BaseTool):
+            @property
+            def name(self) -> str:
+                return "refusing_tool"
+
+            @property
+            def description(self) -> str:
+                return "refuses"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                return ErrorResponse(message="No", session_id=session.session_id)
+
+        session = ChatSession.new("u1", dry_run=False, origin="automation")
+        session.external_caller = external_caller
+
+        output = await _Refuses().execute("u1", session, "call-1")
+
+        assert output.success is not external_caller
 
 
 class TestGateEnforcement:

@@ -31,8 +31,8 @@ export function ActivationPaymentMethod() {
         target="_blank"
         rel="noopener noreferrer"
         variant="ghost"
-        size="small"
-        className="h-auto min-w-0 p-0 text-sm underline underline-offset-4"
+        size="inline"
+        className="underline underline-offset-4"
         aria-label="Manage payment method in a new tab"
       >
         Manage

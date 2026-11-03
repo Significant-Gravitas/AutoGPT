@@ -36,10 +36,12 @@ import {
   buildChainReply,
   ChainActionsContext,
   type ChainActionEntry,
+  uniqueChainEntries,
 } from "./chainActions";
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
+import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
@@ -100,23 +102,24 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
   // renders one Proceed that sends everything as a single message.
-  const [actionEntries, setActionEntries] = useState<
+  // Keyed by the registering component, not the card id (see ChainActions).
+  const [registrations, setRegistrations] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
   // Kept as memos with the compiler on: the cards' register effects depend on
   // this context value, and re-running them would re-register every card.
-  const register = useCallback((entry: ChainActionEntry) => {
-    setActionEntries((prev) => {
+  const register = useCallback((owner: string, entry: ChainActionEntry) => {
+    setRegistrations((prev) => {
       const next = new Map(prev);
-      next.set(entry.id, entry);
+      next.set(owner, entry);
       return next;
     });
   }, []);
-  const unregister = useCallback((id: string) => {
-    setActionEntries((prev) => {
-      if (!prev.has(id)) return prev;
+  const unregister = useCallback((owner: string) => {
+    setRegistrations((prev) => {
+      if (!prev.has(owner)) return prev;
       const next = new Map(prev);
-      next.delete(id);
+      next.delete(owner);
       return next;
     });
   }, []);
@@ -125,7 +128,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [register, unregister],
   );
 
-  const pendingActions = [...actionEntries.values()];
+  const pendingActions = uniqueChainEntries(registrations);
   const connectorRequests = pendingActions
     .map((entry) => entry.connectors)
     .filter((request) => request !== undefined);
@@ -213,7 +216,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [canAutoSend],
   );
 
-  useCredentialFailureCounters({ entries: actionEntries });
+  useCredentialFailureCounters({ entries: registrations });
 
   // Kept as a memo: the compiler folds this into the scope of everything
   // rendered below the early return, so without it the rows would be rebuilt
@@ -238,6 +241,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       ),
     [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
+  useNoteRunningSteps(rows);
   if (rows.length === 0) return null;
 
   const askedRecords = rows.flatMap((row) => {
@@ -340,7 +344,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               >
                 <div
                   className={
-                    "flex flex-col pl-0.5 pt-2.5" +
+                    "flex flex-col pt-2.5 pl-0.5" +
                     (panelOpen && !windowMode ? " " + PANEL_REVEAL : "")
                   }
                 >
@@ -415,11 +419,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">
                       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-                        <Icon
-                          icon={Tick02Icon}
-                          size={14}
-                          className="text-foreground-secondary"
-                        />
+                        <Icon icon={Tick02Icon} size={14} tone="secondary" />
                       </div>
                       <div className="flex h-7 items-center text-sm text-foreground-secondary">
                         Done
@@ -475,11 +475,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-sm text-foreground-secondary">
-              <Icon
-                icon={SentIcon}
-                size={16}
-                className="text-foreground-subtle"
-              />
+              <Icon icon={SentIcon} size={16} tone="subtle" />
               {allActionsReady
                 ? "Everything's filled in"
                 : "Complete the steps above to continue"}

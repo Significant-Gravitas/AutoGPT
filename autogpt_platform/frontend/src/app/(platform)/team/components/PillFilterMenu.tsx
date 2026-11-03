@@ -25,6 +25,8 @@ interface Props<T extends string> {
   defaultValue: T;
   options: readonly PillFilterOption<T>[];
   onChange: (next: T) => void;
+  /** `body-md` inside a profile tab, whose copy reads at 15px. */
+  textSize?: "body" | "body-md";
 }
 
 /** A pill like the header's buttons, naming the current filter. Any choice
@@ -35,6 +37,7 @@ export function PillFilterMenu<T extends string>({
   defaultValue,
   options,
   onChange,
+  textSize = "body",
 }: Props<T>) {
   const current =
     options.find((option) => option.value === value) ?? options[0];
@@ -45,22 +48,22 @@ export function PillFilterMenu<T extends string>({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="secondary"
+          variant={isActive ? "primary" : "secondary"}
           size="small"
+          textSize={textSize}
           aria-label={`${label}: ${current.label}`}
           leadingIcon={current.icon}
           rightIcon={
-            <Icon
-              icon={ArrowDown01Icon}
-              size={14}
-              className="ml-0.5 text-foreground-subtle transition-transform duration-200 group-data-[state=open]:rotate-180"
-            />
+            <span
+              className={cn(
+                "ml-0.5 flex transition-transform duration-200 group-data-[state=open]:rotate-180",
+                !isActive && "text-foreground-subtle",
+              )}
+            >
+              <Icon icon={ArrowDown01Icon} size={14} />
+            </span>
           }
-          className={cn(
-            "group shrink-0 gap-1.5 font-medium",
-            isActive &&
-              "border-action-hover bg-action-hover text-action-foreground hover:border-action hover:bg-action [&_svg]:text-action-foreground",
-          )}
+          className="group shrink-0"
         >
           {current.label}
         </Button>
@@ -71,17 +74,13 @@ export function PillFilterMenu<T extends string>({
           onValueChange={(next) => onChange(next as T)}
         >
           {options.map((option) => (
-            <DropdownMenuRadioItem
-              key={option.value}
-              value={option.value}
-              className="gap-2"
-            >
-              <Icon
-                icon={option.icon}
-                size={15}
-                className="text-foreground-tertiary"
-              />
-              {option.label}
+            <DropdownMenuRadioItem key={option.value} value={option.value}>
+              <span className="flex items-center gap-2">
+                <span className="flex text-foreground-tertiary">
+                  <Icon icon={option.icon} size={15} />
+                </span>
+                {option.label}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

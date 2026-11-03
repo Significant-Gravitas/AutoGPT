@@ -1,10 +1,19 @@
 import asyncio
 import logging
 import re
+import types
+from collections.abc import Callable
+from functools import update_wrapper
+from typing import Any
 
 from jinja2 import BaseLoader
 from jinja2.exceptions import TemplateError
-from jinja2.sandbox import SandboxedEnvironment
+from jinja2.sandbox import (
+    SandboxedEnvironment,
+    SandboxedEscapeFormatter,
+    SandboxedFormatter,
+)
+from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +22,90 @@ MAX_EXPONENT = 1000  # Max allowed exponent in ** operations
 MAX_RANGE = 10_000  # Max items from range()
 MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
+MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
+
+# The rest of one %-style conversion after its optional "(key)": flags, a
+# width and a precision that are digits or "*", a length modifier and the
+# conversion type, e.g. "-12.4f" -> ("12", "4", "f"); "*d" -> ("*", "", "d")
+_PERCENT_CONVERSION = re.compile(r"[-+ #0]*(\*|\d*)(?:\.(\*|\d*))?[hlL]?([\s\S])")
+# The size fields of one str.format() spec, with any fill character, e.g.
+# "<12.4f" -> ("12", "4"). A type's own spec language (a datetime's "%Y")
+# doesn't match and isn't checked.
+_FORMAT_SPEC_SIZES = re.compile(
+    r"^(?:[\s\S]?[<>=^])?[-+ ]?z?#?0?(\d*)[,_]?(?:\.(\d+))?[a-zA-Z%]?$"
+)
 
 
 def format_filter_for_jinja2(value, format_string=None):
-    if format_string:
-        return format_string % float(value)
-    return value
+    if not format_string:
+        return value
+    _check_percent_format(format_string)
+    return format_string % float(value)
+
+
+def _check_percent_format(format_string: str, args: Any = ()) -> None:
+    """Refuse a %-style format string with a field over the size cap.
+
+    A ``*`` width or precision takes its size from ``args``, in the order the
+    % operator reads them; a size that isn't there is left for the operator
+    to reject.
+    """
+    values = args if isinstance(args, tuple) else (args,)
+    position = 0
+    for key, width, precision, conversion in _percent_conversions(format_string):
+        sizes: list[str | int | None] = []
+        for size in (width, precision):
+            if size == "*":
+                # Taken even by a literal "%%", so later sizes keep their place
+                size = values[position] if position < len(values) else 0
+                position += 1
+            sizes.append(size if isinstance(size, (str, int)) else 0)
+        if conversion != "%":
+            position += 1
+        _check_field_size(*sizes)
+
+
+def _percent_conversions(
+    format_string: str,
+) -> list[tuple[str | None, str, str, str]]:
+    """Each %-style conversion as (key, width, precision, type).
+
+    A "(key)" may hold balanced parentheses, as the % operator allows, so
+    it's scanned by depth rather than matched up to the first ")".
+    """
+    conversions = []
+    position = format_string.find("%")
+    while position != -1:
+        position += 1
+        key = None
+        if format_string.startswith("(", position):
+            depth, start = 1, position + 1
+            position = start
+            while position < len(format_string) and depth:
+                depth += {"(": 1, ")": -1}.get(format_string[position], 0)
+                position += 1
+            key = format_string[start : position - 1]
+        rest = _PERCENT_CONVERSION.match(format_string, position)
+        if rest is None:
+            break
+        conversions.append((key, *rest.groups()))
+        position = format_string.find("%", rest.end())
+    return conversions
+
+
+def _check_format_spec(format_spec: str) -> None:
+    """Refuse a str.format() spec with a field over the size cap."""
+    sizes = _FORMAT_SPEC_SIZES.match(format_spec)
+    if sizes:
+        _check_field_size(sizes.group(1), sizes.group(2))
+
+
+def _check_field_size(width: str | int | None, precision: str | int | None) -> None:
+    # The width and precision decide how much formatting allocates
+    if max(abs(int(width or 0)), abs(int(precision or 0))) > MAX_FORMAT_FIELD_SIZE:
+        raise OverflowError(
+            f"Format field too large (max {MAX_FORMAT_FIELD_SIZE} characters)"
+        )
 
 
 class TextFormatter:
@@ -83,7 +170,43 @@ class _RestrictedEnvironment(SandboxedEnvironment):
     """
 
     # Tell Jinja2 to route these operators through call_binop()
-    intercepted_binops = frozenset(["**", "*"])
+    intercepted_binops = frozenset(["**", "*", "%"])
+
+    def wrap_str_format(self, value: Any) -> Callable[..., str] | None:
+        """``SandboxedEnvironment.wrap_str_format`` with formatters that
+        refuse a field over the size cap, so ``str.format`` and
+        ``format_map`` get the same limit as the ``format`` filter."""
+        if not isinstance(
+            value, (types.MethodType, types.BuiltinMethodType)
+        ) or value.__name__ not in ("format", "format_map"):
+            return None
+
+        f_self: Any = value.__self__
+        if not isinstance(f_self, str):
+            return None
+
+        str_type: type[str] = type(f_self)
+        is_format_map = value.__name__ == "format_map"
+        formatter: SandboxedFormatter
+        if isinstance(f_self, Markup):
+            formatter = _SizeCheckedEscapeFormatter(self, escape=f_self.escape)
+        else:
+            formatter = _SizeCheckedFormatter(self)
+        vformat = formatter.vformat
+
+        def wrapper(*args: Any, **kwargs: Any) -> str:
+            if is_format_map:
+                if kwargs:
+                    raise TypeError("format_map() takes no keyword arguments")
+                if len(args) != 1:
+                    raise TypeError(
+                        f"format_map() takes exactly one argument ({len(args)} given)"
+                    )
+                kwargs = args[0]
+                args = ()
+            return str_type(vformat(f_self, args, kwargs))
+
+        return update_wrapper(wrapper, value)
 
     def call(
         __self,  # noqa: N805 – Jinja2 convention
@@ -104,6 +227,11 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         return super().call(__context, __obj, *args, **kwargs)
 
     def call_binop(self, context, operator, left, right):
+        # Intercept %-style formatting, of bytes too: a template can make them
+        if operator == "%" and isinstance(left, str):
+            _check_percent_format(left, right)
+        if operator == "%" and isinstance(left, (bytes, bytearray)):
+            _check_percent_format(left.decode("latin-1"), right)
         # Intercept the ** (power) operator
         if operator == "**":
             if isinstance(right, (int, float)) and abs(right) > MAX_EXPONENT:
@@ -125,6 +253,22 @@ class _RestrictedEnvironment(SandboxedEnvironment):
                         f"Sequence repeat too large (max {MAX_SEQUENCE_REPEAT} items)"
                     )
         return super().call_binop(context, operator, left, right)
+
+
+class _SizeCheckedFormatter(SandboxedFormatter):
+    """A sandboxed str.format() that refuses a field over the size cap.
+
+    Nested sizes such as ``{:{width}}`` are resolved before ``format_field``
+    runs, so the check sees the width that would apply.
+    """
+
+    def format_field(self, value: Any, format_spec: str) -> Any:
+        _check_format_spec(format_spec)
+        return super().format_field(value, format_spec)
+
+
+class _SizeCheckedEscapeFormatter(_SizeCheckedFormatter, SandboxedEscapeFormatter):
+    pass
 
 
 # ---------------------------------------------------------------------------

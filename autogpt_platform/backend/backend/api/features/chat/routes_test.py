@@ -27,7 +27,7 @@ from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
-from backend.data.model import OAuth2Credentials
+from backend.data.model import HostScopedCredentials, OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
 from backend.integrations.codex.auth_bundle import (
     CodexAuthBundleV1,
@@ -1545,7 +1545,7 @@ def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
     mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
     mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
     # Patch the limit-resolution helper so the test does not exercise the
-    # real LaunchDarkly / tier-lookup path — keeps the assertion focused on
+    # real PostHog / tier-lookup path — keeps the assertion focused on
     # the RateLimitUnavailable → 503 mapping.
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
@@ -1611,7 +1611,7 @@ def _mock_usage(
 
     Mocks both ``get_global_rate_limits`` (returns the given limits + tier) and
     ``get_usage_status`` so that tests exercise the endpoint without hitting
-    LaunchDarkly or Prisma.
+    PostHog or Prisma.
     """
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
 
@@ -1984,7 +1984,11 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
         ]
     }
     access.assert_awaited_once_with(test_user_id)
-    lookup.assert_awaited_once_with(test_user_id, ProviderName.MICROSOFT_365_COPILOT)
+    # Only Microsoft connections are read; ChatGPT ones are never looked up.
+    assert [call.args for call in lookup.await_args_list] == [
+        (test_user_id, ProviderName.MICROSOFT),
+        (test_user_id, ProviderName.MICROSOFT_365_COPILOT),
+    ]
 
 
 def test_list_chat_transports_omits_invalid_codex_credentials(
@@ -5201,6 +5205,87 @@ def test_credential_selection_rejects_a_provider_named_twice(
 
     assert response.status_code == 422
     assert response.json()["detail"] == "duplicate_provider"
+    remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("host", ["api.linear.app", "api.github.com"])
+def test_credential_selection_keeps_host_scoped_picks(mocker, host):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host=host,
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {f"http:{host}": "work-key"}},
+    )
+    assert response.status_code == 200
+    store.get_creds_by_id.assert_awaited_once_with(TEST_USER_ID, "work-key")
+    remember.assert_awaited_once_with("sess-1", {f"http:{host}": "work-key"})
+
+
+def test_credential_selection_rejects_a_pick_for_another_host(mocker):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(
+        return_value=HostScopedCredentials(
+            id="work-key",
+            provider="http",
+            host="api.github.com",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "work-key"}},
+    )
+    assert response.status_code == 404
+    remember.assert_not_awaited()
+
+
+@pytest.mark.parametrize("missing", ["session", "credential"])
+def test_host_credential_selection_rejects_inaccessible_resources(mocker, missing):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=None if missing == "session" else MagicMock()),
+    )
+    store = MagicMock()
+    store.get_creds_by_id = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.chat.routes.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    )
+    remember = mocker.patch(
+        "backend.api.features.chat.routes.remember_selection", new=AsyncMock()
+    )
+    response = client.put(
+        "/sessions/sess-1/credential-selection",
+        json={"selections": {"http:api.linear.app": "another-users-key"}},
+    )
+    assert response.status_code == 404
     remember.assert_not_awaited()
 
 

@@ -221,6 +221,9 @@ updates:
       # so a newer major image fails `pnpm install`. Bump both together by hand.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+      # FalkorDB pins move together with infra's version, by hand (OPEN-3746, #16224).
+      - dependency-name: "falkordb/falkordb"
+      - dependency-name: "falkordb/falkordb-server"
     groups:
       production-dependencies:
         dependency-type: "production"

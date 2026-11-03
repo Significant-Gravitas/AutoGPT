@@ -96,7 +96,7 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      // TODO(tokens): no exact role: !text-indigo-500 #6366F1
+      // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
       colorClass: "!text-indigo-500",
       // TODO(tokens): no exact role: literal #6366F1
       hexColor: "#6366f1",
@@ -110,43 +110,37 @@ export const getTypeDisplayInfo = (schema: any) => {
     > = {
       file: {
         displayType: "file",
-        // TODO(tokens): no exact role: !text-green-500 #16A34A
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
         // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       date: {
         displayType: "date",
-        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
-        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
-        // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        colorClass: "!text-blue-500",
+        colorClass: "!text-info",
         // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
         hexColor: "#3b82f6",
       },
       "long-text": {
         displayType: "text",
-        // TODO(tokens): no exact role: !text-green-500 #16A34A
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
         // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
       "short-text": {
         displayType: "text",
-        // TODO(tokens): no exact role: !text-green-500 #16A34A
-        colorClass: "!text-green-500",
+        colorClass: "!text-success",
         // TODO(tokens): no exact role: literal #22C55E
         hexColor: "#22c55e",
       },
@@ -171,22 +165,16 @@ export const getTypeDisplayInfo = (schema: any) => {
   const displayType = typeMap[schema?.type] || schema?.type || "any";
 
   const colorMap: Record<string, string> = {
-    // TODO(tokens): no exact role: !text-green-500 #16A34A
-    string: "!text-green-500",
-    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-    number: "!text-blue-500",
-    // TODO(tokens): no fitting role for !text-blue-500 #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-    integer: "!text-blue-500",
-    // TODO(tokens): no exact role: !text-yellow-500 #F5C000
+    string: "!text-success",
+    number: "!text-info",
+    integer: "!text-info",
+    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
     boolean: "!text-yellow-500",
-    // TODO(tokens): no fitting role for !text-purple-500 #7733F5; #7733F5 is brand (a button fill), and this colours a type label (QUALITY 41)
-    object: "!text-purple-500",
-    // TODO(tokens): no exact role: !text-indigo-500 #6366F1
+    object: "!text-brand",
+    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
     array: "!text-indigo-500",
-    // TODO(tokens): no exact role: !text-gray-500 #6B7280
-    null: "!text-gray-500",
-    // TODO(tokens): no exact role: !text-gray-500 #6B7280
-    any: "!text-gray-500",
+    null: "!text-foreground-tertiary",
+    any: "!text-foreground-tertiary",
   };
 
   const hexColorMap: Record<string, string> = {
@@ -208,8 +196,7 @@ export const getTypeDisplayInfo = (schema: any) => {
     any: "#6b7280",
   };
 
-  // TODO(tokens): no exact role: !text-gray-500 #6B7280
-  const colorClass = colorMap[schema?.type] || "!text-gray-500";
+  const colorClass = colorMap[schema?.type] || "!text-foreground-tertiary";
   // TODO(tokens): no exact role: literal #6B7280
   const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
@@ -218,6 +205,18 @@ export const getTypeDisplayInfo = (schema: any) => {
     colorClass,
     hexColor,
   };
+};
+
+// Whole class names, so Tailwind finds each stroke colour in the source.
+const EDGE_STROKE_CLASSES: Record<string, string> = {
+  "!text-success": "stroke-success",
+  "!text-info": "stroke-info",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-yellow-500": "stroke-yellow-500",
+  "!text-brand": "stroke-brand",
+  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
+  "!text-indigo-500": "stroke-indigo-500",
+  "!text-foreground-tertiary": "stroke-foreground-tertiary",
 };
 
 export function getEdgeColorFromOutputType(
@@ -243,7 +242,10 @@ export function getEdgeColorFromOutputType(
 
     if (i === handleParts.length - 1) {
       const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
-      return { colorClass: colorClass.replace("!text-", "stroke-"), hexColor };
+      return {
+        colorClass: EDGE_STROKE_CLASSES[colorClass] ?? defaultColor.colorClass,
+        hexColor,
+      };
     }
 
     if (fieldSchema.properties) {

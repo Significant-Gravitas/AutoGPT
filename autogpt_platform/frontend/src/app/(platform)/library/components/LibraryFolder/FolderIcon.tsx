@@ -1,3 +1,4 @@
+/* oxlint-disable design-system/no-raw-colors -- folder colours are user-picked data, not UI colour */
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -138,18 +139,12 @@ export function FolderIcon({
 
   return (
     <div
-      className={`group relative cursor-pointer ${className}`}
-      style={{
-        width: 320 * scale,
-        height: 208 * scale,
-      }}
+      className={`group relative h-[calc(208px*var(--folder-scale))] w-[calc(320px*var(--folder-scale))] cursor-pointer ${className}`}
+      style={{ "--folder-scale": scale } as React.CSSProperties}
     >
-      <div
-        className="h-52 w-80 origin-top-left"
-        style={{ transform: `scale(${scale})`, perspective: "500px" }}
-      >
+      <div className="h-52 w-80 origin-top-left scale-[var(--folder-scale)] [perspective:500px]">
         <div
-          className={`folder-back relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
+          className={`relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
         >
           {[
             {
@@ -205,8 +200,7 @@ export function FolderIcon({
             rotateX: isOpen ? -15 : 0,
           }}
           transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible"
-          style={{ transformStyle: "preserve-3d" }}
+          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"
@@ -240,19 +234,11 @@ function Page({ color = "blue" }: PageProps) {
       className={`h-full w-full rounded-xl border bg-surface p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-foreground-base">
-          agent.json
-        </Text>
+        <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
           </div>
         ))}
       </div>

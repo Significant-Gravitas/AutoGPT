@@ -45,7 +45,9 @@ export function ServerGrowthChart({ data }: Props) {
         >
           <defs>
             <linearGradient id="serverFill" x1="0" y1="0" x2="0" y2="1">
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- indigo chart series has no role; info or brand would change the hue (deferred) */}
               <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+              {/* oxlint-disable-next-line design-system/no-raw-colors -- indigo chart series has no role; info or brand would change the hue (deferred) */}
               <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
             </linearGradient>
           </defs>

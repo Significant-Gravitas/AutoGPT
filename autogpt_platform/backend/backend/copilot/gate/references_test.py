@@ -246,6 +246,45 @@ async def test_a_pending_team_change_is_named_only_in_its_own_chat(
     redis.delete.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "hand_off, name, kind",
+    [
+        (
+            True,
+            "Ada to take on the Printify order pipeline",
+            "New hire with a first task",
+        ),
+        (False, "Ada", "New hire"),
+    ],
+)
+async def test_a_held_hire_names_the_task_its_confirm_would_start(hand_off, name, kind):
+    """Confirming a hire's hand-off id also starts the task, so a held confirm
+    must say so; the hire-only id of the same hire reads as the plain hire
+    (#16101 review)."""
+    from backend.copilot.tools.expert_proposal import ExpertChangeProposal
+    from backend.copilot.tools.models import ExpertChangePreview, ExpertHandoffTask
+
+    session = _session()
+    proposal = ExpertChangeProposal(
+        user_id="user-1",
+        session_id=session.session_id,
+        preview=ExpertChangePreview(kind="hire", name="Ada"),
+        handoff=ExpertHandoffTask(
+            title="the Printify order pipeline", brief="Move Etsy orders."
+        ),
+        hand_off=hand_off,
+        sibling_confirmation_id="c-2",
+    )
+    redis = MagicMock(get=AsyncMock(return_value=proposal.model_dump_json()))
+    with patch.object(references, "get_redis_async", AsyncMock(return_value=redis)):
+        [ref] = await resolve_references(
+            "confirm_expert_change", {"confirmation_id": "c-1"}, "user-1", session
+        )
+
+    assert ref.name == name
+    assert ref.kind == kind
+
+
 async def test_a_held_hire_is_named_however_slow_the_whole_roster_is():
     """Prod timed out listing every template inside the budget and showed the
     raw id instead of the name (2026-09-30); the template is read by id now."""

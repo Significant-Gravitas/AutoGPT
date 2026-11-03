@@ -16,6 +16,9 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
+import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
@@ -40,6 +43,12 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     hasInsetHeaderTitle,
     isBuilderRoute,
   } = usePlatformChrome();
+  // Not mounted under the walkthrough: on a phone it lands inside the
+  // walkthrough's window, over what it points at. It mounts, with its own
+  // reveal timer, once the walkthrough ends.
+  const isFirstRunTourOpen = useFirstRunTourStore(
+    (state) => state.source !== null,
+  );
 
   const content = (
     <TopUpPromptProvider>
@@ -52,7 +61,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -64,8 +73,9 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
 
   if (showAppSidebar) {
     // The browser's cookie stays current across client navigation; the layout's does not.
+    // Expanded until the user collapses it, so a new user can see their chats.
     const openOutsideBuilder =
-      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? false;
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? true;
     return (
       <SidebarProvider
         persistState
@@ -75,11 +85,13 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        {showChangelog ? <ChangelogPopup /> : null}
-        <SidebarInset className="bg-[#f9f9f9]">
+        {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
+        <SidebarInset className="bg-surface-muted">
           <header
             className={cn(
-              "flex shrink-0 items-center pb-4 pt-6",
+              "flex shrink-0 items-center pt-6 pb-4",
               // Overlay mode (copilot): the header floats above the content
               // instead of reserving vertical space, so the chat scrolls to
               // the viewport top underneath it.

@@ -2,7 +2,7 @@
 
 Goes through the inference layer every background call takes
 (``copilot/inference``): the chat transport's provider and the platform's
-key, on the reviewer's model, the call traced, and its spend recorded in the
+key, on the reviewer's model, with its spend recorded in the
 usage ledger so learning appears next to chat spend under one provider label.
 """
 
@@ -21,7 +21,6 @@ from backend.copilot.inference.context import (
 )
 from backend.copilot.inference.record import price, record
 from backend.copilot.inference.routing import resolve_route
-from backend.copilot.inference.trace import trace
 from backend.copilot.tools.skills import ParsedSkill
 
 from .contract import EvidenceBundle
@@ -57,16 +56,13 @@ async def review_evidence(
     ``DreamLLMError`` on provider/parse failure; its spend is the caller's to
     record (``record_review_cost``)."""
     ctx = _review_context(user_id, run_id, reviewer_model(config), config)
-    async with trace(ctx) as call:
-        completion = await structured_complete(
-            call.ctx,
-            build_review_messages(bundle, existing_skills, packages),
-            LearningProposal,
-            temperature=REVIEW_TEMPERATURE,
-            max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,
-        )
-        call.usage = completion.usage
-    return completion
+    return await structured_complete(
+        ctx,
+        build_review_messages(bundle, existing_skills, packages),
+        LearningProposal,
+        temperature=REVIEW_TEMPERATURE,
+        max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,
+    )
 
 
 async def record_review_cost(

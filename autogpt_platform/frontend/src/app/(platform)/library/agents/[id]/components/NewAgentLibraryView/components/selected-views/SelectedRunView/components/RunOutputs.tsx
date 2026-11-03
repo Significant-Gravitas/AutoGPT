@@ -88,8 +88,9 @@ export function RunOutputs({
   }, [outputs, shareToken]);
 
   if (!items.length) {
-    // TODO(tokens): no exact role for text-neutral-600 (#525252)
-    return <div className="text-neutral-600">No output from this run.</div>;
+    return (
+      <div className="text-foreground-secondary">No output from this run.</div>
+    );
   }
 
   return (
@@ -99,7 +100,7 @@ export function RunOutputs({
         hiddenFromReplay && HIDDEN_FROM_REPLAY,
       )}
     >
-      <div className="absolute right-3 top-3 z-10">
+      <div className="absolute top-3 right-3 z-10">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,

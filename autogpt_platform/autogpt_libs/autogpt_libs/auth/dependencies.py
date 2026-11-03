@@ -507,6 +507,7 @@ async def get_request_context(
             or ws_member.status != "ACTIVE"
             or ws_member.Team is None
             or ws_member.Team.orgId != org_id
+            or ws_member.Team.archivedAt is not None
         ):
             logger.debug(
                 "Workspace %s not valid for user %s in org %s; falling back to org-home",

@@ -152,11 +152,13 @@ from backend.data.graph import (
     get_graph_settings,
     get_node,
     get_store_listed_graphs,
+    is_graph_version_owner,
     validate_graph_execution_permissions,
 )
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    claim_approved_review,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
     get_pending_reviews_for_chat_session,
@@ -166,6 +168,7 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
     record_gate_approval,
+    release_review_claim,
     reopen_review,
     update_review_processed_status,
 )
@@ -413,6 +416,7 @@ class DatabaseManager(AppService):
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
+    is_graph_version_owner = _(is_graph_version_owner)
 
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -431,7 +435,7 @@ class DatabaseManager(AppService):
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
-    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    # full flag context — see backend/util/feature_flag/__init__.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
@@ -453,6 +457,7 @@ class DatabaseManager(AppService):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    claim_approved_review = _(claim_approved_review)
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
@@ -462,6 +467,7 @@ class DatabaseManager(AppService):
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     process_all_reviews_for_execution = _(process_all_reviews_for_execution)
     record_gate_approval = _(record_gate_approval)
+    release_review_claim = _(release_review_claim)
     reopen_review = _(reopen_review)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -659,6 +665,8 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
+    list_expert_identities = _(experts_db.list_expert_identities)
+    owns_active_expert = _(experts_db.owns_active_expert)
     # The scheduler's fire path reads the routine behind a copilot-turn job to
     # find its durable thread and whether the owner granted it anything.
     create_routine = _(experts_db.create_routine)
@@ -974,6 +982,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
+    is_graph_version_owner = d.is_graph_version_owner
     get_node = d.get_node
     get_store_listed_graphs = d.get_store_listed_graphs
 
@@ -997,6 +1006,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    claim_approved_review = d.claim_approved_review
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
@@ -1005,6 +1015,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     process_all_reviews_for_execution = d.process_all_reviews_for_execution
     record_gate_approval = d.record_gate_approval
+    release_review_claim = d.release_review_claim
     reopen_review = d.reopen_review
     update_review_processed_status = d.update_review_processed_status
 
@@ -1214,6 +1225,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     get_autopilot_mode = d.get_autopilot_mode
+    list_expert_identities = d.list_expert_identities
+    owns_active_expert = d.owns_active_expert
     get_routine = d.get_routine
     record_routine_thread = d.record_routine_thread
     record_routine_fired = d.record_routine_fired
