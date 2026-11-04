@@ -2375,6 +2375,7 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
         ({"name": "clean", " name": "padded"}, {"name": "clean"}),
         ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
         ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
         ({}, {}),
     ],
@@ -2400,18 +2401,18 @@ async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
             reasoning=None,
         )
 
-    block.llm_call = fake_llm_call  # type: ignore
     input_data = llm.AIStructuredResponseGeneratorBlock.Input(
         prompt="Greet {{name}}",
         sys_prompt="You talk to {{name}}.",
         prompt_values={"name ": "Ada"},
         expected_format={},
         model=llm.DEFAULT_LLM_MODEL,
-        credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+        credentials=_TEST_AI_CREDENTIALS,
     )
 
-    async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-        pass
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
 
     contents = [message["content"] for message in sent["prompt"]]
     assert any("You talk to Ada." in content for content in contents)
