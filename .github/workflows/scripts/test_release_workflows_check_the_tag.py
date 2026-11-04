@@ -62,9 +62,15 @@ class ReleaseWorkflowsCheckTheTag(unittest.TestCase):
             "startsWith(github.event.release.tag_name, 'autogpt-platform-')",
             jobs["migrate"]["if"],
         )
-        # The jobs after it are skipped with it only while they need it.
+        # Manual dispatch is the only way to deploy outside a platform release.
+        self.assertIn("workflow_dispatch", triggers(workflow))
+        self.assertIn("github.event_name == 'workflow_dispatch'", jobs["migrate"]["if"])
+        # The jobs after it are skipped with it only while they need it and
+        # have no condition of their own: `if: always()` on `trigger` would
+        # deploy for every published release.
         for job in ("publish-skills", "trigger"):
             self.assertIn("migrate", jobs[job]["needs"])
+            self.assertNotIn("if", jobs[job], job)
 
 
 if __name__ == "__main__":
