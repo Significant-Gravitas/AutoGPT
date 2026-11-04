@@ -35,7 +35,7 @@ export function ExpertWorkflowList({ name, workflows }: Props) {
             />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground-emphasis">
+                <p className="truncate text-body font-medium text-foreground-emphasis">
                   {workflow.name ?? "Unnamed workflow"}
                 </p>
                 {workflow.description ? (
@@ -45,7 +45,7 @@ export function ExpertWorkflowList({ name, workflows }: Props) {
                 ) : null}
               </div>
               {workflow.schedule_cron ? (
-                <span className="flex shrink-0 items-center gap-1 text-xs text-foreground-tertiary sm:mt-0.5">
+                <span className="flex shrink-0 items-center gap-1 text-caption text-foreground-tertiary sm:mt-0.5">
                   <Icon icon={Calendar03Icon} size={13} aria-hidden="true" />
                   {getCadenceLabel(workflow.schedule_cron)}
                 </span>

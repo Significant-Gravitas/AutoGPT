@@ -109,7 +109,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Date column */}
-        <div className="text-sm text-foreground-secondary">
+        <div className="text-body text-foreground-secondary">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
 
@@ -119,7 +119,7 @@ export const AgentTableRow = ({
         </div>
 
         {/* Runs column */}
-        <div className="text-right text-sm text-foreground-secondary">
+        <div className="text-right text-body text-foreground-secondary">
           {run_count?.toLocaleString() ?? "0"}
         </div>
 
@@ -127,13 +127,13 @@ export const AgentTableRow = ({
         <div className="text-right">
           {review_avg_rating ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium">
+              <span className="text-body font-medium">
                 {review_avg_rating.toFixed(1)}
               </span>
               <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
-            <span className="text-sm text-foreground-secondary">
+            <span className="text-body text-foreground-secondary">
               No reviews
             </span>
           )}

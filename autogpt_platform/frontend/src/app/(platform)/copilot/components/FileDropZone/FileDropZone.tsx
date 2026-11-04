@@ -69,7 +69,9 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
         )}
       >
         <Icon icon={Upload03Icon} tone="brand" className="h-10 w-10" />
-        <span className="text-lg font-medium text-brand">Drop files here</span>
+        <span className="text-lead font-medium text-brand">
+          Drop files here
+        </span>
       </div>
     </div>
   );

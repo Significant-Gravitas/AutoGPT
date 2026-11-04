@@ -176,7 +176,7 @@ export function ComposerPlusMenu({
 
 function CapLabel() {
   return (
-    <span className="ml-auto pl-3 text-xs text-foreground-tertiary">
+    <span className="ml-auto pl-3 text-caption text-foreground-tertiary">
       {MAX_ATTACHMENTS} max
     </span>
   );

@@ -14,7 +14,7 @@ export function TimezoneNotice() {
     return (
       <div className="mt-1 flex items-center gap-2 rounded-md border border-warning-border bg-warning-surface p-3 text-warning-foreground">
         <Icon icon={InformationCircleIcon} className="h-4 w-4" />
-        <p className="text-sm">
+        <p className="text-body">
           No timezone set. Schedule will run in UTC.
           <a href="/settings/account" className="ml-1 underline">
             Set your timezone
@@ -29,7 +29,7 @@ export function TimezoneNotice() {
   return (
     <div className="mt-1 flex items-center gap-2 rounded-md bg-muted/50 p-3 text-muted-foreground">
       <Icon icon={InformationCircleIcon} className="h-4 w-4" />
-      <p className="text-sm">
+      <p className="text-body">
         Schedule will run in your timezone:{" "}
         <span className="font-medium">{tzName}</span>
       </p>

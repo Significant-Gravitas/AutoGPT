@@ -22,10 +22,12 @@ export type As =
   | "pre"
   | "button";
 
-// Typography comes from the size roles in globals.css (`--text-*`); each
-// bundles its line-height.
+// Typography comes from the type scale in src/app/tokens/typography.css
+// (`text-<step>`); each step bundles its line-height.
 export const variants = {
   // Headings
+  // The marketing hero: h1 at the scale's largest step.
+  hero: "font-poppins text-hero font-semibold tracking-title text-foreground-base",
   h1: "font-poppins text-display font-semibold tracking-title text-foreground-base",
   h2: "font-poppins text-title font-medium text-foreground-base tracking-title",
   h3: "font-poppins text-heading font-medium text-foreground-base tracking-title",
@@ -165,12 +167,8 @@ export const variants = {
   "caption-sm-mono":
     "font-mono text-caption-sm font-normal text-foreground-base",
 
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  "heading-md-bold": "font-sans text-heading-md font-bold text-foreground-base",
+  "heading-md": "font-sans text-heading-md font-normal text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
   "body-medium-lh-none":
     "font-sans text-body font-medium leading-none text-foreground-base",
@@ -180,11 +178,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25 (text-xs leading-tight); caption plus leading-tight.
   "small-lh-tight":
     "font-sans text-caption font-normal leading-tight text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
-  "2xl-bold-tracking-tight":
-    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
+  // TODO(tokens): no tracking token is -0.025em (tracking-tight).
+  "heading-md-bold-tracking-tight":
+    "font-sans text-heading-md font-bold tracking-tight text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-bold-tight":
     "font-mono text-caption font-bold leading-4 text-foreground-base",
@@ -246,6 +242,7 @@ export const textModifiers = cva("", {
 });
 
 export const variantElementMap: Record<Variant, As> = {
+  hero: "h1",
   h1: "h1",
   h2: "h2",
   h3: "h3",
@@ -303,14 +300,12 @@ export const variantElementMap: Record<Variant, As> = {
   label: "span",
   eyebrow: "span",
   "caption-sm-mono": "span",
-  "lg-semibold": "h3",
-  "2xl-bold": "div",
-  "2xl": "span",
+  "heading-md-bold": "div",
+  "heading-md": "span",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",
-  "lg-medium": "h3",
-  "2xl-bold-tracking-tight": "h1",
+  "heading-md-bold-tracking-tight": "h1",
   "small-mono-bold-tight": "code",
   "h3-semibold": "h3",
   "caption-sm": "kbd",
