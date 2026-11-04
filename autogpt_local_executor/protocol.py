@@ -451,6 +451,13 @@ class AckPayload(_Payload):
     ok: bool = True
 
 
+class AppLaunchAckPayload(AckPayload):
+    """APP_LAUNCH's ACK also names the launched process: null when the OS
+    didn't say (a launch through `open -b`, say)."""
+
+    pid: int | None = None
+
+
 class FileStatPayload(_Payload):
     path: str
     follow_symlinks: bool = True
@@ -1146,6 +1153,14 @@ class AckMessage(_Envelope):
     payload: AckPayload
 
 
+class AppLaunchAckMessage(_Envelope):
+    """The ACK that answers APP_LAUNCH. The shim only sends it, so it isn't in
+    the inbound `Message` union, where it would collide with `AckMessage`."""
+
+    type: Literal[MessageType.ACK] = MessageType.ACK
+    payload: AppLaunchAckPayload
+
+
 class FileStatMessage(_Envelope):
     type: Literal[MessageType.FILE_STAT] = MessageType.FILE_STAT
     payload: FileStatPayload
@@ -1491,6 +1506,8 @@ __all__ = [
     "negotiate_version",
     "Arch",
     "AckMessage",
+    "AppLaunchAckMessage",
+    "AppLaunchAckPayload",
     "AckPayload",
     "ActivateSessionMessage",
     "ActivateSessionPayload",

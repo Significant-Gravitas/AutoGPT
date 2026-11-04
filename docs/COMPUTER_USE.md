@@ -612,7 +612,8 @@ Lists what's *running*, not what's installed. Cheaper and more useful for
 ```
 
 Responds with `ACK` containing the launched pid, e.g.
-`{ "ok": true, "pid": 67890 }`. The shim uses, in order of preference:
+`{ "ok": true, "pid": 67890 }`, or `"pid": null` when the OS doesn't
+report one. The shim uses, in order of preference:
 - macOS: `NSWorkspace.openApplication` via PyObjC (no shell, no focus
   steal during background launches — matches cua-driver's design).
 - Windows: `ShellExecute` via `pywin32`.

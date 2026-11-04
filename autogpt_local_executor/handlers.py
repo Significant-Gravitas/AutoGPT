@@ -50,7 +50,8 @@ from .protocol import (
     MAX_WIRE_BASE64_CONTENT_BYTES,
     MAX_WIRE_TEXT_CONTENT_BYTES,
     AckMessage,
-    AckPayload,
+    AppLaunchAckMessage,
+    AppLaunchAckPayload,
     AppLaunchMessage,
     AppListRequestMessage,
     AppListResponseMessage,
@@ -1656,10 +1657,10 @@ class ComputerUseHandler:
             {**details, "pid": pid},
             _ok_result(_elapsed_ms(start)),
         )
-        return AckMessage(
+        return AppLaunchAckMessage(
             id=msg.id,
             ts=now_ts(),
-            payload=AckPayload(ok=True),
+            payload=AppLaunchAckPayload(ok=True, pid=pid or None),
         )
 
     # ── CLIPBOARD_READ ───────────────────────────────────────────────

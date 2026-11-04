@@ -418,15 +418,26 @@ async def test_display_info_response_shape(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_app_launch_uses_pid_from_backend(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("backend_pid", "wire_pid"), [(12345, 12345), (0, None)])
+async def test_app_launch_uses_pid_from_backend(
+    tmp_path: Path, backend_pid: int, wire_pid: int | None
+) -> None:
+    """The docs and the platform's tool promise the launched pid; the ACK
+    used to drop it. 0 means the OS didn't say, which goes out as null."""
+    import json
+
+    from autogpt_local_executor.protocol import dump_message
+
     handler = ComputerUseHandler(make_config(tmp_path))
     fb = attach_fake(handler)
-    fb.app_launch.return_value = 12345
+    fb.app_launch.return_value = backend_pid
     msg = AppLaunchMessage(
         id=new_id(), ts=now_ts(), payload=AppLaunchPayload(executable_path="/bin/echo")
     )
     resp = await handler.handle(msg)
-    assert resp.payload.ok is True
+    wire = json.loads(dump_message(resp))
+    assert wire["type"] == "ACK"
+    assert wire["payload"] == {"ok": True, "pid": wire_pid}
     fb.app_launch.assert_called_once()
 
 
