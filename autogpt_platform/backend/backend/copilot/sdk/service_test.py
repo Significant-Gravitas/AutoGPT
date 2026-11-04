@@ -28,6 +28,8 @@ from backend.copilot.graphiti.context_marker import (
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.turn_tracing import TurnTrace
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
@@ -2263,10 +2265,6 @@ class TestStreamEndedWithoutResultMessage:
     async def test_a_hangup_ends_the_turn_failed(self):
         """The notice is all the turn has in place of a reply, so the turn's
         outcome is failed, under the notice's code (``turn_tracing``)."""
-        from backend.copilot.sdk.service import _run_stream_attempt
-        from backend.copilot.stream_registry import CANCELLED_MESSAGE
-        from backend.copilot.turn_tracing import TurnTrace
-
         ctx = self._ctx()
         state = self._state()
         turn = TurnTrace(MagicMock())

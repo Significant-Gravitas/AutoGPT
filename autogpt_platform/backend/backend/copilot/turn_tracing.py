@@ -40,6 +40,7 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
 )
+from backend.copilot.turn_metrics import turns_counter
 from backend.util import tracing
 
 if TYPE_CHECKING:
@@ -191,11 +192,6 @@ class TurnTrace:
         if not self._ended:
             return
         try:
-            # Imported here, not at the top: ``executor.manager`` keeps the
-            # counter with the executor's other metrics, and imports this
-            # module through the processor.
-            from backend.copilot.executor.manager import turns_counter
-
             turns_counter.labels(
                 outcome=self.outcome,
                 engine=self.engine or "none",

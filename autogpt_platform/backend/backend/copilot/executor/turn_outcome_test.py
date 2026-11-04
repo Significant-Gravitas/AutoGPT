@@ -15,7 +15,6 @@ from prometheus_client import REGISTRY, generate_latest
 from backend.copilot import ai_spans
 from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.baseline.service import _build_natural_finish_empty_fallback_events
-from backend.copilot.executor.manager import turns_counter
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
@@ -27,6 +26,7 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
+from backend.copilot.turn_metrics import turns_counter
 
 from .processor_test import _make_entry, _make_log
 
@@ -303,6 +303,24 @@ async def test_a_background_turn_refused_at_admission_is_counted_failed(
     [turn] = sentry_transactions
     assert turn["tags"]["copilot.turn.outcome"] == "failed"
     assert counted() == {("failed", "none", "chat", ""): 1.0}
+
+
+@pytest.mark.asyncio
+async def test_a_load_test_accounts_turn_refused_at_admission_is_counted_as_one(
+    counted: Counted,
+) -> None:
+    """Admission can end a turn before it runs; a load-test account's turn
+    is still told apart from people's, so it never counts as theirs."""
+    with (
+        patch(
+            f"{_PROCESSOR}.claim_background_execution",
+            new=AsyncMock(side_effect=TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)),
+        ),
+        pytest.raises(TimeoutError),
+    ):
+        await _run([], engine="sdk", load_test="scripted")
+
+    assert counted() == {("failed", "none", "chat", "scripted"): 1.0}
 
 
 @pytest.mark.asyncio

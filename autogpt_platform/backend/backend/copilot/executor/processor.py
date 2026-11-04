@@ -384,6 +384,28 @@ def cleanup_worker():
 # ============ Processor Class ============ #
 
 
+async def _tag_load_test_account(
+    entry: CoPilotExecutionEntry, turn: TurnTrace
+) -> tuple[LoadTestEngine | None, bool]:
+    """Tag *turn* as a load-test account's before admission can end it, so a
+    turn refused there is counted apart from people's. Returns the account's
+    load-test engine and whether it is known. A lookup that fails here is
+    left unknown rather than raised: before the turn is claimed, raising
+    would fail-close a turn another worker owns. The turn looks it up again
+    when it runs, and fails if it still can't."""
+    config = ChatConfig()
+    if config.test_mode:
+        return None, True
+    try:
+        engine = await load_test_engine(entry.user_id, config)
+    except Exception:
+        logger.debug("Load-test lookup before admission failed", exc_info=True)
+        return None, False
+    if engine is not None:
+        turn.load_test_account(engine)
+    return engine, True
+
+
 class CoPilotProcessor:
     """Per-worker execution logic for CoPilot sessions.
 
@@ -609,10 +631,20 @@ class CoPilotProcessor:
             log: Structured logger
         """
         with turn_transaction(entry) as turn:
+            load_test, load_test_known = await _tag_load_test_account(entry, turn)
             if not await claim_background_execution(entry):
                 return False
             async with asyncio.timeout(background_timeout(entry)) as deadline:
-                await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
+                await self._run_turn(
+                    entry,
+                    cancel,
+                    cluster_lock,
+                    log,
+                    turn,
+                    deadline,
+                    load_test=load_test,
+                    load_test_known=load_test_known,
+                )
             return True
 
     async def _run_turn(
@@ -623,6 +655,8 @@ class CoPilotProcessor:
         log: CoPilotLogMetadata,
         turn: TurnTrace,
         deadline: asyncio.Timeout | None = None,
+        load_test: LoadTestEngine | None = None,
+        load_test_known: bool = False,
     ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -639,9 +673,10 @@ class CoPilotProcessor:
 
             # Known before anything can end the turn, so a load-test
             # account's turn is told apart from people's however it ends.
+            # Usually known since admission; looked up here when that lookup
+            # failed, and a lookup that fails again fails the turn.
             config = ChatConfig()
-            load_test: LoadTestEngine | None = None
-            if not config.test_mode:
+            if not load_test_known and not config.test_mode:
                 load_test = await load_test_engine(entry.user_id, config)
                 if load_test is not None:
                     turn.load_test_account(load_test)

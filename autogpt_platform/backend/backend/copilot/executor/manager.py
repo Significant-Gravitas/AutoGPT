@@ -22,6 +22,7 @@ import backend.data.llm_registry
 from backend.blocks import get_blocks
 from backend.copilot import after_turn, engine_switch, stream_registry
 from backend.copilot.executor.utils import schedule_turn
+from backend.copilot.turn_metrics import turns_counter
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -74,16 +75,6 @@ pool_size_gauge = Gauge(
 utilization_gauge = Gauge(
     "copilot_executor_utilization_ratio",
     "Ratio of active tasks to pool size",
-)
-# Counted once per turn, when it ends (``copilot.turn_tracing``). outcome is
-# completed, cancelled or failed; engine is the one that ran the turn, or
-# "none" for a turn refused before one started; origin is what started it;
-# load_test is a load-test account's engine, empty for everyone else's turns.
-# No label carries an id or a message.
-turns_counter = Counter(
-    "copilot_executor_turns_total",
-    "CoPilot turns that ended, by outcome, engine, origin and load-test engine",
-    ["outcome", "engine", "origin", "load_test"],
 )
 # People's turns on the platform's engines, exported at 0 from the start.
 # Prometheus's increase() can't count a series' first sample, so a series
