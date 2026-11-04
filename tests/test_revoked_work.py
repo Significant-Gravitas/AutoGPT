@@ -125,3 +125,43 @@ async def test_a_change_still_waiting_for_a_thread_when_cancelled_never_runs(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert ran == []
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_during_the_audit_write_still_records_the_change(
+    tmp_path: Path,
+) -> None:
+    """After the change, the handler's audit write waited on the writer's
+    lock, and a cancel landing there stopped it: a change that had happened
+    had no record."""
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowAudit(_RecordingAudit):
+        async def write(
+            self, op: str, *, request_id: Any = None, details: Any, result: Any
+        ) -> None:
+            entered.set()
+            await release.wait()  # the writer's lock
+            self.ops.append((op, result))
+
+    audit = SlowAudit()
+    handler = FileHandler(
+        ShimConfig(allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"),
+        audit=audit,  # type: ignore[arg-type]
+    )
+    target = tmp_path / "notes.txt"
+    msg = FileWriteMessage(
+        id=new_id(), ts=now_ts(), payload=FileWritePayload(path=str(target), content="written")
+    )
+    task = asyncio.create_task(handler.handle_write(msg))
+    await asyncio.wait_for(entered.wait(), timeout=30)
+
+    task.cancel()
+    await asyncio.sleep(0)
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=30)
+
+    assert target.read_text() == "written"
+    assert [op for op, result in audit.ops if result["ok"]] == ["FILE_WRITE"]

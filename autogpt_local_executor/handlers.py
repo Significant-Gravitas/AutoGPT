@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 from collections import OrderedDict, deque
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, Literal, TypeVar, cast
 
@@ -326,6 +326,34 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
     if task is not None:
         for _ in range(held):
             task.uncancel()
+    return result
+
+
+async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
+    """Await `work` to the end even if this task is cancelled meanwhile, then
+    let the cancellation go on.
+
+    For the audit record of a change that has happened: the write first
+    waits for the writer's lock, and a cancel landing there would stop it,
+    leaving the change with no record. Unlike `_run_to_completion`, the
+    cancellation isn't dropped, so the handler stops once its record is in.
+    """
+    task = asyncio.ensure_future(work)
+    cancelled = False
+    while True:
+        try:
+            result = await asyncio.shield(task)
+            break
+        except asyncio.CancelledError:
+            if task.cancelled():
+                raise
+            cancelled = True
+        except Exception:
+            if cancelled:
+                raise asyncio.CancelledError from None
+            raise
+    if cancelled:
+        raise asyncio.CancelledError
     return result
 
 
@@ -733,11 +761,13 @@ class CommandHandler:
             ),
         }
         try:
-            await self.audit.write(
-                "EXECUTE_COMMAND",
-                request_id=request_id,
-                details=details,
-                result=result,
+            await _finish_then_cancel(
+                self.audit.write(
+                    "EXECUTE_COMMAND",
+                    request_id=request_id,
+                    details=details,
+                    result=result,
+                )
             )
         except Exception:
             logger.debug("Failed to write EXECUTE_COMMAND audit record", exc_info=True)
@@ -1272,7 +1302,9 @@ class FileHandler:
         if self.audit is None:
             return
         try:
-            await self.audit.write(op, request_id=request_id, details=details, result=result)
+            await _finish_then_cancel(
+                self.audit.write(op, request_id=request_id, details=details, result=result)
+            )
         except Exception:
             logger.debug("Failed to write %s audit record", op, exc_info=True)
 
@@ -1361,7 +1393,9 @@ class ComputerUseHandler:
         if self.audit is None:
             return
         try:
-            await self.audit.write(op, request_id=request_id, details=details, result=result)
+            await _finish_then_cancel(
+                self.audit.write(op, request_id=request_id, details=details, result=result)
+            )
         except Exception:
             logger.debug("Failed to write %s audit record", op, exc_info=True)
 
@@ -2222,11 +2256,13 @@ class LocalLLMHandler:
         if self.audit is None:
             return
         try:
-            await self.audit.write(
-                "LOCAL_LLM_COMPLETION",
-                request_id=request_id,
-                details=details,
-                result=result,
+            await _finish_then_cancel(
+                self.audit.write(
+                    "LOCAL_LLM_COMPLETION",
+                    request_id=request_id,
+                    details=details,
+                    result=result,
+                )
             )
         except Exception:
             logger.debug("Failed to write LOCAL_LLM_COMPLETION audit record", exc_info=True)
@@ -2656,7 +2692,7 @@ class RecordingHandler:
             "mode": session.mode,
         }
         try:
-            await self.audit.write(op, request_id=None, details=details)
+            await _finish_then_cancel(self.audit.write(op, request_id=None, details=details))
         except Exception:
             logger.debug("Failed to write %s audit record", op, exc_info=True)
 
