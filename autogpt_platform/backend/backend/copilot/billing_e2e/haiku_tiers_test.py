@@ -89,7 +89,7 @@ async def test_three_turns_charge_each_request_at_its_prompt_tier(
     finally:
         await run_turn.aclose()
 
-    assert run_turn.client.is_closed
+    assert run_turn.client.is_closed()
     assert not provider.unexpected
     assert [len(provider.calls_in(turn)) for turn in range(3)] == [1, 2, 1]
     assert [charge.microdollars for charge in ledger.spend] == [5_700, 35_700, 3_500]

@@ -57,7 +57,11 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
     monkeypatch.setattr(
         baseline, "estimate_token_count", lambda *_, **__: prompt_tokens
     )
-    monkeypatch.setattr(baseline, "estimate_token_count_str", lambda *_, **__: 20_000)
+    monkeypatch.setattr(
+        baseline,
+        "estimate_token_count_str",
+        lambda value, **_: 0 if isinstance(value, list) else 20_000,
+    )
     config = baseline.config.model_copy(
         update={
             "use_local": False,
@@ -82,7 +86,7 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
         await ledger.settle()
     finally:
         await run_turn.aclose()
-    assert run_turn.client.is_closed
+    assert run_turn.client.is_closed()
     assert not provider.unexpected
     assert len(provider.calls) == requests
     if report_usage:
