@@ -53,7 +53,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
-from backend.util.sandbox_limits import USER_KEY, start_slot, tagged
+from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
 from backend.util.settings import Secrets, Settings
 
 logger = logging.getLogger(__name__)
@@ -447,13 +447,15 @@ async def kill_sandbox(sandbox: AsyncSandbox) -> None:
 
 
 async def forget_sandbox(sandbox_id: str) -> None:
-    """Revoke a box's proxy credential: call when the box is paused or killed.
+    """Revoke a box's proxy credential and stop counting the box under the
+    running-box limits: call when the box is paused or killed.
 
     Nothing will present it again (a resume mints a fresh one), and until its
     TTL it would keep naming this owner to the proxy.  Best effort: a failure
     here must not fail the pause or kill it follows.  The box's provider
     ceiling stays: the next re-pin of a paused box keeps it.
     """
+    await stopped(sandbox_id)
     # Not skipped while no proxy is configured: a box pinned before the
     # address was removed still has a credential on record.
     try:

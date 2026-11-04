@@ -15,7 +15,13 @@ from backend.copilot.tools import e2b_sandbox
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, connect_owned
 from backend.data.redis_client import get_redis_async
 from backend.util import sandbox_limits
-from backend.util.e2b_network import EgressOwner, connect_sandbox, create_sandbox
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+    pause_sandbox,
+)
 from backend.util.sandbox_limits import ENV_KEY, USER_KEY, SandboxLimitError, start_slot
 from backend.util.sandbox_metadata import SERVICE, SERVICE_FIELD, deployment_env
 
@@ -151,8 +157,9 @@ async def test_the_deployment_ceiling_counts_only_this_deployments_boxes(
 async def test_concurrent_starts_for_the_last_place_start_exactly_one(
     e2b: _FakeE2B, monkeypatch: pytest.MonkeyPatch
 ):
-    """Both starts are held at the listing until the other gets there too, so
-    a count read from E2B alone would let both through."""
+    """A count read from E2B alone would let both through: the barrier holds
+    such starts at the listing until both have read it.  Under the reservation
+    the second start is refused before it lists, so the barrier times out."""
     _limits(monkeypatch, account=1)
     barrier = asyncio.Barrier(2)
 
@@ -241,6 +248,40 @@ async def test_a_start_whose_count_fails_is_refused_only_under_a_ceiling(
     assert create.await_count == (0 if refused else 1)
 
 
+@pytest.mark.parametrize("stop", [kill_sandbox, pause_sandbox], ids=["kill", "pause"])
+async def test_a_box_stopped_in_its_grace_period_stops_counting(
+    e2b: _FakeE2B, monkeypatch: pytest.MonkeyPatch, stop
+):
+    """The grace period is for a box E2B does not list yet: short-lived boxes
+    started one after another are not refused under the cap."""
+    _limits(monkeypatch, account=1)
+
+    for _ in range(2):
+        box = await create_sandbox(e2b, _owner(), api_key="k")
+        await stop(_stoppable(e2b, box.sandbox_id))
+
+
+async def test_a_start_cancelled_while_counting_gives_its_place_back(
+    e2b: _FakeE2B, monkeypatch: pytest.MonkeyPatch
+):
+    _limits(monkeypatch, account=1)
+    listing = asyncio.Event()
+
+    async def hang() -> None:
+        listing.set()
+        await asyncio.Event().wait()
+
+    e2b.on_list.side_effect = hang
+    start = asyncio.create_task(create_sandbox(e2b, _owner(), api_key="k"))
+    await asyncio.wait_for(listing.wait(), timeout=10)
+    start.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+
+    e2b.on_list.side_effect = None
+    await create_sandbox(e2b, _owner(), api_key="k")
+
+
 async def test_a_start_that_fails_gives_its_place_back(
     e2b: _FakeE2B, monkeypatch: pytest.MonkeyPatch
 ):
@@ -251,6 +292,13 @@ async def test_a_start_that_fails_gives_its_place_back(
             raise RuntimeError("E2B refused the create")
 
     await create_sandbox(e2b, _owner(), api_key="k")
+
+
+def _stoppable(e2b: _FakeE2B, sandbox_id: str) -> SimpleNamespace:
+    async def stop() -> None:
+        e2b.boxes[sandbox_id].state = SandboxState.PAUSED
+
+    return SimpleNamespace(sandbox_id=sandbox_id, kill=stop, pause=stop)
 
 
 def _created_unlisted(e2b: _FakeE2B, create):

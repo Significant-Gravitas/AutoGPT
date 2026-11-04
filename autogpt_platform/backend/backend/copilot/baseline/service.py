@@ -2020,6 +2020,14 @@ async def stream_chat_completion_baseline(
             # than running its commands on the local fallback.
             await forget_turn_ceiling(session_id, session.expert_id)
             await _requeue_pending(session_id, drained_at_start_pending)
+            # Saved before the yield, as on the outer error path, so a reloaded
+            # chat still shows why the turn did not run.
+            if append_error_marker(session, str(refusal), retryable=True):
+                stamp_turn_trace_id(session.messages, turn_start)
+                try:
+                    await upsert_chat_session(session)
+                except Exception:
+                    logger.exception("[Baseline] Could not record the sandbox refusal")
             yield StreamError(errorText=str(refusal), code=refusal.code)
             return
         except Exception:

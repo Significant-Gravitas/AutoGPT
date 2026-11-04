@@ -5392,7 +5392,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         e2b_sandbox = await e2b_task
         if e2b_refusal is not None:
             # Refused under a running-box limit: the turn ends here rather
-            # than running its commands on the local fallback.
+            # than running its commands on the local fallback.  The finally
+            # below saves the marker, so a reloaded chat still shows why.
+            _append_error_marker(session, str(e2b_refusal), retryable=True)
             yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
             return
 

@@ -378,7 +378,9 @@ class ClaudeCodeBlock(Block):
                     BaseAsyncSandbox,
                     existing_sandbox_id,
                     egress_owner,
-                    resumes=info.state != SandboxState.RUNNING,
+                    # A box read as running can be paused by another run's
+                    # release before our hold, so a held connect may wake it.
+                    resumes=bool(held) or info.state != SandboxState.RUNNING,
                     api_key=e2b_api_key,
                     timeout=timeout,
                 )

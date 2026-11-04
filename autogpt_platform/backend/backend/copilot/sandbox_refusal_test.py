@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from backend.copilot.baseline import service as baseline_service
 from backend.copilot.baseline.service import stream_chat_completion_baseline
+from backend.copilot.constants import COPILOT_RETRYABLE_ERROR_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.pending_messages import PendingMessage
@@ -17,6 +18,8 @@ from backend.util.sandbox_limits import SandboxLimitError
 
 _REFUSAL = SandboxLimitError("Too many sandboxes are running on your account.")
 _EXPECTED = StreamError(errorText=str(_REFUSAL), code="sandbox_limit_reached")
+# What a reloaded chat shows in place of the refused turn's reply.
+_MARKER = f"{COPILOT_RETRYABLE_ERROR_PREFIX} {_REFUSAL}"
 # The first thing a turn does once its sandbox is set up: a turn that went on
 # without one fails here at once instead of running on into the unmocked rest.
 _WENT_ON = AssertionError("the turn went on without its sandbox")
@@ -56,6 +59,7 @@ async def test_the_sdk_engine_ends_a_refused_turn_with_the_refusal():
     assert [e for e in events if isinstance(e, StreamError)] == [_EXPECTED]
     assert not [e for e in events if isinstance(e, StreamStart)]
     assert launches == []
+    assert session.messages[-1].content == _MARKER
 
 
 async def test_the_baseline_engine_ends_a_refused_turn_and_keeps_queued_messages():
@@ -88,6 +92,7 @@ async def test_the_baseline_engine_ends_a_refused_turn_and_keeps_queued_messages
         patch(f"{svc}.workspace_volume_mounts", MagicMock()),
         patch(f"{svc}.forget_turn_ceiling", AsyncMock()),
         patch(f"{svc}.push_pending_message", AsyncMock()) as requeue,
+        patch(f"{svc}.upsert_chat_session", AsyncMock()) as saved,
         patch(f"{svc}._build_system_prompt", MagicMock(side_effect=_WENT_ON)),
     ):
         events = [
@@ -103,3 +108,5 @@ async def test_the_baseline_engine_ends_a_refused_turn_and_keeps_queued_messages
 
     assert events == [_EXPECTED]
     requeue.assert_awaited_once_with(session.session_id, queued)
+    saved.assert_awaited_once_with(session)
+    assert session.messages[-1].content == _MARKER

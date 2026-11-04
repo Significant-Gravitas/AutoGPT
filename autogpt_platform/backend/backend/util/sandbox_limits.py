@@ -12,6 +12,7 @@ held reservations read back in one Redis script, so of several starts racing
 for the last place only the first to reserve sees room.  Once its box is up,
 a reservation becomes the box's id and is kept for ``_STARTED_GRACE_SECONDS``,
 so a box E2B does not list yet still counts, and counts once when it does.
+A box the platform pauses or kills stops counting at once (``stopped``).
 """
 
 import asyncio
@@ -60,13 +61,15 @@ _RESERVE_SCRIPT = (
     "end "
     "return held"
 )
-# Replace a start's reservation with its box's, for the grace period.
+# Replace a start's reservation with its box's for the grace period, and note
+# in the last key which keys count the box.
 _STARTED_SCRIPT = (
-    "for _, key in ipairs(KEYS) do "
-    'redis.call("zrem", key, ARGV[1]) '
-    'redis.call("zadd", key, ARGV[2], ARGV[3]) '
-    'redis.call("expire", key, ARGV[4]) '
+    "for i = 1, #KEYS - 1 do "
+    'redis.call("zrem", KEYS[i], ARGV[1]) '
+    'redis.call("zadd", KEYS[i], ARGV[2], ARGV[3]) '
+    'redis.call("expire", KEYS[i], ARGV[4]) '
     "end "
+    'redis.call("set", KEYS[#KEYS], ARGV[5], "EX", ARGV[6]) '
     "return 1"
 )
 
@@ -100,12 +103,15 @@ class StartSlot:
             redis = await get_redis_async()
             await redis.eval(
                 _STARTED_SCRIPT,
-                len(self._scopes),
+                len(self._scopes) + 1,
                 *(scope.key for scope in self._scopes),
+                _counted_key(sandbox_id),
                 self._member,
                 time.time() + _STARTED_GRACE_SECONDS,
                 _box_member(sandbox_id),
                 _START_TTL_SECONDS,
+                "\n".join(scope.key for scope in self._scopes),
+                _STARTED_GRACE_SECONDS,
             )
         except Exception:
             # The reservation still counts the box until it expires.
@@ -142,6 +148,24 @@ async def start_slot(
     finally:
         with contextlib.suppress(BaseException):
             await slot.release()
+
+
+async def stopped(sandbox_id: str) -> None:
+    """Stop counting a box that was paused or killed: its grace period is for a
+    box E2B does not list yet, not one already gone.  Best effort."""
+    try:
+        redis = await get_redis_async()
+        counted = await redis.get(_counted_key(sandbox_id))
+        if not counted:
+            return
+        for key in _text(counted).split("\n"):
+            await redis.zrem(key, _box_member(sandbox_id))
+        await redis.delete(_counted_key(sandbox_id))
+    except Exception:
+        # It stops counting once its grace period passes.
+        logger.warning(
+            f"[E2B] Could not stop counting box {sandbox_id[:12]}", exc_info=True
+        )
 
 
 def tagged(metadata: dict[str, str] | None, user_id: str | None) -> dict[str, str]:
@@ -200,6 +224,11 @@ async def _admit(scopes: list[_Scope], member: str, api_key: str | None) -> Star
         raise
     except Exception as exc:
         return await _uncounted(scopes, slot, exc)
+    except BaseException:
+        # Cancelled before ``start_slot``'s ``finally`` could own the place.
+        with contextlib.suppress(BaseException):
+            await slot.release()
+        raise
     return slot
 
 
@@ -312,6 +341,11 @@ def _stamp(info: SandboxInfo, key: str) -> str | None:
 
 def _box_member(sandbox_id: str) -> str:
     return f"box:{sandbox_id}"
+
+
+def _counted_key(sandbox_id: str) -> str:
+    # Hash-tagged like the scope keys, so ``_STARTED_SCRIPT`` can write it too.
+    return f"{_KEY_PREFIX}{{{deployment_env()}}}:counted:{sandbox_id}"
 
 
 def _text(value: bytes | str) -> str:
