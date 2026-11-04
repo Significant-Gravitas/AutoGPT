@@ -1,4 +1,5 @@
 import datetime
+import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -7,6 +8,7 @@ import prisma.models
 import pydantic
 
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
@@ -14,9 +16,17 @@ from backend.data.model import (
 )
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_NAME_LENGTH,
+    IDText,
+)
 
 if TYPE_CHECKING:
     from backend.data.integrations import WebhookWithoutSecrets
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryAgentStatus(str, Enum):
@@ -77,33 +87,47 @@ class LibraryFolderTree(LibraryFolder):
 class FolderCreateRequest(pydantic.BaseModel):
     """Request model for creating a folder."""
 
-    name: str = pydantic.Field(..., min_length=1, max_length=100)
-    icon: str | None = None
+    name: str = pydantic.Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
     color: str | None = pydantic.Field(
-        None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color code (#RRGGBB)"
+        None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color code (#RRGGBB)",
     )
-    parent_id: str | None = None
+    parent_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderUpdateRequest(pydantic.BaseModel):
     """Request model for updating a folder."""
 
-    name: str | None = pydantic.Field(None, min_length=1, max_length=100)
-    icon: str | None = None
-    color: str | None = None
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=MAX_NAME_LENGTH
+    )
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    color: str | None = pydantic.Field(
+        None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color code (#RRGGBB)",
+    )
 
 
 class FolderMoveRequest(pydantic.BaseModel):
     """Request model for moving a folder to a new parent."""
 
-    target_parent_id: str | None = None  # None = move to root
+    # None = move to root
+    target_parent_id: str | None = pydantic.Field(
+        default=None, max_length=MAX_ID_LENGTH
+    )
 
 
 class BulkMoveAgentsRequest(pydantic.BaseModel):
     """Request model for moving multiple agents to a folder."""
 
-    agent_ids: list[str]
-    folder_id: str | None = None  # None = move to root
+    agent_ids: list[IDText]
+    # None = move to root
+    folder_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderListResponse(pydantic.BaseModel):
@@ -507,10 +531,10 @@ class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
     Request model used when creating a new preset for a library agent.
     """
 
-    graph_execution_id: str
+    graph_execution_id: str = pydantic.Field(..., max_length=MAX_ID_LENGTH)
 
-    name: str
-    description: str
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    description: str = pydantic.Field(..., max_length=MAX_DESCRIPTION_LENGTH)
 
     is_active: bool = True
 
@@ -523,17 +547,19 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: Optional[str] = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
     is_active: Optional[bool] = None
 
 
 class TriggeredPresetSetupRequest(pydantic.BaseModel):
-    name: str
-    description: str = ""
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    description: str = pydantic.Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
 
-    graph_id: str
+    graph_id: str = pydantic.Field(..., max_length=MAX_ID_LENGTH)
     graph_version: int
 
     trigger_config: dict[str, Any]
@@ -573,6 +599,12 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
         if preset.webhookId and preset.Webhook is None:
             raise ValueError(
                 "Webhook must be included in AgentPreset query when webhookId is set"
+            )
+
+        if len(preset.InputPresets) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+            logger.warning(
+                f"Preset {preset.id} InputPresets rows hit "
+                "MAX_NODE_INPUT_OUTPUT_FETCH cap; result may be truncated"
             )
 
         input_data: GraphInput = {}
@@ -678,5 +710,6 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     folder_id: Optional[str] = pydantic.Field(
         default=None,
+        max_length=MAX_ID_LENGTH,
         description="Folder ID to move agent to (None to move to root)",
     )

@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-raw-colors -- folder colours are user-picked data, not UI colour */
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -178,7 +177,7 @@ export function FolderIcon({
               d="M15.0423 0.500003C0.5 0.500009 0.5 14.2547 0.5 14.2547V92.5C0.5 101.337 7.66344 108.5 16.5 108.5H156.5C165.337 108.5 172.5 101.337 172.5 92.5V34.3302C172.5 25.4936 165.355 18.3302 156.519 18.3302H108.211C98.1341 18.3302 91.2921 5.57144 82.0156 1.63525C80.3338 0.921645 78.2634 0.500002 75.7187 0.500003H15.0423Z"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-7xl">
+          <div className="absolute inset-0 flex items-center justify-center text-hero">
             {icon}
           </div>
         </motion.div>

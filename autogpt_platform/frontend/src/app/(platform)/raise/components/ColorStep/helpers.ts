@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-raw-colors -- the expert colour palette is data: each option names the Tailwind hue the person picks */
 export interface ColorOption {
   id: string;
   label: string;
