@@ -82,6 +82,7 @@ async def test_runs_storing_one_filename_each_keep_their_own_file(
         "output (1).mp4",
         "output (2).mp4",
     ]
+    assert await manager.read_file("/output.mp4") == b"run 0"
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -225,6 +225,40 @@ async def test_write_file_rename_takes_the_next_name_when_a_racer_took_the_free_
 
 
 @pytest.mark.asyncio
+async def test_write_file_rename_keeps_the_callers_name_when_the_path_is_free(
+    manager, mock_storage, mock_db
+):
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+    ):
+        await manager.write_file(
+            filename="report.txt",
+            content=b"hello",
+            path="/out.bin",
+            rename_on_conflict=True,
+        )
+
+    call = mock_db.create_workspace_file.call_args
+    assert (call.kwargs["path"], call.kwargs["name"], call.kwargs["mime_type"]) == (
+        "/out.bin",
+        "report.txt",
+        "text/plain",
+    )
+
+
+@pytest.mark.asyncio
 async def test_write_file_quota_exceeded_raises_value_error(
     manager, mock_storage, mock_db
 ):

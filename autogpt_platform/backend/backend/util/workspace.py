@@ -320,7 +320,8 @@ class WorkspaceManager:
         requested_path = path
         if rename_on_conflict:
             path = await self._free_path(requested_path)
-            filename = posixpath.basename(path)
+            if path != requested_path:
+                filename = posixpath.basename(path)
         is_internal = is_internal_workspace_file(
             name=filename, path=path, metadata=metadata
         )
