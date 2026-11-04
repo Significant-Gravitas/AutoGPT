@@ -175,6 +175,7 @@ async def finish_background_turn(
                     changed = await _finish_followup(tx, followup, error)
                 if changed and error:
                     await invalidate_session_cache(session_id)
+        await _complete_child_whose_work_is_back(user_id, session_id)
         return
     task = tasks[0]
     outcome: BackgroundOutcome = (
@@ -186,12 +187,54 @@ async def finish_background_turn(
             else "cancelled" if error == CANCELLED_MESSAGE else "failed"
         )
     )
+    if outcome == "completed" and await has_open_handoffs(user_id, session_id):
+        # The child handed work off itself: its result is whole only once that
+        # work has come back to it, so its record waits for its last
+        # continuation to end (``_complete_child_whose_work_is_back``).
+        return
     await complete_background_task(
         task.id,
         user_id,
         outcome,
         result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
     )
+
+
+async def has_open_handoffs(user_id: str, session_id: str) -> bool:
+    """Whether the chat has background work of its own still out: a handoff
+    whose wake has not run yet."""
+    rows = await db.query_raw_with_schema(
+        """SELECT 1 FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "parentSessionId"=$2
+          AND "followupState" IN ('waiting','queued') LIMIT 1""",
+        user_id,
+        session_id,
+    )
+    return bool(rows)
+
+
+async def _complete_child_whose_work_is_back(user_id: str, session_id: str) -> None:
+    """Complete the record of a background child whose own turn ended with
+    work of its own still out, once the last of that work has come back to
+    it: its answer is then the latest row of its chat, its continuations'
+    included."""
+    if await has_open_handoffs(user_id, session_id):
+        return
+    tasks = await db.query_raw_with_schema(
+        """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2
+          AND outcome IS NULL AND "startedAt" IS NOT NULL""",
+        user_id,
+        session_id,
+        model=BackgroundTask,
+    )
+    for task in tasks:
+        await complete_background_task(
+            task.id,
+            user_id,
+            "completed",
+            result_sequence=await _answer_sequence(task.child_turn_id, True),
+        )
 
 
 async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:

@@ -1921,3 +1921,88 @@ async def test_sweep_recovers_a_continuation_whose_worker_died(
         where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
     )
     assert len(notices) == 1
+
+
+async def test_a_child_that_handed_work_off_wakes_the_parent_once_that_work_is_back(
+    world: World,
+):
+    """A child's own turn may end with work of its own still out. Its record,
+    and the wake of the original chat, wait for the last of that work to come
+    back to it, and its answer is then the latest row of its chat, so the
+    original chat reads the whole result rather than an interim one."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    child = await model.get_chat_session(task.child_session_id, world.user_id)
+    assert child and entry.envelope
+    set_execution_context(
+        world.user_id, child, permissions=entry.permissions, envelope=entry.envelope
+    )
+    set_current_turn_id(entry.turn_id)
+    with tool_call_context("deeper"):
+        grandchild = await background_subtasks.start_background_subtask(
+            world.user_id, child, "Go deeper"
+        )
+    await append_and_save_message(
+        task.child_session_id,
+        ChatMessage(role="assistant", content="Handed off; I will follow up."),
+    )
+    await finish_background_execution(entry, None)
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=task.child_turn_id
+    )
+    await background_delivery.reconcile_background_subtasks()
+
+    def wakes_of(turn_id: str) -> list[dict[str, Any]]:
+        return [
+            c.kwargs
+            for c in world.published.await_args_list
+            if c.kwargs.get("turn_id") == turn_id
+        ]
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome is None
+    assert wakes_of(task.wake_id) == []
+    interim = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+    assert interim.status == "running"
+
+    grand_entry = world.entry(grandchild.child_session_id)
+    assert await claim_background_execution(grand_entry)
+    await append_and_save_message(
+        grandchild.child_session_id,
+        ChatMessage(role="assistant", content="Deeper answer."),
+    )
+    await finish_background_execution(grand_entry, None)
+    await stream_registry.mark_session_completed(
+        grandchild.child_session_id, turn_id=grandchild.child_turn_id
+    )
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+    assert wakes_of(task.wake_id) == []
+    (continuation,) = wakes_of(grandchild.wake_id)
+    wake = CoPilotExecutionEntry(
+        **continuation,
+        cost_context=TrialCostContext(user_id=world.user_id, trial_id=None),
+    )
+    assert await claim_background_execution(wake)
+    await append_and_save_message(
+        task.child_session_id,
+        ChatMessage(role="assistant", content="The final answer is 42."),
+    )
+    await finish_background_execution(wake, None)
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=grandchild.wake_id
+    )
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "completed"
+    assert len(wakes_of(task.wake_id)) == 1
+    final = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+    assert final.status == "completed"
+    assert final.response == "The final answer is 42."

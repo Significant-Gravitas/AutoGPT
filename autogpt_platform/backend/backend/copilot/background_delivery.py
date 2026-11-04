@@ -89,6 +89,13 @@ async def _settle_child(
     """Record how a child without a recorded outcome ended, from what its
     chat and stream show, and return the refreshed record; None while the
     child is still queued or running, or once its record is gone."""
+    if status == "idle" and await background_task_db().has_open_handoffs(
+        task.user_id, task.child_session_id
+    ):
+        # The child handed work off itself: its record waits for the last of
+        # that work to come back to it, and its chat carries on meanwhile.
+        await dispatch_next_for_user(task.user_id)
+        return None
     completion = (
         await stream_registry.get_session(task.child_session_id)
         if status == "idle" and task.started_at is not None

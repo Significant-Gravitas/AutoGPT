@@ -16,7 +16,10 @@ The original chat shows a background subtask card, current status, Stop, and a
 link to its own chat. The child runs under the same spawn rules as a foreground
 subtask: the launching turn's tools minus the descent denials, its budget tree,
 cost attribution, credential pins, account route and scope, and it may spawn
-further work within the tree's depth. It keeps no deadline of its own; the only
+further work within the tree's depth. When it hands work off itself, its own
+record and the wake of the original chat wait for the last of that work to come
+back to it, so the result it reports is whole, its continuations' answers
+included, rather than an interim one. It keeps no deadline of its own; the only
 deadline it can have is one the launching turn already had, which the worker
 enforces once the child runs and the sweep enforces while it is still queued.
 
