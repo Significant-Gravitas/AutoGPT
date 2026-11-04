@@ -314,10 +314,11 @@ class LinuxBackend(ComputerUseBackend):
             amount = scroll_amount if scroll_amount is not None else (clicks or 3)
             d = scroll_direction or direction or "down"
             sign = 1 if d in ("up", "right") else -1
+            scroll = pyautogui.hscroll if d in ("left", "right") else pyautogui.scroll
             if coordinate:
-                pyautogui.scroll(sign * amount, x=coordinate[0], y=coordinate[1])
+                scroll(sign * amount, x=coordinate[0], y=coordinate[1])
             else:
-                pyautogui.scroll(sign * amount)
+                scroll(sign * amount)
             return
         raise FeatureNotSupportedError(action, reason=f"unknown action {action!r}")
 
