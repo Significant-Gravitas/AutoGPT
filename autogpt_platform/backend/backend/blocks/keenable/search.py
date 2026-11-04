@@ -115,7 +115,8 @@ class KeenableSearchBlock(Block):
         if input_data.auth == KeenableAuth.ANONYMOUS:
             # Anonymous wins over a still-selected credential.
             credentials = None
-        elif credentials is None:
+        elif credentials is None or not credentials.api_key.get_secret_value().strip():
+            # A blank key would silently fall back to the public endpoint.
             raise ValueError(
                 "Keenable API key credentials are required when auth is api_key."
             )

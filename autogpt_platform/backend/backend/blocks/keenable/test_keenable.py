@@ -252,3 +252,40 @@ async def test_search_block_escapes_markdown_links():
             block, {"auth": KeenableAuth.ANONYMOUS.value, "query": "q"}
         )
     assert out["context"] == "[A \\[b\\]](https://a.test/x%281%29)\ns"
+
+
+@pytest.mark.asyncio
+async def test_fetch_block_rejects_falsy_non_string_title():
+    block = KeenableFetchBlock()
+
+    async def fake_fetch(*args, **kwargs):
+        return {"url": "https://a.test", "title": 0, "content": "x"}
+
+    with (
+        mock.patch.object(block, "_fetch", fake_fetch),
+        pytest.raises(BlockExecutionError, match="malformed"),
+    ):
+        await _collect(block, {"url": "https://a.test"})
+
+
+@pytest.mark.asyncio
+async def test_search_block_rejects_blank_key_in_api_key_mode():
+    blank = TEST_CREDENTIALS.model_copy(update={"api_key": SecretStr("   ")})
+    with pytest.raises(Exception, match="credentials are required"):
+        await _collect(
+            KeenableSearchBlock(),
+            {"auth": KeenableAuth.API_KEY.value, "query": "q"},
+            credentials=blank,
+        )
+
+
+def test_platform_cost_only_applies_in_api_key_mode():
+    from backend.blocks.keenable._config import keenable
+    from backend.executor.utils import _is_cost_filter_match
+
+    assert keenable.base_costs
+    for cost in keenable.base_costs:
+        assert cost.cost_filter["auth"] == KeenableAuth.API_KEY.value
+        assert _is_cost_filter_match(cost.cost_filter, {"auth": "api_key"})
+        assert not _is_cost_filter_match(cost.cost_filter, {"auth": "anonymous"})
+        assert not _is_cost_filter_match(cost.cost_filter, {})
