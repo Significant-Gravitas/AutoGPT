@@ -1,14 +1,13 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-/* oxlint-disable design-system/no-raw-colors -- orange, yellow and pink have no role; amber or red would change the hue (deferred) */
 const tones = {
   orange: {
-    card: "bg-orange-50",
-    title: "text-orange-800",
-    value: "text-orange-900",
-    detail: "text-orange-700",
-    hint: "text-orange-600",
+    card: "bg-orange/10",
+    title: "text-warning-foreground",
+    value: "text-warning-foreground",
+    detail: "text-warning-foreground",
+    hint: "text-orange-foreground",
   },
   error: {
     card: "bg-error-surface",
@@ -19,10 +18,10 @@ const tones = {
   },
   yellow: {
     card: "bg-warning-surface",
-    title: "text-yellow-800",
-    value: "text-yellow-900",
-    detail: "text-yellow-700",
-    hint: "text-yellow-600",
+    title: "text-yellow-foreground",
+    value: "text-yellow-foreground",
+    detail: "text-yellow-foreground",
+    hint: "text-yellow-foreground",
   },
   brand: {
     card: "bg-accent-surface",
@@ -32,14 +31,13 @@ const tones = {
     hint: "text-brand-hover",
   },
   pink: {
-    card: "bg-pink-50",
-    title: "text-pink-800",
-    value: "text-pink-900",
-    detail: "text-pink-700",
-    hint: "text-pink-600",
+    card: "bg-pink/10",
+    title: "text-pink-foreground",
+    value: "text-pink-foreground",
+    detail: "text-pink-foreground",
+    hint: "text-pink-foreground",
   },
 } as const;
-/* oxlint-enable design-system/no-raw-colors */
 
 interface Props {
   tone: keyof typeof tones;
@@ -76,9 +74,9 @@ export function DiagnosticAlertCard({
           </h3>
         </div>
         <div className="p-6 pt-0">
-          <p className={cn("text-3xl font-bold", colors.value)}>{value}</p>
-          <p className={cn("text-sm", colors.detail)}>{detail}</p>
-          <p className={cn("mt-2 text-xs", colors.hint)}>{hint}</p>
+          <p className={cn("text-heading font-bold", colors.value)}>{value}</p>
+          <p className={cn("text-body", colors.detail)}>{detail}</p>
+          <p className={cn("mt-2 text-caption", colors.hint)}>{hint}</p>
         </div>
       </div>
     </div>

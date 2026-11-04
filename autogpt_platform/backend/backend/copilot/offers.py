@@ -10,6 +10,7 @@ This module states them once, on the side that knows. It is additive —
 ``GET /transports`` keeps its shape, so nothing has to migrate at once.
 """
 
+import asyncio
 import logging
 
 from pydantic import BaseModel
@@ -88,12 +89,15 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     follow the deployment and the user, not which connection they pick.
     """
     config = ChatConfig()
-    models = await platform_tier_models("thinking", user_id, config)
+    models, advanced_allowed, transports = await asyncio.gather(
+        platform_tier_models("thinking", user_id, config),
+        advanced_tier_allowed(user_id),
+        get_chat_transports(user_id),
+    )
     codex_models = codex_tier_models("thinking")
-    advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
-        for transport in await get_chat_transports(user_id)
+        for transport in transports
     ]
     locked = await _locked_codex_offer(user_id, offers, codex_models)
     return offers + ([locked] if locked else [])

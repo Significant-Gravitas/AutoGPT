@@ -188,6 +188,7 @@ async def create_routine_schedules(
     session_id: str | None,
     user_timezone: str,
     tainted: bool = False,
+    replaces: list[str],
 ) -> list[str]:
     scheduler = get_scheduler_client()
     created: list[str] = []
@@ -210,6 +211,9 @@ async def create_routine_schedules(
                 expert_id=expert_id,
                 routine_id=row.id,
                 tainted=tainted,
+                # Deleted once the row names the new jobs, so both sets
+                # exist for a moment and only one of them counts.
+                replaces_schedule_ids=replaces,
             )
             created.append(info.id)
     except Exception:

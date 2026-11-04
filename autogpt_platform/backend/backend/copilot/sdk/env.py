@@ -86,6 +86,7 @@ def route_launch_env(
     *,
     sdk_cwd: str | None = None,
     gateway: GatewayEndpoint | None = None,
+    stand_in_model_url: str | None = None,
     session_id: str | None = None,
     user_id: str | None = None,
 ) -> dict[str, str]:
@@ -100,8 +101,27 @@ def route_launch_env(
     ``sdk/route_credentials.py``), gets the same workspace isolation and
     hardening, and is pinned to the profile's window, trigger and timeout.
     """
-    env = _credential_env(profile, gateway)
-    if profile.name == "openrouter":
+    if stand_in_model_url is not None:
+        if gateway is not None:
+            raise ValueError("A turn has one model endpoint")
+        base = stand_in_model_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        parsed = urlsplit(base)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("The stand-in model URL must be an http(s) URL")
+        no_proxy = _no_proxy_value(parsed.hostname)
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            "ANTHROPIC_AUTH_TOKEN": "load-test",
+            "ANTHROPIC_API_KEY": "",
+            **CLAUDE_OAUTH_BLANK,
+            "NO_PROXY": no_proxy,
+            "no_proxy": no_proxy,
+        }
+    else:
+        env = _credential_env(profile, gateway)
+    if profile.name == "openrouter" and stand_in_model_url is None:
         headers = _trace_headers(session_id, user_id)
         if headers:
             env["ANTHROPIC_CUSTOM_HEADERS"] = headers
@@ -174,7 +194,7 @@ def _credential_env(
         if not gateway.auth_token:
             raise ValueError("A gateway capability must not be empty")
         require_loopback_http(gateway.base_url, "The model gateway")
-        no_proxy = _loopback_no_proxy_value()
+        no_proxy = _no_proxy_value(*LOOPBACK_HOSTS)
         return {
             "ANTHROPIC_BASE_URL": gateway.base_url.rstrip("/"),
             "ANTHROPIC_AUTH_TOKEN": gateway.auth_token,
@@ -286,14 +306,16 @@ def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str
     }
 
 
-def _loopback_no_proxy_value() -> str:
+def _no_proxy_value(*hosts: str) -> str:
+    """The backend's NO_PROXY with *hosts* added, for a model endpoint the
+    CLI must reach directly rather than through a configured proxy."""
     entries: list[str] = []
     for value in (os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", "")):
         for entry in value.split(","):
             entry = entry.strip()
             if entry and entry.lower() not in {item.lower() for item in entries}:
                 entries.append(entry)
-    for host in LOOPBACK_HOSTS:
+    for host in hosts:
         if host.lower() not in {item.lower() for item in entries}:
             entries.append(host)
     return ",".join(entries)

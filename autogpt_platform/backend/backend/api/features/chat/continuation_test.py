@@ -348,6 +348,11 @@ def queued(mocker: pytest_mock.MockerFixture, stored: MagicMock) -> MagicMock:
     mocker.patch.object(executor_utils, "admit_turn", new=AsyncMock())
     mocker.patch.object(
         executor_utils,
+        "chat_db",
+        return_value=MagicMock(record_chat_session_turn=AsyncMock(return_value=True)),
+    )
+    mocker.patch.object(
+        executor_utils,
         "capture_cost_context",
         new=AsyncMock(return_value=TrialCostContext(user_id="u1", trial_id=None)),
     )

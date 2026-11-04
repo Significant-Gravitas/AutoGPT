@@ -485,3 +485,53 @@ class TestCliUserMessage:
             "session_id": "s1",
             "client_composed": True,
         }
+
+
+class TestBuildSdkEnvStandInModel:
+    """A load-test account's turn talks to the scripted model, never to the
+    deployment's provider with the deployment's key."""
+
+    def test_the_cli_talks_to_the_stand_in_without_the_deployment_key(self):
+        cfg = _config(
+            platform_route="openrouter",
+            openrouter_api_key="sk-or-deployment-key",
+            openrouter_base_url="https://openrouter.ai/api",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            result = route_launch_env(
+                platform_profile(cfg, _SONNET, "env"),
+                session_id="sess-1",
+                user_id="user-1",
+                stand_in_model_url=(
+                    "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api/v1"
+                ),
+            )
+
+        assert (
+            result["ANTHROPIC_BASE_URL"]
+            == "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api"
+        )
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "load-test"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert "sk-or-deployment-key" not in result.values()
+        # OpenRouter Broadcast's attribution is for OpenRouter only.
+        assert "x-user-id" not in result.get("ANTHROPIC_CUSTOM_HEADERS", "")
+        assert "pr-1-scripted-model.pr-1.svc.cluster.local" in result["NO_PROXY"].split(
+            ","
+        )
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_a_turn_has_one_model_endpoint(self):
+        with pytest.raises(ValueError, match="one model endpoint"):
+            route_launch_env(
+                _openrouter(),
+                gateway=_GATEWAY,
+                stand_in_model_url="http://scripted-model:4010/api/v1",
+            )
+
+    def test_the_stand_in_must_be_an_http_url(self):
+        with pytest.raises(ValueError, match="http"):
+            route_launch_env(
+                _openrouter(), stand_in_model_url="scripted-model:4010/api/v1"
+            )

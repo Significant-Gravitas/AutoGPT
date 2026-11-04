@@ -316,6 +316,13 @@ async def _queued(session: ChatSession, dispatch: Dispatch) -> CoPilotExecutionE
         patch.object(executor_utils, "admit_turn", new=AsyncMock()),
         patch.object(
             executor_utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch.object(
+            executor_utils,
             "capture_cost_context",
             new=AsyncMock(
                 return_value=TrialCostContext(user_id=_USER_ID, trial_id=None)

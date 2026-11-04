@@ -38,9 +38,32 @@ async def resolve_turn_profile(
     session_id: str,
     user_id: str | None,
     credential_lease: CredentialLease | CodexCredentialLease | None,
+    stand_in_model_url: str | None = None,
 ) -> RouteProfile:
     """The profile this SDK turn runs on, for the tier the request asked for."""
     tier: CopilotLLMModel = "advanced" if model == "advanced" else "standard"
+    if stand_in_model_url is not None:
+        if credential_lease is not None:
+            raise ValueError("A turn has one model endpoint")
+        from urllib.parse import urlsplit
+
+        base = stand_in_model_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        parsed = urlsplit(base)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("The stand-in model URL must be an http(s) URL")
+        stand_in = config.model_copy(
+            update={
+                "platform_route": "direct_anthropic",
+                "anthropic_api_key": "load-test",
+                "anthropic_base_url": base,
+            }
+        )
+        sdk_model, source = await resolve_platform_model(
+            stand_in, tier, session_id, user_id
+        )
+        return platform_profile(stand_in, sdk_model, source)
     if credential_lease is None:
         sdk_model, source = await resolve_platform_model(
             config, tier, session_id, user_id

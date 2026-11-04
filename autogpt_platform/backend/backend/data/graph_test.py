@@ -30,6 +30,7 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
@@ -3207,6 +3208,44 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     )
 
 
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4.1", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-opus-4-0", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-sonnet-4-0", LLMModel.CLAUDE_4_6_SONNET),
+        ("anthropic/claude-sonnet-4", LLMModel.CLAUDE_4_6_SONNET),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
+    stored_value: str, replacement: LLMModel
+):
+    """Anthropic retired these aliases with their snapshots. A stored one
+    lands on its family's successor in nodes and presets, and the enum keeps
+    refusing it, which is what keeps the copilot's registry gate from sending it."""
+    with pytest.raises(ValueError):
+        LLMModel(stored_value)
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_covers_preset_overrides():
     """Regression: migrate_llm_models must also rewrite legacy values stored
@@ -3962,3 +4001,96 @@ async def test_create_graph_checks_pin_names_and_the_owner_before_any_write(
     ]
     saved = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
     assert saved.version == 2
+
+
+# ============================================================================
+# A link into an MCP tool's argument
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "sink_name,argument",
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
+)
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def test_a_nested_link_into_a_tool_that_declares_tool_arguments_provides_nothing():
+    """Such a tool's executor passes `tool_arguments_#_query` into its own
+    `tool_arguments` parameter, so a run must still find `query` missing."""
+    graph = _value_to_mcp_tool_graph("tool_arguments_#_query", required=["query"])
+    schema = graph.nodes[1].input_default["tool_input_schema"]
+    schema["properties"]["tool_arguments"] = {"type": "object"}
+
+    errors = make_graph_model(graph, user_id="user-1").validate_graph_get_errors(
+        for_run=True
+    )
+
+    assert errors == {"tool": {"query": "This field is required"}}
+
+
+@pytest.mark.parametrize(
+    "tool_input_schema",
+    [None, "not a schema", {"type": "object", "properties": 5}],
+)
+def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
+    tool_input_schema: Any,
+):
+    """A malformed schema is a 400 (`ValueError`), not an `AttributeError` 500."""
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"] = tool_input_schema
+
+    with pytest.raises(ValueError):
+        make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
+def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
+    return Graph(
+        name="Value to MCP tool",
+        description="",
+        nodes=[
+            Node(
+                id="value",
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id="tool",
+                block_id=MCPToolBlock().id,
+                input_default={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "add_lead",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "createRequest": {"type": "object"},
+                        },
+                        "required": required,
+                    },
+                },
+            ),
+        ],
+        links=[
+            Link(
+                source_id="value",
+                sink_id="tool",
+                source_name="output",
+                sink_name=sink_name,
+            )
+        ],
+    )

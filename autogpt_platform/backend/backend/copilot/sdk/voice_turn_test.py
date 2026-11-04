@@ -124,6 +124,13 @@ async def _dispatch(
     with (
         patch.object(executor_utils, "acquire_turn_slot", new=acquire),
         patch.object(executor_utils, "admit_turn", new=AsyncMock()),
+        patch.object(
+            executor_utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
         patch("backend.copilot.model.append_and_save_message", new=save),
         patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),

@@ -120,6 +120,41 @@ class TestResolveTurnProfile:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "route", ["disabled", "local", "subscription", "openrouter"]
+    )
+    async def test_a_scripted_turn_uses_only_its_stand_in(self, route):
+        cfg = ChatConfig(platform_route=route, openrouter_api_key="deployment")
+        with _routed("anthropic/claude-sonnet-5-5", "env"):
+            profile = await resolve_turn_profile(
+                cfg,
+                model=None,
+                session_id="s",
+                user_id="u",
+                credential_lease=None,
+                stand_in_model_url="http://scripted-model:4010/api/v1",
+            )
+        assert profile.name == "direct_anthropic"
+        assert profile.base_url == "http://scripted-model:4010/api"
+        assert profile.api_key is not None
+        assert profile.api_key.get_secret_value() == "load-test"
+        assert await start_route_gateway(profile, None) is None
+        assert cfg.platform_route == route
+        assert cfg.openrouter_api_key == "deployment"
+
+    @pytest.mark.asyncio
+    async def test_a_scripted_turn_refuses_a_connected_credential(self):
+        with pytest.raises(ValueError, match="one model endpoint"):
+            await resolve_turn_profile(
+                ChatConfig(),
+                model=None,
+                session_id="s",
+                user_id="u",
+                credential_lease=MagicMock(spec=CodexCredentialLease),
+                stand_in_model_url="http://scripted-model:4010",
+            )
+
+    @pytest.mark.asyncio
     async def test_a_disabled_route_has_no_platform_turn(self):
         cfg = ChatConfig(platform_route="disabled")
         with (

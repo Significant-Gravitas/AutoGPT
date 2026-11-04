@@ -22,6 +22,7 @@ from backend.copilot.service import (
 # expert identity, workflows and team blocks. #14763 moved the expert blocks to
 # one registry and added routines, the expert's computer and standing work.
 TAGS_WRITTEN_TO_STORED_ROWS = (
+    "skill_invocation",
     "user_context",
     "memory_context",
     "env_context",

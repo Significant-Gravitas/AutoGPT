@@ -669,6 +669,13 @@ def queued(fire_env):
         patch.object(executor_utils, "acquire_turn_slot", acquire),
         patch.object(executor_utils, "admit_turn", AsyncMock()),
         patch.object(
+            executor_utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch.object(
             executor_utils, "capture_cost_context", AsyncMock(return_value=cost)
         ),
         patch("backend.copilot.stream_registry.create_session", AsyncMock()),
