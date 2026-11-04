@@ -673,6 +673,24 @@ def test_a_desktop_file_in_an_applications_subdirectory_launches_by_its_desktop_
     assert popen.call_args.args[0] == ["gtk-launch", "kde4-kcalc"]
 
 
+def test_an_application_directory_on_another_drive_is_skipped(tmp_path, monkeypatch) -> None:
+    """os.path.relpath raises ValueError for paths on different Windows
+    drives (the tests run there too), which failed every launch check."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    desktop = _desktop_file(applications / "kde4", "kcalc.desktop")
+    real_relpath = linux_backend.os.path.relpath
+
+    def relpath(path, start=None):
+        if "system" in str(start):
+            raise ValueError("path is on mount 'D:', start on mount 'C:'")
+        return real_relpath(path, start)
+
+    monkeypatch.setattr(linux_backend.os.path, "relpath", relpath)
+
+    assert linux_backend._desktop_file_id(str(tmp_path / "system" / "x.desktop")) is None
+    assert linux_backend._desktop_file_id(str(desktop)) == "kde4-kcalc.desktop"
+
+
 @pytest.mark.parametrize(
     "other",
     ["share/applications/kde4-kcalc.desktop", "system/applications/kde4-kcalc.desktop"],
