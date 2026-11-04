@@ -58,6 +58,7 @@ def test_the_client_is_the_first_unlisted_hop_from_the_right(
         # A bracket closed by anything but a port, or never closed, is not an address.
         (f"{CLIENT}, [{HOST_PROXY}]junk", NGINX),
         (f"{CLIENT}, [{HOST_PROXY}", NGINX),
+        (f"{CLIENT}, {HOST_PROXY}:notaport", NGINX),
         # Only listed hops: the request started at the leftmost of them.
         (f"{HOST_PROXY}, 172.18.9.9", HOST_PROXY),
     ],
@@ -94,16 +95,21 @@ def test_addresses_are_compared_as_addresses(
 
 @pytest.mark.parametrize("value", ["nginx", "10.0.0.1/33", "10.0.0.0/8, 1.2.3"])
 def test_an_entry_that_is_not_an_address_or_range_refuses_to_start(
-    value: str,
+    value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The environment outranks init arguments in Config, so the value goes there.
+    monkeypatch.setenv("TRUSTED_PROXIES", value)
     with pytest.raises(ValidationError, match="TRUSTED_PROXIES takes IP addresses"):
-        Config(trusted_proxies=value)
+        Config()
 
 
 @pytest.mark.parametrize("value", [",", " , ", " ,, "])
-def test_a_value_that_lists_no_proxy_is_unset(value: str) -> None:
+def test_a_value_that_lists_no_proxy_is_unset(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Every reader then keeps its fallback, as the frontend and container do."""
-    assert Config(trusted_proxies=value).trusted_proxies == ""
+    monkeypatch.setenv("TRUSTED_PROXIES", value)
+    assert Config().trusted_proxies == ""
 
 
 @pytest.mark.parametrize(

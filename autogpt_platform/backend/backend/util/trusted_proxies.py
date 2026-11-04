@@ -93,13 +93,17 @@ def _is_listed(address: IPAddress, networks: tuple[IPNetwork, ...]) -> bool:
 def _address(entry: str) -> IPAddress | None:
     """The address in a forwarded entry, without a port."""
     host = entry.strip()
+    # As uvicorn's _parse_host_port reads it: only a port may follow the address.
     if host.startswith("["):
         host, bracket, rest = host[1:].partition("]")
-        # As in uvicorn, only a port may follow the bracket.
         if not bracket or (rest and not rest.startswith(":")):
             return None
     elif host.count(":") == 1:
-        host = host.partition(":")[0]
+        host, _, port = host.partition(":")
+        try:
+            int(port)
+        except ValueError:
+            return None
     # No IPv4-mapped unwrap: uvicorn matches ::ffff:a.b.c.d only against IPv6 ranges.
     try:
         return ipaddress.ip_address(host)
