@@ -10,6 +10,10 @@ from backend.copilot.active_turns import (
     acquire_turn_slot,
     get_inflight_turn_limit,
 )
+from backend.copilot.chat_platform_header import (
+    bridge_lines,
+    strip_chat_platform_header,
+)
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.executor.utils import dispatch_turn
 from backend.copilot.model import (
@@ -86,6 +90,32 @@ def _empty_message_denial() -> TurnDenial:
         reason="empty_message",
         message="That message is empty. Please send it again with some text.",
     )
+
+
+def _rewritten_message_denial() -> TurnDenial:
+    """Removing the message's server-only blocks would change the bot's lines."""
+    return TurnDenial(
+        reason="invalid_message",
+        message="That message can't be sent as written. Please rephrase it and send it again.",
+    )
+
+
+def _normalise_bot_message(text: str) -> tuple[str, TurnDenial | None]:
+    """``text`` as the engines read it, or why the turn is refused.
+
+    Removing a server-only block may change the sender's words, never the
+    bot's own header, labels or sections, and a turn needs something left
+    beyond those.
+    """
+    try:
+        message = normalise_user_message(text)
+    except EmptyUserMessage:
+        return text, _empty_message_denial()
+    if bridge_lines(message) != bridge_lines(text):
+        return text, _rewritten_message_denial()
+    if not strip_chat_platform_header(message, bridge_origin=True).strip():
+        return text, _empty_message_denial()
+    return message, None
 
 
 async def _check_ban(user_id: str) -> TurnDenial | None:
@@ -385,16 +415,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         )
 
     # The message is stored and run as the engines read it, the same as a
-    # message sent from the web app; one with no text of its own is refused
-    # before any session is touched.
-    try:
-        message = normalise_user_message(request.message)
-    except EmptyUserMessage:
+    # message sent from the web app; one that can't be is refused before any
+    # session is touched.
+    message, denial = _normalise_bot_message(request.message)
+    if denial is not None:
         return ChatTurnHandle(
-            session_id="",
-            turn_id="",
-            user_id=owner_user_id,
-            denial=_empty_message_denial(),
+            session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
     request = request.model_copy(update={"message": message})
 

@@ -296,7 +296,12 @@ class TurnDenial(BaseModel):
     """
 
     reason: Literal[
-        "banned", "paywalled", "rate_limited", "unavailable", "empty_message"
+        "banned",
+        "paywalled",
+        "rate_limited",
+        "unavailable",
+        "empty_message",
+        "invalid_message",
     ]
     message: str
     button_label: str | None = None
