@@ -62,6 +62,21 @@ async def test_an_argument_the_orchestrator_supplies_beats_the_saved_one():
     assert sent == {"query": "the model's", "limit": 3}
 
 
+async def test_a_nested_link_beats_a_bare_one_whatever_is_saved():
+    """Both links feed `query`; the nested one wins even when its value is
+    the saved one, so the outcome does not depend on what was saved."""
+    node = _mcp_tool_node("query", {"query": "saved"}, {})
+    node.input_links.append(
+        node.input_links[0].model_copy(update={"sink_name": "tool_arguments_#_query"})
+    )
+
+    sent = await _arguments_sent(
+        node, {"query": "bare", "tool_arguments_#_query": "saved"}
+    )
+
+    assert sent == {"query": "saved"}
+
+
 async def _arguments_sent(node: Node, enqueued: dict[str, Any]) -> dict[str, Any]:
     inputs, error = validate_exec(node, enqueued)
     assert inputs is not None, error
