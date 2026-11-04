@@ -14,6 +14,8 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth.models import RequestContext
 
+from backend.api.features.orgs.invitation_routes import create_invitation
+from backend.api.features.orgs.model import CreateInvitationRequest
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2835,7 +2837,6 @@ class TestPRReviewBugs:
     @pytest.mark.asyncio
     async def test_create_invitation_rejects_mismatched_org_id(self):
         """create_invitation should reject when ctx.org_id != path org_id."""
-        from backend.api.features.orgs.invitation_routes import create_invitation
 
         ctx = _owner_ctx(org_id="org-A")
         request = MagicMock()
@@ -3063,8 +3064,6 @@ class TestInvitationSeeding:
     async def test_create_invitation_into_a_personal_org_is_refused(self):
         """A personal org bills only its owner, so a member could join it but
         never run anything there."""
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
 
         self.prisma.organization.find_unique = AsyncMock(
             return_value=_make_org(isPersonal=True)
@@ -3084,9 +3083,6 @@ class TestInvitationSeeding:
 
     @pytest.mark.asyncio
     async def test_create_invitation_into_a_team_org_is_stored(self):
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
-
         self.prisma.organization.find_unique = AsyncMock(
             return_value=_make_org(isPersonal=False)
         )
@@ -3115,8 +3111,6 @@ class TestInvitationSeeding:
         """An invitation must not be seedable with team IDs from another
         org — otherwise accept-time seeding silently no-ops and the
         inviter never learns the invite was poisoned/wrong."""
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
 
         foreign_team = MagicMock()
         foreign_team.id = "team-foreign"
@@ -3139,9 +3133,6 @@ class TestInvitationSeeding:
 
     @pytest.mark.asyncio
     async def test_create_invitation_accepts_own_org_teams(self):
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
-
         own_team = MagicMock()
         own_team.id = "team-own"
         own_team.orgId = ORG_ID
@@ -3179,9 +3170,6 @@ class TestInvitationSeeding:
     async def test_create_invitation_stores_the_email_trimmed_and_lowercased(
         self,
     ):
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
-
         created = MagicMock()
         created.id = "inv-3"
         created.token = "tok-norm"
@@ -3204,9 +3192,6 @@ class TestInvitationSeeding:
 
     @pytest.mark.asyncio
     async def test_create_invitation_rejects_an_archived_team(self):
-        from backend.api.features.orgs.invitation_routes import create_invitation
-        from backend.api.features.orgs.model import CreateInvitationRequest
-
         archived = MagicMock()
         archived.id = "team-archived"
         archived.orgId = ORG_ID
@@ -3229,8 +3214,6 @@ class TestInvitationSeeding:
     @pytest.mark.parametrize("email", ["", "   "])
     def test_create_invitation_rejects_a_blank_email(self, email):
         from pydantic import ValidationError
-
-        from backend.api.features.orgs.model import CreateInvitationRequest
 
         with pytest.raises(ValidationError):
             CreateInvitationRequest(email=email)
