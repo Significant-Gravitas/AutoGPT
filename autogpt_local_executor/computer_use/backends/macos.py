@@ -997,15 +997,6 @@ class MacOSBackend(ComputerUseBackend):
             raise ClipboardWriteError("the pasteboard refused the text")
         return change_count
 
-    def _clear_pasteboard(self) -> int:
-        pb = self._pasteboard()
-        if pb is None:
-            raise ClipboardWriteError("the pasteboard is unavailable")
-        try:
-            return int(pb.clearContents())
-        except Exception as exc:
-            raise ClipboardWriteError(str(exc)) from exc
-
     def _read_pasteboard_types(self) -> list[str] | None:
         """The pasteboard's types, or None if they can't be read."""
         pb = self._pasteboard()
@@ -1021,49 +1012,49 @@ class MacOSBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            # The restore puts back plain text only. A clipboard holding
-            # anything else (an image, rich text, a concealed password), or
-            # one whose types can't be read, is left alone and the text typed.
-            if not (preserve_clipboard and not self._pasteboard_is_plain_text()):
-                self._do_paste(text, preserve_clipboard=preserve_clipboard)
+            if not preserve_clipboard:
+                self._do_paste(text, restore=None)
                 return
+            # The restore puts back plain text only, so paste only with that
+            # text in hand. A clipboard holding anything else (an image, rich
+            # text, a concealed password), one that can't be read, or an empty
+            # one (clearing it after the paste could beat a slow app to the
+            # text) is left alone and the text typed.
+            if self._pasteboard_is_plain_text():
+                previous, _ = self._read_pasteboard_text()
+                if previous is not None:
+                    self._do_paste(text, restore=previous)
+                    return
         pyautogui.write(text, interval=0.02)
 
     def _pasteboard_is_plain_text(self) -> bool:
         types = self._read_pasteboard_types()
         return types is not None and set(types) <= _PLAIN_TEXT_PB_TYPES
 
-    def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
+    def _do_paste(self, text: str, *, restore: str | None) -> None:
+        """Paste `text`, then put `restore` back unless something else has
+        written the pasteboard since. With `restore=None` the text stays."""
         import pyautogui  # type: ignore[import-untyped]
 
-        snapshot: tuple[str | None, int | None] | None = None
-        was_empty = False
-        if preserve_clipboard:
-            snapshot = self._read_pasteboard_text()
-            was_empty = self._read_pasteboard_types() == []
         written_count = self._write_pasteboard_text(text)
         # Re-record writeback so the inner read sees us as the writer.
         self.clipboard_writeback.record_write(text, sequence=written_count)
         pyautogui.hotkey("command", "v")
-        if preserve_clipboard and snapshot is not None:
-            previous = snapshot[0]
-            time.sleep(0.05)  # let the paste consume the clipboard
-            _, current_count = self._read_pasteboard_text()
-            # Restore only if nothing has changed the pasteboard since our
-            # write (a changed changeCount means the user copied during the
-            # paste). Compare with what our write left, not the snapshot.
-            if current_count == written_count:
-                # The restored contents are the user's, not ours, so they are
-                # not recorded as a writeback: a writeback-only read refuses them.
-                # An empty pasteboard is emptied again, so the pasted text is
-                # not left for other apps to read.
-                try:
-                    if previous is not None:
-                        self._write_pasteboard_text(previous)
-                    elif was_empty:
-                        self._clear_pasteboard()
-                except ClipboardWriteError:
-                    logger.warning("Could not restore the clipboard after pasting", exc_info=True)
+        if restore is None:
+            return
+        time.sleep(0.05)  # let the paste consume the clipboard
+        current, current_count = self._read_pasteboard_text()
+        # Restore only if the pasteboard still holds exactly our write. A
+        # changed changeCount means the user copied during the paste (compare
+        # with what our write left, not the snapshot); other text under our
+        # count means a copy landed before we read the count.
+        if current_count == written_count and current == text:
+            # The restored contents are the user's, not ours, so they are
+            # not recorded as a writeback: a writeback-only read refuses them.
+            try:
+                self._write_pasteboard_text(restore)
+            except ClipboardWriteError:
+                logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

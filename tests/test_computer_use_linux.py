@@ -220,6 +220,28 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
         b.clipboard_read()
 
 
+def test_a_clipboard_with_no_text_to_put_back_is_left_alone_and_the_text_typed(
+    tmp_path, monkeypatch
+) -> None:
+    """xclip can't read an empty clipboard, an image, or anything else without
+    a text target. A paste would leave the pasted text there in its place."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    writes: list[str] = []
+    monkeypatch.setattr(b, "_write_clipboard_text", writes.append)
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (None, None))
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert writes == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
 def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
     b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
