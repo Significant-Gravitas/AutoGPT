@@ -332,8 +332,10 @@ def _vapid_value(
     rather than half-filled. Nothing stored depends on the pair, so replacing
     a published one costs only the browsers' push subscriptions."""
     effective = _file_settings(path)
+    # A bare name or a `$NAME` reference is Compose's to fill in from the
+    # environment when the stack starts, so it counts as set, not blank.
     unset = [
-        setting is None or _is_unset_vapid_key(setting.value)
+        setting is None or (setting.literal and _is_unset_vapid_key(setting.value))
         for setting in (effective.get(key) for key in VAPID_KEY_SETTINGS)
     ]
     if not any(unset):

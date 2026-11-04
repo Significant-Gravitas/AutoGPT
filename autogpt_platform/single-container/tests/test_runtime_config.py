@@ -758,6 +758,24 @@ class FillEnvSecretsTest(unittest.TestCase):
 
             self.assertEqual(_env_values(path)["VAPID_PUBLIC_KEY"], "")
 
+    def test_a_bare_name_vapid_line_counts_as_set(self) -> None:
+        """A name alone on a line takes the environment's value when the
+        stack starts, so it is a set key, not a blank one: beside a blank
+        key it is refused as a half-set pair rather than paired with a
+        generated key, and two bare names are left to Compose."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            half = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY=\n"
+            path.write_text(half, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+            self.assertEqual(path.read_text(encoding="utf-8"), half)
+
+            both = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY\n"
+            path.write_text(both, encoding="utf-8")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+            self.assertEqual(path.read_text(encoding="utf-8"), both)
+
     def test_a_pair_whose_keys_do_not_belong_together_is_refused(self) -> None:
         """Browsers would subscribe under the public key and the backend sign
         with a private key it isn't from, which every push service rejects,
