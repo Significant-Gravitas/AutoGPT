@@ -28,6 +28,7 @@ archive="${RUNNER_TEMP:?}/trivy_${version}_${asset}.tar.gz"
 bin_dir="${RUNNER_TEMP}/trivy-bin"
 
 curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+  --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
   --output "$archive" \
   "https://github.com/aquasecurity/trivy/releases/download/v${version}/trivy_${version}_${asset}.tar.gz"
 echo "${sha256}  ${archive}" | sha256sum --check --strict -
