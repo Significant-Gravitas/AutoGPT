@@ -151,6 +151,10 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
+class SessionRevokedSendError(RuntimeError):
+    """A frame was offered on a connection that SESSION_REVOKED has ended."""
+
+
 class CredentialBoundConnect(connect):
     def process_redirect(self, exc: Exception) -> Exception:
         if (
@@ -241,6 +245,10 @@ class ShimDaemon:
         # auto-reconnect (protocol version mismatch, session revoked, etc.).
         # The reconnect loop checks this and exits cleanly.
         self._disable_reconnect: bool = False
+        # The connection a SESSION_REVOKED frame arrived on. Nothing more may
+        # be sent on it, and the revocation is audited before the socket is
+        # closed, so `_send_frame` checks this instead of waiting for the close.
+        self._revoked_ws: Any = None
         # Backpressure / health bookkeeping (#38). _in_flight = tasks
         # currently holding the semaphore; _queue_depth = tasks waiting
         # to acquire it. Maintained explicitly so we don't have to poke
@@ -893,6 +901,10 @@ class ShimDaemon:
     async def _handle_session_revoked(self, ws, msg: SessionRevokedMessage) -> None:
         """Per PROTOCOL.md → Session ownership: log, stop sending, close,
         and don't auto-reconnect."""
+        # First, before anything awaits: requests still in flight can finish
+        # while the audit write below runs in a thread, and their responses
+        # must not go out.
+        self._revoked_ws = ws
         reason = msg.payload.reason
         new_machine = msg.payload.new_shim_machine_id
         logger.warning(
@@ -1077,6 +1089,8 @@ class ShimDaemon:
                         )
                         self._in_flight -= 1
                         in_flight_owed = False
+            except SessionRevokedSendError:
+                logger.debug("%s stopped: the session was revoked", type(msg).__name__)
             except Exception as exc:
                 logger.exception("Handler crashed for %s", type(msg).__name__)
                 response = make_error(
@@ -1127,6 +1141,10 @@ class ShimDaemon:
         return max(self.config.max_concurrent - occupied, 0)
 
     async def _send_frame(self, ws, frame: BaseModel) -> bool:
+        if ws is self._revoked_ws:
+            raise SessionRevokedSendError(
+                "SESSION_REVOKED: nothing more is sent on this connection"
+            )
         raw = dump_message(frame)
         if len(raw.encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
             fallback = make_error(
