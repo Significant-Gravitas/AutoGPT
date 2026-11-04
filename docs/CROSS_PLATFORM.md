@@ -146,6 +146,14 @@ Task Scheduler retries three times, a minute apart. Run
 retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
 
+A keychain that can't be read yet (still locked at login, say) is not a
+failed sign-in: the shim keeps retrying with its reconnect backoff. Only a
+missing keychain backend stops it. A preflight failure that every restart
+would hit again (a preview turned on in the config, or pyobjc missing)
+also exits 0 under either supervisor, since both templates set
+`AUTOGPT_SHIM_SUPERVISOR`. A missing macOS permission still exits 78, so
+launchd relaunches the shim once it is granted.
+
 ### Packaging & install
 
 | Dimension | macOS | Linux | Windows | Notes |

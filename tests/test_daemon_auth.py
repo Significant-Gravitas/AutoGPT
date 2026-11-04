@@ -231,13 +231,17 @@ async def test_websocket_redirect_never_reaches_an_unapproved_destination(
 
 
 @pytest.mark.asyncio
-async def test_keychain_read_error_is_terminal_and_does_not_disclose_tokens(tmp_path: Path) -> None:
+async def test_keychain_read_error_is_retried_and_does_not_disclose_tokens(tmp_path: Path) -> None:
+    """A read error can clear (a keychain still locked at login), so it is
+    retried rather than terminal; its text never reaches the message."""
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
     daemon = _daemon(tmp_path)
     daemon.token_store = SimpleNamespace(
         get_access_token=AsyncMock(side_effect=RuntimeError("access-secret"))
     )
 
-    with pytest.raises(DaemonAuthenticationError, match="OS keychain") as exc:
+    with pytest.raises(KeychainUnavailableError, match="OS keychain") as exc:
         await daemon._get_access_token(refresh_on_fail=False)
 
     assert "access-secret" not in str(exc.value)
@@ -498,3 +502,35 @@ async def test_a_legacy_session_creates_its_allowed_root_on_start(
         await daemon.run()
 
     assert root.is_dir() is legacy
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "terminal"),
+    [("KeyringLocked", False), ("KeyringError", False), ("NoKeyringError", True)],
+)
+async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
+    tmp_path: Path, error: str, terminal: bool
+) -> None:
+    """A keychain that is still locked at login used to stop the LaunchAgent
+    for good; only a missing keychain backend is a setup problem."""
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
+    failure = getattr(keyring.errors, error)
+
+    class Store:
+        async def get_access_token(self) -> str:
+            raise failure("keychain says no")
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    daemon = ShimDaemon(config, token_store=Store(), audit=MagicMock())  # type: ignore[arg-type]
+
+    expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
+    with pytest.raises(expected):
+        await daemon._read_access_token()

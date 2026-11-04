@@ -74,6 +74,8 @@ def test_render_systemd_unit_has_all_placeholders_filled(
     assert "Restart=on-failure" in out
     # An authentication failure (exit 77) won't fix itself on a restart.
     assert "RestartPreventExitStatus=77" in out
+    # Lets `start` stop, rather than loop, on a preflight failure no restart fixes.
+    assert "Environment=AUTOGPT_SHIM_SUPERVISOR=systemd" in out
     assert "WantedBy=default.target" in out
 
 

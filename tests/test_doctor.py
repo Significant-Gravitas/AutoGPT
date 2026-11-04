@@ -84,6 +84,7 @@ def test_doctor_linux_wayland_warns_when_computer_use_on(tmp_path: Path, monkeyp
 def test_doctor_linux_x11_ok_when_computer_use_on(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
     monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(
         "autogpt_local_executor.computer_use.get_backend",
@@ -292,3 +293,17 @@ def test_doctor_linux_reads_display_when_the_session_type_is_unrecognized(
     )
 
     assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 0
+
+
+def test_doctor_linux_warns_when_an_x11_session_has_no_display(tmp_path, monkeypatch) -> None:
+    """XDG_SESSION_TYPE=x11 with DISPLAY unset was reported as full computer_use."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78

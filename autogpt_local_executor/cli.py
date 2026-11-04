@@ -299,9 +299,24 @@ async def _cmd_start(config) -> int:
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
     except DaemonPreflightError as exc:
+        print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
+        supervisor = os.environ.get("AUTOGPT_SHIM_SUPERVISOR")
+        if exc.permanent and supervisor in ("launchd", "systemd"):
+            # A setting or a missing package fails the same way on every
+            # restart, so stop until the user has fixed it.
+            restart = (
+                "launchctl kickstart -k gui/$(id -u)/net.autogpt.shim"
+                if supervisor == "launchd"
+                else "systemctl --user restart autogpt-shim"
+            )
+            print(
+                f"The service will not restart on its own. Fix the above, then run `{restart}`.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 0
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
         # re-launches us on the next TCC change. See COMPUTER_USE.md Q5.
-        print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)

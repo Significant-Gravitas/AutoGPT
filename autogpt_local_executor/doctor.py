@@ -291,8 +291,17 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
                 blocking=config.enable_computer_use,
             )
         )
-    elif session == "x11":
+    elif session == "x11" and os.environ.get("DISPLAY"):
         out.append(CheckResult("OK", "display_server", "X11 — full computer_use available"))
+    elif session == "x11":
+        out.append(
+            CheckResult(
+                "WARN",
+                "display_server",
+                "X11 session, but DISPLAY is unset; computer_use can't open the display",
+                blocking=config.enable_computer_use,
+            )
+        )
     else:
         out.append(
             CheckResult(
