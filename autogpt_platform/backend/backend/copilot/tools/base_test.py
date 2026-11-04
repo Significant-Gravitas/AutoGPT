@@ -588,10 +588,9 @@ class TestOutline:
         node_start, node_length = offsets["$.record"]
         window = re.search(r"record=\{…10 keys @(\d+)\+(\d+)\}", outline)
         assert window, outline
-        start, length = int(window[1]), int(window[2])
-        assert start == node_start
-        assert length < node_length, "an oversized node's window must be capped"
-        assert body[start : start + length] == body[node_start:][:length]
+        cap = len(body) * 3 // 4
+        assert node_length > cap, "the fixture's node must be oversized"
+        assert (int(window[1]), int(window[2])) == (node_start, cap)
 
     def test_a_single_long_string_still_says_something(self):
         """Structure alone leaves the budget unspent, so the scalar cap widens."""
