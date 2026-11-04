@@ -1842,6 +1842,7 @@ def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch)
     [call] = [c for c in calls if c.args and c.args[0] is send_trial_last_calls]
     assert call.kwargs["id"] == "send_trial_last_calls"
     assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
     assert isinstance(call.args[1], CronTrigger)
     hourly = CronTrigger.from_crontab("15 * * * *")
     assert [str(f) for f in call.args[1].fields] == [str(f) for f in hourly.fields]
