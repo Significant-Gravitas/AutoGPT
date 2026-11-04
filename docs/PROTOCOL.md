@@ -1128,5 +1128,7 @@ and the spec's discriminated union just gains it within v1.x.
 ## Reconnection
 
 Shim uses exponential backoff: `min(2^attempt * 1s, 60s) + jitter(0-5s)`.
-On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+`attempt` counts failed connects in a row and goes back to 0 once a
+connection completes its handshake, so a session that drops after
+running reconnects promptly. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.

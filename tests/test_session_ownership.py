@@ -412,3 +412,48 @@ async def test_run_says_why_it_stops_after_an_error_it_will_not_retry(
         await asyncio.wait_for(daemon.run(), timeout=30)
 
     assert "HELLO_ACK id does not match HELLO id" in caplog.text
+
+
+# ── Reconnect backoff ────────────────────────────────────────────────────────
+
+
+async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session that ran and then dropped must reconnect promptly, not at
+    the delay built up by the failures before it."""
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise OSError("connection refused")
+        if calls == 4:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2, 0]
+
+
+def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:
+    """2 ** attempt times a float delay overflows at attempt 1024."""
+    delay = daemon._backoff_delay(5000)
+
+    cap = daemon.config.reconnect_max_delay
+    assert cap <= delay <= cap + daemon.config.reconnect_jitter_seconds
