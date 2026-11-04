@@ -196,10 +196,14 @@ def _which_without_path(found_on_path: str | None):
     return which
 
 
-def test_the_console_script_on_path_is_preferred(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(install_mod.shutil, "which", _which_without_path("/usr/bin/autogpt-shim"))
+def test_the_console_script_on_path_is_preferred(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Absolute on every OS: "/usr/bin/..." gains a drive letter on Windows.
+    script = str(tmp_path / "bin" / "autogpt-shim")
+    monkeypatch.setattr(install_mod.shutil, "which", _which_without_path(script))
 
-    assert install_mod.resolve_shim_command() == ("/usr/bin/autogpt-shim",)
+    assert install_mod.resolve_shim_command() == (script,)
 
 
 def test_the_console_script_beside_the_interpreter_is_next(
