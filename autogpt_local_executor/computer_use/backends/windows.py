@@ -48,6 +48,13 @@ logger = logging.getLogger(__name__)
 # The documented modifier names, in pyautogui's: super (and its alias meta)
 # is the Windows logo key.
 _KEY_ALIASES = {"super": "win", "meta": "win"}
+# Registered formats an app puts beside a copy to keep it out of clipboard
+# monitors and history, as password managers do. Registered formats are
+# numbered from 0xC000.
+_CONCEALED_FORMAT_NAMES = frozenset(
+    {"ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"}
+)
+_FIRST_REGISTERED_FORMAT = 0xC000
 # mouse_event's wheel flags, and one notch of the wheel in its units.
 _MOUSEEVENTF_WHEEL = 0x0800
 _MOUSEEVENTF_HWHEEL = 0x1000
@@ -671,8 +678,9 @@ class WindowsBackend(ComputerUseBackend):
             )
         text, seq, formats = snapshot
         # Concealed check first; formats that can't be read count as private.
-        if formats is None or any(CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST for fmt in formats):
-            raise ClipboardConcealedError("concealed_type", marker="CF_PRIVATE")
+        marker = "CF_PRIVATE" if formats is None else self._concealed_marker(formats)
+        if marker is not None:
+            raise ClipboardConcealedError("concealed_type", marker=marker)
         if self._clipboard_read_foreign:
             content = text or ""
             return ClipboardReadResult(
@@ -752,6 +760,23 @@ class WindowsBackend(ComputerUseBackend):
         except Exception:
             return None
 
+    @staticmethod
+    def _concealed_marker(formats: set[int]) -> str | None:
+        """What marks the clipboard's contents as concealed, if anything."""
+        if any(CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST for fmt in formats):
+            return "CF_PRIVATE"
+        registered = sorted(fmt for fmt in formats if fmt >= _FIRST_REGISTERED_FORMAT)
+        if not registered:
+            return None
+        try:
+            import win32clipboard  # type: ignore[import-not-found]
+
+            names = [win32clipboard.GetClipboardFormatName(fmt) for fmt in registered]
+        except Exception:
+            # A format whose name can't be read could be one of the markers.
+            return "unknown"
+        return next((name for name in names if name in _CONCEALED_FORMAT_NAMES), None)
+
     def _clipboard_formats(self) -> set[int] | None:
         """Every format on the clipboard, or None if they can't be read."""
         try:
@@ -800,7 +825,10 @@ class WindowsBackend(ComputerUseBackend):
         from separate clipboard sessions, so the sequence number and text
         must read the same after the formats as before them, or a copy
         landed in between; retried a few times, then None."""
-        for _ in range(3):
+        for attempt in range(3):
+            if attempt:
+                # Another app may be holding the clipboard open for a moment.
+                time.sleep(0.02)
             text, seq = self._read_clipboard_text()
             formats = self._clipboard_formats()
             again, seq_again = self._read_clipboard_text()

@@ -747,3 +747,49 @@ def test_a_failed_write_leaves_a_copy_made_since_alone(tmp_path, monkeypatch) ->
 
     assert clipboard["writes"] == [text]
     assert clipboard["content"] == "copied meanwhile"
+
+
+@pytest.mark.parametrize(
+    "name", ["ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"]
+)
+def test_a_copy_kept_from_clipboard_monitors_is_concealed(tmp_path, monkeypatch, name) -> None:
+    """Password managers mark a copy with a registered format, not CF_PRIVATE,
+    so a foreign read returned the password."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0xC0F1})
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("hunter2", 5))
+    win32clipboard = MagicMock()
+    win32clipboard.GetClipboardFormatName.side_effect = lambda fmt: {0xC0F1: name}[fmt]
+    monkeypatch.setitem(sys.modules, "win32clipboard", win32clipboard)
+
+    with pytest.raises(ClipboardConcealedError) as ei:
+        b.clipboard_read()
+
+    assert ei.value.details["marker"] == name
+
+
+def test_a_copy_with_another_registered_format_is_read(tmp_path, monkeypatch) -> None:
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0xC0F2})
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("<b>hi</b>", 5))
+    win32clipboard = MagicMock()
+    win32clipboard.GetClipboardFormatName.side_effect = lambda fmt: {0xC0F2: "HTML Format"}[fmt]
+    monkeypatch.setitem(sys.modules, "win32clipboard", win32clipboard)
+
+    assert b.clipboard_read().content == "<b>hi</b>"
+
+
+def test_a_clipboard_held_open_for_a_moment_is_read_once_it_is_free(tmp_path, monkeypatch) -> None:
+    """Another app holding the clipboard open for a few milliseconds failed all
+    three back-to-back reads, and the copy was reported as concealed."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    slept: list[float] = []
+    monkeypatch.setattr("time.sleep", slept.append)
+    # Held open until the shim has waited a moment.
+    monkeypatch.setattr(
+        b, "_read_clipboard_text", lambda: ("user text", 7) if slept else (None, None)
+    )
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
+
+    assert b.clipboard_read().content == "user text"
+    assert slept

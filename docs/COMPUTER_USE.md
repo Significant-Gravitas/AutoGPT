@@ -714,7 +714,7 @@ time. Two CLI flags on `autogpt-shim start`:
 | Flag | Default | Effect |
 |---|---|---|
 | `--enable-clipboard` | off | Enables `CLIPBOARD_WRITE` and a **writeback-only** flavor of `CLIPBOARD_READ`: `CLIPBOARD_READ` returns content **only if the shim itself wrote it within the last 30 seconds.** Anything the user (or any other app) put on the clipboard returns `CLIPBOARD_CONCEALED` with `reason: "writeback_only"`. |
-| `--enable-clipboard-read-foreign` | off (requires `--enable-clipboard`) | Lets `CLIPBOARD_READ` return any clipboard content **except** when the current pasteboard carries an `org.nspasteboard.ConcealedType` marker (macOS, the de-facto password-manager convention) or `CF_PRIVATE` clipboard format (Windows). Concealed contents → `CLIPBOARD_CONCEALED` error. |
+| `--enable-clipboard-read-foreign` | off (requires `--enable-clipboard`) | Lets `CLIPBOARD_READ` return any clipboard content **except** when the current pasteboard carries an `org.nspasteboard.ConcealedType` marker (macOS, the de-facto password-manager convention), or on Windows a `CF_PRIVATE` format or the registered `ExcludeClipboardContentFromMonitorProcessing` or `Clipboard Viewer Ignore` format that password managers add. Concealed contents → `CLIPBOARD_CONCEALED` error. |
 
 Without `--enable-clipboard`, all clipboard sub-ops return
 `FEATURE_NOT_SUPPORTED` and `clipboard` is omitted from
