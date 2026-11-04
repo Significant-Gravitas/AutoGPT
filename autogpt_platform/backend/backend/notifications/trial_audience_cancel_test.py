@@ -191,3 +191,19 @@ async def test_claim_is_given_back_when_another_plan_outlives_the_trial(trial):
     _, notice, release = await _notify(pending, raw, "last_call", others=("sub_max",))
     notice.assert_not_awaited()
     release.assert_awaited_once_with(notices.trial_notice_key(pending, "last_call"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind,left,fail_open", [("expiring", 3, True), ("last_call", 1, False)]
+)
+async def test_only_the_last_call_claim_fails_closed(trial, kind, left, fail_open):
+    pending, raw = _state(
+        trial.model_copy(update={"cancel_at_period_end": True}), "canceled"
+    )
+    raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=left)).timestamp())
+    claim = AsyncMock(return_value=True)
+    await _notify(
+        pending, raw, "ending" if kind == "expiring" else kind, claim_once=claim
+    )
+    assert claim.await_args.kwargs == {"fail_open": fail_open}

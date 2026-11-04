@@ -21,7 +21,7 @@ from backend.data.notifications import (
 )
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
-from backend.notifications.dedupe import claim_once, release_claim
+from backend.notifications.dedupe import claim_once, is_claimed, release_claim
 from backend.notifications.lifecycle_plan import currency_symbol, format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.recipient import first_name
@@ -42,10 +42,11 @@ TRIAL_REMINDER_WINDOW = timedelta(days=4)
 # the trial has between these two lead times left. The hourly pass opens the
 # window; a notice still unsent at the near edge is dropped, not sent late.
 LAST_CALL_WINDOW = timedelta(hours=25)
-# The not-renewing three-day reminder says "ends in 3 days"; a trial_will_end
-# handled this late (after an outage, say) is dropped and the last call covers
-# the trial instead.
+# The not-renewing three-day reminder says "ends in 3 days", so it goes out
+# only within half a day of that. A trial_will_end handled later (after an
+# outage, say) is dropped and the last call covers the trial instead.
 EXPIRING_MIN_LEAD = timedelta(days=2, hours=12)
+EXPIRING_MAX_LEAD = timedelta(days=3, hours=12)
 LAST_CALL_MIN_LEAD = timedelta(hours=18)
 # Someone who canceled this recently has just had the cancellation notice,
 # which gives the same end date and the same way back.
@@ -127,8 +128,9 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if kind in NOT_RENEWING_KINDS:
         # Claimed before the plan listing: the hourly pass sees a due trial on
         # several runs, and one already notified should cost no more Stripe
-        # calls.
-        if not await claim_once(claim):
+        # calls. For the same reason the last call's claim fails closed: open,
+        # a Redis outage would send it on every run.
+        if not await claim_once(claim, fail_open=kind != "last_call"):
             return True
         claimed = True
     try:
@@ -400,8 +402,11 @@ def _running_trial_skip_reason(
         and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds()
     ):
         return "trial ends after the reminder window"
-    if kind == "expiring" and trial_end < now + EXPIRING_MIN_LEAD.total_seconds():
-        return "too little of the trial is left for a three-day reminder"
+    if kind == "expiring":
+        if trial_end > now + EXPIRING_MAX_LEAD.total_seconds():
+            return "trial ends after the reminder window"
+        if trial_end < now + EXPIRING_MIN_LEAD.total_seconds():
+            return "too little of the trial is left for a three-day reminder"
     if kind == "last_call":
         if trial_end > now + LAST_CALL_WINDOW.total_seconds():
             return "trial ends after the last-call window"
@@ -435,6 +440,10 @@ async def send_trial_last_calls() -> int:
         now + LAST_CALL_MIN_LEAD, now + LAST_CALL_WINDOW
     )
     for trial in trials:
+        # Most due trials were notified on an earlier run: skip their Stripe
+        # retrieve. notify_trial's own claim still decides.
+        if await is_claimed(trial_notice_key(trial, "last_call")):
+            continue
         subscription = {
             "id": trial.subscription_id,
             "metadata": {"trial_enrollment_id": trial.id},
@@ -473,7 +482,6 @@ async def _another_plan(trial: TrialState, current: dict, until: int | None) -> 
             if other.id == current.get("id"):
                 continue
             # Stripe sets cancel_at on a plan scheduled to end.
-            ends = getattr(other, "cancel_at", None)
-            if until is None or ends is None or ends > until:
+            if until is None or other.cancel_at is None or other.cancel_at > until:
                 return True
     return False

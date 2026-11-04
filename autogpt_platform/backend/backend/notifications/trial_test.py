@@ -536,6 +536,7 @@ async def test_last_call_pass_notifies_each_due_trial_despite_one_failure(trial)
             return_value=MagicMock(list_trials_ending_unrenewed=listing),
         ),
         patch.object(notices, "notify_trial", notify),
+        patch.object(notices, "is_claimed", AsyncMock(return_value=False)),
     ):
         assert await notices.send_trial_last_calls() == 2
     after, until = listing.await_args.args
@@ -555,4 +556,31 @@ def test_late_three_day_reminder_is_dropped_rather_than_miscounting(trial):
     late = _pending(trial, timedelta(days=2))
     assert notices._notice_skip_reason(trial, "expiring", late) == (
         "too little of the trial is left for a three-day reminder"
+    )
+
+
+@pytest.mark.asyncio
+async def test_last_call_pass_skips_trials_it_already_notified(trial):
+    second = trial.model_copy(update={"id": "trial-2", "subscription_id": "sub_2"})
+    listing = AsyncMock(return_value=[trial, second])
+    notify = AsyncMock(return_value=True)
+    sent = notices.trial_notice_key(trial, "last_call")
+    with (
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(list_trials_ending_unrenewed=listing),
+        ),
+        patch.object(notices, "notify_trial", notify),
+        patch.object(notices, "is_claimed", AsyncMock(side_effect=lambda k: k == sent)),
+    ):
+        await notices.send_trial_last_calls()
+    [call] = notify.await_args_list
+    assert call.args[0]["id"] == "sub_2"
+
+
+def test_three_day_reminder_only_goes_near_the_three_day_mark(trial):
+    early = _pending(trial, timedelta(days=3, hours=20))
+    assert notices._notice_skip_reason(trial, "expiring", early) == (
+        "trial ends after the reminder window"
     )

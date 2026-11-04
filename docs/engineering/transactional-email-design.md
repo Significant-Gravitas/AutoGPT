@@ -167,8 +167,10 @@ The scheduler's hourly `send_trial_last_calls` pass queues the one-day one
 while 18 to 25 hours of the trial are left. Neither goes to someone who
 canceled in the last day, since the cancellation notice they just received
 gives the same date and way back. Neither goes while another plan is live, since
-that plan keeps their access, and a three-day reminder handled with under two
-and a half days left is dropped rather than miscounting. Each is claimed once per trial end date, and
+that plan keeps their access, and the three-day reminder only goes out with
+between two and a half and three and a half days left, so its subject stays
+accurate. The last-day claim fails closed on a Redis error, so an outage
+cannot resend it on every hourly run. Each is claimed once per trial end date, and
 a resume before delivery suppresses it.
 
 Stripe's [trial-ending webhook setting](https://docs.stripe.com/billing/subscriptions/trials)
