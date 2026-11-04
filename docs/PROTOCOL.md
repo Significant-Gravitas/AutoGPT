@@ -86,7 +86,7 @@ on the platform side, the session SHOULD be torn down with code 4426).
 
 | Version | Change |
 |---|---|
-| `2.0` | Computer use relays cua-driver's tools: `COMPUTER_TOOLS_REQUEST` / `COMPUTER_TOOLS_RESPONSE` and `COMPUTER_TOOL_CALL` / `COMPUTER_TOOL_RESULT` replace the screen-coordinate operations (`SCREENSHOT_REQUEST`, `INPUT_ACTION`, `CURSOR_POSITION_REQUEST`, `DISPLAY_INFO_REQUEST`, `WINDOW_LIST_REQUEST`, `WINDOW_FOCUS`, `APP_LIST_REQUEST`, `APP_LAUNCH`, `CLIPBOARD_READ`, `CLIPBOARD_WRITE`, `PERMISSIONS_CHECK_REQUEST` and their responses). `HELLO.computer_use_driver` replaces `computer_use_features` and `computer_use_features_coarse`. `WINDOW_STALE` and `INPUT_OUT_OF_BOUNDS` are gone. Machine control needs no particular minor. |
+| `2.0` | Computer use relays cua-driver's tools: `COMPUTER_TOOLS_REQUEST` / `COMPUTER_TOOLS_RESPONSE` and `COMPUTER_TOOL_CALL` / `COMPUTER_TOOL_RESULT` replace the screen-coordinate operations (`SCREENSHOT_REQUEST`, `INPUT_ACTION`, `CURSOR_POSITION_REQUEST`, `DISPLAY_INFO_REQUEST`, `WINDOW_LIST_REQUEST`, `WINDOW_FOCUS`, `APP_LIST_REQUEST`, `APP_LAUNCH`, `CLIPBOARD_READ`, `CLIPBOARD_WRITE`, `PERMISSIONS_CHECK_REQUEST` and their responses). `HELLO.computer_use_driver` and `HELLO.computer_use_tools` replace `computer_use_features` and `computer_use_features_coarse`. `WINDOW_STALE` and `INPUT_OUT_OF_BOUNDS` are gone. Machine control needs no particular minor. |
 | `1.1` | Machine control: the control connection, `DIRECTORY_LIST_*`, `ATTACH_SESSION`, `ACTIVATE_SESSION`, `RESTORE_SESSION`, `DETACH_SESSION`. |
 
 ---
@@ -121,6 +121,7 @@ on the platform side, the session SHOULD be torn down with code 4426).
     ],
     "allowed_root": null,        // control WS; canonical root on a data WS
     "computer_use_driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
+    "computer_use_tools": ["click", "get_window_state", "list_windows", "..."],
     "local_llm_models": ["llama3.2:3b", "mistral:7b"],   // empty if no local_llm cap
     "hardware_devices": [
       {"type": "serial", "port": "/dev/ttyUSB0", "desc": "Arduino Uno"},
@@ -802,7 +803,10 @@ driver's, scoped to a window and a state snapshot, not a shim-wide screen.
 `HELLO.computer_use_driver` names the driver once it has started:
 `{"name": "cua-driver", "version": "0.38.0", "runtime": "direct"}`, where
 `runtime` is `service` when the driver relays to CuaDriver.app on macOS.
-`computer_use` is advertised only then.
+`HELLO.computer_use_tools` lists, sorted, the names of the tools
+`COMPUTER_TOOLS_RESPONSE` would return, so the platform can ask for consent
+to exactly those without a round trip. `computer_use` is advertised only
+once the driver has started.
 
 #### `COMPUTER_TOOLS_REQUEST` (platform → shim)
 ```json

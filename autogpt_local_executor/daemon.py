@@ -989,11 +989,14 @@ class ShimDaemon:
         if self._control_mode:
             caps.append("directory_browse")
         computer_use_driver = None
+        computer_use_tools: list[str] = []
         screen = None
         if "computer_use" in caps:
             # Advertised only once cua-driver has started and listed its tools.
             try:
-                computer_use_driver = (await self._computer_handler.driver.snapshot()).info
+                snapshot = await self._computer_handler.driver.snapshot()
+                computer_use_driver = snapshot.info
+                computer_use_tools = sorted(tool["name"] for tool in snapshot.tools)
             except DriverUnavailable as exc:
                 logger.warning("Not advertising computer_use: %s", exc.message)
                 caps = [cap for cap in caps if cap != "computer_use"]
@@ -1033,6 +1036,7 @@ class ShimDaemon:
             local_llm_models=local_llm_models,
             hardware_devices=[],
             computer_use_driver=computer_use_driver,
+            computer_use_tools=computer_use_tools,
             recording_channels=recording_channels,  # type: ignore[arg-type]
             recording_routes=recording_routes,  # type: ignore[arg-type]
             protocol_version=PROTOCOL_VERSION,

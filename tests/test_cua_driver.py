@@ -806,6 +806,7 @@ async def test_hello_names_the_driver_once_it_has_started(
         "direct",
     )
     assert hello.payload.screen_resolution == (1920, 1080)
+    assert hello.payload.computer_use_tools == sorted(catalog.offered_tools(enable_clipboard=False))
 
 
 async def test_hello_leaves_out_computer_use_a_driver_cannot_serve(
@@ -820,6 +821,7 @@ async def test_hello_leaves_out_computer_use_a_driver_cannot_serve(
 
     assert "computer_use" not in hello.payload.capabilities
     assert hello.payload.computer_use_driver is None
+    assert hello.payload.computer_use_tools == []
     assert hello.payload.screen_resolution is None
 
 

@@ -302,9 +302,11 @@ class HelloPayload(_Payload):
     allowed_root: str | None
     local_llm_models: list[str] = Field(default_factory=list)
     hardware_devices: list[dict[str, Any]] = Field(default_factory=list)
-    # The driver behind computer use, when the capability is advertised.
-    # Its tools come from COMPUTER_TOOLS_REQUEST (see docs/CUA_DRIVER.md).
+    # The driver behind computer use and the names of the tools this machine
+    # offers, when the capability is advertised. Their schemas come from
+    # COMPUTER_TOOLS_REQUEST (see docs/CUA_DRIVER.md).
     computer_use_driver: ComputerDriverInfo | None = None
+    computer_use_tools: list[str] = Field(default_factory=list)
     # Workflow-recording advertisement (see docs/WORKFLOW_RECORDING.md §6).
     # `recording_channels` are the capture channels this shim can offer (floor
     # is universal; browser/desktop_ax light up as their enrichers land).
