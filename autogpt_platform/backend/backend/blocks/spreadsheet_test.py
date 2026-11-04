@@ -334,10 +334,13 @@ async def test_leading_blank_line_counts_toward_skip_rows():
 
 
 @pytest.mark.asyncio
-async def test_leading_empty_field_line_does_not_steal_header():
+async def test_empty_header_cells_get_fallback_names():
     rows = await read_rows(contents=",\na,b\n1,2")
 
-    assert rows == [{"a": "1", "b": "2"}]
+    assert rows == [
+        {"column_1": "a", "column_2": "b"},
+        {"column_1": "1", "column_2": "2"},
+    ]
 
 
 # --- Excel goes through the same header handling as CSV --------------------
@@ -380,13 +383,14 @@ async def test_excel_without_header_keeps_first_row_values():
 
 
 @pytest.mark.asyncio
-async def test_excel_leading_empty_row_does_not_steal_header():
+async def test_excel_empty_header_keeps_data_and_empty_records():
     rows = await read_sheet_rows([[], ["a", "b"], [1, 2], [None, None], [3, 4]])
 
     assert rows == [
-        {"a": "1", "b": "2"},
-        {"a": "", "b": ""},
-        {"a": "3", "b": "4"},
+        {"column_1": "a", "column_2": "b"},
+        {"column_1": "1", "column_2": "2"},
+        {"column_1": "", "column_2": ""},
+        {"column_1": "3", "column_2": "4"},
     ]
 
 
