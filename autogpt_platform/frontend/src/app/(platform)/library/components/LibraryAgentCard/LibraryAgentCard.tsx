@@ -170,7 +170,7 @@ export function LibraryAgentCard({
         <TooltipPortal>
           <TooltipContent
             // oxlint-disable-next-line design-system/no-restyle -- Text has no tone for the dark tooltip (deferred)
-            className="max-w-xs text-red-300"
+            className="max-w-xs text-error-inverse"
           >
             {statusInfo.lastError}
           </TooltipContent>

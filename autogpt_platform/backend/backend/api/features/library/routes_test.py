@@ -11,9 +11,10 @@ from backend.api.rest_api import app as rest_app
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.onboarding_steps import OnboardingStep
 from backend.util.exceptions import MissingConfigError
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, Pagination
 
 from . import model as library_model
+from .db import MAX_PRESETS_PER_PAGE
 from .routes import router as library_router
 
 # The preset routes leave error mapping to the app-wide handlers.
@@ -122,6 +123,40 @@ def test_execute_a_webhook_triggered_preset_returns_400(
     assert response.status_code == 400
     assert "can't be run directly" in response.json()["detail"]
     add.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "page,page_size,refused",
+    [
+        (MAX_PAGE, MAX_PRESETS_PER_PAGE, False),
+        (MAX_PAGE + 1, 10, True),
+        (1, MAX_PRESETS_PER_PAGE + 1, True),
+    ],
+)
+def test_list_presets_refuses_a_page_past_its_bounds_before_the_query(
+    page: int, page_size: int, refused: bool, mocker: pytest_mock.MockFixture
+) -> None:
+    list_presets = mocker.patch(
+        "backend.api.features.library.routes.presets.db.list_presets",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPresetResponse(
+            presets=[],
+            pagination=Pagination(
+                total_items=0, total_pages=0, current_page=page, page_size=page_size
+            ),
+        ),
+    )
+
+    response = client.get(
+        "/presets",
+        params={"graph_id": "graph-1", "page": page, "page_size": page_size},
+    )
+
+    assert response.status_code == (422 if refused else 200)
+    assert list_presets.await_count == (0 if refused else 1)
+    if not refused:
+        assert list_presets.await_args.kwargs["page"] == page
+        assert list_presets.await_args.kwargs["page_size"] == page_size
 
 
 @pytest.fixture(autouse=True)
