@@ -195,6 +195,9 @@ SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
+# The trial last-call pass makes one Stripe round trip per due trial; give it
+# the same ceiling so a slow pass cannot overlap the next hourly one.
+TRIAL_LAST_CALL_TIMEOUT_SECONDS = 1800
 
 # The memory cron reconcile reads every registry row; it must finish well
 # inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
@@ -2292,6 +2295,16 @@ def reconcile_stripe_tiers():
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
+def send_trial_last_calls():
+    """Queue the one-day reminder for trials set not to renew (SECRT-3324)."""
+
+    async def _send():
+        db = get_database_manager_async_client()
+        return await db.send_trial_last_calls()
+
+    run_async(_send(), timeout=TRIAL_LAST_CALL_TIMEOUT_SECONDS)
+
+
 def sync_posthog_lifecycles():
     """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
 
@@ -3094,6 +3107,18 @@ class Scheduler(AppService):
                 replace_existing=True,
                 max_instances=1,
                 jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
+
+            # TRIAL LAST CALL — hourly, so the one-day reminder goes out
+            # within an hour of a canceled trial's last day starting.
+            self.scheduler.add_job(
+                send_trial_last_calls,
+                CronTrigger.from_crontab("15 * * * *"),
+                id="send_trial_last_calls",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
             )
 
             # Notification LATE EXECUTIONS ALERT
