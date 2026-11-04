@@ -19,3 +19,13 @@ WHERE u."name" IS NOT NULL
     SELECT 1 FROM "UserAuthAccount" a
     WHERE a."userId" = u."id" AND a."providerId" <> 'credential'
   );
+
+-- A name given to Otto or a Tally form was kept only in AutoPilot's understanding, which
+-- no longer holds one; it fills an empty account name unless it is the auto-filled local part.
+UPDATE "User" u
+SET "name" = btrim(c."data" ->> 'name')
+FROM "CoPilotUnderstanding" c
+WHERE c."userId" = u."id"
+  AND (u."name" IS NULL OR u."name" = '')
+  AND btrim(c."data" ->> 'name') <> ''
+  AND lower(btrim(c."data" ->> 'name')) <> lower(split_part(u."email", '@', 1));
