@@ -539,3 +539,51 @@ def test_a_connection_that_sends_nothing_cannot_block_the_callback(
     finally:
         thread.join(timeout=30)
         idle.close()
+
+
+def test_a_request_that_trickles_in_cannot_hold_the_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read timeout bounds each read, not the request, so a client
+    sending a byte every so often kept the one-at-a-time server reading its
+    headers, and the redirect waited past the sign-in's deadline."""
+    import time
+
+    import autogpt_local_executor.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "CALLBACK_READ_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(auth_module, "CALLBACK_REQUEST_SECONDS", 1.0, raising=False)
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+    slow = socket.create_connection(("127.0.0.1", port), timeout=30)
+    stop = threading.Event()
+
+    def trickle() -> None:
+        # Headers that never end, a byte at a time, well inside each read's
+        # timeout, until the server hangs up (or a minute passes, so a server
+        # that never does fails the test instead of hanging it).
+        give_up = time.monotonic() + 60
+        try:
+            slow.sendall(b"GET /favicon.ico HTTP/1.1\r\nX-Slow: ")
+            while not stop.wait(0.1) and time.monotonic() < give_up:
+                slow.sendall(b"x")
+        except OSError:
+            pass
+
+    def redirect() -> None:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=90
+        ):
+            pass
+
+    trickler = threading.Thread(target=trickle)
+    trickler.start()
+    redirector = threading.Thread(target=redirect)
+    redirector.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=20) == "the-code"
+    finally:
+        stop.set()
+        trickler.join(timeout=90)
+        redirector.join(timeout=90)
+        slow.close()

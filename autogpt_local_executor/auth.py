@@ -12,13 +12,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import secrets
+import socket
 import time
 import urllib.parse
 import webbrowser
 from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 import httpx
 import keyring
@@ -34,6 +37,33 @@ CALLBACK_TIMEOUT_SECONDS = 300.0
 # one connection at a time, so without this a connection that never sends
 # (a browser preconnect, say) would hold off the real redirect.
 CALLBACK_READ_TIMEOUT_SECONDS = 10.0
+# How long one request may take to arrive in full. The timeout above bounds
+# each read, so a client sending a byte every few seconds would otherwise
+# hold the server, and keep the sign-in waiting past its deadline.
+CALLBACK_REQUEST_SECONDS = 20.0
+
+
+class _DeadlineReader(io.RawIOBase):
+    """A socket's incoming bytes, read with a deadline for all of them: each
+    read waits at most `per_read` seconds and never past `total` seconds from
+    the start, then raises TimeoutError, which http.server answers by
+    dropping the connection."""
+
+    def __init__(self, sock: socket.socket, *, per_read: float, total: float) -> None:
+        super().__init__()
+        self._sock = sock
+        self._per_read = per_read
+        self._deadline = time.monotonic() + total
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("the request took too long to arrive")
+        self._sock.settimeout(min(self._per_read, remaining))
+        return self._sock.recv_into(buffer)
 
 
 class CredentialScopeError(ValueError):
@@ -301,6 +331,17 @@ class OAuthFlow:
 
         class CallbackHandler(BaseHTTPRequestHandler):
             timeout = CALLBACK_READ_TIMEOUT_SECONDS
+
+            def setup(self) -> None:
+                super().setup()
+                self.rfile.close()
+                self.rfile = io.BufferedReader(
+                    _DeadlineReader(
+                        self.connection,
+                        per_read=CALLBACK_READ_TIMEOUT_SECONDS,
+                        total=CALLBACK_REQUEST_SECONDS,
+                    )
+                )
 
             def do_GET(self):
                 parsed = urllib.parse.urlparse(self.path)
