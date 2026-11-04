@@ -225,13 +225,14 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
         append(line)
 
     monkeypatch.setattr(daemon, "_append", held_append)
+    # Built before the append, so the only thing left to wait on the lock is
+    # the rotation itself, not the second writer's startup.
+    other = AuditWriter(path=daemon.path, audit_key=KEY)
     write = asyncio.create_task(
         daemon.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
     )
     assert await asyncio.to_thread(appending.wait, 30)
-    rotation = asyncio.create_task(
-        asyncio.to_thread(lambda: AuditWriter(path=daemon.path, audit_key=KEY).force_rotate())
-    )
+    rotation = asyncio.create_task(asyncio.to_thread(other.force_rotate))
     await asyncio.sleep(0.2)
     rotated_during_the_append = rotation.done()
     release.set()
@@ -611,14 +612,14 @@ async def test_a_rotation_whose_new_log_cannot_be_created_starts_a_fresh_chain(
     monkeypatch.setattr("autogpt_local_executor.audit.ROTATE_MAX_BYTES", 1)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    real_touch = Path.touch
+    real_create = audit_module._create_owner_only
 
-    def touch(self: Path, *args, **kwargs) -> None:
-        if self == writer.path:
+    def create(path: Path) -> None:
+        if path == writer.path:
             raise OSError("disk full")
-        real_touch(self, *args, **kwargs)
+        real_create(path)
 
-    monkeypatch.setattr(Path, "touch", touch)
+    monkeypatch.setattr(audit_module, "_create_owner_only", create)
     await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
 
     first = json.loads(writer.path.read_text().splitlines()[0])
@@ -936,3 +937,41 @@ def test_prune_judges_a_file_by_a_last_record_longer_than_8_kib(tmp_path: Path) 
 
     assert cli._audit_prune(current, "1d") == 0
     assert not rotated.exists()
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_a_new_log_is_owner_only_from_the_start(tmp_path: Path, monkeypatch) -> None:
+    """The log was created with the umask's mode and then chmodded, so a
+    chmod that failed left it readable by others."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+
+    def refuse(*_args, **_kwargs) -> None:
+        raise OSError("chmod not supported here")
+
+    previous = os.umask(0o022)
+    try:
+        monkeypatch.setattr(audit_module.os, "chmod", refuse)
+        writer.force_rotate()
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(writer.path.stat().st_mode) == 0o600
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_an_export_is_owner_only(tmp_path: Path, monkeypatch) -> None:
+    """The zip holds every audit record, but got the umask's mode."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    output = tmp_path / "export.zip"
+    previous = os.umask(0o022)
+    try:
+        assert cli._audit_export(writer.path, output) == 0
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600

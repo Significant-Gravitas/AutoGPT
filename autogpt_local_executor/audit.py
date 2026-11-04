@@ -180,8 +180,7 @@ class AuditWriter:
             if not self.path.exists():
                 # Create empty so first write can fsync against an existing inode
                 # and we can set 0600 once instead of after every append.
-                self.path.touch()
-                _chmod_owner_only(self.path)
+                _create_owner_only(self.path)
             self._file_state = _file_identity(self.path)
 
     # ── Defaults wiring ──────────────────────────────────────────────────
@@ -325,8 +324,7 @@ class AuditWriter:
         # a new one, even if creating the empty file below fails.
         self._seq = 1
         self._prev_hmac = None
-        self.path.touch()
-        _chmod_owner_only(self.path)
+        _create_owner_only(self.path)
         self._file_state = _file_identity(self.path)
         logger.info("Rotated audit log (%s) → %s", reason, target.name)
         return target
@@ -732,6 +730,14 @@ def _read_first_ts(path: Path) -> float | None:
         return float(ts) if ts is not None else None
     except (OSError, ValueError, json.JSONDecodeError):
         return None
+
+
+def _create_owner_only(path: Path) -> None:
+    """Create an empty file at `path` that only its owner can read: 0600 from
+    the start, so neither the umask nor a failed chmod can leave it open."""
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    os.close(os.open(path, flags, 0o600))
+    _chmod_owner_only(path)
 
 
 def _chmod_owner_only(path: Path) -> None:
