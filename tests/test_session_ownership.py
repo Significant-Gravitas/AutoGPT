@@ -341,10 +341,10 @@ async def test_close_code_constants_match_spec() -> None:
 async def test_session_revoked_blocks_further_sends(
     daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A request still in flight when SESSION_REVOKED arrives finishes without
-    emitting its response or anything else, even when it finishes while the
-    revocation is still being audited and the socket is still open (the real
-    audit writer hands the write to a thread, so other tasks run meanwhile)."""
+    """A request still in flight when SESSION_REVOKED arrives emits nothing,
+    even if it would finish while the revocation is still being audited and
+    the socket is still open (the real audit writer hands the write to a
+    thread, so other tasks run meanwhile)."""
     ws = _FakeWebSocket([])
     daemon._semaphore = asyncio.Semaphore(4)
     handling = asyncio.Event()
@@ -485,3 +485,66 @@ async def test_a_ping_does_not_count_as_activity(
     await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
 
     assert daemon._last_request_at > 1000.0
+
+
+# ── Frames after the handshake ───────────────────────────────────────────────
+
+
+async def test_a_frame_from_another_major_version_is_dropped(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """PROTOCOL.md: a non-HELLO frame whose major differs from the negotiated
+    one MUST be dropped and logged loudly; a different minor is processed."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    daemon._negotiated_version = "1.1"
+    handled: list[str] = []
+
+    async def handle(msg, *, send):
+        handled.append(msg.version)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    with caplog.at_level(logging.ERROR, logger="autogpt_local_executor.daemon"):
+        for version in ("2.0", "garbage", "1.0"):
+            request = FileStatMessage(
+                id=new_id(), ts=now_ts(), version=version, payload=FileStatPayload(path="/tmp/x")
+            )
+            await daemon._on_frame(ws, dump_message(request))
+        await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert handled == ["1.0"]
+    assert "'2.0'" in caplog.text and "'garbage'" in caplog.text
+
+
+async def test_work_queued_by_a_revoked_session_never_starts(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A request waiting for a free slot when SESSION_REVOKED arrives used to
+    start once one freed up: the revoked session's work kept running."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(1)
+    started: list[str] = []
+    handling = asyncio.Event()
+    release = asyncio.Event()
+
+    async def handle(msg, *, send):
+        started.append(msg.payload.path)
+        handling.set()
+        await release.wait()
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    for path in ("/tmp/first", "/tmp/queued"):
+        request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path=path))
+        await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(handling.wait(), timeout=30)
+
+    await daemon._on_frame(ws, _session_revoked_frame())
+    release.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+    assert started == ["/tmp/first"]
+    assert not daemon._dispatch_tasks
+    assert ws.sent == []

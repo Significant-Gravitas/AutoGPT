@@ -82,6 +82,15 @@ def negotiate_version(shim_max: str, platform_max: str) -> str:
     return f"{shim_major}.{min(shim_minor, plat_minor)}"
 
 
+def same_major(version: str, negotiated: str) -> bool:
+    """Whether a frame's `version` shares the negotiated major. A version
+    that doesn't parse never does."""
+    try:
+        return _split_version(version)[0] == _split_version(negotiated)[0]
+    except ValueError:
+        return False
+
+
 class ProtocolVersionMismatch(Exception):
     """Raised when shim_max and platform_max have different majors.
 
