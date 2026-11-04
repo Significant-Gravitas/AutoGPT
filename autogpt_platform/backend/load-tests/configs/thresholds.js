@@ -123,17 +123,31 @@ export const CUSTOM_SLOS = {
   // route, the queue, the executor and the stream relay, plus 0.7 s. No
   // production number exists for that path alone; these bound it at 2 s to
   // the first frame, 3 s to the first text and 10 s to the finish.
-  "copilot_first_chunk_ms{engine:dummy}": {
+  "copilot_first_chunk_ms{engine:dummy,turn:chat}": {
     journeys: ENGINE_JOURNEYS.dummy,
     p95: 2000,
   },
-  "copilot_ttft_ms{engine:dummy}": {
+  "copilot_ttft_ms{engine:dummy,turn:chat}": {
     journeys: ENGINE_JOURNEYS.dummy,
     p95: 3000,
   },
-  "copilot_turn_ms{engine:dummy}": {
+  "copilot_turn_ms{engine:dummy,turn:chat}": {
     journeys: ENGINE_JOURNEYS.dummy,
     p95: 10000,
+  },
+  // A hire's kickoff turn starts on an expert still installing, and the
+  // executor holds a turn on an expert's chat until its setup is done, for
+  // up to a minute (_wait_for_expert_setup in
+  // backend/copilot/executor/processor.py): on a preview the wait is most of
+  // the turn. The first frame comes before it; the finish within the
+  // minute, plus the turn.
+  "copilot_first_chunk_ms{engine:dummy,turn:kickoff}": {
+    journeys: ["expert_hire"],
+    p95: 2000,
+  },
+  "copilot_turn_ms{engine:dummy,turn:kickoff}": {
+    journeys: ["expert_hire"],
+    p95: 75000,
   },
   // A scripted turn runs the SDK engine whole, the sandbox, the CLI and a
   // tool round, against a model that answers at once. These are starting

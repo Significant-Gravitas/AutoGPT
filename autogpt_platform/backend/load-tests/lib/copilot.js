@@ -118,7 +118,9 @@ export function streamTurn(sessionId, message, options) {
   const phase = opts.phase || "steady";
   const engine = opts.engine;
   if (!engine) throw new Error("streamTurn needs the turn's engine");
-  const tags = { phase, endpoint: "copilot.stream", engine };
+  // A hire's kickoff waits on the expert's setup, so it is judged apart.
+  const kind = opts.expertKickoff === true ? "kickoff" : "chat";
+  const tags = { phase, endpoint: "copilot.stream", engine, turn: kind };
   const startedAt = Date.now();
   const turn = {
     status: 0,
@@ -248,7 +250,7 @@ export function streamTurn(sessionId, message, options) {
 // so a journey that starts none fails copilot_turn_errors instead of passing
 // with no samples.
 export function recordUnstartedTurn(engine, phase) {
-  const tags = { phase, endpoint: "copilot.stream", engine };
+  const tags = { phase, endpoint: "copilot.stream", engine, turn: "chat" };
   copilotTurns.add(1, tags);
   copilotTurnsFailed.add(1, tags);
   copilotTurnErrors.add(true, tags);
