@@ -213,10 +213,19 @@ async def enqueue_turn(
     AND session-ownership check upstream — once the row is committed
     the dispatcher owns it.
 
-    The user message is a regular ChatMessage row (no special status).
-    The dispatcher's submit-time payload is stashed in the row's
+    The user message is a regular ChatMessage row (no special status),
+    with the same input normalisation as a message that starts a turn
+    directly. The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
+    if is_user_message:
+        # Deferred like ``queue_user_message``'s import of the same function:
+        # the service module pulls in the whole prompt chain. Promotion replays
+        # this row as the turn's message and later turns replay it as history,
+        # so it is normalised before it is stored.
+        from backend.copilot.service import strip_server_injected_tags
+
+        message = strip_server_injected_tags(message)
     metadata = dict(message_metadata or {})
     metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
         mode="json"

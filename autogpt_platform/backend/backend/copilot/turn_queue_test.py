@@ -190,6 +190,39 @@ async def test_enqueue_turn_includes_default_transport_and_attribution() -> None
     }
 
 
+_WITH_BLOCK = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("is_user_message", "stored"),
+    [(True, "hello"), (False, _WITH_BLOCK)],
+    ids=["user row", "other row"],
+)
+async def test_a_queued_message_is_stored_as_the_engines_will_read_it(
+    is_user_message: bool, stored: str
+) -> None:
+    """Promotion replays the stored row as the turn's message, and later turns
+    replay it as history, so a user row gets the same input normalisation as a
+    message that starts its own turn. Any other row is stored as given."""
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message=_WITH_BLOCK,
+            is_user_message=is_user_message,
+        )
+
+    assert db.add_chat_message.call_args.kwargs["content"].strip() == stored
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error_data",
