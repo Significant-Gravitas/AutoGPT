@@ -1032,7 +1032,7 @@ minor extension); the spec table above is the v1.0 set.
 | 4426 | `PROTOCOL_VERSION_MISMATCH` | Major-version disagreement in HELLO/HELLO_ACK. | platform | **No** — restart required after upgrade. |
 | 4427 | `SESSION_TAKEN_OVER` | A same-`machine_id` shim connected and took over (this connection is the old one being evicted). | platform | **No** — the takeover is intentional. |
 | 4428 | `SESSION_REVOKED` | User revoked this session in the platform UI (or related admin action). | platform | **No** — auth gone, would just 401. |
-| 4429 | `PLATFORM_SHUTDOWN` | Platform is going down (graceful). | platform | **No** for *this* session — reconnect attempts SHOULD wait for platform health probe. Today the shim just halts; operator restart triggers a fresh connect. |
+| 4429 | `PLATFORM_SHUTDOWN` | Platform is going down (graceful). | platform | **Yes**, after the reconnect backoff: the platform comes back, and halting would leave the machine offline until someone restarted the shim. The backoff grows while the platform is still down; the shim doesn't probe the platform's health first. |
 
 Codes below 4426 follow IETF/RFC semantics (1000 normal, 1011 server
 error, etc.) and the shim DOES auto-reconnect with exponential backoff —
