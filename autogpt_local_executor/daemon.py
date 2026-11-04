@@ -129,13 +129,14 @@ WS_CLOSE_SESSION_REVOKED = 4428
 WS_CLOSE_PLATFORM_SHUTDOWN = 4429
 
 # Close codes the shim treats as fatal: after receiving them on the WS,
-# the shim MUST NOT auto-reconnect. Operator must restart.
+# the shim MUST NOT auto-reconnect. Operator must restart. A platform going
+# down gracefully (4429) isn't one: it comes back, so the shim reconnects
+# with its backoff, as for any other disconnect.
 _FATAL_CLOSE_CODES: frozenset[int] = frozenset(
     {
         WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
         WS_CLOSE_SESSION_TAKEN_OVER,
         WS_CLOSE_SESSION_REVOKED,
-        WS_CLOSE_PLATFORM_SHUTDOWN,
     }
 )
 

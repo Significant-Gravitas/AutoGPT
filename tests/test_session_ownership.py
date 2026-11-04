@@ -3,9 +3,10 @@
 Covers:
   * SESSION_REVOKED frame: shim audits, closes WS, disables auto-reconnect,
     and does NOT send further frames after receipt.
-  * WS close-code translation (4426/4427/4428/4429): each fatal application
+  * WS close-code translation (4426/4427/4428): each fatal application
     code sets _disable_reconnect and emits a SESSION_REVOKED audit row.
-  * Non-fatal WS close codes (e.g. 1011) do NOT disable reconnect.
+  * Non-fatal WS close codes (e.g. 1011, and 4429 for a platform going down
+    gracefully) do NOT disable reconnect.
 
 All tests mock the WebSocket — no live network.
 """
@@ -262,7 +263,6 @@ async def test_session_revoked_is_a_recognized_message_type() -> None:
     [
         (4427, "session_taken_over"),
         (4428, "session_revoked"),
-        (4429, "platform_shutdown"),
     ],
 )
 async def test_fatal_close_codes_disable_reconnect(
@@ -290,11 +290,14 @@ async def test_fatal_close_codes_disable_reconnect(
     assert revoked[0]["reason"] == expected_reason_label
 
 
-@pytest.mark.parametrize("close_code", [1011, 4401])
+@pytest.mark.parametrize("close_code", [1011, 4401, 4429])
 async def test_non_fatal_close_code_does_NOT_disable_reconnect(
     daemon: ShimDaemon, audit: _RecordingAudit, close_code: int
 ) -> None:
-    """Transient and access-token-expiry closes allow reconnect and refresh."""
+    """Transient and access-token-expiry closes allow reconnect and refresh.
+    So does 4429: a platform going down gracefully comes back, and halting
+    left every machine offline until someone restarted its shim (under
+    launchd and systemd, which saw exit 0, nobody would)."""
     ws = _FakeWebSocket(
         inbound=[
             _hello_ack(),
