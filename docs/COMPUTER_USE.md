@@ -314,7 +314,10 @@ trips IME/autocomplete on web forms.
    explicitly asks, the shim snapshots the clipboard before pasting and
    restores it afterwards — **but skips the restore if the OS
    `changeCount` / clipboard-sequence-number changed after the shim's
-   own write, or the clipboard no longer holds the pasted text.** A
+   own write, the clipboard no longer holds the pasted text, or the
+   clipboard can't be read back.** An unreadable clipboard could already
+   hold someone else's copy, and with no compare-and-set, writing the
+   snapshot over it could lose that; the paste is still acknowledged. A
    changed number means the user (or another app) copied something
    during the paste, and clobbering that with the pre-paste snapshot
    would lose their action; the text check catches a copy that lands
