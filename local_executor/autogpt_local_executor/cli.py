@@ -496,6 +496,12 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
                     yield pending
                     pending = b""
                 continue
+            if os.fstat(f.fileno()).st_size < f.tell():
+                # Truncated in place: the same file, now shorter than where
+                # reading had got to. Start again from its beginning.
+                f.seek(0)
+                pending = b""
+                continue
             if _moved_away(path, f):
                 try:
                     reopened = _open_for_following(path)

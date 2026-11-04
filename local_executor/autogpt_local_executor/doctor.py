@@ -346,7 +346,19 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
             )
         )
     elif session == "x11" and os.environ.get("DISPLAY"):
-        out.append(CheckResult("OK", "display_server", "X11 — full computer_use available"))
+        # HELLO's own probe, so doctor never reports what HELLO leaves out.
+        if platform_info._x11_display_opens():
+            out.append(CheckResult("OK", "display_server", "X11 — full computer_use available"))
+        else:
+            out.append(
+                CheckResult(
+                    "WARN",
+                    "display_server",
+                    f"X11 session, but the X server at DISPLAY={os.environ['DISPLAY']} "
+                    "doesn't accept a connection; computer_use is unavailable",
+                    blocking=config.enable_computer_use,
+                )
+            )
     elif session == "x11":
         out.append(
             CheckResult(

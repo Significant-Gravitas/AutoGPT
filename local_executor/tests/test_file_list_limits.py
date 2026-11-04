@@ -61,6 +61,8 @@ async def test_a_listing_stops_at_its_byte_budget(
 
     assert 0 < len(response.payload.entries) < 50
     assert response.payload.truncated is True
+    entry_bytes = sum(len(e.model_dump_json().encode()) + 1 for e in response.payload.entries)
+    assert entry_bytes <= 4000
     assert len(dump_message(response).encode()) < 4000 + 1000
 
 

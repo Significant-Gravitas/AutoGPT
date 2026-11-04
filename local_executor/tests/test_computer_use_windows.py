@@ -198,7 +198,11 @@ def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=Fal
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
     # CF_UNICODETEXT (13), plus a CF_PRIVATE format (0x0200) when asked.
-    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0x0200} if private else {13})
+    monkeypatch.setattr(
+        b,
+        "_clipboard_formats",
+        lambda: set() if state["content"] is None else ({13, 0x0200} if private else {13}),
+    )
     return state
 
 
@@ -713,3 +717,33 @@ def test_window_list_leaves_out_minimized_windows_unless_asked_and_never_hidden_
 
     assert [w.title for w in b.window_list()] == ["Editor"]
     assert [w.title for w in b.window_list(include_minimized=True)] == ["Editor", "Minimized"]
+
+
+def test_a_failed_write_leaves_a_copy_made_since_alone(tmp_path, monkeypatch) -> None:
+    """The recovery write put the user's old text back without looking, so a
+    copy made after the failed write was replaced with it."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    def write(content: str) -> int:
+        clipboard["writes"].append(content)
+        if len(clipboard["writes"]) == 1:
+            # SetClipboardData fails after EmptyClipboard, and another app
+            # copies before the shim looks again.
+            clipboard["content"] = "copied meanwhile"
+            clipboard["seq"] += 2
+            raise ClipboardWriteError("SetClipboardData failed")
+        clipboard["content"] = content
+        clipboard["seq"] += 1
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_write_clipboard_text", write)
+
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == [text]
+    assert clipboard["content"] == "copied meanwhile"

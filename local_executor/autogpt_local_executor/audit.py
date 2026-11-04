@@ -38,7 +38,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,8 @@ class AuditWriter:
         self._file_lock_path = _lock_path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with _file_lock(self._file_lock_path):
+            # One an older version made has the umask's mode.
+            _chmod_owner_only(self._file_lock_path)
             if self.path.exists():
                 try:
                     violations = self.verify(self.path, audit_key)
@@ -810,8 +812,16 @@ def _file_lock(path: Path, *, read_only: bool = False) -> Iterator[None]:
     """Hold an exclusive lock on `path`, across processes, while the block runs.
 
     `read_only` opens an existing lock file without creating or writing it;
-    flock and msvcrt.locking both lock through a read-only handle."""
-    with open(path, "rb" if read_only else "a+b") as handle:
+    flock and msvcrt.locking both lock through a read-only handle. A lock file
+    is created 0600: another account that could open it could hold the lock,
+    and every audit write would wait on it for good."""
+    handle: IO[bytes]
+    if read_only:
+        handle = open(path, "rb")
+    else:
+        flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0)
+        handle = os.fdopen(os.open(path, flags, 0o600), "a+b")
+    with handle:
         if sys.platform == "win32":
             import msvcrt
 

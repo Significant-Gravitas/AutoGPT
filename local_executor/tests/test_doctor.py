@@ -363,6 +363,12 @@ def test_doctor_warns_on_a_keyring_backend_that_can_store_nothing(monkeypatch) -
 
 
 @pytest.fixture(autouse=True)
+def _an_x_server_that_answers(monkeypatch):
+    """doctor opens the X display as HELLO does; none answers here."""
+    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: True)
+
+
+@pytest.fixture(autouse=True)
 def _a_keychain_that_works(monkeypatch):
     """doctor round-trips a probe through the keychain; keep the real one,
     which may block on an unlock prompt, out of these tests."""
@@ -428,3 +434,27 @@ def test_doctor_does_not_hang_finding_a_keyring_backend(monkeypatch) -> None:
     assert time.monotonic() - started < 5
     assert result.marker == "WARN"
     assert "did not answer" in result.detail
+
+
+def test_doctor_warns_when_the_x_server_does_not_answer(tmp_path, monkeypatch) -> None:
+    """With DISPLAY naming a server that had gone, doctor reported full
+    computer_use while HELLO left it out."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    monkeypatch.setenv("DISPLAY", "localhost:10.0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: False)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    result = next(
+        r
+        for r in doctor._check_linux(_config(tmp_path), is_wsl2=False)
+        if r.label == "display_server"
+    )
+
+    assert result.marker == "WARN"
+    assert "localhost:10.0" in result.detail
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78

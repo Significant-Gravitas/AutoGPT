@@ -1021,3 +1021,50 @@ async def test_export_writes_the_archive_after_releasing_the_lock(
     assert {"audit.log", "manifest.json", "manifest.sig"} <= names
     assert len(names) == 4
     assert json.loads(current.splitlines()[-1])["request_id"] == "b"
+
+
+@_posix_only
+def test_the_lock_file_is_created_owner_only_and_an_old_one_is_tightened(tmp_path: Path) -> None:
+    """The lock file got the umask's mode (0644). Another account that could
+    open it could hold the lock, and every audit write would wait for good."""
+    import stat
+
+    from autogpt_local_executor.audit import _lock_path
+
+    fresh = tmp_path / "fresh" / "audit.log"
+    old = tmp_path / "old" / "audit.log"
+    old.parent.mkdir()
+    _lock_path(old).touch()
+    _lock_path(old).chmod(0o644)
+    umask = os.umask(0o022)
+    try:
+        AuditWriter(path=fresh, audit_key=KEY)
+        AuditWriter(path=old, audit_key=KEY)
+    finally:
+        os.umask(umask)
+
+    assert stat.S_IMODE(_lock_path(fresh).stat().st_mode) == 0o600
+    assert stat.S_IMODE(_lock_path(old).stat().st_mode) == 0o600
+
+
+def test_tail_starts_over_when_the_log_is_truncated_in_place(tmp_path: Path) -> None:
+    """Truncation keeps the inode, so the follower sat at its old offset and
+    printed nothing until the log grew past it again."""
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1, "op": "a long first record"}\n')
+    events = iter(["truncate", "stop"])
+
+    def wait() -> None:
+        if next(events) == "truncate":
+            with open(path, "r+b") as f:
+                f.truncate(0)
+                f.write(b'{"seq": 1}\n')
+        else:
+            raise _StopFollowing
+
+    seen: list[bytes] = []
+    with pytest.raises(_StopFollowing):
+        for line in cli._follow(path, wait):
+            seen.append(line)
+
+    assert seen == [b'{"seq": 1, "op": "a long first record"}\n', b'{"seq": 1}\n']

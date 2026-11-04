@@ -819,8 +819,9 @@ class WindowsBackend(ComputerUseBackend):
             written_seq = self._write_clipboard_text(text)
         except ClipboardWriteError:
             # EmptyClipboard may have gone through before the write failed,
-            # taking the user's text with it.
-            if restore is not None:
+            # taking the user's text with it. It goes back only onto a
+            # clipboard that is still empty: anything on it was copied since.
+            if restore is not None and self._clipboard_formats() == set():
                 try:
                     self._write_clipboard_text(restore)
                 except ClipboardWriteError:

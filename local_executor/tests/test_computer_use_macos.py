@@ -448,7 +448,9 @@ def _fake_pasteboard(
 
     monkeypatch.setattr(b, "_write_pasteboard_text", _write)
     monkeypatch.setattr(b, "_read_pasteboard_text", lambda: (state["content"], state["seq"]))
-    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: state["types"])
+    monkeypatch.setattr(
+        b, "_read_pasteboard_types", lambda: [] if state["content"] is None else state["types"]
+    )
     return state
 
 
@@ -1255,3 +1257,34 @@ def test_super_and_meta_press_command(tmp_path, monkeypatch, name: str) -> None:
     b.input_action("key", key=f"{name}+c")
 
     pyautogui.hotkey.assert_called_once_with("command", "c")
+
+
+def test_a_failed_write_leaves_a_copy_made_since_alone(tmp_path, monkeypatch) -> None:
+    """The recovery write put the user's old text back without looking, so a
+    copy made after the failed write was replaced with it."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user text")
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    def write(content: str) -> int:
+        clipboard["writes"].append(content)
+        if len(clipboard["writes"]) == 1:
+            # The pasteboard refuses the text after clearContents, and another
+            # app copies before the shim looks again.
+            clipboard["content"] = "copied meanwhile"
+            clipboard["seq"] += 2
+            raise ClipboardWriteError("the pasteboard refused the text")
+        clipboard["content"] = content
+        clipboard["seq"] += 1
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_write_pasteboard_text", write)
+
+    with pytest.raises(ClipboardWriteError):
+        b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == [text]
+    assert clipboard["content"] == "copied meanwhile"
