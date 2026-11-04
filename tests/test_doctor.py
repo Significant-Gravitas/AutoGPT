@@ -275,3 +275,20 @@ def test_doctor_keychain_warning_states_the_real_requirement(monkeypatch) -> Non
     assert "fallback will be used" not in result.detail
     assert "sign-in" in result.detail
     assert "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE" in result.detail
+
+
+def test_doctor_linux_reads_display_when_the_session_type_is_unrecognized(
+    tmp_path, monkeypatch
+) -> None:
+    """XDG_SESSION_TYPE=tty with DISPLAY set, as in a remote shell into a
+    running X session, still has a usable X11 display."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "tty")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 0

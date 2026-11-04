@@ -274,7 +274,9 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
         )
         return out
     session = os.environ.get("XDG_SESSION_TYPE", "").lower()
-    if not session:
+    # An unset or unrecognized session type (e.g. "tty" in a shell attached to
+    # a running desktop) says nothing about the display; ask the variables.
+    if session not in ("wayland", "x11"):
         if os.environ.get("WAYLAND_DISPLAY"):
             session = "wayland"
         elif os.environ.get("DISPLAY"):
@@ -296,8 +298,8 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
             CheckResult(
                 "WARN",
                 "display_server",
-                "no display session found (XDG_SESSION_TYPE, DISPLAY and "
-                "WAYLAND_DISPLAY are unset); computer_use needs an X11 session",
+                "no display found (DISPLAY and WAYLAND_DISPLAY are unset); "
+                "computer_use needs an X11 session",
                 blocking=config.enable_computer_use,
             )
         )
