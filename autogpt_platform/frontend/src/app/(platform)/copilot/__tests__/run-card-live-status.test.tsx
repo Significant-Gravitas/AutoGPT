@@ -228,6 +228,15 @@ describe("run card in the chat thread", () => {
     expect(within(card).queryByText("queued")).toBeNull();
   });
 
+  it("shows the error of a run that was stopped after the turn", async () => {
+    serveRuns([makeRun("TERMINATED", RUN_ERROR)]);
+    renderMainChat(transcript("QUEUED"));
+    const card = openRunCard();
+
+    expect(await within(card).findByText("terminated")).toBeDefined();
+    expect(within(card).getByText(RUN_ERROR)).toBeDefined();
+  });
+
   it("follows a run started through run_capability too", async () => {
     serveRuns([makeRun("FAILED", RUN_ERROR)]);
     renderMainChat(transcript("QUEUED", "run_capability"));
