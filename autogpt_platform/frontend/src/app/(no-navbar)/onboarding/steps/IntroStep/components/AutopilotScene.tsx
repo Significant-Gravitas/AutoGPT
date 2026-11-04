@@ -22,7 +22,7 @@ export function AutopilotScene() {
       <AutopilotAvatar size={120} transparent />
 
       <div className="flex flex-col items-center gap-3">
-        <ul className="flex flex-col items-center gap-2">
+        <ul className="flex flex-col items-start gap-2">
           {POINTS.map((point, i) => (
             <motion.li
               key={point}
