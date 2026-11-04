@@ -1610,3 +1610,30 @@ class TestListIndexLinks:
         agent = _make_agent(nodes=[node], links=[link])
 
         assert v.validate_sink_input_existence(agent, [block]) is valid
+
+    @pytest.mark.parametrize(
+        "source_name, valid", [("config_#_name", True), ("config_@_name", False)]
+    )
+    def test_an_attribute_read_from_an_object_output_fails(
+        self, source_name: str, valid: bool
+    ):
+        """An output reaches its links as a dict (``to_dict``), where ``_@_``
+        reads None and the link is dropped."""
+        v = AgentValidator()
+        config = {"type": "object", "properties": {"name": {"type": "string"}}}
+        blocks = [
+            _make_block(
+                block_id="src", output_schema={"properties": {"config": config}}
+            ),
+            _make_block(block_id="sink", input_schema={"properties": {"input": {}}}),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src"),
+            _make_node(node_id="n2", block_id="sink"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+
+        assert v.validate_source_output_existence(agent, blocks) is valid

@@ -496,7 +496,7 @@ class AgentValidator:
             block_name: str,
             block_id: str,
         ) -> bool:
-            detail = _check_nested_chain(input_props, field_name, writes=True)
+            detail = _check_nested_chain(input_props, field_name)
             if detail:
                 self.add_error(
                     f"{context}: {detail} "
@@ -1156,9 +1156,7 @@ class AgentValidator:
             return False, error_message
 
 
-def _check_nested_chain(
-    props: dict[str, Any], field_name: str, writes: bool = False
-) -> str | None:
+def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     """Walk a dynamic field's ``_#_`` / ``_@_`` / ``_$_`` chain through declared
     schema levels, parsed the way the executor parses it.
 
@@ -1187,11 +1185,12 @@ def _check_nested_chain(
     for delimiter, step in steps:
         if not isinstance(schema, dict):
             return None
-        # Writing an attribute, the executor swaps a dict for a bare object.
-        if writes and delimiter == OBJC_SPLIT and "object" in _schema_types(schema):
+        # The run passes an object as a dict: _@_ reads None from it, and a write
+        # replaces it with a bare object.
+        if delimiter == OBJC_SPLIT and "object" in _schema_types(schema):
             return (
-                f"'{path}' is an object field, which '{OBJC_SPLIT}' would replace "
-                f"with a bare object; set its key with '{path}{DICT_SPLIT}{step}'"
+                f"'{path}' is an object, which the run passes as a dict, so "
+                f"'{OBJC_SPLIT}{step}' can't reach it; use '{path}{DICT_SPLIT}{step}'"
             )
         if delimiter == LIST_SPLIT:
             schema, error = _list_item_schema(schema, path, step)
