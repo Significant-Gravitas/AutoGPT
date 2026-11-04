@@ -596,8 +596,8 @@ async def _check_membership_count(
     )
     where: OrgMemberWhereInput = {
         "userId": user_id,
-        "status": "ACTIVE",
-        "Org": {"deletedAt": None},
+        "status": OrgMemberStatus.ACTIVE,
+        "Org": {"is": {"deletedAt": None}},
     }
     if joining_org_id:
         # Re-joining the same org stays the unique violation callers expect.
