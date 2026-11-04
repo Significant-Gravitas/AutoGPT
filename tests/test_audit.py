@@ -706,6 +706,8 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
     monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
     log.write_text("")
+    # An expired rotated log, so prune has something to delete under the lock.
+    (tmp_path / "audit.log.20200101-000000").write_text('{"seq": 1, "ts": 1.0}\n')
     config = types.SimpleNamespace(audit_log_path=log)
 
     for command in ("verify", "verify-all", "export", "prune"):
@@ -1099,3 +1101,159 @@ def test_no_usable_keychain_still_falls_back_to_the_file_key(error: str) -> None
         patch("autogpt_local_executor.audit._fallback_audit_key", return_value=b"k" * 32),
     ):
         assert get_or_create_audit_key() == b"k" * 32
+
+
+# ── Export: descriptors, a prune meanwhile, the default name ───────────
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="counts open files in /proc")
+@pytest.mark.asyncio
+async def test_export_keeps_one_rotated_log_open_at_a_time(tmp_path: Path, monkeypatch) -> None:
+    """Every rotated log stayed open until the archive was written. The shim
+    never prunes on its own, so with enough of them open() hit the descriptor
+    limit, and the export ended in a traceback with no archive."""
+    import zipfile
+
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    for index in range(40):
+        await writer.write("EXECUTE_COMMAND", request_id=str(index), details={}, result={})
+        writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="last", details={}, result={})
+    baseline = len(os.listdir("/proc/self/fd"))
+    open_while_writing: list[int] = []
+    real_writestr = zipfile.ZipFile.writestr
+
+    def writestr(self, name, data, *args, **kwargs):
+        open_while_writing.append(len(os.listdir("/proc/self/fd")))
+        return real_writestr(self, name, data, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "writestr", writestr)
+
+    assert cli._audit_export(writer.path, tmp_path / "export.zip") == 0
+    assert max(open_while_writing) < baseline + 10
+
+
+@pytest.mark.asyncio
+async def test_an_export_whose_rotated_log_is_pruned_meanwhile_writes_nothing(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The set is listed under the lock and read after it; a prune in
+    between must fail the export, not leave a file out of it."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    [rotated] = list_rotated_files(writer.path)
+    real_lock = audit_module.holding_log_lock
+
+    @contextlib.contextmanager
+    def lock_then_prune(path):
+        with real_lock(path):
+            yield
+        rotated.unlink()  # a prune that ran the moment the lock was free
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", lock_then_prune)
+    output = tmp_path / "export.zip"
+
+    assert cli._audit_export(writer.path, output) != 0
+    assert "pruned" in capsys.readouterr().out
+    assert not output.exists()
+    assert [p.name for p in tmp_path.iterdir() if "export" in p.name] == []
+
+
+@pytest.mark.asyncio
+async def test_a_second_export_in_the_same_second_keeps_the_first(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The default name has one-second precision, and a second export in that
+    second truncated the first one's archive."""
+    import datetime as real_datetime
+    import zipfile
+
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    monkeypatch.chdir(exports)
+    moment = real_datetime.datetime(2026, 11, 4, 3, 0, 0)
+
+    class FrozenDatetime(real_datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return moment if tz is None else moment.replace(tzinfo=tz)
+
+    monkeypatch.setattr(real_datetime, "datetime", FrozenDatetime)
+
+    assert cli._audit_export(writer.path, None) == 0
+    [first] = list(exports.iterdir())
+    assert cli._audit_export(writer.path, None) == 0
+
+    archives = sorted(exports.iterdir())
+    assert len(archives) == 2 and first in archives
+    for archive in archives:
+        with zipfile.ZipFile(archive) as zf:
+            assert "audit.log" in zf.namelist()
+
+
+# ── Prune: scan outside the lock, delete under it ──────────────────────
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_prune_reads_the_rotated_logs_without_holding_off_writers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Prune read every line of every rotated log under the writers' lock,
+    and rotated logs are kept until pruned, so audit writes waited on it."""
+    import builtins
+
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    [rotated] = list_rotated_files(writer.path)
+    old = json.loads(rotated.read_text().splitlines()[-1])
+    monkeypatch.setattr("time.time", lambda: old["ts"] + 10 * 86400)
+    held_while_reading: list[bool] = []
+    real_open = builtins.open
+
+    def open_(file, *args, **kwargs):
+        if str(file) == str(rotated):
+            held_while_reading.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", open_)
+
+    assert cli._audit_prune(writer.path, "1d") == 0
+    assert held_while_reading and not any(held_while_reading)
+    assert not rotated.exists()
+
+
+@pytest.mark.asyncio
+async def test_prune_keeps_a_rotated_log_replaced_after_it_was_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The scan runs outside the lock, so the file deleted must still be the
+    one that was read."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    [rotated] = list_rotated_files(writer.path)
+    old = json.loads(rotated.read_text().splitlines()[-1])
+    monkeypatch.setattr("time.time", lambda: old["ts"] + 10 * 86400)
+    real_lock = audit_module.holding_log_lock
+    newer = rotated.read_text().replace(str(old["ts"]), str(old["ts"] + 10 * 86400))
+
+    @contextlib.contextmanager
+    def replace_then_lock(path):
+        rotated.unlink()
+        rotated.write_text(newer + "\n")
+        with real_lock(path):
+            yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", replace_then_lock)
+
+    assert cli._audit_prune(writer.path, "1d") == 0
+    assert rotated.exists()

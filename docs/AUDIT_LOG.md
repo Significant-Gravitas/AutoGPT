@@ -222,9 +222,12 @@ writer, so appends and rotations hold an exclusive lock on
 rotated or appended to since its last write reloads the chain state
 from the file before it appends.
 
-`audit verify`, `verify-all` and `export` list and read the files under
-the same lock, so they never see a half-written record or miss a file
-that a rotation has just moved. A reader that can't write the lock file
+`audit verify` and `verify-all` list and read the files under the same
+lock, so they never see a half-written record or miss a file that a
+rotation has just moved. `export` lists the files and reads the current
+log under the lock, then reads the rotated files one at a time after
+releasing it, since they never change; one pruned or replaced in between
+fails the export, which writes nothing. A reader that can't write the lock file
 takes the lock through a read-only handle. One that can't open the lock
 file at all stops with an error rather than read unlocked; only a lock
 file that doesn't exist yet, which no writer can be holding, lets the
@@ -239,6 +242,8 @@ clobbers an existing rotated file.
 Rotated files are kept indefinitely by default. `autogpt-shim audit
 prune --older-than 90d` deletes files where the newest record is older
 than the threshold. A file whose newest record has no timestamp is kept.
+Prune reads the rotated files without the lock, so writers don't wait on
+it, and deletes under the lock only files that are still the ones it read.
 The shim never auto-prunes — log loss is the user's call.
 
 ## Reading and exporting
@@ -250,6 +255,11 @@ autogpt-shim audit verify      # chain-verify the current file
 autogpt-shim audit verify-all  # verify every rotated file
 autogpt-shim audit export      # zip + sign for support upload
 ```
+
+Without `--output`, the archive is `audit-export-YYYYMMDD-HHMMSS.zip` in
+the current directory, with a `-N` suffix if a file of that name exists;
+an `--output` that exists is replaced. The archive is built beside its
+destination and moved into place when it is complete.
 
 Export bundles all current+rotated files into a `.zip` with an
 embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
