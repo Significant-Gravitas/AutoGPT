@@ -8,6 +8,7 @@ rows go through ``sanitize_json`` as Postgres's JSON column does.
 import asyncio
 import base64
 import json
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -37,12 +38,14 @@ from backend.copilot.sdk.tool_adapter import (
     set_execution_context,
 )
 from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
     capture_cost_context,
     restore_cost_context,
 )
+from backend.data.graph import GraphModel, NodeModel
 from backend.util.json import sanitize_json
 
 _READS = "backend.copilot.gate.reads"
@@ -1361,8 +1364,6 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
 
 @pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"query": "digest"}])
 async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, lookup):
-    from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
-
     judge = _judge(_HELD)
     with patch(f"{_READS}.judge_content", judge), _library_with_graph():
         result = await _call(
@@ -1390,8 +1391,6 @@ async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, loo
 async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
     rows, lookup, owned
 ):
-    from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
-
     judge = _judge(_HELD)
     with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
         result = await _call(FindLibraryAgentTool(), _session(), lookup)
@@ -1403,10 +1402,6 @@ async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
 def _library_with_graph(owned: bool = False):
     """One library entry whose graph, typed as ``get_graph`` returns it, carries
     the marker; ``owned`` is whether the user owns that graph."""
-    from contextlib import ExitStack
-
-    from backend.data.graph import GraphModel, NodeModel
-
     entry = SimpleNamespace(
         id="lib-1",
         name="Daily digest",
