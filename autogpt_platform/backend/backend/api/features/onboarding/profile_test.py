@@ -202,7 +202,10 @@ async def test_profile_pain_point_size_is_bounded(
         extract.assert_not_awaited()
 
 
-@pytest.mark.parametrize("stored, sent", [("John", "John"), (None, "")])
+# The stored name is the account's whole name; the profile sends its first word.
+@pytest.mark.parametrize(
+    "stored, sent", [("John", "John"), (None, ""), ("Mary Ann", "Mary")]
+)
 async def test_identical_saved_profile_does_not_repeat_personalization(
     mocker, profile_dependencies, client, stored, sent
 ):
@@ -213,6 +216,7 @@ async def test_identical_saved_profile_does_not_repeat_personalization(
     extract = mocker.patch.object(
         routes, "extract_business_understanding", new=AsyncMock()
     )
+    mocker.patch.object(routes, "upsert_business_understanding", new=AsyncMock())
     response = await client.post(
         "/onboarding/profile",
         json={
@@ -228,7 +232,7 @@ async def test_identical_saved_profile_does_not_repeat_personalization(
 
 @pytest.mark.parametrize(
     "changed",
-    [{"user_name": "Jane"}, {"user_role": "Developer"}, {"pain_points": ["Email"]}],
+    [{"user_role": "Developer"}, {"pain_points": ["Email"]}],
 )
 async def test_changed_profile_still_checks_budget(
     mocker, profile_dependencies, changed, client

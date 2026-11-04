@@ -159,7 +159,6 @@ async def submit_onboarding_profile(
     existing = await get_business_understanding(user_id)
     if (
         existing
-        and (existing.user_name or "") == data.user_name
         and existing.user_role == data.user_role
         and existing.pain_points == data.pain_points
     ):

@@ -922,13 +922,13 @@ def _register_dream_schedules(state: _LoopIngestState, scope: MemoryScope) -> No
 
 
 async def resolve_user_name(user_id: str) -> str:
-    """Get the user's display name from BusinessUnderstanding, or fall back to 'User'."""
+    """The account's name, or 'User' when it has none."""
     try:
-        from backend.data.db_accessors import understanding_db
+        from backend.data.db_accessors import user_db
 
-        understanding = await understanding_db().get_business_understanding(user_id)
-        if understanding and understanding.user_name:
-            return understanding.user_name
+        user = await user_db().get_user_by_id(user_id)
+        if user.name:
+            return user.name
     except Exception:
         logger.debug("Could not resolve user name for %s", user_id[:12])
     return "User"

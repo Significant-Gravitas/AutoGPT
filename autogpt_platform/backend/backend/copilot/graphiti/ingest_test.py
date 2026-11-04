@@ -560,46 +560,29 @@ class TestResolveUserName:
     @pytest.mark.asyncio
     async def test_fallback_when_db_raises(self) -> None:
         mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(
+        mock_db.return_value.get_user_by_id = AsyncMock(
             side_effect=RuntimeError("DB not available")
         )
 
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
+        with patch("backend.data.db_accessors.user_db", mock_db):
             name = await ingest.resolve_user_name("some-user-id")
 
         assert name == "User"
 
     @pytest.mark.asyncio
-    async def test_returns_user_name_when_available(self) -> None:
-        mock_understanding = SimpleNamespace(user_name="Alice")
+    @pytest.mark.parametrize(
+        "account_name, expected", [("Alice", "Alice"), (None, "User")]
+    )
+    async def test_reads_the_account_name(self, account_name, expected) -> None:
         mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(
-            return_value=mock_understanding
+        mock_db.return_value.get_user_by_id = AsyncMock(
+            return_value=SimpleNamespace(name=account_name)
         )
 
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
+        with patch("backend.data.db_accessors.user_db", mock_db):
             name = await ingest.resolve_user_name("some-user-id")
 
-        assert name == "Alice"
-
-    @pytest.mark.asyncio
-    async def test_returns_user_when_understanding_is_none(self) -> None:
-        mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
-            name = await ingest.resolve_user_name("some-user-id")
-
-        assert name == "User"
+        assert name == expected
 
 
 class TestEnqueueEpisode:

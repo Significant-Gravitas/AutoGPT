@@ -953,6 +953,19 @@ def _on_background_task_done(task: asyncio.Task) -> None:
         logger.warning("Background task %s failed", task.get_name(), exc_info=exc)
 
 
+async def set_user_name_if_unset(user_id: str, name: str) -> None:
+    """Give the account ``name`` unless it already has one."""
+    name = name.strip()
+    if not name:
+        return
+    updated = await PrismaUser.prisma().update_many(
+        where={"id": user_id, "OR": [{"name": None}, {"name": ""}]},
+        data={"name": name},
+    )
+    if updated:
+        await _invalidate_user_caches(user_id, await get_user_email_by_id(user_id))
+
+
 async def update_user_timezone(user_id: str, timezone: str) -> User:
     """Update a user's timezone setting."""
     try:
