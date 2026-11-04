@@ -1035,6 +1035,25 @@ class FillEnvSecretsTest(unittest.TestCase):
         )
         self.assertEqual(runtime_config._p256_public_point(scalar), public)
 
+    def test_the_canonical_spelling_and_its_digest_are_pinned(self) -> None:
+        """The published digests are of canonical spellings, so a change to
+        what counts as canonical would stop them matching, with every mocked
+        test still green. These literals hold the form still; the backend's
+        copy of the canonicalisation pins the same ones."""
+        raw = bytes(range(0xE0, 0x100))
+        canonical = (
+            "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"  # pragma: allowlist secret
+        )
+        digest = "d90bad97384181273203dd0f8cc30e16a817bef7a51b026eb6bf0a7fcba3312a"  # pragma: allowlist secret
+        for spelling in (
+            canonical,
+            canonical + "=",
+            base64.b64encode(raw).decode(),
+            canonical[:10] + "\n" + canonical[10:],
+        ):
+            self.assertEqual(runtime_config._canonical_vapid_key(spelling), canonical)
+        self.assertEqual(runtime_config._vapid_key_digest(canonical), digest)
+
     def test_published_digests_match_the_backend_startup_check(self) -> None:
         """The backend warns about the same published passwords this replaces."""
         guard = (

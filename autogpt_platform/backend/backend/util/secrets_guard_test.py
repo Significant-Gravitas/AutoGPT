@@ -174,6 +174,25 @@ def test_a_generated_vapid_key_does_not_warn(caplog):
     assert "VAPID_PRIVATE_KEY" not in caplog.text
 
 
+def test_the_canonical_spelling_and_its_digest_are_pinned():
+    """The literals the single-container test pins: the two copies of the
+    canonicalisation have to keep agreeing, and the registered digests are
+    of this form."""
+    raw = bytes(range(0xE0, 0x100))
+    canonical = (
+        "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"  # pragma: allowlist secret
+    )
+    digest = "d90bad97384181273203dd0f8cc30e16a817bef7a51b026eb6bf0a7fcba3312a"  # pragma: allowlist secret
+    for spelling in (
+        canonical,
+        canonical + "=",
+        base64.b64encode(raw).decode(),
+        canonical[:10] + "\n" + canonical[10:],
+    ):
+        assert secrets_guard._canonical_vapid_key(spelling) == canonical
+    assert _vapid_digest(canonical) == digest
+
+
 def test_the_published_vapid_key_digest_is_registered():
     digests = secrets_guard._RETIRED_VAPID_PRIVATE_KEY_DIGESTS
     assert digests, "an empty set silently disables the refusal"
