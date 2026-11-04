@@ -729,6 +729,12 @@ time. Two CLI flags on `autogpt-shim start`:
 | `--enable-clipboard` | off | Enables `CLIPBOARD_WRITE` and a **writeback-only** flavor of `CLIPBOARD_READ`: `CLIPBOARD_READ` returns content **only if the shim itself wrote it within the last 30 seconds.** Anything the user (or any other app) put on the clipboard returns `CLIPBOARD_CONCEALED` with `reason: "writeback_only"`. |
 | `--enable-clipboard-read-foreign` | off (requires `--enable-clipboard`) | Lets `CLIPBOARD_READ` return any clipboard content **except** when the current pasteboard carries an `org.nspasteboard.ConcealedType` marker (macOS, the de-facto password-manager convention), or on Windows a `CF_PRIVATE` format or the registered `ExcludeClipboardContentFromMonitorProcessing` or `Clipboard Viewer Ignore` format that password managers add. Concealed contents → `CLIPBOARD_CONCEALED` error. |
 
+With either flag, a clipboard that can't be read (on Linux, `xclip` or
+`wl-paste` failing for any reason but an empty clipboard) returns
+`CLIPBOARD_CONCEALED` with `reason: "concealed_type"` and
+`marker: "unknown"`, never empty content. An empty clipboard, or one holding
+no text (only an image, say), reads as empty.
+
 Without `--enable-clipboard`, all clipboard sub-ops return
 `FEATURE_NOT_SUPPORTED` and `clipboard` is omitted from
 `computer_use_features_coarse`. Without

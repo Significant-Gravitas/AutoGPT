@@ -61,6 +61,13 @@ _TEXT_TARGETS = frozenset(
 )
 # X11 selection owners list these whatever they hold; they carry no content.
 _SELECTION_PROTOCOL_TARGETS = frozenset({"targets", "timestamp", "multiple", "save_targets"})
+# What xclip and wl-paste say, exiting 1, when the clipboard holds no text:
+# it is empty ("There is no owner for the CLIPBOARD selection", "Nothing is
+# copied") or holds other types ("cannot convert CLIPBOARD selection to
+# target 'STRING'", xclip before 0.13's "target STRING not available",
+# wl-paste's "not available as requested type"). Any other failure is a read
+# that failed, not an empty clipboard.
+_NO_TEXT_MESSAGES = ("no owner for", "cannot convert", "not available", "nothing is copied")
 
 
 def _is_wayland() -> bool:
@@ -674,9 +681,12 @@ class LinuxBackend(ComputerUseBackend):
             )
         text, seq = self._read_clipboard_text()
         if self._clipboard_read_foreign:
-            content = text or ""
+            if text is None:
+                raise ClipboardConcealedError(
+                    "concealed_type", marker="unknown", message="the clipboard could not be read"
+                )
             return ClipboardReadResult(
-                format="text", content=content, size_bytes=len(content.encode("utf-8"))
+                format="text", content=text, size_bytes=len(text.encode("utf-8"))
             )
 
         record = self.clipboard_writeback.check(live_content=text, live_sequence=seq)
@@ -704,19 +714,26 @@ class LinuxBackend(ComputerUseBackend):
         self.clipboard_writeback.record_write(content, sequence=seq)
 
     def _read_clipboard_text(self) -> tuple[str | None, int | None]:
+        """The clipboard's text: "" when it holds none (it is empty, or holds
+        only other types, such as an image), None when it can't be read. The
+        CLI tools expose no sequence number."""
         if self._wayland and self._has_wlcopy and shutil.which("wl-paste"):
-            try:
-                out = subprocess.check_output(["wl-paste", "--no-newline"], timeout=2)
-                return out.decode("utf-8", errors="replace"), None
-            except Exception:
-                return None, None
-        if self._has_xclip:
-            try:
-                out = subprocess.check_output(["xclip", "-selection", "clipboard", "-o"], timeout=2)
-                return out.decode("utf-8", errors="replace"), None
-            except Exception:
-                return None, None
-        return None, None
+            # Without a type, wl-paste pastes whatever the clipboard holds.
+            command = ["wl-paste", "--no-newline", "--type", "text"]
+        elif self._has_xclip:
+            command = ["xclip", "-selection", "clipboard", "-o"]
+        else:
+            return None, None
+        try:
+            out = subprocess.check_output(command, timeout=2, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            said = (exc.stderr or b"").decode("utf-8", errors="replace").casefold()
+            if any(message in said for message in _NO_TEXT_MESSAGES):
+                return "", None
+            return None, None
+        except (OSError, subprocess.SubprocessError):
+            return None, None
+        return out.decode("utf-8", errors="replace"), None
 
     def _has_clipboard_tool(self) -> bool:
         """Whether the tool clipboard reads and writes go through is installed:
