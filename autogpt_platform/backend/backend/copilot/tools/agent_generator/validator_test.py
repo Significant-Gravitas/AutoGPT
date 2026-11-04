@@ -1534,11 +1534,10 @@ class TestListIndexLinks:
         [
             ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
             ("max_size_$_0", "Parent 'max_size' has type 'integer' and is not a list"),
-            ("values_$_10001", "over the run's limit of 10000"),
-            (
-                "values_$_first",
-                "List index 'first' after 'values' is not a whole number",
-            ),
+            ("values_$_10001", "list index out of range (0..10000)"),
+            # Graph save's check runs past an untyped level, where the walk stops.
+            ("values_$_0_#_key_$_first", "index must be an integer"),
+            ("values_$_first", "index must be an integer"),
             # The executor refuses a path past its depth cap, so it is reported.
             ("values" + "_$_0" * 33, "dynamic pin path deeper than 32 levels"),
         ],
@@ -1595,6 +1594,7 @@ class TestListIndexLinks:
             ("config_@_name", False),
             ("anything_@_name", True),
             ("anything_@__secret", False),
+            ("anything_#_key_@__secret", False),
         ],
     )
     def test_an_attribute_written_into_an_object_field_fails(

@@ -9,11 +9,10 @@ from backend.blocks._base import BlockType
 from backend.data.dynamic_fields import (
     DICT_SPLIT,
     LIST_SPLIT,
-    MAX_DYNAMIC_LIST_INDEX,
     OBJC_SPLIT,
+    assert_safe_pin_name,
     extract_base_field_name,
     is_dynamic_field,
-    is_safe_object_attribute,
     parse_dynamic_field,
 )
 
@@ -1169,8 +1168,10 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     at run time.
     """
     try:
+        # Graph save's own check, at every depth: size, attribute names, indices.
+        assert_safe_pin_name(field_name)
         parsed = parse_dynamic_field(field_name)
-    except ValueError as e:  # over the executor's path size caps
+    except ValueError as e:
         return f"'{field_name}' is not a valid field path: {e}"
     if parsed is None:
         return f"'{field_name}' is not a valid field path"
@@ -1184,9 +1185,6 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
 
     path = base
     for delimiter, step in steps:
-        # Graph save refuses these names, so they are reported here.
-        if delimiter == OBJC_SPLIT and not is_safe_object_attribute(step):
-            return f"'{step}' after '{path}' is not a usable attribute name"
         if not isinstance(schema, dict):
             return None
         # The run passes an object as a dict: _@_ reads None from it, and a write
@@ -1237,11 +1235,6 @@ def _list_item_schema(
     (None, None) when only the run can tell."""
     if not (index.isascii() and index.isdigit()):
         return None, f"List index '{index}' after '{path}' is not a whole number"
-    if int(index) > MAX_DYNAMIC_LIST_INDEX:
-        return None, (
-            f"List index '{index}' after '{path}' is over the run's limit of "
-            f"{MAX_DYNAMIC_LIST_INDEX}"
-        )
     schema = _resolve_optional_union(schema) or schema
     if schema.get("type") == "array":
         return schema.get("items", {}), None
