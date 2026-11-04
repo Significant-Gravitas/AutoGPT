@@ -642,6 +642,45 @@ def test_a_desktop_file_another_entry_shadows_is_not_started_through_gtk_launch(
         popen.assert_not_called()
 
 
+@pytest.mark.parametrize("has_dex", [True, False], ids=["with-dex", "gtk-launch-only"])
+def test_a_desktop_file_in_an_applications_subdirectory_launches_by_its_desktop_id(
+    tmp_path, monkeypatch, has_dex: bool
+) -> None:
+    """A file in a subdirectory of an applications directory has its path
+    below that directory as its ID, with "/" turned into "-", so
+    applications/kde4/kcalc.desktop is kde4-kcalc. Only the file's name was
+    looked up, so without dex it was refused, though gtk-launch starts it."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    desktop = _desktop_file(applications / "kde4", "kcalc.desktop")
+    popen = _helpers(monkeypatch, "gtk-launch", *(["dex"] if has_dex else []))
+    b = LinuxBackend(_config(tmp_path))
+
+    assert b.app_launch(executable_path=str(desktop)) is None
+    assert popen.call_args.args[0] == ["gtk-launch", "kde4-kcalc"]
+
+
+@pytest.mark.parametrize(
+    "other",
+    ["share/applications/kde4-kcalc.desktop", "system/applications/kde4-kcalc.desktop"],
+    ids=["earlier-directory", "same-directory"],
+)
+def test_a_nested_desktop_file_whose_id_leads_elsewhere_launches_with_dex(
+    tmp_path, monkeypatch, other: str
+) -> None:
+    """gtk-launch starts the first file with the ID: one in an earlier
+    directory, or, in the same directory, whichever it lists first."""
+    _xdg_applications(monkeypatch, tmp_path)
+    wanted = _desktop_file(tmp_path / "system" / "applications" / "kde4", "kcalc.desktop")
+    elsewhere = tmp_path / other
+    _desktop_file(elsewhere.parent, elsewhere.name, "someone-else")
+    popen = _helpers(monkeypatch, "gtk-launch", "dex")
+    b = LinuxBackend(_config(tmp_path))
+
+    b.app_launch(executable_path=str(wanted))
+
+    assert popen.call_args.args[0] == ["dex", str(wanted)]
+
+
 @pytest.mark.parametrize("helper", ["gtk-launch", "dex"])
 def test_a_desktop_launch_reports_no_pid(tmp_path, monkeypatch, helper: str) -> None:
     """The pid was the helper's, which exits once the app has started: it
@@ -709,6 +748,72 @@ def test_a_desktop_file_whose_try_exec_is_missing_is_refused(
         with pytest.raises(FeatureNotSupportedError, match="TryExec"):
             b.app_launch(executable_path=str(desktop))
         popen.assert_not_called()
+
+
+def _clipboard_read_fails(monkeypatch, said: bytes) -> list[list[str]]:
+    """Make every clipboard tool exit 1 after printing `said`."""
+    commands: list[list[str]] = []
+
+    def check_output(command, **kwargs):
+        commands.append(command)
+        assert kwargs.get("stderr") == linux_backend.subprocess.PIPE
+        raise linux_backend.subprocess.CalledProcessError(1, command, stderr=said)
+
+    monkeypatch.setattr(linux_backend.subprocess, "check_output", check_output)
+    return commands
+
+
+@pytest.mark.parametrize("wayland", [False, True], ids=["x11", "wayland"])
+def test_a_foreign_clipboard_read_that_fails_is_an_error(
+    tmp_path, monkeypatch, wayland: bool
+) -> None:
+    """A failed xclip or wl-paste read answered as an empty clipboard, so the
+    platform couldn't tell a failed read from an empty clipboard."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_wayland", wayland)
+    _clipboard_read_fails(monkeypatch, b"Error: Can't open display: :0\n")
+
+    with pytest.raises(ClipboardConcealedError, match="could not be read") as raised:
+        b.clipboard_read()
+    assert raised.value.details == {"reason": "concealed_type", "marker": "unknown"}
+
+
+@pytest.mark.parametrize(
+    ("wayland", "said"),
+    [
+        (False, b"xclip: Error: There is no owner for the CLIPBOARD selection\n"),
+        (False, b"xclip: Error: firefox cannot convert CLIPBOARD selection to target 'STRING'\n"),
+        (False, b"Error: target STRING not available\n"),
+        (True, b"Nothing is copied\n"),
+        (True, b'Clipboard content is not available as requested type "text"\n'),
+    ],
+    ids=["x11-empty", "x11-no-text", "old-xclip-no-text", "wayland-empty", "wayland-no-text"],
+)
+def test_a_foreign_read_of_a_clipboard_with_no_text_is_empty(
+    tmp_path, monkeypatch, wayland: bool, said: bytes
+) -> None:
+    """The tools fail when the clipboard is empty or holds no text, which
+    reads as empty, not as a failed read."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_wayland", wayland)
+    _clipboard_read_fails(monkeypatch, said)
+
+    assert b.clipboard_read().content == ""
+
+
+def test_wl_paste_reads_the_clipboard_as_text(tmp_path, monkeypatch) -> None:
+    """Without a type, wl-paste pastes whatever the clipboard holds, so an
+    image came back as its bytes, decoded as text."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_wayland", True)
+    commands = _clipboard_read_fails(monkeypatch, b"Nothing is copied\n")
+
+    b.clipboard_read()
+
+    assert commands == [["wl-paste", "--no-newline", "--type", "text"]]
 
 
 def test_a_clipboard_read_with_no_tool_that_reads_is_refused(tmp_path, monkeypatch) -> None:

@@ -157,6 +157,11 @@ def _can_do_computer_use() -> bool:
 X11_PROBE_SECONDS = 5.0
 
 
+# The probe still running, if any, and where it puts its outcome.
+_x11_probe: tuple[threading.Thread, list[bool]] | None = None
+_x11_probe_lock = threading.Lock()
+
+
 def _x11_display_opens() -> bool:
     """Whether the X server DISPLAY names accepts a connection. A set DISPLAY
     can still name a server that has gone, such as a closed SSH forward.
@@ -165,24 +170,35 @@ def _x11_display_opens() -> bool:
     python-xlib waits for the server's setup reply with no time limit, so a
     server that takes the connection and never answers would hang HELLO and
     doctor. The probe runs in a daemon thread, so one left waiting never holds
-    up exit, and counts as failed after X11_PROBE_SECONDS.
+    up exit, and counts as failed after X11_PROBE_SECONDS. A probe still
+    waiting from an earlier call is waited on again rather than joined by
+    another, so a server that never answers holds one thread and one
+    connection, not one more per reconnect.
     """
-    outcome: list[bool] = []
-
-    def probe() -> None:
-        try:
-            from Xlib.display import Display  # type: ignore[import-not-found]
-
-            Display().close()
-        except Exception:
-            outcome.append(False)
+    global _x11_probe
+    with _x11_probe_lock:
+        if _x11_probe is not None and _x11_probe[0].is_alive():
+            thread, outcome = _x11_probe
         else:
-            outcome.append(True)
-
-    thread = threading.Thread(target=probe, name="x11-display-probe", daemon=True)
-    thread.start()
+            outcome = []
+            thread = threading.Thread(
+                target=_probe_x11_display, args=(outcome,), name="x11-display-probe", daemon=True
+            )
+            _x11_probe = (thread, outcome)
+            thread.start()
     thread.join(X11_PROBE_SECONDS)
     return outcome == [True]
+
+
+def _probe_x11_display(outcome: list[bool]) -> None:
+    try:
+        from Xlib.display import Display  # type: ignore[import-not-found]
+
+        Display().close()
+    except Exception:
+        outcome.append(False)
+    else:
+        outcome.append(True)
 
 
 # ── Machine ID ───────────────────────────────────────────────────────────────

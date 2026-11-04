@@ -616,6 +616,53 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
     assert ws.close_calls
 
 
+async def test_revocation_audits_and_closes_while_a_side_effect_hangs(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Revocation waited for in-flight work before its audit record and the
+    close, and a side effect blocked in a thread may never finish: the
+    revoked socket stayed open, with no record of the revocation. The wait
+    that follows is bounded, and work let go then settles nothing in the
+    counters, which are the next session's by the time it ends."""
+    import threading
+
+    import autogpt_local_executor.daemon as daemon_module
+    import autogpt_local_executor.handlers as handlers_module
+
+    monkeypatch.setattr(daemon_module, "DISPATCH_DRAIN_SECONDS", 0.1, raising=False)
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    running = threading.Event()
+    release = threading.Event()
+
+    def side_effect() -> None:
+        running.set()
+        release.wait(60)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(side_effect)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    assert await asyncio.to_thread(running.wait, 30)
+    (task,) = daemon._dispatch_tasks
+    try:
+        await asyncio.wait_for(daemon._on_frame(ws, _session_revoked_frame()), timeout=30)
+
+        assert [op for op, _ in audit.events].count("SESSION_REVOKED") == 1
+        assert [c["code"] for c in ws.close_calls] == [WS_CLOSE_SESSION_REVOKED]
+        assert daemon._disable_reconnect is True
+        assert not task.done()
+    finally:
+        release.set()
+    await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=30)
+
+    assert ws.sent == []
+    assert (daemon._in_flight, daemon._queue_depth, daemon._pending_requests) == (0, 0, 0)
+
+
 @pytest.mark.parametrize(
     ("base", "cap"), [(1e-12, 60.0), (1.0, 1e308)], ids=["tiny-base", "huge-cap"]
 )

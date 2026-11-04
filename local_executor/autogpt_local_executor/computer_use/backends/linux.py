@@ -61,6 +61,13 @@ _TEXT_TARGETS = frozenset(
 )
 # X11 selection owners list these whatever they hold; they carry no content.
 _SELECTION_PROTOCOL_TARGETS = frozenset({"targets", "timestamp", "multiple", "save_targets"})
+# What xclip and wl-paste say, exiting 1, when the clipboard holds no text:
+# it is empty ("There is no owner for the CLIPBOARD selection", "Nothing is
+# copied") or holds other types ("cannot convert CLIPBOARD selection to
+# target 'STRING'", xclip before 0.13's "target STRING not available",
+# wl-paste's "not available as requested type"). Any other failure is a read
+# that failed, not an empty clipboard.
+_NO_TEXT_MESSAGES = ("no owner for", "cannot convert", "not available", "nothing is copied")
 
 
 def _is_wayland() -> bool:
@@ -105,20 +112,53 @@ def _program_found(program: str) -> bool:
     return shutil.which(program) is not None
 
 
-def _gtk_launch_finds(path: str) -> bool:
-    """Whether gtk-launch, given this file's desktop ID, starts this very file.
-    It starts the first file of that name in the application directories, so
-    one in an earlier directory shadows it, and a file outside them can't be
-    reached by its ID at all."""
-    name = os.path.basename(path)
+def _desktop_file_id(path: str) -> str | None:
+    """The desktop file ID of a file in an XDG application directory: its
+    path below that directory, with "/" turned into "-", so
+    applications/kde4/kcalc.desktop is kde4-kcalc.desktop. None for a file
+    outside them."""
     for directory in _application_dirs():
-        candidate = os.path.join(directory, name)
-        if os.path.exists(candidate):
+        for base in dict.fromkeys((os.path.abspath(directory), os.path.realpath(directory))):
+            relative = os.path.relpath(os.path.abspath(path), base)
+            if relative != os.pardir and not relative.startswith(os.pardir + os.sep):
+                return relative.replace(os.sep, "-")
+    return None
+
+
+def _files_with_desktop_id(directory: str, desktop_id: str) -> list[str]:
+    """The files in `directory` the ID names: the file of that name, and
+    files in its subdirectories, where any "-" in the ID can stand for a
+    "/"."""
+    found = []
+    candidate = os.path.join(directory, desktop_id)
+    if os.path.isfile(candidate):
+        found.append(candidate)
+    for index, char in enumerate(desktop_id):
+        if char == "-":
+            subdirectory = os.path.join(directory, desktop_id[:index])
+            if os.path.isdir(subdirectory):
+                found.extend(_files_with_desktop_id(subdirectory, desktop_id[index + 1 :]))
+    return found
+
+
+def _gtk_launch_id(path: str) -> str | None:
+    """The desktop ID that gtk-launch starts this very file by, or None.
+    gtk-launch starts the first file with the ID in the application
+    directories, so one in an earlier directory shadows it, two in the same
+    directory leave it to the order the directory lists them in, and a file
+    outside them can't be reached by an ID at all."""
+    desktop_id = _desktop_file_id(path)
+    if desktop_id is None:
+        return None
+    for directory in _application_dirs():
+        found = _files_with_desktop_id(directory, desktop_id)
+        if found:
             try:
-                return os.path.samefile(candidate, path)
+                same = all(os.path.samefile(candidate, path) for candidate in found)
             except OSError:
-                return False
-    return False
+                return None
+            return desktop_id if same else None
+    return None
 
 
 class LinuxBackend(ComputerUseBackend):
@@ -597,15 +637,16 @@ class LinuxBackend(ComputerUseBackend):
                 "app.launch", reason=f"its TryExec program {try_exec!r} isn't installed"
             )
         has_gtk_launch = shutil.which("gtk-launch") is not None
-        if has_gtk_launch and _gtk_launch_finds(path):
-            command = ["gtk-launch", os.path.basename(path).removesuffix(".desktop")]
+        desktop_id = _gtk_launch_id(path) if has_gtk_launch else None
+        if desktop_id is not None:
+            command = ["gtk-launch", desktop_id.removesuffix(".desktop")]
         elif shutil.which("dex"):
             command = ["dex", path]
         elif has_gtk_launch:
             raise FeatureNotSupportedError(
                 "app.launch",
                 reason="gtk-launch finds a desktop file by its ID in the XDG application "
-                "directories, where this one's name leads to another file or to none; "
+                "directories, where this one's ID leads to another file or to none; "
                 "install dex to launch it by its path",
             )
         else:
@@ -640,9 +681,12 @@ class LinuxBackend(ComputerUseBackend):
             )
         text, seq = self._read_clipboard_text()
         if self._clipboard_read_foreign:
-            content = text or ""
+            if text is None:
+                raise ClipboardConcealedError(
+                    "concealed_type", marker="unknown", message="the clipboard could not be read"
+                )
             return ClipboardReadResult(
-                format="text", content=content, size_bytes=len(content.encode("utf-8"))
+                format="text", content=text, size_bytes=len(text.encode("utf-8"))
             )
 
         record = self.clipboard_writeback.check(live_content=text, live_sequence=seq)
@@ -670,19 +714,26 @@ class LinuxBackend(ComputerUseBackend):
         self.clipboard_writeback.record_write(content, sequence=seq)
 
     def _read_clipboard_text(self) -> tuple[str | None, int | None]:
+        """The clipboard's text: "" when it holds none (it is empty, or holds
+        only other types, such as an image), None when it can't be read. The
+        CLI tools expose no sequence number."""
         if self._wayland and self._has_wlcopy and shutil.which("wl-paste"):
-            try:
-                out = subprocess.check_output(["wl-paste", "--no-newline"], timeout=2)
-                return out.decode("utf-8", errors="replace"), None
-            except Exception:
-                return None, None
-        if self._has_xclip:
-            try:
-                out = subprocess.check_output(["xclip", "-selection", "clipboard", "-o"], timeout=2)
-                return out.decode("utf-8", errors="replace"), None
-            except Exception:
-                return None, None
-        return None, None
+            # Without a type, wl-paste pastes whatever the clipboard holds.
+            command = ["wl-paste", "--no-newline", "--type", "text"]
+        elif self._has_xclip:
+            command = ["xclip", "-selection", "clipboard", "-o"]
+        else:
+            return None, None
+        try:
+            out = subprocess.check_output(command, timeout=2, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            said = (exc.stderr or b"").decode("utf-8", errors="replace").casefold()
+            if any(message in said for message in _NO_TEXT_MESSAGES):
+                return "", None
+            return None, None
+        except (OSError, subprocess.SubprocessError):
+            return None, None
+        return out.decode("utf-8", errors="replace"), None
 
     def _has_clipboard_tool(self) -> bool:
         """Whether the tool clipboard reads and writes go through is installed:

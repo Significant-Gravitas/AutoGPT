@@ -408,6 +408,79 @@ async def test_control_handshake_rejects_missing_directory_capability(
     assert daemon._disable_reconnect is True
 
 
+class _AckSocket:
+    """Answers HELLO with a HELLO_ACK carrying `payload` as given, so a test
+    can leave fields out; `close_fails` makes close() raise."""
+
+    def __init__(self, payload: dict[str, Any], *, close_fails: bool = False) -> None:
+        self.sent: list[str] = []
+        self.closed: tuple[int, str] | None = None
+        self._payload = payload
+        self._close_fails = close_fails
+
+    async def send(self, raw: str) -> None:
+        self.sent.append(raw)
+
+    async def recv(self) -> str:
+        hello_id = json.loads(self.sent[0])["id"]
+        return json.dumps(
+            {"type": "HELLO_ACK", "id": hello_id, "ts": now_ts(), "payload": self._payload}
+        )
+
+    async def close(self, *, code: int, reason: str) -> None:
+        self.closed = (code, reason)
+        if self._close_fails:
+            raise OSError("the connection was reset")
+
+
+_CONTROL_ACK: dict[str, Any] = {
+    "connection_id": "connection-1",
+    "granted_capabilities": ["files", "directory_browse"],
+    "protocol_version": "1.1",
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_fails", [False, True], ids=["closes", "close-fails"])
+@pytest.mark.parametrize(
+    ("missing", "close_code"),
+    [
+        ("granted_capabilities", 4400),
+        ("protocol_version", 4426),
+        ("connection_id", 4426),
+    ],
+)
+async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
+    tmp_path: Path, missing: str, close_code: int, close_fails: bool
+) -> None:
+    """PROTOCOL.md: a control daemon fails terminally when its HELLO_ACK
+    lacks a required field. One without granted_capabilities failed to parse
+    before the flag was set, so run() reconnected with backoff; one without
+    protocol_version was taken for 1.1; and a close that raised skipped the
+    flag on every path."""
+    daemon = _control_daemon(tmp_path)
+    payload = {key: value for key, value in _CONTROL_ACK.items() if key != missing}
+    websocket = _AckSocket(payload, close_fails=close_fails)
+
+    with pytest.raises(RuntimeError):
+        await daemon._handshake(websocket)
+
+    assert websocket.closed is not None and websocket.closed[0] == close_code
+    assert daemon._disable_reconnect is True
+
+
+@pytest.mark.asyncio
+async def test_a_complete_control_hello_ack_connects(tmp_path: Path) -> None:
+    daemon = _control_daemon(tmp_path)
+    websocket = _AckSocket(dict(_CONTROL_ACK))
+
+    await daemon._handshake(websocket)
+
+    assert websocket.closed is None
+    assert daemon._disable_reconnect is False
+    assert daemon._connection_id == "connection-1"
+
+
 @pytest.mark.asyncio
 async def test_restore_restarts_child_when_root_binding_changes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

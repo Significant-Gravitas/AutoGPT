@@ -39,6 +39,10 @@ registration MUST accept all ports in this range as valid `redirect_uri`
 values for `client_id=autogpt-local-executor` — registering only 41899
 would defeat the fallback. Listener is always bound to `127.0.0.1`; never
 to `0.0.0.0`. See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#oauth-callback-port).
+The server takes one connection at a time, so each read waits at most 10
+seconds and a whole request at most 20 before the connection is dropped: a
+browser's preconnect that never sends, or a client that sends a byte now and
+then, can't hold off the redirect.
 
 ### Operator setup (per-environment)
 

@@ -260,6 +260,11 @@ MAX_ACTIVE_CHILD_SESSIONS = 8
 MAX_SESSION_BINDINGS = 64
 CHILD_IDLE_TTL_SECONDS = 10 * 60
 CHILD_REAPER_INTERVAL_SECONDS = 30
+# How long a session that ends waits for its cancelled requests to stop. A
+# side effect already running in a thread can't be stopped, and finishes
+# first (handlers._run_to_completion); one that hangs is let go after this,
+# so the session still ends and the shim can reconnect.
+DISPATCH_DRAIN_SECONDS = 10.0
 
 
 @dataclass
@@ -339,6 +344,10 @@ class ShimDaemon:
         # at asyncio.Semaphore internals.
         self._in_flight: int = 0
         self._queue_depth: int = 0
+        # Bumped each time a session's requests are cancelled. A request let
+        # go then, still running, settles none of the counters above when it
+        # ends: by then they are another session's.
+        self._dispatch_generation = 0
         # Wall-clock when the current session started (set in _run_session).
         # Used for STATUS.uptime_seconds.
         self._session_started_at: float | None = None
@@ -689,11 +698,27 @@ class ShimDaemon:
             self._status_task = None
 
     async def _cancel_dispatch_tasks(self) -> None:
+        await self._drain_dispatch_tasks(self._cancel_dispatch_requests())
+
+    def _cancel_dispatch_requests(self) -> tuple[asyncio.Task[None], ...]:
+        """Cancel the session's requests, without waiting for them."""
         tasks = tuple(self._dispatch_tasks)
         for task in tasks:
             task.cancel()
+        return tasks
+
+    async def _drain_dispatch_tasks(self, tasks: tuple[asyncio.Task[None], ...]) -> None:
+        """Wait up to DISPATCH_DRAIN_SECONDS for cancelled requests to stop,
+        then let go of any still running and clear the session's counters."""
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            _, running = await asyncio.wait(tasks, timeout=DISPATCH_DRAIN_SECONDS)
+            if running:
+                logger.warning(
+                    "%d request(s) still running in a thread that can't be stopped; "
+                    "they finish on their own, and their replies are not sent",
+                    len(running),
+                )
+        self._dispatch_generation += 1
         self._dispatch_tasks.clear()
         self._pending_requests = 0
         self._queue_depth = 0
@@ -812,6 +837,15 @@ class ShimDaemon:
 
     # ── Handshake ─────────────────────────────────────────────────────────
 
+    @staticmethod
+    async def _close_failed_handshake(ws, code: int, reason: str) -> None:
+        """Close after a failed handshake. The caller raises why it failed
+        next, which a close that fails must not replace."""
+        try:
+            await ws.close(code=code, reason=reason)
+        except Exception:
+            logger.debug("ws.close after a failed handshake failed", exc_info=True)
+
     async def _handshake(self, ws) -> HelloAckMessage:
         # Per COMPUTER_USE.md Q2: every HELLO wipes window IDs.
         if self.config.enable_computer_use:
@@ -822,8 +856,8 @@ class ShimDaemon:
         hello = await self._build_hello()
         raw_hello = dump_message(hello)
         if len(raw_hello.encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
-            await ws.close(code=4400, reason="HELLO payload too large")
             self._disable_reconnect = True
+            await self._close_failed_handshake(ws, 4400, "HELLO payload too large")
             raise RuntimeError("HELLO payload exceeds the WebSocket message limit")
         await ws.send(raw_hello)
         try:
@@ -834,23 +868,33 @@ class ShimDaemon:
             if code in _FATAL_CLOSE_CODES:
                 self._disable_reconnect = True
             raise
-        ack = parse_message(raw_ack)
+        try:
+            ack = parse_message(raw_ack)
+        except ValueError as exc:
+            # pydantic's ValidationError, like a JSON or UTF-8 error, is a
+            # ValueError. A control daemon fails terminally on an ACK without
+            # its required fields (PROTOCOL.md → HELLO_ACK).
+            if not self._control_mode:
+                raise
+            self._disable_reconnect = True
+            await self._close_failed_handshake(ws, 4400, "Malformed HELLO_ACK")
+            raise RuntimeError(f"Malformed HELLO_ACK: {exc.__class__.__name__}") from exc
         if not isinstance(ack, HelloAckMessage):
             raise RuntimeError(f"Expected HELLO_ACK, got {type(ack).__name__}")
         if ack.id != hello.id:
-            await ws.close(code=4400, reason="HELLO_ACK correlation mismatch")
             self._disable_reconnect = True
+            await self._close_failed_handshake(ws, 4400, "HELLO_ACK correlation mismatch")
             raise RuntimeError("HELLO_ACK id does not match HELLO id")
         # Honor the server's negotiated limits.
         payload = ack.payload
         expected_session_id = (self.config.session_id or "").strip()
         if expected_session_id and payload.session_id != expected_session_id:
-            await ws.close(code=4403, reason="HELLO_ACK session mismatch")
+            await self._close_failed_handshake(ws, 4403, "HELLO_ACK session mismatch")
             raise DaemonAuthenticationError(
                 "HELLO_ACK session does not match the locally selected session"
             )
         if not expected_session_id and payload.session_id not in (None, ""):
-            await ws.close(code=4403, reason="HELLO_ACK control mismatch")
+            await self._close_failed_handshake(ws, 4403, "HELLO_ACK control mismatch")
             raise DaemonAuthenticationError(
                 "HELLO_ACK unexpectedly bound the machine control connection to a session"
             )
@@ -858,8 +902,10 @@ class ShimDaemon:
         advertised_capabilities = set(hello.payload.capabilities)
         unexpected_capabilities = set(payload.granted_capabilities) - advertised_capabilities
         if unexpected_capabilities:
-            await ws.close(code=4400, reason="HELLO_ACK granted unadvertised capability")
             self._disable_reconnect = True
+            await self._close_failed_handshake(
+                ws, 4400, "HELLO_ACK granted unadvertised capability"
+            )
             raise RuntimeError(
                 "HELLO_ACK granted capabilities the shim did not advertise: "
                 + ", ".join(sorted(unexpected_capabilities))
@@ -874,31 +920,28 @@ class ShimDaemon:
             )
         except ProtocolVersionMismatch as exc:
             close_reason = _close_reason_json(exc.to_close_reason())
-            try:
-                await ws.close(
-                    code=WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
-                    reason=close_reason,
-                )
-            except Exception:
-                logger.debug("ws.close after version mismatch failed", exc_info=True)
+            await self._close_failed_handshake(ws, WS_CLOSE_PROTOCOL_VERSION_MISMATCH, close_reason)
             raise
         except ValueError as exc:
-            await ws.close(
-                code=WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
-                reason="Invalid platform protocol version",
-            )
             self._disable_reconnect = True
+            await self._close_failed_handshake(
+                ws, WS_CLOSE_PROTOCOL_VERSION_MISMATCH, "Invalid platform protocol version"
+            )
             raise RuntimeError("HELLO_ACK contained an invalid protocol version") from exc
+        # The model fills in an omitted protocol_version as this shim's own
+        # version, so whether the platform named one is asked separately.
         if self._control_mode and (
-            self._negotiated_version != "1.1"
+            "protocol_version" not in payload.model_fields_set
+            or self._negotiated_version != "1.1"
             or "directory_browse" not in payload.granted_capabilities
             or not payload.connection_id
         ):
-            await ws.close(
-                code=WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
-                reason="Machine control requires protocol 1.1 and directory_browse",
-            )
             self._disable_reconnect = True
+            await self._close_failed_handshake(
+                ws,
+                WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
+                "Machine control requires protocol 1.1 and directory_browse",
+            )
             raise RuntimeError("Platform does not support the persistent machine-control protocol")
         self.config.max_concurrent = min(
             self._local_max_concurrent,
@@ -1090,10 +1133,12 @@ class ShimDaemon:
         # while the audit write below runs in a thread, and their responses
         # must not go out.
         self._revoked_ws = ws
+        self._disable_reconnect = True
         # Nor may the revoked session's work go on: stop what is running and
-        # what is queued behind it, and the STATUS ticker.
-        await self._cancel_dispatch_tasks()
-        await self._stop_status_ticker()
+        # what is queued behind it. A side effect already running in a thread
+        # can't be stopped and may never finish, so the record and the close
+        # come before any wait for it.
+        cancelled = self._cancel_dispatch_requests()
         reason = msg.payload.reason
         new_machine = msg.payload.new_shim_machine_id
         logger.warning(
@@ -1102,7 +1147,6 @@ class ShimDaemon:
             reason,
             new_machine,
         )
-        self._disable_reconnect = True
         await self._audit_session_revoked(
             reason=reason,
             source="frame",
@@ -1113,6 +1157,8 @@ class ShimDaemon:
             await ws.close(code=WS_CLOSE_SESSION_REVOKED, reason="session_revoked")
         except Exception:
             logger.debug("ws.close after SESSION_REVOKED failed", exc_info=True)
+        await self._stop_status_ticker()
+        await self._drain_dispatch_tasks(cancelled)
 
     async def _audit_session_revoked(
         self,
@@ -1237,6 +1283,14 @@ class ShimDaemon:
 
     async def _dispatch(self, ws, msg: Any, *, prequeued: bool = False) -> None:
         assert self._semaphore is not None
+        generation = self._dispatch_generation
+
+        def counted() -> bool:
+            """Whether this request still counts in the session's
+            bookkeeping. One let go when its session ended doesn't
+            (_drain_dispatch_tasks)."""
+            return generation == self._dispatch_generation
+
         # Track queue depth: incremented now, decremented exactly once when
         # we either acquire the semaphore (transition to in_flight) or bail
         # out before acquiring (cancellation / error in waiter).
@@ -1261,9 +1315,10 @@ class ShimDaemon:
             try:
                 async with self._semaphore:
                     # We've acquired — move the credit from queue → in_flight.
-                    self._queue_depth -= 1
+                    if counted():
+                        self._queue_depth -= 1
+                        self._in_flight += 1
                     queue_owed = False
-                    self._in_flight += 1
                     in_flight_owed = True
                     try:
                         if self._machine_work_semaphore is not None and not self._control_mode:
@@ -1272,11 +1327,12 @@ class ShimDaemon:
                         else:
                             response = await self._handle(msg, send=_stream_send)
                     finally:
-                        was_full_after_decrement = (
-                            self._pending_requests >= self.config.max_concurrent
-                            or self._in_flight == self.config.max_concurrent
-                        )
-                        self._in_flight -= 1
+                        if counted():
+                            was_full_after_decrement = (
+                                self._pending_requests >= self.config.max_concurrent
+                                or self._in_flight == self.config.max_concurrent
+                            )
+                            self._in_flight -= 1
                         in_flight_owed = False
             except SessionRevokedSendError:
                 logger.debug("%s stopped: the session was revoked", type(msg).__name__)
@@ -1291,11 +1347,12 @@ class ShimDaemon:
             # Belt-and-braces: if either counter is still owed (e.g. we got
             # cancelled mid-acquire), make it whole. Without this a crashed
             # waiter would skew queue_depth forever.
-            if queue_owed:
-                self._queue_depth -= 1
-            if in_flight_owed:
-                self._in_flight -= 1
-            self._pending_requests = max(self._pending_requests - 1, 0)
+            if counted():
+                if queue_owed:
+                    self._queue_depth -= 1
+                if in_flight_owed:
+                    self._in_flight -= 1
+                self._pending_requests = max(self._pending_requests - 1, 0)
 
         if response is None:
             return

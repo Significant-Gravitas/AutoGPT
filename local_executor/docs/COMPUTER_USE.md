@@ -635,11 +635,14 @@ report one. The shim uses, in order of preference:
   runs with `subprocess.Popen`.
 - Windows: `subprocess.Popen` with `CREATE_NEW_PROCESS_GROUP`.
 - Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
-  file launches with `gtk-launch` (by its desktop file ID) when that ID
-  leads to this very file, and with `dex` (by path) otherwise. gtk-launch
-  starts the first file with the ID in the XDG application directories,
-  so a same-named file in an earlier directory would start instead; without
-  `dex`, such a file is refused. A `.desktop` file that doesn't exist, or
+  file launches with `gtk-launch` (by its desktop file ID: its path below
+  the applications directory with `/` turned into `-`, so
+  `applications/kde4/kcalc.desktop` is `kde4-kcalc`) when that ID leads to
+  this very file, and with `dex` (by path) otherwise. gtk-launch starts the
+  first file with the ID in the XDG application directories, so a file
+  with the same ID in an earlier directory would start instead, and two in
+  one directory leave it to the order the directory lists them in; without
+  `dex`, such a file is refused, as is one outside those directories. A `.desktop` file that doesn't exist, or
   whose `TryExec` program isn't installed, is refused before either helper
   starts. `args` are refused for a `.desktop` file,
   since its `Exec` line sets them. A helper that exits with a failing
@@ -725,6 +728,12 @@ time. Two CLI flags on `autogpt-shim start`:
 |---|---|---|
 | `--enable-clipboard` | off | Enables `CLIPBOARD_WRITE` and a **writeback-only** flavor of `CLIPBOARD_READ`: `CLIPBOARD_READ` returns content **only if the shim itself wrote it within the last 30 seconds.** Anything the user (or any other app) put on the clipboard returns `CLIPBOARD_CONCEALED` with `reason: "writeback_only"`. |
 | `--enable-clipboard-read-foreign` | off (requires `--enable-clipboard`) | Lets `CLIPBOARD_READ` return any clipboard content **except** when the current pasteboard carries an `org.nspasteboard.ConcealedType` marker (macOS, the de-facto password-manager convention), or on Windows a `CF_PRIVATE` format or the registered `ExcludeClipboardContentFromMonitorProcessing` or `Clipboard Viewer Ignore` format that password managers add. Concealed contents → `CLIPBOARD_CONCEALED` error. |
+
+With either flag, a clipboard that can't be read (on Linux, `xclip` or
+`wl-paste` failing for any reason but an empty clipboard) returns
+`CLIPBOARD_CONCEALED` with `reason: "concealed_type"` and
+`marker: "unknown"`, never empty content. An empty clipboard, or one holding
+no text (only an image, say), reads as empty.
 
 Without `--enable-clipboard`, all clipboard sub-ops return
 `FEATURE_NOT_SUPPORTED` and `clipboard` is omitted from

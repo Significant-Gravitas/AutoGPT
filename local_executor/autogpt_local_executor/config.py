@@ -318,7 +318,8 @@ def load_config(
         try:
             with open(path, "rb") as f:
                 file_overrides = tomllib.load(f)
-        except (OSError, tomllib.TOMLDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            # TOML is UTF-8, and tomllib decodes before it parses.
             raise ConfigFileError(f"{path}: {exc}") from exc
         # Coerce string paths into Path objects so pydantic doesn't choke.
         for key in ("allowed_root", "audit_log_path", "recording_buffer_dir"):
