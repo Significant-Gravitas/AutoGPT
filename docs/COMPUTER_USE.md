@@ -455,6 +455,10 @@ the others — same posture for us.
 }
 ```
 
+`app_bundle_id` filters by macOS bundle ID. Windows and Linux windows have
+none, so there a request that sets it answers `FEATURE_NOT_SUPPORTED` instead of
+listing every window, and window IDs from an earlier listing stay valid.
+
 Hidden and untitled windows are never listed. On macOS,
 `include_minimized` also lists windows on other Spaces, and
 `is_minimized` is always false: telling the two apart needs each

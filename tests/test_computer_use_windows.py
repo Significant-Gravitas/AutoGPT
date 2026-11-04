@@ -962,3 +962,19 @@ def test_focusing_a_minimized_window_restores_it_first(tmp_path, monkeypatch, mi
 
     expected = [call.show(0x12345, 9)] if minimized else []
     assert calls.mock_calls == [*expected, call.foreground(0x12345)]
+
+
+def test_window_list_refuses_an_app_filter_it_cannot_apply(tmp_path, monkeypatch) -> None:
+    """Windows have no bundle ID here, so app_bundle_id was ignored and every
+    window came back, from unrelated apps too. The refusal comes first, so
+    window IDs from an earlier listing stay valid."""
+    b = WindowsBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
+    earlier = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
+    monkeypatch.setitem(sys.modules, "win32gui", MagicMock())
+    monkeypatch.setitem(sys.modules, "win32process", MagicMock())
+
+    with pytest.raises(FeatureNotSupportedError, match="app_bundle_id"):
+        b.window_list(app_bundle_id="com.apple.Safari")
+
+    assert b.window_registry.lookup(earlier) is not None

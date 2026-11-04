@@ -488,6 +488,12 @@ class LinuxBackend(ComputerUseBackend):
         include_minimized: bool = False,
         include_offscreen: bool = False,
     ) -> list[WindowInfo]:
+        if app_bundle_id:
+            # Before the registry is cleared, so earlier window IDs stay valid.
+            raise FeatureNotSupportedError(
+                "window.list.app_bundle_id",
+                reason="X11 windows have no bundle ID, so app_bundle_id can't filter them",
+            )
         if self._wayland or not self._has_wmctrl:
             raise FeatureNotSupportedError(
                 "window.list",
