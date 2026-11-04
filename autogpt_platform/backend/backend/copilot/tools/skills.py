@@ -3151,7 +3151,7 @@ async def _session_skill_versions(
     user_id: str, expert_id: str | None, session_id: str | None
 ) -> tuple[list[SkillHeadRecord], str | None] | None:
     """The owner's skill heads and the versions this chat last saw, or
-    ``None`` without a session or when the heads can't be read.
+    ``None`` without a session or when either can't be read.
 
     Only after the registry read: heads read while it updates a copy would
     mark the old version seen, and the next turn would repeat the update.
