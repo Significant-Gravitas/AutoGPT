@@ -1257,3 +1257,19 @@ async def test_prune_keeps_a_rotated_log_replaced_after_it_was_read(
 
     assert cli._audit_prune(writer.path, "1d") == 0
     assert rotated.exists()
+
+
+def test_a_record_with_an_integer_past_pythons_limit_is_a_parse_error(
+    tmp_path: Path, capsys
+) -> None:
+    """Integers past 4,300 digits raise a plain ValueError rather than a
+    JSONDecodeError, so verify, show and tail ended in a traceback."""
+    path = tmp_path / "audit.log"
+    huge = '{"seq": ' + "9" * 5000 + ', "ts": 1.0}'
+    path.write_text(huge + "\n")
+
+    [violation] = AuditWriter.verify(path, KEY)
+    assert violation.kind == "parse_error"
+    assert cli._audit_show(path, 1) != 0
+    cli._print_record_line(huge.encode() + b"\n")
+    assert "[unparseable]" in capsys.readouterr().out

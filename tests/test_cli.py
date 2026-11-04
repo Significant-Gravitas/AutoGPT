@@ -673,3 +673,51 @@ def test_the_systemd_unit_restarts_a_temporary_failure() -> None:
         if line.startswith("RestartPreventExitStatus=")
     ]
     assert "75" not in line.split("=", 1)[1].split()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="asyncio signal handlers are POSIX-only")
+@pytest.mark.asyncio
+async def test_sigterm_stops_the_daemon_as_ctrl_c_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """systemd and launchd stop the service with SIGTERM, whose default
+    action ended the process at once: no stop, no SHIM_STOP record, and a
+    running command's process group left behind."""
+    import signal
+
+    running = asyncio.Event()
+    stopped: list[bool] = []
+
+    class FakeDaemon:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def run(self) -> None:
+            running.set()
+            await asyncio.Event().wait()
+
+        async def stop(self) -> None:
+            stopped.append(True)
+
+    monkeypatch.setattr("autogpt_local_executor.daemon.ShimDaemon", FakeDaemon)
+    monkeypatch.setattr("autogpt_local_executor.auth.KeychainTokenStore", lambda _config: object())
+    loop = asyncio.get_running_loop()
+    handlers: dict[int, tuple] = {}
+    monkeypatch.setattr(
+        loop,
+        "add_signal_handler",
+        lambda sig, callback, *args: handlers.update({sig: (callback, args)}),
+    )
+    monkeypatch.setattr(
+        loop, "remove_signal_handler", lambda sig: handlers.pop(sig, None) is not None
+    )
+    start = asyncio.create_task(cli._cmd_start(ShimConfig(allowed_root=tmp_path)))
+    await asyncio.wait_for(running.wait(), timeout=30)
+
+    callback, args = handlers[signal.SIGTERM]
+    callback(*args)
+
+    assert await start == 0
+    assert stopped == [True]
+    assert signal.SIGTERM not in handlers
+    assert "Shim stopped." in capsys.readouterr().out
