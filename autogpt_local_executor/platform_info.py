@@ -145,7 +145,22 @@ def _can_do_computer_use() -> bool:
         )
         if wayland or not os.environ.get("DISPLAY"):
             return False
+        if not _x11_display_opens():
+            return False
     if plat == "wsl2":
+        return False
+    return True
+
+
+def _x11_display_opens() -> bool:
+    """Whether the X server DISPLAY names accepts a connection. A set DISPLAY
+    can still name a server that has gone, such as a closed SSH forward.
+    pyautogui connects through python-xlib, so the probe does too."""
+    try:
+        from Xlib.display import Display  # type: ignore[import-not-found]
+
+        Display().close()
+    except Exception:
         return False
     return True
 

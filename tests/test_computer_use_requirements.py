@@ -116,5 +116,7 @@ def test_computer_use_is_advertised_with_every_module_installed(
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
     monkeypatch.setattr(platform_info, "_module_available", lambda name: True)
+    # No X server answers here; test_platform_info.py covers the probe.
+    monkeypatch.setattr(platform_info, "_x11_display_opens", lambda: True)
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
