@@ -13,6 +13,3 @@ export const ORB_FLIP_TRANSITION = {
 // The same trip with prefers-reduced-motion on: the orb is where it
 // belongs on the next frame instead of springing across the page.
 export const ORB_FLIP_TRANSITION_REDUCED = { duration: 0 } as const;
-
-// The purple the orb's blobs blend into — the name mirrors it.
-export const ORB_PURPLE = "#8a4dff";

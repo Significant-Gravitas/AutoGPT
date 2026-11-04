@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import Future
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -34,7 +34,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine, or_
+from sqlalchemy import MetaData, create_engine, inspect, or_
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.retention import (
@@ -128,6 +128,7 @@ from backend.util.clients import (
     get_scheduler_client,
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
+from backend.util.cron import check_cron_fires, check_cron_length
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -194,6 +195,9 @@ SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
+# The trial last-call pass makes one Stripe round trip per due trial; give it
+# the same ceiling so a slow pass cannot overlap the next hourly one.
+TRIAL_LAST_CALL_TIMEOUT_SECONDS = 1800
 
 # The memory cron reconcile reads every registry row; it must finish well
 # inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
@@ -2291,6 +2295,16 @@ def reconcile_stripe_tiers():
     run_async(_reconcile(), timeout=STRIPE_RECONCILE_TIMEOUT_SECONDS)
 
 
+def send_trial_last_calls():
+    """Queue the one-day reminder for trials set not to renew (SECRT-3324)."""
+
+    async def _send():
+        db = get_database_manager_async_client()
+        return await db.send_trial_last_calls()
+
+    run_async(_send(), timeout=TRIAL_LAST_CALL_TIMEOUT_SECONDS)
+
+
 def sync_posthog_lifecycles():
     """Resend subscription status and lifecycle dates to PostHog (SECRT-2778).
 
@@ -2379,6 +2393,65 @@ def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
         replace_existing=True,
         max_instances=1,
         jobstore=Jobstores.EXECUTION.value,
+    )
+
+
+class _KeptScheduleJobs:
+    """``add_job`` for the system jobs every start re-adds. An interval job whose
+    interval is unchanged keeps its stored next run: re-added afresh, the run
+    moves a whole interval past each restart, so a scheduler restarted more often
+    than that never runs it."""
+
+    def __init__(
+        self,
+        scheduler: BackgroundScheduler,
+        stores: Mapping[str, ResilientSQLAlchemyJobStore],
+    ):
+        self._scheduler = scheduler
+        self._stores = stores
+
+    def add_job(
+        self, func: Callable[..., object], *args: Any, **options: Any
+    ) -> JobObj:
+        trigger = args[0] if args else options.get("trigger")
+        if trigger == "interval" and "next_run_time" not in options:
+            stored = self._stored_job(options["id"], options["jobstore"])
+            if stored is not None and _same_interval(stored.trigger, options):
+                # None for a paused job, which stays paused.
+                options["next_run_time"] = stored.next_run_time
+        return self._scheduler.add_job(func, *args, **options)
+
+    def _stored_job(self, job_id: str, jobstore: str) -> JobObj | None:
+        store = self._stores.get(jobstore)
+        if store is None:
+            return None
+        try:
+            return store.lookup_job(job_id)
+        except Exception as e:
+            # The store creates its table at start, so a first start has none yet.
+            if not _has_table(store):
+                return None
+            logger.warning(f"Stored job {job_id} unreadable, scheduling it afresh: {e}")
+            return None
+
+
+def _has_table(store: ResilientSQLAlchemyJobStore) -> bool:
+    try:
+        return inspect(store.engine).has_table(
+            store.jobs_t.name, schema=store.jobs_t.schema
+        )
+    except Exception:
+        # Can't tell: report the lookup failure rather than hide it.
+        return True
+
+
+def _same_interval(trigger: object, options: dict[str, Any]) -> bool:
+    units = ("weeks", "days", "hours", "minutes", "seconds")
+    interval = IntervalTrigger(
+        **{unit: options[unit] for unit in units if unit in options}
+    )
+    return (
+        isinstance(trigger, IntervalTrigger) and trigger.interval == interval.interval
     )
 
 
@@ -2777,13 +2850,20 @@ def _build_trigger(
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
         if cron is not None:
-            return CronTrigger.from_crontab(
-                _normalize_cron_day_of_week(cron), timezone=user_timezone
-            )
+            return _build_cron_trigger(cron, user_timezone)
         return DateTrigger(run_date=run_at, timezone=user_timezone)
     except ZoneInfoNotFoundError as e:
         # A KeyError, which the API would turn into a 500, not a 400.
         raise ValueError(f"Unknown timezone {user_timezone!r}") from e
+
+
+def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
+    check_cron_length(cron)
+    trigger = CronTrigger.from_crontab(
+        _normalize_cron_day_of_week(cron), timezone=user_timezone
+    )
+    check_cron_fires(trigger, cron)
+    return trigger
 
 
 def _updated_graph_job_args(
@@ -2999,10 +3079,11 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
+            system_jobs = _KeptScheduleJobs(self.scheduler, self._persistent_jobstores)
             # ALERTS — empty the ten-minute debounce window. Runs every
             # minute so a condition raised at :01 goes out at :11, not at the
             # next quarter hour.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 flush_matured_alerts,
                 id="flush_matured_alerts",
                 trigger="interval",
@@ -3018,7 +3099,7 @@ class Scheduler(AppService):
 
             # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
             # is a different UTC hour for each of them.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 send_due_briefings,
                 CronTrigger.from_crontab("30 * * * *"),
                 id="send_due_briefings",
@@ -3028,8 +3109,20 @@ class Scheduler(AppService):
                 jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
             )
 
-            # Notification LATE EXECUTIONS ALERT
+            # TRIAL LAST CALL — hourly, so the one-day reminder goes out
+            # within an hour of a canceled trial's last day starting.
             self.scheduler.add_job(
+                send_trial_last_calls,
+                CronTrigger.from_crontab("15 * * * *"),
+                id="send_trial_last_calls",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Notification LATE EXECUTIONS ALERT
+            system_jobs.add_job(
                 report_late_executions,
                 id="report_late_executions",
                 trigger="interval",
@@ -3039,7 +3132,7 @@ class Scheduler(AppService):
             )
 
             # Block Error Rate Monitoring
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 report_block_error_rates,
                 id="report_block_error_rates",
                 trigger="interval",
@@ -3051,7 +3144,7 @@ class Scheduler(AppService):
             # Auth identity <-> platform User invariant. Heals any auth
             # identity that has no platform User row and pages when it had to.
             if config.auth_identity_orphan_sweep_enabled:
-                self.scheduler.add_job(
+                system_jobs.add_job(
                     report_orphaned_auth_identities,
                     id="report_orphaned_auth_identities",
                     trigger="interval",
@@ -3062,7 +3155,7 @@ class Scheduler(AppService):
                 )
 
             # Cloud Storage Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_expired_files,
                 id="cleanup_expired_files",
                 trigger="interval",
@@ -3073,7 +3166,7 @@ class Scheduler(AppService):
             )
 
             # OAuth Token Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_oauth_tokens,
                 id="cleanup_oauth_tokens",
                 trigger="interval",
@@ -3084,7 +3177,7 @@ class Scheduler(AppService):
             )
 
             # Sign-in IP log retention - daily
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_auth_ip_events,
                 id="cleanup_auth_ip_events",
                 trigger="interval",
@@ -3095,7 +3188,7 @@ class Scheduler(AppService):
             )
 
             # Failed Push Subscription Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_failed_push_subscriptions,
                 id="cleanup_failed_push_subscriptions",
                 trigger="interval",
@@ -3105,7 +3198,7 @@ class Scheduler(AppService):
             )
 
             # Platform Link Token Cleanup - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 cleanup_platform_link_tokens,
                 id="cleanup_platform_link_tokens",
                 trigger="interval",
@@ -3117,7 +3210,7 @@ class Scheduler(AppService):
             # Stripe Subscription Tier Reconciliation - configurable interval
             # Safety net for missed/lost Stripe webhooks: makes Stripe the
             # eventual source of truth for STRIPE-sourced tiers (incl. downgrades).
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 reconcile_stripe_tiers,
                 id="reconcile_stripe_tiers",
                 trigger="interval",
@@ -3128,7 +3221,7 @@ class Scheduler(AppService):
             )
 
             # Execution Accuracy Monitoring - configurable interval
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 execution_accuracy_alerts,
                 id="report_execution_accuracy_alerts",
                 trigger="interval",
@@ -3141,7 +3234,7 @@ class Scheduler(AppService):
             # Embedding Coverage - Every 6 hours
             # Ensures all approved agents have embeddings for hybrid search
             # Critical: missing embeddings = agents invisible in search
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 ensure_embeddings_coverage,
                 id="ensure_embeddings_coverage",
                 trigger="interval",
@@ -3162,7 +3255,7 @@ class Scheduler(AppService):
             # Block Description Optimization - Every 24 hours
             # Generates concise LLM-optimized block descriptions for
             # agent generation. Only processes blocks missing descriptions.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 optimize_block_descriptions,
                 id="optimize_block_descriptions",
                 trigger="interval",
@@ -3172,7 +3265,7 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 deliver_background_subtasks,
                 id="deliver_background_subtasks",
                 trigger="interval",
@@ -3185,13 +3278,13 @@ class Scheduler(AppService):
 
             # Dream passes: close those that outlived their lease, and delete
             # the closed ones past their retention.
-            _register_dream_pass_jobs(self.scheduler)
+            _register_dream_pass_jobs(system_jobs)
 
             # Schedule Index Reconcile - Every 24 hours
             # Safety net for the best-effort index writes: re-adds rows a
             # failed write missed and clears rows for jobs APScheduler
             # auto-removed (fired one-shots) outside our delete path.
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 reconcile_schedule_index,
                 id="reconcile_schedule_index",
                 trigger="interval",
@@ -3338,6 +3431,7 @@ class Scheduler(AppService):
         job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
+        replaces: list[str] | None = None,
     ) -> JobObj:
         """Register *job_args* with APScheduler.
 
@@ -3347,6 +3441,7 @@ class Scheduler(AppService):
         ``id=schedule_id`` so the row is addressable by our generated UUID).
         """
         assert job_args.schedule_id is not None
+        self._check_schedule_capacity(job_args, replaces=replaces)
         job = self.scheduler.add_job(
             dispatch_func,
             kwargs=job_args.model_dump(mode="json"),
@@ -3365,6 +3460,58 @@ class Scheduler(AppService):
         # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
         self._invalidate_jobs_cache()
         return job
+
+    def _check_schedule_capacity(
+        self,
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+        replaces: list[str] | None = None,
+    ) -> None:
+        """Refuse a new schedule once its owner holds the per-user limit.
+        A job that replaces one under its own id, or takes the place of the
+        jobs named in *replaces*, adds nothing and is always allowed."""
+        assert job_args.schedule_id is not None
+        if (
+            self.scheduler.get_job(
+                job_args.schedule_id, jobstore=Jobstores.EXECUTION.value
+            )
+            is not None
+        ):
+            return
+        limit = config.max_schedules_per_user
+        held = self._schedule_count(job_args.user_id, replaces=replaces)
+        if held >= limit:
+            raise ValueError(
+                f"You already have {held} schedules, the most one account "
+                f"can have ({limit}). Delete one to add another."
+            )
+
+    def _schedule_count(self, user_id: str, replaces: list[str] | None = None) -> int:
+        """How many schedules *user_id* holds, paused ones included.
+
+        A pause clears ``next_run_time`` without giving up the schedule, so a
+        paused one still counts; a spent one-shot is removed rather than
+        cleared, so nothing dead does.
+        """
+        if not self._persistent_jobstores:
+            # Not started through run_service, so there is no filtered scan.
+            jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        else:
+            jobs = self._get_schedule_jobs(
+                user_id=user_id,
+                graph_id=None,
+                session_id=None,
+                kind=None,
+                organization_id=None,
+                include_paused=True,
+            )
+        replaced = set(replaces or ())
+        # What the index holds: a briefing or memory job names its user too.
+        return sum(
+            job.kwargs.get("user_id") == user_id
+            and job.id not in replaced
+            and _job_to_info(job) is not None
+            for job in jobs
+        )
 
     @expose
     def add_graph_execution_schedule(
@@ -3453,6 +3600,7 @@ class Scheduler(AppService):
         purpose: Literal["followup", "resume", "send"] = "followup",
         schedule_id: str | None = None,
         created_at: datetime | None = None,
+        replaces_schedule_ids: list[str] | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3471,6 +3619,9 @@ class Scheduler(AppService):
         it was first set; a job put back after the user set a newer one
         under the same id while it ran doesn't overwrite that one (see
         ``_put_back_onto``).
+
+        *replaces_schedule_ids* names jobs this one takes the place of, so a
+        routine given a new cadence is not refused for its own current jobs.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3524,6 +3675,7 @@ class Scheduler(AppService):
             job_args=job_args,
             trigger=trigger,
             name=name or default_name,
+            replaces=replaces_schedule_ids,
         )
         session_label = session_id[:12] if session_id else "<new>"
         logger.info(
@@ -3717,6 +3869,9 @@ class Scheduler(AppService):
         job, info = self._authorized_job(schedule_id, user_id, action="resume")
         if job.next_run_time is not None:
             return False
+        # Resuming computes the next fire time from the stored trigger.
+        if isinstance(job.trigger, CronTrigger):
+            check_cron_fires(job.trigger, info.cron or "")
         logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
         self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         self._invalidate_jobs_cache()

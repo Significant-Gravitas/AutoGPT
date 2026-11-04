@@ -13,8 +13,11 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_concurrent_routes_share_an_atomic_budget(
-    v1_client, v1_key_rows, v1_clock
+    v1_client, v1_key_rows, v1_clock, monkeypatch
 ):
+    # A loaded runner can take longer than the production 0.25 s per Redis call,
+    # and a timed-out check fails open, which this atomicity test would miscount.
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_REDIS_TIMEOUT_SECONDS", 5)
     redis = await redis_client.get_redis_async()
     window = rate_limit._window_start(v1_clock.now.return_value, 60)
     key = f"external_api:rl:{v1_key_rows[0].user_id}:read:{window}"

@@ -11,6 +11,7 @@ from prisma.enums import ReviewStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import PendingHumanReview, User
 
+from backend.blocks._base import BlockType
 from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.context import set_execution_context
 from backend.copilot.tools._test_data import make_session
@@ -88,7 +89,10 @@ def _block_mocks(monkeypatch, outcome):
         return outcome(len(runs))
 
     class _Block:
+        id = "send-email"
         name = "Send Email"
+        block_type = BlockType.STANDARD
+        disabled = False
 
     async def no_credentials(*args, **kwargs):
         return {}, {}

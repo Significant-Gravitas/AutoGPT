@@ -18,7 +18,7 @@ from fastapi import (
     Security,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from backend.api.features.experts import experts_db
 from backend.blocks.desktop._api import DesktopStream
@@ -131,7 +131,11 @@ from backend.copilot.response_model import (
     StreamStartStep,
     StreamStatus,
 )
-from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.service import (
+    EmptyUserMessage,
+    normalise_user_message,
+    strip_injected_context_for_display,
+)
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
@@ -198,6 +202,7 @@ from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
+from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
 settings = Settings()
 
@@ -314,22 +319,12 @@ async def _validate_and_get_writable_session(
     return session
 
 
-# Minimum age before the orphan-reset paths (``get_session`` and
-# ``cancel_session_task``) will touch a ``chatStatus='running'`` session
-# that has no live Redis stream.  Lower bound has to clear the
-# ``acquire_turn_slot``→``dispatch_turn.create_session`` window (a few
-# ms in practice).  30s is a generous safety margin — anything still
-# at ``running`` after that without a Redis stream is genuinely an
-# orphan, not an in-flight admit racing this read.
-_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
-
-
 async def _try_release_orphan_running(
     session_id: str, user_id: str, *, cancel_background: bool = False
 ) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
-    older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
-    ``acquire_turn_slot``→``create_session`` race window).  Returns
+    older than ``ORPHAN_RUNNING_RESET_SECONDS`` (its rationale is with the
+    constant in ``active_turns``).  Returns
     True iff a release happened — callers map that into their response
     so the user can tell ``orphan_released`` apart from
     ``no_active_session``."""
@@ -343,7 +338,7 @@ async def _try_release_orphan_running(
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
-    if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
+    if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
         return await cancel_orphaned_background_subtasks(
@@ -382,22 +377,31 @@ def _strip_injected_context(message: dict) -> dict:
 # ========== Request/Response Models ==========
 
 
+# {url: str, content: str}: the page the user attached.
+MAX_CHAT_MESSAGE_LENGTH = 64_000
+MAX_CONTEXT_ENTRIES = 5
+ChatContext = dict[
+    Annotated[str, StringConstraints(max_length=MAX_URL_LENGTH)],
+    Annotated[str, StringConstraints(max_length=MAX_CHAT_MESSAGE_LENGTH)],
+]
+
+
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
 
-    message: str = Field(max_length=64_000)
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
     is_user_message: bool = True
-    context: dict[str, str] | None = None  # {url: str, content: str}
+    context: ChatContext | None = Field(default=None, max_length=MAX_CONTEXT_ENTRIES)
     voice: bool = Field(
         default=False,
         description="Voice mode is waiting on speech. Adds one line asking the "
         "reply to open with a spoken acknowledgement before any tool call; "
         "text turns never pay for it.",
     )
-    file_ids: list[str] | None = Field(
+    file_ids: list[IDText] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
-    folder_ids: list[str] | None = Field(
+    folder_ids: list[IDText] | None = Field(
         default=None,
         max_length=5,
         description="Workspace folder IDs attached to this message. Named in "
@@ -441,10 +445,10 @@ class StreamChatRequest(BaseModel):
 class QueuePendingMessageRequest(BaseModel):
     """Request model for queueing a follow-up while a turn is running."""
 
-    message: str = Field(max_length=64_000)
-    context: dict[str, str] | None = None
-    file_ids: list[str] | None = Field(default=None, max_length=20)
-    folder_ids: list[str] | None = Field(default=None, max_length=5)
+    message: str = Field(max_length=MAX_CHAT_MESSAGE_LENGTH)
+    context: ChatContext | None = Field(default=None, max_length=MAX_CONTEXT_ENTRIES)
+    file_ids: list[IDText] | None = Field(default=None, max_length=20)
+    folder_ids: list[IDText] | None = Field(default=None, max_length=5)
     message_id: str | None = Field(
         default=None,
         max_length=64,
@@ -562,9 +566,9 @@ class SessionDetailResponse(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
-    # outcome, and until when a parent may still receive a follow-up.
+    # outcome, and whether a parent still has a continuation to come.
     background_outcome: str | None = None
-    background_pending_until: str | None = None
+    background_pending: bool = False
 
 
 class SessionSummaryResponse(BaseModel):
@@ -598,7 +602,7 @@ class CancelSessionResponse(BaseModel):
 class UpdateSessionTitleRequest(BaseModel):
     """Request model for updating a session's title."""
 
-    title: str
+    title: str = Field(max_length=MAX_TITLE_LENGTH)
 
     @field_validator("title")
     @classmethod
@@ -1182,7 +1186,7 @@ async def disconnect_session_stream(
 class CredentialSelectionRequest(BaseModel):
     """The credential the user picked for each provider on a connect card."""
 
-    selections: dict[str, str] = Field(
+    selections: dict[IDText, IDText] = Field(
         description="Provider slug to credential id.",  # gitleaks:allow (schema text)
         max_length=20,
     )
@@ -1473,9 +1477,7 @@ async def get_session(
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
-        background_pending_until=(
-            background.pending_until.isoformat() if background.pending_until else None
-        ),
+        background_pending=background.pending,
     )
 
 
@@ -1941,6 +1943,16 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    message = request.message
+    if request.is_user_message:
+        # The same input normalisation as the engines' own, applied before
+        # the message is stored or queued: the stored row is replayed as
+        # history on later turns, past the engines' entry sanitising. It runs
+        # before anything is written, so a refused message changes nothing.
+        try:
+            message = normalise_user_message(message)
+        except EmptyUserMessage as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     await enforce_model_entitlement(request.model, session, user_id)
@@ -1965,7 +1977,6 @@ async def stream_chat_post(
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
 
-    message = request.message
     if request.is_user_message:
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)

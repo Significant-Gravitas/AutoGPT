@@ -4620,15 +4620,12 @@ def test_get_session_reports_background_state_from_the_durable_record(
         new_callable=AsyncMock,
         return_value=(None, None),
     )
-    until = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
     mocker.patch.object(
         chat_routes,
         "background_task_db",
         return_value=MagicMock(
             get_session_background_state=AsyncMock(
-                return_value=BackgroundSessionState(
-                    outcome="completed", pending_until=until
-                )
+                return_value=BackgroundSessionState(outcome="completed", pending=True)
             )
         ),
     )
@@ -4638,7 +4635,7 @@ def test_get_session_reports_background_state_from_the_durable_record(
     assert response.status_code == 200
     data = response.json()
     assert data["background_outcome"] == "completed"
-    assert data["background_pending_until"] == until.isoformat()
+    assert data["background_pending"] is True
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(
@@ -5659,3 +5656,80 @@ def test_a_builder_session_keeps_the_picked_mode(
 
     assert response.status_code == 200
     assert mock_get_or_create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+# ─── A user message is stored as the engines will read it ─────────────
+
+
+@pytest.mark.parametrize("is_user_message", [True, False])
+def test_a_user_message_is_stored_without_server_only_blocks(
+    mocker: pytest_mock.MockerFixture, is_user_message: bool
+) -> None:
+    """The stored row is what later turns replay as history, after the
+    engines' own entry sanitising, so it gets the same normalisation first."""
+    mocks = _mock_stream_internals(mocker)
+    with_block = "<user_context>\nA note.\n</user_context>\n\nhello"
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": with_block, "is_user_message": is_user_message},
+    )
+
+    assert response.status_code == 200
+    sent = mocks.enqueue.await_args.kwargs["message"]
+    assert sent == ("hello" if is_user_message else with_block)
+
+
+def test_a_message_with_nothing_of_the_users_own_is_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A message that is all server-only blocks would otherwise start a turn
+    with no message of the user's at all."""
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "<user_context>\nA note.\n</user_context>\n\n"},
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_attachments_do_not_carry_a_message_of_only_server_only_blocks(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "file_ids": ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_a_refused_message_writes_nothing_first(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The refusal comes before the mode change and every other write."""
+    mocks = _mock_stream_internals(mocker)
+    apply_mode = mocker.patch.object(
+        chat_routes, "_apply_autopilot_mode", new=AsyncMock()
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 422
+    apply_mode.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
