@@ -9,13 +9,14 @@ import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
-import { getAuthDeepLink } from "@/lib/auth-redirect";
+import { getAuthDeepLink, withAuthTracking } from "@/lib/auth-redirect";
 import {
   ApiError,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { hasImpersonation } from "@/lib/impersonation";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   isAbortError,
@@ -104,8 +105,11 @@ export function useOnboarding(
 // AuthDeepLinkWatcher re-runs the effect when `next` changes on an auth route.
 function readPendingAuthDeepLink(isOnAuthRoute: boolean) {
   if (!isOnAuthRoute) return false;
-  const next = new URLSearchParams(window.location.search).get("next");
-  return getAuthDeepLink(next) !== null;
+  return getAuthDeepLink(readAuthNext()) !== null;
+}
+
+function readAuthNext() {
+  return new URLSearchParams(window.location.search).get("next");
 }
 
 export default function OnboardingProvider({
@@ -185,7 +189,8 @@ export default function OnboardingProvider({
     const requestUserID = latestUserID.current;
     const onboarding = await resolveResponse(getV1OnboardingState());
     const processedOnboarding = fromBackendUserOnboarding(onboarding);
-    if (isMounted.current) {
+    // An answer for an account that has since signed out is not this one's.
+    if (isMounted.current && latestUserID.current === requestUserID) {
       // A websocket `onboarding` notification refetches even when nothing
       // changed; keeping the old object spares every consumer a re-render.
       setState((prev) =>
@@ -213,10 +218,13 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   // An unfinished user who left the wizard (Back, a link) is sent back on
-  // their next page, as a full page load would.
+  // their next page, as a full page load would. Not an admin impersonating
+  // one: the answer is the target's, and the admin must stay free to move.
   const isKnownUnfinished = isOnboardingComplete === false;
   useEffect(() => {
-    if (isKnownUnfinished) hasInitialized.current = false;
+    if (isKnownUnfinished && !hasImpersonation()) {
+      hasInitialized.current = false;
+    }
   }, [isKnownUnfinished, pathname]);
 
   useEffect(() => {
@@ -253,6 +261,9 @@ export default function OnboardingProvider({
         const { is_completed } = await retryTransient(() =>
           resolveResponse(getV1CheckIfOnboardingIsCompleted()),
         );
+        // Another account signed in while this was in flight; its own check
+        // decides where it goes.
+        if (latestUserID.current !== requestUserID) return;
         if (isMounted.current) {
           setCompletion((prev) =>
             withCompletion(prev, {
@@ -269,11 +280,17 @@ export default function OnboardingProvider({
           hasPendingAuthDeepLink,
         });
         if (redirectTarget) {
-          router.replace(redirectTarget);
+          // Leaving an auth page keeps a campaign link's tracking params.
+          router.replace(
+            isOnAuthRoute
+              ? withAuthTracking(redirectTarget, readAuthNext())
+              : redirectTarget,
+          );
           return;
         }
 
         const onboarding = await retryTransient(fetchOnboarding);
+        if (latestUserID.current !== requestUserID) return;
 
         // Handle redirects for completed onboarding
         if (

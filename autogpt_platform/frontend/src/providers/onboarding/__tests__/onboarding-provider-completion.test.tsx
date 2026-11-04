@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ImpersonationState } from "@/lib/impersonation";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api";
 import OnboardingProvider, { useOnboarding } from "../onboarding-provider";
 
@@ -60,15 +61,21 @@ const backend = vi.hoisted(() => ({
   completedSteps: [] as string[],
   completionChecks: 0,
   stateReads: 0,
-  // Set to hold the next completion answer until the test releases it.
+  // Set to hold every completion answer until the test releases it.
   heldCheck: null as Promise<void> | null,
+  // Set to hold only the next completion answer.
+  holdOnce: null as Promise<void> | null,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: async () => {
     backend.completionChecks += 1;
-    if (backend.heldCheck) await backend.heldCheck;
-    return { status: 200, data: { is_completed: backend.isCompleted } };
+    // Answered for whoever was signed in when the request went out.
+    const isCompleted = backend.isCompleted;
+    const hold = backend.holdOnce ?? backend.heldCheck;
+    backend.holdOnce = null;
+    if (hold) await hold;
+    return { status: 200, data: { is_completed: isCompleted } };
   },
   getV1OnboardingState: async () => {
     backend.stateReads += 1;
@@ -98,7 +105,14 @@ function completion() {
   return screen.getByTestId("complete").textContent;
 }
 
+let releaseHeld = () => {};
+
 describe("OnboardingProvider isOnboardingComplete", () => {
+  afterEach(() => {
+    releaseHeld();
+    ImpersonationState.clear();
+  });
+
   beforeEach(() => {
     routerReplace.mockClear();
     notificationHandlers.length = 0;
@@ -110,6 +124,8 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     backend.completionChecks = 0;
     backend.stateReads = 0;
     backend.heldCheck = null;
+    backend.holdOnce = null;
+    releaseHeld = () => {};
   });
 
   test("is null until the check answers, then false for an unfinished user on Home", async () => {
@@ -232,5 +248,48 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     });
 
     await waitFor(() => expect(completion()).toBe("true"));
+  });
+  test("a late answer for the account that signed out changes nothing for the new one", async () => {
+    mockPathname = "/marketplace";
+    backend.isCompleted = true;
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    // Account A's check is still out when B signs in on this tab.
+    backend.isCompleted = false;
+    mockUserID = null;
+    view.rerender(tree());
+    mockUserID = "user-b";
+    view.rerender(tree());
+    await waitFor(() => expect(completion()).toBe("false"));
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    routerReplace.mockClear();
+
+    await act(async () => releaseHeld());
+    await act(async () => {});
+
+    expect(completion()).toBe("false");
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("an admin impersonating an unfinished user is not bounced to the wizard on every page", async () => {
+    ImpersonationState.set("target-user", "user-a");
+    mockPathname = "/admin/users";
+    const view = render(tree());
+    await waitFor(() => expect(completion()).toBe("false"));
+    const checks = backend.completionChecks;
+    const redirects = routerReplace.mock.calls.length;
+
+    mockPathname = "/admin/users/target-user";
+    view.rerender(tree());
+    await act(async () => {});
+
+    expect(backend.completionChecks).toBe(checks);
+    expect(routerReplace.mock.calls.length).toBe(redirects);
   });
 });

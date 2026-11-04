@@ -1,13 +1,5 @@
 import { http, HttpResponse } from "msw";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  onTestFinished,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   act,
   render,
@@ -340,6 +332,11 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
 // prompt may show before onboarding is known to be done, and the once-a-day
 // auto-open must not be used up on the way to it.
 describe("TopUpPromptProvider before onboarding is finished", () => {
+  // Released here, not in onTestFinished: a describe's afterEach runs before
+  // the shared teardown, so the answer it lets out is still awaited there.
+  let releaseOnboardingCheck = () => {};
+  afterEach(() => releaseOnboardingCheck());
+
   function OnboardingAnswer() {
     const { isOnboardingComplete } = useOnboarding();
     return <span>onboarding {String(isOnboardingComplete)}</span>;
@@ -388,12 +385,9 @@ describe("TopUpPromptProvider before onboarding is finished", () => {
   });
 
   test("waits for the onboarding check, then opens once onboarding is known to be done", async () => {
-    let releaseOnboardingCheck = () => {};
     const onboardingAnswer = new Promise<void>((resolve) => {
       releaseOnboardingCheck = resolve;
     });
-    // Never leave the request open past the test, whatever fails first.
-    onTestFinished(() => releaseOnboardingCheck());
     let onboardingRequested = false;
     server.use(
       getGetV1CheckIfOnboardingIsCompletedMockHandler(async () => {

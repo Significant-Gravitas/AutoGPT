@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, Page, Response } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import {
   authHeaders,
@@ -82,39 +82,76 @@ test.describe("a new account goes to onboarding first", () => {
     expect(setup.ok(), `account setup failed: ${setup.status()}`).toBe(true);
 
     const seen = await watchTheWayIn(context, page);
-    await answerOnboardingCheckLast(page);
+    const unanswered = await answerOnboardingCheckLast(page);
     seen.startCounting();
     await page.goto("/home");
 
     await expectOnboardingStarted(page);
+    expect(
+      unanswered,
+      "Home inputs that never answered while the onboarding check was held",
+    ).toEqual([]);
     // Home is where this one starts, so only the prompts are checked.
     seen.expectNoPrompts();
   });
 });
 
-// Holds the onboarding check until Home has its credit and payment answers,
-// so a prompt that doesn't wait for onboarding opens on every run, not only
-// when the check happens to come back last.
+const HOME_INPUTS = {
+  credits: "/api/proxy/api/credits",
+  autoTopUp: "/api/proxy/api/credits/auto-top-up",
+  config: "/api/proxy/api/platform-config",
+  subscription: "/api/proxy/api/credits/subscription",
+};
+// Counted from the held request, and well inside the 15 s URL assertion so a
+// missing input fails by name rather than as a slow redirect.
+const HOLD_LIMIT = 8_000;
+
+// Holds the onboarding check until Home has the answers its prompts need (the
+// paywall's too when payment is on), so a prompt that doesn't wait for
+// onboarding opens on every run, not only when the check comes back last.
+// Returns the inputs that hadn't answered when the hold gave up.
 async function answerOnboardingCheckLast(page: Page) {
-  const inputsLoaded = Promise.all(
-    [
-      "/api/proxy/api/credits",
-      "/api/proxy/api/credits/auto-top-up",
-      "/api/proxy/api/platform-config",
-    ].map((path) =>
-      page
-        .waitForResponse(
-          (response) => new URL(response.url()).pathname === path,
-          {
-            timeout: 20_000,
-          },
-        )
-        .then((response) => response.finished())
-        .catch(() => null),
-    ),
-  );
+  const unanswered: string[] = [];
+  const answered = new Map<string, Response>();
+  const waiters: Array<() => void> = [];
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (!Object.values(HOME_INPUTS).includes(path) || answered.has(path)) {
+      return;
+    }
+    response
+      .finished()
+      .catch(() => null)
+      .then(() => {
+        answered.set(path, response);
+        waiters.splice(0).forEach((wake) => wake());
+      });
+  });
+  async function neededPaths() {
+    const config = answered.get(HOME_INPUTS.config);
+    const body = config ? await config.json().catch(() => null) : null;
+    const needed = [HOME_INPUTS.credits, HOME_INPUTS.autoTopUp];
+    if (!config) needed.push(HOME_INPUTS.config);
+    if (body?.payment_enabled) needed.push(HOME_INPUTS.subscription);
+    return needed;
+  }
+  async function allAnswered(deadline: number) {
+    while (Date.now() < deadline) {
+      const missing = (await neededPaths()).filter((p) => !answered.has(p));
+      if (missing.length === 0) return [];
+      await new Promise<void>((wake) => {
+        waiters.push(wake);
+        setTimeout(wake, 250);
+      });
+    }
+    return (await neededPaths()).filter((p) => !answered.has(p));
+  }
+
   await page.route("**/api/proxy/api/onboarding/completed", async (route) => {
-    await inputsLoaded;
+    const missing = await allAnswered(Date.now() + HOLD_LIMIT);
+    for (const path of missing) {
+      if (!unanswered.includes(path)) unanswered.push(path);
+    }
     // Two frames, so React has rendered what those answers trigger.
     await route
       .request()
@@ -129,6 +166,7 @@ async function answerOnboardingCheckLast(page: Page) {
     // Not continue(): that skips the shared fixture's routes.
     await route.fallback();
   });
+  return unanswered;
 }
 
 async function expectOnboardingStarted(page: Page) {
@@ -155,13 +193,23 @@ async function watchTheWayIn(context: BrowserContext, page: Page) {
   await context.addInitScript((watched: Record<string, string>) => {
     const report = (window as unknown as Record<string, unknown>)
       .__reportPrompt as (prompt: string, path: string) => void;
+    // textContent (no layout) at most every 100 ms: reading innerText on
+    // every mutation stalls the page enough to delay Playwright's network
+    // events. The prompts are only in the DOM while they show.
+    let scheduled = false;
     function check() {
-      const text = document.body?.innerText ?? "";
+      scheduled = false;
+      const text = document.body?.textContent ?? "";
       for (const [prompt, copy] of Object.entries(watched)) {
         if (text.includes(copy)) report(prompt, window.location.pathname);
       }
     }
-    new MutationObserver(check).observe(document, {
+    function schedule() {
+      if (scheduled) return;
+      scheduled = true;
+      setTimeout(check, 100);
+    }
+    new MutationObserver(schedule).observe(document, {
       childList: true,
       subtree: true,
       characterData: true,

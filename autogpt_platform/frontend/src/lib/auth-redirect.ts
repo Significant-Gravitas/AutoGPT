@@ -32,13 +32,16 @@ export function sanitizeAuthNext(
 }
 
 const DEFAULT_LANDING_PATHS = new Set(["/", "/home", "/home/"]);
-// Keys that only say where a visit came from; Home reads none of them.
+const URL_BASE = "http://localhost";
+// Keys that only say where a visit came from. Home's own code reads none of
+// them, but analytics reads them off the page an auth flow lands on, so
+// withAuthTracking carries them there.
 const TRACKING_PARAM =
   /^(utm_.*|gclid|gbraid|wbraid|fbclid|msclkid|ttclid|twclid|li_fat_id|mc_cid|mc_eid|ref|_gl)$/i;
 
 // `/` (which drops its query) or `/home` with nothing but tracking params.
 export function isDefaultLanding(next: string): boolean {
-  const url = new URL(next, "http://localhost");
+  const url = new URL(next, URL_BASE);
   if (!DEFAULT_LANDING_PATHS.has(url.pathname)) return false;
   if (url.pathname === "/") return true;
   if (url.hash) return false;
@@ -58,6 +61,24 @@ export function getAuthDeepLink(
   const next = sanitizeAuthNext(rawNext);
   if (next === null || isDefaultLanding(next)) return null;
   return next;
+}
+
+/**
+ * `destination` with the tracking params of a default-landing `next` added,
+ * so a campaign or ad visit keeps its attribution when an auth flow routes
+ * by onboarding state instead of following `next`.
+ */
+export function withAuthTracking(
+  destination: string,
+  rawNext: string | null | undefined,
+): string {
+  const next = sanitizeAuthNext(rawNext);
+  if (next === null || !isDefaultLanding(next)) return destination;
+  const url = new URL(destination, URL_BASE);
+  new URL(next, URL_BASE).searchParams.forEach((value, key) => {
+    if (TRACKING_PARAM.test(key)) url.searchParams.append(key, value);
+  });
+  return url.pathname + url.search + url.hash;
 }
 
 function hasControlCharacter(value: string) {

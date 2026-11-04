@@ -3,6 +3,7 @@ import {
   getAuthDeepLink,
   isDefaultLanding,
   sanitizeAuthNext,
+  withAuthTracking,
 } from "./auth-redirect";
 
 describe("sanitizeAuthNext", () => {
@@ -180,5 +181,38 @@ describe("getAuthDeepLink", () => {
     ],
   ])("keeps the real deep link %s", (value, expected) => {
     expect(getAuthDeepLink(value)).toBe(expected);
+  });
+});
+
+// A campaign or ad visit lands on /login?next=/home?utm_source=…, so the
+// page an auth flow sends the user to must carry those params to analytics.
+describe("withAuthTracking", () => {
+  test.each([
+    [
+      "/onboarding",
+      "/home?utm_source=newsletter",
+      "/onboarding?utm_source=newsletter",
+    ],
+    [
+      "/onboarding",
+      "/copilot?utm_source=ads&utm_campaign=launch&gclid=abc",
+      "/onboarding?utm_source=ads&utm_campaign=launch&gclid=abc",
+    ],
+    ["/copilot", "/home?_gl=1*abc", "/copilot?_gl=1*abc"],
+    ["/onboarding", "/?utm_source=x&step=2", "/onboarding?utm_source=x"],
+  ])(
+    "adds the tracking params to %s for next=%s",
+    (destination, next, expected) => {
+      expect(withAuthTracking(destination, next)).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["/onboarding", null],
+    ["/onboarding", "/home"],
+    ["/onboarding", "/library?utm_source=x"],
+    ["/onboarding", "https://evil.example/home?utm_source=x"],
+  ])("leaves %s alone for next=%s", (destination, next) => {
+    expect(withAuthTracking(destination, next)).toBe(destination);
   });
 });
