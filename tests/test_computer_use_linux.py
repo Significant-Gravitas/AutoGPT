@@ -536,3 +536,22 @@ def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, mon
         b.input_action("type", text="Grüße, 世界")
 
     pyautogui.write.assert_not_called()
+
+
+def test_x11_without_xclip_types_rather_than_pasting_through_wl_copy(tmp_path, monkeypatch) -> None:
+    """wl-copy counted as a clipboard tool on X11, where writes go through
+    xclip only, so the paste failed instead of typing the text."""
+    monkeypatch.setattr(
+        linux_backend.shutil, "which", lambda n: "/usr/bin/wl-copy" if n == "wl-copy" else None
+    )
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True)
+
+    pyautogui.write.assert_called_once()
+    pyautogui.hotkey.assert_not_called()
+    assert "clipboard" not in b.coarse_features()
+    assert "clipboard.write" not in b.features()
