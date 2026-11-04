@@ -68,7 +68,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
 - **List comprehensions** over manual loop-and-append
 - **Early return** — guard clauses first, avoid deep nesting
-- **No functions that exist only to hold a block** — a helper whose only job is wrapping one statement (e.g. a `try` inside a `with`) adds a signature and a call site without removing complexity; inline it. A refactor that makes the file longer while adding indirection has failed its own justification — revert it
+- **No functions that exist only to hold a block** — a helper whose only job is wrapping one statement (e.g. a `try` inside a `with`) adds a signature and a call site without removing complexity; inline it
 - **f-strings vs printf syntax in log statements** — Use `%s` for deferred interpolation in `debug` statements, f-strings elsewhere for readability: `logger.debug("Processing %s items", count)`, `logger.info(f"Processing {count} items")`
 - **Verify the alert path for new logs/metrics** — a log line or metric only alerts someone if something is listening; check the receiving integration's configured level rather than assuming, and for a metric, know which alert rule watches it or accept that nothing does
 - **Sanitize error paths** — `os.path.basename()` in error messages to avoid leaking directory structure
@@ -90,7 +90,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 - Parametrize near-identical tests — five tests asserting the same fact with different inputs are one `@pytest.mark.parametrize` test; a copy-pasted stack of near-identical tests is a fixture
 - An absence test must be able to fail — before keeping a test that asserts something does *not* happen, make the mutation it's meant to catch and confirm the test goes red first; a test that can't fail has no power to catch a regression
-- Run `backend/util/architecture_test.py` (~9s) and `backend/blocks/test/test_block.py` (~50s) for every backend change, whatever you touched — both scan the whole tree and no diff points at them. The first rejects a new file that imports `dataclass` (this repo requires pydantic for structured data); the second is the only suite that executes the `test_mock` lambdas declared inside block definitions, not in test files
+- Run `backend/util/architecture*_test.py` and `backend/blocks/test/test_block.py` for every backend change, whatever you touched — each architecture file sweeps whole packages and `test_block.py` runs every block, so no diff points at them. `architecture_test.py` rejects a new file that imports `dataclass` (this repo requires pydantic for structured data); `test_block.py` is the only suite that runs every block's `test_mock` lambdas, which are declared in the block definitions rather than in test files
 
 ### Tests That Don't Flake
 
