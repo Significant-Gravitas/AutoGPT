@@ -15,7 +15,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
-from prometheus_client import Gauge, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry
@@ -74,6 +74,16 @@ pool_size_gauge = Gauge(
 utilization_gauge = Gauge(
     "copilot_executor_utilization_ratio",
     "Ratio of active tasks to pool size",
+)
+# Counted once per turn, when it ends (``copilot.turn_tracing``). outcome is
+# completed, cancelled or failed; engine is the one that ran the turn, or
+# "none" for a turn refused before one started; origin is what started it;
+# load_test is a load-test account's engine, empty for everyone else's turns.
+# No label carries an id or a message.
+turns_counter = Counter(
+    "copilot_executor_turns_total",
+    "CoPilot turns that ended, by outcome, engine, origin and load-test engine",
+    ["outcome", "engine", "origin", "load_test"],
 )
 
 
