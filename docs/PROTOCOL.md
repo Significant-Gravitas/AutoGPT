@@ -494,7 +494,10 @@ The shim creates parents only after both checks pass.
 **Replacing, not truncating**: the content goes to a new file beside the
 target, which is then renamed over it, so a write that fails part way (a
 full disk, say) leaves the old contents whole. An existing file keeps its
-mode; a new one gets the usual default (0o666 less the umask). Because the
+mode, except set-user-ID and set-group-ID, which a write drops so that new
+contents never run with the file owner's privileges (Linux drops them for an
+unprivileged writer; the shim drops them whatever it runs as); a new one gets
+the usual default (0o666 less the umask). Because the
 target gets a new inode, a hard link made to it from elsewhere keeps the
 old contents, and extended attributes and ACLs on the old file don't carry
 over. Where the directory takes no new entries, or (on Windows) another

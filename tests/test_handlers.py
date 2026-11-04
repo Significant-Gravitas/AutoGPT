@@ -1372,6 +1372,45 @@ async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path:
     assert created.stat().st_mode & 0o777 == 0o644
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.parametrize("privilege", [0o4000, 0o2000], ids=["setuid", "setgid"])
+@pytest.mark.parametrize("in_place", [False, True], ids=["replaced", "in-place"])
+@pytest.mark.asyncio
+async def test_a_rewritten_file_never_keeps_set_id_bits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, privilege: int, in_place: bool
+) -> None:
+    """The mode went back whole, set-user-ID and set-group-ID included, so a
+    shim with CAP_FSETID (root, say) left an agent-written program running
+    with its owner's privileges. Linux drops those bits on an unprivileged
+    write; the shim now drops them itself, wherever it runs."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    program = tmp_path / "tool"
+    program.write_text("old")
+    program.chmod(0o755 | privilege)
+    applied: list[int] = []
+    real_fchmod = os.fchmod
+
+    def fchmod(fd: int, mode: int) -> None:
+        applied.append(mode)
+        real_fchmod(fd, mode)
+
+    monkeypatch.setattr(path_jail.os, "fchmod", fchmod)
+    if in_place:
+
+        def refuse(*_args, **_kwargs):
+            raise PermissionError("the directory takes no new entries")
+
+        monkeypatch.setattr(path_jail, "_replace_with", refuse)
+    handler = FileHandler(make_config(tmp_path))
+
+    await handler.handle_write(_write_msg(program, "new"))
+
+    assert program.read_text() == "new"
+    assert all(mode & 0o6000 == 0 for mode in applied)
+    assert program.stat().st_mode & 0o7777 == 0o755
+
+
 @pytest.mark.asyncio
 async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

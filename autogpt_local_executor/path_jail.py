@@ -311,9 +311,10 @@ def write_jail_file(
 
     The data goes to a new file beside the target, which is then renamed over
     it, so a write that fails part way (a full disk, say) leaves the old
-    contents whole. An existing file keeps its mode; a new one gets 0o666 less
-    the umask. Where the directory takes no new entries, or (on Windows)
-    another program has the file open, the file is overwritten in place.
+    contents whole. An existing file keeps its mode, less set-user-ID and
+    set-group-ID; a new one gets 0o666 less the umask. Where the directory
+    takes no new entries, or (on Windows) another program has the file open,
+    the file is overwritten in place.
     """
     path = assert_inside_jail(requested_path, allowed_root)
     try:
@@ -322,13 +323,22 @@ def write_jail_file(
         mode = None
     else:
         _assert_safe_content_stat(existing)
-        mode = stat.S_IMODE(existing.st_mode)
+        # New contents must not run with the file owner's privileges. Linux
+        # drops these bits on a write by an unprivileged process; the shim
+        # drops them itself, so a privileged one (root, say) does too.
+        mode = stat.S_IMODE(existing.st_mode) & ~(stat.S_ISUID | stat.S_ISGID)
     try:
         _replace_with(path, data, mode)
     except PermissionError:
         with open_jail_file(path, allowed_root, write=True) as file:
             file.truncate(0)
             file.write(data)
+            if mode is not None and hasattr(os, "fchmod"):
+                file.flush()
+                # Best-effort: the write itself stands if this fails (a file
+                # someone else owns, say).
+                with contextlib.suppress(OSError):
+                    os.fchmod(file.fileno(), mode)
 
 
 def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
