@@ -25,6 +25,7 @@ from backend.copilot.model import ChatMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.data.workspace import WorkspaceFile
 
 from .get_sub_session_result import GetSubSessionResultTool
 from .models import (
@@ -37,6 +38,7 @@ from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
     apply_delegated_expert,
+    list_sub_workspace_files,
     response_from_outcome,
 )
 
@@ -1511,3 +1513,48 @@ class TestAThreadNothingReached:
         assert "Don't send it again" in r.message
         assert "safe to send" not in r.message
         mock_waiter.result_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_sub_manifest_can_be_restricted_to_a_window(monkeypatch):
+    """A recorded background result lists only the files written in its
+    turn's window, so a later turn's files in the child's chat stay out; the
+    window reaches the query, ahead of the manifest limit, so those files
+    cannot crowd the turn's own out either."""
+    launch = datetime(2026, 11, 4, 6, 0, tzinfo=UTC)
+
+    def _file(file_id: str, written_at: datetime) -> WorkspaceFile:
+        return WorkspaceFile(
+            id=file_id,
+            workspace_id="w",
+            created_at=written_at,
+            updated_at=written_at,
+            name=f"{file_id}.png",
+            path=f"/sessions/inner-1/{file_id}.png",
+            storage_path="s",
+            mime_type="image/png",
+            size_bytes=1,
+        )
+
+    manager = MagicMock()
+    manager.list_files = AsyncMock(
+        return_value=[_file("during", launch + timedelta(minutes=1))]
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    )
+
+    files = await list_sub_workspace_files(
+        "alice",
+        "inner-1",
+        written_from=launch,
+        written_until=launch + timedelta(minutes=5),
+    )
+
+    assert [f.file_id for f in files or []] == ["during"]
+    kwargs = manager.list_files.await_args.kwargs
+    assert (kwargs["created_after"], kwargs["created_before"]) == (
+        launch,
+        launch + timedelta(minutes=5),
+    )

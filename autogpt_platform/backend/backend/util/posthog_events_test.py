@@ -37,6 +37,8 @@ LIVE_EVENT_NAMES = {
     "subscription_tier_reconciled",
     "trial_started",
     "trial_ending",
+    "trial_expiring",
+    "trial_last_call",
     "trial_canceled",
     "trial_resumed",
     "trial_ended",

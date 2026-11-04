@@ -160,7 +160,7 @@ export function Terminal({ row }: RowProps) {
         </pre>
       )}
       {typeof exitCode === "number" && exitCode !== 0 && (
-        <p className="mt-1.5 text-red-400">exit {exitCode}</p>
+        <p className="mt-1.5 text-error-inverse">exit {exitCode}</p>
       )}
     </div>
   );
