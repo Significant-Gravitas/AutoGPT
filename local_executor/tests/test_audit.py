@@ -975,3 +975,49 @@ async def test_an_export_is_owner_only(tmp_path: Path, monkeypatch) -> None:
         os.umask(previous)
 
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity"])
+def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, number: str) -> None:
+    """json.loads takes NaN and Infinity, but canonicalizing them raised, so
+    verify ended in a traceback instead of a violation."""
+    path = tmp_path / "audit.log"
+    path.write_text(f'{{"seq": 1, "ts": {number}, "hmac": "00"}}\n')
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_export_writes_the_archive_after_releasing_the_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The archive was written under the lock, so a slow destination held off
+    every audit write, and the requests waiting on them."""
+    import zipfile
+
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    held: list[bool] = []
+    real_writestr = zipfile.ZipFile.writestr
+
+    def writestr(self, name, data, *args, **kwargs):
+        held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_writestr(self, name, data, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "writestr", writestr)
+    output = tmp_path / "export.zip"
+
+    assert cli._audit_export(writer.path, output) == 0
+    assert held and not any(held)
+    with zipfile.ZipFile(output) as zf:
+        names = set(zf.namelist())
+        current = zf.read("audit.log")
+    assert {"audit.log", "manifest.json", "manifest.sig"} <= names
+    assert len(names) == 4
+    assert json.loads(current.splitlines()[-1])["request_id"] == "b"

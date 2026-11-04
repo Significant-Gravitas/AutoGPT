@@ -477,7 +477,14 @@ class AuditWriter:
                 violations.append(Violation("missing_field", seq, "record missing hmac"))
                 return violations
             shadow = {k: v for k, v in rec.items() if k != "hmac"}
-            actual = hmac.new(audit_key, canonical_bytes(shadow), sha256).hexdigest()
+            try:
+                canonical = canonical_bytes(shadow)
+            except ValueError as exc:
+                # json.loads takes NaN and Infinity; no record the writer
+                # produced can hold one, and canonicalizing them raises.
+                violations.append(Violation("parse_error", seq, f"uncanonicalizable record: {exc}"))
+                return violations
+            actual = hmac.new(audit_key, canonical, sha256).hexdigest()
             if not hmac.compare_digest(actual, stored_hmac):
                 violations.append(
                     Violation(

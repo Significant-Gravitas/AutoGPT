@@ -667,8 +667,10 @@ def _audit_export(current: Path, output: Path | None) -> int:
     import datetime
     import hashlib
     import hmac
+    import io
     import json
     import zipfile
+    from typing import Any
 
     from .audit import (
         KEYCHAIN_AUDIT_KEY_USERNAME,
@@ -691,21 +693,32 @@ def _audit_export(current: Path, output: Path | None) -> int:
         "files": [],
         "key_username": KEYCHAIN_AUDIT_KEY_USERNAME,
     }
-    # Hold off appends and rotations while the files are listed and read, so
-    # the export is one consistent set.
-    with holding_log_lock(current):
-        files = _audit_files(current)
-        if not files:
-            print("Nothing to export — no audit logs present.")
-            return 1
-        # Opening the zip truncates `output`, so it must not be a log being exported.
-        if any(_same_file(output, path) for path in (current, *files)):
-            print(f"Refusing to write the export over an audit log: {output}")
-            return 2
-        # Nor named like a rotated log beside it, which verify-all would read.
-        if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
-            print(f"Refusing to name the export like a rotated audit log: {output}")
-            return 2
+    # Take one consistent set under the lock, then write the archive after
+    # releasing it: appends wait on that lock, and a slow destination would
+    # hold them, and the requests behind them, until the export finished.
+    # Rotated files never change, so an open handle is enough (it outlives a
+    # prune on POSIX, and stops one on Windows); the current log, which
+    # grows, is read into memory.
+    sources: list[tuple[str, Any]] = []
+    try:
+        with holding_log_lock(current):
+            files = _audit_files(current)
+            if not files:
+                print("Nothing to export — no audit logs present.")
+                return 1
+            # Opening the zip truncates `output`, so it must not be a log being exported.
+            if any(_same_file(output, path) for path in (current, *files)):
+                print(f"Refusing to write the export over an audit log: {output}")
+                return 2
+            # Nor named like a rotated log beside it, which verify-all would read.
+            if _same_file(output.parent, current.parent) and output.name.startswith(
+                current.name + "."
+            ):
+                print(f"Refusing to name the export like a rotated audit log: {output}")
+                return 2
+            for path in files:
+                source = io.BytesIO(path.read_bytes()) if path == current else open(path, "rb")
+                sources.append((path.name, source))
         # Owner-only, like the logs it holds, whatever the umask.
         descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         if hasattr(os, "fchmod"):
@@ -714,15 +727,18 @@ def _audit_export(current: Path, output: Path | None) -> int:
             os.fdopen(descriptor, "wb") as archive,
             zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf,
         ):
-            for path in files:
-                data = path.read_bytes()
+            for name, source in sources:
+                data = source.read()
                 digest = hashlib.sha256(data).hexdigest()
-                manifest["files"].append({"name": path.name, "size": len(data), "sha256": digest})
-                zf.writestr(path.name, data)
+                manifest["files"].append({"name": name, "size": len(data), "sha256": digest})
+                zf.writestr(name, data)
             manifest_bytes = json.dumps(manifest, sort_keys=True).encode("utf-8")
             signature = hmac.new(key, manifest_bytes, hashlib.sha256).hexdigest()
             zf.writestr("manifest.json", manifest_bytes)
             zf.writestr("manifest.sig", signature)
+    finally:
+        for _name, source in sources:
+            source.close()
     print(f"Wrote {output}")
     print(f"  files: {len(files)}")
     print(f"  signature (HMAC-SHA256): {signature}")
