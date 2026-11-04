@@ -117,6 +117,22 @@ KEYCHAIN_PROBE_SECONDS = 10.0
 
 
 def _check_keychain() -> CheckResult:
+    # Finding the backend can block as well (the Secret Service check makes
+    # D-Bus calls), so the whole probe runs under the time limit.
+    outcome: list[CheckResult] = []
+    probe = threading.Thread(target=lambda: outcome.append(_probe_keychain()), daemon=True)
+    probe.start()
+    probe.join(KEYCHAIN_PROBE_SECONDS)
+    if not outcome:
+        return CheckResult(
+            "WARN",
+            "keychain",
+            f"the keychain did not answer within {KEYCHAIN_PROBE_SECONDS:.0f} s; it may be locked",
+        )
+    return outcome[0]
+
+
+def _probe_keychain() -> CheckResult:
     try:
         import keyring  # type: ignore[import-not-found]
 
@@ -139,18 +155,8 @@ def _check_keychain() -> CheckResult:
             f"no usable keychain ({name}). `autogpt-shim auth` needs one to store sign-in tokens",
         )
     # Naming a backend says nothing about whether it stores anything, so store,
-    # read and delete a probe, with a time limit.
-    outcome: list[CheckResult] = []
-    probe = threading.Thread(target=lambda: outcome.append(_round_trip(keyring, name)), daemon=True)
-    probe.start()
-    probe.join(KEYCHAIN_PROBE_SECONDS)
-    if not outcome:
-        return CheckResult(
-            "WARN",
-            "keychain",
-            f"{name} did not answer within {KEYCHAIN_PROBE_SECONDS:.0f} s; it may be locked",
-        )
-    return outcome[0]
+    # read and delete a probe.
+    return _round_trip(keyring, name)
 
 
 def _round_trip(keyring, name: str) -> CheckResult:
