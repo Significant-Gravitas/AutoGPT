@@ -69,10 +69,7 @@ class SpinTestServer:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # Read before stopping them, which is what makes them exit. Without a
-        # preload (CI) a service can still be starting when start-up finishes
-        # and die after it; this names it instead of passing the run.
-        died = self._exited_services() if exc_type is None else []
+        died: list[str] = []
         try:
             try:
                 try:
@@ -80,6 +77,12 @@ class SpinTestServer:
                 finally:
                     await db.disconnect()
             finally:
+                # Read just before stopping them, which is what makes them
+                # exit. Without a preload (CI) a service can still be starting
+                # when start-up finishes and die after it; this names it
+                # instead of passing the run.
+                if exc_type is None:
+                    died = self._exited_services()
                 self._stop_services()
                 # Give services time to fully shut down
                 #  This prevents event loop issues where services haven't fully
