@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
@@ -227,10 +227,7 @@ async def configure_user_auto_top_up(
 )
 async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[
-        RequestContext,
-        requires_org_permission(OrgAction.MANAGE_BILLING),
-    ],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 

@@ -5,7 +5,7 @@ from typing import Annotated, Literal, cast
 from urllib.parse import urlparse
 
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import (
@@ -1100,10 +1100,7 @@ async def stripe_webhook(request: Request):
 )
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[
-        RequestContext,
-        requires_org_permission(OrgAction.MANAGE_BILLING),
-    ],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, str | None]:
     """Return a Stripe billing-portal URL for the caller.
 
