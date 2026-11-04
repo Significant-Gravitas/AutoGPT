@@ -11,15 +11,22 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import prisma.errors
 import pytest
+from prisma.enums import BriefingFrequency, SubscriptionTier
+from prisma.models import User as PrismaUser
 
 from backend.data import profile as profile_module
 from backend.data import user as user_module
-from backend.data.notifications import AudienceAction, NotificationResult
+from backend.data.notifications import (
+    AudienceAction,
+    NotificationPreferenceDTO,
+    NotificationResult,
+)
 from backend.data.user import (
     get_billing_email_recipient,
     is_marketing_opted_out,
     record_marketing_opt_out_by_email,
     record_signup_consent,
+    update_user_notification_preference,
     update_user_timezone,
 )
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -33,6 +40,63 @@ def _application_user(user_id: str, email: str) -> user_module.User:
         created_at=now,
         updated_at=now,
     )
+
+
+def _prisma_user_row(user_id: str, email: str) -> PrismaUser:
+    now = datetime.now(timezone.utc)
+    return PrismaUser(
+        id=user_id,
+        email=email,
+        emailVerified=True,
+        createdAt=now,
+        updatedAt=now,
+        metadata="{}",
+        integrations="",
+        maxEmailsPerDay=3,
+        briefingFrequency=BriefingFrequency.DAILY,
+        alertsEnabled=True,
+        notifyOnStoreVerdict=True,
+        timezone="UTC",
+        subscriptionTier=SubscriptionTier.NO_TIER,
+    )
+
+
+class TestUpdateUserNotificationPreference:
+    @pytest.mark.asyncio
+    async def test_the_address_in_the_request_never_reaches_the_user_row(self):
+        """The request carries an `email`, which the clients fill with the
+        account's own address. It used to be written to User.email as sent,
+        with no proof the caller owns it: any signed-in user could point their
+        account at someone else's address (and learn from the unique index
+        whether it was registered), and accept that person's organization
+        invitations, which bind to User.email. Only the verified change-email
+        flow may move an account's address, so the field is not written."""
+        row = _prisma_user_row("user-1", "owner@example.com")
+        request = NotificationPreferenceDTO(
+            email="victim@example.com",
+            briefing_frequency=BriefingFrequency.OFF,
+            alerts_enabled=False,
+            store_verdicts_enabled=False,
+            daily_limit=0,
+        )
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.get_user_by_id, "cache_delete"),
+        ):
+            update = AsyncMock(return_value=row)
+            mock_prisma_user.prisma.return_value.update = update
+            result = await update_user_notification_preference("user-1", request)
+
+        written = update.await_args.kwargs["data"]
+        assert "email" not in written
+        assert written == {
+            "briefingFrequency": BriefingFrequency.OFF,
+            "alertsEnabled": False,
+            "notifyOnStoreVerdict": False,
+            "maxEmailsPerDay": 0,
+        }
+        assert result.email == "owner@example.com"
 
 
 class TestUpdateUserTimezone:
