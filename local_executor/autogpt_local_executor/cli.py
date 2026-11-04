@@ -19,6 +19,7 @@ import contextlib
 import errno
 import logging
 import os
+import signal
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -316,6 +317,19 @@ async def _cmd_start(config) -> int:
         print("WARNING: shell is enabled and can access anything your user account can access.")
     print("Press Ctrl+C to stop.\n")
     daemon = None
+    # systemd and launchd stop the service with SIGTERM, whose default action
+    # ends the process at once: no stop, no SHIM_STOP record, and a running
+    # command's process group left behind. Cancel this task instead, as
+    # asyncio.run does for Ctrl+C. (No asyncio signal handlers on Windows.)
+    loop = asyncio.get_running_loop()
+    task = asyncio.current_task()
+    sigterm_handled = False
+    if task is not None:
+        try:
+            loop.add_signal_handler(signal.SIGTERM, task.cancel)
+            sigterm_handled = True
+        except (NotImplementedError, RuntimeError, ValueError):
+            pass
     try:
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
@@ -355,6 +369,9 @@ async def _cmd_start(config) -> int:
         if daemon is not None:
             await daemon.stop()
         print("\nShim stopped.")
+    finally:
+        if sigterm_handled:
+            loop.remove_signal_handler(signal.SIGTERM)
     return 0
 
 
@@ -593,7 +610,7 @@ def _audit_show(current: Path, seq: int) -> int:
                     continue
                 try:
                     rec = json.loads(raw.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                except ValueError:  # an integer past Python's limit raises a plain one
                     continue
                 if isinstance(rec, dict) and rec.get("seq") == seq:
                     print(f"# from {path.name}")
@@ -933,7 +950,7 @@ def _print_record_line(raw: bytes) -> None:
         return
     try:
         rec = json.loads(s)
-    except json.JSONDecodeError:
+    except ValueError:  # an integer past Python's limit raises a plain one
         rec = None
     if not isinstance(rec, dict):
         print(f"[unparseable] {s}")

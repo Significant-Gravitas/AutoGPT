@@ -843,3 +843,58 @@ def test_a_concealment_marker_counts_whatever_its_case(tmp_path, monkeypatch, na
 
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+@pytest.mark.parametrize("key", ["ctrl++s", "ctrl+", "+s", "ctrl+ +s"])
+def test_a_chord_with_an_empty_part_is_refused(tmp_path, monkeypatch, key: str) -> None:
+    """Empty parts were dropped, so ctrl++s pressed ctrl+s and was
+    acknowledged."""
+    b = WindowsBackend(_config(tmp_path))
+    pyautogui = MagicMock()
+    pyautogui.KEY_NAMES = ["ctrl", "s"]
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="empty"):
+        b.input_action("key", key=key)
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_an_app_lists_its_executable_from_a_limited_handle(tmp_path, monkeypatch) -> None:
+    """GetModuleFileNameEx needs PROCESS_VM_READ as well, which the handle
+    didn't have, so every app was listed without its executable path."""
+    import ctypes
+
+    windll = MagicMock()
+    windll.kernel32.OpenProcess.return_value = 0x1234
+
+    def query(handle, flags, buffer, size):
+        buffer.value = "C:\\Program Files\\Editor\\editor.exe"
+        return 1
+
+    windll.kernel32.QueryFullProcessImageNameW.side_effect = query
+    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+    b = WindowsBackend(_config(tmp_path))
+
+    assert b._exe_for_pid(4242) == "C:\\Program Files\\Editor\\editor.exe"
+    windll.kernel32.OpenProcess.assert_called_once_with(0x1000, False, 4242)
+    windll.kernel32.CloseHandle.assert_called_once_with(0x1234)
+
+
+@pytest.mark.parametrize("minimized", [True, False])
+def test_focusing_a_minimized_window_restores_it_first(tmp_path, monkeypatch, minimized) -> None:
+    """SetForegroundWindow on a minimized window leaves it minimized."""
+    b = WindowsBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=99, class_name="A", creation_timestamp=None)
+    wid = b.window_registry.mint(0x12345, fp, extra={"bounds": (0, 0, 100, 100)})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _: fp)
+    win32gui = MagicMock()
+    win32gui.IsIconic.return_value = minimized
+    calls = MagicMock()
+    calls.attach_mock(win32gui.ShowWindow, "show")
+    calls.attach_mock(win32gui.SetForegroundWindow, "foreground")
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+
+    b.window_focus(wid)
+
+    expected = [call.show(0x12345, 9)] if minimized else []
+    assert calls.mock_calls == [*expected, call.foreground(0x12345)]

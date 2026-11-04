@@ -678,3 +678,34 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
 
     assert raised.value.permanent is permanent
     assert getattr(raised.value, "transient", False) is transient
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("code", "permanent", "transient"),
+    [("ENOSPC", False, True), ("EROFS", True, False)],
+)
+async def test_a_failed_first_audit_write_says_whether_a_restart_can_fix_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, permanent: bool, transient: bool
+) -> None:
+    """A full disk at the first audit write exited 78 like a bad config, so
+    the systemd unit never restarted once space was freed."""
+    import errno
+    import os
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    number = getattr(errno, code)
+    audit = MagicMock(spec=AuditWriter)
+    audit.shim_start = AsyncMock(side_effect=OSError(number, os.strerror(number)))
+    daemon = ShimDaemon(config, token_store=object(), audit=audit)
+    monkeypatch.setattr(daemon, "_session", AsyncMock())
+
+    with pytest.raises(daemon_module.DaemonPreflightError, match="initial SHIM_START") as raised:
+        await daemon.run()
+
+    assert raised.value.permanent is permanent
+    assert raised.value.transient is transient

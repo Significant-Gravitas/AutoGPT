@@ -629,9 +629,11 @@ Lists what's *running*, not what's installed. Cheaper and more useful for
 Responds with `ACK` containing the launched pid, e.g.
 `{ "ok": true, "pid": 67890 }`, or `"pid": null` when the OS doesn't
 report one. The shim uses, in order of preference:
-- macOS: `NSWorkspace.openApplication` via PyObjC (no shell, no focus
-  steal during background launches — matches cua-driver's design).
-- Windows: `ShellExecute` via `pywin32`.
+- macOS: a `bundle_id` launches with `open -b` (`--args` passes `args`,
+  `-g` keeps the app in the background when `activate` is false), and the
+  pid is looked up through `NSRunningApplication`; an `executable_path`
+  runs with `subprocess.Popen`.
+- Windows: `subprocess.Popen` with `CREATE_NEW_PROCESS_GROUP`.
 - Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
   file launches with `gtk-launch` (by its desktop file ID) when that ID
   leads to this very file, and with `dex` (by path) otherwise. gtk-launch
@@ -1068,7 +1070,7 @@ Legend: ✅ supported, 🟡 supported with caveat (named), ❌ not supported (re
 | `WINDOW_LIST_REQUEST` | ✅ via `CGWindowListCopyWindowInfo` | 🟡 via `wmctrl` / EWMH; needs window manager that exposes `_NET_CLIENT_LIST` | ❌ no equivalent in Wayland | ✅ via `EnumWindows` | 🟡 X server windows only |
 | `WINDOW_FOCUS` | ✅ via `AXRaise` (needs Accessibility) | ✅ via `_NET_ACTIVE_WINDOW` | ❌ | 🟡 `SetForegroundWindow` honors foreground-lock rules (best-effort) | 🟡 |
 | `APP_LIST_REQUEST` | ✅ via `NSWorkspace.runningApplications` | ✅ via `/proc` + .desktop heuristics | ✅ same as X11 (procfs is compositor-agnostic) | ✅ via `EnumProcesses` + window-owner | 🟡 |
-| `APP_LAUNCH` | ✅ via `NSWorkspace.openApplication` (PyObjC) | ✅ via Popen + .desktop resolution | ✅ same as X11 | ✅ via `ShellExecute` (pywin32) | 🟡 launches in WSL2, not on Windows host |
+| `APP_LAUNCH` | ✅ via `open -b` (bundle ID) or Popen | ✅ via Popen + .desktop resolution | ✅ same as X11 | ✅ via Popen | 🟡 launches in WSL2, not on Windows host |
 | `CLIPBOARD_READ` (text) | ✅ via `NSPasteboard` | ✅ via `xclip` if installed, else dependency-missing | 🟡 via `wl-paste` if installed | ✅ via `OpenClipboard` | 🟡 X server clipboard only |
 | `CLIPBOARD_WRITE` (text) | ✅ | ✅ via `xclip` | 🟡 via `wl-copy` | ✅ | 🟡 |
 | `PERMISSIONS_CHECK_REQUEST` | ✅ TCC: ScreenCapture / Accessibility / InputMonitoring | ✅ returns `not_applicable` for TCC keys; `granted` if display server is X11 | ✅ returns `denied` for screen_recording unless portal session live | ✅ checks process elevation + UIAccess | ✅ |
@@ -1124,7 +1126,7 @@ Reconnect → new `HELLO` → re-probe.
 | `page` tool (CDP / AppleScript page introspection) | Overlaps with platform's existing browser tooling. Don't duplicate. |
 | `agent_cursor.*` (5 tools) | This is a visual animated cursor overlay so end-users can *see* the agent acting. Genuinely cool UX but pure presentation; doesn't affect what the agent can do. Belongs in a v2 polish pass. |
 | `set_recording` / `replay_trajectory` | v2. Story on parameterization of recorded traces is unsolved. |
-| `launch_app` via NSWorkspace as the *only* mechanism | We use NSWorkspace on macOS (great) but fall back to `ShellExecute` / `Popen` elsewhere rather than insisting on the "no shell" purity. `APP_LAUNCH` is a distinct audit event from `EXECUTE_COMMAND`, which gives us the observability cua-driver was chasing without requiring per-OS native API parity. |
+| `launch_app` via NSWorkspace as the *only* mechanism | We launch with `open -b` on macOS, which passes arguments and honors activation, and with `Popen` elsewhere, rather than insisting on the "no shell" purity. `APP_LAUNCH` is a distinct audit event from `EXECUTE_COMMAND`, which gives us the observability cua-driver was chasing without requiring per-OS native API parity. |
 | `get_config` / `set_config` | cua-driver's are about runtime config of the driver itself (cursor animation, etc.). Our shim is configured at install via [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) and we don't want a remote config-write surface. |
 | `zoom` as a separate tool | Folded into `SCREENSHOT_REQUEST.region`. Anthropic's `computer_20251124` `zoom` action maps 1:1 to a region screenshot; no need for a separate wire op. |
 

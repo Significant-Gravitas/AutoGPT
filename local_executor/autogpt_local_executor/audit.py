@@ -356,7 +356,7 @@ class AuditWriter:
             if not isinstance(last, dict):
                 raise ValueError("the last record is not a JSON object")
             return int(last.get("seq", 0)) + 1, last.get("hmac")
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             raise RuntimeError("Existing audit log tail cannot be recovered") from exc
 
     # ── Shim-internal convenience methods ────────────────────────────────
@@ -452,7 +452,9 @@ class AuditWriter:
                 continue
             try:
                 rec = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            except ValueError as exc:
+                # JSONDecodeError and UnicodeDecodeError, and the plain
+                # ValueError an integer past Python's 4,300-digit limit raises.
                 violations.append(Violation("parse_error", None, f"unparseable line: {exc}"))
                 # Can't continue the chain past an unparseable record.
                 return violations

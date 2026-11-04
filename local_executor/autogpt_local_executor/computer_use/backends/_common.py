@@ -28,7 +28,13 @@ def chord_keys(key: str, aliases: dict[str, str], known: object = None) -> list[
     would press Ctrl alone and still be acknowledged. A chord with a name not
     in `known` (pyautogui's KEY_NAMES) is refused before any key goes down.
     """
-    keys = [aliases.get(k, k) for k in (part.strip().lower() for part in key.split("+")) if k]
+    parts = [part.strip().lower() for part in key.split("+")]
+    if not all(parts):
+        # Dropping the empty part would press another chord (ctrl++s as ctrl+s).
+        raise FeatureNotSupportedError(
+            "input.key", reason=f"the chord {key!r} has an empty key name"
+        )
+    keys = [aliases.get(k, k) for k in parts]
     if isinstance(known, (list, tuple, set, frozenset)):
         unknown = [k for k in keys if k not in known]
         if unknown:
