@@ -172,6 +172,17 @@ class DaemonPreflightError(RuntimeError):
         self.transient = transient
 
 
+def _audit_storage_failure(message: str, exc: OSError) -> DaemonPreflightError:
+    """A preflight failure for an audit storage error, permanent when no
+    restart can fix it and transient otherwise."""
+    permanent = exc.errno in _PERMANENT_STORAGE_ERRNOS
+    return DaemonPreflightError(
+        f"{message} ({exc}); refusing to run without a mandatory audit log",
+        permanent=permanent,
+        transient=not permanent,
+    )
+
+
 # Storage errors a restart can't fix: the path, or what it may do, is wrong.
 _PERMANENT_STORAGE_ERRNOS = frozenset(
     {
@@ -379,12 +390,8 @@ class ShimDaemon:
                 permanent=True,
             ) from exc
         except OSError as exc:
-            permanent = exc.errno in _PERMANENT_STORAGE_ERRNOS
-            raise DaemonPreflightError(
-                f"The audit log at {config.audit_log_path} couldn't be opened ({exc}); "
-                "refusing to run without a mandatory audit log",
-                permanent=permanent,
-                transient=not permanent,
+            raise _audit_storage_failure(
+                f"The audit log at {config.audit_log_path} couldn't be opened", exc
             ) from exc
         except Exception as exc:
             raise DaemonPreflightError(
@@ -492,6 +499,10 @@ class ShimDaemon:
         try:
             await self.audit.shim_start(self.config.machine_id)
             self._shim_start_logged = True
+        except OSError as exc:
+            raise _audit_storage_failure(
+                "Mandatory audit log rejected its initial SHIM_START record", exc
+            ) from exc
         except Exception as exc:
             raise DaemonPreflightError(
                 "Mandatory audit log rejected its initial SHIM_START record"
