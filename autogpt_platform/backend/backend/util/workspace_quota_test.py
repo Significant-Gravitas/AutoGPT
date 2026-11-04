@@ -219,9 +219,6 @@ def _real_storage(tmp_path: Path) -> Iterator[None]:
             AsyncMock(return_value=LIMIT),
         ),
         patch("backend.util.workspace.scan_content_safe", AsyncMock()),
-        patch(
-            "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding"
-        ),
     ):
         yield
 

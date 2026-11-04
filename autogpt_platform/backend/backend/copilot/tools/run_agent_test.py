@@ -624,6 +624,7 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot(
         "github_api_key": (field, {("node-1", "credentials")}, True)
     }
     store = MagicMock()
+    store.scoped.return_value = store
     store.get_all_creds = AsyncMock(
         return_value=[
             APIKeyCredentials(
@@ -643,6 +644,9 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot(
     store.get_all_creds.side_effect = [store.get_all_creds.return_value, []]
     credentials_manager = MagicMock(store=store)
     experts = MagicMock()
+    experts.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("expert-org", "expert-team")
+    )
     experts.expert_allowed_credential_ids = AsyncMock(return_value=[])
 
     with (
@@ -687,6 +691,7 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot(
     assert "spare-credential" in response.message
     assert "wrong-type" not in response.message
     selections.assert_awaited_once_with("test-session")
+    store.scoped.assert_called_once_with("expert-org")
     store.get_all_creds.assert_awaited_once_with("test-user")
     experts.expert_allowed_credential_ids.assert_awaited_once_with(
         "test-user", "expert-a"

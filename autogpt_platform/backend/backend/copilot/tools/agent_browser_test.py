@@ -810,7 +810,7 @@ def chat_workspace(monkeypatch) -> dict[str, WorkspaceFile]:
     db = MagicMock()
     db.get_workspace_total_size = AsyncMock(return_value=0)
     db.get_workspace_file_by_path = AsyncMock(
-        side_effect=lambda _workspace_id, path: files.get(path)
+        side_effect=lambda _workspace_id, path, **_scope: files.get(path)
     )
     db.create_workspace_file = AsyncMock(side_effect=create_workspace_file)
 
@@ -820,8 +820,8 @@ def chat_workspace(monkeypatch) -> dict[str, WorkspaceFile]:
     monkeypatch.setattr(
         "backend.copilot.tools.workspace_files.get_workspace_manager",
         AsyncMock(
-            side_effect=lambda user_id, session_id: WorkspaceManager(
-                user_id, "ws-1", session_id
+            side_effect=lambda user_id, session_id, access="execute": (
+                WorkspaceManager(user_id, "ws-1", session_id, access=access)
             )
         ),
     )
@@ -834,10 +834,6 @@ def chat_workspace(monkeypatch) -> dict[str, WorkspaceFile]:
     monkeypatch.setattr(
         "backend.util.workspace.get_workspace_storage_limit_bytes",
         AsyncMock(return_value=250 * 1024 * 1024),
-    )
-    monkeypatch.setattr(
-        "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding",
-        MagicMock(),
     )
     return files
 

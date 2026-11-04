@@ -1387,6 +1387,13 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
     mocker.patch(
         "backend.executor.utils.require_entitlement", AsyncMock(return_value=None)
     )
+    # The workflow is in the caller's library in this workspace, and the
+    # caller belongs to it, so the run reaches the input validation.
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.get_library_agent_by_graph_id",
+        AsyncMock(return_value=Mock(team_id=None)),
+    )
+    mocker.patch("backend.executor.utils._refuse_unless_runner_belongs", AsyncMock())
     mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
     created = mocker.patch(
         "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()

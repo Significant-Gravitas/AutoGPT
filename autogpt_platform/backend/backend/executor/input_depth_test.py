@@ -21,6 +21,9 @@ from backend.executor.utils import (
 from backend.util.exceptions import GraphValidationError
 from backend.util.json import nesting_depth
 
+ORG_ID = "org-1"
+TEAM_ID = "team-1"
+
 
 @pytest.fixture
 def graph_source(mocker):
@@ -51,7 +54,11 @@ def graph_source(mocker):
     )
     source = AsyncMock()
     source.get_graph.return_value = graph
-    source.resolve_default_tenancy.return_value = (None, None)
+    # Before its inputs are validated, a run is let into its org and team (a
+    # schedule's still live there) and finds no grant owner's credentials.
+    source.resolve_member_tenancy.side_effect = lambda _user, org, team: (org, team)
+    source.resolve_execution_credentials_owner.return_value = None
+    source.has_live_resource_access.return_value = True
     mocker.patch("backend.executor.utils.graph_db", source)
     mocker.patch("backend.executor.utils.execution_db", source)
     mocker.patch(
@@ -72,11 +79,20 @@ def nested(depth, kind="list"):
 async def test_storable_graph_inputs_are_preserved(graph_source, depth, kind):
     value = nested(depth, kind)
     _, starting, _, _ = await validate_and_construct_node_execution_input(
-        graph_id="graph-1", user_id="user-1", graph_inputs={"topic": value}
+        graph_id="graph-1",
+        user_id="user-1",
+        graph_inputs={"topic": value},
+        organization_id=ORG_ID,
+        team_id_restriction=TEAM_ID,
     )
     assert dict(starting)["input-node"]["value"] == value
     graph_source.validate_graph_execution_permissions.assert_awaited_once_with(
-        user_id="user-1", graph_id="graph-1", graph_version=1, is_sub_graph=False
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        is_sub_graph=False,
+        organization_id=ORG_ID,
+        team_id_restriction=TEAM_ID,
     )
 
 
@@ -182,6 +198,8 @@ async def test_rejected_run_never_reaches_persistence(graph_source, source):
             user_id="user-1",
             inputs=inputs,
             nodes_input_masks=masks,
+            organization_id=ORG_ID,
+            team_id=TEAM_ID,
         )
     graph_source.create_graph_execution.assert_not_awaited()
 
@@ -232,6 +250,8 @@ def test_schedule_validates_before_persisting(graph_source, schedule, operation,
                 input_data={"topic": nested(depth)},
                 input_credentials={},
                 user_timezone="UTC",
+                organization_id=ORG_ID,
+                team_id=TEAM_ID,
             )
         return schedule.update_graph_execution_schedule(
             schedule_id="schedule-1",
@@ -272,6 +292,8 @@ def test_schedule_refuses_defaults_that_expand_past_storage(
                 input_data={},
                 input_credentials={},
                 user_timezone="UTC",
+                organization_id=ORG_ID,
+                team_id=TEAM_ID,
             )
         else:
             schedule.update_graph_execution_schedule(
@@ -304,6 +326,8 @@ async def test_existing_storable_schedule_reaches_run_creation(
         graph_version=1,
         cron="0 9 * * *",
         input_data={"topic": nested(depth)},
+        organization_id=ORG_ID,
+        team_id=TEAM_ID,
     )
     graph_source.create_graph_execution.assert_awaited_once()
     scheduler_client.delete_schedule.assert_not_called()

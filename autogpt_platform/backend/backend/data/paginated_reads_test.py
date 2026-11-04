@@ -51,7 +51,7 @@ async def test_a_reviews_page_and_its_total_are_read_side_by_side() -> None:
         patch.object(
             human_review,
             "_enrich_pending_reviews",
-            AsyncMock(side_effect=lambda user_id, reviews: reviews),
+            AsyncMock(side_effect=lambda user_id, reviews, *, personal_only: reviews),
         ),
     ):
         reviews, pagination = await human_review.get_reviews(

@@ -54,9 +54,6 @@ def local_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[N
         ),
         patch("backend.util.workspace.scan_content_safe", AsyncMock()),
         patch("backend.util.file.scan_content_safe", AsyncMock()),
-        patch(
-            "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding"
-        ),
     ):
         yield
 
@@ -126,7 +123,7 @@ async def test_a_run_that_loses_its_free_name_mid_write_takes_the_next_one(
 
 async def _store_run_output(workspace: UserWorkspace, content: bytes) -> str:
     """Store ``output.mp4`` from a new run as a block's output."""
-    graph_exec_id = str(uuid.uuid4())
+    graph_exec_id = await _new_run(workspace.userId)
     output = Path(get_exec_file_path(graph_exec_id, "output.mp4"))
     output.parent.mkdir(parents=True)
     output.write_bytes(content)
@@ -138,3 +135,23 @@ async def _store_run_output(workspace: UserWorkspace, content: bytes) -> str:
     return await store_media_file(
         MediaFileType("output.mp4"), context, return_format="for_block_output"
     )
+
+
+async def _new_run(user_id: str) -> str:
+    """A run of the user's own workflow. An output's file row names its run,
+    and the database refuses one whose run is not in the file's scope."""
+    graph_id = str(uuid.uuid4())
+    await db.prisma.agentgraph.create(
+        data={
+            "id": graph_id,
+            "version": 1,
+            "name": "outputs",
+            "description": "",
+            "userId": user_id,
+            "isActive": True,
+        }
+    )
+    run = await db.prisma.agentgraphexecution.create(
+        data={"agentGraphId": graph_id, "agentGraphVersion": 1, "userId": user_id}
+    )
+    return run.id

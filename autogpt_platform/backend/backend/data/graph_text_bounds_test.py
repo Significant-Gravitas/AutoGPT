@@ -5,6 +5,7 @@ bound lives in the one write every save path reaches — a route, a fork, a copy
 and the copilot — rather than on the model.
 """
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -44,12 +45,23 @@ class _ReachedTheFirstQuery(Exception):
     pass
 
 
+def _stop_at_the_first_query(mocker) -> None:
+    """A save's first query reads the stored versions of each graph ID."""
+    stored_graphs = mocker.patch.object(graph_db, "AgentGraph")
+    stored_graphs.prisma.side_effect = _ReachedTheFirstQuery
+
+
+@asynccontextmanager
+async def _unlocked(*_args, **_kwargs):
+    yield
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("field_name", sorted(GRAPH_TEXT_MAX_LENGTHS))
 async def test_a_save_accepts_metadata_at_the_bound(field_name: str, mocker):
     max_length = GRAPH_TEXT_MAX_LENGTHS[field_name]
     graph = _graph(**{field_name: "x" * max_length})
-    mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
+    _stop_at_the_first_query(mocker)
 
     with pytest.raises(_ReachedTheFirstQuery):
         await _create_graph(None, graph, "user-1")
@@ -68,8 +80,9 @@ async def test_a_workflow_named_at_the_bound_can_be_forked(mocker):
         }
     )
     mocker.patch.object(graph_db, "get_graph", return_value=source)
+    mocker.patch.object(graph_db, "agent_graph_attachment_barriers", _unlocked)
     mocker.patch.object(graph_db, "transaction", return_value=AsyncMock())
-    mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
+    _stop_at_the_first_query(mocker)
 
     with pytest.raises(_ReachedTheFirstQuery):
         await graph_db.fork_graph("graph-1", 1, "user-1")

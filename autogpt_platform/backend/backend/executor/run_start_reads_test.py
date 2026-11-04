@@ -13,6 +13,9 @@ from backend.data.model import User
 from backend.executor.utils import add_graph_execution
 from backend.util.testing import Rendezvous
 
+ORG_ID = "org-1"
+TEAM_ID = "team-1"
+
 
 @pytest.fixture(autouse=True)
 def _account_state(mocker: MockerFixture) -> None:
@@ -33,8 +36,8 @@ def _created_run(mocker: MockerFixture) -> MagicMock:
     run.graph_id = "graph-1"
     run.graph_version = 1
     run.credential_inputs = None
-    run.organization_id = None
-    run.team_id = None
+    run.organization_id = ORG_ID
+    run.team_id = TEAM_ID
     run.expert_id = None
     run.id = "run-1"
     run.node_executions = []
@@ -49,7 +52,10 @@ def _database_manager(mocker: MockerFixture, run: MagicMock) -> MagicMock:
     db.update_graph_execution_stats = AsyncMock(return_value=run)
     db.update_node_execution_status_batch = AsyncMock()
     db.increment_onboarding_runs = AsyncMock()
-    db.resolve_default_tenancy = AsyncMock(return_value=(None, None))
+    db.resolve_member_tenancy = AsyncMock(
+        side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
+    )
+    db.resolve_execution_credentials_owner = AsyncMock(return_value=None)
     mocker.patch(
         "backend.executor.utils.validate_and_construct_node_execution_input",
         return_value=(MagicMock(version=1), [], {}, set()),
@@ -109,7 +115,15 @@ async def test_a_new_run_reads_its_user_and_settings_side_by_side_then_its_works
     db.get_graph_settings = AsyncMock(side_effect=read_settings)
     db.get_or_create_workspace = AsyncMock(side_effect=get_or_create_workspace)
 
-    assert await add_graph_execution(graph_id="graph-1", user_id="user-1") is run
+    assert (
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            organization_id=ORG_ID,
+            team_id=TEAM_ID,
+        )
+        is run
+    )
 
     assert sorted(answered_before_the_workspace) == ["settings", "user"]
     context = run.to_graph_execution_entry.call_args.kwargs["execution_context"]
@@ -129,6 +143,11 @@ async def test_a_run_whose_user_read_fails_gets_no_workspace(
     db.get_or_create_workspace = AsyncMock()
 
     with pytest.raises(RuntimeError, match="user read failed"):
-        await add_graph_execution(graph_id="graph-1", user_id="user-1")
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            organization_id=ORG_ID,
+            team_id=TEAM_ID,
+        )
 
     db.get_or_create_workspace.assert_not_awaited()

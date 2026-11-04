@@ -132,16 +132,17 @@ class TestEnvFlagOverride:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("enabled", [True, False])
-    async def test_blank_org_override_uses_literal_launchdarkly_flag(
-        self, monkeypatch, ld_client, enabled
+    async def test_blank_org_override_uses_literal_flag(
+        self, monkeypatch, posthog_client, enabled
     ):
         monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "")
         monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS", "")
-        ld_client.variation_detail.return_value = served(enabled)
+        posthog_client.get_feature_flag_result.return_value = served(enabled)
 
         assert await is_feature_enabled(Flag.SHOW_ORG_SETTINGS, "user123") is enabled
-        ld_client.variation_detail.assert_called_once()
-        assert ld_client.variation_detail.call_args.args[0] == "SHOW_ORG_SETTINGS"
+        posthog_client.get_feature_flag_result.assert_called_once()
+        call = posthog_client.get_feature_flag_result.call_args
+        assert call.args == ("SHOW_ORG_SETTINGS", "user123")
 
     def test_force_flag_true(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "true")

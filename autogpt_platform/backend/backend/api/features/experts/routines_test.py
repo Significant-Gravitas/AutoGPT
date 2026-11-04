@@ -332,7 +332,14 @@ def test_roster_routines_fit_the_repeat_limit(real_roster):
 
 
 async def test_create_routine_refuses_more_repeat_times_than_the_limit():
-    with patch(f"{_ROUTINES}._owned_owner", AsyncMock()):
+    # A personal routine is placed in the owner's personal org first.
+    with (
+        patch(f"{_ROUTINES}._owned_owner", AsyncMock()),
+        patch(
+            f"{_ROUTINES}.personal_routine_scope",
+            AsyncMock(return_value=("org-1", "team-1")),
+        ),
+    ):
         with pytest.raises(ValueError, match="at most"):
             await create_routine(
                 "user-1",

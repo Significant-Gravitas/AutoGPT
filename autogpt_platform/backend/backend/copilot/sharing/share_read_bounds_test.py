@@ -37,6 +37,8 @@ async def test_the_allowlist_holds_the_files_an_output_block_named(mocker):
     """
     file_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     execution = SimpleNamespace(
+        organizationId="org-1",
+        teamId="team-1",
         NodeExecutions=[
             SimpleNamespace(
                 agentNodeId=NODE_ID,
@@ -49,7 +51,7 @@ async def test_the_allowlist_holds_the_files_an_output_block_named(mocker):
                 Output=None,
                 stats=None,
             )
-        ]
+        ],
     )
     _patch_prisma(mocker, prisma.models.AgentGraphExecution, find_unique=execution)
     _patch_prisma(
@@ -60,7 +62,7 @@ async def test_the_allowlist_holds_the_files_an_output_block_named(mocker):
     _patch_prisma(
         mocker, prisma.models.UserWorkspace, find_unique=SimpleNamespace(id="ws-1")
     )
-    _patch_prisma(
+    workspace_files = _patch_prisma(
         mocker,
         prisma.models.UserWorkspaceFile,
         find_many=[SimpleNamespace(id=file_id)],
@@ -73,6 +75,9 @@ async def test_the_allowlist_holds_the_files_an_output_block_named(mocker):
 
     assert created == 1
     assert shared_file.create.await_args.kwargs["data"]["fileId"] == file_id
+    # Only the run's own org and team's files are shared.
+    file_scope = workspace_files.find_many.await_args.kwargs["where"]
+    assert (file_scope["organizationId"], file_scope["teamId"]) == ("org-1", "team-1")
 
 
 def _patch_prisma(mocker, model, **returns):

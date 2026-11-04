@@ -5,6 +5,7 @@ defaults and the input masks of whatever started the run, and each becomes a
 row of its own.
 """
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -20,6 +21,28 @@ from backend.util.exceptions import InvalidInputError
 GRAPH_ID = "graph-1"
 NODE_ID = "input-node"
 USER_ID = "user-1"
+ORG_ID = "org-1"
+TEAM_ID = "team-1"
+
+
+@pytest.fixture
+def writer_admits_the_run(mocker):
+    """The writer checks the run's live access, locks its graph and reads its
+    permissions before it builds a row; this is about the rows, so those pass."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    @asynccontextmanager
+    async def unlocked(*_args, **_kwargs):
+        yield
+
+    mocker.patch("backend.data.execution.live_resource_access_barrier", allowed)
+    mocker.patch("backend.data.execution.agent_graph_attachment_barrier", unlocked)
+    mocker.patch(
+        "backend.data.graph.validate_graph_execution_permissions", new=AsyncMock()
+    )
 
 
 @pytest.fixture
@@ -81,10 +104,13 @@ async def test_a_run_exactly_at_the_bound_still_runs(graph_source):
     assert len(dict(starting_nodes_input)[NODE_ID]) == MAX_NODE_INPUT_OUTPUT_FETCH
 
 
-async def test_the_writer_itself_refuses_oversized_starting_inputs():
+async def test_the_writer_itself_refuses_oversized_starting_inputs(
+    writer_admits_the_run,
+):
     """Bounded in the writer, so a future caller of it cannot skip the check.
 
-    The refusal comes before any database work, which is why this needs no stack.
+    The refusal comes before the writer reads or writes a row, which is why this
+    needs no stack once the run is admitted.
     """
     oversized = {f"extra_{i}": i for i in range(MAX_NODE_INPUT_OUTPUT_FETCH + 1)}
 
@@ -95,6 +121,8 @@ async def test_the_writer_itself_refuses_oversized_starting_inputs():
             starting_nodes_input=[(NODE_ID, oversized)],
             inputs={},
             user_id=USER_ID,
+            organization_id=ORG_ID,
+            team_id=TEAM_ID,
         )
 
 

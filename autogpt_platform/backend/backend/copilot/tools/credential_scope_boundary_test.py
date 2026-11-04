@@ -13,11 +13,13 @@ from backend.copilot.tools.models import SetupRequirementsResponse
 from backend.data import user as user_data
 from backend.data.model import CredentialsFieldInfo
 from backend.executor import utils as executor
+from backend.integrations.credential_scope import credential_scope
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.util import encryption
 from backend.util.exceptions import ExpertNotFoundError
 
 SECRET = "credential-snapshot-test-secret"
+EXPERT_ORG_ID = "expert-org"
 
 
 @pytest.fixture
@@ -38,9 +40,17 @@ def storage(mocker: pytest_mock.MockFixture):
         new_callable=PropertyMock,
         return_value=user_data,
     )
-    mocker.patch.object(expert_scope, "experts_db", return_value=grants)
-    mocker.patch("backend.data.db_accessors.experts_db", return_value=grants)
-    mocker.patch.object(executor, "get_experts_db", return_value=grants)
+    # The real grant checks, with the expert's live tenancy granted: the
+    # snapshot reads the credentials of the expert's own organization.
+    expert_data = SimpleNamespace(
+        resolve_private_expert_tenancy=AsyncMock(
+            return_value=(EXPERT_ORG_ID, "expert-team")
+        ),
+        expert_allowed_credential_ids=grants.expert_allowed_credential_ids,
+    )
+    mocker.patch.object(expert_scope, "experts_db", return_value=expert_data)
+    mocker.patch("backend.data.db_accessors.experts_db", return_value=expert_data)
+    mocker.patch.object(executor, "get_experts_db", return_value=expert_data)
     expert = SimpleNamespace(credentialsSeededAt=datetime.now(UTC))
     owned_expert = AsyncMock(return_value=expert)
     grant_rows = AsyncMock(return_value=[])
@@ -90,7 +100,12 @@ async def test_card_and_hint_use_one_owner_scoped_storage_snapshot(
     assert SECRET not in response.model_dump_json()
     assert SECRET not in caplog.text
     storage.credentials.assert_awaited_once_with(
-        where={"ownerType": "USER", "ownerId": "owner", "status": "active"},
+        where={
+            "ownerType": "USER",
+            "ownerId": "owner",
+            "organizationId": EXPERT_ORG_ID,
+            "status": "active",
+        },
         order={"createdAt": "asc"},
     )
     assert storage.expert.await_count == 1
@@ -210,9 +225,12 @@ async def test_unattended_pin_diagnostic_retains_its_fresh_scope_read(
     )
     mocker.patch.object(run_agent, "is_unattended_turn", return_value=True)
 
-    matched, response = await run_agent.RunAgentTool()._check_prerequisites(
-        _graph(), "owner", run_agent.RunAgentInput(), "session", "expert"
-    )
+    # The fresh read is the turn's own: a tool call runs in its session's
+    # organization, which for an expert is the expert's.
+    with credential_scope(EXPERT_ORG_ID):
+        matched, response = await run_agent.RunAgentTool()._check_prerequisites(
+            _graph(), "owner", run_agent.RunAgentInput(), "session", "expert"
+        )
 
     assert matched == {}
     assert response is not None

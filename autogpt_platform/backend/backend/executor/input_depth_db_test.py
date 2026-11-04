@@ -1,4 +1,5 @@
 import json
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import fastapi
@@ -16,6 +17,7 @@ from backend.blocks.data_manipulation import CreateListBlock
 from backend.blocks.io import AgentInputBlock
 from backend.data.db import prisma
 from backend.data.execution import create_graph_execution, get_graph_execution
+from backend.data.org_migration import ensure_personal_org
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -28,6 +30,7 @@ async def owner():
         await prisma.user.create(
             data={"id": user_id, "email": f"depth-{user_id}@example.com"}
         )
+        await ensure_personal_org(user_id)
         for block in (AgentInputBlock(), CreateListBlock()):
             await prisma.agentblock.upsert(
                 where={"id": block.id},
@@ -45,14 +48,33 @@ async def owner():
     finally:
         try:
             if prisma.is_connected():
+                # The user's graphs and runs go with them, before the
+                # organization whose team holds them.
                 await prisma.user.delete_many(where={"id": user_id})
+                await prisma.organization.delete_many(
+                    where={"bootstrapUserId": user_id}
+                )
         finally:
             if connected_here and prisma.is_connected():
                 await prisma.disconnect()
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def api(owner):
+async def personal_team(owner) -> tuple[str, str]:
+    """The owner's personal organization and its default team, where a
+    personal workflow and its runs live."""
+    org = await prisma.organization.find_first_or_raise(
+        where={"bootstrapUserId": owner, "isPersonal": True}
+    )
+    team = await prisma.team.find_first_or_raise(
+        where={"orgId": org.id, "isDefault": True}
+    )
+    return org.id, team.id
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def api(owner, personal_team):
+    org_id, team_id = personal_team
     app = fastapi.FastAPI()
     app.include_router(graphs_router)
     app.include_router(executions_router)
@@ -64,8 +86,8 @@ async def api(owner):
     async def context():
         return RequestContext(
             user_id=owner,
-            org_id=f"depth-org-{owner}",
-            team_id=None,
+            org_id=org_id,
+            team_id=team_id,
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
@@ -83,6 +105,19 @@ async def api(owner):
         yield client
 
 
+@pytest.fixture
+def execution_queue(mocker) -> AsyncMock:
+    """The run queue, held here: a live executor (the server fixture's, once a
+    test in the session has started it) would pick up an accepted run and hold
+    a live lease on the owner's team while this test tears the team down."""
+    queue = AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        AsyncMock(return_value=queue),
+    )
+    return queue
+
+
 def nested(depth):
     value = "abyss"
     for _ in range(depth):
@@ -94,13 +129,29 @@ def nested(depth):
 @pytest.mark.parametrize(
     "column,depth", [("inputs", 126), ("mask", 125), ("node", 127)]
 )
-async def test_prisma_roundtrip_at_stored_json_limit(owner, column, depth):
+async def test_prisma_roundtrip_at_stored_json_limit(
+    owner, personal_team, column, depth
+):
+    org_id, team_id = personal_team
     graph = await prisma.agentgraph.create(
         data={
             "userId": owner,
+            "organizationId": org_id,
+            "teamId": team_id,
             "Nodes": {"create": [{"agentBlockId": CreateListBlock().id}]},
         },
         include={"Nodes": True},
+    )
+    # A run is written only for a workflow in its owner's library.
+    await prisma.libraryagent.create(
+        data={
+            "userId": owner,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "isCreatedByUser": True,
+            "organizationId": org_id,
+            "teamId": team_id,
+        }
     )
     node_id = graph.Nodes[0].id
 
@@ -114,11 +165,19 @@ async def test_prisma_roundtrip_at_stored_json_limit(owner, column, depth):
             starting_nodes_input=(
                 [(node_id, {"values": value})] if column == "node" else []
             ),
+            organization_id=org_id,
+            team_id=team_id,
         )
 
     value = nested(depth)
     run = await write(value)
-    loaded = await get_graph_execution(owner, run.id, include_node_executions=True)
+    loaded = await get_graph_execution(
+        owner,
+        run.id,
+        include_node_executions=True,
+        organization_id=org_id,
+        team_id_restriction=team_id,
+    )
     assert loaded is not None
     if column == "inputs":
         assert loaded.inputs == {"topic": value}
@@ -134,7 +193,9 @@ async def test_prisma_roundtrip_at_stored_json_limit(owner, column, depth):
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("source", ["raw_input", "encoded_default"])
-async def test_rejected_run_keeps_both_execution_lists_readable(api, owner, source):
+async def test_rejected_run_keeps_both_execution_lists_readable(
+    api, owner, execution_queue, source
+):
     async def create_workflow(depth):
         block = AgentInputBlock() if source == "raw_input" else CreateListBlock()
         defaults = (
@@ -175,6 +236,7 @@ async def test_rejected_run_keeps_both_execution_lists_readable(api, owner, sour
     assert rejected.status_code == 400, rejected.text
     assert rejected.json()["detail"]["type"] == "validation_error"
     assert await prisma.agentgraphexecution.count(where={"userId": owner}) == 1
+    execution_queue.publish_message.assert_awaited_once()
 
     all_runs = await api.get("/executions")
     graph_runs = await api.get(f"/graphs/{graph_id}/executions")

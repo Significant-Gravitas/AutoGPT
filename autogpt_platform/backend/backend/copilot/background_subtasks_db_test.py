@@ -12,11 +12,13 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from autogpt_libs.auth import RequestContext
 from prisma.models import ChatMessage as DbMessage
 from prisma.models import User
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.chat.routes import cancel_session_task
+from backend.api.features.orgs.db import get_user_default_team
 from backend.copilot import (
     background_delivery,
     background_execution,
@@ -71,6 +73,10 @@ from backend.copilot.turn_pause import TurnPause
 from backend.data import db
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
+from backend.data.tenancy import (
+    connect_live_transaction_lease_database,
+    disconnect_live_transaction_lease_database,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -78,9 +84,27 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 class World(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     user_id: str
+    organization_id: str
+    team_id: str
     parent: ChatSession
     envelope: TurnEnvelope
     published: AsyncMock
+
+    @property
+    def ctx(self) -> RequestContext:
+        """The request a Stop sends from the chat: its owner, in the personal
+        organization and default team the chat lives in."""
+        return RequestContext(
+            user_id=self.user_id,
+            org_id=self.organization_id,
+            team_id=self.team_id,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
 
     async def launch(
         self,
@@ -550,7 +574,11 @@ async def test_deleted_handoff_releases_only_its_own_turn(
         await stream_registry.mark_session_completed(session_id, turn_id=entry.turn_id)
         if state == "newer":
             expected_turn_id = await utils.schedule_chat_turn(
-                session_id=session_id, user_id=world.user_id, message="New work."
+                session_id=session_id,
+                user_id=world.user_id,
+                message="New work.",
+                organization_id=world.organization_id,
+                team_id=world.team_id,
             )
             assert expected_turn_id
         else:
@@ -859,7 +887,9 @@ async def test_stopping_a_queued_followup_reports_cancellation_once(
             log_prefix="queued-background-stop-test",
         )
 
-    response = await cancel_session_task(task.parent_session_id, world.user_id)
+    response = await cancel_session_task(
+        task.parent_session_id, world.user_id, world.ctx
+    )
     assert response.cancelled and response.reason == "dequeued"
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "finished"
@@ -923,14 +953,16 @@ async def test_queued_followup_stop_rolls_back_when_notice_cannot_be_saved(
             AsyncMock(side_effect=RuntimeError("notice write failed")),
         )
         with pytest.raises(RuntimeError, match="notice write failed"):
-            await cancel_session_task(task.parent_session_id, world.user_id)
+            await cancel_session_task(task.parent_session_id, world.user_id, world.ctx)
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "queued"
     assert await chat_db().get_chat_session_status(task.parent_session_id) == "queued"
     assert not await DbMessage.prisma().find_unique(
         where={"id": task.wake_id + "-notice"}
     )
-    assert (await cancel_session_task(task.parent_session_id, world.user_id)).cancelled
+    assert (
+        await cancel_session_task(task.parent_session_id, world.user_id, world.ctx)
+    ).cancelled
 
 
 async def test_stopping_a_running_followup_reports_cancellation_once(
@@ -970,7 +1002,9 @@ async def test_stopping_a_running_followup_reports_cancellation_once(
     )
     try:
         await asyncio.wait_for(started.wait(), timeout=5)
-        response = await cancel_session_task(task.parent_session_id, world.user_id)
+        response = await cancel_session_task(
+            task.parent_session_id, world.user_id, world.ctx
+        )
         assert response.cancelled
     finally:
         cancel.set()
@@ -1043,7 +1077,9 @@ async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
 ):
     monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
     task = await world.launch()
-    response = await cancel_session_task(task.child_session_id, world.user_id)
+    response = await cancel_session_task(
+        task.child_session_id, world.user_id, world.ctx
+    )
     assert response.cancelled
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == "cancelled"
@@ -1065,7 +1101,9 @@ async def test_cancelled_queued_child_gives_its_node_back(
     assert not world.published.await_count
     with pytest.raises(TreeRefusal, match="lifetime budget"):
         await world.launch("second-while-queued")
-    response = await cancel_session_task(task.child_session_id, world.user_id)
+    response = await cancel_session_task(
+        task.child_session_id, world.user_id, world.ctx
+    )
     assert response.cancelled
 
     replacement = await world.launch("replacement")
@@ -1089,6 +1127,8 @@ async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
                     session_id=world.parent.session_id,
                     user_id=world.user_id,
                     message="A request that lost the idle-slot race",
+                    organization_id=world.organization_id,
+                    team_id=world.team_id,
                 )
             elif dispatch_source == "direct":
                 await utils.dispatch_turn(
@@ -1097,6 +1137,8 @@ async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
                     user_id=world.user_id,
                     turn_id=str(uuid4()),
                     message="An unowned dispatch",
+                    organization_id=world.organization_id,
+                    team_id=world.team_id,
                 )
             else:
                 await utils.schedule_turn(
@@ -1104,6 +1146,8 @@ async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
                     user_id=world.user_id,
                     turn_id=str(uuid4()),
                     message="A request that lost the idle-slot race",
+                    organization_id=world.organization_id,
+                    team_id=world.team_id,
                 )
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
@@ -1113,7 +1157,9 @@ async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
     await (await get_redis_async()).delete(
         stream_registry._get_session_meta_key(world.parent.session_id)
     )
-    response = await cancel_session_task(world.parent.session_id, world.user_id)
+    response = await cancel_session_task(
+        world.parent.session_id, world.user_id, world.ctx
+    )
     assert response.reason == "orphan_released"
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == "cancelled" and stored.wake_suppressed
@@ -1135,6 +1181,8 @@ async def test_orphan_stop_is_scoped_to_the_observed_turn_and_owner(world: World
         session_id=world.parent.session_id,
         user_id=world.user_id,
         message="A later request",
+        organization_id=world.organization_id,
+        team_id=world.team_id,
     )
     assert new_turn_id
     world.envelope = root_envelope(new_turn_id, session_id=world.parent.session_id)
@@ -1165,7 +1213,9 @@ async def test_orphan_stop_is_scoped_to_the_observed_turn_and_owner(world: World
     await (await get_redis_async()).delete(
         stream_registry._get_session_meta_key(world.parent.session_id)
     )
-    response = await cancel_session_task(world.parent.session_id, world.user_id)
+    response = await cancel_session_task(
+        world.parent.session_id, world.user_id, world.ctx
+    )
     assert response.reason == "orphan_released"
     old = await background_task_db.get_background_task(old_task.id, world.user_id)
     new = await background_task_db.get_background_task(new_task.id, world.user_id)
@@ -1243,6 +1293,8 @@ async def test_failed_dispatch_only_cleans_up_its_own_stream_metadata(
             user_id=world.user_id,
             turn_id=failed_turn_id,
             message="Work",
+            organization_id=world.organization_id,
+            team_id=world.team_id,
             envelope=world.envelope,
         )
     active = await stream_registry.get_session(world.parent.session_id)
@@ -1286,6 +1338,8 @@ async def test_dispatch_cancelled_before_recording_cannot_release_a_successor(
             session_id=session_id,
             user_id=user_id,
             message="A newer request",
+            organization_id=world.organization_id,
+            team_id=world.team_id,
         )
         return recorded
 
@@ -1298,6 +1352,8 @@ async def test_dispatch_cancelled_before_recording_cannot_release_a_successor(
             user_id=world.user_id,
             turn_id=failed_turn_id,
             message="A cancelled request",
+            organization_id=world.organization_id,
+            team_id=world.team_id,
         )
     assert winner
     assert await actual_db.get_chat_session_status(world.parent.session_id) == "running"
@@ -1347,10 +1403,16 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
     connected = db.is_connected()
     if not connected:
         await db.connect()
+    # The chat's work holds live leases on its scope, on the lease database.
+    lease_connected = await connect_live_transaction_lease_database()
     user_id = str(uuid4())
     await User.prisma().create(
         data={"id": user_id, "email": f"{user_id}@example.invalid"}
     )
+    # Every chat lives in an organization: the owner's personal one, in its
+    # default team.
+    organization_id, team_id = await get_user_default_team(user_id)
+    assert organization_id and team_id
     published = AsyncMock()
     monkeypatch.setattr(utils, "enqueue_copilot_turn", published)
     monkeypatch.setattr(
@@ -1369,24 +1431,32 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
         tree, "resolve_root_ceiling_microdollars", AsyncMock(return_value=1_000_000)
     )
     monkeypatch.setattr(turn_queue, "turn_refusal", AsyncMock(return_value=None))
-    parent = await create_chat_session(user_id, dry_run=False)
+    parent = await create_chat_session(
+        user_id, dry_run=False, organization_id=organization_id, team_id=team_id
+    )
     set_execution_context(user_id, parent)
     turn_id = await utils.schedule_chat_turn(
         session_id=parent.session_id,
         user_id=user_id,
         message="Research this in the background",
+        organization_id=organization_id,
+        team_id=team_id,
     )
     assert turn_id
     published.reset_mock()
     try:
         yield World(
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             parent=parent,
             envelope=root_envelope(turn_id, session_id=parent.session_id),
             published=published,
         )
     finally:
         await User.prisma().delete(where={"id": user_id})
+        if lease_connected:
+            await disconnect_live_transaction_lease_database()
         if not connected:
             await db.disconnect()
 
