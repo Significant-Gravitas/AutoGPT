@@ -575,3 +575,39 @@ async def test_an_unsupported_architecture_stops_at_preflight(
 
     assert stopped.value.permanent is True
     assert sessions == 0
+
+
+async def test_a_handler_that_finishes_after_revocation_sends_nothing(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Revocation cancels in-flight work, but a side effect already running in
+    a thread finishes anyway, and its handler then tries to send the reply:
+    the revoked-connection guard is what stops it."""
+    import threading
+
+    import autogpt_local_executor.handlers as handlers_module
+
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    running = threading.Event()
+    release = threading.Event()
+
+    def side_effect() -> None:
+        running.set()
+        release.wait(30)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(side_effect)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    assert await asyncio.to_thread(running.wait, 30)
+
+    # The revocation waits for the running thread, so it's freed from outside.
+    threading.Timer(0.2, release.set).start()
+    await asyncio.wait_for(daemon._on_frame(ws, _session_revoked_frame()), timeout=30)
+
+    assert ws.sent == []
+    assert ws.close_calls
