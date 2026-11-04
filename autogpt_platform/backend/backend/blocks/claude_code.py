@@ -36,6 +36,7 @@ from backend.util.sandbox_files import (
     extract_and_store_sandbox_files,
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -398,7 +399,8 @@ class ClaudeCodeBlock(Block):
                     await hold_sandbox(held)
 
                 # Install Claude Code from npm (ensures we get the latest version)
-                install_result = await sandbox.commands.run(
+                install_result = await run_sandbox_command(
+                    sandbox,
                     "npm install -g @anthropic-ai/claude-code@latest",
                     timeout=120,  # 2 min timeout for install
                 )
@@ -409,7 +411,7 @@ class ClaudeCodeBlock(Block):
 
                 # Run any user-provided setup commands
                 for cmd in setup_commands:
-                    setup_result = await sandbox.commands.run(cmd)
+                    setup_result = await run_sandbox_command(sandbox, cmd)
                     if setup_result.exit_code != 0:
                         raise Exception(
                             f"Setup command failed: {cmd}\n"
@@ -460,8 +462,8 @@ class ClaudeCodeBlock(Block):
 
             # Capture timestamp before running Claude Code to filter files later
             # Capture timestamp 1 second in the past to avoid race condition with file creation
-            timestamp_result = await sandbox.commands.run(
-                "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
+            timestamp_result = await run_sandbox_command(
+                sandbox, "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
             )
             if timestamp_result.exit_code != 0:
                 raise RuntimeError(
@@ -471,7 +473,8 @@ class ClaudeCodeBlock(Block):
                 timestamp_result.stdout.strip() if timestamp_result.stdout else None
             )
 
-            result = await sandbox.commands.run(
+            result = await run_sandbox_command(
+                sandbox,
                 claude_command,
                 # The key picked for this run, also on a resumed box that was
                 # created with another one.

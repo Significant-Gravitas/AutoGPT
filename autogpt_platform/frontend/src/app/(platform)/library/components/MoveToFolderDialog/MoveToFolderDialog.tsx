@@ -132,7 +132,7 @@ export function MoveToFolderDialog({
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(null)}
                   >
-                    <span className="text-lg">📂</span>
+                    <span className="text-lead">📂</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">My Library (root)</Text>
                       <Text variant="small" tone="subtle">
@@ -150,7 +150,7 @@ export function MoveToFolderDialog({
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(folder.id)}
                   >
-                    <span className="ml-[calc(var(--folder-depth)*1.25rem)] text-lg">
+                    <span className="ml-[calc(var(--folder-depth)*1.25rem)] text-lead">
                       {folder.icon ?? "📁"}
                     </span>
                     <div className="flex flex-col items-start">

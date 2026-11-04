@@ -48,7 +48,7 @@ export function OAuthAppsSection() {
     return (
       <div className="py-8 text-center text-muted-foreground">
         <p>You don&apos;t have any OAuth applications.</p>
-        <p className="mt-2 text-sm">
+        <p className="mt-2 text-body">
           OAuth applications can currently <strong>not</strong> be registered
           via the API. Contact the system administrator to request an OAuth app
           registration.
@@ -81,7 +81,7 @@ export function OAuthAppsSection() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="truncate text-lg font-semibold">{app.name}</h3>
+                <h3 className="truncate text-lead font-semibold">{app.name}</h3>
                 <Badge
                   className="ml-2"
                   variant={app.is_active ? "success" : "error"}
@@ -90,7 +90,7 @@ export function OAuthAppsSection() {
                 </Badge>
               </div>
               {app.description && (
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                <p className="mt-1 line-clamp-2 text-body text-muted-foreground">
                   {app.description}
                 </p>
               )}
@@ -99,12 +99,12 @@ export function OAuthAppsSection() {
 
           {/* Client ID */}
           <div>
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-caption font-medium text-muted-foreground">
               Client ID
             </span>
             <code
               data-testid="oauth-app-client-id"
-              className="mt-1 block w-full truncate rounded-md border bg-muted px-3 py-2 text-xs"
+              className="mt-1 block w-full truncate rounded-md border bg-muted px-3 py-2 text-caption"
             >
               {app.client_id}
             </code>
@@ -112,7 +112,7 @@ export function OAuthAppsSection() {
 
           {/* Footer: Created date and Actions */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-caption text-muted-foreground">
               Created {new Date(app.created_at).toLocaleDateString()}
             </span>
             <div className="flex items-center gap-3">

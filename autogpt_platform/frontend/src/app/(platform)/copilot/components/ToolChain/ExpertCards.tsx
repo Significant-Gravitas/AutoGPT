@@ -411,7 +411,7 @@ export function ExpertChangeCard({
             key={`${artifactId ?? name}-summary`}
             className={cn(
               // oxlint-disable-next-line design-system/no-arbitrary-values -- aligns the details with the name after the 42px avatar column
-              "pt-2 pl-[42px] text-sm text-foreground-tertiary",
+              "pt-2 pl-[42px] text-body text-foreground-tertiary",
               stepDirection &&
                 "delay-75 duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
               stepDirection === "forward" && "slide-in-from-right-4",
@@ -854,7 +854,7 @@ export function ExpertChangeGroup({
 
   const canSend = sendable && allDecided;
   const action = sent ? (
-    <span className="flex items-center gap-1 text-xs text-foreground-subtle">
+    <span className="flex items-center gap-1 text-caption text-foreground-subtle">
       <Icon icon={Tick02Icon} size={14} />
       Sent
     </span>

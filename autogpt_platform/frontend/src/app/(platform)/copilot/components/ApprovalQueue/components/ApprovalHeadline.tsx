@@ -33,7 +33,7 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
         </Text>
       </div>
       {item.subject.irreversible && (
-        <span className="mt-0.5 shrink-0 rounded-md bg-error-surface px-1.5 py-0.5 text-xs font-medium text-error-foreground">
+        <span className="mt-0.5 shrink-0 rounded-md bg-error-surface px-1.5 py-0.5 text-caption font-medium text-error-foreground">
           Can&apos;t be undone
         </span>
       )}

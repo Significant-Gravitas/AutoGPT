@@ -113,7 +113,6 @@ const SheetHeader = ({
 );
 SheetHeader.displayName = "SheetHeader";
 
-// TODO(tokens): no size role for text-lg (18px). SECRT-3152
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
@@ -121,7 +120,7 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     data-slot="sheet-title"
-    className={cn("text-lg font-semibold text-foreground-base", className)}
+    className={cn("text-lead font-semibold text-foreground-base", className)}
     {...props}
   />
 ));

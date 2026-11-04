@@ -26,7 +26,7 @@ export default function Error({
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <Icon icon={CircleAlertGlyph} aria-label="Icon" className="size-10" />
         </div>
-        <Text variant="2xl-bold-tracking-tight" as="h1" className="mt-8">
+        <Text variant="heading-md-bold-tracking-tight" as="h1" className="mt-8">
           Oops, something went wrong!
         </Text>
         <p className="mt-4 text-muted-foreground">

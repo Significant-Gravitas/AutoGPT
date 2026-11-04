@@ -61,7 +61,7 @@ export function ToolAccordion({
           <div className="min-w-0">
             <p
               className={cn(
-                "truncate text-sm font-medium text-foreground-emphasis",
+                "truncate text-body font-medium text-foreground-emphasis",
                 titleClassName,
               )}
             >

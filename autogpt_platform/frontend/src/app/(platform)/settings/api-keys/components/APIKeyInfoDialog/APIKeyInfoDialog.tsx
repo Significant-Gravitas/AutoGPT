@@ -27,7 +27,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
           <Section label="Key">
-            <code className="font-mono text-sm text-foreground-emphasis">
+            <code className="font-mono text-body text-foreground-emphasis">
               {maskAPIKey(apiKey.head, apiKey.tail)}
             </code>
           </Section>
@@ -50,7 +50,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
                 {apiKey.scopes.map((scope) => (
                   <li
                     key={scope}
-                    className="rounded-full bg-surface-hover px-2.5 py-1 text-xs text-foreground-body"
+                    className="rounded-full bg-surface-hover px-2.5 py-1 text-caption text-foreground-body"
                   >
                     {humanizePermission(scope)}
                     {SCOPE_API_VERSION[scope] === "v1" && (

@@ -73,7 +73,7 @@ export function ProActivationDialog({ activation }: Props) {
             <div
               role="alert"
               data-slot="pro-activation-dialog-error"
-              className="rounded-large border border-warning-border bg-warning-surface p-4 text-sm text-foreground-body"
+              className="rounded-large border border-warning-border bg-warning-surface p-4 text-body text-foreground-body"
             >
               {error}
             </div>
