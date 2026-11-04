@@ -918,6 +918,7 @@ def test_patterns_from_input_go_through_compile_user_regex():
         ("import re\nre.search(re.escape(input_data.word), text)", True, False),
         ("import re\nre.search(input_data.pattern, text)", False, False),
         ("import re\np = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\np: str = input_data.pattern\nre.search(p, text)", True, True),
         ("import re\nif x:\n    q = input_data.p\np = q\nre.search(p, t)", True, True),
         ("import re, html\nre.search(html.escape(input_data.p), t)", True, True),
         ("import re\nre.search(pattern=input_data.pattern, string=t)", True, True),
@@ -979,14 +980,18 @@ def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int
 
 def _names_holding_input(tree: ast.Module) -> set[str]:
     names = {"input_data"}
-    assigns = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)]
+    assigns = [
+        (node.targets if isinstance(node, ast.Assign) else [node.target], node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+    ]
     # ast.walk reaches a nested assignment after the shallower ones that read it.
     while True:
         added = {
             target.id
-            for node in assigns
-            if _reads_input_unescaped(node.value, names)
-            for target in node.targets
+            for targets, value in assigns
+            if _reads_input_unescaped(value, names)
+            for target in targets
             if isinstance(target, ast.Name)
         } - names
         if not added:
