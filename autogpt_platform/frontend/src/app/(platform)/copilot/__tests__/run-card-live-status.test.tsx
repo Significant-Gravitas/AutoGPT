@@ -37,6 +37,14 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => ({
   useGetFlag: () => false,
 }));
 
+// The chat's pending-review poller reads the newest run through the same
+// query. It has tests of its own; left out here so every request counted
+// below comes from the run card.
+vi.mock(
+  "@/app/(platform)/copilot/components/CopilotPendingReviews/CopilotPendingReviews",
+  () => ({ CopilotPendingReviews: () => null }),
+);
+
 vi.mock(
   "@/app/(platform)/build/components/BuilderChatPanel/useBuilderChatPanel",
   () => ({ useBuilderChatPanel: vi.fn() }),
@@ -80,7 +88,11 @@ function serveRuns(runs: GraphExecution[]) {
 }
 
 /** The turn as the chat stores it: Otto started the run and didn't wait. */
-function transcript(status: string): Messages {
+function transcript(
+  status: string,
+  via: "run_agent" | "run_capability" = "run_agent",
+): Messages {
+  const agentInput = { username_agent_slug: "user/flux-image" };
   return [
     {
       id: "user-1",
@@ -92,10 +104,13 @@ function transcript(status: string): Messages {
       role: "assistant",
       parts: [
         {
-          type: "tool-run_agent",
+          type: `tool-${via}`,
           toolCallId: "call-1",
           state: "output-available",
-          input: { username_agent_slug: "user/flux-image" },
+          input:
+            via === "run_agent"
+              ? agentInput
+              : { id: "tool:run_agent", input: agentInput },
           output: {
             type: "execution_started",
             message: "Workflow 'Flux Image' execution started successfully.",
@@ -158,11 +173,8 @@ function openRunCard() {
     expanded: false,
   });
   fireEvent.click(chainToggle);
-  fireEvent.click(
-    within(thread).getByRole("button", { name: /Flux Image/, expanded: false }),
-  );
-  const link = within(thread).getByRole("link", { name: "Open execution" });
-  return link.closest("div.flex-col") as HTMLElement;
+  fireEvent.click(within(thread).getByRole("button", { expanded: false }));
+  return within(thread).getByTestId("execution-card");
 }
 
 class MockResizeObserver {
@@ -201,10 +213,10 @@ describe("run card in the chat thread", () => {
 
     expect(await within(card).findByText("failed")).toBeDefined();
     expect(within(card).getByText(RUN_ERROR)).toBeDefined();
+    expect(requests).toEqual(["graph-1/exec-1", "graph-1/exec-1"]);
 
-    const afterEnd = requests.length;
     await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 3));
-    expect(requests).toHaveLength(afterEnd);
+    expect(requests).toHaveLength(2);
   });
 
   it("turns a run that succeeds after the turn to completed", async () => {
@@ -214,6 +226,26 @@ describe("run card in the chat thread", () => {
 
     expect(await within(card).findByText("completed")).toBeDefined();
     expect(within(card).queryByText("queued")).toBeNull();
+  });
+
+  it("follows a run started through run_capability too", async () => {
+    serveRuns([makeRun("FAILED", RUN_ERROR)]);
+    renderMainChat(transcript("QUEUED", "run_capability"));
+    const card = openRunCard();
+
+    expect(await within(card).findByText("failed")).toBeDefined();
+    expect(within(card).getByText(RUN_ERROR)).toBeDefined();
+  });
+
+  it("makes no request for a scheduled run, whose id is the schedule's", async () => {
+    const requests = serveRuns([makeRun("FAILED", "should not show")]);
+    renderMainChat(transcript("SCHEDULED"));
+    const card = openRunCard();
+
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 2));
+
+    expect(requests).toHaveLength(0);
+    expect(within(card).getByText("scheduled")).toBeDefined();
   });
 
   it("makes no request for a run that had already ended", async () => {
@@ -227,17 +259,15 @@ describe("run card in the chat thread", () => {
     expect(within(card).getByText("completed")).toBeDefined();
   });
 
-  it("keeps the started status in the builder panel, which shows the run in place", async () => {
-    // The chat's pending-review poller may still read the run here; the card
-    // must not take its status from that.
-    serveRuns([makeRun("FAILED", "should not show")]);
+  it("makes no request in the builder panel, which shows the run in place", async () => {
+    const requests = serveRuns([makeRun("FAILED", "should not show")]);
     renderBuilderChat(transcript("QUEUED"));
     const card = openRunCard();
 
     await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 2));
 
+    expect(requests).toHaveLength(0);
     expect(within(card).getByText("queued")).toBeDefined();
-    expect(within(card).queryByText("should not show")).toBeNull();
   });
 
   it("keeps the started status when the run can't be read", async () => {
@@ -251,9 +281,10 @@ describe("run card in the chat thread", () => {
     renderMainChat(transcript("QUEUED"));
     const card = openRunCard();
 
-    await waitFor(() => expect(calls).toBeGreaterThan(0));
+    await waitFor(() => expect(calls).toBe(1));
     await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 2));
 
+    expect(calls).toBe(1);
     expect(within(card).getByText("queued")).toBeDefined();
   });
 });

@@ -35,7 +35,10 @@ export function ExecutionCard({
   const shownStatus = live.status ?? status;
 
   return (
-    <div className={`${CARD} ${HALF} flex flex-col gap-1.5 p-2.5`}>
+    <div
+      data-testid="execution-card"
+      className={`${CARD} ${HALF} flex flex-col gap-1.5 p-2.5`}
+    >
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
           {variant === "agent" ? (
