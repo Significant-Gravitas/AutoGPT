@@ -44,6 +44,7 @@ def test_link_types_are_the_auth_types_minus_account_deleted():
     assert set(get_args(AuthLinkEmailType)) == {
         "reset_password",
         "verify_email",
+        "verify_new_email",
         "change_email",
         "set_password",
     }
@@ -56,11 +57,11 @@ def test_link_types_are_the_auth_types_minus_account_deleted():
 @pytest.mark.parametrize("email_type", get_args(AuthLinkEmailType))
 def test_a_link_email_without_its_link_is_refused(email_type):
     with pytest.raises(ValueError, match="needs an action URL"):
-        render_auth_email(email_type)
+        render_auth_email(email_type, None, "sam@example.com")
 
 
 def test_account_deleted_subject_headline_and_body_in_order():
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", None, "sam@example.com")
     html = unescape(email.html)
 
     assert email.subject == "Your AutoGPT account is closed"
@@ -73,7 +74,7 @@ def test_account_deleted_subject_headline_and_body_in_order():
 
 
 def test_account_deleted_has_no_button_link_or_ignore_line():
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", None, "sam@example.com")
     discord = build_urls("").discord
 
     for part in (email.html, email.text):
@@ -92,7 +93,7 @@ def test_account_deleted_has_no_button_link_or_ignore_line():
 def test_account_deleted_sends_questions_to_the_shared_inbox_not_discord():
     """Someone who just deleted their account gets the inbox that answers
     replies, not a public channel. The footer keeps its Discord link."""
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", None, "sam@example.com")
     html = unescape(email.html)
 
     assert ">Questions? Email contact@agpt.co</a>" in html
@@ -100,7 +101,7 @@ def test_account_deleted_sends_questions_to_the_shared_inbox_not_discord():
 
 
 def test_account_deleted_plain_text_part():
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", None, "sam@example.com")
     discord = build_urls("").discord
 
     assert email.text == (
@@ -120,7 +121,7 @@ def test_account_deleted_plain_text_part():
 
 
 def test_account_deleted_keeps_the_shared_service_frame():
-    email = render_auth_email("account_deleted")
+    email = render_auth_email("account_deleted", None, "sam@example.com")
     body = email.html
 
     assert body.startswith("<!doctype html>")
@@ -165,6 +166,8 @@ async def test_send_account_deleted_email_replies_to_the_shared_inbox(send, sour
 
     email = render_auth_email(
         "account_deleted",
+        None,
+        "sam@example.com",
         reason=DELETED_REASON,
         preheader=DATED_PREHEADER,
     )

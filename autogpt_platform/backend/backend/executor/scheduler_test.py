@@ -392,6 +392,15 @@ class TestUpdateGraphExecutionSchedule:
         assert changes["kwargs"]["input_data"] == {"input": "new"}
         run_async.assert_called_once()
 
+    def test_a_cron_that_never_fires_is_refused_without_a_write(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = self._job()
+        with pytest.raises(ValueError, match="never fires"):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", cron="0 0 30 2 *"
+            )
+        s.scheduler.modify_job.assert_not_called()
+
     def test_a_copilot_follow_up_is_not_an_agent_schedule(self) -> None:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = self._job(kind="copilot_turn")

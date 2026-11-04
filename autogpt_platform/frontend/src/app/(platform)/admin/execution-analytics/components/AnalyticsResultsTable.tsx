@@ -118,10 +118,8 @@ export function AnalyticsResultsTable({ results }: Props) {
     let colorClass = "";
 
     if (score >= 0.8) colorClass = "text-success";
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
-    else if (score >= 0.6) colorClass = "text-yellow-600";
-    // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-    else if (score >= 0.4) colorClass = "text-orange-600";
+    else if (score >= 0.6) colorClass = "text-yellow-foreground";
+    else if (score >= 0.4) colorClass = "text-orange-foreground";
     else colorClass = "text-error-foreground";
 
     return <span className={colorClass}>{percentage}%</span>;
