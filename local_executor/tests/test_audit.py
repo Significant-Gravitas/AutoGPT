@@ -1285,3 +1285,25 @@ def test_tail_prints_a_record_whose_seq_or_op_is_not_a_plain_value(capsys, recor
     cli._print_record_line(record.encode() + b"\n")
 
     assert "seq=" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_a_path_that_is_not_valid_utf_8_is_still_audited(tmp_path: Path) -> None:
+    """A POSIX path whose bytes aren't UTF-8 decodes to lone surrogates,
+    which UTF-8 can't encode, so the record raised and the handler dropped it
+    while the operation itself went ahead."""
+    writer = _writer(tmp_path)
+
+    await writer.write(
+        "FILE_WRITE",
+        request_id="req-\udcff",
+        details={"path": "/home/alice/caf\udce9.txt", "argv": ["x\udcff"]},
+        result={},
+    )
+
+    [line] = writer.path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(line)
+    assert record["details"]["path"] == "/home/alice/caf\\udce9.txt"
+    assert record["details"]["argv"] == ["x\\udcff"]
+    assert record["request_id"] == "req-\\udcff"
+    assert AuditWriter.verify(writer.path, KEY) == []
