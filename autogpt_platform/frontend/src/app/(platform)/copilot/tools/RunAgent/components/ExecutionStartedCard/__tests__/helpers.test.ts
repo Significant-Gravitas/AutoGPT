@@ -43,6 +43,12 @@ describe("nextPollInterval", () => {
     },
   );
 
+  it("stays stopped for an ended run when a later refetch fails", () => {
+    expect(
+      nextPollInterval(state(ok("FAILED"), 3, new ApiError("down", 502, null))),
+    ).toBe(false);
+  });
+
   it("stops on a 404 but keeps going on a 401 or a 5xx", () => {
     expect(
       nextPollInterval(

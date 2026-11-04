@@ -43,12 +43,12 @@ function backedOffInterval(polls: number) {
 
 export function nextPollInterval(state: PollState) {
   const { data, error } = state;
+  // A run that has ended stays ended, even if a later refetch fails.
+  if (data?.status === 200 && isFinalStatus(data.data.status)) return false;
   // These won't fix themselves (the run is gone or not ours). A 401 during a
   // session refresh, a 5xx or a network error might, so those keep polling.
   if (isPermanentError(error)) return false;
   if (!error && data?.status !== 200) return false;
-  if (!error && data?.status === 200 && isFinalStatus(data.data.status))
-    return false;
   return backedOffInterval(state.dataUpdateCount + state.errorUpdateCount);
 }
 
