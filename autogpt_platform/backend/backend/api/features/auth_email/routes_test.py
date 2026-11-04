@@ -466,20 +466,21 @@ FOOTER = (
 
 
 def test_link_email_plain_text_is_unchanged(send_mock):
-    _post({**VALID_BODY, "type": "change_email", "url": LINK})
+    _post({**VALID_BODY, "type": "reset_password", "url": LINK})
 
     discord = build_urls("").discord
     _, _, _, text = send_mock.call_args.args
     assert text == (
-        "Confirm your new email address\n"
+        "Reset your password\n"
         "\n"
-        "An email address change was requested for your AutoGPT account. "
-        "Use the button below to confirm your new email address. "
+        "A password reset was requested for your AutoGPT account. "
+        "Use the button below to choose a new password. "
         "If you didn't request this, you can safely ignore this email.\n"
         "\n"
-        "Confirm email:\n"
+        "Reset password:\n"
         f"{LINK}\n"
-        "This link was requested from your AutoGPT account settings.\n"
+        "The link expires in 1 hour.\n"
+        "This link was requested from the AutoGPT password-reset form.\n"
         f"Something wrong? Ask in Discord: {discord}\n"
         "\n" + FOOTER.format(discord=discord)
     )
@@ -510,10 +511,9 @@ def test_link_email_with_expiry_and_note_plain_text_is_unchanged(send_mock):
     )
 
 
-# verify_email has its own layout, with its own tests.
-@pytest.mark.parametrize(
-    "email_type", ["reset_password", "change_email", "set_password"]
-)
+# verify_email, verify_new_email and change_email have their own layouts,
+# with their own tests.
+@pytest.mark.parametrize("email_type", ["reset_password", "set_password"])
 def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type):
     _post({**VALID_BODY, "type": email_type, "url": LINK})
 
