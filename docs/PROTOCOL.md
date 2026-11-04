@@ -814,8 +814,9 @@ limit.
 
 Coordinates are always **display-global, unscaled, top-left-origin
 virtual-display pixels** regardless of any prior region screenshot. On a
-HiDPI display that means logical units (points on macOS); divide a point
-in a screenshot by its `display_scale` first.
+HiDPI display that means logical units (points on macOS). To turn a
+point in a screenshot into a coordinate, divide it by the screenshot's
+`display_scale`, then add its `meta.origin`.
 Out-of-bounds coordinates return `INPUT_OUT_OF_BOUNDS`. See
 [COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
 
