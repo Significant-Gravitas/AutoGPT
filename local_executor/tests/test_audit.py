@@ -1307,3 +1307,24 @@ async def test_a_path_that_is_not_valid_utf_8_is_still_audited(tmp_path: Path) -
     assert record["details"]["argv"] == ["x\\udcff"]
     assert record["request_id"] == "req-\\udcff"
     assert AuditWriter.verify(writer.path, KEY) == []
+
+
+@pytest.mark.parametrize("failure", ["corrupt", "unreadable"])
+def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
+    tmp_path: Path, monkeypatch, capsys, failure: str
+) -> None:
+    """Opening the log for a rotation raised out of `audit rotate`: a log that
+    fails verification, or one it can't open, ended in a traceback."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    log = tmp_path / "audit.log"
+    log.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+    if failure == "unreadable":
+
+        def refuse(**_kwargs) -> None:
+            raise OSError(errno.EACCES, "Permission denied")
+
+        monkeypatch.setattr(audit_module, "AuditWriter", refuse)
+
+    assert cli._audit_rotate(log) == 1
+    out = capsys.readouterr().out
+    assert ("audit verify" in out) if failure == "corrupt" else ("Permission denied" in out)
