@@ -206,8 +206,41 @@ async def test_terminal_authentication_failure_returns_ex_noperm(
         audit_log_path=tmp_path / "audit.log",
     )
 
+    monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+
     assert await cli._cmd_start(config) == 77
     assert "Authentication failed: session denied" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_an_authentication_failure_under_launchd_stops_the_restarts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """launchd's KeepAlive restarts any non-zero exit, so 77 would retry the
+    rejected credentials every few seconds; the LaunchAgent sets the marker."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    class RejectedDaemon:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def run(self) -> None:
+            raise daemon_module.DaemonAuthenticationError("session denied")
+
+    monkeypatch.setattr(daemon_module, "ShimDaemon", RejectedDaemon)
+    monkeypatch.setenv("AUTOGPT_SHIM_SUPERVISOR", "launchd")
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+    assert await cli._cmd_start(config) == 0
+    err = capsys.readouterr().err
+    assert "Authentication failed: session denied" in err
+    assert "launchctl kickstart" in err
 
 
 @pytest.mark.asyncio

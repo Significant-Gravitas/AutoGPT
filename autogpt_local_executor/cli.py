@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -298,6 +299,17 @@ async def _cmd_start(config) -> int:
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)
+        if os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
+            # The LaunchAgent's KeepAlive restarts any non-zero exit, so 77
+            # would retry the rejected credentials every few seconds. Signing
+            # in again is the fix, so stop here until the user has done it.
+            print(
+                "The LaunchAgent will not restart on its own. Run `autogpt-shim auth`, "
+                "then `launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 0
         return 77
     except (KeyboardInterrupt, asyncio.CancelledError):
         # On Ctrl+C, asyncio.run cancels this task; KeyboardInterrupt only

@@ -20,6 +20,9 @@ Type=simple
 ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5
+# 77 is an authentication failure: a restart would only retry the rejected
+# credentials. Run `autogpt-shim auth`, then restart the unit.
+RestartPreventExitStatus=77
 StandardOutput=append:{stdout_log}
 StandardError=append:{stderr_log}
 Environment=PYTHONUNBUFFERED=1
