@@ -218,6 +218,14 @@ writer, so appends and rotations hold an exclusive lock on
 rotated or appended to since its last write reloads the chain state
 from the file before it appends.
 
+`audit verify`, `verify-all` and `export` list and read the files under
+the same lock, so they never see a half-written record or miss a file
+that a rotation has just moved. A reader that can't write the lock file
+takes the lock through a read-only handle. One that can't open the lock
+file at all stops with an error rather than read unlocked; only a lock
+file that doesn't exist yet, which no writer can be holding, lets the
+read go ahead without it.
+
 If two rotations land within the same wall-clock second (rare, but
 possible under burst writes or explicit `rotate` after a recent
 size-triggered rotation), the second rotated file gets a `-N` counter

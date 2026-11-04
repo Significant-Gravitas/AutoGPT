@@ -748,6 +748,10 @@ def _file_identity(path: Path) -> tuple[int, int, int] | None:
     return info.st_dev, info.st_ino, info.st_size
 
 
+class AuditLockError(RuntimeError):
+    """A reader could not take the lock the audit log's writers hold."""
+
+
 def _lock_path(log: Path) -> Path:
     # The leading dot keeps it out of list_rotated_files.
     return log.with_name(f".{log.name}.lock")
@@ -756,20 +760,35 @@ def _lock_path(log: Path) -> Path:
 @contextmanager
 def holding_log_lock(log: Path) -> Iterator[None]:
     """Hold the lock that every AuditWriter for `log` appends and rotates
-    under, so a reader never sees a record half written. Where the lock file
-    can't be created, no writer can append either, so the read goes ahead."""
+    under, so a reader never sees a record half written.
+
+    A reader that can't open the lock file for writing (a read-only volume,
+    another account's log) takes the same lock through a read-only handle.
+    The read goes ahead unlocked only when the lock file doesn't exist: every
+    writer creates it before appending, so then no writer holds it. Any other
+    failure raises AuditLockError rather than risk a half-written record.
+    """
+    lock = _lock_path(log)
     with contextlib.ExitStack() as stack:
         try:
-            stack.enter_context(_file_lock(_lock_path(log)))
+            stack.enter_context(_file_lock(lock))
         except OSError:
-            pass
+            try:
+                stack.enter_context(_file_lock(lock, read_only=True))
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise AuditLockError(f"{lock}: {exc}") from exc
         yield
 
 
 @contextmanager
-def _file_lock(path: Path) -> Iterator[None]:
-    """Hold an exclusive lock on `path`, across processes, while the block runs."""
-    with open(path, "a+b") as handle:
+def _file_lock(path: Path, *, read_only: bool = False) -> Iterator[None]:
+    """Hold an exclusive lock on `path`, across processes, while the block runs.
+
+    `read_only` opens an existing lock file without creating or writing it;
+    flock and msvcrt.locking both lock through a read-only handle."""
+    with open(path, "rb" if read_only else "a+b") as handle:
         if sys.platform == "win32":
             import msvcrt
 
@@ -810,6 +829,7 @@ def list_rotated_files(current: Path) -> list[Path]:
 
 
 __all__ = [
+    "AuditLockError",
     "AuditWriter",
     "ROTATE_MAX_AGE_SECONDS",
     "ROTATE_MAX_BYTES",
