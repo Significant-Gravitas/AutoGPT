@@ -43,8 +43,8 @@ export function ExpertHeroBand({ expert }: BandProps) {
       style={{
         backgroundColor: expertPastel(topic),
         backgroundImage: [
-          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, rgb(var(--color-card))), transparent 55%)`,
-          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, rgb(var(--color-card))), transparent 50%)`,
+          `radial-gradient(circle at 15% 0%, color-mix(in srgb, ${topic} 45%, rgb(var(--color-surface))), transparent 55%)`,
+          `radial-gradient(circle at 90% 110%, color-mix(in srgb, ${topic} 35%, rgb(var(--color-surface))), transparent 50%)`,
         ].join(", "),
       }}
       /* oxlint-enable design-system/no-inline-styles */
@@ -52,7 +52,7 @@ export function ExpertHeroBand({ expert }: BandProps) {
       <div
         aria-hidden
         // oxlint-disable-next-line design-system/no-arbitrary-values -- a fade over the band; no gradient token
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(var(--color-card)/0.35),transparent_45%)]"
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(var(--color-surface)/0.35),transparent_45%)]"
       />
       {area ? (
         <CategoryTag

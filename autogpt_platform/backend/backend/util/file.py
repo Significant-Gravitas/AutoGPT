@@ -20,6 +20,7 @@ from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
 MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
+MAX_TOTAL_FILE_SIZE_BYTES = Config().max_total_file_size_mb * 1024 * 1024
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -437,6 +438,15 @@ def get_dir_size(path: Path) -> int:
     except Exception:
         pass
     return total
+
+
+def check_total_file_size(total_size: int) -> None:
+    """Raise once the files a block loads together pass the total file limit."""
+    if total_size > MAX_TOTAL_FILE_SIZE_BYTES:
+        raise ValueError(
+            f"Files too large: {total_size} bytes in total > "
+            f"{MAX_TOTAL_FILE_SIZE_BYTES} bytes"
+        )
 
 
 async def resolve_media_content(

@@ -79,6 +79,14 @@ def dumps(
     )
 
 
+def same_json(left: Any, right: Any) -> bool:
+    """Whether two values serialize to the same JSON. Python's ``==`` counts
+    ``True`` as ``1`` and ``1.0`` as ``1``; what a block or MCP server is sent
+    does not."""
+    option = orjson.OPT_SORT_KEYS | orjson.OPT_NON_STR_KEYS
+    return dumps(left, option=option) == dumps(right, option=option)
+
+
 T = TypeVar("T")
 
 # Sentinel value to detect when fallback is not provided
