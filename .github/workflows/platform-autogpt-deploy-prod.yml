@@ -10,6 +10,25 @@ permissions:
   id-token: 'write'
 
 jobs:
+  # A platform release once went out tagged v0.6.44, without the prefix. The
+  # check on `migrate` skips such a release without a word, so this job fails
+  # the run instead, where it shows. It reads only the tag: no checkout, no
+  # environment, no secrets.
+  reject-unprefixed-platform-tag:
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
+    name: Refuse a platform release tag without its prefix
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail on a v<digit> tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ "$TAG" =~ ^v[0-9] ]]; then
+            echo "::error::Release $TAG has no autogpt-platform- prefix, so production was not deployed. Tag platform releases autogpt-platform-<version>, or run this workflow by hand."
+            exit 1
+          fi
+
   migrate:
     # Every published release in this repository starts this workflow, and
     # not all of them are the platform's (the rolling preview-seed-fixture,
