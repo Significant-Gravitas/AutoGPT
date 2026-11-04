@@ -75,8 +75,12 @@ def v1_tokens(v1_key_rows):
 
 @pytest.fixture
 def v1_auth_storage(mocker, v1_key_rows, v1_tokens):
-    async def keys_by_head(head):
-        return [row for row in v1_key_rows if row.head == head]
+    async def keys_by_head(head, tail=None):
+        return [
+            row
+            for row in v1_key_rows
+            if row.head == head and (tail is None or row.tail == tail)
+        ]
 
     async def token_by_hash(*, where, include):
         return next(
