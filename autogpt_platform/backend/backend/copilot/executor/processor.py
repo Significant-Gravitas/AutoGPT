@@ -6,6 +6,7 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import concurrent.futures
+import functools
 import logging
 import os
 import threading
@@ -19,10 +20,16 @@ from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 
 from backend.copilot import stream_registry
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
+from backend.copilot.background_execution import (
+    background_timeout,
+    claim_background_execution,
+    finish_background_execution,
+)
+from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
-from backend.copilot.context import set_turn_unattended
+from backend.copilot.context import set_current_turn_id, set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
 from backend.copilot.credit_billing import (
     CreditBilledTurn,
@@ -40,6 +47,7 @@ from backend.copilot.llm_attribution import (
     set_turn_origin,
     set_turn_trace_id,
 )
+from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -456,7 +464,7 @@ class CoPilotProcessor:
 
         Thin wrapper around :meth:`_execute`. The ``try/finally`` here
         guarantees :func:`sync_fail_close_session` runs on every exit
-        path — normal completion or exception.
+        path except an explicitly rejected background pickup.
         ``mark_session_completed`` is an atomic CAS on
         ``status == "running"``, so when the async path already wrote a
         terminal state the sync call is a cheap no-op.
@@ -468,12 +476,14 @@ class CoPilotProcessor:
         )
         log.info("Starting execution")
         start_time = time.monotonic()
+        fail_close = True
         try:
-            self._execute(entry, cancel, cluster_lock, log)
+            fail_close = self._execute(entry, cancel, cluster_lock, log) is not False
         finally:
-            sync_fail_close_session(
-                entry.session_id, entry.turn_id, log, self.execution_loop
-            )
+            if fail_close:
+                sync_fail_close_session(
+                    entry.session_id, entry.turn_id, log, self.execution_loop
+                )
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
@@ -483,13 +493,14 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Submit the async turn to ``self.execution_loop`` and drive it.
 
         Handles the sync/async boundary (cancel-event checks, cluster-lock
         refresh, bounded waits) without any Redis-state cleanup logic —
-        that lives in :func:`sync_fail_close_session` which the outer
-        :meth:`execute` always invokes on exit.
+        that lives in :func:`sync_fail_close_session`. Returns False only
+        for an explicitly rejected background pickup, which must not
+        fail-close another worker's claimed turn.
         """
         task_ready: concurrent.futures.Future[asyncio.Task] = (
             concurrent.futures.Future()
@@ -563,18 +574,19 @@ class CoPilotProcessor:
         # worker does not refresh the per-session lock forever on a wedged turn.
         while True:
             try:
-                future.result(timeout=1.0)
-                return
+                return future.result(timeout=1.0)
             except concurrent.futures.CancelledError:
                 if cancel_requested or cancel.is_set():
-                    return
+                    return True
                 raise
             except concurrent.futures.TimeoutError:
+                if future.done() and not future.cancelled():
+                    return future.result()
                 if cancel.is_set() and not cancel_requested:
                     request_cancel()
                 elif cancel_requested and cancel_started_at is not None:
                     if cancel_drain_timed_out():
-                        return
+                        return True
                     log_cancel_wait()
                 cluster_lock.refresh()
 
@@ -584,7 +596,7 @@ class CoPilotProcessor:
         cancel: threading.Event,
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
-    ):
+    ) -> bool:
         """Async execution logic for a CoPilot turn, run as one Sentry
         ``copilot.turn`` transaction.
 
@@ -598,7 +610,11 @@ class CoPilotProcessor:
             log: Structured logger
         """
         with turn_transaction(entry) as turn:
-            await self._run_turn(entry, cancel, cluster_lock, log, turn)
+            if not await claim_background_execution(entry):
+                return False
+            async with asyncio.timeout(background_timeout(entry)) as deadline:
+                await self._run_turn(entry, cancel, cluster_lock, log, turn, deadline)
+            return True
 
     async def _run_turn(
         self,
@@ -607,6 +623,7 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
         turn: TurnTrace,
+        deadline: asyncio.Timeout | None = None,
     ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
@@ -620,6 +637,15 @@ class CoPilotProcessor:
 
         try:
             from backend.copilot.model import get_chat_session
+
+            # Known before anything can end the turn, so a load-test
+            # account's turn is told apart from people's however it ends.
+            config = ChatConfig()
+            load_test: LoadTestEngine | None = None
+            if not config.test_mode:
+                load_test = await load_test_engine(entry.user_id, config)
+                if load_test is not None:
+                    turn.load_test_account(load_test)
 
             # Every copilot turn starts here, whatever queued it.
             if entry.user_id and await is_user_banned(entry.user_id):
@@ -692,6 +718,11 @@ class CoPilotProcessor:
                 if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause, scheduled_watch)
+                    if (entry.message_metadata or {}).get("background_task_id"):
+                        # The finally block persists this as the subtask's failure.
+                        error_msg = (
+                            "Background work could not start within its usage limits."
+                        )
                     return
                 if credit_turn is not None:
                     log.info(
@@ -803,12 +834,30 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_session_route_mismatch")
                 # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
-                config = ChatConfig()
-
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                elif load_test == "dummy":
+                    stream_fn = stream_chat_completion_dummy
+                    engine = "dummy"
+                    log.info("Using DUMMY service: load-test account")
+                elif load_test == "scripted":
+                    if not config.load_test_model_url:
+                        # The account's turns exist to reach no real model,
+                        # so without the scripted model they fail instead.
+                        raise RuntimeError("load_test_model_url_unset")
+                    stream_fn = cast(
+                        Callable,
+                        functools.partial(
+                            sdk_service.stream_chat_completion_sdk,
+                            stand_in_model_url=config.load_test_model_url,
+                        ),
+                    )
+                    engine = "sdk"
+                    log.info(
+                        "Using SDK service on the scripted model: load-test account"
+                    )
                 else:
                     use_sdk = await resolve_use_sdk(
                         entry.user_id,
@@ -853,6 +902,7 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
+            set_current_turn_id(entry.turn_id)
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
             set_turn_origin(origin)
@@ -933,6 +983,9 @@ class CoPilotProcessor:
             # This failure replaces any StreamError the stream ended on, code too.
             error_code = None
             if isinstance(e, asyncio.CancelledError):
+                if deadline is not None and deadline.expired():
+                    log.info("Background turn reached its deadline")
+                    return
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE
             else:
@@ -940,8 +993,13 @@ class CoPilotProcessor:
                 log.error(f"Turn failed: {error_msg}")
             raise
         finally:
-            # If no exception but user cancelled, still mark as cancelled
-            if not error_msg and cancel.is_set():
+            # Work has ended; its deadline must not interrupt outcome/usage persistence.
+            if deadline is not None and not deadline.expired():
+                deadline.reschedule(None)
+            # Keep the monotonic deadline distinct from a user's Stop.
+            if deadline is not None and deadline.expired():
+                error_msg = BACKGROUND_TIMEOUT_MESSAGE
+            elif not error_msg and cancel.is_set():
                 error_msg = stream_registry.CANCELLED_MESSAGE
             try:
                 if credential_lease is not None:
@@ -961,6 +1019,10 @@ class CoPilotProcessor:
                 )
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
+                try:
+                    await finish_background_execution(entry, error_msg)
+                except Exception as finish_err:
+                    log.error(f"Failed to save background completion: {finish_err}")
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,
