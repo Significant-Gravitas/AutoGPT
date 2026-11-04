@@ -1590,7 +1590,12 @@ class TestListIndexLinks:
 
     @pytest.mark.parametrize(
         "sink_name, valid",
-        [("config_#_name", True), ("config_@_name", False), ("anything_@_name", True)],
+        [
+            ("config_#_name", True),
+            ("config_@_name", False),
+            ("anything_@_name", True),
+            ("anything_@__secret", False),
+        ],
     )
     def test_an_attribute_written_into_an_object_field_fails(
         self, sink_name: str, valid: bool

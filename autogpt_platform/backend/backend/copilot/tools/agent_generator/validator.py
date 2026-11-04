@@ -13,6 +13,7 @@ from backend.data.dynamic_fields import (
     OBJC_SPLIT,
     extract_base_field_name,
     is_dynamic_field,
+    is_safe_object_attribute,
     parse_dynamic_field,
 )
 
@@ -1183,6 +1184,9 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
 
     path = base
     for delimiter, step in steps:
+        # Graph save refuses these names, so they are reported here.
+        if delimiter == OBJC_SPLIT and not is_safe_object_attribute(step):
+            return f"'{step}' after '{path}' is not a usable attribute name"
         if not isinstance(schema, dict):
             return None
         # The run passes an object as a dict: _@_ reads None from it, and a write
