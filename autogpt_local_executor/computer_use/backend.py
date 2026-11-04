@@ -147,8 +147,8 @@ class ComputerUseBackend(ABC):
         executable_path: str | None = None,
         args: list[str] | None = None,
         activate: bool = True,
-    ) -> int:
-        """Returns the launched pid."""
+    ) -> int | None:
+        """Returns the launched pid, or None when the OS doesn't say."""
 
     # ── Clipboard ────────────────────────────────────────────────────
 

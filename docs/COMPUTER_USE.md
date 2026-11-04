@@ -282,6 +282,9 @@ The existing `key` action accepts `ctrl+s`-style chords. Two clarifications:
 - Single keys: `enter`, `tab`, `esc`, `space`, `up`, `down`, `left`,
   `right`, `pageup`, `pagedown`, `home`, `end`, `backspace`, `delete`,
   `f1`-`f24`. Lowercase ASCII letters and digits are accepted as-is.
+- A name pyautogui doesn't know (its `KEY_NAMES`) is refused with
+  `FEATURE_NOT_SUPPORTED` before any key goes down. pyautogui would skip
+  it without a word, so `ctrl+bogus` would press Ctrl alone.
 
 #### `type` action — input method (Q4 locked)
 
@@ -630,11 +633,14 @@ report one. The shim uses, in order of preference:
   steal during background launches — matches cua-driver's design).
 - Windows: `ShellExecute` via `pywin32`.
 - Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
-  file launches with `gtk-launch` (by its desktop file ID) when it is in
-  an XDG application directory, and with `dex` (by path) otherwise; `args`
-  are refused for one, since its `Exec` line sets them. A `gtk-launch` that
-  exits with a failing status answers `FEATURE_NOT_SUPPORTED`. The pid is
-  the helper's, not the app's.
+  file launches with `gtk-launch` (by its desktop file ID) when that ID
+  leads to this very file, and with `dex` (by path) otherwise. gtk-launch
+  starts the first file with the ID in the XDG application directories,
+  so a same-named file in an earlier directory would start instead; without
+  `dex`, such a file is refused. `args` are refused for a `.desktop` file,
+  since its `Exec` line sets them. A helper that exits with a failing
+  status answers `FEATURE_NOT_SUPPORTED`. The `pid` is null: the helper
+  exits once it has started the app, so its pid would name neither.
 
 We deliberately do **not** fall through to `EXECUTE_COMMAND` — the audit
 log distinguishes "agent launched an app" from "agent ran a shell command",
