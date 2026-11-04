@@ -3,6 +3,8 @@ import hashlib
 import os
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from backend.util import secrets_guard
 from backend.util.secrets_guard import check_secrets
@@ -127,6 +129,40 @@ def test_published_vapid_key_warns_and_still_starts(monkeypatch, caplog):
     assert not secrets_guard.vapid_private_key_is_published("")
     assert not secrets_guard.vapid_private_key_is_published("=\n")
     assert not secrets_guard.vapid_private_key_is_published(_fresh_key())
+
+
+def test_a_der_encoding_of_the_published_vapid_key_is_the_published_key(
+    monkeypatch,
+):
+    """py-vapid reads a key that is not 32 bytes as DER, so the published
+    scalar in that form would sign pushes too. A DER key holding another
+    scalar, or bytes of that length that are no key, is not it."""
+    published = _fresh_key().rstrip("=")
+    monkeypatch.setattr(
+        secrets_guard,
+        "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+        {_vapid_digest(published)},
+    )
+    assert secrets_guard.vapid_private_key_is_published(_der_spelling(published))
+    assert not secrets_guard.vapid_private_key_is_published(_der_spelling(_fresh_key()))
+    assert not secrets_guard.vapid_private_key_is_published(
+        base64.urlsafe_b64encode(b"d" * 121).decode()
+    )
+
+
+def _der_spelling(raw_key: str) -> str:
+    """`raw_key`, the Base64url of a 32-byte scalar, as the Base64url of that
+    scalar's PKCS#8 DER encoding."""
+    compact = raw_key.rstrip("=")
+    scalar = int.from_bytes(
+        base64.urlsafe_b64decode(compact + "=" * (-len(compact) % 4)), "big"
+    )
+    der = ec.derive_private_key(scalar, ec.SECP256R1()).private_bytes(
+        serialization.Encoding.DER,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    return base64.urlsafe_b64encode(der).rstrip(b"=").decode()
 
 
 def test_a_generated_vapid_key_does_not_warn(caplog):

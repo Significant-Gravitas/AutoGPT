@@ -285,6 +285,33 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertNotIn(first["VAPID_PRIVATE_KEY"], environment.values())
         self.assertNotIn(first["VAPID_PUBLIC_KEY"], environment.values())
 
+    def test_rejects_a_pair_with_only_one_published_key(self) -> None:
+        """Replacing the published half would drop the other, which the next
+        boot would then read as a changed value and refuse, so the pair is
+        refused at once, whichever half is the published one."""
+        private, public = _matching_vapid_pair()
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        cases = [
+            {**published, "VAPID_PUBLIC_KEY": public},
+            {**published, "VAPID_PRIVATE_KEY": private},
+        ]
+        for environment in cases:
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+                self.assertRaisesRegex(ValueError, "one is the published key"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env", environment
+                )
+
     def test_a_persisted_published_pair_is_replaced_on_the_next_boot(self) -> None:
         """An earlier release persisted whatever pair the environment gave it,
         the published one included, and the backend sends no push with that
@@ -736,7 +763,8 @@ class FillEnvSecretsTest(unittest.TestCase):
         with a private key it isn't from, which every push service rejects,
         so the pair is named rather than kept, in any spelling, and the file
         is left as it was. A private key that isn't a raw scalar is the
-        backend's to load: py-vapid reads a DER key too."""
+        backend's to load (py-vapid reads a DER key too), and a `$NAME`
+        reference is Compose's to fill in when the stack starts."""
         private, public = _matching_vapid_pair()
         other_public = runtime_config._base64url(b"\x04" + b"q" * 64)
         zero = runtime_config._base64url(bytes(32))
@@ -763,6 +791,8 @@ class FillEnvSecretsTest(unittest.TestCase):
                 runtime_config._base64url(b"\x30" + b"d" * 120),
                 public,
             ),
+            "a reference for the public key": (private, "${PUSH_PUBLIC}"),
+            "a reference for the private key": ("${PUSH_PRIVATE}", other_public),
         }
         for label, (private_value, public_value) in kept.items():
             text = _vapid_env(private_value, public_value)

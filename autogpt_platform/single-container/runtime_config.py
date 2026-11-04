@@ -357,8 +357,12 @@ def _refuse_a_mismatched_vapid_pair(
     push whose keys don't belong together, so `make init-env` names that
     rather than keeping it, as the single container does on boot. A private
     key that isn't a raw scalar (py-vapid reads a DER key too) is the
-    backend's to load."""
-    scalar = _raw_vapid_scalar(effective["VAPID_PRIVATE_KEY"].value)
+    backend's to load, and a `$NAME` reference is Compose's to fill in when
+    the stack starts, from an environment this can't see."""
+    private, public = (effective[name] for name in VAPID_KEY_SETTINGS)
+    if not (private.literal and public.literal):
+        return
+    scalar = _raw_vapid_scalar(private.value)
     if scalar is None:
         return
     if not 0 < scalar < _P256_N:
@@ -367,8 +371,7 @@ def _refuse_a_mismatched_vapid_pair(
             "both VAPID keys and run this again to generate a pair, or set "
             "both from one pair you generated."
         )
-    public = effective["VAPID_PUBLIC_KEY"].value
-    if _base64url(_p256_public_point(scalar)) != _canonical_vapid_key(public):
+    if _base64url(_p256_public_point(scalar)) != _canonical_vapid_key(public.value):
         raise ValueError(
             f"VAPID_PUBLIC_KEY in {path} is not the public key of "
             "VAPID_PRIVATE_KEY. Clear both and run this again to generate a "
@@ -872,7 +875,17 @@ def _configured_or_generated_vapid(
     public = environment.get("VAPID_PUBLIC_KEY")
     if bool(private) != bool(public):
         raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together")
-    if not private or not public or _is_unset_vapid_key(private):
+    if not private or not public:
+        return _generate_vapid_keypair()
+    if _is_published_vapid_key(private) != _is_published_vapid_key(public):
+        # Replacing the published half would drop the other, which every
+        # later boot would then read as a changed value and refuse.
+        raise ValueError(
+            "VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together: one "
+            "is the published key and the other is not; set both from one "
+            "generated pair, or clear both"
+        )
+    if _is_published_vapid_key(private):
         return _generate_vapid_keypair()
     expected = _public_key_for(private)
     if expected is not None and expected != _canonical_vapid_key(public):

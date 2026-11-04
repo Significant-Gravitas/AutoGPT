@@ -21,6 +21,10 @@ import logging
 import os
 from urllib.parse import unquote, urlsplit
 
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -94,16 +98,39 @@ _URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
 def vapid_private_key_is_published(value: str) -> bool:
     """Whether a Web Push private key is one this repository published, however
     it is spelled: py-vapid drops newlines, restores Base64 padding and takes
-    the standard alphabet too, and a decoder ignores the unused bits of the
-    last character, so every spelling that decodes to the published bytes is
-    the published key."""
+    the standard alphabet too, a decoder ignores the unused bits of the last
+    character, and a DER-encoded key is read as the scalar it holds, so every
+    spelling that comes down to the published bytes is the published key."""
     canonical = _canonical_vapid_key(value)
     if not canonical:
         return False
+    scalar = _der_encoded_p256_scalar(canonical)
+    if scalar is not None:
+        canonical = base64.urlsafe_b64encode(scalar).rstrip(b"=").decode()
     return (
         hashlib.sha256(canonical.encode()).hexdigest()
         in _RETIRED_VAPID_PRIVATE_KEY_DIGESTS
     )
+
+
+def _der_encoded_p256_scalar(canonical: str) -> bytes | None:
+    """The 32-byte scalar of a DER-encoded P-256 private key, which py-vapid
+    reads too, or None for anything else: a raw key, or no key at all."""
+    try:
+        raw = base64.urlsafe_b64decode(canonical + "=" * (-len(canonical) % 4))
+    except (ValueError, binascii.Error):
+        return None
+    if len(raw) == 32:
+        return None
+    try:
+        key = serialization.load_der_private_key(raw, password=None)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        return None
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
+        key.curve, ec.SECP256R1
+    ):
+        return None
+    return key.private_numbers().private_value.to_bytes(32, "big")
 
 
 def _canonical_vapid_key(value: str) -> str:
