@@ -197,21 +197,28 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
 
 
 @pytest.mark.parametrize(
-    "block, payload, name, irreversible",
+    "block, payload, name, reason, irreversible",
     [
-        (SendEmailBlock, _EMAIL, "Send Email", True),
+        (
+            SendEmailBlock,
+            _EMAIL,
+            "Send Email",
+            "Runs Send Email, which reaches outside the platform.",
+            True,
+        ),
         # The new repo is public unless the call says otherwise.
         (
             GithubCreateRepositoryBlock,
             {"name": "otter-notes"},
             "Github Create Repository",
+            "Nothing changes in your account until you approve.",
             False,
         ),
     ],
     ids=["email", "github repo"],
 )
 async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(
-    gate, ran, block, payload, name, irreversible
+    gate, ran, block, payload, name, reason, irreversible
 ):
     judge = AsyncMock()
     with patch(f"{_GATE}.supervise", judge):
@@ -220,10 +227,10 @@ async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(
     ran.assert_not_awaited()
     judge.assert_not_awaited()
     args = gate.open_review.await_args.args
-    reason, subject = args[5], args[6]
+    assert args[5] == reason
+    subject = args[6]
     assert subject.name == name
     assert subject.key == f"block:{block().id}"
-    assert reason == f"Runs {name}, which reaches outside the platform."
     assert subject.irreversible is irreversible
 
 
