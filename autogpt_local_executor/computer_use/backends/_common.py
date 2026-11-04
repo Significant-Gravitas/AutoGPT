@@ -20,6 +20,14 @@ def _typeable(text: str) -> bool:
     return all(char in _TYPEABLE for char in text)
 
 
+def chord_keys(key: str, aliases: dict[str, str]) -> list[str]:
+    """The keys of a `ctrl+s`-style chord, lowercased, with the documented
+    modifier names (`super` and its alias `meta`) mapped to the OS's own.
+    pyautogui skips a key name it doesn't know without a word."""
+    keys = (part.strip().lower() for part in key.split("+"))
+    return [aliases.get(k, k) for k in keys if k]
+
+
 def paste_is_worth_it(text: str) -> bool:
     """Q4: paste only text long enough to need it, or text with characters
     that can't be typed key by key."""
@@ -119,6 +127,7 @@ def normalize_displays_for_error(displays: list[dict[str, Any]]) -> list[dict[st
 
 __all__ = [
     "PASTE_THRESHOLD_CHARS",
+    "chord_keys",
     "ensure_typeable",
     "paste_is_worth_it",
     "encode_b64",
