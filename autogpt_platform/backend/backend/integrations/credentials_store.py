@@ -350,6 +350,9 @@ class IntegrationCredentialsStore:
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         check_storable_size(credentials)
+        if credentials.is_managed:
+            # Managed credentials are written only by `add_managed_credential`.
+            raise InvalidInputError("Only user-owned credentials can be added")
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
             if credentials.id in SYSTEM_CREDENTIAL_IDS:

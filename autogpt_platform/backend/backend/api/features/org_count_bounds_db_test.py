@@ -86,8 +86,10 @@ async def test_converting_a_personal_org_at_the_bound_is_refused(
     assert (await orgs_db.get_org(personal.id)).is_personal
     assert await _memberships(user_id) == orgs_db.MAX_ORGS_PER_USER
 
-    monkeypatch.setattr(orgs_db, "MAX_ORGS_PER_USER", await _memberships(user_id) + 1)
+    before = await _memberships(user_id)
+    monkeypatch.setattr(orgs_db, "MAX_ORGS_PER_USER", before + 1)
     assert not (await orgs_db.convert_personal_org(personal.id, user_id)).is_personal
+    assert await _memberships(user_id) == before + 1
 
 
 def _count_then_meet_the_other_call(monkeypatch: pytest.MonkeyPatch, actions) -> None:

@@ -159,6 +159,19 @@ async def test_managed_credentials_do_not_count_toward_the_bound(
 
 
 @pytest.mark.asyncio
+async def test_adding_a_credential_marked_managed_is_refused(store, mocker):
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[]),
+    )
+
+    with pytest.raises(InvalidInputError, match="user-owned"):
+        await store.add_creds("user-1", _credentials(is_managed=True))
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_an_upsert_that_keeps_a_long_stored_title_is_measured_after(
     store, mocker
 ):
