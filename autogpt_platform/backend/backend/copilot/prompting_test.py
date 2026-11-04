@@ -496,6 +496,15 @@ class TestPlainLanguageRules:
         assert "Never mention internal errors" in result
         assert "Retry a failing step at most once" in result
 
+    def test_a_failure_cause_is_named_only_when_the_error_shows_it(self):
+        """Otto told a user a failure looked like a permissions issue when the
+        input format was wrong (SECRT-2001)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert (
+            "Name the cause of a failure only when the tool result states it" in notes
+        )
+        assert "the cause isn't clear yet" in notes
+
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES
         assert "Use sensible defaults instead of asking" in notes
