@@ -45,7 +45,7 @@ export function IncompatibleUpdateDialog({
     <Dialog
       title={
         <div className="flex items-center gap-2">
-          <Icon icon={Alert01Icon} className="h-5 w-5 text-warning" />
+          <Icon icon={Alert01Icon} tone="warning-bright" className="h-5 w-5" />
           Incompatible Update
         </div>
       }
@@ -70,14 +70,19 @@ export function IncompatibleUpdateDialog({
             <TwoColumnSection
               title="Input Changes"
               leftIcon={
-                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  tone="error"
+                  className="h-4 w-4"
+                />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingInputs}
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-success"
+                  tone="success"
+                  className="h-4 w-4"
                 />
               }
               rightTitle="Added"
@@ -90,14 +95,19 @@ export function IncompatibleUpdateDialog({
             <TwoColumnSection
               title="Output Changes"
               leftIcon={
-                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  tone="error"
+                  className="h-4 w-4"
+                />
               }
               leftTitle="Removed"
               leftItems={incompatibilities.missingOutputs}
               rightIcon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-success"
+                  tone="success"
+                  className="h-4 w-4"
                 />
               }
               rightTitle="Added"
@@ -108,7 +118,11 @@ export function IncompatibleUpdateDialog({
           {hasTypeMismatches && (
             <SingleColumnSection
               icon={
-                <Icon icon={CancelCircleIcon} className="h-4 w-4 text-error" />
+                <Icon
+                  icon={CancelCircleIcon}
+                  tone="error"
+                  className="h-4 w-4"
+                />
               }
               title="Type Changed"
               description="These connected inputs have a different type:"
@@ -123,7 +137,8 @@ export function IncompatibleUpdateDialog({
               icon={
                 <Icon
                   icon={PlusSignCircleIcon}
-                  className="h-4 w-4 text-warning"
+                  tone="warning-bright"
+                  className="h-4 w-4"
                 />
               }
               title="New Required Inputs"
@@ -143,12 +158,7 @@ export function IncompatibleUpdateDialog({
             <Button variant="ghost" size="small" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="small"
-              onClick={onConfirm}
-              className="border-warning-foreground bg-warning-foreground hover:bg-warning-foreground/90"
-            >
+            <Button variant="warning" size="small" onClick={onConfirm}>
               Update Anyway
             </Button>
           </Dialog.Footer>
@@ -201,7 +211,8 @@ function TwoColumnSection({
                   <Text
                     variant="small-mono-tight"
                     as="code"
-                    className="rounded bg-error-surface px-1 py-0.5 text-error-foreground"
+                    tone="error-strong"
+                    className="rounded bg-error-surface px-1 py-0.5"
                   >
                     {item}
                   </Text>
@@ -233,7 +244,8 @@ function TwoColumnSection({
                   <Text
                     variant="small-mono-tight"
                     as="code"
-                    className="rounded bg-success-surface px-1 py-0.5 text-success-foreground"
+                    tone="success-strong"
+                    className="rounded bg-success-surface px-1 py-0.5"
                   >
                     {item}
                   </Text>
@@ -275,14 +287,14 @@ function SingleColumnSection({
       <Text variant="body-tight" tone="muted" className="mt-1">
         {description}
       </Text>
-      <ul className="mt-2 space-y-1">
+      <ul className="mt-2 list-disc space-y-1">
         {items.map((item) => (
           <Text
             variant="body-tight"
             tone="body"
             as="li"
             key={item}
-            className="ml-4 list-disc"
+            className="ml-4"
           >
             <Text
               variant="small-mono-tight"

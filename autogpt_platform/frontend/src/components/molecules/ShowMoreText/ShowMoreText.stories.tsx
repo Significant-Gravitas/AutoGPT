@@ -247,7 +247,7 @@ export const LongContent: Story = {
   render: () => (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+        <h3 className="mb-2 text-body font-medium text-foreground-tertiary">
           Lead Text
         </h3>
         <ShowMoreText variant="lead" previewLimit={120}>
@@ -261,7 +261,7 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+        <h3 className="mb-2 text-body font-medium text-foreground-tertiary">
           Body Text
         </h3>
         <ShowMoreText variant="body" previewLimit={120}>
@@ -275,7 +275,7 @@ export const LongContent: Story = {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-foreground-tertiary">
+        <h3 className="mb-2 text-body font-medium text-foreground-tertiary">
           Small Text
         </h3>
         <ShowMoreText variant="small" previewLimit={120}>

@@ -31,19 +31,19 @@ export const AgentTable: React.FC<AgentTableProps> = ({
         <div className="border-t border-border-strong" />
         <div className="flex items-center px-4 py-2">
           <div className="grid w-full grid-cols-[minmax(400px,1fr)_180px_140px_100px_100px_40px] items-center gap-4">
-            <div className="text-sm font-medium text-foreground-emphasis">
+            <div className="text-body font-medium text-foreground-emphasis">
               Workflow info
             </div>
-            <div className="text-sm font-medium text-foreground-emphasis">
+            <div className="text-body font-medium text-foreground-emphasis">
               Date submitted
             </div>
-            <div className="text-sm font-medium text-foreground-emphasis">
+            <div className="text-body font-medium text-foreground-emphasis">
               Status
             </div>
-            <div className="text-right text-sm font-medium text-foreground-emphasis">
+            <div className="text-right text-body font-medium text-foreground-emphasis">
               Runs
             </div>
-            <div className="text-right text-sm font-medium text-foreground-emphasis">
+            <div className="text-right text-body font-medium text-foreground-emphasis">
               Reviews
             </div>
             <div></div>
@@ -73,7 +73,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center font-sans text-base text-foreground-secondary">
+        <div className="py-4 text-center font-sans text-body-lg text-foreground-secondary">
           No workflows available. Create your first workflow to get started!
         </div>
       )}
