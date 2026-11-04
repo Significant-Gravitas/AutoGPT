@@ -95,7 +95,7 @@ class LinuxBackend(ComputerUseBackend):
         feats = ["screenshot", "input", "apps", "permissions"]
         if self._has_wmctrl:
             feats.append("windows")
-        if self._clipboard_enabled and (self._has_xclip or self._has_wlcopy):
+        if self._clipboard_enabled and self._has_clipboard_tool():
             feats.append("clipboard")
         return feats
 
@@ -125,7 +125,7 @@ class LinuxBackend(ComputerUseBackend):
         ]
         if self._has_wmctrl:
             feats.extend(["window.list", "window.focus"])
-        if self._clipboard_enabled and (self._has_xclip or self._has_wlcopy):
+        if self._clipboard_enabled and self._has_clipboard_tool():
             feats.extend(["clipboard.read", "clipboard.write"])
         return feats
 
@@ -610,6 +610,12 @@ class LinuxBackend(ComputerUseBackend):
                 return None, None
         return None, None
 
+    def _has_clipboard_tool(self) -> bool:
+        """Whether the tool clipboard reads and writes go through is installed:
+        wl-copy in a Wayland session, xclip otherwise. wl-copy alone can't
+        reach an X11 clipboard."""
+        return (self._wayland and self._has_wlcopy) or self._has_xclip
+
     def _write_clipboard_text(self, content: str) -> int | None:
         """Write `content`; raise if it did not land, so nothing acknowledges
         or pastes a stale clipboard. The CLI tools expose no sequence number."""
@@ -632,7 +638,7 @@ class LinuxBackend(ComputerUseBackend):
             paste
             and paste_is_worth_it(text)
             and self._clipboard_enabled
-            and (self._has_xclip or self._has_wlcopy)
+            and self._has_clipboard_tool()
         ):
             if not preserve_clipboard:
                 self._do_paste(text, restore=None)

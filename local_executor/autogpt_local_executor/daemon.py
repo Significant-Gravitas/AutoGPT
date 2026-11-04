@@ -664,10 +664,22 @@ class ShimDaemon:
                     except Exception:
                         logger.debug("TOKEN_REFRESHED audit emit failed", exc_info=True)
                 return await self._read_access_token()
-            except DaemonAuthenticationError:
+            except (DaemonAuthenticationError, KeychainUnavailableError):
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
+            except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+                raise DaemonAuthenticationError(
+                    "No usable OS keychain is configured. Set one up, then run "
+                    "`autogpt-shim auth` with the intended deployment configuration."
+                ) from None
+            except keyring.errors.KeyringError as exc:
+                # Reading the refresh token or storing the new pair failed: a
+                # keychain that locked, say, which can clear on its own.
+                raise KeychainUnavailableError(
+                    f"The OS keychain could not be used during a token refresh "
+                    f"({type(exc).__name__}); it may be locked. Retrying."
+                ) from None
             except httpx.TransportError as exc:
                 raise TokenRefreshUnavailableError(
                     f"The token endpoint could not be reached ({type(exc).__name__}); retrying."

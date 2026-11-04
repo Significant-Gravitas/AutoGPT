@@ -81,6 +81,7 @@ single JSON object with this shape:
 | `FILE_MOVE` | `{src, dst, overwrite}` |
 | `SCREENSHOT_REQUEST` | `{monitor, quality, image_bytes_returned, width?, height?}` — no image content; `width`/`height` only present on success |
 | `INPUT_ACTION` | `{action, coordinate, key, direction, clicks, text_length}` — the `text` payload is replaced by its byte length (`text_length`); `null` when the action has no text |
+| `APP_LAUNCH` | `{bundle_id, executable_path, args, activate, pid?}` — `args` in full, as `EXECUTE_COMMAND` keeps `argv`, since they decide what runs; `pid` only on success |
 | `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
 | `DIRECTORY_LIST` | `{browse_id, path, entries_returned, truncated}` — logs the canonical directory being viewed, never returned entry-name arrays or opaque references |
 | `SESSION_ALLOWED_ROOT_SET` | `{previous_allowed_root, allowed_root, fingerprint, revision}` |

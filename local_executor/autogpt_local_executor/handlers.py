@@ -1686,7 +1686,8 @@ class ComputerUseHandler:
         details = {
             "bundle_id": p.bundle_id,
             "executable_path": p.executable_path,
-            "args_count": len(p.args),
+            # In full, as EXECUTE_COMMAND keeps argv: they decide what runs.
+            "args": list(p.args),
             "activate": p.activate,
         }
         try:

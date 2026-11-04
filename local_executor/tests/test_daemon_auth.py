@@ -577,3 +577,46 @@ async def test_a_refresh_that_could_not_reach_the_server_is_retried(
             await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
     else:
         assert await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("where", "error", "terminal"),
+    [
+        ("refresh", "KeyringLocked", False),
+        ("refresh", "PasswordSetError", False),
+        ("refresh", "NoKeyringError", True),
+        ("reread", "KeyringLocked", False),
+    ],
+)
+async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no_keychain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, error: str, terminal: bool
+) -> None:
+    """The refresh's catch-all took a keychain that locked during the refresh
+    for a refused refresh token, which ended the session for good."""
+    import keyring.errors
+
+    from autogpt_local_executor.auth import OAuthFlow
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
+    failure = getattr(keyring.errors, error)
+    reads = 0
+
+    async def get_access_token() -> str:
+        nonlocal reads
+        reads += 1
+        if where == "reread" and reads > 1:
+            raise failure("keychain says no")
+        return "stale"
+
+    async def refresh(_flow) -> None:
+        if where == "refresh":
+            raise failure("keychain says no")
+
+    daemon = _daemon(tmp_path)
+    daemon.token_store = SimpleNamespace(get_access_token=get_access_token)
+    monkeypatch.setattr(OAuthFlow, "refresh_token", refresh)
+
+    expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
+    with pytest.raises(expected):
+        await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")

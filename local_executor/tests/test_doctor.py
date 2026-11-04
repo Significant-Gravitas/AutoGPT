@@ -405,3 +405,26 @@ def test_doctor_follows_the_backend_when_a_wayland_display_is_set(tmp_path, monk
     )
 
     assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
+
+
+def test_doctor_does_not_hang_finding_a_keyring_backend(monkeypatch) -> None:
+    """Finding the backend can block too (the Secret Service check makes
+    D-Bus calls), and it ran before the time limit started."""
+    import sys
+    import threading
+    import time
+
+    answer = threading.Event()
+    module = _keyring_module(_MemoryKeyring())
+    module.get_keyring.side_effect = lambda: answer.wait(30)
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    monkeypatch.setattr(doctor, "KEYCHAIN_PROBE_SECONDS", 0.2)
+    started = time.monotonic()
+    try:
+        result = doctor._check_keychain()
+    finally:
+        answer.set()
+
+    assert time.monotonic() - started < 5
+    assert result.marker == "WARN"
+    assert "did not answer" in result.detail

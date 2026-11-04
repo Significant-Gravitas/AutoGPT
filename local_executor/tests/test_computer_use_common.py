@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -615,3 +615,24 @@ def test_typing_takes_tabs_and_newlines() -> None:
     from autogpt_local_executor.computer_use.backends._common import ensure_typeable
 
     ensure_typeable("line one\n\tindented\r\n")
+
+
+@pytest.mark.asyncio
+async def test_app_launch_audits_its_arguments(tmp_path: Path) -> None:
+    """The arguments decide what a launch runs (`cmd.exe /c ...`, say), as an
+    EXECUTE_COMMAND's argv does, but the record kept only their count."""
+    audit = MagicMock()
+    audit.write = AsyncMock()
+    handler = ComputerUseHandler(make_config(tmp_path), audit=audit)
+    fb = attach_fake(handler)
+    fb.app_launch.return_value = 4321
+    msg = AppLaunchMessage(
+        id=new_id(),
+        ts=now_ts(),
+        payload=AppLaunchPayload(executable_path="/usr/bin/env", args=["sh", "-c", "true"]),
+    )
+
+    await handler.handle(msg)
+
+    assert audit.write.call_args.args == ("APP_LAUNCH",)
+    assert audit.write.call_args.kwargs["details"]["args"] == ["sh", "-c", "true"]
