@@ -296,7 +296,7 @@ _ROLE_SKILLS: dict[str, tuple[str, ...]] = {
     "Founder/CEO": ("sales", "marketing", "finance"),
     "Marketing": ("marketing", "competitors", "data"),
     "Sales/BD": ("sales", "crm"),
-    "Operations": ("ops", "assistant"),
+    "Operations": ("ops", "data"),
     "Product/PM": ("product", "data", "competitors"),
     "Engineering": ("engineering", "security", "data"),
     "HR/People": ("recruiting", "people", "ops"),
@@ -356,10 +356,10 @@ def fallback_expert_recommendations(
         if len(picked) == MAX_FALLBACK_EXPERTS:
             break
         # Someone already picked for an earlier skill covers this one too.
-        if role_skills.first_with_skill((skill,), picked) is not None:
+        if role_skills.best_for((skill,), picked) is not None:
             continue
         taken = {template.id for template in picked}
-        best = role_skills.best_template(
+        best = role_skills.most_focused(
             skill, [t for t in templates if t.id not in taken]
         )
         if best is not None:
@@ -399,9 +399,7 @@ def _fallback_raise(
         ),
         None,
     )
-    covered = role_skills.first_with_skill(
-        _RAISE_COVERED_BY.get(role or "", ()), picked
-    )
+    covered = role_skills.best_for(_RAISE_COVERED_BY.get(role or "", ()), picked)
     if role is None or covered is not None:
         return None
     return RaiseSuggestion(

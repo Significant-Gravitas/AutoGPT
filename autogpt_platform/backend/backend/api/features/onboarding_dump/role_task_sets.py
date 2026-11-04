@@ -43,7 +43,7 @@ ROLE_FALLBACK_TASKS: dict[str, list[RoleTask]] = {
         ),
         RoleTask(
             title="Write a one-page pitch for your next investor or partner call",
-            owner_skills=("finance",),
+            owner_skills=("fundraising", "finance"),
             prompt="Write a one-page pitch for my next investor or partner conversation. Ask me three questions about the business first.",
             icon="file-text",
         ),

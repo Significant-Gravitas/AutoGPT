@@ -115,7 +115,7 @@ def test_a_product_manager_with_no_brain_dump_gets_a_product_team():
         ("Founder/CEO", [], ["Max", "Maya", "Daniel"]),
         ("Marketing", [], ["Maya", "Nadia", "Quinn"]),
         ("Sales/BD", [], ["Max", "Omar"]),
-        ("Operations", [], ["Frankie", "Kai"]),
+        ("Operations", [], ["Frankie", "Quinn"]),
         ("Product/PM", [], ["Alex", "Quinn", "Nadia"]),
         ("Engineering", [], ["Casey", "Devon", "Quinn"]),
         # Ines (People Ops & HR) covers ops too, so nobody else is added.
@@ -124,6 +124,8 @@ def test_a_product_manager_with_no_brain_dump_gets_a_product_team():
         ("Other", ["CRM & data entry"], ["Omar"]),
         ("Other", ["Customer support"], ["Robin"]),
         ("Other", ["Research"], ["Quinn"]),
+        # Omar's role is CRM work, not selling, so the leads still get Max.
+        ("Other", ["CRM & data entry", "Finding leads"], ["Omar", "Max"]),
         # The need the user named comes before finance, which the role only
         # suggests.
         ("Founder/CEO", ["Scheduling", "Finding leads"], ["Max", "Kai", "Maya"]),
@@ -170,6 +172,8 @@ def test_every_role_plan_is_the_team_s_work_not_otto_s(user_role: str):
     # Engineering's customer questions are the one task no engineering
     # expert covers.
     assert owners.count(None) <= 1
+    # Nobody is hired for a plan with nothing of theirs on it.
+    assert {e.template_id for e in team} <= set(owners)
 
 
 def test_a_task_whose_best_match_is_cut_from_the_team_goes_to_one_who_stays():
@@ -205,7 +209,10 @@ def test_a_task_whose_best_match_is_cut_from_the_team_goes_to_one_who_stays():
         ("Product", {"product"}),
         ("Dependency & Security Hygiene", {"security"}),
         ("Code Review & QA", {"engineering"}),
-        ("RevOps & CRM Hygiene", {"sales", "crm"}),
+        ("RevOps & CRM Hygiene", {"crm"}),
+        ("Finance, Invoicing & Bookkeeping", {"finance", "bookkeeping"}),
+        ("Finance, Fundraising & Investor Relations", {"finance", "fundraising"}),
+        ("Privacy & Compliance", {"legal"}),
         ("People Ops & HR", {"people", "ops"}),
         ("PR & Communications", {"marketing"}),
         ("Deal Desk & Proposal Support", {"sales"}),
@@ -246,6 +253,145 @@ def test_a_greeting_task_with_no_jev_goes_to_whoever_its_title_names():
 def test_the_most_focused_template_takes_a_need():
     # "Sales" over "Deal Desk & Proposal Support"; "Product" over "Product
     # Management"; among equals, the roster's order.
-    assert role_skills.best_template("sales", TEMPLATES).name == "Max"
-    assert role_skills.best_template("product", TEMPLATES).name == "Alex"
-    assert role_skills.best_template("legal", []) is None
+    assert role_skills.most_focused("sales", TEMPLATES).name == "Max"
+    assert role_skills.most_focused("product", TEMPLATES).name == "Alex"
+    assert role_skills.most_focused("legal", []) is None
+
+
+@pytest.mark.parametrize(
+    ("team", "title", "icon", "owner"),
+    [
+        # A word in passing never outranks what the task is.
+        (
+            ["Alex", "Maya", "Quinn"],
+            "Write a LinkedIn post announcing the new feature",
+            "megaphone",
+            "Maya",
+        ),
+        (
+            ["Alex", "Maya", "Quinn"],
+            "Draft the launch newsletter for the export feature",
+            "envelope",
+            "Maya",
+        ),
+        (
+            ["Alex", "Maya", "Quinn"],
+            "Draft the PRD for the newsletter signup",
+            "file-text",
+            "Alex",
+        ),
+        # The specialist on the team takes their own work.
+        (["Max", "Omar", "Quinn"], "Dedupe the contacts in your CRM", "users", "Omar"),
+        (["Max", "Omar", "Quinn"], "Clean up your CRM data", "sparkle", "Omar"),
+        (
+            ["Ellis", "Alex", "Max"],
+            "Review the vendor contract before Friday",
+            "file-text",
+            "Ellis",
+        ),
+        (
+            ["Devon", "Quinn", "Sasha"],
+            "Patch the critical CVEs in your dependencies",
+            "bell",
+            "Devon",
+        ),
+        (
+            ["Alex", "Harper", "Quinn"],
+            "Summarise this week's user interviews",
+            "file-text",
+            "Quinn",
+        ),
+        (
+            ["Alex", "Harper", "Quinn"],
+            "Schedule the interviews for the design role",
+            "calendar-check",
+            "Harper",
+        ),
+        (
+            ["Theo", "Mina", "Daniel"],
+            "Chase the three late invoices",
+            "currency-dollar",
+            "Mina",
+        ),
+        (
+            ["Mina", "Daniel", "Theo"],
+            "Write the update for your investors",
+            "file-text",
+            "Theo",
+        ),
+        (["Ellis", "Alex", "Max"], "Redline the Acme MSA", "file-text", "Ellis"),
+        (
+            ["Lena", "Alex", "Max"],
+            "Answer the security questionnaire from Acme",
+            "file-text",
+            "Lena",
+        ),
+        # Among several with the skill, the most focused, not the first.
+        (
+            ["Clip", "Maya", "Quinn"],
+            "Draft next week's posts in your voice",
+            "megaphone",
+            "Maya",
+        ),
+        (["Riley", "Robin", "Sasha"], "Triage the support inbox", "chats", "Robin"),
+    ],
+)
+def test_a_greeting_task_goes_to_the_teammate_its_subject_fits(
+    team: list[str], title: str, icon: str, owner: str
+):
+    prompt = SuggestedPrompt(title=title, prompt=".", icon=icon)
+
+    [owned] = plan_owners.fallback_assign([prompt], [_expert(n) for n in team])
+
+    assert _names([owned.expert_template_id]) == [owner]
+
+
+@pytest.mark.parametrize(
+    ("user_role", "team", "owners"),
+    [
+        # The specialist listed first never takes the generalist's work.
+        ("Marketing", ["Clip", "Maya", "Maria"], ["Maya"] * 5),
+        ("Sales/BD", ["Omar", "Max", "Jordan"], ["Max", "Max", "Max", "Omar", "Max"]),
+        ("Operations", ["Ines", "Frankie", "Kai"], ["Frankie"] * 5),
+        ("Operations", ["Vera", "James", "Kai"], ["James"] * 5),
+    ],
+)
+def test_a_role_set_goes_to_the_most_focused_teammate_whatever_the_order(
+    user_role: str, team: list[str], owners: list[str]
+):
+    experts = [_expert(name) for name in team]
+
+    owned, _ = plan_owners.cap_team(
+        role_tasks.role_prompts(user_role, experts), experts
+    )
+
+    assert _names([p.expert_template_id for p in owned]) == owners
+
+
+def test_a_later_task_s_owner_takes_a_seat_before_someone_with_none():
+    # Five recommended: the first three tasks are Alex's and Quinn's, so the
+    # third seat goes to Maya, who owns the fourth, not to Kai or Max, who
+    # come first in the recommendation but own nothing.
+    team = [
+        _expert("Alex"),
+        _expert("Kai"),
+        _expert("Max"),
+        _expert("Quinn"),
+        _expert("Maya"),
+    ]
+    prompts = [
+        SuggestedPrompt(title="Draft the PRD", prompt=".", icon="file-text"),
+        SuggestedPrompt(title="Track the funnel", prompt=".", icon="chart-bar"),
+        SuggestedPrompt(title="Write the spec", prompt=".", icon="file-text"),
+        SuggestedPrompt(title="Write the launch posts", prompt=".", icon="megaphone"),
+    ]
+
+    owned, kept = plan_owners.cap_team(plan_owners.fallback_assign(prompts, team), team)
+
+    assert [e.name for e in kept] == ["Alex", "Quinn", "Maya"]
+    assert _names([p.expert_template_id for p in owned]) == [
+        "Alex",
+        "Quinn",
+        "Alex",
+        "Maya",
+    ]

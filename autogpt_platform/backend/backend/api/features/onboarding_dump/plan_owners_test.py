@@ -139,7 +139,7 @@ def test_an_owner_is_matched_by_role_words_whatever_their_case_and_spacing():
     assert plan_owners.owner_for_skills((), team) is None
 
 
-def test_the_team_is_the_first_three_tasks_owners_then_the_recommendation():
+def test_the_team_is_the_first_three_tasks_owners_then_later_ones_then_the_rest():
     prompts = [
         PROMPTS[0].model_copy(update={"expert_template_id": "tpl-nadia"}),
         PROMPTS[1].model_copy(update={"expert_template_id": None}),
@@ -149,14 +149,14 @@ def test_the_team_is_the_first_three_tasks_owners_then_the_recommendation():
 
     capped_prompts, team = plan_owners.cap_team(prompts, TEAM)
 
-    # Nadia owns a top-three task; Maria and Max pad from the recommendation.
-    assert [e.name for e in team] == ["Nadia", "Maria", "Max"]
-    # Mina is not on the capped team, so her task goes to Otto.
+    # Nadia owns a top-three task and Mina a later one; Maria pads from the
+    # recommendation, ahead of Max, who owns nothing either.
+    assert [e.name for e in team] == ["Nadia", "Mina", "Maria"]
     assert [p.expert_template_id for p in capped_prompts] == [
         "tpl-nadia",
         None,
         "tpl-nadia",
-        None,
+        "tpl-mina",
     ]
 
 

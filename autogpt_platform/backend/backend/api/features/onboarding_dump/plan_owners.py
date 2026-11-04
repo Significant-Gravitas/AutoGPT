@@ -26,30 +26,73 @@ MAX_TEAM = 3
 # order of preference. A hint whose skills nobody on the team has gives no
 # owner, so the task stays Otto's.
 TITLE_HINTS: list[tuple[re.Pattern[str], tuple[str, ...]]] = [
+    # The most specific subjects first, so a word in passing ("the new
+    # feature", "last month's numbers") never outranks what the task is.
+    (
+        re.compile(r"\b(crm|hubspot|salesforce|pipedrive)\b", re.IGNORECASE),
+        ("crm", "sales"),
+    ),
+    (
+        re.compile(r"\b(competitors?|competitive|competition)\b", re.IGNORECASE),
+        ("competitors", "research", "marketing"),
+    ),
     (
         re.compile(
-            r"\b(specs?|prds?|roadmaps?|release notes|features?|feedback|"
-            r"user stories|backlog)\b",
+            r"\b(contracts?|msas?|ndas?|redlines?|compliance|privacy|gdpr|"
+            r"questionnaires?|legal)\b",
+            re.IGNORECASE,
+        ),
+        ("legal",),
+    ),
+    (
+        re.compile(
+            r"\b(security|vulnerabilit(y|ies)|cves?|dependenc(y|ies)|patch(es)?)\b",
+            re.IGNORECASE,
+        ),
+        ("security", "engineering"),
+    ),
+    (
+        re.compile(r"\b(user|customer) (interviews?|research)\b", re.IGNORECASE),
+        ("research", "product"),
+    ),
+    (
+        re.compile(
+            r"\b(specs?|prds?|roadmaps?|release notes|user stories|backlog|"
+            r"feature requests?)\b",
             re.IGNORECASE,
         ),
         ("product",),
     ),
     (
-        re.compile(r"\b(competitors?|competitive)\b", re.IGNORECASE),
-        ("competitors", "research", "marketing"),
-    ),
-    (
         re.compile(
-            r"\b(metrics|kpis?|dashboards?|analytics|numbers|data|reports?|"
-            r"funnels?|cohorts?)\b",
+            r"\b(applicants?|candidates?|hiring|job (posts?|descriptions?)|"
+            r"recruit\w*)\b|(?<!user )(?<!customer )\binterviews?\b",
             re.IGNORECASE,
         ),
-        ("data", "finance", "ops"),
+        ("recruiting",),
+    ),
+    (
+        re.compile(r"\b(tickets?|support|churn|help desk)\b", re.IGNORECASE),
+        ("support",),
+    ),
+    (
+        re.compile(r"\b(code|bugs?|deploys?|pull requests?)\b", re.IGNORECASE),
+        ("engineering",),
     ),
     (
         re.compile(
-            r"\b(leads?|prospects?|outreach|crm|deals?|pipeline)\b", re.IGNORECASE
+            r"\b(invoices?|expenses?|bookkeeping|books|payroll|receipts?)\b",
+            re.IGNORECASE,
         ),
+        ("bookkeeping", "finance", "ops"),
+    ),
+    (
+        # Not a bare "pitch": a sales pitch is not fundraising.
+        re.compile(r"\b(investors?|fundraising|pitch decks?)\b", re.IGNORECASE),
+        ("fundraising", "finance"),
+    ),
+    (
+        re.compile(r"\b(leads?|prospects?|outreach|deals?|pipeline)\b", re.IGNORECASE),
         ("sales",),
     ),
     (
@@ -61,21 +104,11 @@ TITLE_HINTS: list[tuple[re.Pattern[str], tuple[str, ...]]] = [
     ),
     (
         re.compile(
-            r"\b(invoices?|expenses?|bookkeeping|books|payroll)\b", re.IGNORECASE
+            r"\b(metrics|kpis?|dashboards?|analytics|numbers|reports?|funnels?|"
+            r"cohorts?)\b",
+            re.IGNORECASE,
         ),
-        ("finance", "ops"),
-    ),
-    (
-        re.compile(r"\b(applicants?|candidates?|hiring|interviews?)\b", re.IGNORECASE),
-        ("recruiting",),
-    ),
-    (
-        re.compile(r"\b(code|bugs?|deploys?|pull requests?)\b", re.IGNORECASE),
-        ("engineering",),
-    ),
-    (
-        re.compile(r"\b(tickets?|support|churn)\b", re.IGNORECASE),
-        ("support",),
+        ("data", "finance", "ops"),
     ),
     (
         re.compile(r"\b(meetings?|calendar|schedul\w*)\b", re.IGNORECASE),
@@ -95,7 +128,7 @@ OWNER_HINTS: dict[str, tuple[str, ...]] = {
     "newspaper": ("marketing",),
     "globe": ("marketing",),
     "chart-bar": ("data", "finance", "ops"),
-    "currency-dollar": ("finance", "ops"),
+    "currency-dollar": ("bookkeeping", "finance", "ops"),
     "file-text": ("product", "ops"),
     "magnifying-glass": ("competitors", "research", "marketing"),
     "bell": ("competitors", "research", "marketing"),
@@ -133,12 +166,17 @@ def cap_team(
 def kept_team(
     owners: Sequence[str | None], team: list[RecommendedExpert]
 ) -> list[RecommendedExpert]:
-    """The distinct owners of the first three tasks, in that order, padded
-    from the team's own order up to three."""
+    """The distinct owners of the first three tasks, in that order, then
+    those of the later tasks, then the rest of the team in its own order, up
+    to three. A later task's owner takes a seat before someone with no task."""
     by_id = {expert.template_id: expert for expert in team}
-    first = list(dict.fromkeys(o for o in owners[:MAX_TEAM] if o and o in by_id))
-    padding = [e.template_id for e in team if e.template_id not in first]
-    return [by_id[template_id] for template_id in (first + padding)[:MAX_TEAM]]
+    ranked = [
+        *(o for o in owners[:MAX_TEAM] if o in by_id),
+        *(o for o in owners[MAX_TEAM:] if o in by_id),
+        *(e.template_id for e in team),
+    ]
+    picked = list(dict.fromkeys(o for o in ranked if o is not None))[:MAX_TEAM]
+    return [by_id[template_id] for template_id in picked]
 
 
 def owners_for(
@@ -166,9 +204,9 @@ def _owned_by(prompt: P, by_id: dict[str, RecommendedExpert], kept: set[str]) ->
 def owner_for_skills(
     skills: tuple[str, ...], team: list[RecommendedExpert]
 ) -> str | None:
-    """The template id of whoever on ``team`` has the first of ``skills``
-    anyone has, in the team's order."""
-    owner = role_skills.first_with_skill(skills, team)
+    """The template id of whoever on ``team`` is most focused on the first of
+    ``skills`` anyone has (``role_skills.best_for``)."""
+    owner = role_skills.best_for(skills, team)
     return owner.template_id if owner else None
 
 

@@ -940,10 +940,13 @@ def _hire(template_id: str, name: str) -> Expert:
     )
 
 
+# The Founder/CEO role team from this roster is Max and Maria: Mina's role
+# names none of its skills (sales, marketing, finance), so she is on a team
+# only when a take recommends her.
 ROSTER = [
     _roster_template("tpl-max", "Max", "Sales"),
     _roster_template("tpl-maria", "Maria", "Marketing"),
-    _roster_template("tpl-mina", "Mina", "Bookkeeping"),
+    _roster_template("tpl-mina", "Mina", "Ops"),
 ]
 FOUNDER_TITLES = [task.title for task in ROLE_FALLBACK_TASKS["Founder/CEO"]]
 HEARD_GREETING = (
@@ -1083,13 +1086,14 @@ def test_a_read_dump_serves_its_plan_with_what_otto_heard(
     assert body["heard"] == (
         "You sell hand-drawn stickers on Etsy. Listings eat your evenings."
     )
-    assert [e["name"] for e in body["team"]] == ["Maria", "Max", "Mina"]
-    # Nadia is not on the capped team, so her task is Otto's.
+    # Nadia owns the fourth task, so she takes the last seat before Mina,
+    # who owns none.
+    assert [e["name"] for e in body["team"]] == ["Maria", "Max", "Nadia"]
     assert [t["expert_template_id"] for t in body["tasks"]] == [
         "tpl-maria",
         "tpl-max",
         None,
-        None,
+        "tpl-nadia",
     ]
     assert body["tasks"][2]["why"] == "So nothing slips."
 
@@ -1551,13 +1555,14 @@ def test_a_generic_greeting_swapped_for_the_role_set_keeps_the_dumps_team(
     assert body["source"] == "fallback"
     assert body["skipped_dump"] is False
     assert body["heard"] is None
-    # Mina is not on the role's own team; she is on the one this take got.
+    # Mina is not on the role's own team; she is on the one this take got,
+    # and the numbers are ops work, so that task is hers rather than Otto's.
     assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     assert [t["title"] for t in body["tasks"]] == FOUNDER_TITLES
     assert [t["expert_template_id"] for t in body["tasks"]] == [
         "tpl-max",
         "tpl-maria",
-        None,
+        "tpl-mina",
         None,
         "tpl-maria",
     ]
