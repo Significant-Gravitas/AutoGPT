@@ -372,9 +372,12 @@ const DEFAULT_COMPONENTS: StreamdownComponents = {
   a: MessageLink,
 };
 
+// A caller may replace any default but the link, which keeps the dialog in
+// front of every link to another site.
 const mergeDefaultComponents = createComponentsMerger((components) => ({
   ...DEFAULT_COMPONENTS,
   ...components,
+  a: MessageLink,
 }));
 
 function withDefaultComponents(components: StreamdownComponents | undefined) {

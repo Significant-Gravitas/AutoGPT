@@ -5,6 +5,8 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { remarkAppLinks, toAppPath } from "../app-links";
 import { MessageLink } from "../components/MessageLink/MessageLink";
@@ -39,6 +41,7 @@ const CLICKS: [string, (link: HTMLElement) => void][] = [
   ["a Ctrl-click", (link) => fireEvent.click(link, { ctrlKey: true })],
   ["a Cmd-click", (link) => fireEvent.click(link, { metaKey: true })],
   ["a Shift-click", (link) => fireEvent.click(link, { shiftKey: true })],
+  ["an Alt-click", (link) => fireEvent.click(link, { altKey: true })],
 ];
 
 // Whether the browser would follow the link after the app's handlers ran. The
@@ -148,6 +151,44 @@ describe("MessageResponse links", () => {
     },
   );
 
+  it("treats an absolute link to this site as a same-site link", async () => {
+    const url = `${window.location.origin}/library/agents/${AGENT_ID}`;
+    await renderReply(`[open it](${url})`);
+
+    expect(hrefOf(screen.getByRole("link", { name: "open it" }))).toBe(url);
+  });
+
+  it("never links a protocol-relative URL to the other site", async () => {
+    const container = await renderReply("[x](//evil.example/path)");
+
+    expect(screen.queryByRole("button", { name: "x" })).toBeNull();
+    for (const link of linksOf(container)) {
+      expect(hrefOf(link) ?? "").not.toContain("evil.example");
+    }
+  });
+
+  it("asks when a link to another site is opened from the keyboard", async () => {
+    await renderReply("[docs](https://docs.agpt.co/guide)");
+    screen.getByRole("button", { name: "docs" }).focus();
+
+    await userEvent.keyboard("{Enter}");
+
+    expect(await screen.findByText("https://docs.agpt.co/guide")).toBeTruthy();
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dialog when the caller passes its own link renderer", async () => {
+    render(
+      <MessageResponse components={{ a: () => <a href="#">custom</a> }}>
+        {"[docs](https://docs.agpt.co/guide)"}
+      </MessageResponse>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "docs" }));
+    expect(await screen.findByText("https://docs.agpt.co/guide")).toBeTruthy();
+    expect(screen.queryByText("custom")).toBeNull();
+  });
+
   it("opens nothing when the dialog is cancelled", async () => {
     await renderReply("[docs](https://docs.agpt.co/guide)");
 
@@ -220,6 +261,44 @@ describe("MessageLink", () => {
     expect(link.hasAttribute("href")).toBe(false);
     fireEvent.click(link);
     expect(screen.queryByText("Open external link")).toBeNull();
+  });
+
+  it("keeps a link with a scheme it can't open inert", () => {
+    render(<MessageLink href="javascript:alert(1)">run</MessageLink>);
+    const link = screen.getByText("run");
+
+    expect(link.hasAttribute("href")).toBe(false);
+    expect(screen.queryByRole("button", { name: "run" })).toBeNull();
+    fireEvent.click(link);
+    expect(screen.queryByText("Open external link")).toBeNull();
+  });
+
+  it("asks before opening an email link", () => {
+    render(<MessageLink href="mailto:help@example.com">write</MessageLink>);
+
+    fireEvent.click(screen.getByRole("button", { name: "write" }));
+    expect(screen.getByText("mailto:help@example.com")).toBeTruthy();
+  });
+
+  it("keeps the link's title on a link to another site", () => {
+    render(
+      <MessageLink href="https://docs.agpt.co" title="The guide">
+        docs
+      </MessageLink>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "docs" }).getAttribute("title"),
+    ).toBe("The guide");
+  });
+
+  it("draws a same-site path as an anchor on the server too", () => {
+    const html = renderToString(
+      <MessageLink href={`/library/agents/${AGENT_ID}`}>open it</MessageLink>,
+    );
+
+    expect(html).toContain(`href="/library/agents/${AGENT_ID}"`);
+    expect(html).not.toContain("<button");
   });
 });
 

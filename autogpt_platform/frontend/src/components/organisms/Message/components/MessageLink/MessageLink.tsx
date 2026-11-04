@@ -1,7 +1,8 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { ExternalLinkButton } from "./components/ExternalLinkButton/ExternalLinkButton";
-import { INCOMPLETE_LINK_HREF, isSameOriginLink } from "./helpers";
+import { INCOMPLETE_LINK_HREF } from "./helpers";
+import { useMessageLink } from "./useMessageLink";
 
 interface Props extends ComponentProps<"a"> {
   node?: unknown;
@@ -17,12 +18,11 @@ export function MessageLink({
   node: _node,
   ...props
 }: Props) {
-  const isIncomplete = href === INCOMPLETE_LINK_HREF;
-  const url = isIncomplete ? undefined : href;
+  const { kind } = useMessageLink(href);
 
-  if (url && !isSameOriginLink(url)) {
+  if (kind === "external" && href) {
     return (
-      <ExternalLinkButton url={url} className={className}>
+      <ExternalLinkButton url={href} title={props.title} className={className}>
         {children}
       </ExternalLinkButton>
     );
@@ -31,13 +31,13 @@ export function MessageLink({
   return (
     <a
       {...props}
-      href={url}
+      href={kind === "site" ? href : undefined}
       target="_blank"
       rel="noopener noreferrer"
-      data-incomplete={isIncomplete}
+      data-incomplete={href === INCOMPLETE_LINK_HREF}
       data-streamdown="link"
       // Doubled to outrank the chat's `[&_a]` colour, as WorkspaceLink does.
-      className={cn("font-medium [&&]:text-primary [&&]:underline", className)}
+      className={cn("font-medium [&&]:text-action [&&]:underline", className)}
     >
       {children}
     </a>
