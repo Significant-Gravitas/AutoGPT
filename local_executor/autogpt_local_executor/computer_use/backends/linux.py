@@ -48,10 +48,32 @@ from ._common import (
 
 logger = logging.getLogger(__name__)
 
+# Clipboard targets holding plain text, which is all a text-only restore
+# rebuilds. GTK and Qt list COMPOUND_TEXT with the others for any text copy.
+# Kept in lowercase, as targets are compared: a MIME type's case doesn't count.
+_TEXT_TARGETS = frozenset(
+    {"utf8_string", "string", "text", "compound_text", "text/plain", "text/plain;charset=utf-8"}
+)
+# X11 selection owners list these whatever they hold; they carry no content.
+_SELECTION_PROTOCOL_TARGETS = frozenset({"targets", "timestamp", "multiple", "save_targets"})
+
 
 def _is_wayland() -> bool:
     return os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" or bool(
         os.environ.get("WAYLAND_DISPLAY")
+    )
+
+
+def _in_application_dir(path: str) -> bool:
+    """Whether `path` is in an XDG application directory, where gtk-launch
+    looks desktop file IDs up."""
+    data_home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    directory = os.path.realpath(os.path.dirname(os.path.abspath(path)))
+    return any(
+        directory == os.path.realpath(os.path.join(base, "applications"))
+        for base in [data_home, *data_dirs.split(":")]
+        if os.path.isabs(base)
     )
 
 
@@ -499,21 +521,38 @@ class LinuxBackend(ComputerUseBackend):
             raise FeatureNotSupportedError(
                 "app.launch", reason="executable_path is required on Linux"
             )
-        # .desktop files: prefer gtk-launch, which takes the desktop file ID,
-        # then dex, which takes the file's path.
         if executable_path.endswith(".desktop"):
-            if shutil.which("gtk-launch"):
-                desktop_id = os.path.basename(executable_path).removesuffix(".desktop")
-                cmd = ["gtk-launch", desktop_id]
-            elif shutil.which("dex"):
-                cmd = ["dex", executable_path]
-            else:
+            if args:
                 raise FeatureNotSupportedError(
-                    "app.launch", reason=".desktop launch needs gtk-launch or dex"
+                    "app.launch", reason="args can't be passed to a .desktop file"
                 )
-            proc = subprocess.Popen(cmd, start_new_session=True)
-            return proc.pid
+            return self._launch_desktop_file(executable_path)
         proc = subprocess.Popen([executable_path, *(args or [])], start_new_session=True)
+        return proc.pid
+
+    @staticmethod
+    def _launch_desktop_file(path: str) -> int:
+        """Prefer gtk-launch, which takes a desktop file ID and so finds only
+        files in the XDG application directories; dex takes the file's path."""
+        has_gtk_launch = shutil.which("gtk-launch") is not None
+        if shutil.which("dex") and not (has_gtk_launch and _in_application_dir(path)):
+            return subprocess.Popen(["dex", path], start_new_session=True).pid
+        if not has_gtk_launch:
+            raise FeatureNotSupportedError(
+                "app.launch", reason=".desktop launch needs gtk-launch or dex"
+            )
+        desktop_id = os.path.basename(path).removesuffix(".desktop")
+        proc = subprocess.Popen(["gtk-launch", desktop_id], start_new_session=True)
+        # gtk-launch exits once it has started the app, with a failing status
+        # if it found no such ID or couldn't start it.
+        try:
+            status = proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            return proc.pid  # still starting it: not a failure
+        if status != 0:
+            raise FeatureNotSupportedError(
+                "app.launch", reason=f"gtk-launch {desktop_id} exited with status {status}"
+            )
         return proc.pid
 
     # ── Clipboard ────────────────────────────────────────────────────
@@ -599,14 +638,35 @@ class LinuxBackend(ComputerUseBackend):
                 self._do_paste(text, restore=None)
                 return
             # The restore puts back text only, so paste only with that text in
-            # hand. An empty clipboard, or one the tools can't read as text (an
-            # image, say), is left alone and the text typed.
+            # hand and nothing else on the clipboard. An empty clipboard, one
+            # the tools can't read as text, or one also holding HTML or an
+            # image is left alone and the text typed.
             previous, _ = self._read_clipboard_text()
-            if previous is not None:
+            if previous is not None and self._clipboard_holds_only_text():
                 self._do_paste(text, restore=previous)
                 return
         ensure_typeable(text)
         pyautogui.write(text, interval=0.02)
+
+    def _clipboard_holds_only_text(self) -> bool:
+        """Whether every target the clipboard offers is text. False when the
+        targets can't be listed."""
+        if self._wayland and self._has_wlcopy and shutil.which("wl-paste"):
+            command = ["wl-paste", "--list-types"]
+        elif self._has_xclip:
+            command = ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
+        else:
+            return False
+        try:
+            out = subprocess.check_output(command, timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        targets = {
+            "".join(line.split()).lower()
+            for line in out.decode("utf-8", errors="replace").splitlines()
+        }
+        targets -= _SELECTION_PROTOCOL_TARGETS | {""}
+        return bool(targets) and targets <= _TEXT_TARGETS
 
     def _do_paste(self, text: str, *, restore: str | None) -> None:
         """Paste `text`, then put `restore` back. With `restore=None` the

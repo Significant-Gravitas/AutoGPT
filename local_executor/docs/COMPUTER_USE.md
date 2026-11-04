@@ -296,7 +296,9 @@ trips IME/autocomplete on web forms.
 
 1. **Threshold.** `paste: true` is **only honored when `len(text) >= 200`**,
    or when the text has characters that can't be typed key by key
-   (pyautogui types ASCII only). Otherwise the shim falls through to
+   (pyautogui has keys only for printable ASCII, tab and the line breaks,
+   so other scripts and control characters such as NUL, ESC and DEL
+   need a paste). Otherwise the shim falls through to
    per-key typing, which avoids the clipboard race for short strings that
    don't actually need it. Typing such text is refused
    (`FEATURE_NOT_SUPPORTED`) rather than done in part.
@@ -621,8 +623,12 @@ report one. The shim uses, in order of preference:
 - macOS: `NSWorkspace.openApplication` via PyObjC (no shell, no focus
   steal during background launches — matches cua-driver's design).
 - Windows: `ShellExecute` via `pywin32`.
-- Linux: `subprocess.Popen` with `start_new_session=True` and `XDG_OPEN`
-  fallback if `executable_path` is a `.desktop` file.
+- Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
+  file launches with `gtk-launch` (by its desktop file ID) when it is in
+  an XDG application directory, and with `dex` (by path) otherwise; `args`
+  are refused for one, since its `Exec` line sets them. A `gtk-launch` that
+  exits with a failing status answers `FEATURE_NOT_SUPPORTED`. The pid is
+  the helper's, not the app's.
 
 We deliberately do **not** fall through to `EXECUTE_COMMAND` — the audit
 log distinguishes "agent launched an app" from "agent ran a shell command",

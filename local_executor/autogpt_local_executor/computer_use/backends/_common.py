@@ -12,18 +12,25 @@ from ...protocol import DisplayMonitor
 from ..errors import FeatureNotSupportedError
 
 PASTE_THRESHOLD_CHARS = 200  # Q4 — paste:true only honored when text >= 200 chars.
+# What pyautogui has a key for: printable ASCII, tab and the line breaks.
+_TYPEABLE = frozenset(map(chr, range(0x20, 0x7F))) | {"\t", "\n", "\r"}
+
+
+def _typeable(text: str) -> bool:
+    return all(char in _TYPEABLE for char in text)
 
 
 def paste_is_worth_it(text: str) -> bool:
     """Q4: paste only text long enough to need it, or text with characters
-    that can't be typed key by key (pyautogui types ASCII only)."""
-    return len(text) >= PASTE_THRESHOLD_CHARS or not text.isascii()
+    that can't be typed key by key."""
+    return len(text) >= PASTE_THRESHOLD_CHARS or not _typeable(text)
 
 
 def ensure_typeable(text: str) -> None:
-    """pyautogui types only ASCII and skips anything else without a word, so
-    refuse rather than type part of the text."""
-    if not text.isascii():
+    """pyautogui types printable ASCII, tabs and line breaks, and skips
+    anything else (other scripts, NUL, ESC, DEL) without a word, so refuse
+    rather than type part of the text."""
+    if not _typeable(text):
         raise FeatureNotSupportedError(
             "type",
             reason="this text has characters that can't be typed key by key; send it "

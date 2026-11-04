@@ -320,14 +320,15 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
             )
         )
         return out
-    session = os.environ.get("XDG_SESSION_TYPE", "").lower()
+    from .computer_use.backends.linux import _is_wayland
+
+    # The backend's own rule, so the two agree: it refuses input whenever
+    # WAYLAND_DISPLAY is set, whatever XDG_SESSION_TYPE says.
+    session = "wayland" if _is_wayland() else os.environ.get("XDG_SESSION_TYPE", "").lower()
     # An unset or unrecognized session type (e.g. "tty" in a shell attached to
-    # a running desktop) says nothing about the display; ask the variables.
-    if session not in ("wayland", "x11"):
-        if os.environ.get("WAYLAND_DISPLAY"):
-            session = "wayland"
-        elif os.environ.get("DISPLAY"):
-            session = "x11"
+    # a running desktop) says nothing about the display; ask DISPLAY.
+    if session not in ("wayland", "x11") and os.environ.get("DISPLAY"):
+        session = "x11"
     if session == "wayland":
         out.append(
             CheckResult(

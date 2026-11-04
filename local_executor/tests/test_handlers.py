@@ -584,6 +584,31 @@ async def test_delete_removes_a_symlink_not_its_target(tmp_path: Path, recursive
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("recursive", [False, True])
+async def test_delete_refuses_a_symlink_pointing_outside_the_root_and_leaves_its_target(
+    tmp_path: Path, recursive: bool
+) -> None:
+    """The path must still resolve inside the root (CROSS_PLATFORM.md), so
+    the link stays, and a recursive delete never reaches what it points at."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "documents"
+    outside.mkdir()
+    (outside / "report.txt").write_text("keep")
+    shortcut = root / "shortcut"
+    _symlink_or_skip(shortcut, outside)
+
+    response = await FileHandler(make_config(root)).handle_delete(
+        _delete_msg(shortcut, recursive=recursive)
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert shortcut.is_symlink()
+    assert (outside / "report.txt").read_text() == "keep"
+
+
+@pytest.mark.asyncio
 async def test_delete_removes_a_dangling_symlink(tmp_path: Path) -> None:
     link = tmp_path / "stale"
     _symlink_or_skip(link, tmp_path / "gone.txt")

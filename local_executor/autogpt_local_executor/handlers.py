@@ -47,6 +47,7 @@ from .path_jail import (
     write_jail_file,
 )
 from .protocol import (
+    MAX_WEBSOCKET_MESSAGE_BYTES,
     MAX_WIRE_BASE64_CONTENT_BYTES,
     MAX_WIRE_TEXT_CONTENT_BYTES,
     AckMessage,
@@ -230,6 +231,14 @@ def _elapsed_ms(start: float) -> int:
 _TERMINATE_GRACE_SECONDS = 2.0
 # The most entries one FILE_LIST returns, whatever max_entries asks for.
 MAX_FILE_LIST_ENTRIES = 10_000
+# The most directory entries one FILE_LIST looks at. A glob that matches
+# little would otherwise walk a whole tree, holding a request slot and a
+# worker thread until the walk ended.
+MAX_FILE_LIST_SCANNED = 100_000
+# The most bytes of entries one FILE_LIST reply carries. Long paths can take
+# 10,000 entries past the frame limit, which would refuse the whole reply as
+# FILE_TOO_LARGE; what is left is room for the envelope.
+FILE_LIST_REPLY_BUDGET_BYTES = MAX_WEBSOCKET_MESSAGE_BYTES - 64 * 1024
 
 
 async def _terminate_process_group(pgid: int) -> None:
@@ -1057,31 +1066,44 @@ class FileHandler:
                     for name in (*dirnames, *filenames):
                         yield Path(dirpath) / name
 
+            # `truncated` is set only once something is known to be left out:
+            # an entry not looked at, or a match that didn't fit.
+            scanned = 0
+            reply_bytes = 0
             for p in _candidates():
+                scanned += 1
+                if scanned > MAX_FILE_LIST_SCANNED:
+                    truncated = True
+                    break
                 # A recursive walk reaches the contents of hidden folders too.
                 hidden = any(part.startswith(".") for part in p.relative_to(base).parts)
                 if hidden and not payload.include_hidden:
                     continue
                 if not _matches(p.name):
                     continue
+                if len(entries) >= limit:
+                    truncated = True
+                    break
                 try:
                     st = p.lstat()
                 except OSError:
                     continue
-                entries.append(
-                    FileEntry(
-                        name=p.name,
-                        path=str(p),
-                        is_file=p.is_file(),
-                        is_dir=p.is_dir(),
-                        is_symlink=p.is_symlink(),
-                        size_bytes=st.st_size,
-                        mtime=st.st_mtime,
-                    )
+                entry = FileEntry(
+                    name=p.name,
+                    path=str(p),
+                    is_file=p.is_file(),
+                    is_dir=p.is_dir(),
+                    is_symlink=p.is_symlink(),
+                    size_bytes=st.st_size,
+                    mtime=st.st_mtime,
                 )
-                if len(entries) >= limit:
+                # Measured as it goes on the wire, with the comma after it.
+                size = len(entry.model_dump_json().encode("utf-8")) + 1
+                if reply_bytes + size > FILE_LIST_REPLY_BUDGET_BYTES:
                     truncated = True
                     break
+                reply_bytes += size
+                entries.append(entry)
             return entries, truncated
 
         entries, truncated = await asyncio.to_thread(_walk)

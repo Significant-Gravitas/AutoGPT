@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -172,9 +173,49 @@ def test_linux_computer_use_needs_an_x11_display(
     assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
 
 
+class _DisplayConnectionError(Exception):
+    """What python-xlib raises when the X server can't be reached."""
+
+
+def _fake_xlib(monkeypatch: pytest.MonkeyPatch, display: MagicMock) -> None:
+    """Install `display` as python-xlib's `Xlib.display.Display`."""
+    xlib = types.ModuleType("Xlib")
+    xlib_display = types.ModuleType("Xlib.display")
+    xlib_display.Display = display
+    xlib.display = xlib_display
+    monkeypatch.setitem(sys.modules, "Xlib", xlib)
+    monkeypatch.setitem(sys.modules, "Xlib.display", xlib_display)
+
+
 def test_linux_computer_use_is_advertised_in_an_x11_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
+    display = MagicMock()
+    _fake_xlib(monkeypatch, display)
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
+    display.return_value.close.assert_called_once_with()
+
+
+def test_linux_computer_use_needs_an_x11_display_that_opens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DISPLAY naming an X server that has gone, such as a closed SSH
+    forward, passed as a usable display."""
+    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
+    _fake_xlib(
+        monkeypatch,
+        MagicMock(side_effect=_DisplayConnectionError('Can\'t connect to display ":0"')),
+    )
+
+    assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+def test_linux_computer_use_without_python_xlib_is_not_advertised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
+    monkeypatch.setitem(sys.modules, "Xlib", None)
+
+    assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)

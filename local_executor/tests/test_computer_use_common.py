@@ -595,3 +595,23 @@ async def test_screenshot_rate_limit_rejects_excess_request(tmp_path: Path) -> N
     assert isinstance(second, ErrorMessage)
     assert second.payload.code == ErrorCode.SHIM_OVERLOADED
     backend.screenshot.assert_called_once()
+
+
+@pytest.mark.parametrize("text", ["a\x00b", "bell\x07", "esc\x1b[0m", "del\x7f"])
+def test_typing_refuses_control_characters_pyautogui_cannot_press(text: str) -> None:
+    """They are ASCII, but pyautogui has no key for them and skipped them."""
+    from autogpt_local_executor.computer_use.backends._common import (
+        ensure_typeable,
+        paste_is_worth_it,
+    )
+    from autogpt_local_executor.computer_use.errors import FeatureNotSupportedError
+
+    with pytest.raises(FeatureNotSupportedError):
+        ensure_typeable(text)
+    assert paste_is_worth_it(text)
+
+
+def test_typing_takes_tabs_and_newlines() -> None:
+    from autogpt_local_executor.computer_use.backends._common import ensure_typeable
+
+    ensure_typeable("line one\n\tindented\r\n")

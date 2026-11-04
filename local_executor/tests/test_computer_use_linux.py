@@ -54,6 +54,45 @@ def _x11_session(monkeypatch):
     monkeypatch.setattr(linux_backend, "_is_wayland", lambda: False)
 
 
+_LIST_TARGETS = ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
+# What `xclip -t TARGETS -o` lists for text copied in a GTK app.
+_GTK_TEXT_TARGETS = [
+    "TIMESTAMP",
+    "TARGETS",
+    "MULTIPLE",
+    "SAVE_TARGETS",
+    "UTF8_STRING",
+    "COMPOUND_TEXT",
+    "TEXT",
+    "STRING",
+    "text/plain;charset=utf-8",
+    "text/plain",
+]
+
+
+def _clipboard_targets(monkeypatch, targets: list[str] | None) -> None:
+    """Fake `xclip -t TARGETS -o`. With None it fails, as it does when the
+    clipboard's owner lists no targets."""
+
+    def check_output(command, **_kwargs):
+        assert command == _LIST_TARGETS
+        if targets is None:
+            raise linux_backend.subprocess.CalledProcessError(1, command)
+        return "".join(f"{target}\n" for target in targets).encode()
+
+    monkeypatch.setattr(linux_backend.subprocess, "check_output", check_output)
+
+
+def _xdg_applications(monkeypatch, tmp_path: Path) -> Path:
+    """Point the XDG data directories into tmp_path and return the user's
+    applications directory."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
+    monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "system"))
+    applications = tmp_path / "share" / "applications"
+    applications.mkdir(parents=True)
+    return applications
+
+
 # ── Capabilities ───────────────────────────────────────────────────────
 
 
@@ -204,7 +243,8 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
     monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
     b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
     monkeypatch.setattr(b, "_wayland", False)
-    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     state = {"content": "user secret"}
 
     def _write(text: str) -> None:
@@ -212,9 +252,11 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+    _clipboard_targets(monkeypatch, ["TARGETS", "UTF8_STRING"])
 
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
     assert state["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
@@ -240,6 +282,89 @@ def test_a_clipboard_with_no_text_to_put_back_is_left_alone_and_the_text_typed(
     assert writes == []
     pyautogui.write.assert_called_once_with(text, interval=0.02)
     pyautogui.hotkey.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "targets",
+    [_GTK_TEXT_TARGETS, ["UTF8_STRING", "text/plain;charset=UTF-8"]],
+    ids=["gtk", "charset-in-capitals"],
+)
+def test_a_preserved_paste_goes_ahead_when_the_clipboard_holds_only_text(
+    tmp_path, monkeypatch, targets
+) -> None:
+    """GTK lists COMPOUND_TEXT and the selection's own targets beside the
+    text ones; restoring the text rebuilds all of them. A MIME type's case
+    doesn't matter."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    state = {"content": "user text"}
+    monkeypatch.setattr(b, "_write_clipboard_text", lambda text: state.update(content=text))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+    _clipboard_targets(monkeypatch, targets)
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
+    pyautogui.write.assert_not_called()
+    assert state["content"] == "user text"
+
+
+@pytest.mark.parametrize(
+    "targets",
+    [
+        [*_GTK_TEXT_TARGETS, "text/html"],
+        ["TIMESTAMP", "TARGETS", "image/png", "UTF8_STRING"],
+        None,
+    ],
+    ids=["rich-text", "image", "unlisted"],
+)
+def test_a_preserved_paste_types_over_a_clipboard_holding_more_than_text(
+    tmp_path, monkeypatch, targets: list[str] | None
+) -> None:
+    """The restore puts back text only, so the HTML or image beside it was
+    lost. Targets that can't be listed count as more than text."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    writes: list[str] = []
+    monkeypatch.setattr(b, "_write_clipboard_text", writes.append)
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("user text", None))
+    _clipboard_targets(monkeypatch, targets)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert writes == []
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("wayland", "expected"),
+    [(False, _LIST_TARGETS), (True, ["wl-paste", "--list-types"])],
+    ids=["x11", "wayland"],
+)
+def test_the_clipboard_targets_come_from_xclip_on_x11_and_wl_paste_on_wayland(
+    tmp_path, monkeypatch, wayland: bool, expected: list[str]
+) -> None:
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", wayland)
+    commands: list[list[str]] = []
+
+    def check_output(command, **_kwargs):
+        commands.append(command)
+        return b"text/plain\ntext/html\n"
+
+    monkeypatch.setattr(linux_backend.subprocess, "check_output", check_output)
+
+    assert b._clipboard_holds_only_text() is False
+    assert commands == [expected]
 
 
 def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
@@ -275,6 +400,7 @@ def test_desktop_files_launch_with_the_argument_each_helper_takes(
     )
     popen = MagicMock()
     popen.return_value.pid = 4321
+    popen.return_value.wait.return_value = 0
     monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
     b = LinuxBackend(_config(tmp_path))
 
@@ -282,6 +408,79 @@ def test_desktop_files_launch_with_the_argument_each_helper_takes(
 
     assert pid == 4321
     assert popen.call_args.args[0] == [helper, argument]
+
+
+def test_a_desktop_file_refuses_launch_arguments(tmp_path, monkeypatch) -> None:
+    """The file's Exec line sets the app's arguments, so `args` were dropped
+    without a word."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}")
+    popen = MagicMock()
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    with pytest.raises(FeatureNotSupportedError, match="args"):
+        b.app_launch(
+            executable_path="/usr/share/applications/firefox.desktop", args=["--private-window"]
+        )
+
+    popen.assert_not_called()
+
+
+@pytest.mark.parametrize("in_applications", [True, False], ids=["in-applications", "elsewhere"])
+def test_a_desktop_file_outside_the_application_directories_launches_with_dex(
+    tmp_path, monkeypatch, in_applications: bool
+) -> None:
+    """gtk-launch looks a desktop file ID up in the XDG application
+    directories, so it can't find a file anywhere else; dex runs the file."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    folder = applications if in_applications else tmp_path / "Desktop"
+    desktop_file = folder / "calculator.desktop"
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}")
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    popen.return_value.wait.return_value = 0
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    assert b.app_launch(executable_path=str(desktop_file)) == 4321
+    assert popen.call_args.args[0] == (
+        ["gtk-launch", "calculator"] if in_applications else ["dex", str(desktop_file)]
+    )
+
+
+def test_a_desktop_file_gtk_launch_cannot_find_is_an_error(tmp_path, monkeypatch) -> None:
+    """Without dex, a file outside the application directories goes to
+    gtk-launch by its ID, which it can't find. Its pid was returned as the
+    launched app's."""
+    _xdg_applications(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        linux_backend.shutil,
+        "which",
+        lambda name: "/usr/bin/gtk-launch" if name == "gtk-launch" else None,
+    )
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    popen.return_value.wait.return_value = 2  # gtk-launch: no such application
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    with pytest.raises(FeatureNotSupportedError, match="gtk-launch"):
+        b.app_launch(executable_path=str(tmp_path / "Desktop" / "calculator.desktop"))
+
+    assert popen.call_args.args[0] == ["gtk-launch", "calculator"]
+
+
+def test_a_gtk_launch_still_starting_the_app_counts_as_launched(tmp_path, monkeypatch) -> None:
+    """Only a failing exit status says the launch failed."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}")
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    popen.return_value.wait.side_effect = linux_backend.subprocess.TimeoutExpired("gtk-launch", 10)
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    b = LinuxBackend(_config(tmp_path))
+
+    assert b.app_launch(executable_path=str(applications / "calculator.desktop")) == 4321
 
 
 def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkeypatch) -> None:
@@ -294,12 +493,14 @@ def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkey
     state = {"content": "user text"}
     monkeypatch.setattr(b, "_write_clipboard_text", lambda text: state.update(content=text))
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+    _clipboard_targets(monkeypatch, ["TARGETS", "UTF8_STRING"])
 
     with pytest.raises(RuntimeError, match="fail-safe"):
         b.input_action(
             "type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True
         )
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
     assert state["content"] == "user text"
 
 
@@ -314,10 +515,12 @@ def test_the_linux_restore_leaves_a_copy_made_during_the_paste(tmp_path, monkeyp
     state = {"content": "user text"}
     monkeypatch.setattr(b, "_write_clipboard_text", lambda text: state.update(content=text))
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+    _clipboard_targets(monkeypatch, ["TARGETS", "UTF8_STRING"])
     pyautogui.hotkey.side_effect = lambda *_keys: state.update(content="copied during the paste")
 
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
     assert state["content"] == "copied during the paste"
 
 

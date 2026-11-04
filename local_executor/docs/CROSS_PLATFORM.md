@@ -21,7 +21,7 @@ in `HELLO.capabilities` and the platform degrades gracefully.
 | macOS 13+ (Ventura/Sonoma/Sequoia) | arm64 (Apple Silicon) | **Tier 1** | Primary dev target. Computer use requires Accessibility + Screen Recording TCC grant. |
 | macOS 13+ | x86_64 (Intel) | **Tier 1** | Same code path as arm64; Rosetta not required. |
 | Windows 10 / 11 | x86_64 | **Tier 1** | Computer use works on Win32 desktop; UAC-elevated windows are uncontrollable from a non-elevated shim. |
-| Ubuntu 22.04 / 24.04, Debian 12 | x86_64 | **Tier 1** | Computer use works on X11. **Wayland sessions block input injection** — shim advertises `computer_use` only when `XDG_SESSION_TYPE=x11`. |
+| Ubuntu 22.04 / 24.04, Debian 12 | x86_64 | **Tier 1** | Computer use works on X11. **Wayland sessions block input injection** — the shim advertises `computer_use` only in an X11 session (no `WAYLAND_DISPLAY`) whose `DISPLAY` accepts a connection. |
 | Ubuntu / Debian | arm64 | **Tier 2** | Same code path; not all hardware features tested. |
 | Fedora 39+ / RHEL 9+ | x86_64 | **Tier 2** | Same code path as Ubuntu. Wayland is default — same X11 caveat applies. |
 | WSL2 (Ubuntu/Debian on Windows) | x86_64 | **Tier 2** | Treated as Linux. `/mnt/c/...` paths work but cross the Windows/Linux permission boundary; see [WSL2 section](#wsl2). No computer use (no display). |
