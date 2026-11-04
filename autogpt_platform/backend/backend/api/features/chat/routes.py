@@ -131,7 +131,11 @@ from backend.copilot.response_model import (
     StreamStartStep,
     StreamStatus,
 )
-from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.service import (
+    EmptyUserMessage,
+    normalise_user_message,
+    strip_injected_context_for_display,
+)
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
@@ -1951,6 +1955,16 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    message = request.message
+    if request.is_user_message:
+        # The same input normalisation as the engines' own, applied before
+        # the message is stored or queued: the stored row is replayed as
+        # history on later turns, past the engines' entry sanitising. It runs
+        # before anything is written, so a refused message changes nothing.
+        try:
+            message = normalise_user_message(message)
+        except EmptyUserMessage as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     await enforce_model_entitlement(request.model, session, user_id)
@@ -1975,7 +1989,6 @@ async def stream_chat_post(
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
 
-    message = request.message
     if request.is_user_message:
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)
