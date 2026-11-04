@@ -229,3 +229,15 @@ def test_the_cli_exits_78_on_a_malformed_config_file(tmp_path: Path, monkeypatch
 
     assert exited.value.code == 78
     assert "config.toml" in capsys.readouterr().err
+
+
+def test_a_boolean_variable_outranks_the_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Strings and integers were covered; a false from the environment must
+    also beat a true in the file."""
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text("enable_shell = true\n")
+    monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "false")
+
+    assert load_config(config_path=toml_file).enable_shell is False

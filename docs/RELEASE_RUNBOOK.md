@@ -72,6 +72,20 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   release workflow's `verify pyproject version matches tag` step
   will fail loudly if not.
 - `CHANGELOG.md` (if/when added) updated.
+- Every change made to the monorepo copy (`local_executor/` in
+  AutoGPT) is in this repository too. Fixes usually land here first and
+  reach the monorepo with `git subtree pull`, but a change made only in
+  the monorepo has to come back the other way before you tag. From an
+  AutoGPT checkout:
+
+  ```bash
+  git subtree push --prefix=local_executor \
+    git@github.com:Significant-Gravitas/autogpt-local-executor.git \
+    experimental/local-pc-executor
+  ```
+
+  It fails if this repository has commits the monorepo doesn't; pull
+  them in first (`git subtree pull`, same prefix and URL).
 
 ### 1. Tag + push
 
