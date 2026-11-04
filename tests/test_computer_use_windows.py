@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -388,3 +389,53 @@ def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, mon
 
     assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
     assert clipboard["content"] == "copied in the gap"
+
+
+@pytest.mark.parametrize("include_cursor", [True, False])
+def test_a_window_capture_draws_the_cursor_only_when_asked(
+    tmp_path, monkeypatch, include_cursor
+) -> None:
+    import ctypes
+
+    from autogpt_local_executor.computer_use.backends import windows as windows_backend
+
+    b = WindowsBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
+    window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
+    win32gui = MagicMock()
+    win32gui.IsWindow.return_value = True
+    win32gui.GetWindowRect.return_value = (40, 30, 140, 80)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    win32ui = MagicMock()
+    win32ui.CreateBitmap.return_value.GetInfo.return_value = {"bmWidth": 100, "bmHeight": 50}
+    monkeypatch.setitem(sys.modules, "win32ui", win32ui)
+    monkeypatch.setitem(sys.modules, "mss", MagicMock())
+    pil = MagicMock()
+    pil.Image.frombuffer.return_value = SimpleNamespace(width=100, height=50)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    windll = MagicMock()
+    windll.user32.PrintWindow.return_value = 1
+    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+    monkeypatch.setattr(windows_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    drawn: list[tuple[int, int]] = []
+    monkeypatch.setattr(b, "_composite_cursor", lambda _img, origin: drawn.append(origin))
+
+    b.screenshot(window_id=window_id, include_cursor=include_cursor)
+
+    assert drawn == ([(40, 30)] if include_cursor else [])
+
+
+def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkeypatch) -> None:
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    pyautogui.hotkey.side_effect = RuntimeError("fail-safe")
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+
+    with pytest.raises(RuntimeError, match="fail-safe"):
+        b.input_action(
+            "type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True
+        )
+
+    assert clipboard["content"] == "user text"

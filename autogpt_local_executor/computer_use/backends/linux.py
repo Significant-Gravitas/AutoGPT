@@ -613,9 +613,15 @@ class LinuxBackend(ComputerUseBackend):
 
         self._write_clipboard_text(text)
         self.clipboard_writeback.record_write(text)
-        pyautogui.hotkey("ctrl", "v")
-        if restore is None:
-            return
+        try:
+            pyautogui.hotkey("ctrl", "v")
+        finally:
+            # Also when the hotkey raised (pyautogui's fail-safe fires before
+            # any key goes out): the user's text is already overwritten.
+            if restore is not None:
+                self._restore_after_paste(restore)
+
+    def _restore_after_paste(self, restore: str) -> None:
         time.sleep(0.05)
         # We don't have a reliable sequence number on X11/Wayland from
         # the CLI utilities; the changeCount-skip-restore protection

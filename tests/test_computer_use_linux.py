@@ -282,3 +282,22 @@ def test_desktop_files_launch_with_the_argument_each_helper_takes(
 
     assert pid == 4321
     assert popen.call_args.args[0] == [helper, argument]
+
+
+def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    pyautogui.hotkey.side_effect = RuntimeError("fail-safe")
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    state = {"content": "user text"}
+    monkeypatch.setattr(b, "_write_clipboard_text", lambda text: state.update(content=text))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+
+    with pytest.raises(RuntimeError, match="fail-safe"):
+        b.input_action(
+            "type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True
+        )
+
+    assert state["content"] == "user text"
