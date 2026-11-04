@@ -12,7 +12,6 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-import secrets
 import stat
 import sys
 from collections.abc import Iterator
@@ -20,6 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path, PurePath
 from typing import BinaryIO
 
+from .fsops import temporary_sibling
 from .platform_info import detect_platform
 
 # Windows reserved device names (case-insensitive, with or without extension).
@@ -345,7 +345,7 @@ def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     # Opened with 0o666 so the umask applies, as it does to a plain create.
-    temp = path.with_name(f".{path.name[:100]}.{secrets.token_hex(6)}.tmp")
+    temp = temporary_sibling(path)
     descriptor = os.open(temp, flags, 0o666)
     try:
         with os.fdopen(descriptor, "wb") as file:

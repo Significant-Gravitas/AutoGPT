@@ -42,6 +42,7 @@ from ._common import (
     in_any_rect,
     normalize_displays_for_error,
     paste_is_worth_it,
+    release_held,
 )
 
 logger = logging.getLogger(__name__)
@@ -396,7 +397,7 @@ class WindowsBackend(ComputerUseBackend):
                 for pt in path[1:]:
                     pyautogui.moveTo(pt[0], pt[1], duration=0.01)
             finally:
-                pyautogui.mouseUp(button=btn)
+                release_held(pyautogui, button=btn)
             return
         if action == "type" and text is not None:
             self._type(text, paste=paste, preserve_clipboard=preserve_clipboard)
@@ -406,13 +407,16 @@ class WindowsBackend(ComputerUseBackend):
             return
         if action == "hold_key" and key:
             duration = max(0.0, min((duration_ms or 0) / 1000.0, 5.0))
-            for k in self._chord(key):
-                pyautogui.keyDown(k)
+            held: list[str] = []
             try:
+                # Recorded as pressed, so a press that fails lets go of the
+                # ones before it.
+                for k in self._chord(key):
+                    pyautogui.keyDown(k)
+                    held.append(k)
                 time.sleep(duration)
             finally:
-                for k in reversed(self._chord(key)):
-                    pyautogui.keyUp(k)
+                release_held(pyautogui, keys=held)
             return
         if action == "scroll":
             amount = scroll_amount if scroll_amount is not None else (clicks or 3)
@@ -437,10 +441,13 @@ class WindowsBackend(ComputerUseBackend):
 
         if coordinate is None:
             raise FeatureNotSupportedError(action, reason="coordinate is required")
-        mods = list(modifiers or [])
-        for m in mods:
-            pyautogui.keyDown(self._modifier(m))
+        held: list[str] = []
         try:
+            # Recorded as pressed, so a press that fails lets go of the ones
+            # before it.
+            for m in modifiers or []:
+                pyautogui.keyDown(self._modifier(m))
+                held.append(self._modifier(m))
             if action == "left_click":
                 pyautogui.click(coordinate[0], coordinate[1])
             elif action == "right_click":
@@ -452,8 +459,7 @@ class WindowsBackend(ComputerUseBackend):
             elif action == "triple_click":
                 pyautogui.tripleClick(coordinate[0], coordinate[1])
         finally:
-            for m in reversed(mods):
-                pyautogui.keyUp(self._modifier(m))
+            release_held(pyautogui, keys=held)
 
     @staticmethod
     def _modifier(name: str) -> str:

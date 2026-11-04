@@ -272,6 +272,11 @@ New action verbs (additive — old ones keep working):
 | `hold_key` | `key`, `duration_ms` | Press a key (or chord) and hold for `duration_ms`. Distinct from `key`, which presses-and-releases. |
 | `wait` | `duration_ms` | Block the request for `duration_ms` then ACK. Lets the model insert a settling pause (animations, page loads) without round-tripping a no-op screenshot. Capped at 5000 ms server-side. |
 
+Whatever ends a `drag`, `hold_key` or a click with `modifiers`, the shim lets
+go of every key and button it pressed for it. That includes pyautogui's
+fail-safe: moving the mouse into a screen corner stops the action, and the
+release still happens, though pyautogui would refuse it there.
+
 The `click`/`scroll` actions get `modifiers` (Shift+click for range-select,
 Cmd+click for tab-open, Shift+scroll for horizontal). This is exactly how
 Anthropic's tool surfaces it in `computer_20251124`: a `text` field on

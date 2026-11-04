@@ -1411,6 +1411,35 @@ async def test_a_rewritten_file_never_keeps_set_id_bits(
     assert program.stat().st_mode & 0o7777 == 0o755
 
 
+@pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])
+@pytest.mark.asyncio
+async def test_a_file_whose_name_is_long_in_bytes_can_be_written(tmp_path: Path, char: str) -> None:
+    """The temporary file's name kept 100 characters of the target's, so a
+    name of multi-byte characters, valid at up to 255 bytes, made a temporary
+    name longer than that, and the write failed with ENAMETOOLONG."""
+    stem = char * ((250 - len(".txt")) // len(char.encode("utf-8")))
+    target = tmp_path / f"{stem}.txt"
+    assert len(os.fsencode(target.name)) <= 255
+    handler = FileHandler(make_config(tmp_path))
+
+    response = await handler.handle_write(_write_msg(target, "new"))
+
+    assert not isinstance(response, ErrorMessage), response
+    assert target.read_text() == "new"
+
+
+def test_a_temporary_name_beside_a_file_stays_short_in_bytes() -> None:
+    from autogpt_local_executor.fsops import temporary_sibling
+
+    for name in ["\u6587" * 84, "\U0001f600" * 63, "a" * 255, "x.txt"]:
+        temp = temporary_sibling(Path("/data") / name)
+        assert temp.parent == Path("/data")
+        assert temp.name.startswith(".") and temp.name.endswith(".tmp")
+        assert len(os.fsencode(temp.name)) <= 120
+        # Cut on a character boundary: the name is still valid UTF-8.
+        os.fsencode(temp.name).decode("utf-8")
+
+
 @pytest.mark.asyncio
 async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

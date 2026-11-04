@@ -6,10 +6,14 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
+from collections.abc import Sequence
 from typing import Any
 
 from ...protocol import DisplayMonitor
 from ..errors import FeatureNotSupportedError
+
+logger = logging.getLogger(__name__)
 
 PASTE_THRESHOLD_CHARS = 200  # Q4 — paste:true only honored when text >= 200 chars.
 # What pyautogui has a key for: printable ASCII, tab and the line breaks.
@@ -43,6 +47,33 @@ def chord_keys(key: str, aliases: dict[str, str], known: object = None) -> list[
                 reason=f"unknown key name {unknown[0]!r}; COMPUTER_USE.md lists the key names",
             )
     return keys
+
+
+def release_held(pyautogui: Any, *, keys: Sequence[str] = (), button: str | None = None) -> None:
+    """Let go of held keys, last pressed first, and a held mouse button,
+    however the input action ended.
+
+    pyautogui's fail-safe raises from every call while the cursor is in a
+    screen corner, which is where the user moves it to stop the automation.
+    A release would raise before it let go, leaving a modifier or the button
+    held down. Letting go starts nothing, so the check is off while it runs,
+    and each release is tried even when one before it fails.
+    """
+    failsafe = pyautogui.FAILSAFE
+    pyautogui.FAILSAFE = False
+    try:
+        for key in reversed(keys):
+            try:
+                pyautogui.keyUp(key)
+            except Exception:
+                logger.warning("Could not release the %r key", key, exc_info=True)
+        if button is not None:
+            try:
+                pyautogui.mouseUp(button=button)
+            except Exception:
+                logger.warning("Could not release the %s mouse button", button, exc_info=True)
+    finally:
+        pyautogui.FAILSAFE = failsafe
 
 
 def paste_is_worth_it(text: str) -> bool:
