@@ -13,7 +13,6 @@ import pytest
 
 from autogpt_local_executor import doctor
 from autogpt_local_executor.audit import AuditWriter
-from autogpt_local_executor.computer_use import driver as driver_module
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.daemon import DaemonPreflightError
 from autogpt_local_executor.protocol import ErrorCode
@@ -153,7 +152,7 @@ def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     )
     assert lines["cua-driver AT-SPI"] == ("OK", "org.a11y.Bus reachable")
     assert "cua-driver binary" not in lines
-    assert lines["cua-driver start"] == ("OK", "direct runtime, 37 tools offered")
+    assert lines["cua-driver start"] == ("OK", "0.38.0, 37 tools offered")
     assert lines["display"] == ("OK", "1920x1080 (scale 1)")
 
 
@@ -184,38 +183,38 @@ def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     assert doctor.run_doctor(_with_driver(tmp_path)) == doctor.EX_CONFIG
 
 
-@pytest.mark.parametrize("app", [True, False], ids=["cuadriver-app", "direct"])
-def test_doctor_on_macos_reports_missing_grants_and_raises_the_prompts(
-    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, app: bool
+def test_doctor_on_macos_reports_missing_grants_and_requests_them(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
 ) -> None:
-    """The prompts belong to CuaDriver.app, so doctor asks it to raise them,
-    as the old in-process probe did for the shim; without the app the grants
-    belong to whatever starts the shim, which doctor can only name."""
+    """The driver is the shim's child and leaves prompting to its host, so
+    doctor asks macOS for the shim's app, as it did before cua-driver."""
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
-    monkeypatch.setattr(driver_module, "macos_app_installed", lambda: app)
     a_fake_driver["platform"] = "darwin"
     monkeypatch.setenv("FAKE_CUA_PERMISSIONS", '{"accessibility": true, "screen_recording": false}')
+    requested: list[list[str]] = []
+    monkeypatch.setattr(doctor, "_request_macos_grants", requested.append)
 
     rc = doctor.run_doctor(_with_driver(tmp_path))
 
     lines = _report(capsys.readouterr().out)
     assert rc == doctor.EX_CONFIG
-    holder = "CuaDriver" if app else "the app that starts the local executor"
-    assert lines["Accessibility"] == ("OK", f"granted to {holder}")
+    assert lines["Accessibility"] == ("OK", "granted")
     assert lines["Screen Recording"][0] == "FAIL"
-    assert lines["Screen Recording"][1].endswith(f"enable {holder}")
-    assert (["permissions", "grant"] in driver_commands) is app
+    assert "the app that runs the local executor" in lines["Screen Recording"][1]
+    assert requested == [["screen_recording"]]
+    assert ["permissions", "grant"] not in driver_commands
 
 
 def test_doctor_on_macos_passes_with_both_grants(
     tmp_path, monkeypatch, driver_commands, a_fake_driver
 ) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
-    monkeypatch.setattr(driver_module, "macos_app_installed", lambda: True)
     a_fake_driver["platform"] = "darwin"
+    requested: list[list[str]] = []
+    monkeypatch.setattr(doctor, "_request_macos_grants", requested.append)
 
     assert doctor.run_doctor(_with_driver(tmp_path)) == 0
-    assert ["permissions", "grant"] not in driver_commands
+    assert requested == []
 
 
 @pytest.mark.parametrize(("present", "marker"), [(True, "OK"), (False, "WARN")])

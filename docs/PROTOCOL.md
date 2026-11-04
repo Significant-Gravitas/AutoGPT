@@ -801,8 +801,9 @@ driver's, scoped to a window and a state snapshot, not a shim-wide screen.
 [COMPUTER_USE.md](COMPUTER_USE.md) has setup and behavior per OS.
 
 `HELLO.computer_use_driver` names the driver once it has started:
-`{"name": "cua-driver", "version": "0.38.0", "runtime": "direct"}`, where
-`runtime` is `service` when the driver relays to CuaDriver.app on macOS.
+`{"name": "cua-driver", "version": "0.38.0", "runtime": "direct"}`. The
+runtime is always `direct`, a driver process the shim owns; `service`, a
+driver relaying to a shared service such as CuaDriver.app, is reserved.
 `HELLO.computer_use_tools` lists, sorted, the names of the tools
 `COMPUTER_TOOLS_RESPONSE` would return, so the platform can ask for consent
 to exactly those without a round trip. `computer_use` is advertised only

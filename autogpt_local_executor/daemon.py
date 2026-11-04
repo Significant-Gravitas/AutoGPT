@@ -2057,7 +2057,7 @@ class ShimDaemon:
             return
         driver = self._computer_handler.driver
         try:
-            snapshot = await driver.snapshot()
+            await driver.snapshot()
             result = await driver.call_tool(
                 "check_permissions",
                 {"prompt": False, "session": self._computer_handler.session_label},
@@ -2086,12 +2086,10 @@ class ShimDaemon:
         if not missing:
             return
         labels = {"accessibility": "Accessibility", "screen_recording": "Screen Recording"}
-        holder = (
-            "CuaDriver" if snapshot.info.runtime == "service" else "the local executor's launcher"
-        )
         await self._fail_preflight(
             f"{' and '.join(labels[name] for name in missing)} permission not granted to "
-            f"{holder}; computer use requires it. Run `autogpt-shim doctor` to request it.",
+            "the app that runs the local executor; computer use requires it. Run "
+            "`autogpt-shim doctor` to request it.",
             missing_permissions=missing,
             error_code=ErrorCode.PERMISSION_PENDING,
         )

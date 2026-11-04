@@ -3,9 +3,9 @@
 
 Probes the keychain and the directory browser (or a legacy allowed_root).
 With computer use on, it runs cua-driver's own `doctor`, starts the driver
-the way the daemon does, and on macOS reports its Accessibility and Screen
-Recording grants, asking CuaDriver.app to raise the prompts when they are
-missing. See docs/CUA_DRIVER.md.
+the way the daemon does, and on macOS reports the Accessibility and Screen
+Recording grants of the app that runs the shim, asking macOS to show its
+prompts when they are missing. See docs/CUA_DRIVER.md.
 
 Returns exit 0 when everything required is healthy, 78 (EX_CONFIG) when
 computer use is requested but a prerequisite is missing.
@@ -272,20 +272,16 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
             snapshot = await bridge.snapshot()
         except DriverUnavailable as exc:
             return [CheckResult("FAIL", "cua-driver start", exc.message, blocking=True)]
-        runtime = (
-            "CuaDriver.app service" if snapshot.info.runtime == "service" else "direct runtime"
-        )
         out.append(
             CheckResult(
                 "OK",
                 "cua-driver start",
-                f"{runtime}, {len(snapshot.tools)} tools offered",
+                f"{snapshot.info.version}, {len(snapshot.tools)} tools offered",
             )
         )
         out.append(await _check_screen(bridge))
         if plat == "darwin":
-            binary = find_driver_binary(config.cua_driver_path)
-            out.extend(await _check_macos_permissions(bridge, snapshot.info.runtime, binary))
+            out.extend(await _check_macos_permissions(bridge))
     finally:
         await bridge.close()
     return out
@@ -312,43 +308,65 @@ async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
     )
 
 
-async def _check_macos_permissions(
-    bridge: CuaDriverBridge, runtime: str, binary: Path | None
-) -> list[CheckResult]:
+async def _check_macos_permissions(bridge: CuaDriverBridge) -> list[CheckResult]:
     granted = await _macos_grants(bridge)
     if granted is None:
         return [
             CheckResult(
                 "FAIL",
                 "permissions",
-                "cua-driver could not report its Accessibility and Screen Recording grants",
+                "cua-driver could not report the Accessibility and Screen Recording grants",
                 blocking=True,
             )
         ]
     missing = [name for name, ok in granted.items() if not ok]
-    if missing and runtime == "service":
-        # The prompts belong to CuaDriver.app, so LaunchServices raises them
-        # on its behalf, as the old in-process probe did for the shim.
-        _raise_permission_prompts(binary)
-    holder = "CuaDriver" if runtime == "service" else "the app that starts the local executor"
+    if missing:
+        # The driver runs as this process's child and leaves prompting to its
+        # host, so the shim asks, as it did before cua-driver.
+        _request_macos_grants(missing)
     out = []
     for name, label in (
         ("accessibility", "Accessibility"),
         ("screen_recording", "Screen Recording"),
     ):
         if granted.get(name):
-            out.append(CheckResult("OK", label, f"granted to {holder}"))
+            out.append(CheckResult("OK", label, "granted"))
         else:
             out.append(
                 CheckResult(
                     "FAIL",
                     label,
-                    f"not granted — System Settings → Privacy & Security → {label}, "
-                    f"enable {holder}",
+                    f"not granted — System Settings → Privacy & Security → {label}, enable "
+                    f"{MACOS_GRANT_HOLDER}, then restart the local executor",
                     blocking=True,
                 )
             )
     return out
+
+
+# Who holds the macOS grants: the driver is a child of the shim, so macOS
+# asks for the app that started the shim.
+MACOS_GRANT_HOLDER = (
+    "the app that runs the local executor (your terminal, or for the autostart "
+    "service, the Python that runs it)"
+)
+
+
+def _request_macos_grants(missing: list[str]) -> None:
+    """Have macOS show its prompts for this process's app (best effort)."""
+    if "accessibility" in missing:
+        with contextlib.suppress(Exception):
+            from ApplicationServices import (  # type: ignore[import-not-found]
+                AXIsProcessTrustedWithOptions,
+                kAXTrustedCheckOptionPrompt,
+            )
+
+            AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: True})
+    if "screen_recording" in missing:
+        with contextlib.suppress(Exception):
+            from Quartz import CGRequestScreenCaptureAccess  # type: ignore[import-not-found]
+
+            CGRequestScreenCaptureAccess()
 
 
 async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
@@ -360,18 +378,6 @@ async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
     if raw.get("isError") or not isinstance(structured, dict):
         return None
     return {name: structured.get(name) is True for name in ("accessibility", "screen_recording")}
-
-
-def _raise_permission_prompts(binary: Path | None) -> None:
-    if binary is None:
-        return
-    with contextlib.suppress(OSError, subprocess.SubprocessError):
-        subprocess.run(
-            [str(binary), "permissions", "grant"],
-            timeout=DRIVER_COMMAND_SECONDS,
-            env=driver_environment(None),
-            check=False,
-        )
 
 
 def _check_linux_clipboard_types() -> CheckResult:

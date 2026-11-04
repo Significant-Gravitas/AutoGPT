@@ -281,8 +281,9 @@ class _Payload(BaseModel):
 
 class ComputerDriverInfo(BaseModel):
     """Which GUI driver serves computer use on this machine. `runtime` is
-    `direct` when the driver process the shim started owns the automation
-    runtime, and `service` when it relays to CuaDriver.app on macOS."""
+    `direct`: the driver process the shim started owns the automation
+    runtime. `service`, a driver relaying to a shared service such as
+    CuaDriver.app, is reserved."""
 
     model_config = ConfigDict(extra="forbid")
 

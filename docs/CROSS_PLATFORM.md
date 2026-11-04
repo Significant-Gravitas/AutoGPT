@@ -18,7 +18,7 @@ in `HELLO.capabilities` and the platform degrades gracefully.
 
 | OS | Architecture | Tier | Notes |
 |---|---|---|---|
-| macOS 13+ (Ventura/Sonoma/Sequoia) | arm64 (Apple Silicon) | **Tier 1** | Primary dev target. Computer use requires Accessibility + Screen Recording, held by CuaDriver.app when it is installed. |
+| macOS 13+ (Ventura/Sonoma/Sequoia) | arm64 (Apple Silicon) | **Tier 1** | Primary dev target. Computer use requires Accessibility + Screen Recording for the app that runs the shim. |
 | macOS 13+ | x86_64 (Intel) | **Tier 1** | Same code path as arm64; Rosetta not required. |
 | Windows 10 / 11 | x86_64 | **Tier 1** | Computer use works on Win32 desktop; UAC-elevated windows are uncontrollable from a non-elevated shim. |
 | Ubuntu 22.04 / 24.04, Debian 12 | x86_64 | **Tier 1** | Computer use needs a desktop session: X11, or Wayland through XWayland (or cua-driver's native Wayland backend, opt-in). |
@@ -124,10 +124,10 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows |
 |---|---|---|---|
-| Driver runtime | CuaDriver.app when installed, else the driver process itself (`--direct`) | the driver process | the driver process |
+| Driver runtime | the driver process the shim starts (`--direct`), never CuaDriver.app's service | the driver process | the driver process |
 | Reading windows | Accessibility (AX) tree + ScreenCaptureKit | AT-SPI over the session bus + X11/Wayland capture | UI Automation tree + window capture |
 | Acting | AX actions in the background, pixel and foreground input as fallbacks | AT-SPI actions, XSendEvent on X11; foreground input on Wayland | UIA patterns and window messages in the background, foreground input as fallback |
-| Permissions | Accessibility + Screen Recording; `doctor` raises the prompts; a missing one makes the daemon exit 78 and launchd retry | none | a non-elevated shim can't drive elevated windows |
+| Permissions | Accessibility + Screen Recording, for the app that runs the shim; `doctor` asks for them; a missing one makes the daemon exit 78 and launchd retry | none | a non-elevated shim can't drive elevated windows |
 | Not supported | | sessions without a display | session 0 services; WSL2 (no Windows desktop) |
 
 ### Autostart / background daemon

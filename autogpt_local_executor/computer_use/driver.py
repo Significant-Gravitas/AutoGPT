@@ -37,8 +37,6 @@ LIST_TIMEOUT_SECONDS = 30.0
 MAX_STARTS_PER_WINDOW = 3
 START_WINDOW_SECONDS = 300.0
 
-MACOS_APP_PATHS = ("/Applications/CuaDriver.app", "~/Applications/CuaDriver.app")
-
 # Environment the driver never inherits from the shim's: an approval bypass,
 # or a capability manifest someone else approved.
 _SCRUBBED_ENVIRONMENT = (
@@ -123,17 +121,18 @@ def _ensure_executable(path: Path) -> None:
             path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def macos_app_installed() -> bool:
-    return any(Path(path).expanduser().is_dir() for path in MACOS_APP_PATHS)
-
-
 def driver_runtime(platform: str | None = None) -> Runtime:
-    """`service` on a Mac with CuaDriver.app, which then holds the Screen
-    Recording and Accessibility grants and draws the agent cursor; `direct`
-    elsewhere, where the driver process owns the runtime itself."""
-    platform = sys.platform if platform is None else platform
-    if platform == "darwin" and macos_app_installed():
-        return "service"
+    """Always `direct`: the driver process the shim starts owns the runtime.
+
+    On macOS, cua-driver's default is to relay to CuaDriver.app's service.
+    The shim never does: that daemon is installed and updated by the person,
+    not pinned with the shim (it can be another release than the one the
+    catalog was reviewed against, which the relay can't see), it is shared
+    with their other cua-driver clients, and it runs with whatever
+    permission mode and policy it was started with, so the calls a script
+    makes inside it wouldn't be bound by the shim's policy. Owning the
+    runtime keeps all of that the shim's. The macOS grants then belong to
+    the app that starts the shim, as they did before cua-driver."""
     return "direct"
 
 
@@ -141,6 +140,7 @@ def driver_argv(binary: Path, runtime: Runtime, platform: str | None = None) -> 
     platform = sys.platform if platform is None else platform
     argv = [str(binary), "mcp"]
     if platform == "darwin" and runtime == "direct":
+        # macOS's default would relay to CuaDriver.app.
         argv.append("--direct")
     return argv
 
@@ -352,5 +352,4 @@ __all__ = [
     "driver_environment",
     "driver_runtime",
     "find_driver_binary",
-    "macos_app_installed",
 ]
