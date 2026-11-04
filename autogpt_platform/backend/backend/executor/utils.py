@@ -367,6 +367,7 @@ def validate_exec(
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -378,6 +379,10 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
+        trigger_setup: Validate a trigger before its first event: absent
+            credential fields and a webhook block's ``payload`` are left out of
+            the missing-input and schema checks; everything else is validated as
+            for a real run.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -413,8 +418,16 @@ def validate_exec(
     # Coerce non-matching data types to the expected input schema.
     coerce_inputs_to_schema(data, schema)
 
+    unchecked_fields: set[str] = set()
+    if trigger_setup:
+        unchecked_fields = {
+            f for f in schema.get_credentials_fields() if data.get(f) is None
+        }
+        if node_block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL):
+            unchecked_fields.add("payload")
+
     # Input data post-merge should contain all required fields from the schema.
-    if missing_input := schema.get_missing_input(data):
+    if missing_input := schema.get_missing_input(data) - unchecked_fields:
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
             # generates synthetic outputs without needing real input values.
@@ -426,7 +439,7 @@ def validate_exec(
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
-        if error := schema.get_mismatch_error(data):
+        if error := schema.get_mismatch_error(data, exclude_fields=unchecked_fields):
             error_message = f"{error_prefix} {error}"
             logger.warning(error_message)
             return None, error_message
@@ -867,6 +880,7 @@ async def _construct_starting_node_execution_input(
     graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -880,6 +894,8 @@ async def _construct_starting_node_execution_input(
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
         dry_run: When True, skip credential validation errors (simulation needs no real creds).
+        trigger_setup: Skip credential errors and a webhook block's payload checks,
+            validating every other input as for a real run.
 
     Returns:
         tuple[
@@ -892,9 +908,9 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
-    # Dry runs simulate every block — missing credentials are irrelevant.
-    # Strip credential-only errors so the graph can proceed.
-    if dry_run and validation_errors:
+    # Dry runs simulate every block, and trigger setup runs before credentials are
+    # picked: strip credential-only errors so the graph can proceed.
+    if (dry_run or trigger_setup) and validation_errors:
         validation_errors = {
             node_id: {
                 field: msg
@@ -950,7 +966,12 @@ async def _construct_starting_node_execution_input(
                 "Please use the appropriate trigger to run this workflow."
             )
 
-        input_data, error = validate_exec(node, input_data, dry_run=dry_run)
+        input_data, error = validate_exec(
+            node,
+            input_data,
+            dry_run=dry_run,
+            trigger_setup=trigger_setup,
+        )
         if input_data is None:
             raise ValueError(error)
         else:
@@ -973,6 +994,7 @@ async def validate_and_construct_node_execution_input(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -1046,6 +1068,7 @@ async def validate_and_construct_node_execution_input(
         graph_inputs=graph_inputs,
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
+        trigger_setup=trigger_setup,
     )
     validate_starting_node_input_depth(starting_nodes_input)
     # Also enforced by create_graph_execution; here a schedule or a request is
@@ -1164,6 +1187,14 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
 GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
+# Nothing consumes this queue; a message parked here dead-letters onto the run
+# queue once the expiration the publisher gave it runs out.
+GRAPH_EXECUTION_DELAY_QUEUE_NAME = "graph_execution_delay_v1"
+GRAPH_EXECUTION_DELAY_ROUTING_KEY = "graph_execution.delayed"
+# Ceiling of `graph_run_requeue_delay_seconds`, so a message published without
+# an expiration cannot sit in a queue with no consumer for good.
+GRAPH_EXECUTION_DELAY_MAX_MS = 60 * 60 * 1000
+
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     name="graph_execution_cancel",
     type=ExchangeType.FANOUT,
@@ -1207,6 +1238,23 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
+    delay_queue = Queue(
+        name=GRAPH_EXECUTION_DELAY_QUEUE_NAME,
+        exchange=GRAPH_EXECUTION_EXCHANGE,
+        routing_key=GRAPH_EXECUTION_DELAY_ROUTING_KEY,
+        durable=True,
+        auto_delete=False,
+        arguments={
+            "x-queue-type": "quorum",
+            "x-dead-letter-exchange": GRAPH_EXECUTION_EXCHANGE.name,
+            "x-dead-letter-routing-key": GRAPH_EXECUTION_ROUTING_KEY,
+            # A quorum queue may drop a message dead-lettered at-most-once,
+            # its default; at-least-once requires reject-publish overflow.
+            "x-dead-letter-strategy": "at-least-once",
+            "x-overflow": "reject-publish",
+            "x-message-ttl": GRAPH_EXECUTION_DELAY_MAX_MS,
+        },
+    )
     # No cancel queue here: it is per-pod, exclusive to the consuming connection,
     # and declared by the consumer itself through ``declare_broadcast_queue``.
     # A queue in this config is declared by every holder, publishers included,
@@ -1214,7 +1262,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue],
+        queues=[run_queue, delay_queue],
     )
 
 
