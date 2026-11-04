@@ -511,3 +511,31 @@ async def test_insecure_platform_is_rejected_before_sending_credentials(
 
     client.post.assert_not_awaited()
     assert store.cleared is False
+
+
+def test_a_connection_that_sends_nothing_cannot_block_the_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The server takes one connection at a time with no read timeout, so a
+    browser preconnect that never sent a request held off the real redirect
+    until the whole sign-in timed out."""
+    import autogpt_local_executor.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "CALLBACK_READ_TIMEOUT_SECONDS", 0.5)
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+    idle = socket.create_connection(("127.0.0.1", port), timeout=30)
+
+    def redirect() -> None:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
+        ):
+            pass
+
+    thread = threading.Thread(target=redirect)
+    thread.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=20) == "the-code"
+    finally:
+        thread.join(timeout=30)
+        idle.close()
