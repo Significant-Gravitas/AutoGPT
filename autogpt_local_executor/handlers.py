@@ -25,9 +25,9 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict, deque
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from . import local_llm_limits, platform_info
 from .audit import AuditWriter
@@ -268,6 +268,38 @@ def _is_link(path: Path) -> bool:
     """A symlink, or a Windows junction: removing either leaves its target."""
     isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
     return path.is_symlink() or bool(isjunction and isjunction(path))
+
+
+_T = TypeVar("_T")
+
+
+async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
+    """Run a side effect in a worker thread, and finish it even if the task
+    awaiting it is cancelled (SESSION_REVOKED, session teardown).
+
+    The thread can't be stopped once it starts, so a cancelled task would
+    let the change land unseen: the audit record its handler writes next
+    would never be written. The cancellation is held until the thread is
+    done, then dropped, so the handler records what happened. Its reply
+    goes nowhere: a revoked session refuses sends and a closed one fails
+    them. Requests still queued for a slot never get here and stay
+    cancelled.
+    """
+    work = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
+    held = 0
+    while True:
+        try:
+            result = await asyncio.shield(work)
+            break
+        except asyncio.CancelledError:
+            if work.done():
+                raise
+            held += 1
+    task = asyncio.current_task()
+    if task is not None:
+        for _ in range(held):
+            task.uncancel()
+    return result
 
 
 async def _audit_jail_violation(
@@ -845,7 +877,7 @@ class FileHandler:
             write_jail_file(path, self.config.allowed_root, raw)
 
         try:
-            await asyncio.to_thread(write_content)
+            await _run_to_completion(write_content)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_WRITE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1099,10 +1131,10 @@ class FileHandler:
         try:
             if path.is_dir() and not _is_link(path):
                 if payload.recursive:
-                    await asyncio.to_thread(shutil.rmtree, str(path))
+                    await _run_to_completion(shutil.rmtree, str(path))
                 else:
                     try:
-                        await asyncio.to_thread(os.rmdir, str(path))
+                        await _run_to_completion(os.rmdir, str(path))
                     except OSError as exc:
                         # Dir not empty.
                         await self._emit(
@@ -1113,7 +1145,7 @@ class FileHandler:
                         )
                         return make_error(msg.id, ErrorCode.PATH_NOT_EMPTY, str(exc))
             else:
-                await asyncio.to_thread(os.unlink, str(path))
+                await _run_to_completion(os.unlink, str(path))
         except OSError as exc:
             await self._emit(
                 "FILE_DELETE",
@@ -1167,7 +1199,7 @@ class FileHandler:
             # Without overwrite, a destination created after the check above
             # must not be replaced, so the rename itself refuses one.
             move = os.replace if payload.overwrite else rename_no_replace
-            await asyncio.to_thread(move, str(src), str(dst))
+            await _run_to_completion(move, str(src), str(dst))
         except FileExistsError:
             await self._emit(
                 "FILE_MOVE",
@@ -1453,7 +1485,7 @@ class ComputerUseHandler:
             "paste": p.paste,
         }
         try:
-            await asyncio.to_thread(
+            await _run_to_completion(
                 self.backend.input_action,
                 p.action,
                 coordinate=p.coordinate,
@@ -1580,7 +1612,7 @@ class ComputerUseHandler:
         start = time.monotonic()
         details = {"window_id": msg.payload.window_id, "raise": msg.payload.raise_}
         try:
-            await asyncio.to_thread(
+            await _run_to_completion(
                 self.backend.window_focus,
                 msg.payload.window_id,
                 raise_=msg.payload.raise_,
@@ -1636,7 +1668,7 @@ class ComputerUseHandler:
             "activate": p.activate,
         }
         try:
-            pid = await asyncio.to_thread(
+            pid = await _run_to_completion(
                 self.backend.app_launch,
                 bundle_id=p.bundle_id,
                 executable_path=p.executable_path,
@@ -1736,7 +1768,7 @@ class ComputerUseHandler:
                 f"{self.config.max_file_size_bytes} bytes.",
             )
         try:
-            await asyncio.to_thread(
+            await _run_to_completion(
                 self.backend.clipboard_write, format=p.format, content=p.content
             )
         except BackendError as exc:
