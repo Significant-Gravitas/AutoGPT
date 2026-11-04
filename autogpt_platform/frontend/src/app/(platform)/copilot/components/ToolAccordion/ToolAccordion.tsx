@@ -43,7 +43,7 @@ export function ToolAccordion({
     <div
       className={cn(
         "mt-2 w-full rounded-xl border border-border-base/70 bg-surface px-3 py-2 shadow-sm",
-        "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both",
+        "duration-500 animate-in fade-in fill-mode-both slide-in-from-bottom-2",
         className,
       )}
     >
@@ -61,7 +61,7 @@ export function ToolAccordion({
           <div className="min-w-0">
             <p
               className={cn(
-                "truncate text-sm font-medium text-foreground-emphasis",
+                "truncate text-body font-medium text-foreground-emphasis",
                 titleClassName,
               )}
             >
@@ -76,10 +76,9 @@ export function ToolAccordion({
         </div>
         <Icon
           icon={ArrowDown01Icon}
-          className={cn(
-            "h-4 w-4 shrink-0 text-foreground-tertiary transition-transform",
-            isExpanded && "rotate-180",
-          )}
+          tone="muted"
+          motion="transform"
+          className={cn("h-4 w-4 shrink-0", isExpanded && "rotate-180")}
         />
       </button>
 
@@ -98,7 +97,7 @@ export function ToolAccordion({
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}
           >
-            <div className="max-h-[24rem] overflow-y-auto pb-2 pt-3">
+            <div className="max-h-[24rem] overflow-y-auto pt-3 pb-2">
               {children}
             </div>
           </motion.div>

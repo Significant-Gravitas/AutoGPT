@@ -27,6 +27,7 @@ from backend.copilot.gate import review as review_store
 from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
+from backend.copilot.gate.reads import screen_mode
 from backend.copilot.legacy_first_turn_memory_test_data import (
     legacy_first_message,
     master_warm,
@@ -125,6 +126,77 @@ async def test_a_session_nobody_is_watching_is_inert_in_every_mode(
         )
     assert decision.allowed
     find.assert_not_awaited()
+
+
+def _sub_of(parents: dict[str, ChatSessionMetadata]):
+    """A sub-session (opened as an automation) delegated from ``parent-chat``,
+    with the given chats stored; a chat missing from them is gone."""
+
+    async def metadata(session_id):
+        found = parents.get(session_id)
+        return None if found is None else SimpleNamespace(metadata=found)
+
+    sub = _session("ask_first", origin="automation")
+    sub.metadata.delegated_by_session_id = "parent-chat"
+    store = MagicMock(get_chat_session_metadata=AsyncMock(side_effect=metadata))
+    return sub, patch("backend.copilot.model.chat_db", return_value=store)
+
+
+@pytest.mark.parametrize(
+    "parent, gated",
+    [
+        (ChatSessionMetadata(origin="interactive"), True),
+        (ChatSessionMetadata(origin="automation"), False),
+        (ChatSessionMetadata(origin=None), False),
+        (ChatSessionMetadata(origin="interactive", source_platform="github"), False),
+        (None, True),
+    ],
+)
+async def test_a_sub_session_answers_to_the_gate_of_the_chat_it_came_from(
+    gate_on, clean_session_state, parent, gated
+):
+    """A sub-session follows the gate of the chat it started in; a sub whose
+    chat is gone stays gated."""
+    sub, stored = _sub_of({} if parent is None else {"parent-chat": parent})
+    with stored:
+        assert await gate_active("u", sub) is gated
+        decision = await check_action("post_to_chat_platform", {}, "u", sub)
+    assert decision.allowed is not gated
+
+
+async def test_a_sub_of_a_sub_of_a_person_s_chat_is_gated(gate_on, clean_session_state):
+    sub, stored = _sub_of(
+        {
+            "parent-chat": ChatSessionMetadata(
+                origin="automation", delegated_by_session_id="top-chat"
+            ),
+            "top-chat": ChatSessionMetadata(origin="interactive"),
+        }
+    )
+    with stored:
+        decision = await check_action("post_to_chat_platform", {}, "u", sub)
+    assert not decision.allowed
+
+
+@pytest.mark.parametrize(
+    "parent, mode",
+    [
+        (ChatSessionMetadata(origin="interactive"), "enforce"),
+        (ChatSessionMetadata(origin="automation"), "off"),
+        (ChatSessionMetadata(origin="interactive", source_platform="github"), "off"),
+        (None, "enforce"),
+    ],
+)
+async def test_a_sub_session_screens_reads_as_the_chat_it_came_from(parent, mode):
+    sub, stored = _sub_of({} if parent is None else {"parent-chat": parent})
+    with (
+        stored,
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant",
+            AsyncMock(return_value="enforce"),
+        ),
+    ):
+        assert await screen_mode("u", sub) == mode
 
 
 async def test_gate_is_inactive_for_anonymous_turns(gate_on):

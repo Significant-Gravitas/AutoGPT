@@ -31,12 +31,10 @@ export function RunActions({
     <div className="flex justify-end gap-3">
       {!isTrigger && onSimulate && (
         <Button
-          variant="ghost"
+          variant="ghost-warning"
           onClick={onSimulate}
           disabled={isExecuting || isSettingUpTrigger}
           loading={isExecuting}
-          // oxlint-disable-next-line design-system/no-restyle -- no warning Button variant yet
-          className="gap-1.5 text-warning-foreground hover:bg-warning-surface hover:text-warning-foreground"
         >
           <Icon icon={FlaskConicalIcon} size={16} />
           Simulate

@@ -189,12 +189,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <Icon icon={PlayIcon} size={14} className="text-foreground-subtle" />;
+  return <Icon icon={PlayIcon} size={14} tone="subtle" />;
 }
 
 export function AccordionIcon() {
@@ -270,7 +270,7 @@ export function getAccordionMeta(output: RunAgentToolOutput): {
   }
 
   return {
-    icon: <Icon icon={AlertDiamondIcon} size={28} className="text-error" />,
+    icon: <Icon icon={AlertDiamondIcon} size={28} tone="error" />,
     title: "Error",
     titleClassName: "text-error",
   };

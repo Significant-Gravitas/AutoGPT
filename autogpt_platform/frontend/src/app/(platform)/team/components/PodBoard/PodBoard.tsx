@@ -114,7 +114,7 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
       type="button"
       onClick={onOpen}
       aria-label={`Open ${name} pod`}
-      className="flex flex-col gap-3 rounded-2xl bg-surface p-4 text-left transition-colors smooth-shadow-ring-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle"
+      className="flex flex-col gap-3 rounded-2xl bg-surface p-4 text-left smooth-shadow-ring-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none"
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-foreground-secondary">
@@ -139,7 +139,7 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
           {experts.map((expert) => (
             <li
               key={expert.id}
-              className="max-w-full truncate rounded-md bg-surface-muted px-2 py-0.5 font-sans text-caption text-foreground-secondary ring-1 ring-inset ring-border-base"
+              className="max-w-full truncate rounded-md bg-surface-muted px-2 py-0.5 font-sans text-caption text-foreground-secondary ring-1 ring-border-base ring-inset"
             >
               {expert.name}
             </li>

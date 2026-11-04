@@ -8,6 +8,7 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as rest_app
+from backend.data.onboarding_steps import OnboardingStep
 from backend.util.exceptions import MissingConfigError
 from backend.util.models import Pagination
 
@@ -237,8 +238,36 @@ async def test_get_favorite_library_agents_success(
 
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        search_term=None,
         page=1,
         page_size=15,
+    )
+
+
+def test_get_favorite_library_agents_passes_search_term(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_db_call = mocker.patch(
+        "backend.api.features.library.db.list_favorite_library_agents"
+    )
+    mock_db_call.return_value = library_model.LibraryAgentResponse(
+        agents=[],
+        pagination=Pagination(
+            total_items=0, total_pages=0, current_page=2, page_size=10
+        ),
+    )
+
+    response = client.get(
+        "/agents/favorites", params={"search_term": "foo", "page": 2, "page_size": 10}
+    )
+    assert response.status_code == 200
+
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        search_term="foo",
+        page=2,
+        page_size=10,
     )
 
 
@@ -291,7 +320,9 @@ def test_add_agent_to_library_success(
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
-    mock_complete_onboarding.assert_awaited_once()
+    mock_complete_onboarding.assert_awaited_once_with(
+        test_user_id, OnboardingStep.MARKETPLACE_ADD_AGENT
+    )
 
 
 @pytest.mark.asyncio

@@ -20,7 +20,7 @@ export function SpendApprovalCard({
   return (
     <div
       data-slot="spend-approval-card"
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border-base bg-surface py-3 pl-4 pr-3"
+      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border-base bg-surface py-3 pr-3 pl-4"
     >
       <SpendRing spent={summary.spent} threshold={summary.threshold}>
         <ExpertAvatar

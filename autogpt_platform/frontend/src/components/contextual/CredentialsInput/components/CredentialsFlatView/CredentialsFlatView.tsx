@@ -5,7 +5,8 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
@@ -39,7 +40,7 @@ function ProviderConnectRow({
       {broken ? (
         <div
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption font-semibold uppercase leading-inherit text-foreground-secondary"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface text-caption leading-inherit font-semibold text-foreground-secondary uppercase"
         >
           {displayName.charAt(0)}
         </div>
@@ -55,7 +56,7 @@ function ProviderConnectRow({
           onError={() => setBroken(true)}
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-body font-medium leading-5.5 text-foreground-emphasis">
+      <span className="min-w-0 flex-1 truncate text-body leading-5.5 font-medium text-foreground-emphasis">
         {displayName}
       </span>
       <Button
@@ -127,7 +128,7 @@ export function CredentialsFlatView({
               )}
               {!isOptional && !selectedCredential && (
                 <span className="inline-flex items-center gap-1 text-error-foreground">
-                  <ExclamationTriangleIcon className="size-3.5" />
+                  <Icon aria-hidden icon={Alert02Icon} className="size-3.5" />
                   <span className="font-normal">required</span>
                 </span>
               )}

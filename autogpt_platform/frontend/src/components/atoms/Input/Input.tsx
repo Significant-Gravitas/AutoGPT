@@ -285,7 +285,7 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
           type="button"
           onClick={handleTogglePassword}
           disabled={props.disabled}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute top-1/2 right-4 -translate-y-1/2 text-foreground-subtle transition-colors hover:text-foreground-secondary disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
           aria-controls={inputId}
@@ -314,19 +314,23 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
       className={cn("relative mb-6 w-full", wrapperClassName)}
     >
       {input}
-      <Text
-        data-slot="input-error"
-        variant="small-medium"
-        as="span"
-        tone="error"
+      <span
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
-        {error || " "}{" "}
-        {/* Always render with space to maintain consistent height calculation */}
-      </Text>
+        <Text
+          data-slot="input-error"
+          variant="small-medium"
+          as="span"
+          tone="error"
+          className="block"
+        >
+          {error || " "}{" "}
+          {/* Always render with space to maintain consistent height calculation */}
+        </Text>
+      </span>
     </div>
   );
 
@@ -344,8 +348,9 @@ const TextField = forwardRef<InputElement, TextFieldProps>(function TextField(
               data-slot="input-label-text"
               variant={labelVariant}
               as="span"
+              tone="base"
               // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
-              className={cn("text-foreground-base", labelClassName)}
+              className={labelClassName}
             >
               {label}
             </Text>

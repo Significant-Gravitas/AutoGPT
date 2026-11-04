@@ -56,7 +56,6 @@ export function Select({
   error,
   id,
   disabled,
-  value,
   onValueChange,
   options,
   size = "medium",
@@ -68,6 +67,7 @@ export function Select({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
+  ...valueProps
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -87,7 +87,11 @@ export function Select({
   );
 
   const select = (
-    <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
+    <BaseSelect
+      value={"value" in valueProps ? (valueProps.value ?? "") : undefined}
+      onValueChange={onValueChange}
+      disabled={disabled}
+    >
       <SelectTrigger
         data-slot="select-trigger"
         className={triggerStyles}
@@ -148,19 +152,23 @@ export function Select({
       className={cn("relative mb-6", wrapperClassName)}
     >
       {select}
-      <Text
-        data-slot="select-error"
-        variant="small-medium"
-        as="span"
-        tone="error"
+      <span
         className={cn(
-          "absolute left-0 top-full mt-1 transition-opacity duration-200",
+          "absolute top-full left-0 mt-1 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
       >
-        {error || " "}{" "}
-        {/* Always render with space to maintain consistent height calculation */}
-      </Text>
+        <Text
+          data-slot="select-error"
+          variant="small-medium"
+          as="span"
+          tone="error"
+          className="block"
+        >
+          {error || " "}{" "}
+          {/* Always render with space to maintain consistent height calculation */}
+        </Text>
+      </span>
     </div>
   );
 
@@ -177,8 +185,9 @@ export function Select({
             data-slot="select-label"
             variant={labelVariant}
             as="span"
+            tone="base"
             // oxlint-disable-next-line design-system/require-static-classes -- labelClassName is a caller override that existing call sites outside the design system still use
-            className={cn("text-foreground-base", labelClassName)}
+            className={labelClassName}
           >
             {label}
           </Text>

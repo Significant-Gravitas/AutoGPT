@@ -26,15 +26,13 @@ import {
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-/* oxlint-disable design-system/no-raw-colors -- placeholder artwork for workflows without an image, not UI colour */
 const PLACEHOLDER_GRADIENTS = [
-  "bg-gradient-to-r from-green-200 to-blue-200",
-  "bg-gradient-to-r from-pink-200 to-purple-200",
-  "bg-gradient-to-r from-yellow-200 to-orange-200",
-  "bg-gradient-to-r from-blue-200 to-cyan-200",
-  "bg-gradient-to-r from-indigo-200 to-purple-200",
+  "bg-gradient-to-r from-success/45 to-info/30",
+  "bg-gradient-to-r from-pink/45 to-brand/30",
+  "bg-gradient-to-r from-warning-border to-orange/45",
+  "bg-gradient-to-r from-info/30 to-sky/30",
+  "bg-gradient-to-r from-indigo/30 to-brand/30",
 ];
-/* oxlint-enable design-system/no-raw-colors */
 
 interface Props {
   agent: LibraryAgent;
@@ -85,7 +83,7 @@ export function LibraryAgentCard({
         }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
+          <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
             <StatusBadge status={statusInfo.status} />
             <Text variant="small" tone="subtle">
               {statusInfo.totalRuns} tasks
@@ -95,7 +93,7 @@ export function LibraryAgentCard({
         <FavoriteButton
           isFavorite={isFavorite}
           onClick={handleToggleFavorite}
-          className="absolute right-10 top-0"
+          className="absolute top-0 right-10"
         />
         <AgentCardMenu agent={agent} />
 
@@ -131,12 +129,12 @@ export function LibraryAgentCard({
             )}
           </NextLink>
 
-          <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-separator pb-0 pt-2">
+          <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-separator pt-2 pb-0">
             <button
               type="button"
               onClick={() => router.push(`/library/agents/${id}`)}
               data-testid="library-agent-card-see-runs-link"
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium whitespace-nowrap text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >
               <Icon icon={EyeIcon} size={14} className="shrink-0" />
               See tasks
@@ -154,7 +152,7 @@ export function LibraryAgentCard({
                 );
                 router.push(`/home?autosubmit=true#prompt=${prompt}`);
               }}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-body-sm font-medium leading-inherit text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium whitespace-nowrap text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
             >
               <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
               Chat
@@ -171,7 +169,7 @@ export function LibraryAgentCard({
         <TooltipTrigger asChild>{card}</TooltipTrigger>
         <TooltipPortal>
           <TooltipContent
-            // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- red-300 #F69999 on the dark tooltip has no role; deferred (see PR)
+            // oxlint-disable-next-line design-system/no-restyle -- Text has no tone for the dark tooltip (deferred)
             className="max-w-xs text-red-300"
           >
             {statusInfo.lastError}

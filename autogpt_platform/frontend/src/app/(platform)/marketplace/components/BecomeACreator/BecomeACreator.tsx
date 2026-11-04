@@ -17,7 +17,7 @@ export function BecomeACreator({
   const publishTrigger = (
     <button
       // oxlint-disable-next-line design-system/no-arbitrary-values -- the button's resting and hover shadows have no shadow token
-      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-action-hover px-8 text-body-md font-medium leading-inherit text-action-foreground shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-action hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]"
+      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-action-hover px-8 text-body-md leading-inherit font-medium text-action-foreground shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-action hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]"
       onClick={onPublish}
     >
       {buttonText}
@@ -27,12 +27,12 @@ export function BecomeACreator({
   return (
     <div className="relative mx-auto w-full max-w-[1360px] py-24">
       <div className="mx-auto w-full max-w-2xl px-4 text-center">
-        <h2 className="mb-4 text-3xl font-semibold tracking-heading text-foreground-strong md:text-4xl">
+        <h2 className="mb-4 text-heading font-semibold tracking-heading text-foreground-strong md:text-title">
           Build AI workflows and share <span className="text-brand">your</span>{" "}
           vision
         </h2>
 
-        <p className="mx-auto mb-8 max-w-xl text-body-md leading-relaxed text-foreground-tertiary md:text-lg">
+        <p className="mx-auto mb-8 max-w-xl text-body-md leading-relaxed text-foreground-tertiary md:text-lead">
           {description}
         </p>
 

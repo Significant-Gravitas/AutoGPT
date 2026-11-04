@@ -12,7 +12,7 @@ export function TransactionAmount({ amount, variant = "body-medium" }: Props) {
     <span
       className={
         isCredit
-          ? "whitespace-nowrap tabular-nums text-success-foreground"
+          ? "whitespace-nowrap text-success-foreground tabular-nums"
           : "whitespace-nowrap tabular-nums"
       }
     >

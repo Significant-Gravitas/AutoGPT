@@ -90,7 +90,9 @@ export function ExpertCard({ expert, isHired, category }: Props) {
 
         {skills.length > 0 ? (
           <div>
-            <div className="mb-1 text-sm text-foreground-tertiary">Skills:</div>
+            <div className="mb-1 text-body text-foreground-tertiary">
+              Skills:
+            </div>
             <div className="flex flex-col items-start">
               {named.map((skill) => (
                 <span
@@ -142,19 +144,19 @@ export function ExpertCard({ expert, isHired, category }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-end pt-2">
-          <span className="flex items-center gap-1.5 text-base font-medium text-foreground-subtle transition-colors duration-200 group-hover:text-foreground-strong">
+          <span className="flex items-center gap-1.5 text-body-lg font-medium text-foreground-subtle transition-colors duration-200 group-hover:text-foreground-strong">
             View
             <Icon
               icon={ArrowRight02Icon}
               size={16}
               aria-hidden
-              // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
-              className="transition-transform duration-200 group-hover:translate-x-0.5"
+              motion="transform"
+              className="group-hover:translate-x-0.5"
             />
           </span>
         </div>
       </Link>
-      <div className="absolute right-5 top-5 z-10">
+      <div className="absolute top-5 right-5 z-10">
         <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>

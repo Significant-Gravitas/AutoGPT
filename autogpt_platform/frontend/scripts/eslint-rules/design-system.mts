@@ -8,6 +8,14 @@ import {
   buildSizeMap,
   rewriteClassList,
 } from "../codemod-tokens.ts";
+import { ALIAS_ROLES } from "../ds/alias-to-role.ts";
+import { isExempt, isWholeFileExempt } from "../ds/colour-exempt.ts";
+import {
+  COLOUR_UTILITIES,
+  colourClassPattern,
+} from "../ds/colour-utilities.ts";
+import { buildPaletteMap, PALETTE_VALUES } from "../ds/palette-to-role.ts";
+import { RAW_TEXT_SIZE, rawTextSizeAdvice } from "../ds/text-size-scale.ts";
 
 // Design-system lint rules (SECRT-3097), loaded by oxlint as a JS plugin
 // (.oxlintrc.json) and run by `pnpm lint`. See
@@ -17,7 +25,7 @@ import {
 // rule, how many violations the file had when the rule was turned on. A file
 // at or under its count passes; one over it fails with every violation listed;
 // a file missing from the baseline must have none. `pnpm lint:ds-baseline`
-// rewrites the baseline, and `design-system/baseline-outdated` warns when a
+// rewrites the baseline, and `design-system/baseline-outdated` fails when a
 // file has fewer violations than the baseline allows.
 //
 // The @shadcn/lint rules are wrapped rather than enabled directly, so that
@@ -175,19 +183,23 @@ function ratchet(
   name: string,
   inner: Rule.RuleModule,
   rewrite?: Rewrite,
+  keep: (report: Report, file: string) => boolean = () => true,
 ): Rule.RuleModule {
   const messages = (inner.meta?.messages ?? {}) as Record<string, string>;
   return {
     meta: { ...inner.meta },
     create(context) {
       const reports: Report[] = [];
+      const file = relativeToFrontend(context.filename);
       const target = context as unknown as Record<PropertyKey, unknown>;
       const collecting = new Proxy(
         {},
         {
           get(_, key) {
             if (key === "report")
-              return (report: Report) => reports.push(report);
+              return (report: Report) => {
+                if (keep(report, file)) reports.push(report);
+              };
             const value = Reflect.get(target, key, target);
             return typeof value === "function" ? value.bind(target) : value;
           },
@@ -203,7 +215,6 @@ function ratchet(
         ...visitor,
         "Program:exit"(program: Node) {
           innerExit?.(program);
-          const file = relativeToFrontend(context.filename);
           const live = reports.filter(
             (report) => !isSuppressed(context, name, report),
           ).length;
@@ -233,10 +244,8 @@ function ratchet(
 }
 
 // ---------------------------------------------------------------------------
-// Colour roles, read from src/app/globals.css so the advice never drifts.
+// Colour roles, read from src/app/tokens/theme.css so the advice never drifts.
 
-const SHADCN_NAMES =
-  /^(?:background|foreground|card|card-foreground|popover|popover-foreground|primary|primary-foreground|secondary|secondary-foreground|muted|muted-foreground|accent|accent-foreground|destructive|destructive-foreground|border|input|ring|sidebar.*)$/;
 const BUILDER_ROLES =
   /^(?:builder-canvas|builder-grid|node-surface|node-border|node-selected|edge|handle)$/;
 
@@ -248,16 +257,16 @@ interface ColorRole {
 
 function readColorRoles(): ColorRole[] {
   const css = readFileSync(
-    path.join(FRONTEND_ROOT, "src/app/globals.css"),
+    path.join(FRONTEND_ROOT, "src/app/tokens/theme.css"),
     "utf8",
   );
-  const root = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const start = css.indexOf(":root {");
+  const root = css.slice(start, css.indexOf("\n}", start));
   const roles: ColorRole[] = [];
   const line =
     /--color-([a-z-]+):\s*(\d+)\s+(\d+)\s+(\d+);(?:\s*\/\*\s*([a-z]+(?:-\d+)?)\b)?/g;
   for (const match of root.matchAll(line)) {
     const [, name, r, g, b, palette] = match;
-    if (SHADCN_NAMES.test(name)) continue;
     const hex = [r, g, b]
       .map((channel) => Number(channel).toString(16).padStart(2, "0"))
       .join("");
@@ -278,17 +287,17 @@ const ROLE_FAMILIES: { utilities: RegExp; roles: RegExp }[] = [
   {
     utilities: /^(?:text|placeholder|caret|decoration|fill|stroke|accent)$/,
     roles:
-      /^(?:foreground-.+|placeholder|action-foreground|brand|accent-strong|error|error-foreground|warning|warning-foreground|success|success-foreground|info|info-foreground)$/,
+      /^(?:foreground-.+|placeholder|action-foreground|brand|accent-strong|error|error-foreground|warning|warning-foreground|success|success-foreground|info|info-foreground|(?:orange|yellow|sky|pink)(?:-foreground)?|indigo)$/,
   },
   {
     utilities: /^(?:bg|from|via|to)$/,
     roles:
-      /^(?:canvas|surface.*|overlay|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface)$/,
+      /^(?:canvas|surface.*|overlay|scrim|action|action-hover|brand|brand-hover|accent-surface|error|error-hover|error-surface|warning|warning-surface|success|success-surface|info|info-surface|orange|yellow|sky|indigo|pink)$/,
   },
   {
     utilities: /^(?:border.*|divide.*|ring.*|outline)$/,
     roles:
-      /^(?:separator|border-base|border-strong|focus|action|brand|error|warning-border|success|info)$/,
+      /^(?:separator|border-base|border-strong|focus|action|brand|error|warning-border|success|info|orange|yellow|sky|indigo|pink|scrim)$/,
   },
 ];
 
@@ -346,7 +355,28 @@ export function colorAdvice(className: string) {
   );
   if (same.length > 0)
     return `Use ${same.map((role) => asClass(role.name)).join(" or ")} instead: the design token with the same colour.`;
-  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/globals.css and tailwind.config.ts.`;
+  return `No ${utility}- token has this exact colour. Use the ${utility}- role that fits what the element means (${family.map((role) => role.name).join(", ")}) and check the screen, since the colour changes; or add a role in src/app/tokens/theme.css (and register it in globals.css's @theme).`;
+}
+
+// @shadcn/lint also reports any colour-like class that is not a theme token
+// once the theme declares one (globals.css's `@theme`). With scanAllStrings it
+// reads that into every string (`fill-mode-both`, `shadow-subtle`, SVG
+// attributes in generated data), so only the palette and hard-coded colours
+// are reported, as before the roles moved into `@theme`.
+const PALETTE_CLASS_EXACT = new RegExp(
+  colourClassPattern(PALETTE_VALUES).source,
+);
+
+function isPaletteOrHardcodedColor(report: Report, file: string) {
+  if (String(report.messageId ?? "").startsWith("undeclaredToken"))
+    return false;
+  // no-palette-colours and no-hex-colours report these, with the role to use
+  // and ds-colour-exempt.json's exemptions.
+  const said = [report.message, ...Object.values(report.data ?? {})].join(" ");
+  if (PALETTE_CLASS_EXACT.test(said) || hexColours(said).length > 0)
+    return false;
+  const className = quotedClass(renderMessage(report, {}), report) ?? "";
+  return !isWholeFileExempt(file) && !isExempt(file, className);
 }
 
 function quotedClass(message: string, report: Report) {
@@ -404,7 +434,28 @@ const noDarkVariant: Rule.RuleModule = {
       for (const match of text.matchAll(THEME_VARIANT)) {
         context.report({
           node,
-          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: tailwind.config.ts ties dark: to a .dark-mode class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
+          message: `"${match[0]}" is a ${match[2]}: class. The app has one theme: globals.css ties dark: to a .dark class that is never set, so this never renders. Delete it and keep the light value; the colour tokens (bg-surface, text-foreground-*, border-border-base) carry the theme.`,
+        });
+      }
+    });
+  },
+};
+
+// Tailwind's sizes (`text-sm`, `md:text-2xl`) and arbitrary ones
+// (`text-[13px]`): the theme resets the first, so they render nothing, and the
+// type scale (src/app/tokens/typography.css) replaces both (SECRT-3152).
+const noRawTextSize: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow text sizes outside the type scale" },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      for (const match of text.matchAll(RAW_TEXT_SIZE)) {
+        context.report({
+          node,
+          message: `"${match[0]}" is not a step of the type scale. ${rawTextSizeAdvice(match[2], match[3])}`,
         });
       }
     });
@@ -593,7 +644,7 @@ const requireSuppressionReason: Rule.RuleModule = {
 };
 
 /**
- * Warns when a file has fewer violations than design-system-baseline.json
+ * Reports a file that has fewer violations than design-system-baseline.json
  * allows, so the entry can be lowered and the count cannot grow back.
  */
 const baselineOutdated = {
@@ -626,6 +677,101 @@ const baselineOutdated = {
   },
 } as unknown as Rule.RuleModule;
 
+// ---------------------------------------------------------------------------
+// One colour system (SECRT-3154): the role tokens in src/app/tokens/theme.css.
+// The shadcn names, the Tailwind palette and hex colours are failed in every
+// string; ds-colour-exempt.json lists the artwork, charts and user-picked
+// palettes that keep theirs.
+
+const ALIAS_CLASS = colourClassPattern(
+  Object.keys(ALIAS_ROLES)
+    .sort((a, b) => b.length - a.length)
+    .join("|"),
+);
+
+const noAliasColours: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow the shadcn colour names" },
+    schema: [],
+  },
+  create(context) {
+    return stringNodes((node, text) => {
+      for (const match of text.matchAll(ALIAS_CLASS)) {
+        const [whole, variants, utility, name, opacity = ""] = match;
+        // `accent-` (accent-color) never takes a shadcn name in this app;
+        // the word turns up in prose ("accent-foreground").
+        if (utility === "accent") continue;
+        const role = `${variants}${utility}-${ALIAS_ROLES[name]}${opacity}`;
+        context.report({
+          node,
+          message: `"${whole}" is a shadcn colour name, which the app no longer has. Use "${role}", the role it aliased (same colour). The names left in src/app/tokens/theme.css are for streamdown's prebuilt markup only.`,
+        });
+      }
+    });
+  },
+};
+
+const PALETTE_CLASS = colourClassPattern(PALETTE_VALUES);
+const PALETTE_TO_ROLE = buildPaletteMap();
+
+const noPaletteColours: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow the raw Tailwind palette" },
+    schema: [],
+  },
+  create(context) {
+    const file = relativeToFrontend(context.filename);
+    if (isWholeFileExempt(file)) return {};
+    return stringNodes((node, text) => {
+      for (const match of text.matchAll(PALETTE_CLASS)) {
+        const [whole, variants, utility, value, opacity = ""] = match;
+        const bare = `${utility}-${value}`;
+        if (isExempt(file, bare)) continue;
+        const mapped = PALETTE_TO_ROLE.get(bare);
+        const advice = mapped
+          ? `Use "${variants}${mapped}${mapped.includes("/") ? "" : opacity}" (scripts/ds/palette-map.json).`
+          : (colorAdvice(whole) ??
+            "Use the colour role that fits what the element means.");
+        context.report({
+          node,
+          message: `"${whole}" uses the raw Tailwind palette. ${advice} Artwork, charts and user-picked palettes go in ds-colour-exempt.json, with a reason.`,
+        });
+      }
+    });
+  },
+};
+
+// A hex colour: 3, 4, 6 or 8 digits, in any string (comments are not read).
+const HEX_COLOUR =
+  /(?<![\w&#/-])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![0-9a-z-])/gi;
+
+export function hexColours(text: string) {
+  return [...text.matchAll(HEX_COLOUR)].map((match) => match[0]);
+}
+
+const noHexColours: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow hex colours" },
+    schema: [],
+  },
+  create(context) {
+    const file = relativeToFrontend(context.filename);
+    if (isWholeFileExempt(file)) return {};
+    return stringNodes((node, text) => {
+      for (const hex of hexColours(text)) {
+        if (isExempt(file, hex)) continue;
+        context.report({
+          node,
+          message: `"${hex}" hardcodes a colour. Use a role: a class (bg-surface, text-foreground-secondary) or, where a string needs a colour, rgb(var(--color-<role>)). Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
+        });
+      }
+    });
+  },
+};
+
 const shadcnRules = shadcn.rules as unknown as Record<string, Rule.RuleModule>;
 
 const plugin = {
@@ -635,6 +781,7 @@ const plugin = {
       "no-raw-colors",
       shadcnRules["no-raw-colors"],
       rewriteRawColor,
+      isPaletteOrHardcodedColor,
     ),
     "no-arbitrary-values": ratchet(
       "no-arbitrary-values",
@@ -654,7 +801,11 @@ const plugin = {
       "no-unknown-classes",
       shadcnRules["no-unknown-classes"],
     ),
+    "no-alias-colours": ratchet("no-alias-colours", noAliasColours),
+    "no-palette-colours": ratchet("no-palette-colours", noPaletteColours),
+    "no-hex-colours": ratchet("no-hex-colours", noHexColours),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
+    "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),
     "no-legacy-button-variant": ratchet(
       "no-legacy-button-variant",

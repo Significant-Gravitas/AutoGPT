@@ -184,7 +184,7 @@ While server components and actions are cool and cutting-edge, they introduce a 
 - Use the design system under `src/components` for primitives and building blocks
 - Do not use anything under `src/components/__legacy__`; migrate away from it when touching old code (`design-system/no-legacy-import` fails new imports)
 - Browse the design system in Storybook (`pnpm storybook`); the rules and the lint that enforces them are in [`docs/engineering/design-system.md`](../../docs/engineering/design-system.md)
-- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, kept in `tailwind.scrollbar.ts`
+- Use the `scrollbar-*` utilities for scrollbar styling: [`tailwind-scrollbar`](https://www.npmjs.com/package/tailwind-scrollbar) 3's classes, ported to `@utility` in `src/app/globals.css`
 
 ---
 
@@ -497,7 +497,7 @@ You don't need to wrap components in error boundaries manually unless you need c
 
 ## 🚩 Feature Flags
 
-- By default the browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
+- The browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
 - Use the helper APIs under `src/services/feature-flags`
 
 Check a flag in a client component:
@@ -530,11 +530,7 @@ Adding new flags:
 
 1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
 2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
-3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
-   - `launchdarkly`: LaunchDarkly
-   - `posthog`: PostHog
-   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
-   - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
+3. Create the flag in each environment's PostHog project; the backend evaluates it there and serves it through `/api/feature-flags`
 
 ---
 
@@ -622,8 +618,8 @@ Control flow:
 
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
-- Use the `scrollbar-*` utilities (`tailwind.scrollbar.ts`) for scrollbar styling
-- Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
+- Use the `scrollbar-*` utilities (`@utility` in `src/app/globals.css`) for scrollbar styling
+- The theme is CSS-first: the colour roles, type scale, radii, the `dark` variant and the app's own utilities are in `src/app/globals.css` (`@theme`, `@custom-variant`, `@utility`); `tailwind.config.ts` and its preset keep the raw palette, spacing, shadows and motion. Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
 - Keep responsive behavior consistent with the design system; no `dark:` classes, the role tokens carry the theme
 
 Additional requirements:
