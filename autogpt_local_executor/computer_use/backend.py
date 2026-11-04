@@ -148,7 +148,11 @@ class ComputerUseBackend(ABC):
         args: list[str] | None = None,
         activate: bool = True,
     ) -> int | None:
-        """Returns the launched pid, or None when the OS doesn't say."""
+        """Returns the launched pid, or None when the OS doesn't say.
+
+        Only a macOS `bundle_id` launch honors `activate`; for an
+        `executable_path` the OS decides whether the window comes forward
+        (COMPUTER_USE.md, APP_LAUNCH)."""
 
     # ── Clipboard ────────────────────────────────────────────────────
 

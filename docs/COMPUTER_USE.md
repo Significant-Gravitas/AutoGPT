@@ -656,6 +656,10 @@ report one. The shim uses, in order of preference:
   pid is looked up through `NSRunningApplication`; an `executable_path`
   runs with `subprocess.Popen`.
 - Windows: `subprocess.Popen` with `CREATE_NEW_PROCESS_GROUP`.
+
+Only a macOS `bundle_id` launch honors `activate`. An `executable_path`
+launch, on any OS, leaves it to the OS whether the new window comes
+forward, and the `ACK` doesn't say which happened.
 - Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
   file launches with `gtk-launch` (by its desktop file ID: its path below
   the applications directory with `/` turned into `-`, so
@@ -668,8 +672,10 @@ report one. The shim uses, in order of preference:
   whose `TryExec` program isn't installed, is refused before either helper
   starts. `args` are refused for a `.desktop` file,
   since its `Exec` line sets them. A helper that exits with a failing
-  status answers `FEATURE_NOT_SUPPORTED`. The `pid` is null: the helper
-  exits once it has started the app, so its pid would name neither.
+  status answers `FEATURE_NOT_SUPPORTED`. A helper still running after 10
+  seconds counts as launched: the `ACK` goes out then, so a failure after
+  that can't be reported. The `pid` is null: the helper exits once it has
+  started the app, so its pid would name neither.
 
 We deliberately do **not** fall through to `EXECUTE_COMMAND` — the audit
 log distinguishes "agent launched an app" from "agent ran a shell command",
@@ -1083,9 +1089,14 @@ critical path for "drive a form across three apps." Punt.
 
 Legend: ✅ supported, 🟡 supported with caveat (named), ❌ not supported (reason).
 
+On Wayland the shim advertises no `computer_use` today ([CROSS_PLATFORM.md →
+Linux](CROSS_PLATFORM.md)), so a platform can call nothing in that column.
+Its cells say what the backend does, in brackets, for when the "clipboard +
+app launch only" Wayland mode below is allowed.
+
 | Wire op / feature | macOS | Linux (X11) | Linux (Wayland) | Windows | WSL2 |
 |---|---|---|---|---|---|
-| `SCREENSHOT_REQUEST` (full display) | ✅ via `mss` + Quartz | ✅ via `mss` | 🟡 portal+pipewire only; default ❌ | ✅ via `mss` | 🟡 WSLg via X server only |
+| `SCREENSHOT_REQUEST` (full display) | ✅ via `mss` + Quartz | ✅ via `mss` | ❌ not advertised (backend: portal+pipewire only) | ✅ via `mss` | 🟡 WSLg via X server only |
 | `SCREENSHOT_REQUEST.region` | ✅ | ✅ | ❌ (same Wayland block) | ✅ | 🟡 same as full |
 | `SCREENSHOT_REQUEST.window_id` | 🟡 via `CGWindowListCreateImage` (needs Screen Recording) | 🟡 X11 XComposite-dependent; off-screen windows may return stale bitmaps | ❌ | ✅ via `PrintWindow` / `BitBlt` | ❌ no Win32 access from inside the Linux VM |
 | `SCREENSHOT_REQUEST.include_cursor` | ✅ | ✅ | ❌ | ✅ | 🟡 |
@@ -1096,17 +1107,17 @@ Legend: ✅ supported, 🟡 supported with caveat (named), ❌ not supported (re
 | `INPUT_ACTION.mouse_down`/`mouse_up` | ✅ | ✅ | ❌ | ✅ | 🟡 |
 | `INPUT_ACTION.drag` (path) | ✅ | 🟡 X11 may glitch if path is > 100 pts; we sub-sample | ❌ | ✅ | 🟡 |
 | `INPUT_ACTION.hold_key` | ✅ | ✅ | ❌ | ✅ | 🟡 |
-| `INPUT_ACTION.wait` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `INPUT_ACTION.type.paste` | ✅ Cmd+V via NSPasteboard | ✅ Ctrl+V via xclip/wl-clipboard | 🟡 Wayland: clipboard works, paste keystroke blocked | ✅ Ctrl+V | 🟡 X-server clipboard only |
-| `CURSOR_POSITION_REQUEST` | ✅ via Quartz | ✅ via `XQueryPointer` | 🟡 Wayland: returns last-known from `pyautogui`, may lag | ✅ via `GetCursorPos` | 🟡 |
-| `DISPLAY_INFO_REQUEST` | ✅ via Quartz `CGGetActiveDisplayList` | ✅ via `xrandr` | 🟡 via `wlr-randr` if present, else single-display fallback | ✅ via `EnumDisplayMonitors` | 🟡 reports the X server's view |
+| `INPUT_ACTION.wait` | ✅ | ✅ | ❌ not advertised (backend: ✅) | ✅ | ✅ |
+| `INPUT_ACTION.type.paste` | ✅ Cmd+V via NSPasteboard | ✅ Ctrl+V via xclip/wl-clipboard | ❌ not advertised (backend: clipboard works, paste keystroke blocked) | ✅ Ctrl+V | 🟡 X-server clipboard only |
+| `CURSOR_POSITION_REQUEST` | ✅ via Quartz | ✅ via `XQueryPointer` | ❌ not advertised (backend: last-known from `pyautogui`, may lag) | ✅ via `GetCursorPos` | 🟡 |
+| `DISPLAY_INFO_REQUEST` | ✅ via Quartz `CGGetActiveDisplayList` | ✅ via `xrandr` | ❌ not advertised (backend: `wlr-randr` if present, else one display) | ✅ via `EnumDisplayMonitors` | 🟡 reports the X server's view |
 | `WINDOW_LIST_REQUEST` | ✅ via `CGWindowListCopyWindowInfo` | 🟡 via `wmctrl` / EWMH; needs window manager that exposes `_NET_CLIENT_LIST` | ❌ no equivalent in Wayland | ✅ via `EnumWindows` | 🟡 X server windows only |
 | `WINDOW_FOCUS` | ✅ via `AXRaise` (needs Accessibility) | ✅ via `_NET_ACTIVE_WINDOW` | ❌ | 🟡 `SetForegroundWindow` honors foreground-lock rules (best-effort) | 🟡 |
-| `APP_LIST_REQUEST` | ✅ via `NSWorkspace.runningApplications` | ✅ via `/proc` + .desktop heuristics | ✅ same as X11 (procfs is compositor-agnostic) | ✅ via `EnumProcesses` + window-owner | 🟡 |
-| `APP_LAUNCH` | ✅ via `open -b` (bundle ID) or Popen | ✅ via Popen + .desktop resolution | ✅ same as X11 | ✅ via Popen | 🟡 launches in WSL2, not on Windows host |
-| `CLIPBOARD_READ` (text) | ✅ via `NSPasteboard` | ✅ via `xclip` if installed, else dependency-missing | 🟡 via `wl-paste` if installed | ✅ via `OpenClipboard` | 🟡 X server clipboard only |
-| `CLIPBOARD_WRITE` (text) | ✅ | ✅ via `xclip` | 🟡 via `wl-copy` | ✅ | 🟡 |
-| `PERMISSIONS_CHECK_REQUEST` | ✅ TCC: ScreenCapture / Accessibility / InputMonitoring | ✅ returns `not_applicable` for TCC keys; `granted` if display server is X11 | ✅ returns `denied` for screen_recording unless portal session live | ✅ checks process elevation + UIAccess | ✅ |
+| `APP_LIST_REQUEST` | ✅ via `NSWorkspace.runningApplications` | ✅ via `/proc` + .desktop heuristics | ❌ not advertised (backend: same as X11; procfs is compositor-agnostic) | ✅ via `EnumProcesses` + window-owner | 🟡 |
+| `APP_LAUNCH` | ✅ via `open -b` (bundle ID) or Popen | ✅ via Popen + .desktop resolution | ❌ not advertised (backend: same as X11) | ✅ via Popen | 🟡 launches in WSL2, not on Windows host |
+| `CLIPBOARD_READ` (text) | ✅ via `NSPasteboard` | ✅ via `xclip` if installed, else dependency-missing | ❌ not advertised (backend: `wl-paste` if installed) | ✅ via `OpenClipboard` | 🟡 X server clipboard only |
+| `CLIPBOARD_WRITE` (text) | ✅ | ✅ via `xclip` | ❌ not advertised (backend: `wl-copy`) | ✅ | 🟡 |
+| `PERMISSIONS_CHECK_REQUEST` | ✅ TCC: ScreenCapture / Accessibility / InputMonitoring | ✅ returns `not_applicable` for TCC keys; `granted` if display server is X11 | ❌ not advertised (backend: `denied` for screen_recording unless a portal session is live) | ✅ checks process elevation + UIAccess | ✅ |
 
 Across the board: **Wayland is the largest single capability cliff.** On
 a Wayland session the shim should advertise `computer_use_features: ["wait",
