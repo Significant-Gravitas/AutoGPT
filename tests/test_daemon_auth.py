@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
@@ -709,3 +710,47 @@ async def test_a_failed_first_audit_write_says_whether_a_restart_can_fix_it(
 
     assert raised.value.permanent is permanent
     assert raised.value.transient is transient
+
+
+@pytest.mark.asyncio
+async def test_run_retries_a_keychain_that_is_still_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The keychain tests called _read_access_token alone, so a run() that
+    stopped on KeychainUnavailableError, instead of retrying with backoff
+    until the keychain unlocks, would still have passed them."""
+    import keyring.errors
+
+    reads = 0
+
+    class Store:
+        async def get_access_token(self) -> str:
+            nonlocal reads
+            reads += 1
+            if reads == 1:
+                raise keyring.errors.KeyringError("the keychain is still locked")
+            return "the-token"
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+        reconnect_base_delay=0.01,
+        reconnect_jitter_seconds=0,
+    )
+    audit = MagicMock()
+    for name in ("write", "shim_start", "shim_stop", "ws_connected", "ws_disconnected"):
+        setattr(audit, name, AsyncMock())
+    daemon = ShimDaemon(config, token_store=Store(), audit=audit)  # type: ignore[arg-type]
+    tokens: list[str | None] = []
+
+    async def session() -> None:
+        tokens.append(await daemon._read_access_token())
+        daemon._running = False
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert reads == 2
+    assert tokens == ["the-token"]
