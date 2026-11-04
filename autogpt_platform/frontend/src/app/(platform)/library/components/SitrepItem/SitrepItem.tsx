@@ -143,7 +143,7 @@ export function SitrepItem({ item }: Props) {
             className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-body-sm leading-inherit font-medium text-foreground-secondary transition-colors hover:bg-surface-muted hover:text-foreground-emphasis"
           >
             <Icon icon={EyeIcon} size={14} className="shrink-0" />
-            See task
+            See run
           </NextLink>
         ) : (
           <ContextualActionButton

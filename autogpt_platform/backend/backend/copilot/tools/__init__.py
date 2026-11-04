@@ -89,6 +89,14 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
+from .tasks_plan_tools import ConfirmTaskPlanTool, CreateTaskTool, ProposePlanTool
+from .tasks_tools import (
+    CommentOnTaskTool,
+    LinkArtifactTool,
+    ListMyTasksTool,
+    RequestInputTool,
+    UpdateTaskStatusTool,
+)
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -228,6 +236,15 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
     "request_credential_grant": RequestCredentialGrantTool(),
+    # Tasks v1 (flag-gated inside each tool): the task board.
+    "list_my_tasks": ListMyTasksTool(),
+    "update_task_status": UpdateTaskStatusTool(),
+    "comment_on_task": CommentOnTaskTool(),
+    "request_input": RequestInputTool(),
+    "link_artifact": LinkArtifactTool(),
+    "create_task": CreateTaskTool(),
+    "propose_plan": ProposePlanTool(),
+    "confirm_task_plan": ConfirmTaskPlanTool(),
 }
 
 # Export individual tool instances for backwards compatibility

@@ -135,6 +135,9 @@ class Flag(str, Enum):
     # ``dream/p0-spec.md`` §13.
 
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
+    # Tasks v1: the per-user task board worked by experts and Otto. Every
+    # /api/tasks route 404s when off. Defaults False.
+    TASKS_V1 = "tasks-v1"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
     # per Checkout). When set to a real Stripe Product ID, line items reference

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
+from backend.api.features.tasks.live_step import note_tool_call
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
@@ -564,6 +565,7 @@ class BaseTool:
                 tool_call_id=tool_call_id,
             ) as outcome,
         ):
+            _note_task_step(session, self.name)
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )
@@ -922,6 +924,18 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+def _note_task_step(session: ChatSession, tool_name: str) -> None:
+    """Tasks v1: show the tool as a running task's current step (best-effort)."""
+    try:
+        note_tool_call(
+            session.session_id or "",
+            session.metadata.origin == "automation",
+            tool_name,
+        )
+    except Exception:
+        logger.debug("Task step note failed", exc_info=True)
 
 
 # Read by the approval card (gate/review.py, gate/references.py), never by the

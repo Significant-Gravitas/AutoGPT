@@ -85,7 +85,7 @@ export function useSelectedTemplateView({
           const execution = okData(response);
           if (execution) {
             toast({
-              title: "Task started",
+              title: "Run started",
             });
             queryClient.invalidateQueries({
               queryKey: getGetV1ListGraphExecutionsQueryKey(graphId),
@@ -96,7 +96,7 @@ export function useSelectedTemplateView({
       },
       onError: (error: any) => {
         toast({
-          title: "Failed to start task",
+          title: "Failed to start run",
           description: error.message || "An unexpected error occurred.",
           variant: "destructive",
         });

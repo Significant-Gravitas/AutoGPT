@@ -511,12 +511,12 @@ export async function navigateToAgentByName(
 
 export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
-    name: /Setup your task/i,
+    name: /Set up your run/i,
   });
   const newTaskButton = page.getByRole("button", {
-    name: /^New workflow task$/i,
+    name: /^New run$/i,
   });
-  const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
+  const rerunTaskButton = page.getByRole("button", { name: /^Rerun$/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
     setupTaskButton,
@@ -635,7 +635,7 @@ async function waitForRunDialog(page: Page): Promise<Locator> {
   const runDialog = page
     .locator("[data-dialog-content]")
     .filter({
-      has: page.getByRole("button", { name: /^Start Task$/i }),
+      has: page.getByRole("button", { name: /^Start Run$/i }),
     })
     .last();
   await expect(runDialog).toBeVisible({ timeout: 15000 });
@@ -662,7 +662,7 @@ async function clickStartOrSimulateTask(
   page: Page,
   runDialog: Locator,
 ): Promise<void> {
-  const startBtn = runDialog.getByRole("button", { name: /^Start Task$/i });
+  const startBtn = runDialog.getByRole("button", { name: /^Start Run$/i });
   // Happy-path tests must exercise a real run — do NOT fall back to the
   // "Simulate" button if Start fails, because a broken Start code path is
   // exactly the regression these tests exist to catch.
@@ -683,7 +683,7 @@ async function clickStartOrSimulateTask(
       {
         timeout: 15000,
         message:
-          "Start Task click did not navigate to a run detail (?activeTab=runs&activeItem=...)",
+          "Start Run click did not navigate to a run detail (?activeTab=runs&activeItem=...)",
       },
     )
     .toBe(true);
@@ -833,11 +833,11 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
     ],
     [
       "setup-task",
-      page.getByRole("button", { name: /^Setup your task$/i }).first(),
+      page.getByRole("button", { name: /^Set up your run$/i }).first(),
     ],
     [
       "new-task",
-      page.getByRole("button", { name: /^New workflow task$/i }).first(),
+      page.getByRole("button", { name: /^New run$/i }).first(),
     ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];

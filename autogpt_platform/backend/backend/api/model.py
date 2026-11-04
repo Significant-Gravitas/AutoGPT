@@ -126,3 +126,14 @@ class OnboardingNotificationPayload(NotificationPayload):
 class CopilotCompletionPayload(NotificationPayload):
     session_id: str
     status: Literal["completed", "failed"]
+
+
+class TaskEventNotificationPayload(NotificationPayload):
+    """Live Tasks v1 update; ``task``/``activity`` are contract JSON dicts."""
+
+    type: Literal["task_event"] = "task_event"
+    task_id: str
+    task_key: str | None = None
+    title: str | None = None
+    task: dict | None = None
+    activity: dict | None = None

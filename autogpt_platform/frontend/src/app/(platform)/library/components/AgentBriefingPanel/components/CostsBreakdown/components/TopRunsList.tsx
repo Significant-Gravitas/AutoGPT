@@ -25,7 +25,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
   return (
     <section className="flex flex-col gap-2 lg:mt-4">
       <Text variant="body-medium" tone="emphasis" className="lg:mb-2">
-        Most expensive tasks
+        Most expensive runs
       </Text>
       <ul className="flex flex-col divide-y divide-separator rounded-medium border border-separator bg-surface">
         {visible.map((run) => {

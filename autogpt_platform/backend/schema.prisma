@@ -223,6 +223,8 @@ model User {
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
+  Tasks                Task[]
+  TaskPlans            TaskPlan[]
   ExpertPods           ExpertPod[]
   SkillLearningSources SkillLearningSource[]
   SkillLearningReviews SkillLearningReview[]
@@ -1517,6 +1519,7 @@ model Expert {
   Routines        ExpertRoutine[]
   DreamPasses     DreamPass[]
   MemorySchedule  MemoryScopeSchedule?
+  AssignedTasks   Task[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -3867,4 +3870,146 @@ model LlmModelMigration {
   // migrations per source: UNIQUE (sourceModelSlug) WHERE isReverted = false
   @@index([targetModelSlug])
   @@index([sourceModelSlug, isReverted])
+}
+
+// ---------------------------------------------------------------------------
+// Tasks v1 (flag `tasks-v1`): per-user task board worked by experts and Otto.
+// ---------------------------------------------------------------------------
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  blocked
+  in_review
+  done
+  cancelled
+}
+
+enum TaskPriority {
+  none
+  low
+  medium
+  high
+  urgent
+}
+
+enum TaskAssigneeType {
+  user
+  expert
+  otto
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Per-user sequence shown as "T-<number>".
+  number Int
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(none)
+
+  assigneeType     TaskAssigneeType?
+  assigneeExpertId String?
+  AssigneeExpert   Expert?           @relation(fields: [assigneeExpertId], references: [id], onDelete: SetNull)
+
+  dueDate DateTime?
+  labels  String[]  @default([])
+
+  parentId String?
+  Parent   Task?   @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  Subtasks Task[]  @relation("TaskSubtasks")
+
+  outcomeSummary String?
+  // Chat session the assignee works the task in.
+  workSessionId  String?
+  budgetCapUsd   Float?
+  reviewRequired Boolean @default(false)
+
+  turns      Int   @default(0)
+  toolCalls  Int   @default(0)
+  tokens     Int   @default(0)
+  costUsd    Float @default(0)
+  durationMs Int   @default(0)
+
+  liveRunning       Boolean   @default(false)
+  liveStep          String?
+  liveTurnStartedAt DateTime?
+
+  // {id, question, options, asked_by, asked_at} while waiting for the user.
+  pendingInput Json?
+
+  planId String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  Activities  TaskActivity[]
+  Attachments TaskAttachment[]
+
+  @@unique([userId, number])
+  @@index([userId, status])
+  @@index([userId, assigneeExpertId])
+  @@index([parentId])
+  @@index([workSessionId])
+}
+
+model TaskActivity {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId String
+
+  kind      String
+  actorType String
+  actorId   String?
+  actorName String
+  body      String?
+  data      Json    @default("{}")
+
+  @@index([taskId, createdAt])
+}
+
+model TaskAttachment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId String
+  Task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  kind    String
+  title   String
+  refId   String?
+  url     String?
+  addedBy Json    @default("{}")
+
+  @@index([taskId, createdAt])
+}
+
+model TaskPlan {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status       String   @default("proposed")
+  goal         String
+  budgetUsd    Float?
+  steps        Json     @default("[]")
+  sessionId    String?
+  parentTaskId String?
+  taskIds      String[] @default([])
+
+  @@index([userId, createdAt])
 }

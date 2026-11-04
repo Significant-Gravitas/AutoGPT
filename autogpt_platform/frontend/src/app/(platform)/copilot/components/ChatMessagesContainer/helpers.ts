@@ -1,4 +1,5 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import { isTaskPlanPart } from "../../tools/TaskPlan/helpers";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ArtifactRef } from "../../store";
@@ -28,7 +29,8 @@ export function isChainableToolPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
-    isExpertChangePart(part)
+    isExpertChangePart(part) ||
+    isTaskPlanPart(part)
   ) {
     return false;
   }

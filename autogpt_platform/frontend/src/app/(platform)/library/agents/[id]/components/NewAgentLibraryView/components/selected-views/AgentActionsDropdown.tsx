@@ -125,7 +125,7 @@ export function AgentActionsDropdown({
     try {
       await deleteRun({ graphExecId: run.id });
 
-      toast({ title: "Task deleted" });
+      toast({ title: "Run deleted" });
 
       await queryClient.refetchQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
@@ -136,7 +136,7 @@ export function AgentActionsDropdown({
       setShowDeleteRunDialog(false);
     } catch (error: unknown) {
       toast({
-        title: "Failed to delete task",
+        title: "Failed to delete run",
         description:
           error instanceof Error
             ? error.message
@@ -190,7 +190,7 @@ export function AgentActionsDropdown({
           {run ? (
             <>
               <DropdownMenuItem onClick={() => setShowDeleteRunDialog(true)}>
-                Delete this task
+                Delete this run
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
@@ -219,12 +219,12 @@ export function AgentActionsDropdown({
           set: setShowDeleteRunDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete task"
+        title="Delete run"
       >
         <Dialog.Content>
           <div>
             <Text variant="large">
-              Are you sure you want to delete this task? This action cannot be
+              Are you sure you want to delete this run? This action cannot be
               undone.
             </Text>
             <Dialog.Footer>
@@ -240,7 +240,7 @@ export function AgentActionsDropdown({
                 onClick={handleDeleteRun}
                 loading={isDeletingRun}
               >
-                Delete Task
+                Delete Run
               </Button>
             </Dialog.Footer>
           </div>

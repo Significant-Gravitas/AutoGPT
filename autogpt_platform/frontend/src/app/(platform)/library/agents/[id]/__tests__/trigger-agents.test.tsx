@@ -218,12 +218,12 @@ describe("Library agent view — trigger agents", () => {
       await screen.findByText(/when retrieving data/i);
       expect(
         await screen.findByText(
-          "Use Try Again in the sidebar to reload your tasks.",
+          "Use Try Again in the sidebar to reload your runs.",
         ),
       ).toBeDefined();
       expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
       const newTaskButton = screen.getByRole("button", {
-        name: "New workflow task",
+        name: "New run",
       });
       await waitFor(() => {
         expect(newTaskButton.hasAttribute("disabled")).toBe(false);
@@ -241,7 +241,7 @@ describe("Library agent view — trigger agents", () => {
       await waitFor(() => {
         expect(
           screen.queryByText(
-            "Use Try Again in the sidebar to reload your tasks.",
+            "Use Try Again in the sidebar to reload your runs.",
           ),
         ).toBeNull();
         expect(screen.queryByTestId("loading-selected-content")).toBeNull();

@@ -25,6 +25,10 @@ import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
+import {
+  ConfirmTaskPlanTool,
+  ProposePlanTool,
+} from "../../../tools/TaskPlan/TaskPlan";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
@@ -294,6 +298,10 @@ export function MessagePartRenderer({
       return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
     case "tool-decompose_goal":
       return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
+    case "tool-propose_plan":
+      return <ProposePlanTool key={key} part={part as ToolUIPart} />;
+    case "tool-confirm_task_plan":
+      return <ConfirmTaskPlanTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":

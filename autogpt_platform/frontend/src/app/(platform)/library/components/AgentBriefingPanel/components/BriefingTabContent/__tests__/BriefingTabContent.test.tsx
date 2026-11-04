@@ -201,7 +201,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
 
     // Headline stats
     expect(screen.getByText("$42.50")).toBeDefined();
-    expect(screen.getByText("Most expensive tasks")).toBeDefined();
+    expect(screen.getByText("Most expensive runs")).toBeDefined();
     expect(screen.getByText("Spend by workflow")).toBeDefined();
 
     // Agent names resolved via graph_id lookup

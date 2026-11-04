@@ -47,7 +47,7 @@ export function RunActions({
         disabled={!isRunReady || isExecuting || isSettingUpTrigger}
         loading={isExecuting || isSettingUpTrigger}
       >
-        {isTrigger ? "Set up Trigger" : "Start Task"}
+        {isTrigger ? "Set up Trigger" : "Start Run"}
       </Button>
     </div>
   );

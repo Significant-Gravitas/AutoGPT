@@ -13,6 +13,7 @@ export const PROTECTED_PAGES = [
   "/library",
   "/settings",
   "/team",
+  "/tasks",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;

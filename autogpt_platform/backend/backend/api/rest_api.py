@@ -75,6 +75,7 @@ import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_activation_routes as subscription_activation_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
+import backend.api.features.tasks.routes as tasks_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -495,6 +496,7 @@ app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
+app.include_router(tasks_routes.router, prefix="/api/tasks", tags=["v2", "tasks"])
 
 app.include_router(
     onboarding_dump_routes.router,

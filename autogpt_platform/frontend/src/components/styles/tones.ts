@@ -31,6 +31,14 @@ export const tones = {
   "success-strong": "text-success-foreground", // #107435
   info: "text-info", // #3B82F6
   "info-strong": "text-info-foreground", // #2563EB
+  // Inbox palette (/tasks)
+  black: "text-foreground-black", // #000
+  ink: "text-foreground-ink", // rgba(0,0,0,.88)
+  text: "text-foreground-text", // rgba(0,0,0,.61)
+  quiet: "text-foreground-quiet", // rgba(0,0,0,.45)
+  faint: "text-foreground-faint", // rgba(0,0,0,.27)
+  waiting: "text-status-waiting", // #E8A20C
+  ok: "text-status-ok", // #1A9A52
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
   // TODO(tokens): no light-green role for text on a dark fill; `success`

@@ -7,6 +7,8 @@ from prisma.enums import ContentType
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.tasks import access as tasks_access
+from backend.api.features.tasks import db as tasks_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
@@ -657,6 +659,33 @@ class DatabaseManager(AppService):
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
+    # ============ Tasks v1 ============ #
+    tasks_get_task = _(tasks_db.get_task, name="tasks_get_task")
+    tasks_get_task_detail = _(tasks_db.get_task_detail, name="tasks_get_task_detail")
+    tasks_list_tasks = _(tasks_db.list_tasks, name="tasks_list_tasks")
+    tasks_create_task = _(tasks_db.create_task, name="tasks_create_task")
+    tasks_update_task = _(tasks_db.update_task, name="tasks_update_task")
+    tasks_set_task_status = _(tasks_db.set_task_status, name="tasks_set_task_status")
+    tasks_add_activity = _(tasks_db.add_activity, name="tasks_add_activity")
+    tasks_update_activity = _(tasks_db.update_activity, name="tasks_update_activity")
+    tasks_list_activity = _(tasks_db.list_activity, name="tasks_list_activity")
+    tasks_add_comment = _(tasks_db.add_comment, name="tasks_add_comment")
+    tasks_request_input = _(tasks_db.request_input, name="tasks_request_input")
+    tasks_answer_input = _(tasks_db.answer_input, name="tasks_answer_input")
+    tasks_add_attachment = _(tasks_db.add_attachment, name="tasks_add_attachment")
+    tasks_set_work_session = _(tasks_db.set_work_session, name="tasks_set_work_session")
+    tasks_get_task_for_work_session = _(tasks_db.get_task_for_work_session, name="tasks_get_task_for_work_session")
+    tasks_set_live = _(tasks_db.set_live, name="tasks_set_live")
+    tasks_add_turn_metrics = _(tasks_db.add_turn_metrics, name="tasks_add_turn_metrics")
+    tasks_get_busy_task_for_expert = _(tasks_db.get_busy_task_for_expert, name="tasks_get_busy_task_for_expert")
+    tasks_list_waiting_tasks_for_expert = _(tasks_db.list_waiting_tasks_for_expert, name="tasks_list_waiting_tasks_for_expert")
+    tasks_list_experts_for_user = _(tasks_db.list_experts_for_user, name="tasks_list_experts_for_user")
+    tasks_resolve_assignee = _(tasks_db.resolve_assignee, name="tasks_resolve_assignee")
+    tasks_create_plan = _(tasks_db.create_plan, name="tasks_create_plan")
+    tasks_get_plan = _(tasks_db.get_plan, name="tasks_get_plan")
+    tasks_confirm_plan = _(tasks_db.confirm_plan, name="tasks_confirm_plan")
+    tasks_get_turn_usage = _(tasks_access.get_turn_usage, name="tasks_get_turn_usage")
+
     # ============ Experts ============ #
     # Exposed so the Prisma-less copilot executor can resolve expert
     # identity/team context via db_accessors.experts_db().
@@ -1244,6 +1273,33 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_guild_joined = d.record_guild_joined
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
+
+    # ============ Tasks v1 ============ #
+    tasks_get_task = d.tasks_get_task
+    tasks_get_task_detail = d.tasks_get_task_detail
+    tasks_list_tasks = d.tasks_list_tasks
+    tasks_create_task = d.tasks_create_task
+    tasks_update_task = d.tasks_update_task
+    tasks_set_task_status = d.tasks_set_task_status
+    tasks_add_activity = d.tasks_add_activity
+    tasks_update_activity = d.tasks_update_activity
+    tasks_list_activity = d.tasks_list_activity
+    tasks_add_comment = d.tasks_add_comment
+    tasks_request_input = d.tasks_request_input
+    tasks_answer_input = d.tasks_answer_input
+    tasks_add_attachment = d.tasks_add_attachment
+    tasks_set_work_session = d.tasks_set_work_session
+    tasks_get_task_for_work_session = d.tasks_get_task_for_work_session
+    tasks_set_live = d.tasks_set_live
+    tasks_add_turn_metrics = d.tasks_add_turn_metrics
+    tasks_get_busy_task_for_expert = d.tasks_get_busy_task_for_expert
+    tasks_list_waiting_tasks_for_expert = d.tasks_list_waiting_tasks_for_expert
+    tasks_list_experts_for_user = d.tasks_list_experts_for_user
+    tasks_resolve_assignee = d.tasks_resolve_assignee
+    tasks_create_plan = d.tasks_create_plan
+    tasks_get_plan = d.tasks_get_plan
+    tasks_confirm_plan = d.tasks_confirm_plan
+    tasks_get_turn_usage = d.tasks_get_turn_usage
 
     # ============ Experts ============ #
     get_expert = d.get_expert
