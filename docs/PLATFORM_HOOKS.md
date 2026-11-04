@@ -415,6 +415,12 @@ How the four sketched pieces actually landed:
    changed. **The backend gate is the security boundary; the dialog makes
    it visible.**
 
+   A call that uses one of a tool's `approval_arguments` (disk paths) goes
+   through the chat's approval gate on its own subject: the person approves
+   it on a card that shows the path, and only then does the platform send it
+   with `approved_arguments`. Where the gate can't ask, the platform refuses
+   the call; the shim refuses one without the approval either way.
+
 4. **Tests.** `env_test.py` covers the OpenRouter compatibility
    regression. `local_pc_shim_test.py::TestComputerProxy` covers the two
    wire messages, `computer_use_tools_test.py` the MCP handlers and their

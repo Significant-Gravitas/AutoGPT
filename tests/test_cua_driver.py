@@ -268,27 +268,49 @@ def test_clipboard_tools_are_offered_only_when_enabled() -> None:
         ("get_window_state", {"pid": 1, "screenshot_out_file": "~/.bashrc"}, "screenshot_out_file"),
         ("get_desktop_state", {"screenshot_out_file": "/tmp/x.png"}, "screenshot_out_file"),
         ("clipboard_write", {"file_path": "/etc/passwd"}, "file_path"),
-        ("clipboard_write", {"text": "x", "image_path": "/a.png"}, "image_path"),
-        ("clipboard_write", {}, "text"),
-        ("check_permissions", {"prompt": True}, "prompt"),
+        ("clipboard_write", {"image_path": "/a.png"}, "image_path"),
+        ("browser_set_input_files", {"ref": "p1:2", "files": ["/home/me/cv.pdf"]}, "files"),
+    ],
+)  # fmt: skip
+def test_arguments_that_reach_the_disk_wait_for_approval(
+    tool: str, arguments: dict, argument: str
+) -> None:
+    with pytest.raises(catalog.ApprovalRequired) as waiting:
+        catalog.check_arguments(tool, arguments)
+    assert waiting.value.argument == argument
+
+    catalog.check_arguments(tool, arguments, approved=[argument])
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "approved", "argument"),
+    [
+        ("clipboard_write", {}, [], "text"),
+        ("clipboard_write", {"text": "x", "image_path": "/a.png"}, ["image_path"], "text"),
+        ("check_permissions", {"prompt": True}, [], "prompt"),
+        # Only an argument that needs approval can be approved.
+        ("click", {"pid": 1}, ["pid"], "pid"),
+        ("get_window_state", {"pid": 1}, ["file_path"], "file_path"),
         (
             "run_steps",
             {"steps": [{"tool": "click", "args": {}}, {"tool": "get_window_state",
                        "args": {"screenshot_out_file": "/x"}}]},
+            [],
             "steps[1].screenshot_out_file",
         ),
         (
             "run_steps",
             {"steps": [{"get_window_state": {"screenshot_out_file": "/x"}}]},
+            [],
             "steps[0].screenshot_out_file",
         ),
     ],
 )  # fmt: skip
-def test_arguments_that_reach_past_the_screen_are_refused(
-    tool: str, arguments: dict, argument: str
+def test_arguments_this_machine_never_takes_are_refused(
+    tool: str, arguments: dict, approved: list[str], argument: str
 ) -> None:
     with pytest.raises(catalog.ArgumentRefused) as refused:
-        catalog.check_arguments(tool, arguments)
+        catalog.check_arguments(tool, arguments, approved=approved)
     assert refused.value.argument == argument
 
 
@@ -296,6 +318,7 @@ def test_arguments_that_reach_past_the_screen_are_refused(
     ("tool", "arguments"),
     [
         ("get_window_state", {"pid": 1, "screenshot_out_file": None}),
+        ("get_window_state", {"pid": 1, "screenshot_out_file": ""}),
         ("clipboard_write", {"text": "hello"}),
         ("check_permissions", {"prompt": False}),
         ("run_steps", {"steps": [{"tool": "click", "args": {"pid": 1}}, "garbage"]}),
@@ -396,6 +419,27 @@ async def test_the_tool_list_carries_the_drivers_guidance_and_this_machines_rule
     zoom = next(tool for tool in payload.tools if tool.name == "zoom")
     assert "session" not in zoom.input_schema["properties"]
     assert zoom.input_schema["required"] == []
+    assert zoom.approval_arguments == {}
+    assert "wait for the person's approval" in payload.instructions
+
+
+async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler) -> None:
+    handler = make_handler(enable_clipboard=True)
+
+    response = await handler.handle(ComputerToolsRequestMessage(id=new_id(), ts=now_ts()))
+
+    assert isinstance(response, ComputerToolsResponseMessage)
+    approval = {
+        tool.name: sorted(tool.approval_arguments)
+        for tool in response.payload.tools
+        if tool.approval_arguments
+    }
+    assert approval == {
+        "browser_set_input_files": ["files"],
+        "clipboard_write": ["file_path", "image_path"],
+        "get_desktop_state": ["screenshot_out_file"],
+        "get_window_state": ["screenshot_out_file"],
+    }
 
 
 async def test_a_call_is_relayed_with_this_sessions_label(make_handler, fake_log, tmp_path) -> None:
@@ -445,7 +489,7 @@ async def test_the_drivers_own_error_comes_back_as_a_result(make_handler) -> Non
         ("kill_app", {"pid": 1}),
         ("set_config", {}),
         ("clipboard_read", {}),
-        ("get_window_state", {"pid": 1, "screenshot_out_file": "/home/me/.bashrc"}),
+        ("check_permissions", {"prompt": True}),
     ],
 )
 async def test_refused_calls_never_reach_the_driver(
@@ -460,6 +504,61 @@ async def test_refused_calls_never_reach_the_driver(
     assert _records(fake_log, "call") == []
     [record] = _audit(tmp_path)
     assert record["result"]["error_code"] == ErrorCode.FEATURE_NOT_SUPPORTED.value
+
+
+async def test_a_disk_argument_nobody_approved_never_reaches_the_driver(
+    make_handler, fake_log, tmp_path
+) -> None:
+    handler = make_handler()
+
+    response = await handler.handle(
+        _call("get_window_state", {"pid": 1, "screenshot_out_file": "/home/me/.bashrc"})
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.APPROVAL_REQUIRED
+    assert response.payload.details == {
+        "tool": "get_window_state",
+        "argument": "screenshot_out_file",
+    }
+    assert _records(fake_log, "call") == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["error_code"] == ErrorCode.APPROVAL_REQUIRED.value
+
+
+async def test_an_approved_disk_argument_is_relayed_and_audited_whole(
+    make_handler, fake_log, tmp_path
+) -> None:
+    handler = make_handler()
+    path = "/home/me/Documents/" + "quarterly-report-" * 20 + ".png"
+
+    response = await handler.handle(
+        _call(
+            "get_window_state",
+            {"pid": 1, "screenshot_out_file": path},
+            approved_arguments=["screenshot_out_file"],
+        )
+    )
+
+    assert isinstance(response, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["screenshot_out_file"] == path
+    [record] = _audit(tmp_path)
+    assert record["details"]["approved_arguments"] == ["screenshot_out_file"]
+    # The audit keeps the whole path the person approved.
+    assert record["details"]["arguments"]["screenshot_out_file"] == path
+
+
+async def test_an_approval_covers_only_the_argument_it_names(make_handler, fake_log) -> None:
+    handler = make_handler(enable_clipboard=True)
+
+    response = await handler.handle(
+        _call("clipboard_write", {"file_path": "/etc/passwd"}, approved_arguments=["image_path"])
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.APPROVAL_REQUIRED
+    assert _records(fake_log, "call") == []
 
 
 async def test_arguments_the_driver_rejects_come_back_for_the_model_to_fix(
@@ -616,6 +715,22 @@ async def test_clipboard_reads_refuse_a_write_since_overwritten(make_handler, tm
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.details == {"reason": "writeback_overwritten"}
+
+
+async def test_an_approved_file_on_the_clipboard_ends_the_shims_text_writeback(
+    make_handler, tmp_path
+) -> None:
+    handler = make_handler(enable_clipboard=True)
+    await handler.handle(_call("clipboard_write", {"text": "from the agent"}))
+
+    response = await handler.handle(
+        _call("clipboard_write", {"file_path": "/home/me/cv.pdf"}, approved_arguments=["file_path"])
+    )
+    read = await handler.handle(_call("clipboard_read"))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert isinstance(read, ErrorMessage)
+    assert read.payload.details == {"reason": "writeback_only"}
 
 
 async def test_clipboard_reads_ask_the_driver_for_the_text(make_handler, fake_log) -> None:

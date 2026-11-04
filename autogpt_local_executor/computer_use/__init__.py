@@ -7,7 +7,9 @@ the shim's clipboard rules on top. See docs/CUA_DRIVER.md.
 """
 
 from .catalog import (
+    APPROVAL_ARGUMENTS,
     REVIEWED_DRIVER_VERSION,
+    ApprovalRequired,
     ArgumentRefused,
     check_arguments,
     offered_tools,
@@ -22,8 +24,10 @@ from .driver import (
 from .errors import ClipboardConcealedError, ComputerUseError
 
 __all__ = [
+    "APPROVAL_ARGUMENTS",
     "REVIEWED_DRIVER_VERSION",
     "WRITEBACK_WINDOW_SECONDS",
+    "ApprovalRequired",
     "ArgumentRefused",
     "ClipboardConcealedError",
     "ClipboardWritebackRegistry",

@@ -202,6 +202,8 @@ class ErrorCode(StrEnum):
     PERMISSION_PENDING = "PERMISSION_PENDING"
     FEATURE_NOT_SUPPORTED = "FEATURE_NOT_SUPPORTED"
     CLIPBOARD_CONCEALED = "CLIPBOARD_CONCEALED"
+    # A computer tool call used a disk argument the person didn't approve.
+    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
     # Local LLM additions (see docs/LOCAL_LLM.md).
     MODEL_NOT_AVAILABLE = "MODEL_NOT_AVAILABLE"
     LOCAL_LLM_BUSY = "LOCAL_LLM_BUSY"
@@ -526,6 +528,10 @@ class ComputerToolSpec(BaseModel):
     description: str
     input_schema: dict[str, Any]
     annotations: dict[str, Any] | None = None
+    # Arguments that reach the computer's disk, each with what it does there.
+    # A call using one runs only when it names the argument in
+    # `approved_arguments`, which the platform sets once the person approved.
+    approval_arguments: dict[str, str] = Field(default_factory=dict)
 
 
 class ComputerToolsResponsePayload(_Payload):
@@ -539,6 +545,8 @@ class ComputerToolCallPayload(_Payload):
     tool: str = Field(pattern=COMPUTER_TOOL_NAME_PATTERN)
     arguments: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int | None = Field(default=None, gt=0, le=MAX_COMPUTER_TOOL_TIMEOUT_SECONDS)
+    # The tool's approval arguments the person approved for this call.
+    approved_arguments: list[str] = Field(default_factory=list, max_length=8)
 
 
 class ComputerTextContent(BaseModel):

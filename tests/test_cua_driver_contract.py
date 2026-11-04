@@ -52,11 +52,11 @@ async def test_the_driver_enforces_the_shims_policy(bridge: CuaDriverBridge) -> 
     assert (result.get("structuredContent") or {}).get("code") == "permission_denied"
 
 
-async def test_every_refused_argument_is_one_the_driver_takes(bridge: CuaDriverBridge) -> None:
-    """A refusal of an argument the driver renamed would stop applying
-    without anyone noticing."""
+async def test_every_approval_argument_is_one_the_driver_takes(bridge: CuaDriverBridge) -> None:
+    """An approval check on an argument the driver renamed would stop
+    applying without anyone noticing."""
     snapshot = await bridge.snapshot()
-    for tool, arguments in catalog.REFUSED_ARGUMENTS.items():
+    for tool, arguments in catalog.APPROVAL_ARGUMENTS.items():
         spec = snapshot.tool(tool)
         if spec is None:
             continue
