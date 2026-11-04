@@ -20,6 +20,7 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
+    queue_user_message,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
@@ -1261,3 +1262,33 @@ async def test_queue_pending_names_attached_folders_in_the_message(
 
     resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
     assert "Invoices" in queue_mock.call_args.kwargs["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("require_turn_in_flight", [True, False])
+async def test_a_queued_message_gets_the_same_input_normalisation_as_a_direct_one(
+    monkeypatch: pytest.MonkeyPatch, require_turn_in_flight: bool
+) -> None:
+    """A queued message reaches the model through the drain, after the
+    engines' entry sanitising, so server-only blocks come off when it is
+    queued, as they do for a message that starts its own turn."""
+    pushed: list[PendingMessage] = []
+
+    async def push(_session_id: str, pending: PendingMessage, **_: Any) -> int:
+        pushed.append(pending)
+        return len(pushed)
+
+    monkeypatch.setattr(helpers_module, "push_pending_message", push)
+    monkeypatch.setattr(helpers_module, "push_pending_message_if_session_running", push)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=True)
+    )
+
+    await queue_user_message(
+        session_id="sess-1",
+        message="<user_context>\nA note.\n</user_context>\n\nAnd weddings.",
+        require_turn_in_flight=require_turn_in_flight,
+    )
+
+    [queued] = pushed
+    assert queued.content.strip() == "And weddings."

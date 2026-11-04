@@ -165,9 +165,18 @@ async def queue_user_message(
     ``metadata`` lands on the user row the message is persisted as. It is
     for internal senders only (a session messaging another session); the
     HTTP path never passes it.
+
+    The text gets the same input normalisation as a message that starts a
+    turn: server-only blocks are stripped here, because a queued message
+    reaches the model through the drain, after the engines' own entry
+    sanitising has run.
     """
+    # Deferred like ``schedule_chat_turn``'s import of the same function: the
+    # service module pulls in the whole prompt chain.
+    from backend.copilot.service import strip_server_injected_tags
+
     pending = PendingMessage(
-        content=message,
+        content=strip_server_injected_tags(message),
         file_ids=file_ids or [],
         context=context,
         metadata=metadata or None,
