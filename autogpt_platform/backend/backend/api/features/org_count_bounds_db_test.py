@@ -70,6 +70,26 @@ async def test_joining_an_org_at_the_bound_is_refused(
     assert await _memberships(user_id) == orgs_db.MAX_ORGS_PER_USER
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_converting_a_personal_org_at_the_bound_is_refused(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """The conversion adds a new personal org, so it counts like a create."""
+    user_id = await _user()
+    personal = await prisma.models.Organization.prisma().find_first_or_raise(
+        where={"bootstrapUserId": user_id, "isPersonal": True}
+    )
+    monkeypatch.setattr(orgs_db, "MAX_ORGS_PER_USER", await _memberships(user_id))
+
+    with pytest.raises(ValueError, match="at most"):
+        await orgs_db.convert_personal_org(personal.id, user_id)
+    assert (await orgs_db.get_org(personal.id)).is_personal
+    assert await _memberships(user_id) == orgs_db.MAX_ORGS_PER_USER
+
+    monkeypatch.setattr(orgs_db, "MAX_ORGS_PER_USER", await _memberships(user_id) + 1)
+    assert not (await orgs_db.convert_personal_org(personal.id, user_id)).is_personal
+
+
 def _count_then_meet_the_other_call(monkeypatch: pytest.MonkeyPatch, actions) -> None:
     """Both calls reach the count together unless the lock serializes them, in
     which case the first one's wait times out: that is the passing outcome."""

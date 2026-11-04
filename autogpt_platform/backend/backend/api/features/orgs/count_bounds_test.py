@@ -14,6 +14,7 @@ from backend.api.features.orgs import db as orgs_db
 from backend.api.features.orgs import team_db
 from backend.api.features.orgs.db import MAX_ORGS_PER_USER
 from backend.api.features.orgs.team_db import MAX_TEAMS_PER_ORG
+from backend.data import org_migration
 
 
 class _Written(Exception):
@@ -51,6 +52,11 @@ async def test_an_account_at_the_org_bound_cannot_create_another(tx):
     with pytest.raises(ValueError, match="at most 50 organizations"):
         await orgs_db.create_org("a name", "a-slug", "user-1")
     tx.organization.create.assert_not_awaited()
+    assert tx.orgmember.count.await_args.kwargs["where"] == {
+        "userId": "user-1",
+        "status": "ACTIVE",
+        "Org": {"deletedAt": None},
+    }
 
 
 @pytest.mark.asyncio
@@ -94,3 +100,42 @@ async def test_an_org_below_the_workspace_bound_creates_one(tx):
 
     with pytest.raises(_Written):
         await team_db.create_team("org-1", "a name", "user-1")
+    tx.team.count.assert_awaited_once_with(where={"orgId": "org-1", "archivedAt": None})
+
+
+@pytest.fixture
+def converting(tx, mocker):
+    """`convert_personal_org` reaching the real `create_personal_org`."""
+    tx.organization.update_many = AsyncMock(side_effect=_Written)
+
+    @asynccontextmanager
+    async def transaction():
+        yield tx
+
+    mocker.patch.object(org_migration, "transaction", transaction)
+    mocker.patch.object(
+        org_migration, "_resolve_unique_slug", AsyncMock(return_value="a-slug")
+    )
+    orgs_db.prisma.organization.find_unique = AsyncMock(
+        return_value=MagicMock(isPersonal=True, slug="a-slug")
+    )
+    orgs_db.prisma.user.find_unique = AsyncMock(return_value=None)
+    return tx
+
+
+@pytest.mark.asyncio
+async def test_an_account_at_the_org_bound_cannot_convert_its_personal_org(converting):
+    """Converting adds a new personal org, so it is a membership like any other."""
+    converting.orgmember.count.return_value = MAX_ORGS_PER_USER
+
+    with pytest.raises(ValueError, match="at most 50 organizations"):
+        await orgs_db.convert_personal_org("org-1", "user-1")
+    converting.organization.update_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_account_below_the_org_bound_converts_its_personal_org(converting):
+    converting.orgmember.count.return_value = MAX_ORGS_PER_USER - 1
+
+    with pytest.raises(_Written):
+        await orgs_db.convert_personal_org("org-1", "user-1")

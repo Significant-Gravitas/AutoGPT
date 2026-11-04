@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from prisma import Prisma
@@ -253,6 +254,7 @@ async def _create_personal_org_for_user(
     slug_base: str,
     display_name: str,
     replaces_org_id: str | None = None,
+    check_first: Callable[[Prisma], Awaitable[None]] | None = None,
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
@@ -262,7 +264,11 @@ async def _create_personal_org_for_user(
     becomes a team org).
     """
     org = await create_personal_org(
-        user_id, slug_base, display_name, replaces_org_id=replaces_org_id
+        user_id,
+        slug_base,
+        display_name,
+        replaces_org_id=replaces_org_id,
+        check_first=check_first,
     )
     return OrgResponse.from_db(org, member_count=1)
 
@@ -494,6 +500,8 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
         slug_base=slug_base,
         display_name=display_name,
         replaces_org_id=org_id,
+        # The new personal org is a membership like any other.
+        check_first=lambda tx: _check_membership_count(tx, user_id),
     )
     # New runs bill the team org's balance now, not after the cached minute.
     forget_personal_org_owner(org_id)
