@@ -143,7 +143,7 @@ class DatasetRow(BaseModel):
         witnesses = _witnesses(row)
         cells = []
         for cell in row.cells:
-            source = cell.provenance or _witnessed(cell.column_id, witnesses)
+            source = _source(cell, witnesses)
             cells.append(
                 SourcedValue(
                     column_id=cell.column_id,
@@ -190,6 +190,19 @@ def _witnesses(row: ApiRow) -> dict[str, Provenance]:
         if isinstance(item, dict) and (source := _witness(item.get("witness"))):
             found.setdefault(str(item.get("detail_id", "")), source)
     return found
+
+
+def _source(cell: ApiCell, witnesses: dict[str, Provenance]) -> Provenance | None:
+    """The cell's own source, with any part it lacks filled from its witness."""
+    witnessed = _witnessed(cell.column_id, witnesses)
+    if cell.provenance is None:
+        return witnessed
+    if witnessed is None:
+        return cell.provenance
+    return Provenance(
+        source_url=cell.provenance.source_url or witnessed.source_url,
+        observed_at=cell.provenance.observed_at or witnessed.observed_at,
+    )
 
 
 def _witnessed(column_id: str, witnesses: dict[str, Provenance]) -> Provenance | None:

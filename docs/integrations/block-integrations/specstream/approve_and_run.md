@@ -36,7 +36,11 @@ Turn on safe mode for sensitive actions in the settings of the workflow that use
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Put this block after Create Dataset Request, with safe mode on so a person approves the amount, then wait for the run and read its rows.
+**Reviewed Dataset Runs**: Place this block after Create Dataset Request with safe mode on, so a person approves the amount before the run starts.
+
+**Scheduled Market Pulls**: Start a dataset run from a workflow on a schedule, at a maximum price you set in advance.
+
+**Retry-Safe Starts**: Retry a failed workflow step with the same key and still start the run only once.
 <!-- END MANUAL -->
 
 ---

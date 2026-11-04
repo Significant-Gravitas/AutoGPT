@@ -1,6 +1,6 @@
 """Read a run's status, or wait for it to finish by polling."""
 
-from asyncio import sleep
+from asyncio import sleep, wait_for
 from time import monotonic
 
 from backend.blocks._platform_credentials import refuse_platform_credentials
@@ -177,19 +177,37 @@ class SpecStreamWaitForRunBlock(Block):
         refuse_platform_credentials(self, credentials)
         started = monotonic()
         gap = float(input_data.check_interval)
-        run = await self.get_run(credentials, input_data.run_id)
-        while not run.is_done and monotonic() - started < input_data.timeout:
-            await sleep(min(gap, max(input_data.timeout - (monotonic() - started), 0)))
-            gap = min(gap * BACKOFF_FACTOR, float(input_data.max_interval))
-            run = await self.get_run(credentials, input_data.run_id)
 
-        yield "run_id", run.find_id
-        yield "status", run.status
-        yield "is_done", run.is_done
-        yield "timed_out", not run.is_done
+        def remaining() -> float:
+            return input_data.timeout - (monotonic() - started)
+
+        async def poll() -> RunStatus | None:
+            # A stalled request must not outlast the wait, so each poll gets
+            # only the time that is left.
+            try:
+                return await wait_for(
+                    self.get_run(credentials, input_data.run_id),
+                    timeout=max(remaining(), 0),
+                )
+            except TimeoutError:
+                return None
+
+        run = await poll()
+        while run is not None and not run.is_done and remaining() > 0:
+            await sleep(min(gap, max(remaining(), 0)))
+            gap = min(gap * BACKOFF_FACTOR, float(input_data.max_interval))
+            polled = await poll()
+            if polled is None:
+                break
+            run = polled
+
+        yield "run_id", run.find_id if run else input_data.run_id
+        yield "status", run.status if run else "unknown"
+        yield "is_done", bool(run and run.is_done)
+        yield "timed_out", not (run and run.is_done)
         yield "elapsed_seconds", monotonic() - started
-        yield "accepted_rows", run.accepted_count
-        yield "charged_cents", charged_cents(run)
+        yield "accepted_rows", run.accepted_count if run else 0
+        yield "charged_cents", charged_cents(run) if run else 0
 
 
 def charged_cents(run: RunStatus) -> int:

@@ -6,7 +6,7 @@ Blocks that read the rows of a SpecStream run.
 ## SpecStream List Rows
 
 ### What it is
-Reads the rows of a SpecStream dataset run. Source URL and read time on every value.
+Reads the rows of a SpecStream dataset run. Source URL and read time on every value it reads from a page.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -34,7 +34,11 @@ The block reads the rows of a run page by page and returns each row with its val
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Send the rows to a spreadsheet or a CRM step, and keep the source URL and read time next to each value.
+**Spreadsheet Export**: Send the rows to a spreadsheet step and keep the source URL and read time next to each value.
+
+**CRM Enrichment**: Pass the matching companies and their sources to a CRM step to create or update records.
+
+**Source Checks**: Route values with no source URL to a person for review before they reach a customer.
 <!-- END MANUAL -->
 
 ---

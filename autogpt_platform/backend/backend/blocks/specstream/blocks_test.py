@@ -1,5 +1,6 @@
 """Tests for the SpecStream blocks with the HTTP layer replaced."""
 
+import asyncio
 import json
 from itertools import count
 from typing import Any
@@ -11,7 +12,15 @@ from pydantic import SecretStr
 from backend.blocks.specstream import run_status
 from backend.blocks.specstream._api import SpecStreamClient, SpecStreamError
 from backend.blocks.specstream._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.specstream._models import Execution, Reading, UnsupportedClause
+from backend.blocks.specstream._models import (
+    ApiCell,
+    ApiRow,
+    DatasetRow,
+    Execution,
+    Provenance,
+    Reading,
+    UnsupportedClause,
+)
 from backend.blocks.specstream._testdata import (
     TEST_AST_HASH,
     TEST_COMPLETED,
@@ -381,6 +390,84 @@ async def test_wait_gives_up_at_the_timeout_and_leaves_the_run_going():
     assert outputs["timed_out"] is True
     assert outputs["is_done"] is False
     assert outputs["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_wait_bounds_each_poll_by_the_time_left_and_reports_the_last_status():
+    block = SpecStreamWaitForRunBlock()
+    block.get_run = AsyncMock(return_value=TEST_RUNNING)
+    budgets: list[float] = []
+    stalled = False
+
+    async def bounded(awaitable, timeout):
+        nonlocal stalled
+        budgets.append(timeout)
+        if stalled:
+            awaitable.close()
+            raise TimeoutError()
+        stalled = True
+        return await awaitable
+
+    async def no_wait(seconds: float) -> None:
+        return None
+
+    with (
+        patch.object(run_status, "sleep", no_wait),
+        patch.object(run_status, "wait_for", bounded),
+    ):
+        outputs = await _run(block, run_id=TEST_FIND_ID, timeout=60)
+
+    assert len(budgets) == 2
+    assert all(0 <= budget <= 60 for budget in budgets)
+    assert outputs["timed_out"] is True
+    assert outputs["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_wait_reports_timed_out_when_the_first_poll_stalls():
+    block = SpecStreamWaitForRunBlock()
+
+    async def stall(*args: Any) -> None:
+        await asyncio.sleep(3600)
+
+    block.get_run = stall  # type: ignore[assignment]
+
+    outputs = await _run(block, run_id=TEST_FIND_ID, timeout=1)
+
+    assert outputs["timed_out"] is True
+    assert outputs["is_done"] is False
+    assert outputs["status"] == "unknown"
+    assert outputs["run_id"] == TEST_FIND_ID
+
+
+def test_a_cell_source_missing_a_part_is_filled_from_its_witness():
+    row = ApiRow(
+        entity_id="ent_1",
+        cells=[
+            ApiCell(
+                column_id="detail:w1",
+                label="Founders",
+                value="Ada Roy",
+                provenance=Provenance(source_url="https://acme.example/own"),
+            )
+        ],
+        worded_evidence={
+            "details": [
+                {
+                    "detail_id": "w1",
+                    "witness": {
+                        "source_url": "https://acme.example/team",
+                        "observed_at": "2026-11-03T09:31:00+00:00",
+                    },
+                }
+            ]
+        },
+    )
+
+    cell = DatasetRow.from_api(row).cells[0]
+
+    assert cell.source_url == "https://acme.example/own"
+    assert cell.read_at == "2026-11-03T09:31:00+00:00"
 
 
 @pytest.mark.asyncio

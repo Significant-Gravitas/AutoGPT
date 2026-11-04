@@ -5,7 +5,7 @@ from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
 specstream = (
     ProviderBuilder("specstream")
     .with_description(
-        "Datasets from the live web, with a source URL and read time on every value"
+        "Datasets from the live web, with a source URL and read time on every value read from a page"
     )
     .with_api_key("SPECSTREAM_API_KEY", "SpecStream API Key")
     .build()

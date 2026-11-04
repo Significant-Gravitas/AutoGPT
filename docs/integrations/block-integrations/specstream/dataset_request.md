@@ -1,6 +1,6 @@
 # Specstream Dataset Request
 <!-- MANUAL: file_description -->
-Blocks that start a SpecStream dataset request. SpecStream searches the live web and returns rows with a source URL and read time on every value. The blocks run on your own SpecStream API key, from the [SpecStream workspace](https://specstream.ai/workspace?utm_source=autogpt).
+Blocks that start a SpecStream dataset request. SpecStream searches the live web and returns rows with a source URL and read time on every value it reads from a page. A value SpecStream builds rather than reads, such as a likely email address, has no source URL. The blocks run on your own SpecStream API key, from the [SpecStream workspace](https://specstream.ai/workspace?utm_source=autogpt).
 <!-- END MANUAL -->
 
 ## SpecStream Create Dataset Request
@@ -36,7 +36,11 @@ The block sends the request to SpecStream, which reads it into conditions every 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Describe the rows you need, for example grants open to nonprofits in Texas with the deadline and the funder, and review the quoted maximum before approving it.
+**Grant Search**: Describe grants open to nonprofits in Texas and get a quote for the rows with the deadline and the funder.
+
+**Lead List Pricing**: Ask for a list of companies that match your buyer profile and see the most it can cost before anything runs.
+
+**Approval Gate**: Pass the quote to a person for review, so nothing is charged until they confirm the maximum.
 <!-- END MANUAL -->
 
 ---

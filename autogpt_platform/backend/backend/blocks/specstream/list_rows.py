@@ -59,7 +59,7 @@ class SpecStreamListRowsBlock(Block):
             id="e138c5c8-e1b1-4b44-9609-e6a170389ae5",
             description=(
                 "Reads the rows of a SpecStream dataset run. Source URL and read "
-                "time on every value."
+                "time on every value it reads from a page."
             ),
             categories={BlockCategory.SEARCH, BlockCategory.DATA},
             display_name="SpecStream List Rows",

@@ -34,7 +34,11 @@ The block reads the run once and returns its status, the rows matched so far and
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Check a run from a scheduled workflow before deciding whether to read its rows.
+**Scheduled Checks**: Check a run from a scheduled workflow before deciding whether to read its rows.
+
+**Progress Reports**: Show how many rows have matched so far to a person watching the workflow.
+
+**Spend Tracking**: Read the amount charged for a finished run and log it next to the rows it paid for.
 <!-- END MANUAL -->
 
 ---
@@ -73,7 +77,11 @@ The block checks the run with growing gaps between checks until it ends or the t
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Place this block between Approve And Run and List Rows so the rows are read after the run has ended.
+**Run Sequencing**: Place this block between Approve And Run and List Rows so the rows are read after the run has ended.
+
+**Timeout Branching**: Send the workflow down a different path when the wait ends before the run does, and read the run again later.
+
+**Report on Completion**: Hold a report or a message until the dataset is complete, with no webhook to set up.
 <!-- END MANUAL -->
 
 ---
