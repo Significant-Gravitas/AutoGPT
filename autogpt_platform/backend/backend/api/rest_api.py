@@ -62,6 +62,7 @@ import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.platform_config.routes as platform_config_routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
@@ -233,6 +234,17 @@ async def _run_data_migrations() -> None:
         ),
         ("org bootstrap", backend.data.org_migration.run_migration),
         (
+            # Bounded because this one loops: the first boot after the data
+            # migration walks whatever it could not reach, a graph load and a
+            # transaction each. Presets commit individually, so a timeout
+            # defers the rest to the next boot.
+            "triggered-preset inputs",
+            lambda: asyncio.wait_for(
+                backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+                timeout=30,
+            ),
+        ),
+        (
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
@@ -243,6 +255,9 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
+        except asyncio.TimeoutError:
+            # A bounded migration resumes on the next start; not worth an alert.
+            logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
             logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
@@ -494,6 +509,7 @@ app.include_router(
 )
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
+app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
@@ -782,9 +798,6 @@ class AgentServer(backend.util.service.AppProcess):
         """Used for clean-up after a test run"""
         from autogpt_libs.auth.models import RequestContext
 
-        await backend.api.features.library.db.delete_library_agent_by_graph_id(
-            graph_id=graph_id, user_id=user_id
-        )
         # team_id intentionally None: integration tests don't seed a Team
         # row, and the schema enforces a FK from AgentGraph.teamId →
         # Team.id (onDelete: SetNull). Setting a fake team_id here causes

@@ -166,8 +166,8 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           variant="small"
           as="span"
           tone={counterTone}
-          // oxlint-disable-next-line design-system/no-restyle -- the bio counter uses tabular figures and fades between tones
-          className="tabular-nums transition-colors duration-150"
+          tabular
+          motion="colors"
         >
           {Math.max(remaining, 0)} left
         </Text>
@@ -199,7 +199,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           type="button"
           aria-pressed={isPreview}
           onClick={() => setIsPreview((v) => !v)}
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-caption font-medium text-foreground-body transition-colors hover:bg-surface-hover hover:text-foreground-base"
         >
           {isPreview ? (
             <Icon icon={EyeClosedIcon} size={14} />
@@ -213,13 +213,13 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
         <div
           className={cn(
             "min-h-[8.75rem] w-full rounded-3xl border border-border-base bg-surface px-4 py-2.5",
-            "text-sm leading-5.5 text-foreground-base",
+            "text-body leading-5.5 text-foreground-base",
           )}
         >
           {formState.description.trim() ? (
             <div
               className={cn(
-                "max-w-none text-sm leading-5.5 break-words text-foreground-base",
+                "max-w-none text-body leading-5.5 break-words text-foreground-base",
                 "[&_p]:my-2 [&_p]:first:mt-0 [&_p]:last:mb-0",
                 "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
                 "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
@@ -231,9 +231,9 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
                 "[&_del]:text-foreground-tertiary [&_del]:line-through",
                 "[&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-body-sm [&_code]:leading-inherit",
                 "[&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-3 [&_blockquote]:text-foreground-secondary",
-                "[&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold",
-                "[&_h2]:my-2 [&_h2]:text-base [&_h2]:font-semibold",
-                "[&_h3]:my-2 [&_h3]:text-sm [&_h3]:font-semibold",
+                "[&_h1]:my-2 [&_h1]:text-body-lg [&_h1]:font-semibold",
+                "[&_h2]:my-2 [&_h2]:text-body-lg [&_h2]:font-semibold",
+                "[&_h3]:my-2 [&_h3]:text-body [&_h3]:font-semibold",
               )}
             >
               <ReactMarkdown remarkPlugins={[remarkGfm]}>

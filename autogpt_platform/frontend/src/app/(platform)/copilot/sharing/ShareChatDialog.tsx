@@ -50,7 +50,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
               <Text variant="small-medium" tone="primary">
                 {state.isShared ? "Currently sharing" : "About to share"}
               </Text>
-              <ul className="mt-1 list-disc pl-5 text-xs text-foreground-body">
+              <ul className="mt-1 list-disc pl-5 text-caption text-foreground-body">
                 <li>
                   {state.messageCount}{" "}
                   {state.messageCount === 1 ? "message" : "messages"}
@@ -98,7 +98,7 @@ export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
                 <input
                   readOnly
                   value={state.shareUrl}
-                  className="flex-1 rounded border border-border-base bg-surface-muted px-2 py-1.5 font-mono text-xs"
+                  className="flex-1 rounded border border-border-base bg-surface-muted px-2 py-1.5 font-mono text-caption"
                 />
                 <Button
                   size="small"

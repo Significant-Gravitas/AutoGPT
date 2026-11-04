@@ -144,9 +144,8 @@ def validate_subscription() -> None:
                 "or run `claude login`."
             )
         logger.info(
-            "Claude subscription auth: method=%s, email=%s",
+            "Claude subscription auth: method=%s",
             status.get("authMethod"),
-            status.get("email"),
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")

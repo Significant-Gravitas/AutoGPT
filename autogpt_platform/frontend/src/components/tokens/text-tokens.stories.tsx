@@ -15,19 +15,23 @@ export default meta;
 // Tailwind generates it.
 type Token = [string, string, string];
 
+// The type scale, the app's only text sizes (src/app/tokens/typography.css).
+// The last column names the Tailwind sizes each step replaced.
 const fontSizes: Token[] = [
-  ["text-tiny", "0.625rem / 0.875rem", "text-[10px]"],
-  ["text-caption-sm", "0.6875rem / 1rem", "text-[11px]"],
-  ["text-caption", "0.75rem / 1.125rem", "Text small, text-[12px]"],
-  ["text-body-sm", "0.8125rem / 1.25rem", "text-[13px]"],
-  ["text-body", "0.875rem / 1.375rem", "Text body, text-[14px]"],
-  ["text-body-md", "0.9375rem / 1.5rem", "text-[15px]"],
-  ["text-body-lg", "1rem / 1.625rem", "Text large, text-[16px]"],
-  ["text-lead", "1.25rem / 1.75rem", "Text lead"],
+  ["text-tiny", "0.625rem / 0.875rem", "10px"],
+  ["text-caption-sm", "0.6875rem / 1rem", "11px"],
+  ["text-caption", "0.75rem / 1.125rem", "Text small; 12px, Tailwind xs"],
+  ["text-body-sm", "0.8125rem / 1.25rem", "13px"],
+  ["text-body", "0.875rem / 1.375rem", "Text body; 14px, Tailwind sm"],
+  ["text-body-md", "0.9375rem / 1.5rem", "15px"],
+  ["text-body-lg", "1rem / 1.625rem", "Text large; 16px, Tailwind base"],
+  ["text-lead", "1.25rem / 1.75rem", "Text lead; Tailwind lg and xl"],
   ["text-heading-sm", "1.375rem / 1.5rem", "Text h4"],
-  ["text-heading", "1.75rem / 2.5rem", "Text h3"],
-  ["text-title", "2rem / 2.5rem", "Text h2"],
-  ["text-display", "2.75rem / 3.5rem", "Text h1"],
+  ["text-heading-md", "1.5rem / 2rem", "Text heading-md; Tailwind 2xl"],
+  ["text-heading", "1.75rem / 2.5rem", "Text h3; Tailwind 3xl"],
+  ["text-title", "2rem / 2.5rem", "Text h2; Tailwind 4xl"],
+  ["text-display", "2.75rem / 3.5rem", "Text h1; Tailwind 5xl"],
+  ["text-hero", "4rem / 1", "Text hero; Tailwind 6xl to 9xl"],
 ];
 
 const lineHeights: Token[] = [
@@ -74,7 +78,7 @@ function Section({
           {description}
         </Text>
       </div>
-      <div className="divide-y divide-zinc-200 rounded-lg border border-zinc-200">
+      <div className="divide-y divide-border-base rounded-lg border border-border-base">
         {tokens.map(([className, value, replaces]) => (
           <div
             key={className}
@@ -111,19 +115,19 @@ export function AllTokens() {
         title="Size roles"
         description="font-size / bundled line-height"
         tokens={fontSizes}
-        sampleClassName="font-sans text-zinc-900"
+        sampleClassName="font-sans text-foreground-strong"
       />
       <Section
         title="Line height"
         description="Overrides, shown on a two-line sample at 14px"
         tokens={lineHeights}
-        sampleClassName="max-w-[8rem] bg-zinc-50 font-sans text-sm text-zinc-900"
+        sampleClassName="max-w-[8rem] bg-surface-muted font-sans text-body text-foreground-strong"
       />
       <Section
         title="Letter spacing"
         description="Shown at 16px; em values scale with the font size"
         tokens={letterSpacings}
-        sampleClassName="font-sans text-base uppercase text-zinc-900"
+        sampleClassName="font-sans text-body-lg uppercase text-foreground-strong"
       />
     </div>
   );

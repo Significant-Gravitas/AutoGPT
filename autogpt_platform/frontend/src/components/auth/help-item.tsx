@@ -20,7 +20,9 @@ export function HelpItem({
 
   return (
     <div className="p-4">
-      <h3 className="mb-1 text-sm font-medium text-foreground-base">{title}</h3>
+      <h3 className="mb-1 text-body font-medium text-foreground-base">
+        {title}
+      </h3>
       <Text variant="body-tight" tone="secondary">
         {description}{" "}
         {linkText && (

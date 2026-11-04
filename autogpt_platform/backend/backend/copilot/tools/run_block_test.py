@@ -120,7 +120,7 @@ class TestRunBlockFiltering:
 
         assert isinstance(response, ErrorResponse)
         assert "cannot be run directly" in response.message
-        assert "designed for use within graphs only" in response.message
+        assert "designed for use within workflows only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_returns_error(self):
