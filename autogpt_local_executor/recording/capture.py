@@ -201,20 +201,18 @@ class A11yEnricher(CaptureSource):
             if step.enrichment.kind != "none":
                 yield step
                 continue
-            resolved = self._resolve(step)
-            if not resolved:
-                yield step  # keeps kind:none
+            resolved = self._resolve(step) or {}
+            fields = {key: resolved.get(key) for key in ("ax_path", "role", "label")}
+            if not any(fields.values()):
+                yield step  # nothing the tree could name: keeps kind:none
                 continue
-            yield step.model_copy(
-                update={
-                    "enrichment": StepEnrichment(
-                        kind="ax",
-                        ax_path=resolved.get("ax_path"),
-                        role=resolved.get("role"),
-                        label=resolved.get("label"),
-                    )
-                }
+            enrichment = StepEnrichment(
+                kind="ax",
+                ax_path=fields["ax_path"],
+                role=fields["role"],
+                label=fields["label"],
             )
+            yield step.model_copy(update={"enrichment": enrichment})
 
 
 __all__ = [

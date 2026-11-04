@@ -167,7 +167,10 @@ on the screenshot.
 `assert` (a read-back check — "the confirmation banner showed").
 
 **Not captured**: raw mouse movement paths, per-keystroke content (only
-the final committed value), scroll deltas. The recording is a sequence of
+the final committed value), scroll deltas. (The reference macOS producer
+does not meet this yet: it records one `fill` per key-down, without the
+value. Buffering keystrokes into one committed `fill` per field is still
+to do.) The recording is a sequence of
 *intentful semantic actions over screenshots*, not a raw input tape.
 
 ---
