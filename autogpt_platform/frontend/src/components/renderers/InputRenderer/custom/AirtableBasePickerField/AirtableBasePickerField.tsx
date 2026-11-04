@@ -76,27 +76,27 @@ function BasePicker({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <Text variant="body-medium" id={labelID} className="text-zinc-900">
+        <Text variant="body-medium" id={labelID} tone="primary">
           Choose an Airtable base
         </Text>
-        <Text variant="small" id={`${labelID}-hint`} className="text-zinc-600">
+        <Text variant="small" id={`${labelID}-hint`} tone="secondary">
           {pickerHint(needed)}
         </Text>
       </div>
       {body()}
       {noneUsable && (
-        <Text variant="small" className="text-zinc-600">
+        <Text variant="small" tone="secondary">
           {noUsableBaseText(needed)}
         </Text>
       )}
       {ready && picker.truncated && (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           Showing the first {picker.bases.length} of your bases.
         </Text>
       )}
       {ready && (
         <div className="flex flex-wrap items-center gap-x-2">
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             Want a new, empty one?
           </Text>
           <NewBaseActions

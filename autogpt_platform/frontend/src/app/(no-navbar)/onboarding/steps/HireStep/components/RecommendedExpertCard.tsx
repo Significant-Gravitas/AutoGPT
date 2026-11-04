@@ -53,23 +53,17 @@ export function RecommendedExpertCard({
           aria-label={`Include ${expert.name}`}
           disabled={disabled}
           onClick={onToggleIncluded}
-          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          className="absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-full disabled:cursor-not-allowed"
         >
           <span
             className={cn(
-              "flex size-4 items-center justify-center rounded-full border transition-colors",
+              "flex size-4 items-center justify-center rounded-full border text-action-foreground transition-colors",
               isIncluded
                 ? "border-action-hover bg-action-hover"
                 : "border-border-strong bg-surface",
             )}
           >
-            {isIncluded ? (
-              <Icon
-                icon={Tick02Icon}
-                size={10}
-                className="text-action-foreground"
-              />
-            ) : null}
+            {isIncluded ? <Icon icon={Tick02Icon} size={10} /> : null}
           </span>
         </button>
       )}
@@ -94,26 +88,23 @@ export function RecommendedExpertCard({
         </div>
       </div>
       {expert.reason ? (
-        <Text
-          variant="body"
-          tone="secondary"
-          className={cn(
-            "line-clamp-2 text-pretty transition-opacity",
-            isLeftOut && "opacity-50",
-          )}
-        >
-          {expert.reason}
-        </Text>
+        <div className={cn("transition-opacity", isLeftOut && "opacity-50")}>
+          <Text
+            variant="body"
+            tone="secondary"
+            className="line-clamp-2 text-pretty"
+          >
+            {expert.reason}
+          </Text>
+        </div>
       ) : null}
       {isHired ? (
-        <Text
-          variant="small"
-          as="span"
-          className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-foreground-strong"
-        >
+        <span className="mt-auto inline-flex items-center gap-1 self-start pt-1 text-foreground-strong">
           <Icon icon={Tick02Icon} size={14} />
-          Hired
-        </Text>
+          <Text variant="small" as="span" tone="primary">
+            Hired
+          </Text>
+        </span>
       ) : (
         <Button
           variant="primary"

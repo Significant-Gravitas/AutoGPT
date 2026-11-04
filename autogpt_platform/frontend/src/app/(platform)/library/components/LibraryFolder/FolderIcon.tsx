@@ -138,18 +138,12 @@ export function FolderIcon({
 
   return (
     <div
-      className={`group relative cursor-pointer ${className}`}
-      style={{
-        width: 320 * scale,
-        height: 208 * scale,
-      }}
+      className={`group relative h-[calc(208px*var(--folder-scale))] w-[calc(320px*var(--folder-scale))] cursor-pointer ${className}`}
+      style={{ "--folder-scale": scale } as React.CSSProperties}
     >
-      <div
-        className="h-52 w-80 origin-top-left"
-        style={{ transform: `scale(${scale})`, perspective: "500px" }}
-      >
+      <div className="h-52 w-80 origin-top-left scale-[var(--folder-scale)] [perspective:500px]">
         <div
-          className={`folder-back relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
+          className={`relative mx-auto flex h-full w-[87.5%] justify-center overflow-visible rounded-3xl ${colors.bg} ${colors.border}`}
         >
           {[
             {
@@ -205,8 +199,7 @@ export function FolderIcon({
             rotateX: isOpen ? -15 : 0,
           }}
           transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible"
-          style={{ transformStyle: "preserve-3d" }}
+          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"
@@ -220,7 +213,7 @@ export function FolderIcon({
               d="M15.0423 0.500003C0.5 0.500009 0.5 14.2547 0.5 14.2547V92.5C0.5 101.337 7.66344 108.5 16.5 108.5H156.5C165.337 108.5 172.5 101.337 172.5 92.5V34.3302C172.5 25.4936 165.355 18.3302 156.519 18.3302H108.211C98.1341 18.3302 91.2921 5.57144 82.0156 1.63525C80.3338 0.921645 78.2634 0.500002 75.7187 0.500003H15.0423Z"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-7xl">
+          <div className="absolute inset-0 flex items-center justify-center text-hero">
             {icon}
           </div>
         </motion.div>
@@ -240,19 +233,11 @@ function Page({ color = "blue" }: PageProps) {
       className={`h-full w-full rounded-xl border bg-surface p-4 ${colors.borderLight}`}
     >
       <div className="flex flex-col gap-2">
-        <Text variant="h5" className="text-foreground-base">
-          agent.json
-        </Text>
+        <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
-            <div
-              // TODO(tokens): no exact role for bg-neutral-100 (#F5F5F5)
-              className="h-1.5 flex-1 rounded-full bg-neutral-100"
-            />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
           </div>
         ))}
       </div>

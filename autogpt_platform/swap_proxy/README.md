@@ -110,7 +110,17 @@ for gigabytes cost the proxy no more than 20 MiB and are then turned away:
 | a held text body that… | request (with `swap_anywhere` only) | response |
 | --- | --- | --- |
 | decodes to more than 20 MiB | sent as it is; audited `body-not-swapped` / `decoded-too-large` | **refused**; audited `refused-response` / `decoded-too-large` |
-| is in an encoding that cannot be decoded within a bound (anything but `gzip`, `deflate`, `br`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
+| is in an encoding that is not decoded (anything but `gzip`, `deflate`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
+
+Brotli (`br`) is never decoded: a box can send a `br` body to any host, and
+nothing it needs sends one, so the proxy does not run a Brotli decoder on a
+box's bytes. So that responses still arrive readable, a box that gets swaps has
+`br` taken out of its `Accept-Encoding` (and `br;q=0` added) on requests to a
+host a credential is bound to, whose responses are scrubbed (and on every
+request while the bindings cannot be read); those servers answer in gzip or
+uncompressed instead. A request to such a host with no `Accept-Encoding`
+(which accepts any coding) gets `br;q=0` alone, so it is answered uncompressed.
+Other hosts get the header as the box sent it.
 
 A request body the proxy will not decode may or may not name a credential;
 nobody can say without decoding it. It goes out untouched, which is the safe
@@ -327,9 +337,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   reach such a box; cloning the repository still works, since git's packs are
   binary. Lifting this needs a scrub that works on a stream, not a held body.
 - A compressed text response from a bound host that decodes to more than
-  20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
+  20 MiB, or uses an encoding other than `gzip`, `deflate` or `zstd` (or
   several at once), is refused for a box that gets swaps; a request body like
   that is not swapped (with `swap_anywhere`; otherwise it is never swapped).
+  Such a box asks for no `br`, but a server that sends it anyway is refused.
 - The decoded-size limit covers HTTP bodies. Websocket messages are
   decompressed by mitmproxy before the addon sees them, with no limit of ours.
 - A text response with no declared length is held until it is complete, so an

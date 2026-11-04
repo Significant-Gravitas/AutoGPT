@@ -1,7 +1,7 @@
 """Who an AutoPilot LLM call is for, in the fields OpenRouter Broadcast reads.
 
 OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
-``$ai_generation`` event (and to Langfuse). It maps these request body fields
+``$ai_generation`` event. It maps these request body fields
 (https://openrouter.ai/docs/guides/features/broadcast/posthog):
 
 - ``user`` becomes the event's ``distinct_id``. It is the platform user id,

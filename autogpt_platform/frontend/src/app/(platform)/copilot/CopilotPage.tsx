@@ -43,9 +43,8 @@ export function CopilotPage() {
 
   if (isUserLoading || !isLoggedIn) {
     return (
-      // TODO(tokens): no exact role for #F6F7FB / neutral-400
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f6f7fb]">
-        <ScaleLoader className="text-neutral-400" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas">
+        <ScaleLoader className="text-foreground-subtle" />
       </div>
     );
   }
@@ -63,8 +62,7 @@ export function CopilotPage() {
       // header overlays the chat (see PlatformChrome) instead of stacking
       // above it, so the full viewport is available. `svh` keeps the input
       // visible when mobile browser chrome is shown.
-      style={{ height: "100svh" }}
-      className="min-h-0"
+      className="h-svh min-h-0"
     >
       <MainArea
         isMobile={isMobile}
@@ -95,8 +93,7 @@ function MainArea({
 }: MainAreaProps) {
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
-      {/* TODO(tokens): no exact role for #F6F7FB */}
-      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#f6f7fb]">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-canvas">
         <FileDropZone
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}

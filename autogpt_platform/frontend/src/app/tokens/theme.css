@@ -1,0 +1,110 @@
+/* The colour roles: the one place a colour value lives (SECRT-3154).
+
+   Each role is an RGB channel triplet on `:root`, so a colour can be read
+   with an alpha (`rgb(var(--color-surface) / 0.5)`) and Tailwind's opacity
+   modifiers keep working. globals.css registers every role in its
+   `@theme inline` block, so `bg-surface` is `rgb(var(--color-surface) / 1)`
+   and follows these values at runtime. A theme is a second block that
+   redefines these same names, with no component edits; there is none yet.
+
+   The hex beside each value is the palette class it replaced. Pale tints and
+   borders of a hue are its role at an opacity (`bg-orange/10`, `ring-sky/30`)
+   rather than roles of their own. Every role is listed in
+   src/components/styles/color-roles.ts. */
+:root {
+  /* Surfaces */
+  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
+  --color-surface: 254 254 254; /* white #FEFEFE */
+  --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
+  --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
+  --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
+  --color-scrim: 20 20 20; /* black #141414, dialog backdrops and shadows */
+
+  /* Text */
+  --color-foreground-base: 20 20 20; /* black #141414, the Text default */
+  --color-foreground-strong: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-foreground-emphasis: 62 62 67; /* zinc-800 #3E3E43 */
+  --color-foreground-body: 80 80 87; /* zinc-700 #505057 */
+  --color-foreground-secondary: 104 104 111; /* zinc-600 #68686F */
+  --color-foreground-tertiary: 131 131 140; /* zinc-500 #83838C */
+  --color-foreground-subtle: 173 173 179; /* zinc-400 #ADADB3 */
+  --color-foreground-disabled: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-placeholder: 131 131 140; /* zinc-500 #83838C */
+
+  /* Borders */
+  --color-separator: 239 239 240; /* zinc-100 #EFEFF0 */
+  --color-border-base: 218 218 220; /* zinc-200 #DADADC */
+  --color-border-strong: 197 197 201; /* zinc-300 #C5C5C9 */
+  --color-focus: 10 10 10; /* neutral-950 #0A0A0A, the Button focus ring */
+
+  /* Action */
+  --color-action: 62 62 67; /* zinc-800 #3E3E43, primary Button */
+  --color-action-hover: 44 44 48; /* zinc-900 #2C2C30 */
+  --color-action-foreground: 254 254 254; /* white #FEFEFE */
+
+  /* Brand */
+  --color-brand: 119 51 245; /* purple-500 #7733F5 */
+  --color-brand-hover: 108 46 223; /* purple-600 #6C2EDF */
+  --color-accent-surface: 245 243 255; /* violet-50 #F5F3FF */
+  --color-accent-strong: 109 40 217; /* violet-700 #6D28D9 */
+
+  /* Status */
+  --color-error: 239 68 68; /* red-500 #EF4444 */
+  --color-error-hover: 217 54 54; /* red-600 #D93636 */
+  --color-error-foreground: 170 48 48; /* red-700 #AA3030 */
+  --color-error-surface: 254 245 245; /* red-50 #FEF5F5 */
+  --color-warning: 245 158 11; /* amber-500 #F59E0B */
+  --color-warning-foreground: 180 83 9; /* amber-700 #B45309 */
+  --color-warning-surface: 255 251 235; /* amber-50 #FFFBEB */
+  --color-warning-border: 253 230 138; /* amber-200 #FDE68A */
+  --color-success: 20 148 67; /* green-600 #149443 */
+  --color-success-foreground: 16 116 53; /* green-700 #107435 */
+  --color-success-surface: 232 246 237; /* green-50 #E8F6ED */
+  --color-info: 59 130 246; /* blue-500 #3B82F6 */
+  --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
+  --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
+
+  /* Accents: categories, usage meters and badges that are not a status */
+  --color-orange: 254 135 0; /* orange-500 #FE8700 */
+  --color-orange-foreground: 231 123 0; /* orange-600 #E77B00 */
+  --color-yellow: 245 192 0; /* yellow-500 #F5C000 */
+  --color-yellow-foreground: 174 136 0; /* yellow-700 #AE8800 */
+  --color-sky: 14 165 233; /* sky-500 #0EA5E9 */
+  --color-sky-foreground: 3 105 161; /* sky-700 #0369A1 */
+  --color-indigo: 99 102 241; /* indigo-500 #6366F1 */
+  --color-pink: 236 72 153; /* pink-500 #EC4899 */
+  --color-pink-foreground: 168 51 109; /* pink-700 #A8336D */
+
+  /* Builder (flow editor) */
+  --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
+  --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
+  --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
+  --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
+  --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
+  --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
+  --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
+
+  /* The hairline ring of the smooth-shadow-ring-* utilities. */
+  --smooth-ring-color: rgb(0 0 0 / 0.05);
+}
+
+.dark {
+  --smooth-ring-color: rgb(255 255 255 / 0.18);
+}
+
+/* The shadcn names streamdown's prebuilt classes use (`bg-muted`,
+   `text-muted-foreground`, `border-border`, ...). tailwind.config.ts scans
+   node_modules/streamdown, so these must exist for its code blocks, tables
+   and buttons to keep their colours. Each aliases a role. They are for that
+   vendored markup only: design-system/no-alias-colours fails them anywhere in
+   src/, where the role is the name to write. */
+@theme inline reference {
+  --color-background: rgb(var(--color-canvas) / 1);
+  --color-foreground: rgb(var(--color-foreground-base) / 1);
+  --color-muted: rgb(var(--color-surface-hover) / 1);
+  --color-muted-foreground: rgb(var(--color-foreground-tertiary) / 1);
+  --color-border: rgb(var(--color-border-base) / 1);
+  --color-primary: rgb(var(--color-action) / 1);
+  --color-primary-foreground: rgb(var(--color-action-foreground) / 1);
+}

@@ -10,12 +10,12 @@ export function KitSearchSkeleton() {
     <div
       role="status"
       aria-label="Searching"
-      className="w-full max-w-[42rem] overflow-hidden rounded-2xl border border-border bg-background duration-200 animate-in fade-in motion-reduce:animate-none"
+      className="w-full max-w-[42rem] overflow-hidden rounded-2xl border border-border-base bg-canvas duration-200 animate-in fade-in motion-reduce:animate-none"
     >
       {Array.from({ length: MAX_SEARCH_RESULTS }, (_, index) => (
         <div
           key={index}
-          className="flex items-center gap-3 border-b border-border px-3.5 py-3 last:border-b-0"
+          className="flex items-center gap-3 border-b border-border-base px-3.5 py-3 last:border-b-0"
         >
           <ShimmerBar delay={index} className="size-9 shrink-0 rounded-xl" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -41,9 +41,10 @@ function ShimmerBar({ delay, className }: ShimmerBarProps) {
   return (
     <span
       aria-hidden
+      // oxlint-disable-next-line design-system/no-inline-styles -- per-row stagger computed at runtime
       style={{ animationDelay: `${delay * 140}ms` }}
       className={cn(
-        // TODO(tokens): no exact role (bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)])
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the shimmer sweep (gradient, size, timing) has no token
         "block animate-shimmer bg-[linear-gradient(90deg,theme(colors.zinc.100)_25%,theme(colors.zinc.50)_50%,theme(colors.zinc.100)_75%)] bg-[length:200%_100%] [animation-duration:1.4s] [animation-timing-function:linear] motion-reduce:animate-none motion-reduce:bg-surface-hover",
         className,
       )}

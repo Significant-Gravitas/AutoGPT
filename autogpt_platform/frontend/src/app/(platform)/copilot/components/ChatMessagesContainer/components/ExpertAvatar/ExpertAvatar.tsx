@@ -22,8 +22,7 @@ export function ExpertAvatar({
 }: Props) {
   const isSmall = size === "sm";
   const sizeClass = isSmall ? "h-6 w-6" : "h-9 w-9";
-  // TODO(tokens): no exact role for border-[#e3e3e3]
-  const borderClass = "rounded-full border border-[#e3e3e3]";
+  const borderClass = "rounded-full border border-border-base";
 
   if (isLoading) {
     return (
