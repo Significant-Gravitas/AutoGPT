@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { BackgroundSubtaskStop } from "./BackgroundSubtaskStop";
+import { Text } from "@/components/atoms/Text/Text";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -64,17 +66,17 @@ export function AgentListCard({ agents }: AgentListCardProps) {
             className={CARD + " flex items-start gap-2.5 p-2.5"}
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-              <Icon
-                icon={Robot01Icon}
-                size={15}
-                className="text-foreground-secondary"
-              />
+              <Icon icon={Robot01Icon} size={15} tone="secondary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+                <Text
+                  variant="body-sm-medium-inherit"
+                  tone="emphasis"
+                  className="min-w-0 truncate"
+                >
                   {str(agent, "name", "agent_name") ?? inline(agent)}
-                </p>
+                </Text>
                 {str(agent, "creator") && (
                   <span className="shrink-0 truncate text-caption-sm leading-inherit text-foreground-subtle">
                     by {str(agent, "creator")}
@@ -82,9 +84,9 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                 )}
               </div>
               {subtitle && (
-                <p className="truncate text-xs text-foreground-tertiary">
+                <Text variant="small-tight" tone="muted" className="truncate">
                   {subtitle}
-                </p>
+                </Text>
               )}
               {(runs !== null || rating !== null) && (
                 <div className="mt-1 flex items-center gap-2.5 text-caption-sm leading-inherit text-foreground-subtle">
@@ -96,12 +98,7 @@ export function AgentListCard({ agents }: AgentListCardProps) {
                   )}
                   {rating !== null && (
                     <span className="flex items-center gap-1">
-                      <Icon
-                        icon={StarIcon}
-                        size={10}
-                        // TODO(tokens): no exact role for text-amber-400
-                        className="text-amber-400"
-                      />
+                      <Icon icon={StarIcon} size={10} tone="warning-bright" />
                       {rating.toFixed(1)}
                     </span>
                   )}
@@ -128,15 +125,15 @@ export function AgentSavedCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
-      <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="emphasis"
+        className="min-w-0 flex-1 truncate"
+      >
         {name}
-      </p>
+      </Text>
       {typeof version === "number" && (
         <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           v{version}
@@ -163,20 +160,20 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   return (
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Robot01Icon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Robot01Icon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="truncate"
+        >
           {name}
-        </p>
+        </Text>
         {str(output, "description", "message") && (
-          <p className="truncate text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="truncate">
             {str(output, "description", "message")}
-          </p>
+          </Text>
         )}
       </div>
       {count !== null && (
@@ -200,25 +197,40 @@ export function SubSessionCard({
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
   const subSessionId = str(output, "sub_session_id");
-  const status = useSubSessionEffectiveStatus(subSessionId, frozenStatus);
+  const background = !!str(output, "background_task_id");
+  const backgroundExpiresAt = background
+    ? str(output, "background_expires_at")
+    : null;
+  const status = useSubSessionEffectiveStatus(
+    subSessionId,
+    frozenStatus,
+    background,
+    backgroundExpiresAt,
+  );
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
-  const name = (expert && str(expert, "name")) ?? "Expert";
+  const name =
+    (expert && str(expert, "name")) ??
+    (background ? "Background subtask" : "Expert");
   return (
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
-        <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+        <Text
+          variant="body-sm-medium-inherit"
+          tone="emphasis"
+          className="min-w-0 flex-1 truncate"
+        >
           {name}
           {role && (
             <span className="ml-1.5 font-normal text-foreground-subtle">
               {role}
             </span>
           )}
-        </p>
+        </Text>
         {elapsed !== null && (
           <span className="shrink-0 text-caption-sm leading-inherit text-foreground-subtle">
             {elapsed >= 60
@@ -227,10 +239,15 @@ export function SubSessionCard({
           </span>
         )}
         {status && <StatusPill status={status} />}
+        {background &&
+          subSessionId &&
+          ["running", "queued", "unknown"].includes(status ?? "") && (
+            <BackgroundSubtaskStop sessionId={subSessionId} />
+          )}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-foreground-tertiary">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption text-foreground-tertiary">
           {response}
         </p>
       )}
@@ -240,6 +257,8 @@ export function SubSessionCard({
       {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
+          background={background}
+          backgroundExpiresAt={backgroundExpiresAt}
           active={["running", "queued"].includes(
             frozenStatus?.toLowerCase() ?? "",
           )}

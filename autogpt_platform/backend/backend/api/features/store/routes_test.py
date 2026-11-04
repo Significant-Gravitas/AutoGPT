@@ -5,6 +5,7 @@ import uuid
 import fastapi
 import fastapi.testclient
 import prisma.enums
+import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.graph import GraphModelWithoutNodes
 
 from . import model as store_model
@@ -1022,6 +1024,26 @@ def test_listing_graph_outline_names_no_publisher_account(
     )
 
 
+def test_listing_graph_outline_of_a_missing_version_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    listing_versions = mocker.AsyncMock()
+    listing_versions.find_first.return_value = None
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=listing_versions
+    )
+    handled_app = fastapi.FastAPI()
+    add_exception_handlers(handled_app)
+    handled_app.include_router(store_routes.router)
+    handled_app.dependency_overrides.update(app.dependency_overrides)
+
+    response = fastapi.testclient.TestClient(
+        handled_app, raise_server_exceptions=False
+    ).get("/listings/versions/slv-missing/graph")
+
+    assert response.status_code == 404
+
+
 def test_download_agent_file_sends_listing_downloaded(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -1051,3 +1073,40 @@ def test_signed_out_download_passes_no_user(mocker: pytest_mock.MockFixture) -> 
 
     assert response.status_code == 200
     assert track.call_args.kwargs["user_id"] is None
+
+
+@pytest.mark.parametrize("score", [0, 6, 1_000_000])
+def test_post_review_rejects_out_of_range_score(
+    mocker: pytest_mock.MockFixture, score: int
+) -> None:
+    """#15304: the API must 422 before the review is written."""
+    mock_create = mocker.patch("backend.api.features.store.db.create_store_review")
+
+    response = client.post(
+        "/agents/creator1/test-agent/review",
+        json={"store_listing_version_id": "test-version-id", "score": score},
+    )
+
+    assert response.status_code == 422
+    mock_create.assert_not_called()
+
+
+def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.store.db.create_store_review",
+        return_value=store_model.StoreReview(score=5, comments="great"),
+    )
+
+    response = client.post(
+        "/agents/creator1/test-agent/review",
+        json={
+            "store_listing_version_id": "test-version-id",
+            "score": 5,
+            "comments": "great",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["score"] == 5
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["score"] == 5

@@ -43,27 +43,15 @@ export function LatestOutputs({
         <PanelEmptyState
           textSize="body-md"
           tiles={[
-            <Icon
-              key="image"
-              icon={Image01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-sky-500 #0EA5E9
-              className="text-sky-500"
-            />,
-            <Icon
-              key="table"
-              icon={Table01Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-emerald-500 #10B981
-              className="text-emerald-500"
-            />,
-            <Icon
-              key="doc"
-              icon={File02Icon}
-              size={22}
-              // TODO(tokens): no exact role: text-violet-500 #8B5CF6
-              className="text-violet-500"
-            />,
+            <span key="image" className="inline-flex text-sky">
+              <Icon icon={Image01Icon} size={22} />
+            </span>,
+            <span key="table" className="inline-flex text-success">
+              <Icon icon={Table01Icon} size={22} />
+            </span>,
+            <span key="doc" className="inline-flex text-brand">
+              <Icon icon={File02Icon} size={22} />
+            </span>,
           ]}
           title="No outputs yet"
           description={`Documents and files ${expertName} creates show up here.`}

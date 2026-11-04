@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CARD, HALF, StatusPill } from "./ResultCards";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   name: string;
@@ -21,22 +22,18 @@ export function ExecutionCard({ name, status, href, variant = "run" }: Props) {
     <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
         {variant === "agent" ? (
-          <Icon
-            icon={Robot01Icon}
-            size={15}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={Robot01Icon} size={15} tone="secondary" />
         ) : (
-          <Icon
-            icon={PlayIcon}
-            size={13}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={PlayIcon} size={13} tone="secondary" />
         )}
       </div>
-      <p className="min-w-0 flex-1 truncate text-body-sm font-medium leading-inherit text-foreground-emphasis">
+      <Text
+        variant="body-sm-medium-inherit"
+        tone="emphasis"
+        className="min-w-0 flex-1 truncate"
+      >
         {name}
-      </p>
+      </Text>
       {status && <StatusPill status={status} />}
       {href && (
         <Link

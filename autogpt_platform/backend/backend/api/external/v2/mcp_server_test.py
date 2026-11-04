@@ -1,5 +1,6 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
+import base64
 import json
 import logging
 from types import SimpleNamespace
@@ -31,13 +32,15 @@ from backend.api.external.v2.mcp_server import (
 )
 from backend.api.external.v2.rate_limit import file_upload_limiter
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.gate import gate_active
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import CARD_HINTS
-from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.models import ErrorResponse, FolderDeletedResponse
 from backend.util.exceptions import GraphValidationError
+from backend.util.workspace_test import _make_workspace_file
 
 
 def _token(*scopes: APIKeyPermission) -> TenantedAccessToken:
@@ -448,6 +451,44 @@ def test_a_run_agent_call_is_a_paid_run_as_the_tool_reads_it(
     assert _starts_a_paid_run(args) is paid_run
 
 
+@pytest.mark.parametrize(
+    "response, is_error",
+    [
+        (ErrorResponse(message="Folder not found", session_id=None), True),
+        (
+            FolderDeletedResponse(
+                message="Folder deleted", folder_id="folder-1", session_id=None
+            ),
+            False,
+        ),
+    ],
+)
+async def test_a_refusal_reaches_the_client_as_an_error_and_a_result_does_not(
+    mocker: pytest_mock.MockerFixture,
+    no_tenancy_lookups: mock.AsyncMock,
+    response: ErrorResponse | FolderDeletedResponse,
+    is_error: bool,
+):
+    """A client reads a refusal from the call's status, and either way the text
+    is the tool's own JSON object, as the MCP server's docs promise."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("delete_folder")),
+    )
+    mocker.patch.object(
+        type(TOOL_REGISTRY["delete_folder"]),
+        "_execute",
+        new_callable=mock.AsyncMock,
+        return_value=response,
+    )
+
+    result = await _call("delete_folder", {"folder_id": "folder-1"})
+
+    assert result.isError is is_error
+    reply = json.loads(result.content[0].text)
+    assert (reply["type"], reply["message"]) == (response.type, response.message)
+
+
 async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
 ):
@@ -475,6 +516,9 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
         new_callable=mock.AsyncMock,
         return_value=ErrorResponse(message="stub", session_id=None),
     )
+    # The control: the gate is on for a chat someone watches, so only the
+    # session's origin keeps it off the call, not the context the handler sets.
+    assert await gate_active("user-1", ChatSession.new("user-1", dry_run=False))
 
     await _call("delete_folder", {"folder_id": "folder-1"})
 
@@ -489,6 +533,42 @@ async def test_a_tool_called_over_mcp_runs_without_waiting_for_an_approval(
     no_tenancy_lookups.assert_awaited_once_with(
         "delete_folder", {"folder_id": "folder-1"}, "user-1", "org-1"
     )
+
+
+async def test_a_key_reads_its_owners_run_output_as_it_does_over_rest(
+    mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
+):
+    """No expert stands behind a key, so its call reaches the whole workspace,
+    where a run stores its output: at the root, outside any chat's folder."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=_token(*_tool_scopes("read_workspace_file")),
+    )
+    mocker.patch(
+        "backend.copilot.context.workspace_db",
+        return_value=SimpleNamespace(
+            get_or_create_workspace=mock.AsyncMock(
+                return_value=SimpleNamespace(id="ws-1")
+            )
+        ),
+    )
+    run_output = _make_workspace_file(id="file-1", path="/transcript_out.txt")
+    mocker.patch(
+        "backend.util.workspace.workspace_db",
+        return_value=SimpleNamespace(
+            get_workspace_file=mock.AsyncMock(return_value=run_output)
+        ),
+    )
+    mocker.patch(
+        "backend.util.workspace.get_workspace_storage",
+        new_callable=mock.AsyncMock,
+        return_value=SimpleNamespace(retrieve=mock.AsyncMock(return_value=b"hello")),
+    )
+
+    result = await _call("read_workspace_file", {"file_id": "file-1"})
+
+    reply = json.loads(result.content[0].text)
+    assert base64.b64decode(reply.get("content_base64", "")) == b"hello", reply
 
 
 async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(
@@ -531,6 +611,7 @@ async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(
 
     result = await _call("run_agent", {"library_agent_id": "agent-1"})
 
+    assert result.isError
     reply = json.loads(result.content[0].text)
     assert reply["type"] == "error"
     assert "firecrawl" in reply["message"]

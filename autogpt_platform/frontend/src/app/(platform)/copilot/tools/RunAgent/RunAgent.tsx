@@ -25,6 +25,7 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunAgentToolPart {
   type: string;
@@ -86,7 +87,7 @@ export function RunAgentTool({ part }: Props) {
         !agentDetailsOutput &&
         !needLoginOutput &&
         !hasExpandableContent && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground-tertiary">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
               text={
@@ -98,14 +99,14 @@ export function RunAgentTool({ part }: Props) {
         )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-error">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
-        </p>
+        </Text>
       )}
 
       {isStreaming && !output && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming isError={isError} />
           <MorphingTextAnimation text={getStreamingLoadingText(part)} />
         </div>

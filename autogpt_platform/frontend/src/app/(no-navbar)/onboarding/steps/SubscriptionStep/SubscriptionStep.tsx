@@ -42,7 +42,7 @@ export function SubscriptionStep() {
   if (trial.isLoading)
     return (
       <div className="w-full px-4">
-        <Skeleton className="mx-auto h-[34rem] w-full max-w-[60rem] rounded-[1.75rem]" />
+        <Skeleton className="mx-auto h-[34rem] w-full max-w-[60rem] rounded-3xl" />
       </div>
     );
 

@@ -90,7 +90,7 @@ export function RoleStep() {
           <Text variant="h4">What best describes you?</Text>
         </div>
 
-        <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-4 md:overflow-hidden md:px-0">
+        <div className="grid w-full max-w-lg grid-cols-2 gap-3 md:w-auto md:max-w-none md:grid-cols-4 md:gap-4 md:overflow-hidden">
           {ROLES.map((r) => (
             <SelectableCard
               key={r.id}
@@ -98,7 +98,7 @@ export function RoleStep() {
               label={r.label}
               selected={role === r.id}
               onClick={() => setRole(r.id)}
-              className="h-28 w-[11.5rem]"
+              className="h-20 w-full md:h-28 md:w-[11.5rem]"
             />
           ))}
         </div>

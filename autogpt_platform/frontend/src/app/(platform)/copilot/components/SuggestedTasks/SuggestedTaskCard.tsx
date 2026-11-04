@@ -47,13 +47,11 @@ export function SuggestedTaskCard({
           <Text variant="body-medium" tone="muted" className="text-pretty">
             {task.title}
           </Text>
-          <Text
-            variant="small-medium"
-            tone="muted"
-            className="mt-auto self-start rounded-full bg-surface-hover px-2 py-0.5"
-          >
-            In progress
-          </Text>
+          <div className="mt-auto self-start rounded-full bg-surface-hover px-2 py-0.5">
+            <Text variant="small-medium" tone="muted">
+              In progress
+            </Text>
+          </div>
         </NextLink>
       ) : (
         <button
@@ -72,18 +70,21 @@ export function SuggestedTaskCard({
           </Text>
         </button>
       )}
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon-xs"
-        withTooltip={false}
-        aria-label={`Hide: ${task.title}`}
-        disabled={!canHide}
-        onClick={() => onHide(task)}
-        className="absolute -right-2 -top-2 text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100"
-      >
-        <Icon icon={Cancel01Icon} size={12} />
-      </Button>
+      <span className="absolute -top-2 -right-2 flex opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon-xs"
+          tone="subtle"
+          withTooltip={false}
+          aria-label={`Hide: ${task.title}`}
+          disabled={!canHide}
+          onClick={() => onHide(task)}
+          className="hover:text-foreground-body"
+        >
+          <Icon icon={Cancel01Icon} size={12} />
+        </Button>
+      </span>
     </>
   );
 }
@@ -110,7 +111,7 @@ function CardTop({ task, isSending = false, muted = false }: CardTopProps) {
         <Icon
           icon={isSending ? Loading03Icon : getPromptIcon(task.icon)}
           size={18}
-          className={cn(isSending && "animate-spin")}
+          spin={isSending}
           aria-label={isSending ? "Starting" : undefined}
         />
       </span>

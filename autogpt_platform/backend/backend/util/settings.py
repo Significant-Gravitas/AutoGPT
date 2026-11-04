@@ -68,20 +68,6 @@ class UserNotificationsAudience(str, Enum):
     EVERYONE = "everyone"
 
 
-class FeatureFlagBackend(str, Enum):
-    """Which vendor answers a feature flag read.
-
-    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
-    disagreement is measurable before the switch. The backend always serves
-    LaunchDarkly in this mode; the frontend falls back to PostHog where
-    LaunchDarkly is not configured, because there its answer never arrives.
-    """
-
-    LAUNCHDARKLY = "launchdarkly"
-    POSTHOG = "posthog"
-    DUAL = "dual"
-
-
 class FlagDefinitionCacheBackend(str, Enum):
     """Where PostHog flag definitions are shared between processes.
 
@@ -128,9 +114,30 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's top-level runs "
+            "may hold at once; kept below `num_graph_workers` when that is 2 or "
+            "more, and 1 when it is 1."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
     )
 
     # FastAPI Thread Pool Configuration
@@ -256,6 +263,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
+    )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -563,6 +576,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This value is then used to generate redirect URLs for OAuth flows.",
     )
 
+    microsoft_browser_sign_in: bool = Field(
+        default=False,
+        description="Offer browser sign-in for Microsoft connections. Turn it on "
+        "once the Entra app in MICROSOFT_CLIENT_ID has a secret, the Web redirect "
+        "{frontend_base_url}/auth/integrations/oauth_callback, access token "
+        "version 2 and personal accounts in its audience. Until then Microsoft "
+        "connects with sign-in codes.",
+    )
+
     trusted_frontend_origins: List[str] = Field(
         default=[],
         description="Extra frontend origins (in addition to frontend_base_url) "
@@ -656,6 +678,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many schedules one user may hold on the scheduler.",
     )
 
     schedule_read_timeout_seconds: float = Field(
@@ -1000,6 +1028,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
+    )
+
+    max_request_body_mb: int = Field(
+        default=10,
+        ge=1,
+        le=1024,
+        description=(
+            "Maximum request body in MiB the platform API accepts, file uploads"
+            " and routes with their own limit excepted"
+        ),
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,
@@ -1045,13 +1090,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
-    feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.POSTHOG,
-        description="Which vendor answers feature flag reads: posthog "
-        "(default), launchdarkly, or dual (evaluate both, serve LaunchDarkly, "
-        "log every disagreement).",
-    )
-
     @field_validator("user_notifications_audience", mode="before")
     @classmethod
     def _default_unknown_notifications_audience(cls, v):
@@ -1068,37 +1106,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             )
             return UserNotificationsAudience.SUBSCRIBERS
 
-    @field_validator("feature_flag_backend", mode="before")
-    @classmethod
-    def _default_unknown_flag_backend(cls, v):
-        """A typo here must not stop the process from booting.
-
-        Settings is built at import of every module that reads a flag, so a
-        rejected value is a boot crash rather than a misconfigured flag read.
-        """
-        if not isinstance(v, str):
-            return v
-        try:
-            return FeatureFlagBackend(v.strip().lower())
-        except ValueError:
-            logger.warning(
-                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.POSTHOG.value}"
-            )
-            return FeatureFlagBackend.POSTHOG
-
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
         description="Where PostHog flag definitions are shared: redis "
         "(default; one elected refresher, every other process reads its copy), "
-        "memory (process-local), or none (every process polls PostHog itself). "
-        "Only read when PostHog answers flag reads.",
+        "memory (process-local), or none (every process polls PostHog itself).",
     )
 
     @field_validator("posthog_flag_definition_cache", mode="before")
     @classmethod
     def _default_unknown_definition_cache(cls, v):
-        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
         if not isinstance(v, str):
             return v
         try:
@@ -1542,25 +1564,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
 
-    # LaunchDarkly feature flags
-    launch_darkly_sdk_key: str = Field(
-        default="",
-        description="The LaunchDarkly SDK key for feature flag management",
-    )
-
     agentmail_api_key: str = Field(default="", description="AgentMail API Key")
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 
-    # Langfuse prompt management
+    # Langfuse prompt management (no tracing, see backend/util/langfuse_prompts.py)
     langfuse_public_key: str = Field(default="", description="Langfuse public key")
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
-    )
-    langfuse_tracing_environment: str = Field(
-        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics

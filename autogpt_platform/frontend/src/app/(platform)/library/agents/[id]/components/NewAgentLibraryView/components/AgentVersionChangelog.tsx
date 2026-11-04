@@ -58,33 +58,24 @@ export function AgentVersionChangelog({
         key={versionInfo.version}
         className={`rounded-lg border p-4 ${
           versionInfo.isCurrentVersion
-            ? // TODO(tokens): no exact role for border-blue-200 (#BFDBFE); no dark roles yet for dark:border-blue-800 (#1E40AF), dark:bg-blue-950 (#172554)
-              "border-blue-200 bg-info-surface dark:border-blue-800 dark:bg-blue-950"
-            : // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5); no dark roles yet for dark:border-neutral-700 (#404040), dark:bg-neutral-800 (#262626)
-              "border-neutral-200 bg-surface dark:border-neutral-700 dark:bg-neutral-800"
+            ? "border-info/30 bg-info-surface"
+            : "border-border-base bg-surface"
         }`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Text variant="body-semibold">v{versionInfo.version}</Text>
             {versionInfo.isCurrentVersion && (
-              <Text
-                variant="small-medium-tight"
-                as="span"
-                // TODO(tokens): no exact role for bg-blue-100 (#DBEAFE), text-blue-800 (#1E40AF); no dark roles yet for dark:bg-blue-900 (#1E3A8A), dark:text-blue-100 (#DBEAFE)
-                className="rounded-full bg-blue-100 px-2 py-1 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
-              >
-                Current
-              </Text>
+              <span className="rounded-full bg-info/20 px-2 py-1 text-info-foreground">
+                <Text variant="small-medium-tight" as="span" tone="inherit">
+                  Current
+                </Text>
+              </span>
             )}
           </div>
         </div>
 
-        <Text
-          variant="small"
-          // TODO(tokens): no exact role for text-neutral-600 (#525252); no dark roles yet for dark:text-neutral-400 (#A3A3A3)
-          className="mt-1 text-neutral-600 dark:text-neutral-400"
-        >
+        <Text variant="small" tone="secondary" className="mt-1">
           Available marketplace version
         </Text>
       </div>
@@ -117,11 +108,7 @@ export function AgentVersionChangelog({
             </div>
           ) : agentVersions.length > 0 ? (
             <div className="space-y-4">
-              <Text
-                variant="small"
-                // TODO(tokens): no exact role for text-neutral-600 (#525252); no dark roles yet for dark:text-neutral-400 (#A3A3A3)
-                className="text-neutral-600 dark:text-neutral-400"
-              >
+              <Text variant="small" tone="secondary">
                 View changes and updates across different versions of this
                 workflow.
               </Text>
@@ -129,11 +116,7 @@ export function AgentVersionChangelog({
             </div>
           ) : (
             <div className="py-8 text-center">
-              <Text
-                variant="body"
-                // TODO(tokens): no exact role for text-neutral-600 (#525252); no dark roles yet for dark:text-neutral-400 (#A3A3A3)
-                className="text-neutral-600 dark:text-neutral-400"
-              >
+              <Text variant="body" tone="secondary">
                 No version history available for this workflow.
               </Text>
             </div>

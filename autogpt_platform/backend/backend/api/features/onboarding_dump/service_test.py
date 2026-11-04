@@ -1170,6 +1170,9 @@ async def test_quality_rejected_typed_dump_records_the_error(
     )
     await background()
 
+    quality_gate.assert_awaited_once_with(
+        "hello hello testing", input_mode=BrainDumpInputMode.typed
+    )
     assert response.status == BrainDumpStatus.failed
     assert response.error_code == "insufficient_content"
     assert response.error_reason == "judge_unusable"

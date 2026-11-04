@@ -1,6 +1,7 @@
 import datetime
 import gc
 import threading
+import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
@@ -8,6 +9,7 @@ from typing import Any, Optional, cast
 import jsonschema
 import numpy as np
 import pytest
+import referencing.exceptions
 from prisma import Json
 from pydantic import BaseModel
 
@@ -1219,6 +1221,18 @@ class TestValidateWithJsonschema:
             schema, data
         )
 
+    def test_a_ref_outside_the_schema_is_never_retrieved(self, monkeypatch):
+        """`$ref` resolves only within the schema and the bundled meta-schemas."""
+        retrievals: list[tuple] = []
+        monkeypatch.setattr(
+            urllib.request, "urlopen", lambda *args, **_: retrievals.append(args)
+        )
+        schema = {"properties": {"f": {"$ref": "https://example.com/schema.json"}}}
+
+        with pytest.raises(referencing.exceptions.Unresolvable):
+            validate_with_jsonschema(schema, {"f": "x"})
+        assert retrievals == []
+
     @staticmethod
     def _baseline_outcome(schema: dict[str, Any], data: dict[str, Any]) -> str | None:
         try:
@@ -1226,3 +1240,68 @@ class TestValidateWithJsonschema:
         except jsonschema.ValidationError as error:
             return str(error)
         return None
+
+
+class TestNestingDepth:
+    @pytest.mark.parametrize(
+        "data,depth",
+        [
+            ("abyss", 0),
+            (1, 0),
+            (None, 0),
+            ([], 1),
+            ({}, 1),
+            ([1, 2], 1),
+            ({"a": [1]}, 2),
+            ([[["x"]]], 3),
+            ({"a": {"b": {"c": 1}}, "d": [1]}, 3),
+            (("t", ["u"]), 2),
+        ],
+    )
+    def test_counts_nested_lists_and_dicts(self, data: Any, depth: int):
+        assert json_util.nesting_depth(data) == depth
+
+    def test_walks_data_deeper_than_the_recursion_limit(self):
+        value: Any = "abyss"
+        for _ in range(5000):
+            value = [value]
+        assert json_util.nesting_depth({"shift_tags": value}) == 5001
+
+
+class TestSameJson:
+    @pytest.mark.parametrize(
+        "left,right",
+        [
+            ({"id": 1}, {"id": True}),
+            ({"id": 0}, {"id": False}),
+            ({"n": 1}, {"n": 1.0}),
+            ({"ids": [1]}, {"ids": [True]}),
+        ],
+    )
+    def test_a_change_of_type_is_a_change(self, left: Any, right: Any):
+        assert left == right  # what plain equality would let through
+        assert not json_util.same_json(left, right)
+
+    def test_key_order_is_not_a_change(self):
+        assert json_util.same_json({"a": 1, "b": {"c": 2}}, {"b": {"c": 2}, "a": 1})
+
+    def test_values_json_cannot_hold_directly_still_compare(self):
+        when = datetime.datetime(2026, 11, 3, 12, 0)
+        assert json_util.same_json({"at": when}, {"at": when})
+        assert not json_util.same_json(
+            {"at": when}, {"at": when + datetime.timedelta(seconds=1)}
+        )
+
+    @pytest.mark.parametrize(
+        "numpy_value, same, different",
+        [
+            (np.float64(1.0), 1.0, 1),
+            (np.int64(1), 1, True),
+            (np.bool_(True), True, 1),
+        ],
+    )
+    def test_a_numpy_scalar_compares_as_its_python_value(
+        self, numpy_value: Any, same: Any, different: Any
+    ):
+        assert json_util.same_json({"v": numpy_value}, {"v": same})
+        assert not json_util.same_json({"v": numpy_value}, {"v": different})

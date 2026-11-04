@@ -166,6 +166,12 @@ class _DuplicateSubmission(_GatewayState):
     replay_key: str
 
 
+class _Relaunch(_GatewayState):
+    """A request from the attempt that replaced the one holding these records."""
+
+    fingerprint: str
+
+
 class _ToolCallRecord(_GatewayState):
     gateway_call_id: str
     raw_call_id: str
@@ -184,6 +190,12 @@ _DuplicateSubmission.model_rebuild()
 
 class _DuplicateToolResultError(ValueError):
     pass
+
+
+# A refusal of ours is a defect on our side, not an answer, so the turn fails
+# with the bot's own wording rather than reading as a successful reply.
+GATEWAY_REFUSED_CODE = "gateway_refused"
+GATEWAY_REFUSED_MESSAGE = "The model connection failed on our side — please try again"
 
 
 class CodexAnthropicGateway:
@@ -210,6 +222,11 @@ class CodexAnthropicGateway:
         # is an HTTP status and a sentence; the typed exception only exists
         # in here.
         self.last_failure: ProviderFailure | None = None
+        # The last request this gateway refused itself, as opposed to a
+        # provider failure it relays. The service layer only ever sees the
+        # CLI's rendering of it ("API Error: 409 <message>"), which it would
+        # otherwise forward to the user as the assistant's answer.
+        self.last_refusal: str | None = None
         self.model = model
         self.effort: CodexReasoningEffort | None = effort
         self._transport = cast(
@@ -226,6 +243,10 @@ class CodexAnthropicGateway:
         self._auth_token = secrets.token_urlsafe(32)
         self._conversations: dict[str, _Conversation] = {}
         self._tool_calls: dict[str, _ToolCallRecord] = {}
+        # The conversation each relaunch opened, by its fingerprint. Nothing
+        # claimable is left behind a relaunch, so this is the only thing that
+        # can answer its resend.
+        self._relaunches: dict[str, _Conversation] = {}
         self._results: list[CodexInvocationResult] = []
         self._closed = False
         self._close_lock = asyncio.Lock()
@@ -359,6 +380,11 @@ class CodexAnthropicGateway:
             if cleanup_error is not None:
                 raise cleanup_error
 
+    def _refuse(self, status: int, error_type: str, message: str) -> web.Response:
+        """Answer a request this gateway rejects itself, and remember it."""
+        self.last_refusal = message
+        return _anthropic_error(status, error_type, message)
+
     async def _handle_health(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
             return _anthropic_error(401, "authentication_error", "Unauthorized")
@@ -383,21 +409,19 @@ class CodexAnthropicGateway:
 
     async def _handle_messages(self, request: web.Request) -> web.StreamResponse:
         if not self._is_authorized(request):
-            return _anthropic_error(401, "authentication_error", "Unauthorized")
+            return self._refuse(401, "authentication_error", "Unauthorized")
         try:
             payload = await request.json()
         except web.HTTPRequestEntityTooLarge:
-            return _anthropic_error(
-                413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE
-            )
+            return self._refuse(413, "request_too_large", _REQUEST_TOO_LARGE_MESSAGE)
         except (json.JSONDecodeError, ValueError):
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 "Request body must be JSON",
             )
         if not isinstance(payload, dict):
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 "Request body must be an object",
@@ -406,43 +430,60 @@ class CodexAnthropicGateway:
         try:
             continuation = self._continue_conversation(payload)
         except _DuplicateToolResultError as exc:
-            return _anthropic_error(
+            return self._refuse(
                 409,
                 "invalid_request_error",
                 str(exc),
             )
         except (TypeError, ValueError) as exc:
-            return _anthropic_error(
+            return self._refuse(
                 400,
                 "invalid_request_error",
                 str(exc),
             )
 
         streamed = payload.get("stream") is True
+        relaunch_key: str | None = None
         if isinstance(continuation, _DuplicateSubmission):
             return await self._duplicate_response(request, continuation, streamed)
-        if continuation is None:
-            try:
-                conversation, replay_key = self._start_conversation(payload), None
-            except (TypeError, ValueError) as exc:
-                return _anthropic_error(400, "invalid_request_error", str(exc))
-        else:
+        if isinstance(continuation, _Continuation):
             conversation = continuation.conversation
             replay_key = continuation.replay_key
+        else:
+            try:
+                conversation = self._start_conversation(payload)
+            except (TypeError, ValueError) as exc:
+                return self._refuse(400, "invalid_request_error", str(exc))
+            replay_key = None
+            if isinstance(continuation, _Relaunch):
+                # Registered before the answer is written, so a resend that
+                # arrives meanwhile waits on this conversation's lock and
+                # replays that answer instead of invoking Codex again.
+                relaunch_key = replay_key = continuation.fingerprint
+                self._relaunches[relaunch_key] = conversation
 
         input_tokens = _estimate_input_tokens(payload)
         if streamed:
-            return await self._streaming_response(
+            response = await self._streaming_response(
                 request,
                 conversation,
                 input_tokens,
                 replay_key,
             )
-        return await self._nonstreaming_response(
-            conversation,
-            input_tokens,
-            replay_key,
-        )
+        else:
+            response = await self._nonstreaming_response(
+                conversation,
+                input_tokens,
+                replay_key,
+            )
+        if relaunch_key is not None and relaunch_key not in conversation.replays:
+            # The attempt answered with nothing replayable -- it failed before
+            # its first event, or its answer was too large to keep -- so the
+            # registration would turn the CLI's next retry into the very 409
+            # this branch exists to avoid. Let that retry open an attempt of
+            # its own, as it did before any of this was registered.
+            self._relaunches.pop(relaunch_key, None)
+        return response
 
     async def _duplicate_response(
         self,
@@ -459,7 +500,7 @@ class CodexAnthropicGateway:
                 streamed=streamed,
             )
         if replay is None:
-            return _anthropic_error(
+            return self._refuse(
                 409,
                 "invalid_request_error",
                 "This tool-result request was already accepted",
@@ -479,7 +520,7 @@ class CodexAnthropicGateway:
     def _continue_conversation(
         self,
         payload: dict[str, object],
-    ) -> _Continuation | _DuplicateSubmission | None:
+    ) -> _Continuation | _DuplicateSubmission | _Relaunch | None:
         tool_results = _extract_tool_results(payload.get("messages"))
         known = [
             (self._tool_calls[call_id], result)
@@ -512,13 +553,21 @@ class CodexAnthropicGateway:
                     conversation=claimed_by[0].conversation,
                     replay_key=fingerprint,
                 )
-            if any(record.result is None for record, _ in known):
-                raise _DuplicateToolResultError(
-                    "This tool-result request refers to a closed model call"
+            relaunched = self._relaunches.get(fingerprint)
+            if relaunched is not None:
+                # The CLI resends a relaunch verbatim too, and each resend
+                # would otherwise cost another subscription invocation.
+                return _DuplicateSubmission(
+                    conversation=relaunched,
+                    replay_key=fingerprint,
                 )
-            raise _DuplicateToolResultError(
-                "This tool-result request refers to a completed model call"
-            )
+            # Nothing is waiting for these results, so there is no
+            # conversation left to continue. The attempt that made the calls
+            # was abandoned, and the one replacing it resumes the CLI session,
+            # so it replays them with a message appended and can never match a
+            # claim. /v1/messages is stateless: answer it as a new
+            # conversation, because refusing it killed the whole turn.
+            return _Relaunch(fingerprint=fingerprint)
 
         conversation = claimable[0][0].conversation
         if any(record.conversation is not conversation for record, _ in claimable):
@@ -678,8 +727,8 @@ class CodexAnthropicGateway:
             "Connection": "keep-alive",
         }
         response = web.StreamResponse(status=200, headers=headers)
-        await response.prepare(request)
         sink = _RecordingSink(response)
+        await sink.prepare(request)
         message_id = f"msg_codex_{uuid4().hex}"
         try:
             await _write_sse(
@@ -702,8 +751,8 @@ class CodexAnthropicGateway:
                 },
             )
             await self._write_boundary(sink, conversation, first)
-            await response.write_eof()
-        except (ConnectionError, ConnectionResetError, asyncio.CancelledError):
+            await sink.write_eof()
+        except asyncio.CancelledError:
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
@@ -981,13 +1030,26 @@ def gateway_for_lease(
 
 
 class _RecordingSink:
-    """Mirrors the stream into a buffer so a retry can be answered verbatim."""
+    """Mirrors the stream into a buffer so a retry can be answered verbatim.
+
+    The client going away does not end the recording. That is the very case a
+    retry exists for: the CLI times out on a slow tool-result request and
+    re-sends it, so the original's answer has to be kept whole for the resend
+    even though nobody is left to read it on the first socket.
+    """
 
     def __init__(self, response: web.StreamResponse) -> None:
         self._response = response
         self._chunks: list[bytes] = []
         self._buffered = 0
         self._recording = True
+        self._delivering = True
+
+    async def prepare(self, request: web.Request) -> None:
+        try:
+            await self._response.prepare(request)
+        except ConnectionError:
+            self._client_gone()
 
     async def write(self, data: bytes) -> None:
         if self._recording:
@@ -999,7 +1061,27 @@ class _RecordingSink:
                 self._recording = False
             else:
                 self._chunks.append(data)
-        await self._response.write(data)
+        if not self._delivering:
+            return
+        try:
+            await self._response.write(data)
+        except ConnectionError:
+            self._client_gone()
+
+    async def write_eof(self) -> None:
+        if not self._delivering:
+            return
+        try:
+            await self._response.write_eof()
+        except ConnectionError:
+            self._client_gone()
+
+    def _client_gone(self) -> None:
+        self._delivering = False
+        logger.info(
+            "Codex gateway client disconnected mid-response; "
+            "keeping the response for a retry"
+        )
 
     @property
     def body(self) -> bytes | None:
