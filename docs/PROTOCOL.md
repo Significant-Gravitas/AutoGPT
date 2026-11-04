@@ -739,8 +739,10 @@ final chunk with `finish_reason` set to one of `"stop"`, `"length"`, or
 `"content_filter"`, immediately followed by a
 `LOCAL_LLM_COMPLETION_RESPONSE` carrying metadata and empty content.
 Output deltas are limited to 8 KiB each and 256 KiB in aggregate. The dormant
-handler closes its backend stream on 30-second idle/300-second total timeout,
-oversize output, send failure, or task cancellation. End-to-end cancellation
+handler closes its backend stream on a 30-second idle timeout between chunks
+(not before the first, which loading the model and reading the prompt can
+delay), the 300-second total timeout, oversize output, send failure, or task
+cancellation. End-to-end cancellation
 across the platform protocol is still a prerequisite for activation.
 
 #### `LOCAL_LLM_COMPLETION_RESPONSE` (shim → platform, terminal frame)

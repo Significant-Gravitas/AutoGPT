@@ -126,6 +126,48 @@ async def test_producer_closes_and_releases_capacity(tmp_path, monkeypatch, stop
 
 
 @pytest.mark.asyncio
+async def test_the_first_chunk_may_take_longer_than_the_idle_deadline(tmp_path, monkeypatch):
+    """Ollama sends nothing until it has loaded the model and read the prompt,
+    which can take minutes, and the idle deadline applied to that wait too,
+    so a cold start failed."""
+    monkeypatch.setattr(local_llm_limits, "IDLE_TIMEOUT_SECONDS", 0.05)
+    backend = MagicMock(spec=OllamaBackend)
+
+    async def stream(**kwargs):
+        await asyncio.sleep(0.5)  # loading the model
+        yield {"message": {"content": "hi"}}
+        yield {"message": {"content": ""}, "done": True, "done_reason": "stop"}
+
+    backend.chat_stream = stream
+    handler = LocalLLMHandler(ShimConfig(allowed_root=tmp_path), backend=backend)
+
+    response = await asyncio.wait_for(handler.handle(request(stream=False)), 30)
+
+    assert not isinstance(response, ErrorMessage), response
+    assert response.payload.content == "hi"
+
+
+@pytest.mark.asyncio
+async def test_a_model_that_goes_quiet_fails_with_a_message_that_says_so(tmp_path, monkeypatch):
+    """The idle deadline came back as LOCAL_LLM_FAILED with an empty message."""
+    monkeypatch.setattr(local_llm_limits, "IDLE_TIMEOUT_SECONDS", 0.05)
+    backend = MagicMock(spec=OllamaBackend)
+
+    async def stream(**kwargs):
+        yield {"message": {"content": "hi"}}
+        await asyncio.Event().wait()
+
+    backend.chat_stream = stream
+    handler = LocalLLMHandler(ShimConfig(allowed_root=tmp_path), backend=backend)
+
+    response = await asyncio.wait_for(handler.handle(request(), send=AsyncMock()), 30)
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == "LOCAL_LLM_FAILED"
+    assert "sent nothing for 0.05 seconds" in response.payload.message
+
+
+@pytest.mark.asyncio
 async def test_json_lines_are_bounded_before_parse(monkeypatch):
     monkeypatch.setattr(local_llm_limits, "MAX_LINE_BYTES", 16)
 
