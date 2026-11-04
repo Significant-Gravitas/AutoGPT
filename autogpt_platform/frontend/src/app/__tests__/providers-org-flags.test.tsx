@@ -126,9 +126,10 @@ it.each(["enabled", "disabled", "timeout"])(
     await screen.findByText("resource actions");
 
     const enabled = resolution === "enabled";
+    // Teams aren't context switches: the shared org stays, at its org home.
     expect(useOrgTeamStore.getState()).toMatchObject({
       activeOrgID: enabled ? "shared-org" : "personal-org",
-      activeTeamID: enabled ? "shared-team" : "default-team",
+      activeTeamID: enabled ? null : "default-team",
     });
     expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
       enabled ? "/api/proxy/api/orgs" : "/api/proxy/api/orgs/default",

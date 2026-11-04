@@ -165,6 +165,7 @@ function renderBuilderChat(messages: Messages) {
     bootstrapError: null,
     retryBind: vi.fn(),
     retryBootstrap: vi.fn(),
+    tenantScope: { organizationId: null, teamId: null },
   } as unknown as ReturnType<typeof useBuilderChatPanel>);
   return render(<BuilderChatPanel />);
 }

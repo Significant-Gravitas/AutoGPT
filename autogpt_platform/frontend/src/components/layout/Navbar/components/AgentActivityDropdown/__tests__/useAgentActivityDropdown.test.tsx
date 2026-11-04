@@ -80,6 +80,8 @@ function serveLibrary() {
           id: `la-${start + i}`,
           graph_id: `g-${start + i}`,
           name: `Workflow number ${start + i}`,
+          organization_id: null,
+          team_id: null,
         })),
         pagination: {
           total_items: 150,
@@ -98,6 +100,9 @@ function runningExecution(id: string, graphID: string) {
     ...getGetV1ListAllExecutionsResponseMock()[0],
     id,
     graph_id: graphID,
+    // A run names its workflow by graph and scope; both are personal here.
+    organization_id: null,
+    team_id: null,
     status: AgentExecutionStatus.RUNNING,
     started_at: new Date(),
     ended_at: null,
