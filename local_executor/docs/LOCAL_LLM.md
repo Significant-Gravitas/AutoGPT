@@ -28,7 +28,10 @@ credentials or files into the cloud.
   rejected. Temperature is finite and between 0 and 2; top-p is finite in (0, 1].
 - Ollama JSON lines are limited to 64 KiB before JSON parsing.
 - Each output delta is at most 8 KiB and aggregate output is at most 256 KiB.
-- Generation has a 30-second idle deadline and 300-second total deadline;
+- Generation has a 300-second total deadline and, from the first token on,
+  a 30-second idle deadline between chunks. The first token can take longer,
+  since Ollama sends nothing until it has loaded the model and read the
+  prompt. A deadline that passes fails the request with a message naming it;
   stream sends are bounded too. Oversize output, send failures, timeout, and
   task cancellation close the backend iterator and release its capacity.
 - Streamed responses use deltas for text and a terminal metadata response with

@@ -1990,8 +1990,12 @@ class OllamaBackend:
                 "num_predict": max_tokens,
             },
         }
+        # Ollama sends its response headers with the first token, once it has
+        # loaded the model and read the prompt, so a read may wait as long as
+        # the whole request. bounded_chunks bounds the gaps after that.
+        timeout = httpx.Timeout(self.timeout_seconds, read=local_llm_limits.TOTAL_TIMEOUT_SECONDS)
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", f"{self.base_url}/api/chat", json=body) as r:
                     if r.status_code == 404:
                         raise OllamaBackendError(ErrorCode.MODEL_NOT_AVAILABLE, "model not found")

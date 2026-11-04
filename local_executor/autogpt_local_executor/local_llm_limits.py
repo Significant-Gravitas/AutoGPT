@@ -13,13 +13,22 @@ MAX_LINE_BYTES = 64 * 1024
 
 
 async def bounded_chunks(stream: AsyncGenerator[dict, None]) -> AsyncGenerator[dict, None]:
+    """The model's chunks, within the output limits. The first may take as
+    long as the whole request, since Ollama sends nothing until it has loaded
+    the model and read the prompt, which can take minutes; after it, each
+    chunk must come within IDLE_TIMEOUT_SECONDS of the one before."""
     output_bytes = 0
+    started = False
     async with aclosing(stream):
         while True:
+            limit = IDLE_TIMEOUT_SECONDS if started else TOTAL_TIMEOUT_SECONDS
             try:
-                chunk = await asyncio.wait_for(anext(stream), timeout=IDLE_TIMEOUT_SECONDS)
+                chunk = await asyncio.wait_for(anext(stream), timeout=limit)
             except StopAsyncIteration:
                 return
+            except TimeoutError:
+                raise TimeoutError(f"The local model sent nothing for {limit:g} seconds") from None
+            started = True
             if not isinstance(chunk, dict):
                 raise ValueError("Invalid local model response")
             message = chunk.get("message") or {}

@@ -140,6 +140,34 @@ def _fake_async_client_factory(client: FakeStreamClient):
     return _factory
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_waits_for_the_first_token_as_long_as_a_request_may_take() -> None:
+    """Ollama sends its response headers with the first token, once it has
+    loaded the model and read the prompt, and httpx's read timeout, the
+    backend's 60 seconds, ended that wait early."""
+    from autogpt_local_executor import local_llm_limits
+
+    timeouts: list[Any] = []
+    done = json.dumps({"message": {"content": ""}, "done": True})
+    fake = FakeStreamClient(chat_response=FakeStreamResponse(200, lines=[done]))
+
+    def factory(*args: Any, **kw: Any) -> FakeStreamClient:
+        timeouts.append(kw.get("timeout"))
+        return fake
+
+    backend = OllamaBackend("http://localhost:11434")
+    with patch("httpx.AsyncClient", factory):
+        stream = backend.chat_stream(
+            model="m", messages=[], max_tokens=1, temperature=0.0, top_p=1.0
+        )
+        _ = [chunk async for chunk in stream]
+
+    (timeout,) = timeouts
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.read == local_llm_limits.TOTAL_TIMEOUT_SECONDS
+    assert timeout.connect == backend.timeout_seconds
+
+
 # ── OllamaBackend.list_models ────────────────────────────────────────────────
 
 
