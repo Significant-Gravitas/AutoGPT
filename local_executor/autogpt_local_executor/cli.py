@@ -475,7 +475,7 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
     A line still being written is held until its newline arrives. When a
     rotation moves the log away, the old file is read to its end and the new
     one at `path` is followed from its start."""
-    f = open(path, "rb")
+    f = _open_for_following(path)
     try:
         pending = b""
         while True:
@@ -488,7 +488,7 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
                 continue
             if _moved_away(path, f):
                 try:
-                    reopened = open(path, "rb")
+                    reopened = _open_for_following(path)
                 except FileNotFoundError:
                     wait()
                     continue
@@ -501,6 +501,42 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
             wait()
     finally:
         f.close()
+
+
+def _open_for_following(path: Path):
+    """Open `path` for reading without blocking a rotation. On Windows a
+    plain open() shares no delete access, so while tail held the log open
+    the writer could not rename it away; this handle shares it."""
+    if sys.platform != "win32":
+        return open(path, "rb")
+    import ctypes
+    import errno
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    generic_read, open_existing, attribute_normal = 0x80000000, 3, 0x80
+    share_all = 0x1 | 0x2 | 0x4  # read, write and delete
+    handle = create_file(
+        str(path), generic_read, share_all, None, open_existing, attribute_normal, None
+    )
+    if handle is None or handle == ctypes.c_void_p(-1).value:
+        error = ctypes.get_last_error()
+        if error in (2, 3):  # ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(path))
+        raise ctypes.WinError(error)
+    return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb")
 
 
 def _moved_away(path: Path, f) -> bool:
