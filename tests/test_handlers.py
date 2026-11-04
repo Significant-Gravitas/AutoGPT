@@ -1396,11 +1396,16 @@ async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
 
 
 @pytest.mark.asyncio
-async def test_a_move_never_replaces_a_destination_that_appears_after_the_check(
+async def test_a_move_refuses_a_destination_that_appears_after_the_check_where_the_os_can(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Without overwrite, a file created between the existence check and the
-    rename used to be replaced on POSIX, where rename overwrites silently."""
+    rename used to be replaced on POSIX, where rename overwrites silently.
+    The rename itself refuses it where the OS can (renameat2, renamex_np,
+    Windows' rename). Elsewhere fsops falls back to the check alone, which
+    keeps that gap (see fsops.rename_no_replace), so this doesn't run there."""
+    if sys.platform != "win32" and not _the_os_refuses_a_replacing_rename(tmp_path):
+        pytest.skip("this OS or filesystem can't refuse in the rename itself")
     src = tmp_path / "draft.txt"
     src.write_text("draft")
     dst = tmp_path / "final.txt"
@@ -1419,6 +1424,21 @@ async def test_a_move_never_replaces_a_destination_that_appears_after_the_check(
     assert response.payload.code == ErrorCode.PATH_EXISTS
     assert dst.read_text() == "someone else's file"
     assert src.read_text() == "draft"
+
+
+def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
+    from autogpt_local_executor import fsops
+
+    src, dst = folder / ".probe-src", folder / ".probe-dst"
+    src.write_text("")
+    dst.write_text("")
+    try:
+        return fsops._native_no_replace_rename(src, dst)
+    except FileExistsError:
+        return True
+    finally:
+        src.unlink(missing_ok=True)
+        dst.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("native", [True, False], ids=["native", "fallback"])
