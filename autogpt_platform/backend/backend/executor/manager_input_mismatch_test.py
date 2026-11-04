@@ -472,3 +472,35 @@ async def test_a_node_queued_to_fail_on_its_input_is_not_reconciled(
         )
 
     assert reconcile.await_count == (1 if input_error is None else 0)
+
+
+@pytest.mark.asyncio
+async def test_an_input_error_fails_the_block_but_not_the_run():
+    """Like any other block error, the run itself still ends COMPLETED; only
+    the block is FAILED."""
+    entry = _entry(dict(_QUEUED_INPUT))
+    entry.input_error = "can't use it"
+    graph_stats = GraphExecutionStats()
+
+    with (
+        patch(f"{_MOD}.log_system_credential_cost", new=AsyncMock()),
+        patch(f"{_MOD}.async_update_node_execution_status", new=AsyncMock()),
+        patch(f"{_MOD}.async_update_graph_execution_state", new=AsyncMock()),
+    ):
+        await ExecutionProcessor()._settle_node(
+            node=_llm_node("model", "prompt"),
+            node_exec=entry,
+            status=ExecutionStatus.FAILED,
+            execution_stats=NodeExecutionStats(
+                error=BlockInputError(
+                    message="can't use it", block_name=_BLOCK.name, block_id=_BLOCK.id
+                )
+            ),
+            graph_stats_pair=(graph_stats, threading.Lock()),
+            db_client=MagicMock(),
+            log_metadata=MagicMock(),
+        )
+
+    assert graph_stats.node_error_count == 1
+    assert graph_stats.failure_reason is None
+    assert graph_stats.error is None

@@ -295,6 +295,17 @@ def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
     assert harness.wallet.total == billed, harness.wallet.spent
 
 
+def test_a_restart_that_cannot_recheck_the_input_bills_nothing(harness):
+    """Without the recheck the node can't be told apart from one queued to
+    fail, so the rebuilt run stops before charging it."""
+    harness.price(PER_RUN)
+    harness.sync_db.get_node.side_effect = ConnectionError("database unavailable")
+
+    assert isinstance(harness.dispatch(_runs(harness.row)), ConnectionError)
+    assert harness.row.status == ExecutionStatus.QUEUED
+    assert harness.wallet.total == 0, harness.wallet.spent
+
+
 async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():
     """The premise ``_parks_for_review`` stubs, through the real block run: a
     block that parks for review yields nothing and its run reports COMPLETED."""

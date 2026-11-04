@@ -1524,22 +1524,19 @@ class ExecutionProcessor:
                 if node_exec.status in BILLED_REDISPATCH_STATUSES:
                     node_entry.redispatched_from = node_exec.status
                 # The in-memory input-error marker is lost on a restart, so a
-                # node queued to fail would be charged; derive it again.
+                # node queued to fail would be charged; derive it again. A
+                # failed lookup fails the run before anything is charged, as
+                # the charge itself would.
                 elif (
                     node_exec.status == ExecutionStatus.QUEUED
                     and not graph_exec.execution_context.dry_run
                 ):
-                    try:
-                        _, _, node_entry.input_error = _validate_queued_input(
-                            db_client.get_node(node_entry.node_id),
-                            dict(node_entry.inputs),
-                            dry_run=False,
-                            resolve_input=False,
-                        )
-                    except Exception as e:
-                        log_metadata.warning(
-                            f"Could not recheck the input of {node_entry.node_exec_id}: {e}"
-                        )
+                    _, _, node_entry.input_error = _validate_queued_input(
+                        db_client.get_node(node_entry.node_id),
+                        dict(node_entry.inputs),
+                        dry_run=False,
+                        resolve_input=False,
+                    )
                 node_entry.queued_at = node_exec.queue_time
                 node_entry.queued_by = "graph_start"
                 execution_queue.add(node_entry)
