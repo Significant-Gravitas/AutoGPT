@@ -5,8 +5,10 @@ import {
   usePostV2CancelSessionTask,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
 
 interface Props {
   sessionId: string;
@@ -14,7 +16,9 @@ interface Props {
 
 export function BackgroundSubtaskStop({ sessionId }: Props) {
   const queryClient = useQueryClient();
+  const scope = useCopilotTenantScope();
   const { mutate, isPending } = usePostV2CancelSessionTask({
+    request: getTenantRequestInit(scope.organizationId, scope.teamId),
     mutation: {
       onSuccess: (response) => {
         if (response.status !== 200 || !response.data.cancelled)
