@@ -63,6 +63,30 @@ class Journal:
             self._entries.append(entry)
             return entry
 
+    def record_side_call(
+        self, request: Request, model: str, text: str
+    ) -> dict[str, Any]:
+        with self._lock:
+            entry = {
+                "id": self._take_id(),
+                "at": time.time(),
+                "dialect": request.dialect,
+                "path": request.path,
+                "model": model,
+                "script": None,
+                "nonce": None,
+                "tool_results": [],
+                "kind": "side_call",
+                "turn": None,
+                "turns": None,
+                "text": text,
+                "tool_calls": [],
+                "checks": [],
+                "completed": None,
+            }
+            self._entries.append(entry)
+            return entry
+
     def finish(self, entry: dict[str, Any], completed: bool) -> None:
         """Mark whether the whole reply reached the platform."""
         with self._lock:

@@ -2,7 +2,12 @@ import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 
 import { AutomationCreditsTab } from "../components/AutomationCreditsTab/AutomationCreditsTab";
 import SettingsBillingPage from "../page";
@@ -95,6 +100,23 @@ describe("Settings billing page (integration)", () => {
 
     // Invoices card empty-state copy (no invoices fixture above).
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();
+  });
+
+  it("explains usage and credits in a dialog from the info button by the title", async () => {
+    useDefaultBillingHandlers();
+    render(<SettingsBillingPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "How usage and credits work" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "How usage and credits work",
+    });
+    expect(dialog.textContent).toContain("What are automation credits for?");
+    expect(
+      screen.queryByRole("link", { name: /Go to billing settings/ }),
+    ).toBeNull();
   });
 
   it("AutomationCreditsTab renders the balance + add-credits CTA from API data", async () => {

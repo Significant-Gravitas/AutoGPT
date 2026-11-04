@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.client import MCPCallResult
 from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.data.model import OAuth2Credentials
@@ -39,11 +40,8 @@ def _make_tool_list(*names: str):
     return tools
 
 
-def _make_call_result(content: list[dict], is_error: bool = False) -> MagicMock:
-    result = MagicMock()
-    result.is_error = is_error
-    result.content = content
-    return result
+def _make_call_result(content: list[dict], is_error: bool = False) -> MCPCallResult:
+    return MCPCallResult(content=content, is_error=is_error)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +55,12 @@ def test_server_host_plain_url():
 
 def test_server_host_strips_credentials():
     """netloc would expose user:pass — hostname must not."""
-    assert server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
+    assert (
+        server_host(
+            "https://user:secret@mcp.example.com/mcp"  # pragma: allowlist secret
+        )
+        == "mcp.example.com"
+    )
 
 
 def test_server_host_with_port():
@@ -125,7 +128,7 @@ async def test_credential_bearing_url_returns_error():
     response = await tool._execute(
         user_id=_USER_ID,
         session=session,
-        server_url="https://user:secret@mcp.example.com/mcp",
+        server_url="https://user:secret@mcp.example.com/mcp",  # pragma: allowlist secret  # noqa: E501; fmt: skip
     )
     assert isinstance(response, ErrorResponse)
     assert (
@@ -1528,6 +1531,10 @@ async def _run_with_grants(allowed: list[str]):
         ),
         patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
         patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=client),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.annotate_expert_grants",
+            new=AsyncMock(side_effect=lambda user_id, expert_id, missing: missing),
+        ),
     ):
         return await RunMCPToolTool()._execute(
             user_id=_USER_ID,

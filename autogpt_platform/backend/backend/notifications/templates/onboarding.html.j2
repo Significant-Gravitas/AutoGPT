@@ -18,8 +18,7 @@
 {%- set TOUR_HEROES = {1: 'tour_firstwin', 2: 'tour_fiveways', 3: 'tour_workspace',
                        4: 'tour_listening', 5: 'tour_shipping', 6: 'tour_directline'} -%}
 {{ ui.hero(TOUR_HEROES[part]) }}
-    <tr><td bgcolor="#ffffff" class="corner" style="border-radius:0 0 16px 16px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
+{{ ui.sheet_open() }}
 {%- if part == 1 %}
 {% call ui.eyebrow(tone='brand') %}PART 1 OF {{ of }} · GETTING STARTED{% endcall %}
 {% call ui.headline() %}Welcome. Let's get you your first win{% endcall %}
@@ -43,7 +42,7 @@
     ('📦', 'End-to-end marketing', 'Pulled release notes from GitHub, wrote a changelog email in our brand voice, and built it in send-ready HTML.'),
     ('📈', 'Strategy & competitive intel', 'Analyzed 13 competitors, built a SWOT with threat scores, and delivered an interactive strategy report.'),
     ('🔍', 'Talent sourcing & outreach', 'Took a job description, sourced and scored candidates, and wrote personalized outreach, ready to send.'),
-    ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ICP, built curated demo workflows, and wrote scripts and follow-up questions.'),
+    ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ideal customer profile, built curated demo workflows, and wrote scripts and follow-up questions.'),
 ]) }}
 {{ ui.media_link('Watch all five in 6 minutes', 'Everything in the demo ran autonomously, and these five are just what fit in six minutes.', urls.demo_video) }}
 {% call ui.para() %}Pick the one closest to your work, open Otto, and describe it in your own words. That's it. No setup, no flowcharts.{% endcall %}
@@ -95,10 +94,9 @@
 {% call ui.para() %}We built AutoGPT to be the business partner you always needed. Thanks for giving us the chance to prove it.{% endcall %}
 {{ ui.cta('Join the Discord', urls.discord) }}
 {%- endif %}
-{{ ui.signature('John Ababseh', 'Head of Product · AutoGPT', 'contact@agpt.co') }}
+{{ ui.signature('John Ababseh', 'I work on product at AutoGPT', 'contact@agpt.co') }}
 {{ ui.close_row('Email ' ~ part ~ ' of ' ~ of ~ ' in the getting-started tour · day ' ~ day ~ '.', 'Choose which emails you get', urls.prefs) }}
-      </table>
-    </td></tr>
+{{ ui.sheet_close() }}
 {{ ui.page_close() }}
 {{ ui.legal_footer('You received this email because you signed up on our website. This is part ' ~ part ~ ' of ' ~ of ~ ' of the getting-started tour, for ' ~ user_email ~ '.', 'Unsubscribe', urls.unsubscribe, discord=true) }}
 

@@ -188,7 +188,9 @@ def _lifecycle_boundaries(monkeypatch: pytest.MonkeyPatch) -> FakeScheduler:
     """Everything but Postgres: the scheduler, flags, the timezone lookup
     and the triggers the lifecycle functions touch."""
     scheduler = FakeScheduler()
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        scope_jobs, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: scheduler)
     monkeypatch.setattr(
         registry, "resolve_user_timezone", AsyncMock(return_value="UTC")

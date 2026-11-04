@@ -2,7 +2,7 @@ import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endp
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -15,17 +15,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChats } from "../RecentChats";
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flag === "hire-experts",
-  };
-});
 
 const mariaExpert: Expert = {
   id: "expert-maria",

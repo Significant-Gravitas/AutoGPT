@@ -2,17 +2,17 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ReloadIcon } from "@hugeicons/core-free-icons";
+import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
   barPercent,
+  compactionDetail,
   compactionLabel,
   type CompactionPhase,
   type CompactionStats,
 } from "./helpers";
 import { useCompactionProgress } from "./useCompactionProgress";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
-
-export const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   phase: CompactionPhase | null;
@@ -23,9 +23,12 @@ interface Props {
 export function CompactionCard({ phase, stats, isSettled }: Props) {
   if (isSettled) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-caption text-foreground-tertiary">
         <Icon icon={ReloadIcon} size={14} />
-        <span className="min-w-0 truncate">
+        <span
+          className="min-w-0 truncate"
+          title={compactionDetail(stats) ?? undefined}
+        >
           {compactionLabel(phase, stats)}
         </span>
       </div>
@@ -59,11 +62,13 @@ function LiveCompaction({ phase, stats }: LiveProps) {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-caption text-foreground-tertiary">
         <Icon
           icon={ReloadIcon}
           size={14}
-          className="[animation-duration:2.4s] motion-safe:animate-spin"
+          spin
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- a slow 2.4s pulse; the duration scale stops at 2000ms
+          className="[animation-duration:2.4s]"
         />
         {/* Polite live region on the label ONLY — the progressbar's
             aria-valuenow moves every committed percent and would flood the
@@ -72,7 +77,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
           {label}
         </span>
         {showTime && (
-          <span className="font-mono tabular-nums text-muted-foreground">
+          <span className="font-mono text-foreground-tertiary tabular-nums">
             {formatElapsed(elapsedSeconds)}
           </span>
         )}
@@ -83,10 +88,10 @@ function LiveCompaction({ phase, stats }: LiveProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-1 w-full overflow-hidden rounded-full bg-muted"
+        className="h-1 w-full overflow-hidden rounded-full bg-surface-hover"
       >
         <div
-          className="h-full rounded-full bg-foreground"
+          className="h-full rounded-full bg-foreground-base"
           style={{ width: `${width}%` }}
         />
       </div>

@@ -1,6 +1,6 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink } from "@/lib/auth-redirect";
 import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -34,8 +36,10 @@ export function useLoginPage() {
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/login?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  // `/login?next=https://phishing.site` cannot redirect users elsewhere. A
+  // default landing (`next=/home`) is dropped too, so a user who has not
+  // finished onboarding goes there instead of Home (SECRT-3384).
+  const nextUrl = getAuthDeepLink(searchParams.get("next"));
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
@@ -63,6 +67,8 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsLoggingIn(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
@@ -97,7 +103,7 @@ export function useLoginPage() {
     setIsLoading(true);
     setIsLoggingIn(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
         variant: "default",
@@ -107,6 +113,8 @@ export function useLoginPage() {
       setIsLoggingIn(false);
       return;
     }
+
+    clearImpersonationEverywhere();
 
     try {
       const result = await loginAction(data.email, data.password, nextUrl);

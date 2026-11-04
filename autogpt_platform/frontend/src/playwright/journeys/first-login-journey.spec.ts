@@ -42,7 +42,8 @@ async function answerTheProfileReadFirst(page: Page) {
       !isProfileRead(url),
     async (route) => {
       await profileAnswered;
-      await route.continue();
+      // Not continue(): that skips the shared fixture's /api/changelog route.
+      await route.fallback();
     },
   );
 }

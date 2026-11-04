@@ -245,7 +245,7 @@ async def test_a_resume_that_cannot_write_the_row_reports_only_enabled_crons_fai
     """The backfill lists every cron a resume reports unavailable as a
     failure: a cron the owner's flags turn off is reported as its flag says,
     as an ensure would, not as a failure."""
-    env.flags[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
+    env.flags[Flag.DREAM_PASS_ENABLED] = False
     monkeypatch.setattr(
         env.db, "set_scope_state", AsyncMock(side_effect=ConnectionError("db down"))
     )
@@ -255,9 +255,9 @@ async def test_a_resume_that_cannot_write_the_row_reports_only_enabled_crons_fai
     assert resumed == {
         "community_rebuild": {
             "skipped": True,
-            "reason": "graphiti_communities_disabled",
+            "reason": "registry_unavailable",
         },
-        "dream_nightly_batch": {"skipped": True, "reason": "registry_unavailable"},
+        "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
     }
 
 
@@ -339,7 +339,7 @@ async def test_timezone_change_re_registers_every_active_scope(env):
 
 
 @pytest.mark.asyncio
-async def test_timezone_change_of_a_flag_off_owner_costs_no_database_call(env):
+async def test_timezone_change_still_requires_the_community_registry(env):
     env.flags = {}
     env.db.fail = True  # any read would raise
 
@@ -347,7 +347,7 @@ async def test_timezone_change_of_a_flag_off_owner_costs_no_database_call(env):
 
     assert set(results) == {USER}
     assert {r["reason"] for r in results[USER].values()} == {
-        "graphiti_communities_disabled",
+        "registry_unavailable",
         "dream_pass_disabled",
         "skill_learning_disabled",
     }

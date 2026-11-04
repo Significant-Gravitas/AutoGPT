@@ -28,15 +28,16 @@ export function CategoryStep({ selectedCategory, color, onPick }: Props) {
           disabled={Boolean(selectedCategory)}
           aria-pressed={selectedCategory ? true : undefined}
           className={cn(
-            "flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium text-foreground transition-colors",
+            "flex items-center gap-2 rounded-full border px-5 py-2.5 text-body font-medium text-foreground-base transition-colors",
             selectedCategory
-              ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
-              : "border-border bg-background hover:border-accent hover:bg-accent/5",
+              ? (bubbleClassFor(color) ?? "border-brand bg-brand/5")
+              : "border-border-base bg-canvas hover:border-brand hover:bg-brand/5",
           )}
         >
           <span
             aria-hidden
             className="size-3 shrink-0 rounded-full"
+            // oxlint-disable-next-line design-system/no-inline-styles -- the swatch is the category's own colour, from data
             style={{ backgroundColor: option.hex }}
           />
           {option.label}

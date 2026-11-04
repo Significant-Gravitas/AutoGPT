@@ -27,6 +27,7 @@ from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
     ChatMessage,
@@ -638,21 +639,6 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
-_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
-
-
-def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
-    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
-    primary key — i.e. the caller supplied a duplicate ``id``.
-
-    Used by ``append_and_save_message`` to distinguish the dedup signal
-    from the unrelated ``(sessionId, sequence)`` collision that the
-    streaming-callback race retries silently."""
-    return isinstance(
-        exc, UniqueViolationError
-    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
-
-
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -733,8 +719,6 @@ async def add_chat_messages_batch(
                         data["llmAuthProvider"] = msg["llm_auth_provider"]
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
-                    if msg.get("langfuse_trace_id") is not None:
-                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
                     if msg.get("trace_id") is not None:
                         data["traceId"] = msg["trace_id"]
 
@@ -762,10 +746,10 @@ async def add_chat_messages_batch(
 
         except UniqueViolationError as e:
             # Two distinct unique constraints on ``ChatMessage`` can fire here:
-            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
-            #     duplicate PK — this is the idempotency signal, propagate
-            #     so the route layer can short-circuit.
-            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #   - the row ``id``: caller supplied a duplicate PK — this is
+            #     the idempotency signal, propagate so the route layer can
+            #     short-circuit.
+            #   - ``(sessionId, sequence)``: the streaming loop
             #     and a long-running callback raced on ``sequence`` — retry
             #     with a freshly queried offset (existing behaviour).
             if is_duplicate_chat_message_id_error(e):
@@ -1267,6 +1251,148 @@ async def update_message_content_by_sequence(
         return False
 
 
+# A dream's narrative, the message its session opens with, or *erased* when
+# a hard forget has marked the pass (``DreamPass.erasedAt``), in one statement
+# that holds the pass's row FOR SHARE: a forget's mark that lands first is
+# read here, and one that comes after waits for the insert, which its blank
+# of the pass's narratives (``blank_dream_narratives``) then finds. It goes
+# only into the pass's own dream session (the pass's owner's, of kind dream,
+# naming the pass), which takes a copy of the pass's read set
+# (``DREAM_READ_UUIDS``), so a forget finds the narrative once the pass's row
+# has aged out; the read set of a pass from before read sets were recorded
+# holds ``*``, which the copy keeps. With no row for the pass, or a session
+# that is not its own, nothing is written.
+_DREAM_NARRATIVE_SQL = """
+WITH pass AS (
+    SELECT "id", "userId", "erasedAt", "readUuids"
+    FROM {schema_prefix}"DreamPass" WHERE "id" = $3 FOR SHARE
+),
+session AS (
+    UPDATE {schema_prefix}"ChatSession" AS s SET
+        "metadata" = COALESCE(s."metadata", '{{}}'::jsonb) || jsonb_build_object(
+            $7::text, to_jsonb(COALESCE(pass."readUuids", ARRAY[]::text[]))),
+        "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+    FROM pass
+    WHERE s."id" = $2 AND s."userId" = pass."userId"
+        AND s."metadata"->>'kind' = 'dream'
+        AND s."metadata"->>'dream_pass_id' = pass."id"
+    RETURNING s."id", pass."erasedAt"
+)
+INSERT INTO {schema_prefix}"ChatMessage"
+    ("id", "sessionId", "role", "sequence", "content", "metadata")
+SELECT $1, session."id", 'assistant', 0,
+    CASE WHEN session."erasedAt" IS NOT NULL THEN $5 ELSE $4 END,
+    $6::jsonb
+FROM session
+"""
+
+# The key of a dream session's metadata holding its pass's read set, which
+# ``ChatSessionMetadata`` leaves out: only the forget's SQL reads it, and
+# every write to session metadata after its creation merges keys in SQL.
+DREAM_READ_UUIDS = "dream_read_uuids"
+
+# The narratives' blank's own deadline in the database, just under the
+# forget's for it (``dream/forget_copies.NARRATIVE_TIMEOUT_SECONDS``).
+NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS = 9_000
+
+# The narrative of each of the user's dream sessions a hard forget reached
+# ($1): the session of a pass it marked or named ($2), one whose pass read
+# what it reached ($3, matched against the session's copy of the read set by
+# a hash join, which outlives the pass's row), or one of the forget's scope
+# (the account's when $6 is null, else that expert's) that may have read
+# anything: its session holds no read set (written before sessions kept
+# one) or one holding ``*`` (its pass's, from before read sets were
+# recorded: ``data/dream_pass_models.UNKNOWN_READS``). A narrative already
+# blank is not written again.
+_BLANK_NARRATIVES_SQL = """
+WITH reached AS (
+    SELECT DISTINCT uuid FROM unnest($3::text[]) AS reached(uuid)
+),
+dream AS (
+    SELECT s."id", s."metadata", s."expertId"
+    FROM {schema_prefix}"ChatSession" AS s
+    WHERE s."userId" = $1 AND s."metadata"->>'kind' = 'dream'
+),
+hit AS (
+    SELECT "id" FROM dream
+    WHERE "metadata"->>'dream_pass_id' IN (SELECT unnest($2::text[]))
+    UNION
+    SELECT dream."id"
+    FROM dream,
+        jsonb_array_elements_text(CASE
+            WHEN jsonb_typeof(dream."metadata"->$5::text) = 'array'
+            THEN dream."metadata"->$5::text ELSE '[]'::jsonb END) AS read(uuid)
+    WHERE read.uuid IN (SELECT uuid FROM reached)
+    UNION
+    SELECT "id" FROM dream
+    WHERE "expertId" IS NOT DISTINCT FROM $6::text
+        AND (jsonb_typeof("metadata"->$5::text) IS DISTINCT FROM 'array'
+            OR "metadata"->$5::text @> '["*"]'::jsonb)
+)
+UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $4
+WHERE m."sessionId" IN (SELECT "id" FROM hit)
+    AND m."sequence" = 0 AND m."role" = 'assistant'
+    AND m."content" IS DISTINCT FROM $4
+"""
+
+
+async def add_dream_narrative(
+    session_id: str, pass_id: str, content: str, erased: str
+) -> bool:
+    """Open pass *pass_id*'s dream session *session_id* with its narrative
+    *content*, or *erased* once a hard forget has marked the pass
+    (``_DREAM_NARRATIVE_SQL``, ``dream/apply._write_dream_summary_message``).
+    ``False``, logged, when nothing was written: the pass has no row, or the
+    session is not its own."""
+    written = await db.execute_raw_with_schema(
+        _DREAM_NARRATIVE_SQL,
+        str(uuid.uuid4()),
+        session_id,
+        pass_id,
+        sanitize_string(content),
+        sanitize_string(erased),
+        dumps({"dream_pass_id": pass_id}),
+        DREAM_READ_UUIDS,
+    )
+    if not written:
+        logger.warning(
+            f"Dream pass {pass_id}: no record of it, or session {session_id} is "
+            "not its dream session; its narrative is not written"
+        )
+    return written > 0
+
+
+async def blank_dream_narratives(
+    user_id: str,
+    expert_id: str | None,
+    pass_ids: list[str],
+    reached: list[str],
+    placeholder: str,
+) -> int:
+    """Replace with *placeholder*, for a hard forget in *user_id*'s scope of
+    *expert_id* (the account's when ``None``) (``dream/forget_copies.py``),
+    the narrative of each of the user's dream sessions for *pass_ids*, whose
+    pass read one of the *reached* uuids, or of the scope with no record of
+    what its pass read (the assistant message a dream opens its session
+    with, ``dream/apply._write_dream_summary_message``); how many changed.
+    The rest of the session is the user's chat with it, which no forget
+    reaches. Raises when the statement runs past
+    ``NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS``."""
+    if not pass_ids and not reached:
+        return 0
+    async with db.bounded_transaction(NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS) as tx:
+        return await db.execute_raw_with_schema(
+            _BLANK_NARRATIVES_SQL,
+            user_id,
+            pass_ids,
+            reached,
+            sanitize_string(placeholder),
+            DREAM_READ_UUIDS,
+            expert_id,
+            client=tx,
+        )
+
+
 async def update_chat_message_stamps(
     session_id: str,
     sequence: int,
@@ -1274,7 +1400,6 @@ async def update_chat_message_stamps(
     routing_source: str | None,
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
-    langfuse_trace_id: str | None = None,
     trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
@@ -1297,8 +1422,6 @@ async def update_chat_message_stamps(
         data["llmAuthProvider"] = llm_auth_provider
     if llm_credential_id is not None:
         data["llmCredentialId"] = llm_credential_id
-    if langfuse_trace_id is not None:
-        data["langfuseTraceId"] = langfuse_trace_id
     if trace_id is not None:
         data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
@@ -1493,11 +1616,40 @@ async def admit_chat_session_turn(
             return "full"
         # Conditional: a transition outside this lock (a cancel) may have
         # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+        # A newly admitted slot must not inherit a previous turn's cleanup identity.
+        updated = await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession"
+            SET "chatStatus"='running', "updatedAt"=CURRENT_TIMESTAMP,
+                metadata=COALESCE(metadata,'{{}}'::jsonb)-'_active_turn_id'
+            WHERE id=$1 AND "userId"=$2
+              AND "chatStatus"=$3::{schema_prefix}"ChatSessionStatus" """,
+            session_id,
+            user_id,
+            expect_status,
+            client=tx,
         )
     return "admitted" if updated else "busy"
+
+
+async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
+    """Persist the dispatched turn's identity independently of Redis stream TTLs.
+
+    Admission clears the identity, so one admission records one turn: a
+    dispatcher that stalled until orphan recovery freed its slot finds the
+    successor's identity in place and refuses itself instead of overwriting it.
+    """
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" SET metadata=
+            COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
+            "updatedAt"=CURRENT_TIMESTAMP
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND metadata->>'_active_turn_id' IS NULL """,
+            session_id,
+            user_id,
+            turn_id,
+        )
+    )
 
 
 async def update_chat_session_status(

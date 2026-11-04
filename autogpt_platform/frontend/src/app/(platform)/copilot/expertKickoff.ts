@@ -120,11 +120,10 @@ export function isKickoffMessage(message: UIMessage): boolean {
 }
 
 export function shouldClearKickoffParam(
-  isExpertsEnabled: boolean,
   hasExpertsSettled: boolean,
   expertId: string | null,
 ): boolean {
-  return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
+  return hasExpertsSettled && expertId === null;
 }
 
 // The kickoff prompt is a control turn the client sends on the user's behalf.

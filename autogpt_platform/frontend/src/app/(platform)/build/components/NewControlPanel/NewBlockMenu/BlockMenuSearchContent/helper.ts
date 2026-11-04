@@ -1,10 +1,10 @@
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { SearchResponseItemsItem } from "@/app/api/__generated__/models/searchResponseItemsItem";
+import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
 export const getSearchItemType = (
-  item: SearchResponseItemsItem,
+  item: SearchResponse["items"][number],
 ):
   | { type: "store_agent"; data: StoreAgent }
   | { type: "library_agent"; data: LibraryAgent }
@@ -30,7 +30,7 @@ export const getSearchItemType = (
  * repeat an earlier item, so the type is part of the key and a repeat falls
  * back to its position.
  */
-export function getSearchItemKeys(items: SearchResponseItemsItem[]) {
+export function getSearchItemKeys(items: SearchResponse["items"][number][]) {
   const seen = new Set<string>();
   return items.map((item, index) => {
     const { type, data } = getSearchItemType(item);

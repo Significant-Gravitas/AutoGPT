@@ -17,12 +17,14 @@ from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -58,21 +60,23 @@ from backend.executor.scheduler import (
     _reschedule_one_shot_after_plan_unreadable,
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
-    _self_delete_morning_briefing_schedule,
     execute_community_rebuild,
     execute_nightly_batch_sync,
     execute_skill_learning_sync,
     reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
+    send_trial_last_calls,
 )
+from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     UserBannedError,
     UserPaywalledError,
 )
-from backend.util.service import EXPOSED_FLAG
+from backend.util.process import AppProcess
+from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
 from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -142,6 +146,29 @@ def test_build_trigger_requires_exactly_one_of_cron_or_run_at():
 def test_build_trigger_cron_returns_crontrigger():
     trigger = _build_trigger(cron="0 9 * * 1", run_at=None, user_timezone="UTC")
     assert isinstance(trigger, CronTrigger)
+
+
+def test_build_trigger_accepts_the_rarest_cron_and_leaves_it_open_ended():
+    # Feb 29 on a Monday: decades between fires, but it does fire.
+    trigger = _build_trigger(cron="0 0 29 2 1", run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize("cron", ["0 0 30 2 *", "0 0 31 4,6,9,11 *"])
+def test_build_trigger_refuses_a_cron_that_never_fires(cron: str):
+    with pytest.raises(ValueError, match="never fires"):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
+def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
+    cron = "0 9 * * *" + " " * MAX_CRON_LENGTH
+    with (
+        patch.object(CronTrigger, "from_crontab") as parse,
+        pytest.raises(ValueError, match="too long"),
+    ):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    parse.assert_not_called()
 
 
 def test_build_trigger_run_at_returns_datetrigger():
@@ -926,13 +953,10 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 
 
 @pytest.mark.asyncio
-async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
-    """When schedule_turn raises ConcurrentTurnLimitError on a one-shot
-    schedule, the dispatcher reschedules instead of silently dropping."""
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-
+@pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
+async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
     args = _args()  # run_at set → one-shot
-    mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
+    mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
@@ -947,13 +971,12 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
 
 
 @pytest.mark.asyncio
-async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
+@pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
+async def test_execute_copilot_turn_slot_refusal_does_not_reschedule_cron(refusal):
     """Cron schedules don't need an explicit reschedule — APScheduler will
     re-fire on the next cron tick."""
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-
     args = _args(run_at=None, cron="* * * * *")  # recurring
-    mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
+    mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
@@ -1832,6 +1855,20 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["seconds"] == 6 * 3600
 
 
+def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch):
+    """The last-call notice window is seven hours wide, so an hourly pass
+    reaches every canceled trial inside it at least once."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    [call] = [c for c in calls if c.args and c.args[0] is send_trial_last_calls]
+    assert call.kwargs["id"] == "send_trial_last_calls"
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
+    assert isinstance(call.args[1], CronTrigger)
+    hourly = CronTrigger.from_crontab("15 * * * *")
+    assert [str(f) for f in call.args[1].fields] == [str(f) for f in hourly.fields]
+
+
 def test_memory_cron_reconcile_registered_after_start_on_its_interval(
     monkeypatch,
 ):
@@ -1939,31 +1976,36 @@ def test_idle_credentials_job_is_registered_daily(monkeypatch):
     assert call.kwargs["jobstore"] == "execution"
 
 
-def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+@pytest.mark.parametrize(
+    "job_function",
+    [refresh_near_expiry_credentials, scheduler_module.deliver_background_subtasks],
+)
+def test_sweep_job_stays_active_until_the_coroutine_finishes(monkeypatch, job_function):
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     started, release, completed = (threading.Event() for _ in range(3))
     run_async = scheduler_module.run_async
 
-    async def refresh():
+    async def sweep():
         started.set()
         await asyncio.to_thread(release.wait)
         completed.set()
 
     def short_timeout(coro, timeout=0.01):
-        return run_async(coro, timeout=timeout)
+        return run_async(coro, timeout=None if timeout is None else 0.01)
 
     monkeypatch.setattr(scheduler_module, "_event_loop", loop)
     monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(scheduler_module, "reconcile_background_subtasks", sweep)
     monkeypatch.setattr(
         scheduler_module,
         "IntegrationCredentialsManager",
-        lambda: MagicMock(refresh_idle_credentials=refresh),
+        lambda: MagicMock(refresh_idle_credentials=sweep),
     )
     thread.start()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            job = pool.submit(refresh_near_expiry_credentials)
+            job = pool.submit(job_function)
             try:
                 assert started.wait(timeout=2)
                 assert not completed.wait(timeout=0.1)
@@ -1983,6 +2025,17 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
+    ids = [c.kwargs["id"] for c in _registered_jobs(monkeypatch, 6).add_job_calls]
+
+    assert ids.count("dream_pass_reaper") == 1
+    assert ids.count("dream_pass_retention") == 1
+
+
+def test_dream_pass_retention_defaults_to_ninety_days():
+    assert Config.model_fields["dream_pass_retention_days"].default == 90
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -2379,40 +2432,16 @@ class TestMorningBriefingSchedule:
         sched._invalidate_jobs_cache.assert_not_called()
         assert result["removed"] is False
 
-    def test_job_body_removes_the_schedule_once_the_flag_is_off(self):
-        """Without this the cron outlives the feature, firing daily forever
-        to return flag_disabled."""
-        from backend.executor.scheduler import execute_morning_briefing
-
-        with (
-            patch(
-                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
-                new=MagicMock(),
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}.run_async",
-                side_effect=[{"status": "skipped", "reason": "flag_disabled"}, None],
-            ),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
-        ):
-            execute_morning_briefing("user-1")
-
-        self_delete.assert_called_once_with("user-1")
-
     @pytest.mark.parametrize(
         "result",
         [
             {"status": "skipped", "reason": "nothing_to_say"},
             {"status": "skipped", "reason": "already_delivered"},
-            # An unreachable LaunchDarkly must cost one morning, not the cron.
-            {"status": "skipped", "reason": "flag_unavailable"},
+            {"status": "skipped", "reason": "banned"},
             {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
         ],
     )
-    def test_job_body_keeps_the_schedule_on_every_other_outcome(self, result):
+    def test_job_body_keeps_the_schedule_after_generation(self, result):
         from backend.executor.scheduler import execute_morning_briefing
 
         with (
@@ -2420,54 +2449,11 @@ class TestMorningBriefingSchedule:
                 "backend.copilot.briefing.generate.generate_and_deliver_briefing",
                 new=MagicMock(),
             ),
-            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=[result]),
-            patch(
-                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
-                new=MagicMock(),
-            ) as self_delete,
+            patch(f"{_SCHEDULER_PATH}.run_async", return_value=result) as run,
         ):
             execute_morning_briefing("user-1")
 
-        self_delete.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_self_delete_also_clears_the_registration_marker(self):
-        """A marker left behind would suppress lazy re-registration for the
-        rest of its TTL if the flag is turned back on."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock()
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            patch(
-                "backend.copilot.briefing.scheduling."
-                "clear_briefing_registration_marker",
-                new=AsyncMock(),
-            ) as clear_marker,
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
-
-        client.remove_morning_briefing_schedule.assert_awaited_once_with(
-            user_id="user-1"
-        )
-        clear_marker.assert_awaited_once_with("user-1")
-
-    @pytest.mark.asyncio
-    async def test_self_delete_swallows_a_scheduler_rpc_failure(self, caplog):
-        """It runs inside a job body; raising here would fail the whole run."""
-        client = MagicMock()
-        client.remove_morning_briefing_schedule = AsyncMock(
-            side_effect=RuntimeError("pyro down")
-        )
-        with (
-            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
-            caplog.at_level(logging.WARNING),
-        ):
-            await _self_delete_morning_briefing_schedule("user-1")
-
-        assert any(
-            "Failed to remove morning briefing job" in r.getMessage()
-            for r in caplog.records
-        )
+        run.assert_called_once()
 
 
 def test_graph_schedule_listing_can_include_paused_jobs():
@@ -3253,6 +3239,32 @@ class TestScheduleListCache:
         assert fetch.calls == 1
         assert sum(isinstance(r, RuntimeError) for r in results) == 1  # the fetcher
         assert [r for r in results if isinstance(r, list)] == [["list-1"]] * 7
+
+
+# ── stopped before `run_service` started the APScheduler ───────────────────
+
+
+@pytest.mark.parametrize(
+    "built", [False, True], ids=["not built", "built, not started"]
+)
+def test_cleanup_of_a_scheduler_stopped_before_run_service_finishes_the_chain(
+    monkeypatch: pytest.MonkeyPatch, mocker, built: bool
+):
+    monkeypatch.setattr(scheduler_module, "_event_loop", None)
+    monkeypatch.setattr(scheduler_module, "_event_loop_thread", None)
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = Scheduler(register_system_tasks=False)
+    if built:
+        service.scheduler = BackgroundScheduler()
+
+    service.cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+async def test_a_scheduler_before_run_service_reports_itself_initializing():
+    with pytest.raises(UnhealthyServiceError, match="initializing"):
+        await Scheduler(register_system_tasks=False).health_check()
 
 
 class _GatedFetch:
