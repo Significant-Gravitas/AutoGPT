@@ -7,6 +7,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_asyncio
+import pytest_mock
 from prisma.enums import APIKeyPermission
 
 import backend.api.external.middleware as middleware_mod
@@ -533,7 +534,7 @@ def test_execute_graph_team_key_accepts_exact_team_grant(
 
 
 def test_run_agent_tool_honors_key_team_restriction(
-    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+    mocker: pytest_mock.MockerFixture, test_user_id: str
 ):
     async def fake_require_auth() -> APIAuthorizationInfo:
         return APIAuthorizationInfo(
@@ -556,7 +557,10 @@ def test_run_agent_tool_honors_key_team_restriction(
             output={"ok": True},
         )
 
-    monkeypatch.setattr(tools_mod.run_agent_tool, "execute", fake_execute)
+    # Patched with mocker, not monkeypatch: undoing monkeypatch on the shared
+    # instance leaves the original method on it, which shadows later class
+    # patches (see ``../conftest.py``).
+    mocker.patch.object(tools_mod.run_agent_tool, "execute", fake_execute)
 
     response = client.post(
         "/tools/run-agent",
@@ -569,7 +573,9 @@ def test_run_agent_tool_honors_key_team_restriction(
 
 
 def test_external_scheduled_run_holds_execute_and_create_leases(
-    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
 ):
     async def fake_require_auth() -> APIAuthorizationInfo:
         return APIAuthorizationInfo(
@@ -610,7 +616,7 @@ def test_external_scheduled_run_holds_execute_and_create_leases(
         )
 
     monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
-    monkeypatch.setattr(tools_mod.run_agent_tool, "_execute", fake_execute)
+    mocker.patch.object(tools_mod.run_agent_tool, "_execute", fake_execute)
 
     response = client.post(
         "/tools/run-agent",

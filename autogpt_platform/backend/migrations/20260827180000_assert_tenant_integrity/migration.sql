@@ -92,15 +92,12 @@ BEGIN
     FROM "APIKey" AS key
     LEFT JOIN "Team" AS restricted_team
       ON restricted_team.id = key."teamIdRestriction"
-    WHERE key."teamId" IS DISTINCT FROM key."teamIdRestriction"
-       OR (
-           key."teamIdRestriction" IS NOT NULL
-           AND (
-               key."organizationId" IS NULL
-               OR restricted_team.id IS NULL
-               OR restricted_team."orgId" IS DISTINCT FROM key."organizationId"
-           )
-       );
+    WHERE key."teamIdRestriction" IS NOT NULL
+      AND (
+          key."organizationId" IS NULL
+          OR restricted_team.id IS NULL
+          OR restricted_team."orgId" IS DISTINCT FROM key."organizationId"
+      );
     IF invalid_count > 0 THEN
         RAISE EXCEPTION 'APIKey has % inconsistent workspace restrictions', invalid_count
             USING ERRCODE = '23514';
@@ -127,8 +124,7 @@ BEGIN
     JOIN "AgentGraph" AS other
       ON other.id = graph.id AND other.version < graph.version
     WHERE other."userId" IS DISTINCT FROM graph."userId"
-       OR other."organizationId" IS DISTINCT FROM graph."organizationId"
-       OR other."teamId" IS DISTINCT FROM graph."teamId";
+       OR other."organizationId" IS DISTINCT FROM graph."organizationId";
     IF invalid_count > 0 THEN
         RAISE EXCEPTION 'AgentGraph has % version pairs with inconsistent tenancy',
             invalid_count
@@ -140,8 +136,7 @@ BEGIN
     JOIN "AgentGraphExecution" AS parent
       ON parent.id = child."parentGraphExecutionId"
     WHERE child."userId" IS DISTINCT FROM parent."userId"
-       OR child."organizationId" IS DISTINCT FROM parent."organizationId"
-       OR child."teamId" IS DISTINCT FROM parent."teamId";
+       OR child."organizationId" IS DISTINCT FROM parent."organizationId";
     IF invalid_count > 0 THEN
         RAISE EXCEPTION 'AgentGraphExecution has % parent-child scope mismatches',
             invalid_count

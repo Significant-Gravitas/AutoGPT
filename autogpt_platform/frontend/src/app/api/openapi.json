@@ -3640,7 +3640,7 @@
       "post": {
         "tags": ["v1", "api-keys"],
         "summary": "Create new API key",
-        "description": "Create a new API key",
+        "description": "Create a new API key in your personal organization's default team.\n\nKeys act there only for now; one for any other organization or team is\nrefused with a 403.",
         "operationId": "postV1Create new api key",
         "requestBody": {
           "content": {
@@ -6151,7 +6151,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Reset Copilot Usage",
-        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily cost limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
+        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily cost limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.\nReturns 409 in a team organization: its plan sets each member's limits\nthere, and personal credits don't buy them back. Everywhere else these are\nthe user's own counters.",
         "operationId": "postV2ResetCopilotUsage",
         "responses": {
           "200": {
@@ -6171,6 +6171,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "402": { "description": "Payment Required (insufficient credits)" },
+          "409": {
+            "description": "Conflict (resets aren't available in a team organization)"
+          },
           "429": {
             "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
           },
@@ -6185,7 +6188,7 @@
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Get User Rate Limit",
-        "description": "Get a user's current usage and effective rate limits. Admin-only.\n\nAccepts either ``user_id`` or ``email`` as a query parameter.\nWhen ``email`` is provided the user is looked up by email first.",
+        "description": "Get a user's current usage and effective rate limits. Admin-only.\n\nAccepts either ``user_id`` or ``email`` as a query parameter.\nWhen ``email`` is provided the user is looked up by email first.\nWith ``org_id``, the usage and limits are the user's in that\norganization.",
         "operationId": "getV2Get user rate limit",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6205,6 +6208,15 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Email"
+            }
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Org Id"
             }
           }
         ],
@@ -6237,7 +6249,7 @@
       "post": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Reset User Rate Limit Usage",
-        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.",
+        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.\n\nWith ``org_id``, the counters reset are the user's in that organization.",
         "operationId": "postV2Reset user rate limit usage",
         "requestBody": {
           "content": {
@@ -22543,6 +22555,10 @@
             "type": "boolean",
             "title": "Reset Weekly",
             "default": false
+          },
+          "org_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Org Id"
           }
         },
         "type": "object",

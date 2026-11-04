@@ -4,6 +4,7 @@ from uuid import uuid4
 import prisma.models
 import pytest
 import pytest_mock
+from fastapi import HTTPException
 from prisma.enums import APIKeyPermission, SubmissionStatus
 
 from backend.api.features.library import db as library_db
@@ -321,10 +322,15 @@ async def test_a_version_change_returns_the_library_agent_a_fresh_read_does(
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
     parent = await _parent_of_a_sub_graph(user_id)
-    await library_db.create_library_agent(parent, user_id)
+    [entry, *_] = await library_db.create_library_agent(parent, user_id)
 
+    # As the product callers do: an entry is matched by its exact scope.
     changed = await library_db.update_agent_version_in_library(
-        user_id, parent.id, parent.version
+        user_id,
+        parent.id,
+        parent.version,
+        organization_id=entry.organization_id,
+        team_id=entry.team_id,
     )
     fresh = await library_db.get_library_agent_by_graph_id(user_id, parent.id)
 
@@ -490,11 +496,16 @@ async def test_a_library_agent_saved_past_its_listed_version_lists_as_published(
     """As its single read reports it: a later save is still the listed agent."""
     auth = await _new_user_auth()
     v1 = await create_graph(_REQUEST, auth=auth)
+    # A listing and its versions carry the graph's stored scope.
+    stored = await prisma.models.AgentGraph.prisma().find_unique_or_raise(
+        where={"graphVersionId": {"id": v1.id, "version": 1}}
+    )
     listing = await prisma.models.StoreListing.prisma().create(
         data={
             "slug": f"listed-{v1.id}",
             "agentGraphId": v1.id,
             "owningUserId": auth.user_id,
+            "owningOrgId": stored.organizationId,
             "hasApprovedVersion": True,
         }
     )
@@ -510,6 +521,8 @@ async def test_a_library_agent_saved_past_its_listed_version_lists_as_published(
             "isAvailable": True,
             "imageUrls": [],
             "categories": [],
+            "organizationId": stored.organizationId,
+            "teamId": stored.teamId,
         }
     )
     await update_graph(v1.id, _REQUEST, auth=auth)
@@ -546,12 +559,17 @@ async def _new_user_auth() -> TenantContext:
 
 
 async def _personal_auth(user_id: str) -> TenantContext:
-    """A key in the user's own personal organization. A made-up organization
-    has no members, and only an active member may own its graphs."""
-    organization_id, _ = await get_user_default_team(user_id)
+    """A key in the user's own personal organization, acting in its default
+    team as `resolve_tenant` resolves it. A made-up organization has no
+    members, and only an active member may own its graphs."""
+    organization_id, team_id = await get_user_default_team(user_id)
     assert organization_id is not None
     return _AUTH.model_copy(
-        update={"user_id": user_id, "organization_id": organization_id}
+        update={
+            "user_id": user_id,
+            "organization_id": organization_id,
+            "team_id": team_id,
+        }
     )
 
 
@@ -568,6 +586,8 @@ async def _active_v1_and_a_newer_draft(auth: TenantContext) -> str:
 
 
 async def _parent_of_a_sub_graph(user_id: str) -> graph_db.GraphModel:
+    """Both saved in the user's personal default team, as the app saves them."""
+    organization_id, team_id = await get_user_default_team(user_id)
     sub = await graph_db.create_graph(
         graph_db.Graph(
             name="Sub",
@@ -575,6 +595,8 @@ async def _parent_of_a_sub_graph(user_id: str) -> graph_db.GraphModel:
             nodes=[graph_db.Node(block_id=ExecuteCodeBlock().id)],
         ),
         user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     return await graph_db.create_graph(
         graph_db.Graph(
@@ -595,6 +617,8 @@ async def _parent_of_a_sub_graph(user_id: str) -> graph_db.GraphModel:
             ],
         ),
         user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -613,34 +637,31 @@ async def _save_inactive_then_activate(
 async def test_another_organizations_key_cannot_version_a_personal_graph(
     server: SpinTestServer,
 ) -> None:
-    """A graph saved without an organization is the personal org's. A key in
-    another organization can read it, but a version it saved or activated would
-    move the personal org's library entry and the graph's active version."""
+    """A graph saved in the personal org is the personal org's. A key in
+    another organization doesn't find it, so no version it saved or activated
+    can move the personal org's library entry or the graph's active version."""
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    personal_org, _ = await get_user_default_team(user_id)
-    assert personal_org
-    v1 = await _untagged_version(user_id, str(uuid4()), version=1)
+    v1 = await _saved_version(user_id, str(uuid4()), version=1)
     await library_db.create_library_agent(v1, user_id=user_id)
-    await _untagged_version(user_id, v1.id, version=2, is_active=False)
+    await _saved_version(user_id, v1.id, version=2, is_active=False)
     activate_v2 = GraphSetActiveVersionRequest(active_graph_version=2)
     elsewhere = _AUTH.model_copy(
         update={"user_id": user_id, "organization_id": str(uuid4())}
     )
 
-    with pytest.raises(NotAuthorizedError):
+    with pytest.raises(HTTPException) as saved:
         await update_graph(v1.id, _REQUEST, auth=elsewhere)
-    with pytest.raises(NotAuthorizedError):
+    assert saved.value.status_code == 404
+    with pytest.raises(HTTPException) as activated:
         await set_active_version(v1.id, activate_v2, auth=elsewhere)
+    assert activated.value.status_code == 404
 
     versions = await graph_db.get_graph_all_versions(v1.id, user_id=user_id)
     assert sorted(v.version for v in versions) == [1, 2]
     assert await _library_version(user_id, v1.id) == 1
 
-    personal = _AUTH.model_copy(
-        update={"user_id": user_id, "organization_id": personal_org}
-    )
-    await set_active_version(v1.id, activate_v2, auth=personal)
+    await set_active_version(v1.id, activate_v2, auth=await _personal_auth(user_id))
 
     assert await _library_version(user_id, v1.id) == 2
 
@@ -649,31 +670,25 @@ async def test_another_organizations_key_cannot_version_a_personal_graph(
 async def test_a_library_agent_is_not_pointed_at_another_organizations_version(
     server: SpinTestServer,
 ) -> None:
-    """The web app saves a version in whichever organization is selected, so a
-    graph can span two. A library agent pointed at the other one's version
-    would run it, billed to the first."""
+    """A library agent pointed at another organization's version would run
+    it, billed to the first. No such version can be saved: a graph's versions
+    all live in one organization and team."""
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    personal_org, _ = await get_user_default_team(user_id)
-    assert personal_org
-    v1 = await _untagged_version(user_id, str(uuid4()), version=1)
-    [entry] = await library_db.create_library_agent(v1, user_id=user_id)
-    await _untagged_version(
-        user_id, v1.id, version=2, is_active=False, organization_id=str(uuid4())
-    )
-    await _untagged_version(user_id, v1.id, version=3, is_active=False)
-    personal = _AUTH.model_copy(
-        update={"user_id": user_id, "organization_id": personal_org}
-    )
+    v1 = await _saved_version(user_id, str(uuid4()), version=1)
+    [entry, *_] = await library_db.create_library_agent(v1, user_id=user_id)
 
     with pytest.raises(NotAuthorizedError):
-        await patch_library_agent(
-            LibraryAgentUpdateRequest(graph_version=2), entry.id, auth=personal
+        await _saved_version(
+            user_id, v1.id, version=2, is_active=False, organization_id=str(uuid4())
         )
-    assert await _library_version(user_id, v1.id) == 1
+    await _saved_version(user_id, v1.id, version=2, is_active=False)
+    await _saved_version(user_id, v1.id, version=3, is_active=False)
 
     await patch_library_agent(
-        LibraryAgentUpdateRequest(graph_version=3), entry.id, auth=personal
+        LibraryAgentUpdateRequest(graph_version=3),
+        entry.id,
+        auth=await _personal_auth(user_id),
     )
     assert await _library_version(user_id, v1.id) == 3
 
@@ -686,7 +701,9 @@ async def test_saving_a_graph_id_that_belongs_to_somebody_else_is_refused(
     creator, editor = str(uuid4()), str(uuid4())
     for user_id in (creator, editor):
         await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
-    created = await _untagged_version(creator, str(uuid4()), version=1)
+    created = await _saved_version(creator, str(uuid4()), version=1)
+    auth = await _personal_auth(editor)
+    # A version only the database could hold, in the editor's own scope.
     await prisma.models.AgentGraph.prisma().create(
         data={
             "id": created.id,
@@ -695,13 +712,12 @@ async def test_saving_a_graph_id_that_belongs_to_somebody_else_is_refused(
             "description": "",
             "isActive": True,
             "userId": editor,
+            "organizationId": auth.organization_id,
+            "teamId": auth.team_id,
         }
     )
     [in_library] = await graph_db.get_graph_all_versions(created.id, editor)
     await library_db.create_library_agent(in_library, user_id=editor)
-    personal_org, _ = await get_user_default_team(editor)
-    assert personal_org
-    auth = _AUTH.model_copy(update={"user_id": editor, "organization_id": personal_org})
 
     with pytest.raises(NotAuthorizedError):
         await update_graph(created.id, _REQUEST, auth=auth)
@@ -715,7 +731,7 @@ async def test_saving_a_graph_id_that_belongs_to_somebody_else_is_refused(
     assert [(row.version, row.userId) for row in rows] == [(1, creator), (2, editor)]
 
 
-async def _untagged_version(
+async def _saved_version(
     user_id: str,
     graph_id: str,
     *,
@@ -723,15 +739,18 @@ async def _untagged_version(
     is_active: bool = True,
     organization_id: str | None = None,
 ) -> graph_db.GraphModel:
-    """A version saved with no organization, as the app's chat saves them, or
-    in *organization_id*."""
+    """A version saved in the user's personal default team, as the app saves
+    them, or at the org-home of *organization_id*."""
     internal = _REQUEST.model_copy(update={"is_active": is_active}).to_internal(
         id=graph_id, version=version
     )
     graph = graph_db.make_graph_model(internal, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    team_id = None
+    if organization_id is None:
+        organization_id, team_id = await get_user_default_team(user_id)
     return await graph_db.create_graph(
-        graph, user_id=user_id, organization_id=organization_id
+        graph, user_id=user_id, organization_id=organization_id, team_id=team_id
     )
 
 

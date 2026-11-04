@@ -2435,6 +2435,11 @@ class TestPR15MarketplaceOrg:
                 "backend.data.graph.LibraryAgent.prisma",
                 return_value=mock_library_actions,
             ),
+            # "org-target" isn't a personal org, so its scope stays as given.
+            patch(
+                "backend.data.graph.canonical_personal_scope",
+                side_effect=lambda org, team, _client=None: (org, team),
+            ),
             patch("backend.data.graph.transaction") as mock_transaction,
         ):
             mock_tx = MagicMock()

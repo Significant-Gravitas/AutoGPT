@@ -44,6 +44,17 @@ def _org_collaboration_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
 
 
+@pytest.fixture(autouse=True)
+def _org_a_is_the_callers_personal_org(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Credentials act only in their owner's personal org and its default
+    team, so the membership tests below run in that org."""
+    return mocker.patch(
+        "backend.api.org_rollout.get_user_default_team",
+        new_callable=AsyncMock,
+        return_value=(ORG_A, TEAM_A),
+    )
+
+
 # ============================================================================
 # Structural: no handler can bypass tenant resolution
 # ============================================================================
@@ -232,14 +243,37 @@ async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
 
 
 @pytest.mark.asyncio
-async def test_org_key_resolves_to_its_own_org(
+async def test_org_key_resolves_to_its_own_orgs_default_team(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     _mock_membership(mocker, org_id=ORG_A)
 
     tenant = await resolve_tenant(_credential(organization_id=ORG_A))
 
-    assert (tenant.organization_id, tenant.team_id) == (ORG_A, None)
+    assert (tenant.organization_id, tenant.team_id) == (ORG_A, TEAM_A)
+
+
+@pytest.mark.asyncio
+async def test_a_team_organizations_key_is_refused(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Until credentials have their own design, only personal ones act."""
+    _mock_membership(mocker, org_id=ORG_B)
+
+    with pytest.raises(NotAuthorizedError, match="not enabled"):
+        await resolve_tenant(_credential(organization_id=ORG_B))
+
+
+@pytest.mark.asyncio
+async def test_a_team_header_outside_the_default_team_is_refused(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    _mock_membership(mocker, org_id=ORG_A)
+
+    with pytest.raises(NotAuthorizedError, match="not enabled"):
+        await resolve_tenant(
+            _credential(organization_id=ORG_A), requested_team="team-other"
+        )
 
 
 @pytest.mark.asyncio
@@ -279,20 +313,17 @@ async def test_team_pinned_key_is_rejected_once_its_team_membership_ends(
 
 
 @pytest.mark.asyncio
-async def test_key_without_org_falls_back_to_the_personal_org_at_org_home(
+async def test_key_without_org_acts_in_the_personal_default_team(
     mocker: pytest_mock.MockFixture,
+    _org_a_is_the_callers_personal_org: AsyncMock,
 ) -> None:
-    """Org-home, never the default team: a team is an exact-match read filter,
-    so a team here would hide graphs a pre-org key could read yesterday."""
-    mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        new_callable=AsyncMock,
-        return_value=(PERSONAL_ORG, "personal-team"),
-    )
+    """Where a personal organization's rows live: a team is an exact-match
+    read filter, and migration 20261103180000 moved org-home rows there."""
+    _org_a_is_the_callers_personal_org.return_value = (PERSONAL_ORG, "personal-team")
 
     tenant = await resolve_tenant(_credential())
 
-    assert (tenant.organization_id, tenant.team_id) == (PERSONAL_ORG, None)
+    assert (tenant.organization_id, tenant.team_id) == (PERSONAL_ORG, "personal-team")
 
 
 @pytest.mark.asyncio
@@ -362,15 +393,11 @@ async def test_team_header_cannot_reach_another_orgs_team(
 
 @pytest.mark.asyncio
 async def test_account_without_a_personal_org_is_rejected(
-    mocker: pytest_mock.MockFixture,
+    _org_a_is_the_callers_personal_org: AsyncMock,
 ) -> None:
-    mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        new_callable=AsyncMock,
-        return_value=(None, None),
-    )
+    _org_a_is_the_callers_personal_org.return_value = (None, None)
 
-    with pytest.raises(NotAuthorizedError):
+    with pytest.raises(NotAuthorizedError, match="No organization context"):
         await resolve_tenant(_credential())
 
 

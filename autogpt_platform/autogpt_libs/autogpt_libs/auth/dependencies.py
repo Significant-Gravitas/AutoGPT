@@ -385,7 +385,8 @@ async def get_request_context(
          workspace belongs to the org AND the user has an active TeamMember
          row. Fail closed when the requested workspace is unusable; silently
          widening an explicit team scope to org-home would make create calls
-         land in a broader tenancy than the caller selected.
+         land in a broader tenancy than the caller selected. Without it, a
+         personal org acts in its default team, where its rows live.
       5. Populate all role flags and return a RequestContext.
     """
     from backend.data.db import prisma  # deferred -- only needed at runtime
@@ -522,6 +523,12 @@ async def get_request_context(
         else:
             is_team_admin = ws_member.isAdmin
             is_team_billing_manager = ws_member.isBillingManager
+    elif org_member.Org is not None and org_member.Org.isPersonal:
+        default_member = await default_team_membership(user_id, org_id)
+        if default_member is not None:
+            team_id = default_member.teamId
+            is_team_admin = default_member.isAdmin
+            is_team_billing_manager = default_member.isBillingManager
 
     # --- 5. build context -----------------------------------------------------
     return RequestContext(
@@ -534,6 +541,26 @@ async def get_request_context(
         is_team_admin=is_team_admin,
         is_team_billing_manager=is_team_billing_manager,
         seat_status=seat_status,
+    )
+
+
+async def default_team_membership(user_id: str, org_id: str):
+    """The caller's live membership in a personal organization's default team.
+
+    A personal organization keeps its work in that one team (the database
+    moves rows written at its org-home there), so a request that names no team
+    acts in it. Without a live membership the request stays at org-home. Also
+    used by the backend's hand-built test contexts, so they match this one.
+    """
+    from backend.data.db import prisma  # deferred -- only needed at runtime
+
+    return await prisma.teammember.find_first(
+        where={
+            "userId": user_id,
+            "status": "ACTIVE",
+            "Team": {"orgId": org_id, "isDefault": True, "archivedAt": None},
+        },
+        order={"createdAt": "asc"},
     )
 
 

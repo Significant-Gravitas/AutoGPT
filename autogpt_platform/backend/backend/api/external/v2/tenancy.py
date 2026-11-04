@@ -1,28 +1,21 @@
 """
 V2 External API - Tenancy resolution
 
-Every v2 request acts inside exactly one organization, and optionally inside one
-team within it. The tenant is bound to the credential: an API key is minted in
-an org (`organizationId`) and may be pinned to a team (`teamIdRestriction`),
-which is the same pair v1 external already honours. A key with no org — every
-key minted before orgs existed — resolves to the caller's personal org, so
-personal keys keep behaving exactly as they did.
+Every v2 request acts inside exactly one organization and team. The tenant is
+bound to the credential: an API key is minted in an org (`organizationId`) and
+pinned to a team (`teamIdRestriction`), the same pair v1 external honours.
 
-A key that is not pinned to a team may select one per request with `X-Team-Id`,
-matching the header the internal API uses. Without it the request runs at
-org-home, which is what the web app does when no team is selected.
+For now a credential acts only in its owner's personal organization and that
+organization's default team, where its rows live, whatever the org rollout
+says, until credentials get a design for shared organizations. A key with no
+org, or no team, acts there; a key minted elsewhere, or an `X-Team-Id` naming
+another team, is refused.
 
 Handlers depend on `require_permission`/`require_auth` from this module rather
 than from `..middleware`, so no v2 endpoint can reach the database without a
 membership-verified tenant.
-
-An explicit scope (a key minted in an organization, or a team picked with
-`X-Team-Id`) must also pass the org rollout gate, as on the internal API and v1:
-until collaboration is enabled for the caller, only their own personal
-organization and its default team are reachable.
 """
 
-import logging
 from typing import Literal, Optional, Protocol, TypeVar
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
@@ -33,13 +26,11 @@ from pydantic import BaseModel
 from starlette import status
 
 from backend.api.external import middleware
-from backend.api.org_rollout import require_personal_scope_without_collaboration
+from backend.api.org_rollout import require_personal_scope
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.db import prisma
 from backend.data.entitlement import enforce_entitlement
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
-
-logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound="TenantedRow")
 OwnedT = TypeVar("OwnedT", bound="OwnedRow")
@@ -168,8 +159,8 @@ async def resolve_tenant(
             )
         await _assert_active_team_member(auth.user_id, organization_id, requested_team)
         if requested_team != team_id:
+            # Credentials act only in the personal default team: refused.
             await _require_rollout_scope(auth, organization_id, requested_team)
-        team_id = requested_team
 
     return TenantContext(
         user_id=auth.user_id,
@@ -224,46 +215,32 @@ def owned_by_caller(resource: OwnedT, auth: TenantContext, what: str) -> OwnedT:
 
 async def resolve_credential_tenancy(
     auth: APIAuthorizationInfo,
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, str]:
     """The org and team a credential is bound to, independent of any request.
 
     Also used by the MCP server, which authenticates outside the dependency
     chain and so cannot go through `resolve_tenant`.
     """
-    organization_id, team_id = await _credential_tenancy(auth)
-    await _require_rollout_scope(auth, organization_id, team_id)
-    return organization_id, team_id
-
-
-async def _require_rollout_scope(
-    auth: APIAuthorizationInfo, organization_id: str, team_id: Optional[str]
-) -> None:
-    """Refuse an explicit shared scope until the org rollout reaches the caller.
-
-    A credential minted before organizations acts at its personal org-home,
-    which the gate always allows, so only an explicit scope is checked.
-    """
-    if auth.organization_id is None and team_id is None:
-        return
-    try:
-        await require_personal_scope_without_collaboration(
-            auth.user_id, organization_id, team_id
-        )
-    except HTTPException as e:
-        raise NotAuthorizedError(str(e.detail)) from e
-
-
-async def _credential_tenancy(
-    auth: APIAuthorizationInfo,
-) -> tuple[str, Optional[str]]:
     if auth.organization_id:
         await _assert_active_org_member(auth.user_id, auth.organization_id)
         if auth.team_id_restriction:
             await _assert_active_team_member(
                 auth.user_id, auth.organization_id, auth.team_id_restriction
             )
-        return auth.organization_id, auth.team_id_restriction
-    return await _personal_tenancy(auth.user_id)
+    return await _require_rollout_scope(
+        auth, auth.organization_id, auth.team_id_restriction
+    )
+
+
+async def _require_rollout_scope(
+    auth: APIAuthorizationInfo, organization_id: Optional[str], team_id: Optional[str]
+) -> tuple[str, str]:
+    """The caller's personal org and default team, which credentials act in
+    whatever the org rollout says; any other scope is refused."""
+    try:
+        return await require_personal_scope(auth.user_id, organization_id, team_id)
+    except HTTPException as e:
+        raise NotAuthorizedError(str(e.detail)) from e
 
 
 async def _assert_active_org_member(user_id: str, organization_id: str) -> None:
@@ -294,26 +271,3 @@ async def _assert_active_team_member(
             f"Team {team_id} does not belong to the organization these credentials "
             "act in"
         )
-
-
-async def _personal_tenancy(user_id: str) -> tuple[str, Optional[str]]:
-    """Org for a credential minted before orgs, or outside one.
-
-    Org-home, not the personal org's default team: `get_graph` and friends
-    treat a team as an exact-match filter, so pinning a pre-org key to a team
-    would hide every graph it could read yesterday. Bootstraps a missing
-    personal org rather than leaving the account unable to call the API.
-    """
-    from backend.api.features.orgs.db import get_user_default_team
-
-    organization_id, _ = await get_user_default_team(user_id)
-    if organization_id is None:
-        logger.warning(
-            f"User {user_id} has no personal org and bootstrap failed — "
-            "account in inconsistent state"
-        )
-        raise NotAuthorizedError(
-            "No organization context available. Your account may be in an "
-            "inconsistent state — please contact support."
-        )
-    return organization_id, None

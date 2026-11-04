@@ -86,6 +86,41 @@ def _tenant_integrity_migration_sql() -> str:
     ).read_text(encoding="utf-8")
 
 
+def _personal_slot_migration_sql() -> str:
+    return (
+        Path(__file__).parents[4]
+        / "migrations"
+        / "20261103180000_one_personal_team_slot"
+        / "migration.sql"
+    ).read_text(encoding="utf-8")
+
+
+# Tables where a personal organization's rows move to its default team.
+PERSONAL_SLOT_TABLES = (
+    "AgentGraph",
+    "AgentGraphExecution",
+    "AgentPreset",
+    "AlertCondition",
+    "APIKey",
+    "BuilderSearchHistory",
+    "ChatSession",
+    "Expert",
+    "IntegrationWebhook",
+    "LibraryAgent",
+    "LibraryFolder",
+    "PendingHumanReview",
+    "StoreListingVersion",
+    "UserNotificationBatch",
+    "UserWorkspaceFile",
+    "UserWorkspaceFolder",
+)
+_STRICT_TEAM_CHECKS = (
+    'key."teamId" IS DISTINCT FROM key."teamIdRestriction"',
+    'other."teamId" IS DISTINCT FROM graph."teamId"',
+    'child."teamId" IS DISTINCT FROM parent."teamId"',
+)
+
+
 def test_migration_enforces_single_live_org_owner_and_invitation() -> None:
     sql = _migration_sql()
 
@@ -296,3 +331,62 @@ def test_tenant_integrity_migration_prevents_team_scope_collapse() -> None:
     ):
         assert f'ALTER TABLE "{table}"' in sql
     assert sql.count("ON DELETE RESTRICT ON UPDATE CASCADE") == 8
+
+
+def test_tenant_integrity_audit_leaves_team_comparisons_to_the_personal_slot() -> None:
+    """Prod holds personal rows in both slots until 20261103180000 moves them,
+    so the audit before it can't compare teams."""
+    sql = _tenant_integrity_migration_sql()
+
+    for check in _STRICT_TEAM_CHECKS:
+        assert check not in sql
+    assert "inconsistent workspace restrictions" in sql
+    assert "version pairs with inconsistent tenancy" in sql
+
+
+def test_personal_slot_migration_normalizes_every_tenant_table() -> None:
+    sql = _personal_slot_migration_sql()
+
+    for table in PERSONAL_SLOT_TABLES:
+        assert f"'{table}'" in sql or f'"{table}"' in sql, table
+    assert sql.count("CREATE TRIGGER a0_normalize_personal_team") == 2
+    assert 'BEFORE INSERT OR UPDATE OF "organizationId", "teamId"' in sql
+    assert (
+        'BEFORE INSERT OR UPDATE OF "organizationId", "teamId", "teamIdRestriction"'
+        in sql
+    )
+    assert (
+        'ON "APIKey" FOR EACH ROW EXECUTE FUNCTION normalize_personal_api_key_team()'
+        in sql
+    )
+    assert "DROP TRIGGER IF EXISTS a0_normalize_personal_team" in sql
+    assert "current_schema()" in sql
+    assert "SET search_path = pg_catalog, %I, pg_temp" in sql
+
+
+def test_personal_slot_migration_moves_rows_with_guards_held_off() -> None:
+    sql = _personal_slot_migration_sql()
+
+    for table, trigger in (
+        ("UserWorkspaceFile", "enforce_workspace_artifact_scope"),
+        ("UserWorkspaceFolder", "enforce_workspace_folder_scope"),
+        ("AlertCondition", '"AlertCondition_execution_scope_guard"'),
+        ("AgentGraphExecution", "enforce_live_tenant_owner"),
+        ("ChatSession", "enforce_live_tenant_owner"),
+    ):
+        disable = f'ALTER TABLE "{table}" DISABLE TRIGGER {trigger};'
+        enable = f'ALTER TABLE "{table}" ENABLE TRIGGER {trigger};'
+        assert sql.index(disable) < sql.index(enable), table
+    assert sql.startswith("-- ") and "BEGIN;" in sql
+    assert sql.rstrip().endswith("COMMIT;")
+    assert "SET LOCAL statement_timeout = 0;" in sql
+    assert "RAISE NOTICE" in sql
+
+
+def test_personal_slot_migration_ends_with_the_strict_team_checks() -> None:
+    sql = _personal_slot_migration_sql()
+    last_move = sql.rindex("UPDATE ")
+
+    for check in _STRICT_TEAM_CHECKS:
+        assert sql.index(check) > last_move, check
+    assert "RAISE EXCEPTION 'APIKey has % inconsistent workspace restrictions'" in sql

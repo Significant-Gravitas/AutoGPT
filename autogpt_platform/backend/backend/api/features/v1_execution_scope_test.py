@@ -207,6 +207,11 @@ async def test_api_key_body_team_checks_target_manage_permission(mocker) -> None
     mocker.patch.object(
         api_keys, "resolve_write_team_id", AsyncMock(return_value="team-a")
     )
+    # Keys are personal-only: "org-1"/"team-a" stand for the caller's own
+    # personal org and default team.
+    mocker.patch.object(
+        api_keys, "require_personal_scope", AsyncMock(return_value=("org-1", "team-a"))
+    )
     create_key = AsyncMock()
     mocker.patch.object(api_keys.api_key_db, "create_api_key", create_key)
     checked_scope: list[tuple] = []

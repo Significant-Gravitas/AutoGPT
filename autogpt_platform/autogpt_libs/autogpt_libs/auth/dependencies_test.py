@@ -707,6 +707,7 @@ class TestRequestContextProvisioning:
         # No personal org -> the self-heal branch.
         db_mod.prisma.orgmember.find_first = AsyncMock(return_value=None)
         db_mod.prisma.orgmember.find_unique = AsyncMock(return_value=org_member)
+        db_mod.prisma.teammember.find_first = AsyncMock(return_value=None)
 
         async def _default_team(_user_id):
             calls.append("get_user_default_team")

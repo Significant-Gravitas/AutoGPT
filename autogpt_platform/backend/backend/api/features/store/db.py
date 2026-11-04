@@ -24,6 +24,7 @@ from backend.data.notifications import (
     NotificationScope,
     VerdictData,
 )
+from backend.data.personal_scope import canonical_personal_scope
 from backend.data.profile import ensure_user_profile
 from backend.data.tenancy import (
     agent_graph_attachment_barriers,
@@ -1263,7 +1264,11 @@ async def create_store_submission(
         ).lower()
 
         # First verify the agent graph belongs to this user, and to exactly the
-        # organization and team the submission is made in.
+        # organization and team the submission is made in, as stored: a personal
+        # organization's graphs are in its default team.
+        organization_id, team_id_restriction = await canonical_personal_scope(
+            organization_id, team_id_restriction
+        )
         graph_where: prisma.types.AgentGraphWhereInput = {
             "id": graph_id,
             "version": graph_version,

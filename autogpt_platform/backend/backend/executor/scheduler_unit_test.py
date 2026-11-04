@@ -131,6 +131,7 @@ def stub_live_tenancy_rpc(monkeypatch: pytest.MonkeyPatch):
     db = MagicMock()
     db.has_live_resource_access = AsyncMock(return_value=True)
     db.schedule_turn_if_live = AsyncMock(return_value=True)
+    db.get_user_default_team = AsyncMock(return_value=(None, None))
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.get_database_manager_async_client",
         lambda: db,
@@ -444,6 +445,50 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     assert call_kwargs["team_id"] == "team-sched"
     # Marks the turn as scheduled so the executor alerts if it fails later.
     assert call_kwargs["scheduled"] == ScheduledTurnOrigin(schedule_id="sched-1")
+
+
+@pytest.mark.parametrize(
+    "organization_id, chat_team, runs",
+    [("org-personal", "team-default", True), ("org-team", "team-x", False)],
+    ids=["personal-chat-moved-to-default-team", "team-org-chat-moved-teams"],
+)
+@pytest.mark.asyncio
+async def test_a_turn_saved_at_org_home_follows_only_a_personal_chat(
+    stub_live_tenancy_rpc, organization_id: str, chat_team: str, runs: bool
+):
+    """Migration 20261103180000 moved personal org-home chats to the default
+    team. A turn saved before it still names org-home: it runs there, while a
+    team organization's chat that changed teams still ends its schedule."""
+    stub_live_tenancy_rpc.get_user_default_team.return_value = (
+        "org-personal",
+        "team-default",
+    )
+    args = _args(organization_id=organization_id, team_id=None)
+    chat = MagicMock(
+        organization_id=organization_id,
+        team_id=chat_team,
+        session_id="session-1",
+        expert_id=None,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=AsyncMock(return_value=chat)),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", new=self_delete),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    if not runs:
+        self_delete.assert_awaited_once()
+        schedule_turn.assert_not_awaited()
+        return
+    self_delete.assert_not_awaited()
+    assert schedule_turn.call_args.kwargs["team_id"] == "team-default"
+    stub_live_tenancy_rpc.has_live_resource_access.assert_awaited_once_with(
+        "user-1", "org-personal", "team-default", "execute"
+    )
 
 
 @pytest.mark.asyncio

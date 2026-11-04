@@ -38,6 +38,7 @@ from backend.data.includes import (
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.personal_scope import canonical_personal_scope
 from backend.data.tenancy import (
     agent_graph_attachment_barrier,
     get_user_team_ids,
@@ -1042,6 +1043,7 @@ async def _create_library_agent_locked(
         from backend.api.features.orgs.db import get_user_default_team
 
         organization_id, team_id = await get_user_default_team(user_id)
+    organization_id, team_id = await canonical_personal_scope(organization_id, team_id)
 
     if folder_id:
         folder = await get_folder(
@@ -1220,6 +1222,7 @@ async def update_agent_version_in_library(
         f"Updating agent version in library for user #{user_id}, "
         f"agent #{agent_graph_id} v{agent_graph_version}"
     )
+    organization_id, team_id = await canonical_personal_scope(organization_id, team_id)
     scope_key = library_scope_key(organization_id, team_id)
     entry: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,

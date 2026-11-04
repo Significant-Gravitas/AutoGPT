@@ -1,8 +1,12 @@
 """Gate new explicit collaboration scopes without changing authorization.
 
-The flag is not retroactive data revocation: legacy own-personal org-home
-requests keep their normal authorized access, and persisted background execution
+The flag is not retroactive data revocation: own-personal requests without a
+team keep their normal authorized access, and persisted background execution
 keeps its recorded scope. Explicit shared scopes are rejected, never rewritten.
+
+API keys and OAuth tokens get a stricter gate, ``require_personal_scope``: they
+act only in the caller's personal organization and its default team, whatever
+the flag says, until credentials get a design for shared organizations.
 """
 
 from collections.abc import Awaitable, Callable
@@ -77,3 +81,33 @@ async def require_personal_scope_without_collaboration(
         status_code=403,
         detail="Organization collaboration is not enabled for this account",
     )
+
+
+async def require_personal_scope(
+    user_id: str, organization_id: str | None, team_id: str | None
+) -> tuple[str, str]:
+    """The scope an API key or OAuth token acts in: always personal.
+
+    Credentials act only in the caller's own personal organization and its
+    default team, whatever the org rollout says, until they get a design for
+    shared organizations. A credential naming no organization or no team acts
+    there; one naming anything else is refused, never rewritten.
+    """
+    personal_org_id, default_team_id = await get_user_default_team(user_id)
+    if personal_org_id is None or default_team_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "No organization context available. Your account may be in an "
+                "inconsistent state — please contact support."
+            ),
+        )
+    if organization_id not in (None, personal_org_id) or team_id not in (
+        None,
+        default_team_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="API access outside your personal organization is not enabled yet",
+        )
+    return personal_org_id, default_team_id

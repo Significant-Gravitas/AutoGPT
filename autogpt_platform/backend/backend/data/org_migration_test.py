@@ -1121,6 +1121,32 @@ class TestAssignResources:
         assert 'UPDATE "ChatSession"' not in single_sql
 
     @pytest.mark.asyncio
+    async def test_api_keys_act_in_the_default_team_they_are_moved_to(
+        self, mock_prisma, mocker
+    ):
+        """A key acts in its restriction, so it gets the team it is filed in."""
+        single = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+
+        await assign_resources_to_teams()
+
+        [api_key_sql] = [
+            call.args[0]
+            for call in single.await_args_list
+            if 'UPDATE "APIKey"' in call.args[0]
+        ]
+        assert '"teamId" = w."id"' in api_key_sql
+        assert '"teamIdRestriction" = w."id"' in api_key_sql
+
+    @pytest.mark.asyncio
     async def test_renews_after_each_assignment_statement(self, mock_prisma):
         mock_prisma.execute_raw = AsyncMock(return_value=0)
         renew_lock = AsyncMock()

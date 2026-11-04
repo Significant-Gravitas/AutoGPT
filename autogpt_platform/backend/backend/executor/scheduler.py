@@ -561,6 +561,22 @@ async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
     return routine
 
 
+async def _in_personal_default_team(
+    args: "CopilotTurnJobArgs",
+) -> "CopilotTurnJobArgs":
+    """A turn saved at its personal organization's org-home runs in that
+    organization's default team, where migration 20261103180000 moved its
+    chat. Compared as saved, the chat would read as moved elsewhere: the
+    schedule would delete itself, or skip every run into a fresh chat."""
+    if args.organization_id is None or args.team_id is not None:
+        return args
+    db = get_database_manager_async_client()
+    personal_org_id, default_team_id = await db.get_user_default_team(args.user_id)
+    if personal_org_id != args.organization_id or default_team_id is None:
+        return args
+    return args.model_copy(update={"team_id": default_team_id})
+
+
 def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
     """The capability filter a routine's turn runs under.
 
@@ -581,7 +597,7 @@ async def _execute_copilot_turn(**kwargs):
     organization_scope_was_persisted = "organization_id" in kwargs
     team_scope_was_persisted = "team_id" in kwargs
     expert_scope_was_persisted = "expert_id" in kwargs
-    args = CopilotTurnJobArgs(**kwargs)
+    args = await _in_personal_default_team(CopilotTurnJobArgs(**kwargs))
     if args.purpose != "followup":
         await _execute_at_reset_turn(args, args.purpose)
         return

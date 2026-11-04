@@ -718,7 +718,11 @@ def _resolve_dotted(node: ast.Attribute, module_globals: dict) -> Any:
 
 
 def _org_member(
-    *, owner: bool = False, admin: bool = False, billing: bool = False
+    *,
+    owner: bool = False,
+    admin: bool = False,
+    billing: bool = False,
+    personal: bool = False,
 ) -> Mock:
     """A prisma ``OrgMember`` row as ``get_request_context`` expects it."""
     row = Mock()
@@ -726,7 +730,7 @@ def _org_member(
     row.isOwner = owner
     row.isAdmin = admin
     row.isBillingManager = billing
-    row.Org = Mock(deletedAt=None)
+    row.Org = Mock(deletedAt=None, isPersonal=personal)
     return row
 
 
@@ -751,7 +755,13 @@ def test_personal_org_owner_passes_real_context_resolution(
     hand-built RequestContext could not prove.
     """
     mock_prisma.orgmember.find_first = AsyncMock(return_value=Mock(orgId="personal-1"))
-    mock_prisma.orgmember.find_unique = AsyncMock(return_value=_org_member(owner=True))
+    mock_prisma.orgmember.find_unique = AsyncMock(
+        return_value=_org_member(owner=True, personal=True)
+    )
+    # A personal org's request acts in its default team.
+    mock_prisma.teammember.find_first = AsyncMock(
+        return_value=Mock(teamId="default-1", isAdmin=True, isBillingManager=False)
+    )
 
     resp = client.get("/api/credits")
 
@@ -760,6 +770,7 @@ def test_personal_org_owner_passes_real_context_resolution(
     # The personal-org fallback ran (no X-Org-Id header was supplied) and its
     # org id is what the credit model was resolved against.
     mock_prisma.orgmember.find_first.assert_awaited_once()
+    mock_prisma.teammember.find_first.assert_awaited_once()
     assert credit_stubs.get_credit_model.await_args.args[1] == "personal-1"
 
 

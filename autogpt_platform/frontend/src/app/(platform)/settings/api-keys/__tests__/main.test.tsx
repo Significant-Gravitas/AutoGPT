@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
@@ -9,6 +9,8 @@ import {
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { APIKeyStatus } from "@/app/api/__generated__/models/aPIKeyStatus";
+import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "@/services/org-team/headers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 import SettingsApiKeysPage from "../page";
 
@@ -29,6 +31,10 @@ function makeKey(overrides: Partial<APIKeyInfo> = {}): APIKeyInfo {
     ...overrides,
   };
 }
+
+afterEach(() => {
+  useOrgTeamStore.setState({ activeOrgID: null, activeTeamID: null });
+});
 
 describe("SettingsApiKeysPage - list rendering", () => {
   test("renders header title and Create Key button", async () => {
@@ -168,5 +174,30 @@ describe("SettingsApiKeysPage - list rendering", () => {
     expect(await screen.findByText("Alpha Key")).toBeDefined();
     expect(screen.getByText("Beta Key")).toBeDefined();
     expect(screen.getByText("Gamma Key")).toBeDefined();
+  });
+
+  test("lists your personal keys whichever organization is active", async () => {
+    useOrgTeamStore.setState({
+      activeOrgID: "org-team",
+      activeTeamID: "team-a",
+      isLoaded: true,
+    });
+    const sent: { org: string | null; team: string | null }[] = [];
+    server.use(
+      getGetV1ListUserApiKeysMockHandler((info) => {
+        sent.push({
+          org: info.request.headers.get(ORG_HEADER_NAME),
+          team: info.request.headers.get(TEAM_HEADER_NAME),
+        });
+        return [makeKey({ id: "p", name: "Personal Key" })];
+      }),
+    );
+
+    render(<SettingsApiKeysPage />);
+
+    // No scope headers: the server answers for your personal organization's
+    // default team, where every key lives for now.
+    expect(await screen.findByText("Personal Key")).toBeDefined();
+    expect(sent[0]).toEqual({ org: null, team: null });
   });
 });

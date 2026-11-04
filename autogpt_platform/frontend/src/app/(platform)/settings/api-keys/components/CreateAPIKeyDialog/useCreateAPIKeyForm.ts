@@ -6,8 +6,6 @@ import { useForm } from "react-hook-form";
 
 import { useCreateAPIKey } from "../hooks/useCreateAPIKey";
 import { createAPIKeySchema, type CreateAPIKeyFormValues } from "./schema";
-import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
-import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 type View = "form" | "success";
 
@@ -18,10 +16,7 @@ interface Args {
 export function useCreateAPIKeyForm({ onClose }: Args) {
   const [view, setView] = useState<View>("form");
   const [plainTextKey, setPlainTextKey] = useState("");
-  const { teamId, setTeamId, isReady } = useCreateTeamSelection(
-    CreateSurface.ApiKey,
-  );
-  const { createKey, isPending } = useCreateAPIKey(teamId, isReady);
+  const { createKey, isPending } = useCreateAPIKey();
 
   const form = useForm<CreateAPIKeyFormValues>({
     resolver: zodResolver(createAPIKeySchema),
@@ -57,8 +52,5 @@ export function useCreateAPIKeyForm({ onClose }: Args) {
     isPending,
     handleSubmit,
     handleClose,
-    teamId,
-    setTeamId,
-    isReady,
   };
 }

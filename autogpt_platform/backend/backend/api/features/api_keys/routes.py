@@ -16,6 +16,7 @@ from backend.api.live_auth import (
     requires_live_resource_permission as requires_resource_permission,
 )
 from backend.api.live_auth import resolve_write_team_id
+from backend.api.org_rollout import require_personal_scope
 from backend.data.auth import api_key as api_key_db
 from backend.data.tenancy import get_user_team_ids, live_resource_permission_barrier
 
@@ -70,7 +71,11 @@ async def create_api_key(
         ),
     ],
 ) -> CreateAPIKeyResponse:
-    """Create a new API key"""
+    """Create a new API key in your personal organization's default team.
+
+    Keys act there only for now; one for any other organization or team is
+    refused with a 403.
+    """
     if (
         ctx.team_id is not None
         and request.team_id is not None
@@ -80,14 +85,17 @@ async def create_api_key(
             status_code=400,
             detail="The requested team must match the active workspace context.",
         )
-    team_id_restriction = await resolve_write_team_id(
+    requested_team_id = await resolve_write_team_id(
         user_id,
         ctx.org_id,
         request.team_id if request.team_id is not None else ctx.team_id,
     )
+    organization_id, team_id_restriction = await require_personal_scope(
+        user_id, ctx.org_id, requested_team_id
+    )
     async with live_resource_permission_barrier(
         user_id,
-        ctx.org_id,
+        organization_id,
         team_id_restriction,
         OrgAction.MANAGE_CREDENTIALS,
         TeamAction.MANAGE_CREDENTIALS,
@@ -99,7 +107,7 @@ async def create_api_key(
             user_id=user_id,
             permissions=request.permissions,
             description=request.description,
-            organization_id=ctx.org_id,
+            organization_id=organization_id,
             owner_type="USER",
             team_id_restriction=team_id_restriction,
         )

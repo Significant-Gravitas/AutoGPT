@@ -15,9 +15,8 @@ from prisma.models import OAuthApplication as PrismaOAuthApplication
 from pydantic import BaseModel, ConfigDict
 from starlette.types import Scope
 
-from backend.api.features.orgs import db as org_db
 from backend.api.live_auth import live_dependency
-from backend.api.org_rollout import require_personal_scope_without_collaboration
+from backend.api.org_rollout import require_personal_scope
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -126,56 +125,42 @@ async def _live_authorization_principal(
 
 
 async def _scope_api_key(api_key: APIAuthorizationInfo) -> APIAuthorizationInfo:
-    if api_key.organization_id is not None:
-        await require_personal_scope_without_collaboration(
-            api_key.user_id, api_key.organization_id, api_key.team_id_restriction
-        )
-        return api_key
-    if api_key.team_id_restriction is not None:
+    if api_key.organization_id is None and api_key.team_id_restriction is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="API key has an invalid workspace scope",
         )
-    organization_id, team_id = await org_db.get_user_default_team(api_key.user_id)
-    if organization_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API key has no active organization scope",
-        )
-    return api_key.model_copy(
-        update={
-            "organization_id": organization_id,
-            "team_id_restriction": team_id,
-        }
+    return await _in_personal_scope(
+        api_key, api_key.organization_id, api_key.team_id_restriction
     )
 
 
 async def _scope_oauth_token(
     token: APIAuthorizationInfo, application: OAuthApplicationInfo
 ) -> APIAuthorizationInfo:
-    organization_id = application.organization_id
-    team_id = application.team_id_restriction
-    if organization_id is None:
-        if team_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="OAuth application has an invalid workspace scope",
-            )
-        organization_id, team_id = await org_db.get_user_default_team(token.user_id)
-    if organization_id is None:
+    if (
+        application.organization_id is None
+        and application.team_id_restriction is not None
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="OAuth token has no active organization scope",
+            detail="OAuth application has an invalid workspace scope",
         )
-    if application.organization_id is not None:
-        await require_personal_scope_without_collaboration(
-            token.user_id, organization_id, team_id
-        )
-    return token.model_copy(
-        update={
-            "organization_id": organization_id,
-            "team_id_restriction": team_id,
-        }
+    return await _in_personal_scope(
+        token, application.organization_id, application.team_id_restriction
+    )
+
+
+async def _in_personal_scope(
+    auth: APIAuthorizationInfo, organization_id: str | None, team_id: str | None
+) -> APIAuthorizationInfo:
+    """Pin a credential to the caller's personal default team, the only scope
+    a credential acts in for now; any other scope it names is refused."""
+    organization_id, team_id = await require_personal_scope(
+        auth.user_id, organization_id, team_id
+    )
+    return auth.model_copy(
+        update={"organization_id": organization_id, "team_id_restriction": team_id}
     )
 
 
@@ -297,10 +282,9 @@ async def require_auth(
 
     Accepts an API key (`X-API-Key`, or sent as a Bearer token) or an OAuth
     access token, rejects requests with no credentials, and pins the
-    credential to the organization and team it acts in: an OAuth token to its
-    application's scope, a credential minted before organizations to its
-    owner's personal organization. An explicitly shared scope must pass the org
-    rollout gate.
+    credential to its owner's personal organization and default team, the
+    only scope a credential acts in for now. A key or application tagged with
+    any other scope is refused with a 403.
     """
     principal = await _verify_principal(api_key, bearer)
     if principal is None:

@@ -11,6 +11,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from autogpt_libs.auth.dependencies import default_team_membership
 from autogpt_libs.auth.models import RequestContext
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -709,15 +710,19 @@ async def _test_request_context(
                 seat_status="NONE",
             )
         raise RuntimeError(f"Test user {user_id} has no active organization")
+    # In the personal org's default team, as get_request_context resolves it.
+    default_member = await default_team_membership(user_id, membership.orgId)
     return RequestContext(
         user_id=user_id,
         org_id=membership.orgId,
-        team_id=None,
+        team_id=default_member.teamId if default_member else None,
         is_org_owner=membership.isOwner,
         is_org_admin=membership.isAdmin,
         is_org_billing_manager=membership.isBillingManager,
-        is_team_admin=False,
-        is_team_billing_manager=False,
+        is_team_admin=bool(default_member and default_member.isAdmin),
+        is_team_billing_manager=bool(
+            default_member and default_member.isBillingManager
+        ),
         seat_status="ACTIVE",
     )
 

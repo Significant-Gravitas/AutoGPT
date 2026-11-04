@@ -832,10 +832,23 @@ def _api_key_info(user_id: str):
     )
 
 
+@pytest.fixture
+def personal_default_team(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The request's "test-org" is the caller's personal org. Keys act there
+    only, in its default team, until credentials get their own design."""
+    return mocker.patch(
+        "backend.api.org_rollout.get_user_default_team",
+        new=AsyncMock(return_value=("test-org", "test-workspace")),
+    )
+
+
 def test_create_api_key_stamps_team_restriction(
-    mocker: pytest_mock.MockFixture, test_user_id: str
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    personal_default_team: AsyncMock,
 ) -> None:
-    """A valid team_id pins the new key to that team (teamIdRestriction)."""
+    """The personal default team, named explicitly, pins the key to it."""
+    personal_default_team.return_value = ("test-org", TEAM_ID)
     create_mock = mocker.patch(
         "backend.api.features.api_keys.routes.api_key_db.create_api_key",
         new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
@@ -850,13 +863,15 @@ def test_create_api_key_stamps_team_restriction(
     )
 
     assert response.status_code == 200
+    assert create_mock.await_args.kwargs["organization_id"] == "test-org"
     assert create_mock.await_args.kwargs["team_id_restriction"] == TEAM_ID
 
 
-def test_create_api_key_omitted_team_is_unrestricted(
-    mocker: pytest_mock.MockFixture, test_user_id: str
+def test_create_api_key_omitted_team_lands_in_the_default_team(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    personal_default_team: AsyncMock,
 ) -> None:
-    """No team_id -> an org-wide (unrestricted) key, today's behavior."""
     create_mock = mocker.patch(
         "backend.api.features.api_keys.routes.api_key_db.create_api_key",
         new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
@@ -865,7 +880,43 @@ def test_create_api_key_omitted_team_is_unrestricted(
     response = client.post("/api-keys", json={"name": "k", "permissions": []})
 
     assert response.status_code == 200
-    assert create_mock.await_args.kwargs["team_id_restriction"] is None
+    assert create_mock.await_args.kwargs["team_id_restriction"] == "test-workspace"
+
+
+def test_create_api_key_refuses_a_team_organization(
+    mocker: pytest_mock.MockFixture, personal_default_team: AsyncMock
+) -> None:
+    personal_default_team.return_value = ("personal-org", "personal-team")
+    create_mock = mocker.patch(
+        "backend.api.features.api_keys.routes.api_key_db.create_api_key",
+        new=AsyncMock(),
+    )
+
+    response = client.post("/api-keys", json={"name": "k", "permissions": []})
+
+    assert response.status_code == 403
+    assert "not enabled" in response.json()["detail"]
+    create_mock.assert_not_awaited()
+
+
+def test_create_api_key_refuses_another_team_of_the_personal_org(
+    mocker: pytest_mock.MockFixture, personal_default_team: AsyncMock
+) -> None:
+    create_mock = mocker.patch(
+        "backend.api.features.api_keys.routes.api_key_db.create_api_key",
+        new=AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.live_auth.get_user_team_ids",
+        new=AsyncMock(return_value=[TEAM_ID]),
+    )
+
+    response = client.post(
+        "/api-keys", json={"name": "k", "permissions": [], "team_id": TEAM_ID}
+    )
+
+    assert response.status_code == 403
+    create_mock.assert_not_awaited()
 
 
 def test_create_api_key_rejects_non_member_team(
@@ -957,9 +1008,12 @@ def _override_ctx_team(team_id: str | None) -> None:
 
 
 def test_create_api_key_stamps_ctx_team_restriction(
-    mocker: pytest_mock.MockFixture, test_user_id: str
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    personal_default_team: AsyncMock,
 ) -> None:
-    """An active-team ctx (X-Team-Id) pins the new key to that team."""
+    """An active-team ctx (X-Team-Id) of the default team pins the key to it."""
+    personal_default_team.return_value = ("test-org", "test-team")
     _override_ctx_team("test-team")
     create_mock = mocker.patch(
         "backend.api.features.api_keys.routes.api_key_db.create_api_key",
@@ -976,10 +1030,12 @@ def test_create_api_key_stamps_ctx_team_restriction(
     assert create_mock.await_args.kwargs["team_id_restriction"] == "test-team"
 
 
-def test_create_api_key_no_team_context_is_unrestricted(
-    mocker: pytest_mock.MockFixture, test_user_id: str
+def test_create_api_key_no_team_context_lands_in_the_default_team(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    personal_default_team: AsyncMock,
 ) -> None:
-    """Org-home ctx (team_id=None) -> an org-wide key; no membership lookup."""
+    """Org-home ctx (team_id=None) -> the default team; no membership lookup."""
     create_mock = mocker.patch(
         "backend.api.features.api_keys.routes.api_key_db.create_api_key",
         new=AsyncMock(return_value=(_api_key_info(test_user_id), "agpt_plaintext")),
@@ -992,7 +1048,7 @@ def test_create_api_key_no_team_context_is_unrestricted(
     response = client.post("/api-keys", json={"name": "k", "permissions": []})
 
     assert response.status_code == 200
-    assert create_mock.await_args.kwargs["team_id_restriction"] is None
+    assert create_mock.await_args.kwargs["team_id_restriction"] == "test-workspace"
     get_teams.assert_not_awaited()
 
 

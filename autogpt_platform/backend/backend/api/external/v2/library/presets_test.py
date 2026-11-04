@@ -526,7 +526,7 @@ async def test_new_inputs_on_a_trigger_without_credentials_move_it_to_its_new_we
         auth=_key(RUNNER),
     )
 
-    attach.assert_awaited_once_with(USER_ID, "p-1", "hook-2")
+    attach.assert_awaited_once_with(USER_ID, "p-1", "hook-2", ORG, None, False)
     prune.assert_awaited_once_with(USER_ID, "hook-1")
 
 

@@ -41,6 +41,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.grants import grant_covers_version, resolve_graph_grants
+from backend.data.personal_scope import canonical_personal_scope
 from backend.data.tenancy import (
     agent_graph_attachment_barriers,
     get_user_team_ids,
@@ -2508,6 +2509,10 @@ async def __create_graph(
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
+    # As the database stores it, so the exact checks below agree with it.
+    organization_id, team_id = await canonical_personal_scope(
+        organization_id, team_id, tx
+    )
 
     # Reject unsafe dynamic pin names before anything is written, so no save
     # path (route, fork, copy, copilot) can persist one. The use-site guards in

@@ -114,26 +114,79 @@ The browser resolves the caller's own personal organization through
 screens. Remembered shared selections cannot be used as a fallback. Lookup
 failures show a retry state.
 
-Explicit organization/team headers, scoped API keys and OAuth tokens, write-team
-overrides, and new shared execution subscriptions cannot bypass the gate. Normal
-resource authorization still runs first. Requested shared writes are rejected,
-not silently redirected to personal storage: a run given an organization or team
-its user isn't an active member of is refused (`add_graph_execution`), never
-moved to the user's own.
+Explicit organization/team headers, write-team overrides, and new shared
+execution subscriptions cannot bypass the gate. API keys and OAuth tokens are
+held to the personal organization whether or not the gate is open (see
+[API keys and OAuth apps](#api-keys-and-oauth-apps)). Normal resource
+authorization still runs first. Requested shared writes are rejected, not
+silently redirected to personal storage: a run given an organization or team its
+user isn't an active member of is refused (`add_graph_execution`), never moved
+to the user's own.
 
 Personal and expert memory remain available. Shared memory is excluded from
 recall, storage, ingestion, tool arguments, and model instructions. Cleanup
 handlers such as leaving, declining, and revoking remain authorized and usable
 even though their collaboration UI is hidden. Personal bootstrap, migrations,
-persisted execution scope, and authorization checks remain active. Legacy
-authorized requests in the caller's own personal organization without a team
-retain access to existing resources; turning organizations off is not access
+persisted execution scope, and authorization checks remain active. Requests in
+the caller's own personal organization without a team act in its default team,
+where its existing resources are; turning organizations off is not access
 revocation.
+
+## One slot for personal work
+
+A personal organization keeps all of its rows in its default team. The web app
+used to save some at the organization's org-home (`teamId` NULL), which reads
+restricted to the default team then missed. Migration
+`20261103180000_one_personal_team_slot` moves those rows to the default team,
+and the trigger `a0_normalize_personal_team`, on every table with both tenant
+columns, does the same to every later write that names no team. Code applies
+the same rule where a scope is compared exactly: the request context (a
+personal organization with no `X-Team-Id` acts in its default team), credential
+scoping, the graph, library and store-submission lookups
+(`backend/data/personal_scope.py`), and scheduled Otto turns saved at a
+personal org-home before the move, which would otherwise find their chat
+elsewhere and delete their schedule. Team organizations keep org-home as a
+scope of its own. A test that builds a personal `RequestContext` by hand
+should give it the default team too, as `rest_api.py`'s `_test_request_context`
+does.
+
+The migration leaves a row where it was, and reports it in a `NOTICE`, when its
+owner is not an active member of the default team, or when moving it would
+collide with a row already there. Prod has no such collisions: those keys were
+unique per user until the branch's own migrations.
+
+`backend/data/personal_slot_guard_test.py` fails when a table gains both
+tenant columns without the trigger; add it there, or list the table in
+`NOT_NORMALIZED` with the reason.
+
+## API keys and OAuth apps
+
+Until credentials get their own design for shared organizations, API keys and
+OAuth tokens act only in their owner's personal organization and its default
+team, whether or not organizations are on for the account
+(`require_personal_scope` in `backend/api/org_rollout.py`):
+
+- A key or OAuth application tagged with a team organization gets a 403 on v1
+  and v2 and is refused by the MCP server, as is an `X-Team-Id` naming any
+  other team.
+- New keys are made in the personal organization's default team only. The API
+  keys page lists those keys, whichever organization is selected.
+- Keys made in a team organization before this still exist. Revoke one with
+  `DELETE /api/api-keys/{key_id}`, sent with that organization's `X-Org-Id`.
 
 ## Release checks
 
 - Preserve the database and artifact backups and verify the restore procedure.
 - Test migrations against a representative isolated copy before enabling users.
+- Before `20261103180000_one_personal_team_slot`, count read-only the rows in a
+  personal organization with `teamId` NULL in each of its tables. It moves them
+  in one transaction, and creating its triggers holds writes to all sixteen
+  tables until it commits; past about a million executions, move
+  `AgentGraphExecution` in a batched startup step instead.
+- `20260827180000_assert_tenant_integrity` was edited after it shipped to
+  branch databases. `prisma migrate deploy` doesn't compare checksums, but
+  `prisma migrate dev` asks to reset; update that migration's checksum in
+  `_prisma_migrations` instead.
 - Deploy API, frontend, executor, scheduler, and other tenant-aware workers
   together; do not run old unscoped workers against tenant-scoped writes.
 - With organizations off, verify personal work and cleanup still function and

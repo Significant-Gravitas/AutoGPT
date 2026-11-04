@@ -24,6 +24,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 
+from backend.api import org_rollout
 from backend.api.external import middleware
 from backend.api.external.middleware import resolve_auth_info
 from backend.data.auth.api_key import APIKeyInfo
@@ -223,8 +224,9 @@ async def test_oauth_without_app_scope_uses_live_default_context(mocker) -> None
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
-    default_context = mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
+    default_context = mocker.patch.object(
+        org_rollout,
+        "get_user_default_team",
         new=AsyncMock(return_value=("org-1", "team-1")),
     )
 
@@ -236,7 +238,15 @@ async def test_oauth_without_app_scope_uses_live_default_context(mocker) -> None
 
 
 @pytest.mark.asyncio
-async def test_oauth_app_scope_is_preserved(mocker, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "app_org, app_team, allowed",
+    [("personal-org", None, True), ("org-2", "team-2", False)],
+    ids=["callers-personal-org", "team-org"],
+)
+async def test_an_oauth_app_in_an_organization_acts_only_in_a_personal_one(
+    mocker, monkeypatch, app_org: str, app_team: str | None, allowed: bool
+) -> None:
+    """Personal-only credentials until credentials get their own design."""
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
     token = OAuthAccessTokenInfo(
         id="token-1",
@@ -257,19 +267,24 @@ async def test_oauth_app_scope_is_preserved(mocker, monkeypatch) -> None:
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        organization_id="org-2",
-        team_id_restriction="team-2",
+        organization_id=app_org,
+        team_id_restriction=app_team,
     )
-    default_context = mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        new=AsyncMock(),
+    mocker.patch.object(
+        org_rollout,
+        "get_user_default_team",
+        new=AsyncMock(return_value=("personal-org", "default-team")),
     )
 
+    if not allowed:
+        with pytest.raises(HTTPException) as refused:
+            await middleware._scope_oauth_token(token, application)
+        assert refused.value.status_code == 403
+        return
     scoped = await middleware._scope_oauth_token(token, application)
 
-    assert scoped.organization_id == "org-2"
-    assert scoped.team_id_restriction == "team-2"
-    default_context.assert_not_awaited()
+    assert scoped.organization_id == "personal-org"
+    assert scoped.team_id_restriction == "default-team"
 
 
 @pytest.mark.parametrize(
@@ -413,7 +428,7 @@ def _token(user_id: str) -> OAuthAccessTokenInfo:
 def personal_default_team(mocker):
     """v1 pins a credential minted before organizations to this tenant."""
     return mocker.patch.object(
-        middleware.org_db,
+        org_rollout,
         "get_user_default_team",
         AsyncMock(return_value=("personal-org", "default-team")),
     )
