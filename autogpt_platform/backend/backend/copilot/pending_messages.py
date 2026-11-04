@@ -30,10 +30,12 @@ from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     capped_rpush,
     capped_rpush_if_hash_field,
+    pop_matching_list_prefix,
     string_compare_and_set,
 )
 
@@ -106,6 +108,7 @@ class PendingMessage(BaseModel):
     # session sent).  Set only by internal callers; the HTTP pending route
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
+    model_image: ToolImage | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -369,19 +372,34 @@ async def push_pending_message_if_session_running(
     return new_length
 
 
-async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
+async def drain_pending_messages(
+    session_id: str, *, text_only: bool = False
+) -> list[PendingMessage]:
     """Atomically pop all pending messages for *session_id*.
 
-    Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
-    count so the read+delete is a single Redis round trip.  If the list
-    is empty or missing, returns ``[]``.
+    Returns them in enqueue order (oldest first). Text-only consumers
+    stop before the first image, atomically removing just the inspected
+    prefix if it has not changed. Other consumers drain with ``LPOP``.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # LPOP with count drains everything in one round-trip; the push side
-    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
-    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
+    if text_only:
+        items = await cast("Any", redis.lrange(key, 0, MAX_PENDING_MESSAGES - 1))
+        prefix: list[str] = []
+        for item in items:
+            payload = _decode_redis_item(item)
+            try:
+                message = _from_buffer(json.loads(payload))
+            except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+                prefix.append(payload)
+                continue
+            if message.model_image is not None:
+                break
+            prefix.append(payload)
+        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
+    else:
+        lpop_result = await cast("Any", redis.lpop(key, MAX_PENDING_MESSAGES))
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
@@ -392,7 +410,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for payload in decoded:
         try:
-            messages.append(PendingMessage.model_validate(json.loads(payload)))
+            messages.append(_from_buffer(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
@@ -407,6 +425,17 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             session_id,
         )
     return messages
+
+
+def _from_buffer(data: Any) -> PendingMessage:
+    # Deferred: the gate's held result is built on this module's message.
+    from backend.copilot.gate.held import HeldResult
+
+    # A held call's result, re-queued by a save that rolled back, keeps the
+    # larger cap it was built with; the action behind it has already run.
+    if isinstance(data, dict) and HeldResult.carried_by(data):
+        return HeldResult.model_validate(data)
+    return PendingMessage.model_validate(data)
 
 
 async def peek_pending_count(session_id: str) -> int:
@@ -431,9 +460,7 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for item in items:
         try:
-            messages.append(
-                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
-            )
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed peek entry for %s: %s",
@@ -532,9 +559,7 @@ async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for item in raw_popped:
         try:
-            messages.append(
-                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
-            )
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed persist-queue entry for %s: %s",
@@ -606,7 +631,7 @@ async def drain_and_format_for_injection(
     if not session_id:
         return ""
     try:
-        pending = await drain_pending_messages(session_id)
+        pending = await drain_pending_messages(session_id, text_only=True)
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed (session=%s); skipping injection",
@@ -634,6 +659,16 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     message into the conversation.  Context/file metadata (if any) is
     embedded into the content so the model sees everything in one block.
     """
+    text = pending_message_text(message)
+    content = (
+        [{"type": "text", "text": text}, message.model_image.openai()]
+        if message.model_image
+        else text
+    )
+    return {"role": "user", "content": content}
+
+
+def pending_message_text(message: PendingMessage) -> str:
     parts: list[str] = [message.content]
     if message.context:
         if message.context.url:
@@ -646,4 +681,4 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
             + "\n".join(f"- file_id={fid}" for fid in message.file_ids)
             + "\nUse read_workspace_file with the file_id to access file contents."
         )
-    return {"role": "user", "content": "".join(parts)}
+    return "".join(parts)

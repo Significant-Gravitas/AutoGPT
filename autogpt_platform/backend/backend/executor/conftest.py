@@ -61,3 +61,32 @@ def _default_team_untenanted(mocker):
         "backend.api.features.orgs.db.get_user_default_team",
         new=mocker.AsyncMock(return_value=(None, None)),
     )
+
+
+@pytest.fixture(autouse=True)
+def _runners_belong_to_their_org(mocker):
+    """Treat the runner as a member of the org/team a run is given.
+
+    ``add_graph_execution`` keeps a run's org/team only if the user belongs to
+    it, and checks that against the database. Executor tests use synthetic
+    users and orgs, so by default the check passes the given pair through.
+    Tests of a run given someone else's org override this patch.
+    """
+    mocker.patch(
+        "backend.executor.utils.resolve_member_tenancy",
+        new=mocker.AsyncMock(
+            side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _orgs_are_not_personal(mocker):
+    """Treat every org a run is given as a team org, whose balance pays.
+
+    ``add_graph_execution`` reads the org's personal owner to decide which
+    ledger the run bills. Tests of a run in its user's personal org override it.
+    """
+    lookup = mocker.MagicMock()
+    lookup.get_personal_org_owner = mocker.AsyncMock(return_value=None)
+    return mocker.patch("backend.executor.utils.credit_db", return_value=lookup)

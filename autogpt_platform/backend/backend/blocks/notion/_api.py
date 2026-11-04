@@ -177,22 +177,40 @@ class NotionClient:
 
         return response.json()
 
-    async def update_page(self, page_id: str, properties: dict) -> dict:
+    async def update_page(
+        self,
+        page_id: str,
+        properties: Optional[dict] = None,
+        icon: Optional[dict] = None,
+        cover: Optional[dict] = None,
+        archived: Optional[bool] = None,
+    ) -> dict:
         """
-        Update a page's properties.
+        Update a page's properties, icon, cover or trash state.
 
         Args:
             page_id: The ID of the page to update.
-            properties: Properties to update.
+            properties: Optional properties to update.
+            icon: Optional icon object.
+            cover: Optional cover object.
+            archived: True moves the page to the trash, False restores it.
 
         Returns:
             The updated page object.
         """
         url = f"https://api.notion.com/v1/pages/{page_id}"
 
-        response = await self.requests.patch(
-            url, headers=self.headers, json={"properties": properties}
-        )
+        payload: Dict[str, Any] = {}
+        if properties:
+            payload["properties"] = properties
+        if icon:
+            payload["icon"] = icon
+        if cover:
+            payload["cover"] = cover
+        if archived is not None:
+            payload["archived"] = archived
+
+        response = await self.requests.patch(url, headers=self.headers, json=payload)
 
         if not response.ok:
             raise NotionAPIException(

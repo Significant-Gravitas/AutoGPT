@@ -9,7 +9,7 @@ import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink } from "@/lib/auth-redirect";
 import {
   ApiError,
   UserOnboarding,
@@ -17,6 +17,11 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  isAbortError,
+  isNetworkError,
+  retryTransient,
+} from "@/lib/transient-errors";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -31,6 +36,7 @@ import {
 import {
   decideOnboardingRedirect,
   fromBackendUserOnboarding,
+  hasCompletedOnboarding,
   LocalOnboardingStateUpdate,
   shouldRedirectFromOnboarding,
   updateOnboardingState,
@@ -43,6 +49,10 @@ type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
+      // Whether the signed-in user has finished onboarding; `null` until that
+      // is known. Prompts that would send a new user somewhere else (the
+      // paywall, the out-of-credits dialog) wait for `true`.
+      isOnboardingComplete: boolean | null;
       updateState: (state: LocalOnboardingStateUpdate) => void;
       step: number;
       setStep: (step: number) => void;
@@ -84,8 +94,9 @@ export function useOnboarding(
 // When `/login?next=/profile` is hit, useLoginPage/useSignupPage fires its own
 // redirect to the requested target, so the provider must not race it. Sanitize
 // with the same helper the auth pages use — otherwise an unsafe value (e.g.
-// `?next=https://evil.site`) would defer us here while the auth page drops it
-// as `null`, deadlocking the user on the auth loader. Read from the location
+// `?next=https://evil.site`) or a default landing (`?next=/home`) would defer
+// us here while the auth page drops it as `null`, deadlocking the user on the
+// auth loader. Read from the location
 // (only ever inside an effect, after Next has committed the URL) instead of
 // useSearchParams, which would re-render this app-root provider on every
 // search-param write anywhere in the app. AuthDeepLinkWatcher re-runs the
@@ -93,7 +104,7 @@ export function useOnboarding(
 function readPendingAuthDeepLink(isOnAuthRoute: boolean) {
   if (!isOnAuthRoute) return false;
   const next = new URLSearchParams(window.location.search).get("next");
-  return sanitizeAuthNext(next) !== null;
+  return getAuthDeepLink(next) !== null;
 }
 
 export default function OnboardingProvider({
@@ -112,10 +123,26 @@ export default function OnboardingProvider({
 
   const api = useBackendAPI();
   const pathname = usePathname();
+  const latestPathname = useRef(pathname);
+  const [initRetry, setInitRetry] = useState(0);
   const router = useRouter();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+  const userID = user?.id ?? null;
+  const latestUserID = useRef(userID);
+  // Tagged with the account it was read for, so one account's answer never
+  // lets the paywall or top-up prompt open for the next one in this tab.
+  const [completion, setCompletion] = useState<{
+    userID: string | null;
+    isCompleted: boolean;
+  } | null>(null);
+  const isOnboardingComplete =
+    isLoggedIn && completion?.userID === userID ? completion.isCompleted : null;
 
   useOnboardingTimezoneDetection();
+
+  useEffect(() => {
+    latestUserID.current = userID;
+  }, [userID]);
 
   // Cleanup effect to track mount state and cancel pending operations
   useEffect(() => {
@@ -143,13 +170,30 @@ export default function OnboardingProvider({
   // bouncing an un-onboarded account to /onboarding would skip the password
   // change and turn the reset link into a one-time sign-in link.
   const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
+  // A bot account-link page (/link/<token>, /link/slack/installed) must render
+  // for un-onboarded users too: the link token expires in 30 minutes and the
+  // wizard never returns here. Onboarding runs on the next navigation.
+  const isOnPlatformLinkRoute = pathname.startsWith("/link/");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
   // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
   const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
 
+  const recordCompletion = useCallback(
+    (forUserID: string | null, isCompleted: boolean) => {
+      if (!isMounted.current) return;
+      setCompletion((prev) =>
+        prev?.userID === forUserID && prev.isCompleted === isCompleted
+          ? prev
+          : { userID: forUserID, isCompleted },
+      );
+    },
+    [],
+  );
+
   const fetchOnboarding = useCallback(async () => {
+    const requestUserID = latestUserID.current;
     const onboarding = await resolveResponse(getV1OnboardingState());
     const processedOnboarding = fromBackendUserOnboarding(onboarding);
     if (isMounted.current) {
@@ -158,9 +202,14 @@ export default function OnboardingProvider({
       setState((prev) =>
         isEqual(prev, processedOnboarding) ? prev : processedOnboarding,
       );
+      // Only ever upgrades: this is how the wizard's finish reaches us. A
+      // "not complete" answer comes from the completion check in the init.
+      if (hasCompletedOnboarding(processedOnboarding.completedSteps)) {
+        recordCompletion(requestUserID, true);
+      }
     }
     return processedOnboarding;
-  }, []);
+  }, [recordCompletion]);
 
   // If a logged-in user navigates back to /signup or /login after the
   // initialize-once effect already ran (e.g., browser back from /onboarding,
@@ -174,13 +223,18 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
+    latestPathname.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     // Prevent multiple initializations. Skipped routes don't mark
     // hasInitialized, so init re-runs on the next pathname change.
     if (
       hasInitialized.current ||
       !isLoggedIn ||
       isOnPublicTour ||
-      isOnPasswordResetRoute
+      isOnPasswordResetRoute ||
+      isOnPlatformLinkRoute
     ) {
       return;
     }
@@ -196,10 +250,12 @@ export default function OnboardingProvider({
     hasInitialized.current = true;
 
     async function initializeOnboarding() {
+      const requestUserID = latestUserID.current;
       try {
-        const { is_completed } = await resolveResponse(
-          getV1CheckIfOnboardingIsCompleted(),
+        const { is_completed } = await retryTransient(() =>
+          resolveResponse(getV1CheckIfOnboardingIsCompleted()),
         );
+        recordCompletion(requestUserID, is_completed);
 
         const redirectTarget = decideOnboardingRedirect({
           isCompleted: is_completed,
@@ -212,7 +268,7 @@ export default function OnboardingProvider({
           return;
         }
 
-        const onboarding = await fetchOnboarding();
+        const onboarding = await retryTransient(fetchOnboarding);
 
         // Handle redirects for completed onboarding
         if (
@@ -227,8 +283,16 @@ export default function OnboardingProvider({
           return;
         }
 
-        if (error instanceof DOMException && error.name === "AbortError") {
+        // A fetch that still can't get through after the retries means the
+        // user is offline or navigating away, not looking at a broken
+        // onboarding. Try again on the next route change instead of alarming
+        // them with a destructive toast.
+        if (isAbortError(error) || isNetworkError(error)) {
+          console.warn("Onboarding initialization deferred:", error);
           hasInitialized.current = false;
+          // A route change that landed while this was in flight was skipped
+          // by the guard above, so run again for it now.
+          if (latestPathname.current !== pathname) setInitRetry((n) => n + 1);
           return;
         }
 
@@ -254,7 +318,27 @@ export default function OnboardingProvider({
     pathname,
     isOnPublicTour,
     isOnPasswordResetRoute,
+    isOnPlatformLinkRoute,
+    initRetry,
+    recordCompletion,
   ]);
+
+  // The wizard ends by sending the user to /home, and its completion would
+  // otherwise only reach this provider through a websocket notification.
+  // Re-read it on the way out so a dropped socket can't keep the paywall and
+  // top-up prompt hidden for someone who did finish. Read only, no redirect:
+  // leaving for /logout must not bounce back into the wizard.
+  const wasOnOnboardingRoute = useRef(isOnOnboardingRoute);
+  useEffect(() => {
+    const hasLeftOnboarding =
+      wasOnOnboardingRoute.current && !isOnOnboardingRoute;
+    wasOnOnboardingRoute.current = isOnOnboardingRoute;
+    if (!hasLeftOnboarding || !isLoggedIn || isOnboardingComplete === true)
+      return;
+    retryTransient(fetchOnboarding).catch((error) => {
+      console.warn("Couldn't refresh onboarding after the wizard:", error);
+    });
+  }, [isOnOnboardingRoute, isLoggedIn, isOnboardingComplete, fetchOnboarding]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
@@ -349,8 +433,15 @@ export default function OnboardingProvider({
   );
 
   const value = useMemo(
-    () => ({ state, updateState, step, setStep, completeStep }),
-    [state, updateState, step, completeStep],
+    () => ({
+      state,
+      isOnboardingComplete,
+      updateState,
+      step,
+      setStep,
+      completeStep,
+    }),
+    [state, isOnboardingComplete, updateState, step, completeStep],
   );
 
   return (

@@ -14,8 +14,6 @@ const context = vi.hoisted(() => ({
   user: { id: "returning-user", created_at: "2026-09-01T00:00:00Z" },
   pathname: "/library",
   search: "",
-  flags: {} as Record<string, boolean>,
-  readiness: {} as Record<string, boolean>,
   state: null as { completedSteps: string[] } | null,
   noticeWait: null as Promise<void> | null,
   completeStep: vi.fn(),
@@ -38,17 +36,6 @@ vi.mock("next/navigation", () => ({
   usePathname: () => context.pathname,
   useSearchParams: () => new URLSearchParams(context.search),
   useRouter: () => ({ push: context.push }),
-}));
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: (flag: string) => context.flags[flag] ?? false,
-  useFlagStatus: (flag: string) => ({
-    enabled: context.flags[flag] ?? false,
-    ready: context.readiness[flag] ?? true,
-  }),
 }));
 
 import { AgentsTabIntro } from "@/app/(platform)/library/components/AgentsTabIntro/AgentsTabIntro";
@@ -96,11 +83,6 @@ beforeEach(() => {
   context.user = { id: "returning-user", created_at: "2026-09-01T00:00:00Z" };
   context.pathname = "/library";
   context.search = "";
-  context.flags = {
-    "onboarding-brain-dump": true,
-    "hire-experts": true,
-  };
-  context.readiness = {};
   context.state = { completedSteps: ["ONBOARDING_COMPLETE"] };
   context.noticeWait = null;
   server.use(
@@ -142,35 +124,6 @@ describe("migration notice with production first-visit tutorials", () => {
     expect(context.capture).not.toHaveBeenCalled();
   });
 
-  it.each(["flags", "intro record"])(
-    "never flashes the agents tutorial when %s arrives first",
-    async (first) => {
-      context.state = null;
-      context.readiness = { "hire-experts": false };
-      const { refresh } = renderTogether();
-      expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
-      if (first === "flags") {
-        context.readiness = {};
-        refresh();
-        await screen.findByRole("dialog", { name: "Your agents have moved" });
-        expectOnlyDialog("Your agents have moved");
-        context.state = { completedSteps: ["ONBOARDING_COMPLETE"] };
-      } else {
-        context.state = { completedSteps: ["ONBOARDING_COMPLETE"] };
-        refresh();
-        expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
-          0,
-        );
-        context.readiness = {};
-      }
-      refresh();
-      await screen.findByRole("dialog", { name: "Your agents have moved" });
-      expectOnlyDialog("Your agents have moved");
-      expect(context.capture).not.toHaveBeenCalled();
-      expectNoWrites();
-    },
-  );
-
   it("keeps both dialogs closed while the migration record is delayed", async () => {
     let release = () => {};
     context.noticeWait = new Promise<void>((resolve) => {
@@ -196,25 +149,6 @@ describe("migration notice with production first-visit tutorials", () => {
     );
     await waitFor(() =>
       expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0),
-    );
-    expect(context.completeStep).toHaveBeenCalledExactlyOnceWith(
-      "AGENTS_TAB_INTRO",
-    );
-    expect(context.getState).not.toHaveBeenCalled();
-    expect(context.postedStep).not.toHaveBeenCalled();
-  });
-
-  it("preserves the old tutorial when delayed hire-experts resolves off", async () => {
-    context.flags["hire-experts"] = false;
-    context.readiness["hire-experts"] = false;
-    const { refresh } = renderTogether();
-    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
-    context.readiness["hire-experts"] = true;
-    refresh();
-    expectOnlyDialog("Your mission control.");
-    expectNoWrites();
-    await userEvent.click(
-      screen.getByRole("button", { name: "See my workflows" }),
     );
     expect(context.completeStep).toHaveBeenCalledExactlyOnceWith(
       "AGENTS_TAB_INTRO",

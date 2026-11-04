@@ -1,6 +1,6 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink } from "@/lib/auth-redirect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -34,8 +36,10 @@ export function useSignupPage() {
   const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  // `/signup?next=https://phishing.site` cannot redirect users elsewhere. A
+  // default landing (`next=/home`) is dropped too, so a new account goes to
+  // onboarding instead of Home (SECRT-3384).
+  const nextUrl = getAuthDeepLink(searchParams.get("next"));
 
   useEffect(() => {
     isMounted.current = true;
@@ -86,6 +90,8 @@ export function useSignupPage() {
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
     setIsSigningUp(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
@@ -134,7 +140,7 @@ export function useSignupPage() {
     setMarketingOptOutFlag(false);
     setIsLoading(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title:
           "Please use Google SSO to create an account using an AutoGPT email.",
@@ -146,6 +152,7 @@ export function useSignupPage() {
     }
 
     setIsSigningUp(true);
+    clearImpersonationEverywhere();
 
     try {
       const result = await signupAction(

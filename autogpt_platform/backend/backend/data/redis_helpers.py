@@ -55,6 +55,13 @@ redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
 return 1
 """
 
+_HASH_COMPARE_DELETE_LUA = """
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
+end
+return redis.call('DEL', KEYS[1])
+"""
+
 # Push to a capped list only when a hash field currently matches the expected
 # value. Returns the new list length, or -1 when the guard fails.
 #
@@ -83,6 +90,16 @@ else
     redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
 end
 return 1
+"""
+
+_POP_MATCHING_PREFIX_LUA = """
+local current = redis.call('LRANGE', KEYS[1], 0, #ARGV - 1)
+if #current ~= #ARGV then return {} end
+for i = 1, #ARGV do
+    if current[i] ~= ARGV[i] then return {} end
+end
+redis.call('LTRIM', KEYS[1], #ARGV, -1)
+return current
 """
 
 _GATED_CAPPED_RPUSH_LUA = """
@@ -455,6 +472,26 @@ async def hash_compare_and_set(
         redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
     )
     return int(result) == 1
+
+
+async def hash_compare_and_delete(
+    redis: AsyncRedisClient, key: str, field: str, *, expected: str
+) -> bool:
+    """Delete a hash atomically only while the named field still identifies its owner."""
+    result = await cast(
+        "Any", redis.eval(_HASH_COMPARE_DELETE_LUA, 1, key, field, expected)
+    )
+    return int(result) == 1
+
+
+async def pop_matching_list_prefix(
+    redis: AsyncRedisClient, key: str, expected: list[str]
+) -> list[str | bytes]:
+    """Pop a previously inspected prefix only if it still matches atomically."""
+    if not expected:
+        return []
+    result = await cast("Any", redis.eval(_POP_MATCHING_PREFIX_LUA, 1, key, *expected))
+    return list(result or [])
 
 
 async def string_compare_and_set(

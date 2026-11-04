@@ -2,6 +2,7 @@
 newer pick on either side, never creates a MailerLite subscriber, and keeps
 anyone MailerLite may not hold out of it."""
 
+import json
 import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -39,6 +40,65 @@ def test_only_reliable_picks_are_planned():
         "kept@x.io": OnboardingRole(choice="Other", other="Dentist"),
         "exact@x.io": OnboardingRole(choice="Sales/BD"),
         "both@x.io": OnboardingRole(choice="Marketing"),
+    }
+
+
+def _draft(**fields) -> str:
+    return json.dumps(
+        {
+            "version": 1,
+            "currentStep": "subscription",
+            "completedSteps": ["team", "autopilot", "role", "painPoints", "hire"],
+            "role": "Other",
+            "otherRole": "Dentist",
+            "painPoints": [],
+            "otherPainPoint": "",
+            "selectedBilling": "monthly",
+            "hasUserSelectedBilling": False,
+            "selectedCountryCode": "US",
+            "hiredTemplateIds": [],
+            **fields,
+        }
+    )
+
+
+def test_the_draft_of_someone_who_stopped_at_the_paywall_is_planned():
+    plan = role_backfill.plan(
+        [
+            _record("paywall@x.io", wizard_progress=_draft()),
+            # The kept pick is the newer one.
+            _record("kept@x.io", choice="Marketing", wizard_progress=_draft()),
+            # The draft is the pick; the understanding's copy may be a rewrite.
+            _record(
+                "both@x.io",
+                wizard_progress=_draft(role="Engineering"),
+                understanding_role="Sales/BD",
+            ),
+            # Still on the role step: no pick yet, so the understanding counts.
+            _record(
+                "editing@x.io",
+                wizard_progress=_draft(currentStep="role"),
+                understanding_role="Sales/BD",
+            ),
+            # Back before the role step, which stays completed: Other's text
+            # may be half typed, so it is skipped.
+            _record("back@x.io", wizard_progress=_draft(currentStep="autopilot")),
+            _record("broken@x.io", wizard_progress='{"version": 2}'),
+        ],
+        current={},
+    )
+    assert (plan.accounts, plan.kept, plan.drafted, plan.exact, plan.skipped) == (
+        6,
+        1,
+        2,
+        1,
+        2,
+    )
+    assert {a.email: a.role for a in plan.posthog} == {
+        "paywall@x.io": OnboardingRole(choice="Other", other="Dentist"),
+        "kept@x.io": OnboardingRole(choice="Marketing"),
+        "both@x.io": OnboardingRole(choice="Engineering"),
+        "editing@x.io": OnboardingRole(choice="Sales/BD"),
     }
 
 

@@ -6,9 +6,12 @@ The dream reads Alice's fact and its episode, the user forgets the fact
 (soft or hard), then the dream writes a consolidation or a proposal resting
 on what it read: the worker drops it under the graph's write lock
 (``recall_citations.py``), no edge is added, the fact stays out of recall
-and the pass reports the drop. A write resting only on live memory still
-lands. Reproduced first by an independent validation
-(``r5-quality-delayed-operations.py``, the four stale-dream cases).
+and the pass reports the drop. A write citing nothing the pass read never
+gets that far: apply drops it first (``dream/citations.py``). A write resting
+only on live memory still lands. Reproduced first by an independent
+validation (``r5-quality-delayed-operations.py``, the four stale-dream
+cases). A forget made after the dream's writes landed is
+``recall_cascade_integration_test.py``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -104,7 +107,10 @@ def _resting_on(operation: str, read: DreamInput, content: str) -> DreamOperatio
     facts, episodes = sorted(read.known_fact_uuids), sorted(read.known_episode_uuids)
     if operation == "consolidate":
         fact = ConsolidatedFact(
-            content=content, confidence=0.9, source_episode_uuids=episodes
+            content=content,
+            confidence=0.9,
+            source_episode_uuids=episodes,
+            source_fact_uuids=facts,
         )
         return DreamOperations(writes=[fact])
     finding = ProposedFinding(
@@ -177,13 +183,12 @@ async def test_a_dream_write_resting_on_a_fact_forgotten_since_it_read_is_droppe
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize("hard", [False, True], ids=["soft", "hard"])
-async def test_an_uncited_dream_write_after_a_forget_is_dropped(
+async def test_an_uncited_dream_write_is_dropped_before_it_is_queued(
     scope_graph, stub_graphiti_client, dream_apply, hard: bool
 ) -> None:
-    """Citing nothing, it rests on everything the pass read, and its
-    statement is compared with the sentences forgotten facts keep. The soft
-    case applies with nothing read, so only the statement can drop it; a
-    hard forget keeps no sentence, so there the pass's read drops it."""
+    """A restatement of the forgotten fact citing nothing, and one citing
+    only a uuid the pass never read, are dropped by apply and counted: the
+    worker never sees them."""
     driver, scope = scope_graph
     _, edges = await ingest_facts(
         driver, scope, stub_graphiti_client, [ALICE], session_id="s-1"
@@ -192,16 +197,17 @@ async def test_an_uncited_dream_write_after_a_forget_is_dropped(
     await retract(scope, list(edges.values()), hard=hard)
     before = await _edges(driver)
     restated = ConsolidatedFact(content="  alice WORKS on\tAtlas ", confidence=0.9)
+    made_up = restated.model_copy(update={"source_fact_uuids": ["made-up"]})
 
     stats = await _apply(
         driver,
         scope,
         stub_graphiti_client,
-        DreamOperations(writes=[restated]),
-        read if hard else None,
+        DreamOperations(writes=[restated, made_up]),
+        read,
     )
 
-    assert stats["dropped_forgotten"] == 1
+    assert (stats["uncited_writes_dropped"], stats["dropped_forgotten"]) == (2, 0)
     assert await _edges(driver) == before, "the dream added an edge"
     assert await _dream_episodes(driver) == 0
     assert ALICE[2] not in await _recalled(scope)
@@ -214,8 +220,8 @@ async def test_a_dream_write_resting_only_on_live_memory_still_lands(
     scope_graph, stub_graphiti_client, dream_apply, operation: str
 ) -> None:
     """Alice is forgotten after the pass read; a write citing only Bob's
-    fact and episode is written, like one citing nothing from a pass that
-    read after the forget."""
+    fact and episode is written, like one from a pass that read after the
+    forget."""
     driver, scope = scope_graph
     _, alice = await ingest_facts(
         driver, scope, stub_graphiti_client, [ALICE], session_id="s-1"
@@ -228,8 +234,8 @@ async def test_a_dream_write_resting_only_on_live_memory_still_lands(
     cited = await _apply(
         driver, scope, stub_graphiti_client, ops, read, extracted=_BOREALIS
     )
-    uncited = ConsolidatedFact(content="Bob plans Borealis", confidence=0.9)
-    ops, read = DreamOperations(writes=[uncited]), await _gather(scope)
+    read = await _gather(scope)
+    ops = _resting_on(operation, read, "Bob plans Borealis")
     fresh = await _apply(
         driver,
         scope,

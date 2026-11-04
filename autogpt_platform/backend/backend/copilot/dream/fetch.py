@@ -25,9 +25,11 @@ from backend.copilot.graphiti.recall import (
     live_fact_predicate,
     recallable_episode_predicate,
 )
+from backend.copilot.graphiti.recall_stamp import RecallStamp, recall_stamp_columns
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.hidden_rows import visible_to_model
-from backend.copilot.model import ChatSessionInfo
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import ChatMessage, ChatSessionInfo
 from backend.data.db_accessors import chat_db
 
 from .hidden_sessions import hidden_session_ids
@@ -50,8 +52,9 @@ class EpisodeRow(BaseModel):
     created_at: str | None
 
 
-class FactRow(BaseModel):
-    uuid: str
+class FactRow(RecallStamp):
+    """An active fact and its recall stamps (all ``None``: never recalled)."""
+
     source: str | None
     target: str | None
     name: str | None
@@ -223,7 +226,8 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at
+                   toString(e.created_at) AS created_at,
+                   {recall_stamp_columns("e")}
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -249,6 +253,9 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
     ]
@@ -317,7 +324,7 @@ async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
     chat_db gains one.
     """
     sid = session.session_id
-    messages: list = []
+    messages: list[ChatMessage] = []
     try:
         paginated = await chat_db().get_chat_messages_paginated(
             session_id=sid, limit=20, user_id=user_id
@@ -338,11 +345,13 @@ async def _session_row(session: ChatSessionInfo, user_id: str) -> SessionRow:
     )
 
 
-def _session_body(messages: list) -> str:
-    """``role: content`` lines, cut to ``MAX_SESSION_BODY_BYTES``."""
+def _session_body(messages: list[ChatMessage]) -> str:
+    """``role: content`` lines, cut to ``MAX_SESSION_BODY_BYTES``. The first
+    message is read without the memory block an older session stored in it
+    (``without_stored_first_turn_memory``)."""
     body_parts: list[str] = []
     running_len = 0
-    for m in messages:
+    for m in without_stored_first_turn_memory(messages):
         line = f"{m.role}: {m.content or ''}"
         running_len += len(line) + 1
         body_parts.append(line)

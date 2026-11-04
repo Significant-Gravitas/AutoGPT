@@ -60,8 +60,11 @@ export function SetupAnalytics(props: SetupProps) {
           />
         </>
       ) : null}
-      {/* Datafa.st — onLoad is load-bearing: it delivers the events that were
-          queued before the script finished loading */}
+      {/* DataFast is kept for attribution only: the script records the visit
+          and sets the visitor and session cookies that the server-side signup
+          goal, the X-Datafast-* headers and the Stripe checkout metadata read.
+          In-app behaviour goes to PostHog. onLoad is load-bearing: it delivers
+          the /tour events queued before the script finished loading */}
       {dataFastEnabled ? (
         <Script
           strategy="afterInteractive"

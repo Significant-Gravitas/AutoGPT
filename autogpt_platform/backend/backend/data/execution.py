@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import queue
 from collections import defaultdict
@@ -22,6 +23,7 @@ from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
+    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
@@ -58,6 +60,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     DatabaseError,
     ExecutionFailureReason,
+    InvalidInputError,
     NotFoundError,
     get_execution_failure_reason,
 )
@@ -72,6 +75,7 @@ from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     MAX_NODE_INPUT_OUTPUT_FETCH,
@@ -126,6 +130,9 @@ class ExecutionContext(BaseModel):
     # Org/team tenancy context
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+    # Set when the run is queued, never after: its charges go to its user's own
+    # wallet, as its org was their personal org. False bills organization_id.
+    bills_own_wallet: bool = False
 
     # Expert attribution: carried at runtime so billing can meter per-expert
     # spend and the executor can post run results into the expert's thread.
@@ -430,7 +437,7 @@ class GraphExecution(GraphExecutionMeta):
 
         complete_node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
                 if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
@@ -493,7 +500,7 @@ class GraphExecutionWithNodes(GraphExecution):
 
         node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
@@ -541,7 +548,13 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
+    def from_db(
+        _node_exec: AgentNodeExecution,
+        user_id: Optional[str] = None,
+        graph_execution: AgentGraphExecution | None = None,
+    ):
+        """`graph_execution` is the parent run, for a node execution read
+        without it (`NESTED_EXECUTION_RESULT_INCLUDE`)."""
         try:
             stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
         except (ValueError, ValidationError):
@@ -581,7 +594,7 @@ class NodeExecutionResult(BaseModel):
             for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
-        graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
+        graph_execution = _node_exec.GraphExecution or graph_execution
         if graph_execution:
             user_id = graph_execution.userId
         elif not user_id:
@@ -642,6 +655,8 @@ async def get_graph_executions(
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
     expert_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    deleted: bool = False,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -653,22 +668,29 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        organization_id: Only executions stored in this org. An exact match,
+            unlike in `get_graph_executions_paginated`, where it also lists the
+            org's executions the user can see
+        deleted: List the executions deleted from history instead of the
+            visible ones
     """
     where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
+        "isDeleted": deleted,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Scope by user_id and optionally team_id. Don't conflate either with
-    # organizationId — those are separate columns in the schema and a
+    # Scope by user_id and optionally team_id or organization_id. Don't
+    # conflate them: they are separate columns in the schema, and a
     # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
     if team_id:
         where_filter["teamId"] = team_id
+    if organization_id:
+        where_filter["organizationId"] = organization_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
@@ -841,16 +863,17 @@ async def get_graph_executions_paginated(
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
-    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
-    total_pages = (total_count + page_size - 1) // page_size
-
     offset = (page - 1) * page_size
-    executions = await AgentGraphExecution.prisma().find_many(
-        where=where_filter,
-        order={"createdAt": "desc"},
-        take=page_size,
-        skip=offset,
+    total_count, executions = await asyncio.gather(
+        AgentGraphExecution.prisma().count(where=where_filter),
+        AgentGraphExecution.prisma().find_many(
+            where=where_filter,
+            order={"createdAt": "desc"},
+            take=page_size,
+            skip=offset,
+        ),
     )
+    total_pages = (total_count + page_size - 1) // page_size
 
     return GraphExecutionsPaginated(
         executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
@@ -980,6 +1003,8 @@ async def create_graph_execution(
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    check_node_input_counts(starting_nodes_input)
+
     # Defense in depth: attribution must never cross users, even if a
     # caller forgets its ownership check. Only costs a query on the rare
     # expert-attributed path.
@@ -1061,6 +1086,22 @@ async def create_graph_execution(
         )
 
     return GraphExecutionWithNodes.from_db(result)
+
+
+def check_node_input_counts(
+    starting_nodes_input: list[tuple[str, BlockInput]],
+) -> None:
+    """Refuse a run whose starting inputs would outgrow what a read brings back.
+
+    A node's input is one row per name, and the names come from the request, the
+    node's own defaults and the input masks of whatever started the run.
+    """
+    for node_id, node_input in starting_nodes_input:
+        if len(node_input) > MAX_NODE_INPUT_OUTPUT_FETCH:
+            raise InvalidInputError(
+                f"Node #{node_id} takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} "
+                f"inputs; got {len(node_input)}"
+            )
 
 
 async def upsert_execution_input(
@@ -1561,6 +1602,11 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
     # When the node was queued and by what: ``graph_start`` for a node queued
     # before this executor picked the run up (an entry node, or one left
     # queued by an interrupted run), ``node_output`` for one queued by an
@@ -1570,6 +1616,9 @@ class NodeExecutionEntry(BaseModel):
     queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
         default=None, exclude=True
     )
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
+    input_error: Optional[str] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
@@ -1910,13 +1959,18 @@ async def get_graph_execution_by_share_token(
         where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            **GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+            # The owner's filter and cap; the nodes are read once below.
+            **graph_execution_include(
+                [*get_io_block_ids(), *get_webhook_block_ids()],
+                node_execution_include=EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+            ),
         },
     )
 
     if not execution:
         return None
 
+    await attach_nodes_to_executions(execution.NodeExecutions or [])
     outputs = GraphExecution.from_db(execution).outputs
 
     return SharedExecutionResponse(
@@ -1933,6 +1987,26 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+async def attach_nodes_to_executions(
+    executions: list[AgentNodeExecution], tx: Any | None = None
+) -> None:
+    """Give each execution its node, read once per node rather than per row.
+
+    Rows that already carry their node keep it, so a caller whose include
+    brought the node along is left alone.
+    """
+    missing = [node_exec for node_exec in executions if node_exec.Node is None]
+    node_ids = list({node_exec.agentNodeId for node_exec in missing})
+    if not node_ids:
+        return
+    nodes = {
+        node.id: node
+        for node in await AgentNode.prisma(tx).find_many(where={"id": {"in": node_ids}})
+    }
+    for node_exec in missing:
+        node_exec.Node = nodes.get(node_exec.agentNodeId)
 
 
 async def create_shared_execution_files(
@@ -2009,6 +2083,10 @@ async def get_shared_execution_file(
     share is still live (see :func:`live_execution_share`), None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
+
+    The run must still be shared under this same token and not deleted: an
+    allowlist row that outlived an unshare, a re-share or a delete (a write
+    that failed halfway, or two that raced) authorises nothing.
     """
     record = await SharedExecutionFile.prisma().find_first(
         where={

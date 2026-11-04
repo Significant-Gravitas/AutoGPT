@@ -118,6 +118,8 @@ from backend.data.expert_run_output import (
 )
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.model import NodeExecutionStats
+from backend.data.onboarding import complete_onboarding_step
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.background import spawn_background_task
@@ -128,7 +130,6 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -397,7 +398,7 @@ async def with_bundled_skills(
 ) -> list[ExpertTemplate]:
     """Attach to each template the live Skills Hub listings it bundles —
     exactly what ``hire_expert`` installs."""
-    bundled = await _live_bundled_skills(user_id, [t.id for t in templates])
+    bundled = await _live_bundled_skills([t.id for t in templates])
     return [
         ExpertTemplate(
             **template.model_dump(), bundled_skills=bundled.get(template.id, [])
@@ -407,12 +408,9 @@ async def with_bundled_skills(
 
 
 async def _live_bundled_skills(
-    user_id: str | None, template_ids: list[str]
+    template_ids: list[str],
 ) -> dict[str, list[ExpertBundledSkill]]:
     """Per template id, the live Hub listings it bundles, in roster order."""
-    # The Hub routes' key, so nothing is linked or installed that would 404.
-    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
-        return {}
     rows = await prisma.models.ExpertSkillListing.prisma().find_many(
         where={"expertId": {"in": template_ids}}, order={"position": "asc"}
     )
@@ -687,15 +685,17 @@ async def list_expert_runs(
     # Exact per-execution review state (WAITING reviews for exactly these
     # ids) — a page of the user's newest reviews could miss an older run
     # that is still genuinely blocked.
-    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "status": prisma.enums.ReviewStatus.WAITING,
-            "graphExecId": {"in": execution_ids},
-        }
+    waiting_reviews, classified = await asyncio.gather(
+        prisma.models.PendingHumanReview.prisma().find_many(
+            where={
+                "userId": user_id,
+                "status": prisma.enums.ReviewStatus.WAITING,
+                "graphExecId": {"in": execution_ids},
+            }
+        ),
+        _classify_run_outputs(execution_ids),
     )
     reviewing = {review.graphExecId for review in waiting_reviews}
-    classified = await _classify_run_outputs(execution_ids)
 
     return [
         _to_expert_run(
@@ -1038,6 +1038,13 @@ async def _hire_expert_impl(
         expert = await _resume_revived_hire(expert)
     elif state == "created":
         _schedule_expert_memory(user_id, expert.id)
+    # A hire the user made themselves ticks the wallet's marketplace step and the
+    # onboarding wizard's picks don't; recording it never fails the hire.
+    if state != "existing" and surface in ("expert_page", "copilot"):
+        spawn_background_task(
+            complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT),
+            name=f"marketplace-step-{expert.id}",
+        )
     # A hire that runs setup is counted by its job, once its preloads are
     # known; an idempotent re-hire of an already-active expert is not a hire.
     if state == "created" or await _claim_setup(expert.id):
@@ -2133,7 +2140,7 @@ async def _install_bundled_skills(
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
-    bundled = await _live_bundled_skills(user_id, [template_id])
+    bundled = await _live_bundled_skills([template_id])
     missing = [s for s in bundled.get(template_id, []) if s.slug not in installed]
     if not missing:
         return []

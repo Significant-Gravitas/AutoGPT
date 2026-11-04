@@ -9,19 +9,15 @@ return, and, when asked (``include_forgotten``), the forgotten ones
 (``recall.search_forgotten_facts``), so a soft forget can be made permanent;
 a confirmed forget is ``recall_forget.retract``, with the guarantees and
 limits ``graphiti/AGENTS.md`` lists.
-
-The demotion helpers below are the dream's writers. They write only over
-live facts, so a demotion can never overwrite a user's forget.
 """
 
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 from graphiti_core.edges import EntityEdge
 
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.memory_model import (
     ForgetResult,
     MemoryForgetFailure,
@@ -29,7 +25,7 @@ from backend.copilot.graphiti.memory_model import (
 )
 from backend.copilot.graphiti.recall import (
     FORGOTTEN_FACT,
-    live_fact_predicate,
+    fact_status,
     search_facts,
     search_forgotten_facts,
 )
@@ -56,18 +52,15 @@ _BUSY_RETRY_SECONDS = 5
 # size threshold (base.py) and losing all detail to truncation.
 _MAX_FAILURE_DETAIL = 5
 
-
-def _now_iso() -> str:
-    """Current UTC time as an ISO-8601 string for Cypher parameter binding.
-
-    FalkorDB does not implement Cypher's no-arg ``datetime()`` function
-    (the error is ``Unknown function 'datetime'``), so timestamp values
-    have to be generated in Python and passed as a parameter.  ISO
-    strings work for the comparison + ordering we use (lexical sort on
-    ISO-8601 matches chronological sort) and round-trip cleanly through
-    ``toString(...)`` reads we already do.
-    """
-    return datetime.now(timezone.utc).isoformat()
+# What a soft forget did, told with its result: a model that read only "N
+# memory edge(s) retracted" told a user who had asked for a permanent delete
+# that it was permanent.
+SOFT_FORGET_NOTE = (
+    "This is not a permanent deletion: they are hidden from recall, from the "
+    "memory context chats start with and from dreams, and their text is kept "
+    "for audit. To delete them permanently, call tool:memory_forget_confirm "
+    "with the same UUIDs and hard_delete=true."
+)
 
 
 logger = logging.getLogger(__name__)
@@ -121,12 +114,6 @@ class MemoryForgetSearchTool(BaseTool):
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
-                session_id=session.session_id,
-            )
-
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 
@@ -244,12 +231,6 @@ class MemoryForgetConfirmTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
-                session_id=session.session_id,
-            )
-
         if not uuids:
             return ErrorResponse(
                 message="At least one UUID is required. Use tool:memory_forget_search first.",
@@ -277,11 +258,18 @@ class MemoryForgetConfirmTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        mode = "permanently deleted" if hard_delete else "retracted from memory"
         return MemoryForgetConfirmResponse(
-            message=_build_confirm_message(len(result.deleted), mode, result.failures),
+            message=_build_confirm_message(
+                len(result.deleted),
+                hard_delete,
+                result.failures,
+                len(result.derived),
+                len(result.resumed),
+            ),
             session_id=session.session_id,
             deleted_uuids=result.deleted,
+            derived_uuids=result.derived,
+            resumed_uuids=result.resumed,
             failed_uuids=[f.uuid for f in result.failures],
             failures=result.failures,
         )
@@ -301,19 +289,84 @@ async def _retract_once_more_if_busy(
 
 
 def _build_confirm_message(
-    deleted_count: int, mode: str, failures: list[MemoryForgetFailure]
+    deleted_count: int,
+    hard: bool,
+    failures: list[MemoryForgetFailure],
+    derived_count: int = 0,
+    resumed_count: int = 0,
 ) -> str:
     """Human/model-readable summary that spells out *why* edges failed.
 
     A bare "N failed" gives the model nothing to act on (SECRT-2371); listing
     each UUID with its reason lets it retry, hard-delete, or tell the user.
+    The facts the dream had derived from the forgotten ones, retracted with
+    them (``graphiti/recall_cascade.py``), are counted so the user hears of
+    them too, and so are the edges an earlier hard forget had already erased,
+    whose derived facts this forget went on to retract and erase. With both
+    kinds of edge, one count covers what they derived, so the message credits
+    it to all of them. A soft
+    forget that retracted anything says it was not a permanent deletion, what
+    it did instead, and how to delete permanently (``SOFT_FORGET_NOTE``).
 
     Only the first ``_MAX_FAILURE_DETAIL`` reasons are inlined: a large batch
     failing wholesale (e.g. a driver outage) would otherwise push the tool
     output past the persist-and-summarize threshold and lose *all* detail. The
     full per-UUID list stays available in the structured ``failures`` field.
     """
-    summary = f"{deleted_count} memory edge(s) {mode}."
+    mode = "permanently deleted" if hard else "retracted from memory"
+    # A fact counts as derived once retracted, before its text is erased
+    # (``recall_cascade._retire``), so erasure is claimed only when nothing
+    # failed.
+    erased = (
+        "retracted and erased"
+        if not failures
+        else "retracted; erasing their text may not have finished (see below)"
+    )
+    if deleted_count and resumed_count:
+        summary = (
+            f"{deleted_count} memory edge(s) {mode}. {resumed_count} memory "
+            "edge(s) had already been erased."
+        )
+        if derived_count:
+            # A resumed edge's cascade always erases (``recall_forget._forget``);
+            # a soft forget's own only retracts.
+            summary += f" {derived_count} fact(s) derived from these edges were "
+            if hard:
+                summary += f"{erased}."
+            elif not failures:
+                summary += (
+                    "retracted, and those derived from the already-erased "
+                    "edges were erased too."
+                )
+            else:
+                summary += (
+                    "retracted; erasing those derived from the already-erased "
+                    "edges may not have finished (see below)."
+                )
+    elif deleted_count:
+        summary = f"{deleted_count} memory edge(s) {mode}."
+        if derived_count:
+            summary = (
+                f"{deleted_count} memory edge(s) {mode}; {derived_count} fact(s) "
+                "derived from them retracted too."
+            )
+    elif resumed_count:
+        summary = f"{resumed_count} memory edge(s) had already been erased."
+        if derived_count:
+            summary += f" {derived_count} derived fact(s) {erased}."
+    elif derived_count:
+        # Facts derived with nothing deleted or resumed: the forget's cascade
+        # ran, then retracting or deleting the edges themselves failed
+        # (``recall_forget._forget``). The failures below say why.
+        derived = erased if hard else "retracted"
+        summary = (
+            f"The memory edge(s) could not be {mode}, but {derived_count} "
+            f"fact(s) derived from them were {derived}."
+        )
+    else:
+        summary = f"0 memory edge(s) {mode}."
+    if deleted_count and not hard:
+        summary += f" {SOFT_FORGET_NOTE}"
     if not failures:
         return summary
     shown = failures[:_MAX_FAILURE_DETAIL]
@@ -327,12 +380,16 @@ def _build_confirm_message(
 def _candidate(edge: EntityEdge) -> dict[str, str]:
     """One forget candidate, in the shape ``memory_forget_search`` returns."""
     valid_from, valid_to = fact_validity(edge)
-    return {
+    candidate = {
         "uuid": edge.uuid,
         "fact": fact_text(edge),
         "valid_from": valid_from,
         "valid_to": valid_to,
     }
+    status = fact_status(edge)
+    if status is not None:
+        candidate["status"] = status
+    return candidate
 
 
 def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:
@@ -383,135 +440,3 @@ def _candidates_message(live: int, forgotten: int) -> str:
             "hard_delete=true."
         )
     return " ".join(parts)
-
-
-async def mark_edges_superseded(
-    driver,
-    uuids: list[str],
-    reason: str,
-    new_status: Literal["superseded", "contradicted"] = "superseded",
-    user_id: str | None = None,
-    group_id: str | None = None,
-    expected_status: str | None = None,
-) -> tuple[list[str], list[str]]:
-    """Retract edges AND set the custom audit-trail ``status`` property.
-
-    Intended for the dream pass (P0.3 stale-fact deprecation): retire
-    the edge (``expired_at``; ``invalid_at`` is left alone) and
-    stamp ``status='superseded'`` (or ``'contradicted'``) plus
-    ``expiration_reason=<reason>`` so the demotion is queryable from
-    search (``WHERE e.status = 'superseded'``).
-
-    ``group_id`` adds defense-in-depth: the driver is normally opened
-    against the per-user FalkorDB database, but when provided the
-    Cypher predicate also requires the edge's ``group_id`` to match so
-    a future caller holding the wrong driver can't touch another
-    user's edges. ``None`` keeps the unscoped match.
-
-    The write lands only on a live fact (``recall.live_fact_predicate``), or,
-    with ``expected_status``, on an unexpired, unforgotten edge still in that
-    status, so a forget or other change made since the caller read the edge
-    is never overwritten; an edge that no longer qualifies is reported failed.
-
-    Returns ``(succeeded_uuids, failed_uuids)``.
-    """
-    deleted = []
-    failed = []
-    user_log = (user_id or "?")[:12]
-    query = _supersede_query(
-        scoped=group_id is not None, guarded=expected_status is not None
-    )
-    params: dict[str, str] = {"new_status": new_status, "reason": reason}
-    if group_id is not None:
-        params["group_id"] = group_id
-    if expected_status is not None:
-        params["expected_status"] = expected_status
-    for uuid in uuids:
-        try:
-            records, _, _ = await driver.execute_query(
-                query, uuid=uuid, now=_now_iso(), **params
-            )
-            if records:
-                deleted.append(uuid)
-            else:
-                failed.append(uuid)
-        except Exception:
-            logger.warning(
-                "Failed to mark edge %s superseded for user %s",
-                uuid,
-                user_log,
-                exc_info=True,
-            )
-            failed.append(uuid)
-    return deleted, failed
-
-
-def _supersede_query(*, scoped: bool, guarded: bool) -> str:
-    """``mark_edges_superseded``'s Cypher, with its ``group_id`` match and its
-    ``expected_status`` guard when asked for."""
-    edge_match = (
-        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
-        if scoped
-        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
-    )
-    guard = (
-        "WHERE e.status = $expected_status AND e.expired_at IS NULL"
-        " AND e.forgotten_at IS NULL"
-        if guarded
-        else f"WHERE {live_fact_predicate('e')}"
-    )
-    return f"""
-                {edge_match}
-                {guard}
-                SET e.expired_at = $now,
-                    e.status = $new_status,
-                    e.expiration_reason = $reason
-                RETURN e.uuid AS uuid
-                """
-
-
-async def invalidate_entity_direct_neighbors(
-    driver,
-    group_id: str,
-    entity_uuid: str,
-    reason: str,
-) -> list[str]:
-    """Demote every live ``:RELATES_TO`` edge directly attached to an entity.
-
-    **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
-    The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
-    runaway-demotion bug we are protecting against (P0.3b in the dream
-    spec). Only live neighbours (``recall.live_fact_predicate``) are touched.
-
-    Returns the list of edge UUIDs that were demoted. ``DISTINCT``
-    matters: the undirected ``-[r]-`` pattern can yield the same edge
-    from both traversal directions, and duplicate uuids inflate the
-    demotion counts reported in ``DreamPassResult`` / the admin UI
-    (the ``SET`` itself is idempotent).
-    """
-    query = f"""
-    MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
-    MATCH (e)-[r:RELATES_TO]-(other)
-    WHERE {live_fact_predicate("r")}
-    SET r.expired_at = $now,
-        r.status = 'superseded',
-        r.expiration_reason = $reason
-    RETURN DISTINCT r.uuid AS edge_uuid
-    """
-    try:
-        records, _, _ = await driver.execute_query(
-            query,
-            entity_uuid=entity_uuid,
-            group_id=group_id,
-            reason=reason,
-            now=_now_iso(),
-        )
-        return [r["edge_uuid"] for r in records]
-    except Exception:
-        logger.warning(
-            "Failed to invalidate direct neighbors of entity %s in group %s",
-            entity_uuid,
-            group_id,
-            exc_info=True,
-        )
-        return []
