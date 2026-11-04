@@ -13,6 +13,9 @@ import asyncio
 import logging
 import os
 
+from openai import AsyncOpenAI
+
+from backend.api.features.onboarding_dump.greeting_race import Attempt, IntroReply, race
 from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
 from backend.api.features.onboarding_dump.parsing import parse_response_json
 from backend.api.features.onboarding_dump.providers import (
@@ -28,8 +31,17 @@ from backend.util.langfuse_prompts import (
 
 logger = logging.getLogger(__name__)
 
-_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5-5")
+# OpenRouter's own spelling: the one its responses carry.
+_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5.5")
 _TIMEOUT_SECONDS = 45
+# The fast answer behind Sonnet (``greeting_race``): the model the team job
+# calls the same way. It starts when Sonnet fails, or once Sonnet has run
+# _HEDGE_SECONDS, so the tasks land inside the plan step's wait.
+_BACKUP_MODEL = os.environ.get(
+    "BRAIN_DUMP_GREETING_BACKUP_MODEL", "anthropic/claude-haiku-5.5"
+)
+_BACKUP_TIMEOUT_SECONDS = 25
+_HEDGE_SECONDS = 12
 # Reasoning is off (``structured.NO_REASONING``): the plan step waits on this
 # call, and adaptive thinking came before every token of the answer. The
 # answer alone, a greeting and six prompts at their longest, fits in this.
@@ -185,51 +197,66 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
     instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
     content = f"{_integrations_block()}{instructions}{text}"
-    data = None
-    # Two attempts: at temperature 0.6 an occasional generation comes back
-    # truncated or malformed, and one retry is far cheaper than shipping
-    # the generic fallback to a brand-new user.
-    for attempt in range(2):
-        try:
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=_MODEL,
-                    messages=[
-                        {"role": "system", "content": COVERAGE_CONTRACT},
-                        {"role": "user", "content": content},
-                    ],
-                    temperature=0.6,
-                    max_tokens=_MAX_TOKENS,
-                    extra_body=NO_REASONING,
-                ),
-                timeout=_TIMEOUT_SECONDS,
-            )
-            data = parse_response_json(response.choices[0].message.content or "")
-        except Exception as e:  # degrades to the template below
-            # The type too: a timeout's message is empty.
-            logger.warning(
-                "Brain dump greeting generation failed (attempt %s): %s: %s",
-                attempt + 1,
-                type(e).__name__,
-                e,
-            )
-            continue
-        if data is not None:
-            break
-        logger.warning("Brain dump greeting: non-JSON output (attempt %s)", attempt + 1)
-    if data is None:
+    reply = await race(
+        Attempt(model=_MODEL, timeout=_TIMEOUT_SECONDS),
+        Attempt(model=_BACKUP_MODEL, timeout=_BACKUP_TIMEOUT_SECONDS),
+        lambda model, timeout: _generate(client, content, model, timeout),
+        hedge_after=_HEDGE_SECONDS,
+    )
+    if reply.greeting is None:
         return fallback_intro(text)
-
-    greeting = data.get("greeting")
-    if not isinstance(greeting, str) or not greeting.strip():
-        return fallback_intro(text)
-
-    prompts = _parse_prompts(data.get("prompts"))
-    if len(prompts) < MIN_PROMPTS:
+    if not reply.prompts:
         # A greeting with two suggestions under it looks broken; the
         # generic set is better than a half-empty one.
-        return _clip_greeting(greeting), fallback_prompts()
-    return _clip_greeting(greeting), prompts[:MAX_PROMPTS]
+        return reply.greeting, fallback_prompts()
+    return reply.greeting, reply.prompts
+
+
+async def _generate(
+    client: AsyncOpenAI, content: str, model: str, timeout: float
+) -> IntroReply:
+    """One model's greeting for ``content``. Never raises: a failed call or
+    an unusable answer is logged with the model and comes back empty."""
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": COVERAGE_CONTRACT},
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.6,
+                max_tokens=_MAX_TOKENS,
+                extra_body=NO_REASONING,
+            ),
+            timeout=timeout,
+        )
+    except Exception as e:  # the other model, or the template, answers instead
+        # The type too: a timeout's message is empty.
+        logger.warning(
+            "Brain dump greeting from %s failed: %s: %s", model, type(e).__name__, e
+        )
+        return IntroReply()
+    answer = ""
+    if response.choices:
+        answer = response.choices[0].message.content or ""
+    data = parse_response_json(answer)
+    if data is None:
+        logger.warning(
+            "Brain dump greeting from %s: non-JSON output, %s chars", model, len(answer)
+        )
+        return IntroReply()
+    greeting = data.get("greeting")
+    if not isinstance(greeting, str) or not greeting.strip():
+        logger.warning("Brain dump greeting from %s: no greeting", model)
+        return IntroReply()
+    prompts = _parse_prompts(data.get("prompts"))
+    if len(prompts) < MIN_PROMPTS:
+        logger.warning(
+            "Brain dump greeting from %s: %s usable prompts", model, len(prompts)
+        )
+        return IntroReply(greeting=_clip_greeting(greeting))
+    return IntroReply(greeting=_clip_greeting(greeting), prompts=prompts[:MAX_PROMPTS])
 
 
 def _integrations_block() -> str:

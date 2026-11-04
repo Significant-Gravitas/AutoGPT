@@ -219,3 +219,31 @@ def test_a_prompt_keeps_its_why_and_one_without_still_parses():
         None,
     ]
     assert all(p.expert_template_id is None for p in prompts)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_sonnet_call_gets_the_greeting_from_the_backup(
+    client: MagicMock,
+):
+    # On a deploy where the Sonnet call fails, the user still gets tasks
+    # written from what they said, not the role's starters.
+    completion = client.chat.completions.create.return_value
+    client.chat.completions.create.side_effect = [
+        RuntimeError("model not available"),
+        completion,
+    ]
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == GENERATION["greeting"]
+    assert [p.title for p in prompts] == [p["title"] for p in GENERATION["prompts"]]
+    models = [c.kwargs["model"] for c in client.chat.completions.create.await_args_list]
+    assert models == [intro._MODEL, intro._BACKUP_MODEL]
+
+
+@pytest.mark.asyncio
+async def test_when_both_models_fail_the_template_answers(client: MagicMock):
+    client.chat.completions.create.side_effect = RuntimeError("gateway down")
+
+    assert await intro.generate_intro(TRANSCRIPT) == intro.fallback_intro(TRANSCRIPT)
+    assert client.chat.completions.create.await_count == 2
