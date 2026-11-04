@@ -1,14 +1,11 @@
 "use client";
 
-import {
-  AgentInbox,
-  type AgentTask,
-} from "@/components/atoms/agent-inbox-clean";
+import { LayoutGroup } from "framer-motion";
+import { useState } from "react";
 import type { Task } from "../../data/types";
-import { TaskAssigneeAvatar } from "../TaskAssigneeAvatar/TaskAssigneeAvatar";
-import { CardExtra } from "./components/CardExtra";
-import { needsExtra, toInboxFields } from "./helpers";
-import { useInboxBoard } from "./useInboxBoard";
+import { buildBoardColumns } from "../../helpers";
+import styles from "./board.module.css";
+import { BoardLane } from "./components/BoardLane";
 import { useOverflowRight } from "./useOverflowRight";
 
 interface Props {
@@ -17,22 +14,16 @@ interface Props {
   onOpen: (id: string) => void;
 }
 
-/** The tasks board: AffectUI's Agent Inbox with our four lanes, the expert
- *  on every card, and what a waiting card needs answered in place. */
-export function InboxBoard({ tasks, onOpen }: Props) {
-  const board = useInboxBoard();
+/** The tasks board: four lanes side by side that scroll sideways, cards
+ *  that unfold in place and glide to their new lane when their state changes. */
+export function InboxBoard({ tasks, selectedID, onOpen }: Props) {
+  const [openID, setOpenID] = useState<string | null>(null);
   const scroller = useOverflowRight<HTMLDivElement>();
-  const items: AgentTask[] = tasks.map((task) => ({
-    ...toInboxFields(task),
-    avatar: task.assignee ? (
-      <TaskAssigneeAvatar assignee={task.assignee} size={24} />
-    ) : undefined,
-    extra:
-      (task.state === "needs_you" || task.state === "stuck") &&
-      needsExtra(task) ? (
-        <CardExtra task={task} />
-      ) : undefined,
-  }));
+  const columns = buildBoardColumns(tasks);
+
+  function toggle(id: string) {
+    setOpenID((current) => (current === id ? null : id));
+  }
 
   return (
     <div className="relative h-full min-h-0">
@@ -40,17 +31,20 @@ export function InboxBoard({ tasks, onOpen }: Props) {
         ref={scroller.ref}
         className="scrollbar-none h-full min-h-0 overflow-auto overscroll-x-contain"
       >
-        <AgentInbox
-          hideBar
-          view="board"
-          title="Tasks"
-          tasks={items}
-          onOpen={(task) => onOpen(task.id)}
-          onCancel={(task) => board.cancel(task.id)}
-          onApprove={(task) => onOpen(task.id)}
-          onReject={(task) => onOpen(task.id)}
-          onRetry={(task) => board.retry(task.id)}
-        />
+        <LayoutGroup id="inbox-board">
+          <div className={styles.lanes}>
+            {columns.map((column) => (
+              <BoardLane
+                key={column.id}
+                column={column}
+                openID={openID}
+                selectedID={selectedID}
+                onToggle={toggle}
+                onOpen={onOpen}
+              />
+            ))}
+          </div>
+        </LayoutGroup>
       </div>
       {scroller.hiddenRight ? (
         <div

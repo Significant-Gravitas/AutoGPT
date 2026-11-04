@@ -593,6 +593,39 @@
 }
 /* The right edge of a row that scrolls sideways: what is past it blurs out
    into the page, so it reads as "more this way". */
+/* Tasks board and activity trail: the AffectUI clean look, as our tokens. */
+:root {
+  --board-lane: #f4f4f5;
+  --board-card: #ffffff;
+  --board-line: #e9e9ec;
+  --board-line-hover: #dcdce1;
+  --board-ink: #1c1c1f;
+  --board-ink-hover: #33333a;
+  --board-text: #55555c;
+  --board-muted: #8e8e96;
+  --board-faint: #b4b4bb;
+  --board-blue: #2f6bff;
+  --board-amber: #e8a20c;
+  --board-green: #22a05a;
+  --board-red: #e5484d;
+  --board-chip: rgba(16, 16, 24, 0.06);
+  --board-focus: rgba(23, 23, 23, 0.22);
+  --board-ease: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --trail-tray: #f0f0f0;
+  --trail-card: #ffffff;
+  --trail-strong: #171717;
+  --trail-text: #6b6b6b;
+  --trail-muted: #8a8a8a;
+  --trail-faint: #b8b8b8;
+  --trail-line: #ececec;
+  --trail-hover: rgba(0, 0, 0, 0.03);
+  --trail-rail: #d6d6d6;
+  --trail-link: #82bcff;
+  --trail-head: #2f6bff;
+  --trail-failed-bg: #fdecea;
+  --trail-failed-ink: #c2331f;
+}
+
 @utility edge-blur-right {
   backdrop-filter: blur(6px);
   background: linear-gradient(to right, rgb(252 252 252 / 0), rgb(252 252 252 / 0.85));

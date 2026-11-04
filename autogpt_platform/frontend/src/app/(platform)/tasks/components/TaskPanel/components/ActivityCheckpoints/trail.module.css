@@ -1,0 +1,289 @@
+/* The task's activity as one line of stops. Colours: --trail-* in globals.css. */
+
+.tray {
+  position: relative;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--trail-tray);
+  font-family:
+    "Inter",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: -0.006em;
+  color: var(--trail-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+}
+
+.mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  color: var(--trail-head);
+}
+
+.title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--trail-strong);
+}
+
+.task {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--trail-muted);
+}
+
+.sum {
+  flex: none;
+  margin-left: auto;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--trail-muted);
+}
+
+.list {
+  position: relative;
+  isolation: isolate;
+  max-height: 456px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 12px;
+  background: var(--trail-card);
+  box-shadow:
+    0 0 0 1px var(--trail-line),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.empty {
+  margin: 0;
+  padding: 28px 16px;
+  border-radius: 12px;
+  background: var(--trail-card);
+  box-shadow:
+    0 0 0 1px var(--trail-line),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--trail-muted);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 38px;
+  color: var(--trail-strong);
+  animation: row-rise 180ms ease both;
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  inset: 2px 6px;
+  z-index: -1;
+  border-radius: 8px;
+  background: var(--trail-hover);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.row:hover::before {
+  opacity: 1;
+}
+
+.rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 14px;
+  width: 12px;
+}
+
+.line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5.25px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--trail-link);
+}
+
+.row[data-first] .line {
+  top: 50%;
+}
+
+.row[data-last] .line {
+  bottom: 50%;
+}
+
+.row[data-first][data-last] .line {
+  display: none;
+}
+
+.dot {
+  position: absolute;
+  top: 50%;
+  left: 1.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--trail-link);
+  box-shadow: 0 0 0 1.5px var(--trail-card);
+  transform: translateY(-50%);
+  animation: dot-pop 180ms ease both;
+}
+
+.row[data-last] .dot {
+  background: var(--trail-head);
+}
+
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -1px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--trail-card);
+  box-shadow:
+    0 0 0 1px var(--trail-line),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.row[data-status="running"] .name {
+  background: linear-gradient(
+      90deg,
+      var(--trail-strong) 0 40%,
+      var(--trail-faint) 50%,
+      var(--trail-strong) 60% 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shine 800ms linear infinite;
+}
+
+.row[data-status="stopped"] .name {
+  color: var(--trail-muted);
+}
+
+.badge {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--trail-failed-bg);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  color: var(--trail-failed-ink);
+}
+
+.meta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--trail-muted);
+}
+
+.cost {
+  color: var(--trail-faint);
+}
+
+.time {
+  min-width: 30px;
+  text-align: right;
+}
+
+.more {
+  display: block;
+  margin: 0 auto 6px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--trail-muted);
+  cursor: pointer;
+}
+
+.more:hover {
+  color: var(--trail-strong);
+}
+
+@keyframes row-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes dot-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.4);
+  }
+}
+
+@keyframes shine {
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .dot,
+  .row[data-status="running"] .name {
+    animation: none;
+  }
+}

@@ -1,6 +1,17 @@
-import type { Checkpoint } from "@/components/atoms/agent-checkpoints";
 import { STATUS_LABELS } from "../../../../data/helpers";
 import type { TaskActivity } from "../../../../data/types";
+
+export type CheckpointStatus = "running" | "done" | "failed" | "stopped";
+
+export interface Checkpoint {
+  id: string;
+  title: string;
+  actor: TaskActivity["actor"];
+  status: CheckpointStatus;
+  /** When it happened, ISO */
+  at: string;
+  cost?: number;
+}
 
 const TITLE_CHARS = 90;
 
@@ -12,13 +23,12 @@ export function toCheckpoints(
   const ordered = items.toSorted((a, b) =>
     a.created_at.localeCompare(b.created_at),
   );
-  const start = ordered.length ? Date.parse(ordered[0].created_at) : 0;
   return ordered.map((item, i) => ({
     id: item.id,
-    title: clip(titleOf(item)),
-    parent: i > 0 ? ordered[i - 1].id : undefined,
+    title: clip(upperFirst(titleOf(item))),
+    actor: item.actor,
     status: statusOf(item, running && i === ordered.length - 1),
-    at: Math.max(0, Date.parse(item.created_at) - start),
+    at: item.created_at,
     cost:
       item.kind === "turn" && item.metrics.cost_usd > 0
         ? item.metrics.cost_usd
@@ -49,7 +59,7 @@ function titleOf(item: TaskActivity) {
   }
 }
 
-function statusOf(item: TaskActivity, isLive: boolean): Checkpoint["status"] {
+function statusOf(item: TaskActivity, isLive: boolean): CheckpointStatus {
   if (isLive) return "running";
   if (item.kind === "status_change" && item.to_status === "cancelled")
     return "stopped";
@@ -66,4 +76,8 @@ function clip(text: string) {
   return line.length > TITLE_CHARS
     ? `${line.slice(0, TITLE_CHARS - 1).trimEnd()}…`
     : line;
+}
+
+function upperFirst(text: string) {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
 }

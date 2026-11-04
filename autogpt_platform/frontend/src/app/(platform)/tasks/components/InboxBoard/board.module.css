@@ -1,0 +1,434 @@
+/* The tasks board. Colours come from the --board-* tokens in globals.css. */
+
+.board {
+  font-family:
+    "Inter",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--board-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.lanes {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
+  animation: lanes-in 320ms ease both;
+}
+
+.lane {
+  flex: none;
+  width: 320px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--board-lane);
+}
+
+.laneHead {
+  display: grid;
+  grid-template-columns: 20px 1fr minmax(20px, auto);
+  align-items: center;
+  height: 34px;
+  padding: 0 8px 0 10px;
+}
+
+.laneMark {
+  display: grid;
+  place-items: center;
+  color: var(--board-blue);
+  opacity: 0.7;
+}
+
+.laneName {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--board-muted);
+}
+
+.count {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--board-chip);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--board-text);
+}
+
+.cards {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.empty {
+  padding: 18px 0 20px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--board-faint);
+}
+
+.card {
+  position: relative;
+  border-radius: 10px;
+  background: var(--board-card);
+  box-shadow:
+    0 0 0 1px var(--board-line),
+    0 1px 2px rgba(16, 16, 24, 0.04);
+  transition: box-shadow 200ms ease;
+}
+
+.card:hover,
+.card[data-open],
+.card[data-selected] {
+  box-shadow:
+    0 0 0 1px var(--board-line-hover),
+    0 4px 14px -6px rgba(16, 16, 24, 0.12);
+}
+
+.main {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 14px 12px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.main:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--board-focus);
+  outline-offset: 2px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: -2px;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  color: var(--board-ink);
+}
+
+.desc {
+  display: -webkit-box;
+  padding-left: 34px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+  color: var(--board-text);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.card[data-open] .title {
+  white-space: normal;
+}
+
+.card[data-open] .desc {
+  -webkit-line-clamp: unset;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 4px;
+  padding-left: 34px;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--board-text);
+}
+
+.stateWord {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stateIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--board-blue);
+  animation: icon-pop 360ms var(--board-ease) both;
+}
+
+.stateIcon[data-state="working"] svg {
+  animation: spin 900ms linear infinite;
+}
+
+.stateIcon[data-state="needs_you"] {
+  color: var(--board-amber);
+}
+
+.stateIcon[data-state="stuck"] {
+  color: var(--board-red);
+}
+
+.stateIcon[data-state="done"] {
+  color: var(--board-green);
+}
+
+.stateIcon[data-state="stopped"] {
+  color: var(--board-muted);
+}
+
+.meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--board-muted);
+}
+
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 460ms var(--board-ease),
+    opacity 240ms ease;
+}
+
+.fold[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 460ms var(--board-ease),
+    opacity 320ms ease 100ms;
+}
+
+.clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.more {
+  margin: 0 14px 0 12px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--board-line);
+}
+
+.who {
+  font-size: 12px;
+  color: var(--board-muted);
+}
+
+.steps {
+  display: grid;
+  gap: 5px;
+  margin: 6px 0 0;
+  padding: 0 0 0 12px;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--board-text);
+}
+
+.step::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: -12px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--board-faint);
+}
+
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 15px;
+  bottom: -8px;
+  left: -10.5px;
+  width: 1px;
+  background: var(--board-line);
+}
+
+.step[data-last]::before {
+  background: var(--board-ink);
+}
+
+.stepLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.stepTime {
+  flex: none;
+  max-width: 45%;
+  text-align: end;
+  color: var(--board-muted);
+}
+
+.question {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+  color: var(--board-ink);
+}
+
+.hire {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.hireName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--board-ink);
+}
+
+.hireLine {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--board-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--board-line);
+  background: var(--board-card);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--board-ink);
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.btn:hover {
+  background: var(--board-lane);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.primary {
+  box-shadow: none;
+  background: var(--board-ink);
+  color: var(--board-card);
+}
+
+.primary:hover {
+  background: var(--board-ink-hover);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes icon-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes lanes-in {
+  from {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lanes,
+  .stateIcon,
+  .stateIcon[data-state="working"] svg {
+    animation: none;
+  }
+  .fold,
+  .fold[data-open] {
+    transition: none;
+  }
+}
