@@ -363,6 +363,11 @@ def test_doctor_warns_on_a_keyring_backend_that_can_store_nothing(monkeypatch) -
 
 
 @pytest.fixture(autouse=True)
+def _the_computer_use_modules_are_installed(monkeypatch):
+    monkeypatch.setattr(doctor.platform_info, "_module_available", lambda _name: True)
+
+
+@pytest.fixture(autouse=True)
 def _an_x_server_that_answers(monkeypatch):
     """doctor opens the X display as HELLO does; none answers here."""
     monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: True)
@@ -458,3 +463,22 @@ def test_doctor_warns_when_the_x_server_does_not_answer(tmp_path, monkeypatch) -
     assert result.marker == "WARN"
     assert "localhost:10.0" in result.detail
     assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
+
+
+def test_doctor_warns_when_a_computer_use_module_is_missing(tmp_path, monkeypatch, capsys) -> None:
+    """HELLO leaves computer_use out when a module it needs is missing, but
+    doctor reported X11 computer_use as available and exited 0."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(doctor.platform_info, "_module_available", lambda name: name != "mss")
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
+    out = capsys.readouterr().out
+    assert "mss" in out
+    assert "full computer_use available" not in out

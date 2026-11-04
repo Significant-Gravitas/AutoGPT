@@ -920,7 +920,10 @@ class ShimDaemon:
 
     async def _build_hello(self) -> HelloMessage:
         cfg = self.config
-        caps = platform_info.detect_capabilities(
+        # Off the event loop, which carries every other session: the X
+        # display probe behind both can take seconds.
+        caps = await asyncio.to_thread(
+            platform_info.detect_capabilities,
             enable_shell=cfg.enable_shell,
             enable_computer_use=cfg.enable_computer_use,
             enable_local_llm=cfg.enable_local_llm,
@@ -929,7 +932,7 @@ class ShimDaemon:
         )
         if self._control_mode:
             caps.append("directory_browse")
-        screen = platform_info.detect_screen_resolution()
+        screen = await asyncio.to_thread(platform_info.detect_screen_resolution)
         cu_features: list[str] = []
         cu_features_coarse: list[str] = []
         if "computer_use" in caps:
