@@ -355,6 +355,16 @@ async def delete_preset_with_webhook_cleanup(*, user_id: str, preset_id: str) ->
     await db.delete_preset(user_id, preset_id)
 
 
+def refuse_direct_run(preset: models.LibraryAgentPreset) -> None:
+    """Refuse running a webhook-triggered preset by hand: its trigger node only
+    gets a payload from a delivery, so the run could never start."""
+    if preset.webhook_id:
+        raise InvalidInputError(
+            "This preset runs when its webhook trigger fires, "
+            "so it can't be run directly"
+        )
+
+
 def _refuse_graph_inputs_read_as_trigger_config(graph_inputs: GraphInput) -> None:
     # A reader without the graph would take such an input for the trigger config.
     for name, value in graph_inputs.items():

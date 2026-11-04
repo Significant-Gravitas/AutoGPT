@@ -112,6 +112,7 @@ async def test_preset_api_run_is_parked(mocker, parked) -> None:
         expert_id="expert-1",
         organization_id="org",
         team_id="team",
+        webhook_id=None,
     )
     mocker.patch.object(presets_routes.db, "get_preset", AsyncMock(return_value=preset))
 

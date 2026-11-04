@@ -310,12 +310,11 @@ async def execute_preset(
         await assert_can_pay(auth)
 
         preset = await _preset_in_tenant(preset_id, auth)
+        triggers.refuse_direct_run(preset)
         merged_inputs = {**preset.inputs, **request.inputs}
         merged_credentials = {**preset.credentials, **request.credentials_inputs}
-        if not preset.webhook_id:
-            # A trigger's inputs are its block's config, not the graph's inputs.
-            graph = await _graph_in_tenant(preset.graph_id, preset.graph_version, auth)
-            assert_inputs_match(graph.input_schema, merged_inputs)
+        graph = await _graph_in_tenant(preset.graph_id, preset.graph_version, auth)
+        assert_inputs_match(graph.input_schema, merged_inputs)
 
         # The run belongs where the preset does, as on the internal API.
         organization_id, team_id = (

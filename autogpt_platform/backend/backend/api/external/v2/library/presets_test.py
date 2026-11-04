@@ -165,25 +165,18 @@ async def test_a_run_missing_a_required_input_is_refused(
     add.assert_not_awaited()
 
 
-async def test_a_trigger_s_settings_are_not_checked_as_graph_inputs(
+async def test_a_webhook_triggered_preset_cannot_be_run_directly(
     mocker: pytest_mock.MockFixture, can_pay: None
 ):
-    """A trigger's settings configure its block; the graph's inputs come from
-    each event."""
-    _stub_preset_and_graph(
-        mocker,
-        _trigger(),
-        input_schema={"properties": {"subject": {}}, "required": ["subject"]},
-    )
+    """Its trigger node only gets a payload from a delivery."""
+    _stub_preset_and_graph(mocker, _trigger())
     add = mocker.patch(
-        "backend.executor.utils.add_graph_execution",
-        new_callable=AsyncMock,
-        return_value=_run(),
+        "backend.executor.utils.add_graph_execution", new_callable=AsyncMock
     )
 
-    await _execute()
-
-    assert add.await_args.kwargs["inputs"][MASK]["secret_token"] == TRIGGER_SECRET
+    with pytest.raises(InvalidInputError, match="can't be run directly"):
+        await _execute()
+    add.assert_not_awaited()
 
 
 @pytest.mark.parametrize("route", ["create", "setup-trigger"])
@@ -342,6 +335,9 @@ async def test_setting_up_a_trigger_stores_its_config_beside_the_agent_s_inputs(
         "backend.api.features.library.triggers.setup_webhook_for_block",
         new_callable=AsyncMock,
         return_value=(Mock(id="hook-1"), None),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.check_preset_count", new_callable=AsyncMock
     )
     create = mocker.patch(
         "backend.api.features.library.db.create_preset",

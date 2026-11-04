@@ -18,6 +18,7 @@ from .. import db
 from .. import model as models
 from ..triggers import (
     delete_preset_with_webhook_cleanup,
+    refuse_direct_run,
     setup_triggered_preset,
     update_triggered_preset,
 )
@@ -278,6 +279,7 @@ async def execute_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
         )
+    refuse_direct_run(preset)
 
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
