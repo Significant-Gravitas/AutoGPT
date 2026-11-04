@@ -43,6 +43,7 @@ _UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", re.IGNOR
 _current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
 
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+_current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
@@ -206,6 +207,15 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
     return _current_user_id.get(), _current_session.get()
 
 
+def set_current_turn_id(turn_id: str | None) -> None:
+    """Record the executor turn ID, independently of any shared analytics trace."""
+    _current_turn_id.set(turn_id)
+
+
+def get_current_turn_id() -> str | None:
+    return _current_turn_id.get()
+
+
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
@@ -241,6 +251,18 @@ def is_unattended_turn() -> bool:
 def get_current_sandbox() -> "AsyncSandbox | None":
     """Return the E2B sandbox for the current session, or None if not active."""
     return _current_sandbox.get()
+
+
+@contextmanager
+def turn_sandbox(sandbox: "AsyncSandbox | None") -> Iterator[None]:
+    """Use *sandbox* as the turn's sandbox inside the block, for work that
+    writes to the model's working directory before the turn sets its
+    execution context."""
+    token = _current_sandbox.set(sandbox)
+    try:
+        yield
+    finally:
+        _current_sandbox.reset(token)
 
 
 def get_sdk_cwd() -> str:

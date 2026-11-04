@@ -50,6 +50,7 @@ export interface SessionOverride {
   chat_status?: string;
   expert_id?: string | null;
   metadata?: SessionDetailResponse["metadata"];
+  background_pending?: boolean;
 }
 
 /**
@@ -70,6 +71,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     active_stream: opts.active_stream ?? null,
     metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
     expert_id: opts.expert_id ?? null,
+    background_pending: opts.background_pending ?? false,
   });
 }
 

@@ -24,7 +24,7 @@ interface FileTypeConfig {
 
 const cardBase =
   // oxlint-disable-next-line design-system/no-arbitrary-values -- the folded corner scales with the card, so it is a percentage
-  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-surface shadow-md shadow-black/[0.065] ring-1 ring-border-base";
+  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-surface shadow-md shadow-scrim/[0.065] ring-1 ring-border-base";
 
 const DEFAULT_BADGE_POSITION = "bottom-5 -right-2";
 
@@ -226,7 +226,7 @@ function ReactContent() {
   return (
     <div className="flex h-16 items-center justify-center">
       <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
-        <circle r="2" className="fill-primary/55" />
+        <circle r="2" className="fill-action/55" />
         <g fill="none" className="stroke-action-hover/35" strokeWidth="1">
           <ellipse rx="10" ry="4" />
           <ellipse rx="10" ry="4" transform="rotate(60)" />
@@ -325,18 +325,6 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   },
 };
 
-export const FILE_TYPE_KEYS: FileTypeKey[] = [
-  "pdf",
-  "xls",
-  "json",
-  "img",
-  "html",
-  "video",
-  "react",
-  "code",
-  "generic",
-];
-
 export function pickFileTypeKey(
   mimeType: string | undefined,
   fileName?: string,
@@ -402,7 +390,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          "absolute rounded-md bg-action px-2 py-1 text-caption-sm leading-inherit font-semibold tracking-wide text-action-foreground uppercase shadow-md shadow-black/10",
+          "absolute rounded-md bg-action px-2 py-1 text-caption-sm leading-inherit font-semibold tracking-wide text-action-foreground uppercase shadow-md shadow-scrim/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,
         )}

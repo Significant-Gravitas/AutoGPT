@@ -86,7 +86,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
           autoComplete={autoComplete}
           spellCheck={spellCheck}
           className={cn(
-            "w-full rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+            "w-full rounded-xl border border-border-strong bg-canvas text-foreground-base placeholder:text-foreground-tertiary focus:border-focus focus:ring-1 focus:ring-focus focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
             sizeStyles[size],
             "[&::-webkit-search-cancel-button]:appearance-none",
           )}
@@ -97,7 +97,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             aria-label="Searching"
             data-slot="search-input-spinner"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center text-foreground-tertiary",
               iconRightOffset[size],
             )}
           >
@@ -115,7 +115,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             aria-label="Clear search"
             data-slot="search-input-clear"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-foreground-tertiary transition hover:bg-surface-hover hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
               iconRightOffset[size],
             )}
           >

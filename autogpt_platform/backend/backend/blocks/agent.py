@@ -65,7 +65,9 @@ class AgentExecutorBlock(Block):
             return set(required_fields) - set(provided)
 
         @classmethod
-        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        def get_mismatch_error(
+            cls, data: BlockInput, exclude_fields: set[str] | None = None
+        ) -> str | None:
             # `data` holds the flattened `inputs` (see validate_exec), never the
             # node's `input_schema`; the child graph validates its own inputs.
             return None
