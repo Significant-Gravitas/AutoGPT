@@ -20,6 +20,7 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Callable
 from typing import Any
 
 from ...config import ShimConfig
@@ -73,6 +74,15 @@ CF_PRIVATELAST = 0x02FF
 # What a text-only restore rebuilds: CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT and
 # CF_LOCALE (Windows synthesizes the others from any one of them).
 _TEXT_CLIPBOARD_FORMATS = frozenset({1, 7, 13, 16})
+
+
+def _release_quietly(what: str, release: Callable[..., object], *args: object) -> None:
+    """Run one GDI release step, logging a failure instead of raising, so
+    the steps after it still run."""
+    try:
+        release(*args)
+    except Exception:
+        logger.debug("could not %s", what, exc_info=True)
 
 
 class WindowsBackend(ComputerUseBackend):
@@ -257,7 +267,7 @@ class WindowsBackend(ComputerUseBackend):
             )
         # Acquired inside the try, so whatever was acquired is released even
         # when a later step (the bitmap, say) fails.
-        hwnd_dc = mfc_dc = save_dc = bmp = previous = None
+        hwnd_dc = save_dc = bmp = previous = None
         bitmap_made = False
         try:
             hwnd_dc = win32gui.GetWindowDC(hwnd)
@@ -295,20 +305,19 @@ class WindowsBackend(ComputerUseBackend):
             )
         finally:
             # GDI does not delete a bitmap still selected into a DC, so the
-            # DC gets its own bitmap back, then the DCs go, then the bitmap.
+            # DC gets its own bitmap back, then the DC goes, then the bitmap.
+            # The window's DC came from GetWindowDC, so ReleaseDC alone frees
+            # it (DeleteDC is for DCs from CreateDC or CreateCompatibleDC),
+            # and mfc_dc only wraps it. Each step runs even if one before it
+            # failed.
             if save_dc is not None and previous is not None:
-                try:
-                    save_dc.SelectObject(previous)
-                except Exception:
-                    logger.debug("could not restore the DC's own bitmap", exc_info=True)
+                _release_quietly("restore the DC's own bitmap", save_dc.SelectObject, previous)
             if save_dc is not None:
-                save_dc.DeleteDC()
-            if mfc_dc is not None:
-                mfc_dc.DeleteDC()
+                _release_quietly("delete the capture DC", save_dc.DeleteDC)
             if bitmap_made and bmp is not None:
-                win32gui.DeleteObject(bmp.GetHandle())
+                _release_quietly("delete the bitmap", win32gui.DeleteObject, bmp.GetHandle())
             if hwnd_dc is not None:
-                win32gui.ReleaseDC(hwnd, hwnd_dc)
+                _release_quietly("release the window's DC", win32gui.ReleaseDC, hwnd, hwnd_dc)
 
         if include_cursor:
             try:

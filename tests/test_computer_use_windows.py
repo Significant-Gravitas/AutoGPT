@@ -297,7 +297,9 @@ def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) 
     """PrintWindow returns 0 when the window did not render; the bitmap is
     then blank, so it must not be sent as a screenshot. Everything is still
     freed, the bitmap only after the DC it is selected into: GDI does not
-    delete a bitmap that a DC still holds."""
+    delete a bitmap that a DC still holds. The window's DC came from
+    GetWindowDC, so ReleaseDC alone frees it; DeleteDC is only for DCs
+    made with CreateDC or CreateCompatibleDC."""
     window = _capturable_window(tmp_path, monkeypatch)
     window.user32.PrintWindow.return_value = 0
     mfc_dc = window.win32ui.CreateDCFromHandle.return_value
@@ -319,10 +321,25 @@ def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) 
         call.select(window.win32ui.CreateBitmap.return_value),
         call.select(save_dc.SelectObject.return_value),
         call.delete_save_dc(),
-        call.delete_mfc_dc(),
         call.delete_object(bitmap),
         call.release_dc(window.hwnd, hwnd_dc),
     ]
+
+
+def test_a_release_that_fails_still_frees_the_rest(tmp_path, monkeypatch) -> None:
+    """A release that raised skipped every release after it, leaking the
+    bitmap and the window's DC."""
+    window = _capturable_window(tmp_path, monkeypatch)
+    save_dc = window.win32ui.CreateDCFromHandle.return_value.CreateCompatibleDC.return_value
+    save_dc.DeleteDC.side_effect = RuntimeError("DeleteDC failed")
+
+    window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+
+    bitmap = window.win32ui.CreateBitmap.return_value.GetHandle.return_value
+    window.win32gui.DeleteObject.assert_called_once_with(bitmap)
+    window.win32gui.ReleaseDC.assert_called_once_with(
+        window.hwnd, window.win32gui.GetWindowDC.return_value
+    )
 
 
 def test_a_window_that_is_not_responding_is_not_captured(tmp_path, monkeypatch) -> None:
@@ -516,8 +533,11 @@ def test_a_window_capture_releases_what_it_acquired_when_a_step_fails(
 
     mfc_dc = window.win32ui.CreateDCFromHandle.return_value
     mfc_dc.CreateCompatibleDC.return_value.DeleteDC.assert_called_once()
-    mfc_dc.DeleteDC.assert_called_once()
-    window.win32gui.ReleaseDC.assert_called_once()
+    # The window's DC goes back through ReleaseDC alone; mfc_dc only wraps it.
+    mfc_dc.DeleteDC.assert_not_called()
+    window.win32gui.ReleaseDC.assert_called_once_with(
+        window.hwnd, window.win32gui.GetWindowDC.return_value
+    )
     window.win32gui.DeleteObject.assert_not_called()
 
 
