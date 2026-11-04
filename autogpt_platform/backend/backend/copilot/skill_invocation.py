@@ -35,12 +35,12 @@ from backend.copilot.service import (
 )
 from backend.copilot.tools import skills as skill_registry
 from backend.copilot.tools.skills import (
+    LoadedSkillPackage,
     ParsedSkill,
     get_default_skill_with_body,
     is_skills_feature_enabled,
     list_user_skills,
     resolve_skill_scope,
-    skill_folder,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,6 +151,9 @@ class InvocableSkill(BaseModel):
     skill: ParsedSkill
     # Built-in skills have no workspace folder to point the model at.
     is_default: bool
+    # A user skill's package, copied into the turn's working directory the
+    # way ``read_skill`` copies it; None for a built-in skill.
+    package: LoadedSkillPackage | None = None
 
 
 def get_persisted_skill_invocation(
@@ -171,13 +174,15 @@ def get_persisted_skill_invocation(
 
 
 async def resolve_invocable_skill(
-    user_id: str, expert_id: str | None, name: str, session_id: str | None = None
+    user_id: str, expert_id: str | None, name: str, session_id: str
 ) -> InvocableSkill | None:
     """The chat's skill a ``/name`` command runs, or None.
 
     Looks the name up as a slug among the session owner's skills, then the
     built-ins, then as an alias. A skill whose frontmatter sets
-    ``user-invocable: false`` cannot be run this way.
+    ``user-invocable: false`` cannot be run this way. A user skill is loaded
+    the way ``read_skill`` loads it, its package files copied into the turn's
+    working directory included.
     """
     wanted = name.strip().lower()
     scope = await resolve_skill_scope(user_id, expert_id)
@@ -207,7 +212,18 @@ async def resolve_invocable_skill(
             loaded = await skill_registry.resolve_loaded_skill_version(
                 user_id, expert_id, found.skill.name, text, manager=manager
             )
-        except (skill_registry.SkillUsePausedError, skill_registry.SkillWriteLockError):
+            package = await skill_registry.materialise_skill_package(
+                manager,
+                expert_id=expert_id,
+                name=found.skill.name,
+                session_id=session_id,
+                version_files=loaded.files,
+            )
+        except (
+            skill_registry.SkillUsePausedError,
+            skill_registry.SkillWriteLockError,
+            skill_registry.SkillPackageLoadError,
+        ):
             return None
         await skill_registry.record_skill_loaded(
             user_id,
@@ -216,13 +232,11 @@ async def resolve_invocable_skill(
             version_id=loaded.version_id,
             session_id=session_id,
         )
-        found = InvocableSkill(skill=parsed, is_default=False)
+        found = InvocableSkill(skill=parsed, is_default=False, package=package)
     return found
 
 
-def render_invocation(
-    found: InvocableSkill, invocation: SkillInvocation, expert_id: str | None
-) -> str:
+def render_invocation(found: InvocableSkill, invocation: SkillInvocation) -> str:
     """What the model reads for a ``/name`` command: the skill's
     instructions with the arguments filled in, and where its files are."""
     skill = found.skill
@@ -233,13 +247,17 @@ def render_invocation(
         f"The user ran /{invocation.name}, which loads the '{skill.name}' skill. "
         "Follow its instructions below for this request."
     ]
-    if not found.is_default:
-        folder = f"{skill_folder(expert_id)}/{skill.name}"
-        body = body.replace("${CLAUDE_SKILL_DIR}", folder)
-        lines.append(
-            f"Its other files are in {folder}; read_skill('{skill.name}') "
-            "loads them."
-        )
+    package = found.package
+    if package is not None:
+        lines.extend(package.notes)
+        if package.package_dir:
+            # Claude Code's name for the skill's directory: here, the copy
+            # in the shell's working directory that read_skill also makes.
+            body = body.replace("${CLAUDE_SKILL_DIR}", package.package_dir)
+            lines.append(
+                f"If they are gone on a later turn, read_skill('{skill.name}') "
+                "copies them there again."
+            )
     return "\n".join(lines) + "\n\n" + strip_server_injected_tags(body).strip()
 
 
@@ -283,7 +301,7 @@ async def inject_skill_invocation(
         return None
     block = (
         f"<{SKILL_INVOCATION_TAG}>\n"
-        f"{render_invocation(found, invocation, expert_id)}\n"
+        f"{render_invocation(found, invocation)}\n"
         f"</{SKILL_INVOCATION_TAG}>\n\n"
     )
     return await persist_current_user_message(

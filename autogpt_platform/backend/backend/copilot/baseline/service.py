@@ -52,6 +52,7 @@ from backend.copilot.context import (
     get_workspace_manager,
     is_unattended_turn,
     set_execution_context,
+    turn_sandbox,
 )
 from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
@@ -2276,13 +2277,17 @@ async def stream_chat_completion_baseline(
             (msg for msg in reversed(openai_messages) if msg["role"] == "user"), None
         )
         if current_user is not None and isinstance(current_user.get("content"), str):
-            invoked = await inject_skill_invocation(
-                str(current_user["content"]),
-                session_id,
-                session.messages,
-                user_id=user_id,
-                expert_id=session.expert_id,
-            )
+            # A user skill's package is copied into the model's working
+            # directory, which is the sandbox's when the turn has one; the
+            # execution context that names it is set further down.
+            with turn_sandbox(e2b_sandbox):
+                invoked = await inject_skill_invocation(
+                    str(current_user["content"]),
+                    session_id,
+                    session.messages,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                )
             if invoked is not None:
                 current_user["content"] = invoked
             if invoked is not None or persisted_invocation is not None:

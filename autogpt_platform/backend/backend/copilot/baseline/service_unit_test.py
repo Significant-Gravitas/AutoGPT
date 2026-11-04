@@ -10,7 +10,7 @@ import copy
 import logging
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from graphiti_core.edges import EntityEdge
@@ -43,7 +43,11 @@ from backend.copilot.baseline.service import (
     _supports_prompt_cache_markers,
     stream_chat_completion_baseline,
 )
-from backend.copilot.context import get_execution_context, set_execution_context
+from backend.copilot.context import (
+    get_current_sandbox,
+    get_execution_context,
+    set_execution_context,
+)
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.graphiti import context_refresh
@@ -3967,6 +3971,44 @@ async def test_skill_invocation_keeps_one_first_turn_context_in_transcript():
     assert turn.model_input().count(skills_context) == 1
     assert turn.uploaded().count(skills_context.encode()) == 1
     assert turn.uploaded().count(b"<skill_invocation>") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_command_runs_with_the_turns_sandbox_bound():
+    """A user skill's package is copied into the working directory the
+    model's shell uses, so the command expands with the turn's sandbox bound
+    even though the turn's execution context is set after it."""
+    sandbox = MagicMock(name="sandbox")
+    seen: list[Any] = []
+
+    async def resolve(*_args, **_kwargs):
+        seen.append(get_current_sandbox())
+        return None
+
+    await _run_baseline_turn(
+        _baseline_session("/report weekly"),
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.config.ChatConfig.active_e2b_api_key",
+                dict(new_callable=PropertyMock, return_value="e2b-key"),
+            ),
+            (
+                f"{_BASELINE}.get_or_create_sandbox",
+                dict(new=AsyncMock(return_value=sandbox)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(side_effect=resolve)),
+            ),
+        ],
+    )
+    assert seen == [sandbox]
 
 
 @pytest.mark.asyncio

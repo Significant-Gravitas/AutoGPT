@@ -22,7 +22,7 @@ from backend.copilot.skill_invocation import (
     resolve_invocable_skill,
     split_arguments,
 )
-from backend.copilot.tools.skills import ParsedSkill, skill_aliases
+from backend.copilot.tools.skills import LoadedSkillPackage, ParsedSkill, skill_aliases
 
 
 @pytest.mark.parametrize(
@@ -187,6 +187,13 @@ def owned(mocker: pytest_mock.MockFixture) -> dict[str, ParsedSkill]:
         AsyncMock(return_value=si.skill_registry.LoadedSkillVersion()),
     )
     mocker.patch.object(si.skill_registry, "record_skill_loaded", AsyncMock())
+    mocker.patch.object(
+        si.skill_registry,
+        "materialise_skill_package",
+        AsyncMock(
+            return_value=LoadedSkillPackage(files=[], package_dir=None, notes=[])
+        ),
+    )
 
     mocker.patch.object(si, "is_skills_feature_enabled", AsyncMock(return_value=True))
     mocker.patch.object(
@@ -211,7 +218,7 @@ async def test_a_command_resolves_to_the_owners_skill_by_slug(
     owned: dict[str, ParsedSkill],
 ):
     owned["fix-issue"] = _skill()
-    found = await resolve_invocable_skill("user", None, "Fix-Issue")
+    found = await resolve_invocable_skill("user", None, "Fix-Issue", "session")
     assert found is not None
     assert found.skill.name == "fix-issue"
     assert found.is_default is False
@@ -226,7 +233,7 @@ async def test_a_command_resolves_to_a_vendored_skill_by_its_upstream_names(
     owned["contract-amendment-history"] = _skill(
         "contract-amendment-history", metadata=_LEGAL_METADATA
     )
-    found = await resolve_invocable_skill("user", None, name)
+    found = await resolve_invocable_skill("user", None, name, "session")
     assert found is not None
     assert found.skill.name == "contract-amendment-history"
 
@@ -235,7 +242,7 @@ async def test_a_skill_that_is_not_user_invocable_cannot_be_run(
     owned: dict[str, ParsedSkill],
 ):
     owned["house-style"] = _skill("house-style", **{"user-invocable": False})
-    assert await resolve_invocable_skill("user", None, "house-style") is None
+    assert await resolve_invocable_skill("user", None, "house-style", "session") is None
 
 
 async def test_a_command_falls_back_to_the_built_in_skills(
@@ -247,21 +254,40 @@ async def test_a_command_falls_back_to_the_built_in_skills(
         "get_default_skill_with_body",
         lambda name: guide if name == "agent_building_guide" else None,
     )
-    found = await resolve_invocable_skill("user", None, "agent_building_guide")
+    found = await resolve_invocable_skill(
+        "user", None, "agent_building_guide", "session"
+    )
     assert found == InvocableSkill(skill=guide, is_default=True)
 
 
-def test_the_rendered_skill_points_the_model_at_its_files():
+def test_the_rendered_skill_points_the_model_at_its_copied_files():
+    package_dir = "/home/user/skills/fix-issue"
+    copied = f"Package files are at {package_dir}; relative paths resolve there."
     found = InvocableSkill(
         skill=_skill(body="Fix issue $0; see ${CLAUDE_SKILL_DIR}/notes.md."),
         is_default=False,
+        package=LoadedSkillPackage(files=[], package_dir=package_dir, notes=[copied]),
     )
     rendered = render_invocation(
-        found, SkillInvocation(name="fix-issue", arguments="42"), None
+        found, SkillInvocation(name="fix-issue", arguments="42")
     )
     assert rendered.startswith("The user ran /fix-issue, which loads the 'fix-issue'")
-    assert "Its other files are in /skills/fix-issue;" in rendered
-    assert rendered.endswith("Fix issue 42; see /skills/fix-issue/notes.md.")
+    assert copied in rendered
+    assert "read_skill('fix-issue') copies them there again." in rendered
+    assert rendered.endswith(f"Fix issue 42; see {package_dir}/notes.md.")
+
+
+def test_a_package_that_was_not_copied_leaves_the_skill_dir_alone():
+    warning = "Could not copy 1 package file(s) into the working directory."
+    found = InvocableSkill(
+        skill=_skill(body="See ${CLAUDE_SKILL_DIR}/notes.md."),
+        is_default=False,
+        package=LoadedSkillPackage(files=[], package_dir=None, notes=[warning]),
+    )
+    rendered = render_invocation(found, SkillInvocation(name="fix-issue", arguments=""))
+    assert warning in rendered
+    assert "copies them there again" not in rendered
+    assert rendered.endswith("See ${CLAUDE_SKILL_DIR}/notes.md.")
 
 
 async def test_the_skill_goes_between_server_context_and_the_users_words(
@@ -373,5 +399,5 @@ def test_persisted_invocation_recovery_is_limited_to_the_current_saved_row(case)
 @pytest.mark.parametrize("name", ["me", "done", "typo", "foo:bar"])
 async def test_unmatched_command_reads_no_skill_bodies(owned, name):
     owned["fix-issue"] = _skill()
-    assert await resolve_invocable_skill("user", None, name) is None
+    assert await resolve_invocable_skill("user", None, name, "session") is None
     si.skill_registry.read_skill_for_load.assert_not_awaited()

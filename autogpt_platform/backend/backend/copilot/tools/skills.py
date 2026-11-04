@@ -3411,6 +3411,92 @@ async def read_skill_for_load(
     return manager, await manager.read_file(_skill_md_path(name, expert_id))
 
 
+class LoadedSkillPackage(BaseModel):
+    """A user skill's package files, as one load copied them into the turn's
+    working directory."""
+
+    files: list[SkillFileInfo]
+    # Where the copies are; None when the skill has no files or none copied.
+    package_dir: str | None
+    # What the model is told about the copy, ending with where the files are.
+    notes: list[str]
+
+
+class SkillPackageLoadError(Exception):
+    """The package cannot go with this load: ``error`` is the tool's error
+    code and ``message`` what the model is told."""
+
+    def __init__(self, error: str, message: str) -> None:
+        super().__init__(message)
+        self.error = error
+        self.message = message
+
+
+async def materialise_skill_package(
+    manager: WorkspaceManager,
+    *,
+    expert_id: str | None,
+    name: str,
+    session_id: str,
+    version_files: list[SkillVersionFile] | None,
+) -> LoadedSkillPackage:
+    """List a user skill's package, check it against the loaded version and
+    copy it into the turn's working directory: what ``read_skill`` and a
+    ``/name`` command both hand the model along with the skill's body."""
+    folder = skill_folder(expert_id)
+    listed = True
+    try:
+        package_files = await _list_package_files(manager, folder, name)
+    except Exception:
+        logger.warning(
+            "[skills] failed to list package files for %s", name, exc_info=True
+        )
+        if version_files is not None:
+            raise SkillPackageLoadError(
+                "skill_package_unavailable",
+                "The skill package is unavailable; retry tool:read_skill.",
+            )
+        package_files = []
+        listed = False
+
+    if version_files is not None and not _matches_version_files(
+        package_files, version_files, f"{folder}/{name}/"
+    ):
+        raise SkillPackageLoadError(
+            "skill_changed",
+            "The skill package changed while loading; retry tool:read_skill.",
+        )
+
+    notes: list[str] = []
+    # A listing that failed is not an empty package: treating it as one
+    # would prune every file the last activation wrote.
+    complete = listed and len(package_files) <= MAX_PACKAGE_FILES
+    if listed and not complete:
+        package_files = package_files[:MAX_PACKAGE_FILES]
+        notes.append(f"Only the first {MAX_PACKAGE_FILES} package files are listed.")
+
+    # Runs even for a skill with no files: a package deleted and re-stored
+    # under the same slug leaves its old files in the working directory.
+    package_dir, warning = await _sync_skill_package(
+        manager,
+        package_files,
+        folder=folder,
+        slug=name,
+        session_id=session_id,
+        complete=complete,
+        version_files=version_files,
+    )
+    if warning:
+        notes.append(warning)
+    if package_dir:
+        notes.append(
+            f"Package files are at {package_dir}; relative paths in the "
+            "body resolve there. Run scripts with bash_exec from that "
+            "directory."
+        )
+    return LoadedSkillPackage(files=package_files, package_dir=package_dir, notes=notes)
+
+
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
@@ -3566,62 +3652,19 @@ class ReadSkillTool(BaseTool):
                 error="skill_registry_unavailable",
                 session_id=session_id,
             )
-        # List the package files (references/, scripts/, assets/, ...) so
-        # the model knows what else lives in the bundle.
-        folder = skill_folder(owner.expert_id)
-        listed = True
+        # The package files (references/, scripts/, assets/, ...) go to the
+        # model as a listing and as copies in its working directory.
         try:
-            package_files = await _list_package_files(manager, folder, name)
-        except Exception:
-            logger.warning(
-                "[skills] failed to list package files for %s", name, exc_info=True
-            )
-            if loaded.files is not None:
-                return ErrorResponse(
-                    message="The skill package is unavailable; retry tool:read_skill.",
-                    error="skill_package_unavailable",
-                    session_id=session_id,
-                )
-            package_files = []
-            listed = False
-
-        if loaded.files is not None and not _matches_version_files(
-            package_files, loaded.files, f"{folder}/{name}/"
-        ):
-            return ErrorResponse(
-                message="The skill package changed while loading; retry tool:read_skill.",
-                error="skill_changed",
+            package = await materialise_skill_package(
+                manager,
+                expert_id=owner.expert_id,
+                name=name,
                 session_id=session_id,
+                version_files=loaded.files,
             )
-
-        notes: list[str] = []
-        # A listing that failed is not an empty package: treating it as one
-        # would prune every file the last activation wrote.
-        complete = listed and len(package_files) <= MAX_PACKAGE_FILES
-        if listed and not complete:
-            package_files = package_files[:MAX_PACKAGE_FILES]
-            notes.append(
-                f"Only the first {MAX_PACKAGE_FILES} package files are listed."
-            )
-
-        # Runs even for a skill with no files: a package deleted and re-stored
-        # under the same slug leaves its old files in the working directory.
-        package_dir, warning = await _sync_skill_package(
-            manager,
-            package_files,
-            folder=folder,
-            slug=name,
-            session_id=session_id,
-            complete=complete,
-            version_files=loaded.files,
-        )
-        if warning:
-            notes.append(warning)
-        if package_dir:
-            notes.append(
-                f"Package files are at {package_dir}; relative paths in the "
-                "body resolve there. Run scripts with bash_exec from that "
-                "directory."
+        except SkillPackageLoadError as exc:
+            return ErrorResponse(
+                message=exc.message, error=exc.error, session_id=session_id
             )
 
         await record_skill_loaded(
@@ -3636,16 +3679,16 @@ class ReadSkillTool(BaseTool):
             description=parsed.description,
             body=parsed.body,
             triggers=list(parsed.triggers),
-            sibling_files=[f.path for f in package_files],
-            files=package_files,
-            package_dir=package_dir,
+            sibling_files=[f.path for f in package.files],
+            files=package.files,
+            package_dir=package.package_dir,
             is_default=False,
             expert_id=owner.expert_id,
             version=loaded.version,
             version_id=loaded.version_id,
             origin=loaded.origin,
             origin_label=loaded.origin_label,
-            message=" ".join([loaded.message(name), *notes]),
+            message=" ".join([loaded.message(name), *package.notes]),
             session_id=session_id,
         )
 
