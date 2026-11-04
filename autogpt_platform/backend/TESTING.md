@@ -47,8 +47,10 @@ through a setup fixture. It starts the services once per session and cleans up
 graphs and store listings before stopping them. Pure unit tests do not start
 these service processes. The REST API is not one of them: tests call it in
 process, through `TestClient` or the `test_*` helpers on `server.agent_server`.
-If a service process exits during start-up, the fixture stops the others and
-fails, naming that service and its exit code.
+If a service process has already exited when the fixture's start-up is done, the
+fixture stops the others and fails, naming that service and its exit code.
+Without the preload described below (as in CI), the services are often still
+importing at that point, so this catches only a service that dies early.
 
 For local runs on platforms with `forkserver`, the service processes share
 preloaded code and models instead of importing separate copies. CI retains its
