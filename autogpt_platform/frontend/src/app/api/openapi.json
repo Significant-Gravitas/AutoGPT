@@ -30799,7 +30799,7 @@
       "NotificationPreference": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": { "type": "string", "title": "Email" },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
             "default": "WEEKLY"
@@ -30829,7 +30829,6 @@
         "properties": {
           "email": {
             "type": "string",
-            "format": "email",
             "title": "Email",
             "description": "The account's address, as shown in the form. Ignored on update: an account's address changes only through the verified change-email flow."
           },

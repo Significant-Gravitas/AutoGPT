@@ -513,7 +513,8 @@ class NotificationPreference(BaseModel):
     are sent regardless of these settings."""
 
     user_id: str
-    email: EmailStr
+    # Built from the stored address; EmailStr rejects reserved domains on read.
+    email: str
     briefing_frequency: BriefingFrequency = BriefingFrequency.WEEKLY
     alerts_enabled: bool = True
     store_verdicts_enabled: bool = True
@@ -525,7 +526,9 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
-    email: EmailStr = Field(
+    # Not validated: the settings pages echo the stored address, which
+    # EmailStr may reject (reserved domains), and the endpoint ignores it.
+    email: str = Field(
         description="The account's address, as shown in the form. Ignored on "
         "update: an account's address changes only through the verified "
         "change-email flow."
