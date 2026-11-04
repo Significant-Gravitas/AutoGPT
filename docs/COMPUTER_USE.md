@@ -296,7 +296,9 @@ trips IME/autocomplete on web forms.
 
 1. **Threshold.** `paste: true` is **only honored when `len(text) >= 200`**,
    or when the text has characters that can't be typed key by key
-   (pyautogui types ASCII only). Otherwise the shim falls through to
+   (pyautogui has keys only for printable ASCII, tab and the line breaks,
+   so other scripts and control characters such as NUL, ESC and DEL
+   need a paste). Otherwise the shim falls through to
    per-key typing, which avoids the clipboard race for short strings that
    don't actually need it. Typing such text is refused
    (`FEATURE_NOT_SUPPORTED`) rather than done in part.
