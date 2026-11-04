@@ -19,7 +19,8 @@ cost attribution, credential pins, account route and scope, and it may spawn
 further work within the tree's depth. When it hands work off itself, its own
 record and the wake of the original chat wait for the last of that work to come
 back to it, so the result it reports is whole, its continuations' answers
-included, rather than an interim one. It keeps no deadline of its own; the only
+included, rather than an interim one, and it ends the way its last continuation
+ended. It keeps no deadline of its own; the only
 deadline it can have is one the launching turn already had, which the worker
 enforces once the child runs and the sweep enforces while it is still queued.
 
@@ -43,7 +44,8 @@ launch to the next user message after its answer (a browser screenshot is
 saved for the child by another tool, so the turn's own tool calls would miss
 it, while a later turn's files stay out), and until the outcome is
 recorded it reports the child as still running rather than reading a partial
-transcript as a result. The UI renders the wake as a short labeled notice,
+transcript as a result; a child refused as it was promoted reports the
+refusal from its chat. The UI renders the wake as a short labeled notice,
 not the internal prompt.
 
 Subtask Stop cancels that child. Parent Stop cancels background work launched

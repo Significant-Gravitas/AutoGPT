@@ -175,18 +175,10 @@ async def finish_background_turn(
                     changed = await _finish_followup(tx, followup, error)
                 if changed and error:
                     await invalidate_session_cache(session_id)
-        await _complete_child_whose_work_is_back(user_id, session_id)
+        await _complete_child_whose_work_is_back(user_id, session_id, error)
         return
     task = tasks[0]
-    outcome: BackgroundOutcome = (
-        "completed"
-        if error is None
-        else (
-            "timed_out"
-            if error == BACKGROUND_TIMEOUT_MESSAGE
-            else "cancelled" if error == CANCELLED_MESSAGE else "failed"
-        )
-    )
+    outcome = _outcome_of(error)
     if outcome == "completed" and await has_open_handoffs(user_id, session_id):
         # The child handed work off itself: its result is whole only once that
         # work has come back to it, so its record waits for its last
@@ -198,6 +190,15 @@ async def finish_background_turn(
         outcome,
         result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
     )
+
+
+def _outcome_of(error: str | None) -> BackgroundOutcome:
+    """How a turn ended, from the error it ended with, if any."""
+    if error is None:
+        return "completed"
+    if error == BACKGROUND_TIMEOUT_MESSAGE:
+        return "timed_out"
+    return "cancelled" if error == CANCELLED_MESSAGE else "failed"
 
 
 async def has_open_handoffs(user_id: str, session_id: str) -> bool:
@@ -213,11 +214,13 @@ async def has_open_handoffs(user_id: str, session_id: str) -> bool:
     return bool(rows)
 
 
-async def _complete_child_whose_work_is_back(user_id: str, session_id: str) -> None:
+async def _complete_child_whose_work_is_back(
+    user_id: str, session_id: str, error: str | None
+) -> None:
     """Complete the record of a background child whose own turn ended with
     work of its own still out, once the last of that work has come back to
     it: its answer is then the latest row of its chat, its continuations'
-    included."""
+    included, and it ends the way that last continuation ended."""
     if await has_open_handoffs(user_id, session_id):
         return
     tasks = await db.query_raw_with_schema(
@@ -232,7 +235,7 @@ async def _complete_child_whose_work_is_back(user_id: str, session_id: str) -> N
         await complete_background_task(
             task.id,
             user_id,
-            "completed",
+            _outcome_of(error),
             result_sequence=await _answer_sequence(task.child_turn_id, True),
         )
 
@@ -421,8 +424,28 @@ async def background_child_result(
     task = tasks[0] if tasks else None
     if task is None:
         return None
-    if task.outcome is None or task.result_sequence is None:
-        return BackgroundChildResult(outcome=task.outcome)
+    if task.outcome is None:
+        return BackgroundChildResult()
+    if task.result_sequence is None:
+        # Ended without an answer row: the turn's window still bounds its
+        # files, from its launch to the next user row after it.
+        windows = await db.query_raw_with_schema(
+            """SELECT launch."createdAt" AS "writtenFrom", (
+                SELECT min(next."createdAt") FROM {schema_prefix}"ChatMessage" next
+                WHERE next."sessionId"=$1 AND next.role='user'
+                  AND next.sequence>launch.sequence
+              ) AS "writtenUntil"
+            FROM {schema_prefix}"ChatMessage" launch WHERE launch.id=$2""",
+            session_id,
+            task.child_turn_id,
+            model=_TurnWindow,
+        )
+        window = windows[0] if windows else None
+        return BackgroundChildResult(
+            outcome=task.outcome,
+            written_from=window.written_from if window else None,
+            written_until=window.written_until if window else None,
+        )
     rows = await db.query_raw_with_schema(
         """SELECT message.content, message."toolCalls",
           launch."createdAt" AS "writtenFrom", (
@@ -448,15 +471,20 @@ async def background_child_result(
     )
 
 
-class _RecordedRow(BaseModel):
-    """An assistant row of the recorded turn, with the turn's window: from
-    its launch row to the next user row after its answer, if any."""
+class _TurnWindow(BaseModel):
+    """The recorded turn's window: from its launch row to the next user row
+    after its answer, if any."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-    content: str | None = None
-    tool_calls: Any = None
     written_from: datetime
     written_until: datetime | None = None
+
+
+class _RecordedRow(_TurnWindow):
+    """An assistant row of the recorded turn, with the turn's window."""
+
+    content: str | None = None
+    tool_calls: Any = None
 
 
 def _tool_calls_of(raw: Any) -> list[dict[str, Any]]:

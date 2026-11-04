@@ -1107,9 +1107,7 @@ class TestGetSubSessionResult:
         # Waiter skipped (terminal short-circuit) — the tool-call log is stale.
         mock_waiter.result_mock.assert_not_awaited()
         # ...but the manifest is still populated, from the workspace listing.
-        stub_workspace_listing.assert_awaited_once_with(
-            "alice", "inner-9", written_from=None, written_until=None
-        )
+        stub_workspace_listing.assert_awaited_once_with("alice", "inner-9")
         assert r.sub_workspace_files is not None
         assert r.sub_workspace_files[0].path == "/sessions/inner-9/AUDIT.md"
         assert "workspace file" in (r.message or "")
@@ -1520,7 +1518,9 @@ class TestAThreadNothingReached:
 @pytest.mark.asyncio
 async def test_the_sub_manifest_can_be_restricted_to_a_window(monkeypatch):
     """A recorded background result lists only the files written in its
-    turn's window, so a later turn's files in the child's chat stay out."""
+    turn's window, so a later turn's files in the child's chat stay out; the
+    window reaches the query, ahead of the manifest limit, so those files
+    cannot crowd the turn's own out either."""
     launch = datetime(2026, 11, 4, 6, 0, tzinfo=UTC)
 
     def _file(file_id: str, written_at: datetime) -> WorkspaceFile:
@@ -1538,11 +1538,7 @@ async def test_the_sub_manifest_can_be_restricted_to_a_window(monkeypatch):
 
     manager = MagicMock()
     manager.list_files = AsyncMock(
-        return_value=[
-            _file("before", launch - timedelta(minutes=1)),
-            _file("during", launch + timedelta(minutes=1)),
-            _file("after", launch + timedelta(minutes=10)),
-        ]
+        return_value=[_file("during", launch + timedelta(minutes=1))]
     )
     monkeypatch.setattr(
         "backend.copilot.tools.run_sub_session.get_workspace_manager",
@@ -1557,3 +1553,8 @@ async def test_the_sub_manifest_can_be_restricted_to_a_window(monkeypatch):
     )
 
     assert [f.file_id for f in files or []] == ["during"]
+    kwargs = manager.list_files.await_args.kwargs
+    assert (kwargs["created_after"], kwargs["created_before"]) == (
+        launch,
+        launch + timedelta(minutes=5),
+    )

@@ -40,6 +40,7 @@ from backend.copilot.sdk.session_waiter import (
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.tools.models import WorkspaceFileInfoData
 from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
 from backend.data.db_accessors import background_task_db, experts_db
 
@@ -236,7 +237,16 @@ class GetSubSessionResultTool(BaseTool):
                 ),
                 delegate,
             )
-        if recorded is not None and recorded.outcome is not None:
+        if (
+            refusal is not None
+            and not queued
+            and (recorded is None or recorded.outcome != "completed")
+        ):
+            # A turn refused as it was promoted says why in its chat, a
+            # background child's included; its record, which the sweep closes
+            # as failed, does not.
+            outcome, result = "refused", SessionResult(refusal=refusal)
+        elif recorded is not None and recorded.outcome is not None:
             outcome, result = _recorded_result(recorded, actor)
         elif recorded is not None and not queued and not turn_in_flight:
             # Ended without a recorded outcome: recovery records it within
@@ -246,8 +256,6 @@ class GetSubSessionResultTool(BaseTool):
             outcome, result = await wait_for_queued_session(
                 session_id=inner_session_id, user_id=user_id, timeout=effective_wait
             )
-        elif refusal is not None:
-            outcome, result = "refused", SessionResult(refusal=refusal)
         elif terminal_result is not None:
             outcome, result = "completed", terminal_result
         elif effective_wait > 0:
@@ -294,12 +302,7 @@ class GetSubSessionResultTool(BaseTool):
         # a file another tool saved for the sub, such as a browser screenshot,
         # while a later turn's files stay out of its result.
         workspace_files = (
-            await list_sub_workspace_files(
-                user_id,
-                inner_session_id,
-                written_from=recorded.written_from if recorded else None,
-                written_until=recorded.written_until if recorded else None,
-            )
+            await _sub_workspace_files(user_id, inner_session_id, recorded)
             if outcome == "completed"
             else None
         )
@@ -315,6 +318,25 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+async def _sub_workspace_files(
+    user_id: str, inner_session_id: str, recorded: BackgroundChildResult | None
+) -> list[WorkspaceFileInfoData] | None:
+    """The manifest a completed sub reports: the whole workspace listing for
+    a foreground sub, and for a recorded background result the files written
+    in its turn's window. A record without a window (its launch row gone)
+    lists nothing rather than everything."""
+    if recorded is None:
+        return await list_sub_workspace_files(user_id, inner_session_id)
+    if recorded.written_from is None:
+        return []
+    return await list_sub_workspace_files(
+        user_id,
+        inner_session_id,
+        written_from=recorded.written_from,
+        written_until=recorded.written_until,
+    )
 
 
 def _recorded_result(

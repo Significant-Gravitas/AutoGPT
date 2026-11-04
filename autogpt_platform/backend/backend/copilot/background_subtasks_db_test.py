@@ -39,7 +39,11 @@ from backend.copilot.background_task import (
 )
 from backend.copilot.context import set_current_turn_id, set_execution_context
 from backend.copilot.executor import processor, utils
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    get_session_lock_key,
+)
 from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import (
@@ -1476,13 +1480,14 @@ async def test_a_dispatcher_that_lost_its_admission_cannot_record_its_turn(
     assert rows[0]["turn"] == "successor"
 
 
-@pytest.mark.parametrize("worker", ["dead", "alive"])
+@pytest.mark.parametrize("worker", ["dead", "alive", "locked"])
 async def test_sweep_recovers_a_child_whose_worker_died_without_a_session_read(
     world: World, worker: str
 ):
     """A chat nobody has open cannot rely on the routes' orphan release; the
     sweep applies the same rule, fenced to the claimed turn, and leaves a
-    live worker alone however old the row is."""
+    live worker alone however old the row is, whether its stream metadata is
+    there or only the lock it keeps refreshing."""
     task = await world.launch()
     await world.finish_parent()
     entry = world.entry(task.child_session_id)
@@ -1492,21 +1497,23 @@ async def test_sweep_recovers_a_child_whose_worker_died_without_a_session_read(
         task.child_session_id,
         datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS + 1),
     )
-    if worker == "dead":
-        await (await get_redis_async()).delete(
-            stream_registry._get_session_meta_key(task.child_session_id)
-        )
+    redis = await get_redis_async()
+    if worker != "alive":
+        await redis.delete(stream_registry._get_session_meta_key(task.child_session_id))
+    if worker == "locked":
+        await redis.set(get_session_lock_key(task.child_session_id), "pod", ex=60)
 
     await background_delivery.reconcile_background_subtasks()
     await background_delivery.reconcile_background_subtasks()
 
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored
-    if worker == "alive":
+    if worker != "dead":
         assert stored.outcome is None
         assert (
             await chat_db().get_chat_session_status(task.child_session_id) == "running"
         )
+        await redis.delete(get_session_lock_key(task.child_session_id))
         return
     assert stored.outcome == "failed"
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
@@ -1814,14 +1821,16 @@ async def test_result_tool_names_how_a_background_child_ended(
     assert "result" in response.message
 
 
+@pytest.mark.parametrize("answered", [True, False])
 async def test_result_tool_lists_a_background_childs_workspace_files(
-    world: World, monkeypatch: pytest.MonkeyPatch
+    world: World, monkeypatch: pytest.MonkeyPatch, answered: bool
 ):
     """A recorded result's files are the child's workspace manifest, as for a
     foreground sub, since a tool such as the browser's screenshot saves a file
     for the child with no ``write_workspace_file`` call in the turn's log;
     the manifest is restricted to the turn's window, from its launch to the
-    next user message after its answer, so a later turn's files stay out."""
+    next user message after its answer, so a later turn's files stay out,
+    whether or not the turn left an answer row."""
     screenshot = WorkspaceFileInfoData(
         file_id="file-1",
         name="screenshot.png",
@@ -1836,7 +1845,15 @@ async def test_result_tool_lists_a_background_childs_workspace_files(
     )
     task = await world.launch()
     await world.finish_parent()
-    await world.finish_child(task)
+    if answered:
+        await world.finish_child(task)
+    else:
+        entry = world.entry(task.child_session_id)
+        assert await claim_background_execution(entry)
+        await finish_background_execution(entry, None)
+        await stream_registry.mark_session_completed(
+            task.child_session_id, turn_id=task.child_turn_id
+        )
     await append_and_save_message(
         task.child_session_id, ChatMessage(role="user", content="One more thing")
     )
@@ -1923,13 +1940,15 @@ async def test_sweep_recovers_a_continuation_whose_worker_died(
     assert len(notices) == 1
 
 
+@pytest.mark.parametrize("continuation", ["completed", "failed"])
 async def test_a_child_that_handed_work_off_wakes_the_parent_once_that_work_is_back(
-    world: World,
+    world: World, continuation: str
 ):
     """A child's own turn may end with work of its own still out. Its record,
     and the wake of the original chat, wait for the last of that work to come
     back to it, and its answer is then the latest row of its chat, so the
-    original chat reads the whole result rather than an interim one."""
+    original chat reads the whole result rather than an interim one; and the
+    child ends the way that last continuation ended."""
     task = await world.launch()
     await world.finish_parent()
     entry = world.entry(task.child_session_id)
@@ -1982,9 +2001,9 @@ async def test_a_child_that_handed_work_off_wakes_the_parent_once_that_work_is_b
     await background_delivery.reconcile_background_subtasks()
     await background_delivery.reconcile_background_subtasks()
     assert wakes_of(task.wake_id) == []
-    (continuation,) = wakes_of(grandchild.wake_id)
+    (published_wake,) = wakes_of(grandchild.wake_id)
     wake = CoPilotExecutionEntry(
-        **continuation,
+        **published_wake,
         cost_context=TrialCostContext(user_id=world.user_id, trial_id=None),
     )
     assert await claim_background_execution(wake)
@@ -1992,17 +2011,45 @@ async def test_a_child_that_handed_work_off_wakes_the_parent_once_that_work_is_b
         task.child_session_id,
         ChatMessage(role="assistant", content="The final answer is 42."),
     )
-    await finish_background_execution(wake, None)
+    await finish_background_execution(
+        wake, None if continuation == "completed" else "boom"
+    )
     await stream_registry.mark_session_completed(
         task.child_session_id, turn_id=grandchild.wake_id
     )
     await background_delivery.reconcile_background_subtasks()
 
     stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.outcome == "completed"
+    assert stored and stored.outcome == continuation
     assert len(wakes_of(task.wake_id)) == 1
     final = await GetSubSessionResultTool()._execute(
         world.user_id, world.parent, sub_session_id=task.child_session_id
     )
+    if continuation == "failed":
+        assert final.status == "error" and "failed" in final.message
+        return
     assert final.status == "completed"
     assert final.response == "The final answer is 42."
+
+
+async def test_result_tool_reports_why_a_background_child_was_refused(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """A child refused as it was promoted, here at its tree's spend ceiling,
+    says why in its chat; the sweep closes its record as failed, and the tool
+    reports that refusal rather than a generic failure."""
+    # Launch leaves the child queued; the parent's end promotes it.
+    monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
+    task = await world.launch()
+    assert not world.published.await_count
+    await (await get_tree_ledger()).charge(world.envelope.tree_id, 1_000_000)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "failed"
+    response = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+    assert response.status == "error"
+    assert "Budget limit" in response.message

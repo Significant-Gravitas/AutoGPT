@@ -297,6 +297,8 @@ async def list_workspace_files(
     allowed_path_prefixes: Optional[list[str]] = None,
     include_user_files: bool = False,
     include_internal: bool = True,
+    created_after: Optional[datetime] = None,
+    created_before: Optional[datetime] = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -336,6 +338,10 @@ async def list_workspace_files(
         include_internal: Whether to return Otto's own working files
             (``isInternal``). Otto's tools read them, so it defaults to
             ``True``; every list a person sees must pass ``False``.
+        created_after: Only files written at or after this instant.
+        created_before: Only files written before this instant. Both apply
+            in the query, ahead of ``limit``, so newer files cannot crowd
+            out the ones a window asks for.
 
     Returns:
         List of WorkspaceFile instances
@@ -383,6 +389,13 @@ async def list_workspace_files(
 
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
+
+    if created_after is not None and created_before is not None:
+        where_clause["createdAt"] = {"gte": created_after, "lt": created_before}
+    elif created_after is not None:
+        where_clause["createdAt"] = {"gte": created_after}
+    elif created_before is not None:
+        where_clause["createdAt"] = {"lt": created_before}
 
     if scope_branches:
         where_clause["AND"] = [{"OR": scope_branches}]

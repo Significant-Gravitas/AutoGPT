@@ -1,16 +1,19 @@
 """Recover accepted work and wake the chat once to carry on with the result."""
 
 import logging
+from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from backend.copilot import stream_registry
 from backend.copilot.active_turns import ORPHAN_RUNNING_RESET_SECONDS
 from backend.copilot.background_task import BackgroundTask, task_metadata
-from backend.copilot.executor.utils import enqueue_cancel_task
+from backend.copilot.executor.utils import enqueue_cancel_task, get_session_lock_key
 from backend.copilot.model import _get_session_lock, invalidate_session_cache
 from backend.copilot.tree import TurnEnvelope, keep_tree_alive
 from backend.copilot.turn_queue import cancel_queued_turn, dispatch_next_for_user
 from backend.data.db_accessors import background_task_db, chat_db
+from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +218,11 @@ async def _release_if_abandoned(
     pass records the interrupted outcome."""
     active, _ = await stream_registry.get_active_session(session_id, task.user_id)
     if active is not None and active.turn_id == turn_id:
+        return
+    redis = await get_redis_async()
+    if await cast(Awaitable[int], redis.exists(get_session_lock_key(session_id))):
+        # The worker refreshes the chat's lock while its turn runs, whatever
+        # became of the stream metadata; only the lock's expiry says it died.
         return
     before = datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS)
     if await background_task_db().release_abandoned_background_turn(
