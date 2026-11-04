@@ -408,7 +408,7 @@ How the four sketched pieces actually landed:
    `computer_20251124` beta tool).** Native beta covers only
    screenshot+click+type+key+scroll. We expose the shim's full surface
    — including window listing, app launch, clipboard, permissions
-   probing — as 11 plain MCP tools in
+   probing — as 13 plain MCP tools in
    `backend/copilot/sdk/computer_use_tools.py`. Names: `local_pc_screenshot`,
    `local_pc_click`, `local_pc_type`, `local_pc_key`, `local_pc_scroll`,
    `local_pc_cursor_position`, `local_pc_list_windows`,
