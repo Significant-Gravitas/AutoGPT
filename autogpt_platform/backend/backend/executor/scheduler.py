@@ -128,6 +128,7 @@ from backend.util.clients import (
     get_scheduler_client,
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
+from backend.util.cron import check_cron_fires, check_cron_length
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -2777,13 +2778,20 @@ def _build_trigger(
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
         if cron is not None:
-            return CronTrigger.from_crontab(
-                _normalize_cron_day_of_week(cron), timezone=user_timezone
-            )
+            return _build_cron_trigger(cron, user_timezone)
         return DateTrigger(run_date=run_at, timezone=user_timezone)
     except ZoneInfoNotFoundError as e:
         # A KeyError, which the API would turn into a 500, not a 400.
         raise ValueError(f"Unknown timezone {user_timezone!r}") from e
+
+
+def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
+    check_cron_length(cron)
+    trigger = CronTrigger.from_crontab(
+        _normalize_cron_day_of_week(cron), timezone=user_timezone
+    )
+    check_cron_fires(trigger, cron)
+    return trigger
 
 
 def _updated_graph_job_args(
@@ -3338,6 +3346,7 @@ class Scheduler(AppService):
         job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
+        replaces: list[str] | None = None,
     ) -> JobObj:
         """Register *job_args* with APScheduler.
 
@@ -3347,6 +3356,7 @@ class Scheduler(AppService):
         ``id=schedule_id`` so the row is addressable by our generated UUID).
         """
         assert job_args.schedule_id is not None
+        self._check_schedule_capacity(job_args, replaces=replaces)
         job = self.scheduler.add_job(
             dispatch_func,
             kwargs=job_args.model_dump(mode="json"),
@@ -3365,6 +3375,58 @@ class Scheduler(AppService):
         # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
         self._invalidate_jobs_cache()
         return job
+
+    def _check_schedule_capacity(
+        self,
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+        replaces: list[str] | None = None,
+    ) -> None:
+        """Refuse a new schedule once its owner holds the per-user limit.
+        A job that replaces one under its own id, or takes the place of the
+        jobs named in *replaces*, adds nothing and is always allowed."""
+        assert job_args.schedule_id is not None
+        if (
+            self.scheduler.get_job(
+                job_args.schedule_id, jobstore=Jobstores.EXECUTION.value
+            )
+            is not None
+        ):
+            return
+        limit = config.max_schedules_per_user
+        held = self._schedule_count(job_args.user_id, replaces=replaces)
+        if held >= limit:
+            raise ValueError(
+                f"You already have {held} schedules, the most one account "
+                f"can have ({limit}). Delete one to add another."
+            )
+
+    def _schedule_count(self, user_id: str, replaces: list[str] | None = None) -> int:
+        """How many schedules *user_id* holds, paused ones included.
+
+        A pause clears ``next_run_time`` without giving up the schedule, so a
+        paused one still counts; a spent one-shot is removed rather than
+        cleared, so nothing dead does.
+        """
+        if not self._persistent_jobstores:
+            # Not started through run_service, so there is no filtered scan.
+            jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        else:
+            jobs = self._get_schedule_jobs(
+                user_id=user_id,
+                graph_id=None,
+                session_id=None,
+                kind=None,
+                organization_id=None,
+                include_paused=True,
+            )
+        replaced = set(replaces or ())
+        # What the index holds: a briefing or memory job names its user too.
+        return sum(
+            job.kwargs.get("user_id") == user_id
+            and job.id not in replaced
+            and _job_to_info(job) is not None
+            for job in jobs
+        )
 
     @expose
     def add_graph_execution_schedule(
@@ -3453,6 +3515,7 @@ class Scheduler(AppService):
         purpose: Literal["followup", "resume", "send"] = "followup",
         schedule_id: str | None = None,
         created_at: datetime | None = None,
+        replaces_schedule_ids: list[str] | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3471,6 +3534,9 @@ class Scheduler(AppService):
         it was first set; a job put back after the user set a newer one
         under the same id while it ran doesn't overwrite that one (see
         ``_put_back_onto``).
+
+        *replaces_schedule_ids* names jobs this one takes the place of, so a
+        routine given a new cadence is not refused for its own current jobs.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3524,6 +3590,7 @@ class Scheduler(AppService):
             job_args=job_args,
             trigger=trigger,
             name=name or default_name,
+            replaces=replaces_schedule_ids,
         )
         session_label = session_id[:12] if session_id else "<new>"
         logger.info(
@@ -3717,6 +3784,9 @@ class Scheduler(AppService):
         job, info = self._authorized_job(schedule_id, user_id, action="resume")
         if job.next_run_time is not None:
             return False
+        # Resuming computes the next fire time from the stored trigger.
+        if isinstance(job.trigger, CronTrigger):
+            check_cron_fires(job.trigger, info.cron or "")
         logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
         self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         self._invalidate_jobs_cache()

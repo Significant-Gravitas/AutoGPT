@@ -120,6 +120,7 @@ from .simulator import (
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    GRAPH_EXECUTION_DELAY_ROUTING_KEY,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
@@ -1854,6 +1855,8 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        # Owner of each active top-level run, for the per-user worker share.
+        self._root_run_owners: dict[str, str] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -2068,44 +2071,58 @@ class ExecutionManager(AppProcess):
         delivery_tag = method.delivery_tag
 
         @func_retry
-        def _ack_message(reject: bool, requeue: bool):
+        def _ack_message(reject: bool, requeue: bool, delay: bool = False):
             """
             Acknowledge or reject the message based on execution status.
 
             Args:
                 reject: Whether to reject the message
                 requeue: Whether to requeue the message
+                delay: Whether to hold the requeued message in the delay queue
             """
 
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
-            if reject:
-                if requeue and settings.config.requeue_by_republishing:
-                    # Send rejected message to back of queue using republishing
-                    def _republish_to_back():
-                        try:
-                            # First republish to back of queue
-                            self.run_client.publish_message(
-                                routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-                                message=body.decode(),  # publish_message expects string, not bytes
-                                exchange=GRAPH_EXECUTION_EXCHANGE,
-                            )
-                            # Then reject without requeue (message already republished)
-                            channel.basic_nack(delivery_tag, requeue=False)
-                            logger.info("Message requeued to back of queue")
-                        except Exception as e:
-                            logger.error(
-                                f"[{self.service_name}] Failed to requeue message to back: {e}"
-                            )
-                            # Fall back to traditional requeue on failure
-                            channel.basic_nack(delivery_tag, requeue=True)
 
-                    channel.connection.add_callback_threadsafe(_republish_to_back)
-                else:
-                    # Traditional requeue (goes to front) or no requeue
-                    channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+            def _republish(routing_key: str, expiration: str | None):
+                try:
+                    # First republish, so the delivery can be dropped
+                    self.run_client.publish_message(
+                        routing_key=routing_key,
+                        message=body.decode(),  # publish_message expects string, not bytes
+                        exchange=GRAPH_EXECUTION_EXCHANGE,
+                        properties=BasicProperties(
+                            delivery_mode=2, expiration=expiration
+                        ),
                     )
+                    # Then reject without requeue (message already republished)
+                    channel.basic_nack(delivery_tag, requeue=False)
+                    logger.info(f"Message requeued via {routing_key}")
+                except Exception as e:
+                    logger.error(
+                        f"[{self.service_name}] Failed to requeue message "
+                        f"via {routing_key}: {e}"
+                    )
+                    # Fall back to traditional requeue on failure
+                    channel.basic_nack(delivery_tag, requeue=True)
+
+            if reject and requeue and delay:
+                # Via the delay queue, which holds the message for this long
+                # and then dead-letters it back onto the run queue.
+                ttl_ms = str(settings.config.graph_run_requeue_delay_seconds * 1000)
+                channel.connection.add_callback_threadsafe(
+                    lambda: _republish(GRAPH_EXECUTION_DELAY_ROUTING_KEY, ttl_ms)
+                )
+            elif reject and requeue and settings.config.requeue_by_republishing:
+                # Send rejected message to back of queue using republishing
+                channel.connection.add_callback_threadsafe(
+                    lambda: _republish(GRAPH_EXECUTION_ROUTING_KEY, None)
+                )
+            elif reject:
+                # Traditional requeue (goes to front) or no requeue
+                channel.connection.add_callback_threadsafe(
+                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+                )
             else:
                 channel.connection.add_callback_threadsafe(
                     lambda: channel.basic_ack(delivery_tag)
@@ -2146,6 +2163,15 @@ class ExecutionManager(AppProcess):
             + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
+        is_root_run = root_exec_id is None or root_exec_id == graph_exec_id
+        if is_root_run and not self._has_worker_share_for(user_id):
+            logger.info(
+                f"[{self.service_name}] User {user_id} holds its share of workers; "
+                f"requeueing {graph_exec_id}"
+            )
+            _ack_message(reject=True, requeue=True, delay=True)
+            return
+
         # Check if root execution is already terminated (prevents orphaned child executions)
         if root_exec_id and root_exec_id != graph_exec_id:
             parent_exec = get_db_client().get_graph_execution_meta(
@@ -2182,7 +2208,7 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
-                _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=True, delay=True)
                 return
 
         except Exception as e:
@@ -2234,6 +2260,8 @@ class ExecutionManager(AppProcess):
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
             self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            if is_root_run:
+                self._root_run_owners[graph_exec_id] = user_id
         except Exception as e:
             logger.warning(
                 f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
@@ -2282,9 +2310,20 @@ class ExecutionManager(AppProcess):
         for geid in completed_runs:
             logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
+            self._root_run_owners.pop(geid, None)
 
         self._update_prompt_metrics()
         return completed_runs
+
+    def _has_worker_share_for(self, user_id: str) -> bool:
+        """Whether *user_id* may start another top-level run on this executor."""
+        # Kept below the pool, so one account can never hold every worker.
+        share = max(
+            1, min(settings.config.max_graph_workers_per_user, self.pool_size - 1)
+        )
+        # Counted on a snapshot: a run's done-callback can drop an owner mid-count.
+        held = list(self._root_run_owners.values()).count(user_id)
+        return held < share
 
     def _update_prompt_metrics(self):
         active_count = len(self.active_graph_runs)
