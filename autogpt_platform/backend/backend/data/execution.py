@@ -1616,6 +1616,9 @@ class NodeExecutionEntry(BaseModel):
     queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
         default=None, exclude=True
     )
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
+    input_error: Optional[str] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):

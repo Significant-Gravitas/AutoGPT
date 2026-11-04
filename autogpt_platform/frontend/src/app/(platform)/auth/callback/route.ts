@@ -1,6 +1,6 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   type EmailVerificationNotice,
@@ -106,13 +106,15 @@ export async function GET(request: Request) {
       }
 
       const { shouldShowOnboarding } = await getOnboardingStatus();
-      // Prefer a sanitized ?next (relative paths only — sanitizeAuthNext drops
+      // Prefer a sanitized ?next (relative paths only — getAuthDeepLink drops
       // absolute and protocol-relative values, so a crafted ?next can't
       // open-redirect the user off-site); otherwise route by onboarding state.
+      // A default landing (`next=/home`) routes by onboarding state too, so a
+      // new account never lands on Home first (SECRT-3384).
       // Resolve the final target BEFORE revalidating so we revalidate the page
       // the user actually lands on.
       next =
-        sanitizeAuthNext(searchParams.get("next")) ??
+        getAuthDeepLink(searchParams.get("next")) ??
         (shouldShowOnboarding ? "/onboarding" : "/copilot");
       revalidatePath(next, "layout");
     } catch (createUserError) {

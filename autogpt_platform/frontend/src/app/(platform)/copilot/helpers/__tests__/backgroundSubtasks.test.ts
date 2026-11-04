@@ -12,15 +12,18 @@ const wake = {
     display_content: "Background subtask completed. Otto is following up.",
   },
 };
-const now = Date.parse("2026-10-19T12:00:00Z");
 
 describe("background subtask delivery", () => {
-  it.each([undefined, null, {}, { background_pending_until: null }])(
+  it.each([undefined, null, {}, { background_pending: false }])(
     "does not poll a chat with nothing pending (%s)",
     (session) => {
-      expect(backgroundRefreshInterval(session, now)).toBe(false);
+      expect(backgroundRefreshInterval(session)).toBe(false);
     },
   );
+
+  it("keeps checking while the server reports a continuation still to come", () => {
+    expect(backgroundRefreshInterval({ background_pending: true })).toBe(3000);
+  });
 
   it.each([undefined, null, 42, ""])(
     "hides the internal prompt when the display label is unusable (%s)",
@@ -35,19 +38,6 @@ describe("background subtask delivery", () => {
       expect(JSON.stringify(result.messages)).toContain(
         "Otto is following up.",
       );
-    },
-  );
-
-  it.each([
-    "2026-10-19T12:10:00Z",
-    "2026-10-19T12:10:00+00:00",
-    new Date("2026-10-19T12:10:00Z"),
-  ])(
-    "keeps checking until the follow-up window the server reports has passed (%s)",
-    (background_pending_until) => {
-      const session = { background_pending_until };
-      expect(backgroundRefreshInterval(session, now)).toBe(3000);
-      expect(backgroundRefreshInterval(session, now + 11 * 60_000)).toBe(false);
     },
   );
 

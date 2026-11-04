@@ -9,7 +9,7 @@ payload; Postmark receives those bodies rather than a hosted template ID.
 | Family | Variants | Design and delivery |
 | --- | --- | --- |
 | Lifecycle | Welcome, payment failed, final notice, cancellation confirmed, cancellation reversed, ended (payment/cancellation) | Billing sender; contact reply-to; service footer; no unsubscribe |
-| Trial | Started, ending, canceled, resumed, converted, payment failed, ended | Same billing rules; neutral Otto; one plan/payment action |
+| Trial | Started, ending, ending while set not to renew (3 days and 1 day before), canceled, resumed, converted, payment failed, ended | Same billing rules; neutral Otto; one plan/payment action |
 | Briefing | Daily, weekly, monthly; quiet/standard; attention/no attention | Product sender; hello reply-to; signed cadence links; one-click unsubscribe |
 | Alert | Each cause, including coalesced alerts | Amber needs-you strip and primary attention card; secondary actions are text links |
 | Verdict | Approved; changes requested with/without notes | State eyebrow; reviewer feedback preserved and escaped; one marketplace action |
@@ -158,6 +158,20 @@ To verify the trial-ending reminder, follow the delivery path in order:
 5. Check Postmark activity in the configured transactional stream for the
    billing sender and subject beginning `Your AutoGPT trial ends on`, then check
    the delivery result for the affected recipient.
+
+A trial set to cancel at its end gets its own two reminders instead, each with
+Resume my trial as the action. The same `trial_will_end` event queues the
+three-day one (`trial_expiring`, subject `Your AutoGPT trial ends in 3 days`).
+The scheduler's hourly `send_trial_last_calls` pass queues the one-day one
+(`trial_last_call`, subject `Your AutoGPT access ends tomorrow`)
+while 18 to 25 hours of the trial are left. Neither goes to someone who
+canceled in the last day, since the cancellation notice they just received
+gives the same date and way back. Neither goes while another plan is live, since
+that plan keeps their access, and the three-day reminder only goes out with
+between two and a half and three and a half days left, so its subject stays
+accurate. The last-day claim fails closed on a Redis error, so an outage
+cannot resend it on every hourly run. Each is claimed once per trial end date, and
+a resume before delivery suppresses it.
 
 Stripe's [trial-ending webhook setting](https://docs.stripe.com/billing/subscriptions/trials)
 is separate from its [hosted reminder emails](https://docs.stripe.com/billing/subscriptions/trials/manage-trial-compliance),

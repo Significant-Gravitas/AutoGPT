@@ -460,6 +460,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({
         user,
+        newEmail,
         url,
       }: {
         user: { email: string };
@@ -471,6 +472,7 @@ export const auth = betterAuth({
           to: user.email,
           type: "change_email",
           url,
+          newEmail,
         });
       },
     },
