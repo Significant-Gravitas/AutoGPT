@@ -42,6 +42,8 @@ Each tool comes back with its `provider` and `capability` IDs, a description, it
 **Lead generation**: Ask for "sales leaders at Series B software companies" and get the people-search tools that can answer it.
 
 **Picking a data source**: Compare the providers and prices available for company enrichment before building a workflow around one.
+
+**Checking tool inputs**: Look up a tool's input contract before adding it to a workflow, so the request fields match what the tool expects.
 <!-- END MANUAL -->
 
 ---

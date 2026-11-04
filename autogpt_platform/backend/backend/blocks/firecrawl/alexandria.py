@@ -20,6 +20,8 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockCost,
+    BlockCostType,
     BlockEffect,
     BlockOutput,
     BlockSchemaInput,
@@ -27,7 +29,9 @@ from backend.sdk import (
     CredentialsMetaInput,
     Requests,
     SchemaField,
+    cost,
 )
+from backend.util.exceptions import BlockInputError
 
 from ._config import firecrawl
 
@@ -138,6 +142,9 @@ def _charge(block: Block, result: dict[str, Any]) -> float:
     return credits
 
 
+# Discovery is free, so it must not inherit Firecrawl's paid provider cost: a
+# paid entry would stop the block from running on an empty wallet.
+@cost(BlockCost(cost_type=BlockCostType.RUN, cost_amount=0))
 class FirecrawlFindDataToolsBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
@@ -372,10 +379,18 @@ class FirecrawlRunDataToolBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        provider = input_data.provider.strip()
+        capability = input_data.capability.strip()
+        if not provider or not capability:
+            raise BlockInputError(
+                message="Provider and capability are both required",
+                block_name=self.name,
+                block_id=self.id,
+            )
         result = await self.call_alexandria(
             credentials.api_key.get_secret_value(),
-            input_data.provider.strip(),
-            input_data.capability.strip(),
+            provider,
+            capability,
             input_data.options,
             input_data.timeout,
         )

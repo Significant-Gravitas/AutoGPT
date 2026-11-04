@@ -1,9 +1,11 @@
 """Unit tests for the Firecrawl Alexandria blocks."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.firecrawl._config import firecrawl
 from backend.blocks.firecrawl.alexandria import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -12,7 +14,11 @@ from backend.blocks.firecrawl.alexandria import (
     FirecrawlRunDataToolBlock,
     call_alexandria,
 )
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import NodeExecutionStats
+from backend.executor.billing import _block_has_paid_cost_entry
+from backend.sdk.cost_integration import register_provider_costs_for_block
+from backend.util.exceptions import BlockInputError
 
 
 def _response(status: int, body: dict) -> MagicMock:
@@ -132,6 +138,38 @@ async def test_run_data_tool_bills_then_raises_when_the_capability_failed():
     assert captured[0].provider_cost == pytest.approx(0.003)
 
 
+@pytest.mark.parametrize("provider, capability", [(" ", "x"), ("apollo", " ")])
+async def test_run_data_tool_rejects_blank_provider_or_capability(
+    provider: str, capability: str
+):
+    block = FirecrawlRunDataToolBlock()
+    call = AsyncMock()
+    with (
+        patch.object(block, "call_alexandria", call),
+        pytest.raises(BlockInputError, match="Provider and capability"),
+    ):
+        await _run(block, provider=provider, capability=capability)
+    call.assert_not_called()
+
+
+def test_find_data_tools_is_free_on_the_platform_key():
+    """Discovery must not inherit Firecrawl's paid provider cost: a paid entry
+    stops the block on an empty wallet even though it charges nothing."""
+    platform_input = {"credentials": {"id": TEST_CREDENTIALS.id}}
+    with (
+        patch.object(firecrawl, "default_credentials", [TEST_CREDENTIALS]),
+        patch.dict(BLOCK_COSTS),
+    ):
+        BLOCK_COSTS.pop(FirecrawlRunDataToolBlock, None)
+        for block_class in (FirecrawlFindDataToolsBlock, FirecrawlRunDataToolBlock):
+            register_provider_costs_for_block(block_class)
+
+        assert not _block_has_paid_cost_entry(
+            FirecrawlFindDataToolsBlock(), platform_input
+        )
+        assert _block_has_paid_cost_entry(FirecrawlRunDataToolBlock(), platform_input)
+
+
 @pytest.mark.parametrize(
     "inputs, expected",
     [
@@ -155,8 +193,10 @@ async def test_run_data_tool_bills_then_raises_when_the_capability_failed():
         ({}, {"level": "categories", "limit": 10}),
     ],
 )
-def test_find_data_tools_builds_catalogue_options(inputs, expected):
+def test_find_data_tools_builds_catalogue_options(
+    inputs: dict[str, Any], expected: dict[str, Any]
+):
     input_data = FirecrawlFindDataToolsBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT, **inputs  # type: ignore[arg-type]
+        credentials=TEST_CREDENTIALS_INPUT, **inputs
     )
     assert FirecrawlFindDataToolsBlock.build_options(input_data) == expected
