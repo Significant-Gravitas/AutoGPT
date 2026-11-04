@@ -49,6 +49,19 @@ def chord_keys(key: str, aliases: dict[str, str], known: object = None) -> list[
     return keys
 
 
+def display_index_for(displays: Sequence[DisplayMonitor], bounds: tuple[int, int, int, int]) -> int:
+    """The index of the display holding the centre of `bounds` (left, top,
+    right, bottom, in the displays' coordinates), else 0."""
+    cx = (bounds[0] + bounds[2]) / 2
+    cy = (bounds[1] + bounds[3]) / 2
+    for display in displays:
+        ox, oy = display.origin
+        width, height = display.logical_size
+        if ox <= cx < ox + width and oy <= cy < oy + height:
+            return display.index
+    return 0
+
+
 def release_held(pyautogui: Any, *, keys: Sequence[str] = (), button: str | None = None) -> None:
     """Let go of held keys, last pressed first, and a held mouse button,
     however the input action ended.

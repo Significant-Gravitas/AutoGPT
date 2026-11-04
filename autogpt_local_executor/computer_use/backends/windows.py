@@ -37,6 +37,7 @@ from ..window_registry import WindowFingerprint
 from ._common import (
     capture_fields,
     chord_keys,
+    display_index_for,
     ensure_typeable,
     image_to_base64,
     in_any_rect,
@@ -326,18 +327,29 @@ class WindowsBackend(ComputerUseBackend):
             except Exception:
                 logger.debug("cursor composite failed", exc_info=True)
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
+        # Where the window is now, which may not be where it was listed.
+        monitor = display_index_for(self._displays_or_none(), (left, top, right, bot))
         return ScreenshotResult(
             image_bytes=img_bytes,
             mime_type=mime,
             width=img.width,
             height=img.height,
-            monitor=int(entry.extra.get("monitor", 0)),
+            monitor=monitor,
             region=None,
             display_scale=1.0,
             logical_size=(img.width, img.height),
             origin=(left, top),
-            display_id=int(entry.extra.get("monitor", 0)),
+            display_id=monitor,
         )
+
+    def _displays_or_none(self) -> list[DisplayMonitor]:
+        """The displays, or none when they can't be read (a window then
+        counts as on display 0)."""
+        try:
+            return list(self.display_info())
+        except Exception:
+            logger.debug("could not read the displays", exc_info=True)
+            return []
 
     # ── Input ────────────────────────────────────────────────────────
 
@@ -536,6 +548,7 @@ class WindowsBackend(ComputerUseBackend):
         self.window_registry.clear()
         out: list[WindowInfo] = []
         focus_hwnd = win32gui.GetForegroundWindow()
+        displays = self._displays_or_none()
 
         def _enum(hwnd: int, _: Any) -> None:
             try:
@@ -558,7 +571,10 @@ class WindowsBackend(ComputerUseBackend):
                     if not include_offscreen:
                         return
                 fp = WindowFingerprint(pid=pid, class_name=cls, creation_timestamp=None)
-                wid = self.window_registry.mint(hwnd, fp, extra={"bounds": (left, top, right, bot)})
+                monitor = display_index_for(displays, (left, top, right, bot))
+                wid = self.window_registry.mint(
+                    hwnd, fp, extra={"bounds": (left, top, right, bot), "monitor": monitor}
+                )
                 out.append(
                     WindowInfo(
                         window_id=wid,
@@ -567,7 +583,7 @@ class WindowsBackend(ComputerUseBackend):
                         app_bundle_id=None,
                         title=title or None,
                         bounds=(left, top, right, bot),
-                        monitor=0,
+                        monitor=monitor,
                         is_focused=(hwnd == focus_hwnd),
                         is_minimized=minimized,
                         is_fullscreen=False,

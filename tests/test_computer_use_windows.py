@@ -978,3 +978,54 @@ def test_window_list_refuses_an_app_filter_it_cannot_apply(tmp_path, monkeypatch
         b.window_list(app_bundle_id="com.apple.Safari")
 
     assert b.window_registry.lookup(earlier) is not None
+
+
+_SIDE_BY_SIDE = [
+    DisplayMonitor(
+        index=0,
+        primary=True,
+        physical_size=(1920, 1080),
+        logical_size=(1920, 1080),
+        scale=1.0,
+        origin=(0, 0),
+    ),
+    DisplayMonitor(
+        index=1,
+        primary=False,
+        physical_size=(1920, 1080),
+        logical_size=(1920, 1080),
+        scale=1.0,
+        origin=(1920, 0),
+    ),
+]
+
+
+def test_windows_report_the_display_they_are_on(tmp_path, monkeypatch) -> None:
+    """window_list said display 0 for every window, and a capture read the
+    display from a key the listing never stored, so it said 0 as well."""
+    windows = {1: (100, 100, 900, 700), 2: (2000, 100, 2600, 500)}
+    win32gui = MagicMock()
+    win32gui.EnumWindows.side_effect = lambda enum, extra: [enum(h, extra) for h in windows]
+    win32gui.IsWindowVisible.return_value = True
+    win32gui.GetWindowText.side_effect = lambda h: f"Window {h}"
+    win32gui.IsIconic.return_value = False
+    win32gui.GetClassName.return_value = "Window"
+    win32gui.GetWindowRect.side_effect = lambda h: windows[h]
+    win32gui.GetForegroundWindow.return_value = 1
+    win32process = MagicMock()
+    win32process.GetWindowThreadProcessId.return_value = (1, 4242)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    monkeypatch.setitem(sys.modules, "win32process", win32process)
+    b = WindowsBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE)
+
+    assert [(w.title, w.monitor) for w in b.window_list()] == [("Window 1", 0), ("Window 2", 1)]
+
+
+def test_a_window_capture_reports_the_display_the_window_is_on(tmp_path, monkeypatch) -> None:
+    window = _capturable_window(tmp_path, monkeypatch, rect=(2000, 100, 2600, 500))
+    monkeypatch.setattr(window.backend, "display_info", lambda: _SIDE_BY_SIDE)
+
+    result = window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+
+    assert (result.monitor, result.display_id) == (1, 1)
