@@ -3,10 +3,14 @@
 import type { OrgAccessStatus } from "@/app/api/__generated__/models/orgAccessStatus";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Link } from "@/components/atoms/Link/Link";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { DisableAccessDialog } from "../../../organizations/components/DisableAccessDialog/DisableAccessDialog";
-import { formatGrantDate } from "../../../organizations/helpers";
+import {
+  formatGrantDate,
+  getTeamPlansHref,
+} from "../../../organizations/helpers";
 import { useOrgAccessControl } from "./useOrgAccessControl";
 
 interface Props {
@@ -48,6 +52,13 @@ export function OrgAccessControl({ userId }: Props) {
         <Text variant="small" tone="muted">
           {describeAccess(status)}
         </Text>
+        <Link
+          href={getTeamPlansHref(status.email)}
+          variant="secondary"
+          className="w-fit"
+        >
+          Team plans
+        </Link>
       </div>
       {status.grant ? (
         <DisableAccessDialog
