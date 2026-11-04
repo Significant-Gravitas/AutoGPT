@@ -234,7 +234,9 @@ descriptions; read and follow those when `find_capability` surfaces a match.
   `![alt](workspace://<file_id>)` in its Markdown body.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
-  sink_name/source_name to access nested object fields.
+  sink_name/source_name to access nested object fields, and
+  `listField_$_0`, `listField_$_1`, … for list items, so several links can
+  fill one list input.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
