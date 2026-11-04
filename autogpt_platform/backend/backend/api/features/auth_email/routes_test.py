@@ -195,6 +195,8 @@ def test_change_email_names_both_addresses_for_the_current_owner(send_mock):
         assert "your email address stays the same" in part
         assert "reset your password" in part
         assert "Confirm your new email address" not in part
+    assert "Current email: old@example.com" in text
+    assert "New email: new@example.com" in text
 
 
 def test_change_email_without_the_new_address_still_reads_correctly(send_mock):
