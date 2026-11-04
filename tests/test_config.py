@@ -241,3 +241,13 @@ def test_a_boolean_variable_outranks_the_config_file(
     monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "false")
 
     assert load_config(config_path=toml_file).enable_shell is False
+
+
+@pytest.mark.parametrize(
+    "field", ["reconnect_base_delay", "reconnect_max_delay", "reconnect_jitter_seconds"]
+)
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_reconnect_delays_must_be_finite(tmp_path: Path, field: str, value: float) -> None:
+    """An infinite delay passes gt=0, and asyncio.sleep(inf) never returns."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, **{field: value})
