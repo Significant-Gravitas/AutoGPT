@@ -10,6 +10,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
+    BackgroundChildResult,
     BackgroundOutcome,
     BackgroundSessionState,
     BackgroundTask,
@@ -287,6 +288,66 @@ async def release_deleted_background_turn(
             turn_id,
             task_id,
         )
+    )
+
+
+async def release_abandoned_background_turn(
+    task_id: str, user_id: str, session_id: str, turn_id: str, before: datetime
+) -> bool:
+    """Release a chat still ``running`` the task's own turn with no live
+    worker: the orphan rule the chat routes apply, fenced to that turn and
+    to a row untouched since ``before``."""
+    task = await get_background_task(task_id, user_id)
+    if task is None or (session_id, turn_id) not in (
+        (task.child_session_id, task.child_turn_id),
+        (task.parent_session_id, task.wake_id),
+    ):
+        return False
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" session SET "chatStatus"='idle'
+            WHERE session.id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND "updatedAt" < $4::timestamptz
+              AND session.metadata->>'_active_turn_id'=$3""",
+            session_id,
+            user_id,
+            turn_id,
+            before,
+        )
+    )
+
+
+async def background_child_result(
+    session_id: str, user_id: str
+) -> BackgroundChildResult | None:
+    """What a finished background child answered in its own turn, read from
+    the rows of that turn so a later turn in its chat is never mistaken for
+    it. None while it runs, or for a chat that is not a background child."""
+    tasks = await db.query_raw_with_schema(
+        """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2""",
+        user_id,
+        session_id,
+        model=BackgroundTask,
+    )
+    if not tasks or tasks[0].outcome is None:
+        return None
+    messages = await db.query_raw_with_schema(
+        """SELECT message.* FROM {schema_prefix}"ChatMessage" message
+        JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$1
+            AND message."sessionId"=launch."sessionId"
+        WHERE message.role='assistant' AND message.sequence>launch.sequence
+          AND NOT EXISTS (
+            SELECT 1 FROM {schema_prefix}"ChatMessage" next
+            WHERE next."sessionId"=launch."sessionId" AND next.role='user'
+              AND next.sequence>launch.sequence AND next.sequence<message.sequence
+          ) ORDER BY message.sequence DESC LIMIT 1""",
+        tasks[0].child_turn_id,
+        model=ChatMessage,
+    )
+    return BackgroundChildResult(
+        outcome=tasks[0].outcome,
+        response_text=(messages[0].content or "") if messages else "",
     )
 
 

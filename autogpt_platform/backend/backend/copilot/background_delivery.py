@@ -1,9 +1,10 @@
 """Recover accepted work and wake the chat once to carry on with the result."""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from backend.copilot import stream_registry
+from backend.copilot.active_turns import ORPHAN_RUNNING_RESET_SECONDS
 from backend.copilot.background_task import BackgroundTask, task_metadata
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import _get_session_lock, invalidate_session_cache
@@ -84,6 +85,10 @@ async def _reconcile(task: BackgroundTask) -> None:
                 task.id, task.user_id, "failed"
             )
         else:
+            if status == "running" and task.started_at is not None:
+                await _release_if_abandoned(
+                    task, task.child_session_id, task.child_turn_id
+                )
             await dispatch_next_for_user(task.user_id)
             return
         refreshed = await background_task_db().get_background_task(
@@ -165,7 +170,26 @@ async def _recover_followup(task: BackgroundTask) -> None:
             None if delivered else "Follow-up interrupted",
         )
         return
+    if status == "running" and task.followup_started_at is not None:
+        await _release_if_abandoned(task, task.parent_session_id, task.wake_id)
     await dispatch_next_for_user(task.user_id)
+
+
+async def _release_if_abandoned(
+    task: BackgroundTask, session_id: str, turn_id: str
+) -> None:
+    """A chat still running the task's turn with no live stream for it lost
+    its worker. The chat routes apply this rule when the chat is read; the
+    sweep applies it so a chat nobody has open recovers too, and the next
+    pass records the interrupted outcome."""
+    active, _ = await stream_registry.get_active_session(session_id, task.user_id)
+    if active is not None and active.turn_id == turn_id:
+        return
+    before = datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS)
+    if await background_task_db().release_abandoned_background_turn(
+        task.id, task.user_id, session_id, turn_id, before
+    ):
+        await invalidate_session_cache(session_id)
 
 
 async def _stop_child(task: BackgroundTask) -> None:

@@ -133,6 +133,12 @@ async def get_running_session_ids(user_id: str) -> set[str]:
     return {r.session_id for r in rows}
 
 
+# A chat still ``running`` this long after its last write, with no live stream
+# for its turn, lost its worker. The chat routes release it when the chat is
+# read; the background sweep applies the same rule for a chat nobody reads.
+ORPHAN_RUNNING_RESET_SECONDS = 30
+
+
 async def release_turn_slot(user_id: str, session_id: str) -> None:
     """Flip the session back to ``"idle"``.  Idempotent — the CAS on
     ``chatStatus='running'`` is a no-op when the status has already

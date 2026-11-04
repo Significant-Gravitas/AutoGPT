@@ -20,6 +20,7 @@ from backend.copilot.credential_selection import (
     selected_credentials,
     turn_credential_pins,
 )
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     ChatSession,
@@ -28,10 +29,12 @@ from backend.copilot.model import (
     delete_chat_session,
     invalidate_session_cache,
 )
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.tool_call_context import current_tool_call_id
 from backend.copilot.tree import (
     SpawnRequest,
     TreeRefusal,
+    TurnEnvelope,
     admit_turn,
     derive_child_envelope,
     release_turn,
@@ -42,6 +45,8 @@ from backend.data.db_accessors import background_task_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
+
+RESULT_TOOL = "get_sub_session_result"
 
 
 async def start_background_subtask(
@@ -60,6 +65,12 @@ async def start_background_subtask(
         raise TreeRefusal(
             "This subtask's limits could not be preserved. Start it again."
         )
+    permissions = get_current_permissions()
+    if not _can_read_result(envelope, permissions):
+        raise TreeRefusal(
+            f"This turn may not call {RESULT_TOOL}, so background work could not "
+            "report back here. Run the subtask in the foreground instead."
+        )
     task_id = operation_id(f"{parent.session_id}:{turn_id}", call_id)
     existing = await background_task_db().get_background_task(task_id, user_id)
     if existing:
@@ -71,7 +82,7 @@ async def start_background_subtask(
     child_envelope = derive_child_envelope(
         envelope,
         SpawnRequest(may_spawn=True, shares_memory=True),
-        spawner_permissions=get_current_permissions(),
+        spawner_permissions=permissions,
     )
     await admit_turn(child_envelope, user_id=user_id)
     child: ChatSession | None = None
@@ -87,6 +98,9 @@ async def start_background_subtask(
             delegated_by_expert_id=parent.expert_id,
             llm_auth_provider=parent.metadata.llm_auth_provider,
             llm_credential_id=parent.metadata.llm_credential_id,
+            # It starts in the mode the parent's gate enforces, as a foreground
+            # subtask does, so Ask First still asks for what the child calls.
+            inherited_autopilot_mode=child_autopilot_mode(parent, None),
         )
         task = BackgroundTask(
             id=task_id,
@@ -99,7 +113,7 @@ async def start_background_subtask(
             context=BackgroundContext(
                 envelope=envelope,
                 child_envelope=child_envelope,
-                permissions=get_current_permissions(),
+                permissions=permissions,
                 cost_context=await capture_cost_context(user_id),
                 organization_id=parent.organization_id,
                 team_id=parent.team_id,
@@ -149,3 +163,17 @@ async def start_background_subtask(
     except Exception:
         logger.exception(f"Background subtask {task.id} awaits dispatcher recovery")
     return task
+
+
+def _can_read_result(
+    envelope: TurnEnvelope, permissions: CopilotPermissions | None
+) -> bool:
+    """The continuation runs under the launching turn's allow-list and reads
+    the subtask's result through the result tool, so a list that leaves that
+    tool out cannot take background work: it is refused at launch rather than
+    stranding the result."""
+    if not envelope.permits(RESULT_TOOL):
+        return False
+    return permissions is None or RESULT_TOOL in permissions.effective_allowed_tools(
+        ALL_TOOL_NAMES
+    )

@@ -321,14 +321,11 @@ async def _validate_and_get_writable_session(
 # ms in practice).  30s is a generous safety margin — anything still
 # at ``running`` after that without a Redis stream is genuinely an
 # orphan, not an in-flight admit racing this read.
-_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
-
-
 async def _try_release_orphan_running(
     session_id: str, user_id: str, *, cancel_background: bool = False
 ) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
-    older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
+    older than ``ORPHAN_RUNNING_RESET_SECONDS`` (= the
     ``acquire_turn_slot``→``create_session`` race window).  Returns
     True iff a release happened — callers map that into their response
     so the user can tell ``orphan_released`` apart from
@@ -343,7 +340,7 @@ async def _try_release_orphan_running(
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
-    if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
+    if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
         return await cancel_orphaned_background_subtasks(

@@ -27,7 +27,7 @@ from backend.copilot import (
     tree,
     turn_queue,
 )
-from backend.copilot.active_turns import TurnSlot
+from backend.copilot.active_turns import ORPHAN_RUNNING_RESET_SECONDS, TurnSlot
 from backend.copilot.background_execution import (
     claim_background_execution,
     finish_background_execution,
@@ -40,6 +40,7 @@ from backend.copilot.background_task import (
 from backend.copilot.context import set_current_turn_id, set_execution_context
 from backend.copilot.executor import processor, utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.gate import child_autopilot_mode
 from backend.copilot.llm_attribution import set_turn_trace_id
 from backend.copilot.model import (
     ChatMessage,
@@ -52,6 +53,7 @@ from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.response_model import StreamError, StreamTextDelta
 from backend.copilot.tool_call_context import tool_call_context
+from backend.copilot.tools.get_sub_session_result import GetSubSessionResultTool
 from backend.copilot.tools.helpers import _permission_denied
 from backend.copilot.tree import (
     TreeRefusal,
@@ -172,7 +174,7 @@ async def test_background_child_keeps_block_restrictions_and_may_delegate(
 ):
     task = await world.launch(
         permissions=CopilotPermissions(
-            tools=["run_sub_session", "run_capability"],
+            tools=["run_sub_session", "get_sub_session_result", "run_capability"],
             tools_exclude=False,
             blocks=["ForbiddenBlock" if blocks_exclude else "AllowedBlock"],
             blocks_exclude=blocks_exclude,
@@ -1471,3 +1473,130 @@ async def test_a_dispatcher_that_lost_its_admission_cannot_record_its_turn(
         session_id,
     )
     assert rows[0]["turn"] == "successor"
+
+
+@pytest.mark.parametrize("worker", ["dead", "alive"])
+async def test_sweep_recovers_a_child_whose_worker_died_without_a_session_read(
+    world: World, worker: str
+):
+    """A chat nobody has open cannot rely on the routes' orphan release; the
+    sweep applies the same rule, fenced to the claimed turn, and leaves a
+    live worker alone however old the row is."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
+        task.child_session_id,
+        datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS + 1),
+    )
+    if worker == "dead":
+        await (await get_redis_async()).delete(
+            stream_registry._get_session_meta_key(task.child_session_id)
+        )
+
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored
+    if worker == "alive":
+        assert stored.outcome is None
+        assert (
+            await chat_db().get_chat_session_status(task.child_session_id) == "running"
+        )
+        return
+    assert stored.outcome == "failed"
+    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
+    assert "failed" in world.entry(task.parent_session_id).message
+
+
+async def test_a_cancelled_child_turn_cancels_the_background_work_it_launched(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """Stopping the chat reaches a grandchild through the child it stopped,
+    so nothing wakes the stopped child later."""
+    task = await world.launch()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    child = await model.get_chat_session(task.child_session_id, world.user_id)
+    assert child and entry.envelope
+    set_execution_context(
+        world.user_id, child, permissions=entry.permissions, envelope=entry.envelope
+    )
+    set_current_turn_id(entry.turn_id)
+    # The grandchild stays queued, so its cancellation is the queue's.
+    monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
+    with tool_call_context("deeper"):
+        grandchild = await background_subtasks.start_background_subtask(
+            world.user_id, child, "Go deeper"
+        )
+    assert grandchild.parent_session_id == task.child_session_id
+
+    await finish_background_execution(entry, stream_registry.CANCELLED_MESSAGE)
+
+    stored = await background_task_db.get_background_task(grandchild.id, world.user_id)
+    assert stored and stored.outcome == "cancelled" and stored.wake_suppressed
+    assert (
+        await chat_db().get_chat_session_status(grandchild.child_session_id) == "idle"
+    )
+
+
+async def test_result_tool_reads_a_background_childs_own_answer(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """A later turn in the child's chat, started before the continuation ran,
+    is not handed back as the subtask's result."""
+    task = await world.launch()
+    await world.finish_parent()
+    await world.finish_child(task)
+    for role, content in (("user", "One more thing"), ("assistant", "A later answer.")):
+        await append_and_save_message(
+            task.child_session_id, ChatMessage(role=role, content=content)
+        )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
+        AsyncMock(return_value=[]),
+    )
+
+    response = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+
+    assert response.status == "completed"
+    assert response.response == "The answer is 42."
+
+
+async def test_background_launch_is_refused_when_the_result_tool_is_not_allowed(
+    world: World,
+):
+    """The continuation reads the result through the result tool, so an
+    allow-list without it cannot take background work."""
+    with pytest.raises(TreeRefusal, match="get_sub_session_result"):
+        await world.launch(
+            permissions=CopilotPermissions(
+                tools=["run_sub_session"], tools_exclude=False
+            )
+        )
+
+
+async def test_background_child_starts_in_the_parents_enforced_mode(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    recorded: dict[str, Any] = {}
+    real_create = background_subtasks.create_chat_session
+
+    async def spy(*args: Any, **kwargs: Any):
+        recorded.update(kwargs)
+        return await real_create(*args, **kwargs)
+
+    monkeypatch.setattr(background_subtasks, "create_chat_session", spy)
+    world.parent.metadata.autopilot_mode = "ask_first"
+
+    await world.launch()
+
+    assert recorded["inherited_autopilot_mode"] == child_autopilot_mode(
+        world.parent, None
+    )
+    assert recorded["inherited_autopilot_mode"] == "ask_first"

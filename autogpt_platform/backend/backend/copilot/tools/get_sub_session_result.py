@@ -24,6 +24,7 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.background_delivery import cancel_background_subtasks
+from backend.copilot.background_task import BackgroundChildResult
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import (
@@ -40,7 +41,7 @@ from backend.copilot.sdk.session_waiter import (
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import background_task_db, experts_db
 
 from .base import BaseTool
 from .models import (
@@ -219,6 +220,11 @@ class GetSubSessionResultTool(BaseTool):
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
         refusal = None if turn_in_flight else queued_turn_refusal(sub)
+        # A finished background child is read from its own turn, so a later
+        # turn in its chat is never handed back as its result.
+        recorded = await background_task_db().background_child_result(
+            inner_session_id, user_id
+        )
         outcome: SessionOutcome
         result: SessionResult
         if registry_session is None and _nothing_reached(sub):
@@ -228,7 +234,9 @@ class GetSubSessionResultTool(BaseTool):
                 ),
                 delegate,
             )
-        if queued:
+        if recorded is not None:
+            outcome, result = _recorded_result(recorded, actor)
+        elif queued:
             outcome, result = await wait_for_queued_session(
                 session_id=inner_session_id, user_id=user_id, timeout=effective_wait
             )
@@ -292,6 +300,19 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+def _recorded_result(
+    recorded: BackgroundChildResult, actor: str
+) -> tuple[SessionOutcome, SessionResult]:
+    if recorded.outcome == "completed":
+        result = SessionResult()
+        result.response_text = recorded.response_text
+        return "completed", result
+    label = "timed out" if recorded.outcome == "timed_out" else recorded.outcome
+    return "refused", SessionResult(
+        refusal=f"{actor} {label} before it could report a result; its chat holds what it did."
+    )
 
 
 def _nothing_reached(sub: ChatSession) -> bool:

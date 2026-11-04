@@ -26,12 +26,17 @@ spend ledger, so the chat can read the result, keep working, or start more
 subtasks. The wake message names the subtask and its outcome and points at
 `get_sub_session_result`; what the subtask produced stays in its own chat and
 reaches the model as a tool result, the way a foreground subtask's does, rather
-than as text in a user message. The UI renders the wake as a short labeled
-notice, not the internal prompt.
+than as text in a user message. For a finished background child the tool reads
+the rows of the child's own turn, so a later turn in that chat is never handed
+back as its result. The UI renders the wake as a short labeled notice, not the
+internal prompt.
 
 Subtask Stop cancels that child. Parent Stop cancels background work launched
 by that turn and suppresses its wake. Ordinary completion of the parent does not
-cancel background work.
+cancel background work. The child starts in the approval mode the parent's gate
+enforces, as a foreground subtask does. A launching turn whose tool allow-list
+leaves out `get_sub_session_result` is refused background work at launch, since
+its continuation could not read the result.
 
 ## Durable ownership
 
@@ -51,9 +56,13 @@ successful completion for the same owner and claimed turn, recovery records the
 success; the same applies to a continuation that answered and only failed to
 record that. Missing or mismatched completion records are not evidence of
 success. A child whose chat went idle without an outcome is recorded as
-interrupted, and the chat carries on from that; a child whose worker died is
-released by the existing orphan handling when its chat is next read, which the
-parent's card does while the work is pending.
+interrupted, and the chat carries on from that. A child whose worker died is
+released by the orphan rule the chat routes already apply (still running its
+claimed turn with no live stream, untouched for thirty seconds), which the
+sweep applies as well so a chat nobody has open recovers too; the next pass
+records the interrupted outcome. That rule is a liveness check, not a deadline.
+A cancelled turn, a chat's or a child's, cancels the background work it
+launched and suppresses those wakes, so stopping a chat reaches grandchildren.
 
 Ownership, organization/team, expert and account-route checks run before
 acceptance, delivery and execution. Deleted or changed-scope destinations do

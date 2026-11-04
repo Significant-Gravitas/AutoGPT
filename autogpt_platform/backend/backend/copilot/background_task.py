@@ -58,6 +58,13 @@ class BackgroundTask(BaseModel):
         return operation_id(self.id, "followup")
 
 
+class BackgroundChildResult(BaseModel):
+    """What a finished background child answered in its own turn."""
+
+    outcome: BackgroundOutcome
+    response_text: str
+
+
 class BackgroundSessionState(BaseModel):
     """What a chat shows about background work without its transcript."""
 
