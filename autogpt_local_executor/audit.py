@@ -31,6 +31,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import sys
 import time
@@ -207,6 +208,10 @@ class AuditWriter:
                 # Create empty so first write can fsync against an existing inode
                 # and we can set 0600 once instead of after every append.
                 _create_owner_only(self.path)
+            else:
+                # One an older version made, or one someone loosened, would
+                # stay readable by other accounts as it grows.
+                _chmod_owner_only(self.path)
             self._file_state = _file_identity(self.path)
 
     # ── Defaults wiring ──────────────────────────────────────────────────
@@ -515,7 +520,9 @@ class AuditWriter:
                 violations.append(Violation("parse_error", seq, f"uncanonicalizable record: {exc}"))
                 return violations
             actual = hmac.new(audit_key, canonical, sha256).hexdigest()
-            if not hmac.compare_digest(actual, stored_hmac):
+            # compare_digest raises TypeError for a non-ASCII str, which no
+            # hex digest is, so a damaged one is a plain mismatch.
+            if not stored_hmac.isascii() or not hmac.compare_digest(actual, stored_hmac):
                 violations.append(
                     Violation(
                         "hmac_mismatch",
@@ -900,12 +907,19 @@ def _file_lock(path: Path, *, read_only: bool = False) -> Iterator[None]:
 
 
 def list_rotated_files(current: Path) -> list[Path]:
-    """Return rotated audit files (oldest first) next to `current`."""
+    """Return rotated audit files (oldest first) next to `current`: those
+    named as rotation names them, `<log>.YYYYMMDD-HHMMSS` with a `-N` for a
+    second rotation within the same second. Any other file is left alone, so
+    export doesn't pack it and prune doesn't delete it."""
     if not current.parent.is_dir():
         return []
-    prefix = current.name + "."
-    matches = [p for p in current.parent.iterdir() if p.name.startswith(prefix)]
-    return sorted(matches, key=lambda p: p.name)
+    pattern = re.compile(re.escape(current.name) + r"\.(\d{8}-\d{6})(?:-(\d+))?")
+    rotated = []
+    for path in current.parent.iterdir():
+        match = pattern.fullmatch(path.name)
+        if match is not None:
+            rotated.append((match.group(1), int(match.group(2) or 0), path))
+    return [path for _stamp, _counter, path in sorted(rotated)]
 
 
 __all__ = [
