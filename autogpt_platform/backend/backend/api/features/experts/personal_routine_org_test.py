@@ -20,6 +20,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 @pytest_asyncio.fixture
 async def owner_orgs(monkeypatch):
+    # The client is shared with the rest of the session: leave it as found.
+    connected_here = not db.is_connected()
     await db.connect()
     owner = str(uuid4())
     orgs = [str(uuid4()) for _ in range(2)]
@@ -53,7 +55,8 @@ async def owner_orgs(monkeypatch):
     finally:
         await db.prisma.user.delete(where={"id": owner})
         await db.prisma.organization.delete_many(where={"id": {"in": orgs}})
-        await db.disconnect()
+        if connected_here:
+            await db.disconnect()
 
 
 async def create(owner, org=None):

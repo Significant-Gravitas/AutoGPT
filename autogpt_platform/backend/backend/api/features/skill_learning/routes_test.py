@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import fastapi
 import fastapi.testclient
 import pytest
+from autogpt_libs.auth.dependencies import get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.copilot.learning import owner_actions, publish, revocation
@@ -39,6 +40,9 @@ BODY = "## Steps\n1. Open the file as utf-8\n\n## Verification\nrows match\n"
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    # The routes act in the request's org and team; resolving them reads
+    # memberships, which a sync TestClient must not do on its own loop.
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 

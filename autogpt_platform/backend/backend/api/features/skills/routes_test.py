@@ -47,9 +47,13 @@ client = fastapi.testclient.TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, monkeypatch):
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    # The routes act in the request's org and team; resolving them reads
+    # memberships, which a sync TestClient must not do on its own loop.
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     monkeypatch.setattr(
         "backend.copilot.tools.skills.record_registry_write", AsyncMock()
     )
@@ -465,7 +469,9 @@ def test_expert_skill_routes_refuse_an_expert_the_caller_does_not_own(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Expert 'expert-not-mine' not found"
-    owns.assert_awaited_once_with(test_user_id, "expert-not-mine")
+    owns.assert_awaited_once_with(
+        test_user_id, "expert-not-mine", organization_id="test-org"
+    )
     for mock in downstream.values():
         mock.assert_not_awaited()
 

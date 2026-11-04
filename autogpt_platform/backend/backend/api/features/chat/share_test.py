@@ -139,6 +139,8 @@ class TestEnableChatSharing:
             session_id=SESSION_ID,
             user_id=test_user_id,
             auto_share_executions=False,
+            organization_id="test-org",
+            team_id="test-team",
         )
         assert response.status_code == 200
         body = response.json()

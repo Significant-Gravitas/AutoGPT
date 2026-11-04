@@ -28,6 +28,20 @@ from backend.copilot.service import EmptyUserMessage
 from backend.data.db_accessors import LiveResourceAccessRevoked
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
+
+@pytest.fixture(autouse=True)
+def allow_live_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The caller may act in its chat's scope. The tests of the workspace lease
+    and the scope check replace these with their own."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(helpers_module, "live_resource_lease", allowed)
+    monkeypatch.setattr(helpers_module, "require_exact_chat_session_scope", AsyncMock())
+
+
 # ── check_pending_call_rate ────────────────────────────────────────────
 
 
@@ -425,6 +439,8 @@ async def _queue_with_client_id() -> QueuePendingMessageResponse:
     return await queue_pending_for_http(
         session_id="sess-1",
         user_id="user-1",
+        organization_id=None,
+        team_id=None,
         message="hi",
         context=None,
         file_ids=None,
@@ -974,10 +990,23 @@ async def test_queue_user_message_stamps_metadata_on_the_pending_message(
     )
 
     provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
-    await queue_user_message(session_id="sess", message="hi", metadata=provenance)
+    await queue_user_message(
+        user_id="user-1",
+        organization_id=None,
+        team_id=None,
+        session_id="sess",
+        message="hi",
+        metadata=provenance,
+    )
     assert push_mock.await_args.args[1].metadata == provenance
 
-    await queue_user_message(session_id="sess", message="typed")
+    await queue_user_message(
+        user_id="user-1",
+        organization_id=None,
+        team_id=None,
+        session_id="sess",
+        message="typed",
+    )
     assert push_mock.await_args.args[1].metadata is None
 
 
@@ -995,6 +1024,9 @@ async def test_queue_user_message_in_flight_gate_keeps_metadata(
     provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
     state = await queue_user_message(
         session_id="sess",
+        user_id="user-1",
+        organization_id=None,
+        team_id=None,
         message="hi",
         require_turn_in_flight=True,
         metadata=provenance,
@@ -1303,6 +1335,8 @@ async def test_queue_pending_rejects_file_outside_expert_scope(
         await queue_pending_for_http(
             session_id="sess-1",
             user_id="user-1",
+            organization_id=None,
+            team_id=None,
             message="hi",
             context=None,
             file_ids=["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
@@ -1337,6 +1371,8 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
     await queue_pending_for_http(
         session_id="sess-1",
         user_id="user-1",
+        organization_id=None,
+        team_id=None,
         message="hi",
         context=None,
         file_ids=["file-1"],
@@ -1345,7 +1381,12 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
     )
 
     resolve_mock.assert_awaited_once_with(
-        "user-1", ["file-1"], session_id="sess-1", expert_id="expert-a"
+        "user-1",
+        ["file-1"],
+        session_id="sess-1",
+        expert_id="expert-a",
+        organization_id=None,
+        team_id=None,
     )
 
 
@@ -1372,6 +1413,8 @@ async def test_queue_pending_names_attached_folders_in_the_message(
     await queue_pending_for_http(
         session_id="sess-1",
         user_id="user-1",
+        organization_id=None,
+        team_id=None,
         message="hi",
         context=None,
         file_ids=None,
@@ -1379,7 +1422,13 @@ async def test_queue_pending_names_attached_folders_in_the_message(
         expert_id="expert-a",
     )
 
-    resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
+    resolve_mock.assert_awaited_once_with(
+        "user-1",
+        ["folder-1"],
+        expert_id="expert-a",
+        organization_id=None,
+        team_id=None,
+    )
     assert "Invoices" in queue_mock.call_args.kwargs["message"]
 
 

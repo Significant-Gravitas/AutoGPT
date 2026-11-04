@@ -188,6 +188,8 @@ async def test_enqueue_turn_records_an_impersonated_turn() -> None:
             user_id="u1",
             inflight_cap=15,
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="hello",
             impersonated=True,
         )
@@ -245,6 +247,8 @@ async def test_a_queued_message_is_stored_as_the_engines_will_read_it(
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message=_WITH_BLOCK,
             is_user_message=is_user_message,
         )
@@ -266,6 +270,8 @@ async def test_a_queued_user_message_with_nothing_of_its_own_writes_no_row() -> 
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="<user_context>\nA note.\n</user_context>",
         )
 
@@ -629,6 +635,8 @@ async def test_a_queued_child_keeps_its_tree_apart_from_its_envelope() -> None:
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="task",
             envelope=TurnEnvelope.model_validate(_CHILD),
             only_if_idle=True,
@@ -655,6 +663,8 @@ async def test_a_child_that_loses_the_claim_writes_no_row() -> None:
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="task",
             envelope=TurnEnvelope.model_validate(_CHILD),
             only_if_idle=True,
@@ -679,6 +689,8 @@ async def test_a_failed_unclaim_does_not_hide_why_the_child_was_not_written() ->
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="task",
             envelope=TurnEnvelope.model_validate(_CHILD),
             only_if_idle=True,
@@ -725,6 +737,8 @@ async def test_a_child_is_not_queued_without_the_session_lock() -> None:
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="task",
             envelope=TurnEnvelope.model_validate(_CHILD),
             only_if_idle=True,

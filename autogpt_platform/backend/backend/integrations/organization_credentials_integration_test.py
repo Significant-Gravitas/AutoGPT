@@ -22,6 +22,8 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def owner():
+    # The client is shared with the rest of the session: leave it as found.
+    connected_here = not db.is_connected()
     await db.connect()
     owner_id = str(uuid.uuid4())
     await db.prisma.user.create(
@@ -44,7 +46,8 @@ async def owner():
         for org_id in orgs:
             await db.prisma.organization.delete(where={"id": org_id})
         await db.prisma.user.delete(where={"id": owner_id})
-        await db.disconnect()
+        if connected_here:
+            await db.disconnect()
 
 
 def key(title: str) -> APIKeyCredentials:

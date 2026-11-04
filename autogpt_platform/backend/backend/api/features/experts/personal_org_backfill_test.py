@@ -26,14 +26,18 @@ class _Rollback(Exception):
 
 @pytest_asyncio.fixture
 async def migration_db():
-    await prisma.connect()
+    # The client is shared with the rest of the session: leave it as found.
+    connected_here = not prisma.is_connected()
+    if connected_here:
+        await prisma.connect()
     try:
         with pytest.raises(_Rollback):
             async with prisma.tx(timeout=timedelta(seconds=30)) as tx:
                 yield tx
                 raise _Rollback
     finally:
-        await prisma.disconnect()
+        if connected_here:
+            await prisma.disconnect()
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def private_orgs(falkordb_available, monkeypatch):
+    # The client is shared with the rest of the session: leave it as found.
+    connected_here = not db.is_connected()
     await db.connect()
     user_id = str(uuid4())
     organizations = [str(uuid4()) for _ in range(2)]
@@ -81,7 +83,8 @@ async def private_orgs(falkordb_available, monkeypatch):
             await driver.close()
         await db.prisma.user.delete(where={"id": user_id})
         await db.prisma.organization.delete_many(where={"id": {"in": organizations}})
-        await db.disconnect()
+        if connected_here:
+            await db.disconnect()
 
 
 async def test_default_store_delayed_worker_recall_and_hard_forget(

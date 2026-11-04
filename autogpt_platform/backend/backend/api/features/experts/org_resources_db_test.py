@@ -44,8 +44,11 @@ pytestmark = [
 
 @pytest_asyncio.fixture
 async def organizations(mocker, tmp_path):
-    await prisma.connect()
-    await connect_live_transaction_lease_database()
+    # Both clients are shared with the rest of the session: leave them as found.
+    connected_here = not prisma.is_connected()
+    if connected_here:
+        await prisma.connect()
+    lease_connected_here = await connect_live_transaction_lease_database()
     user = await prisma.user.create(
         data={"id": str(uuid4()), "email": f"{uuid4()}@example.invalid"}
     )
@@ -80,8 +83,10 @@ async def organizations(mocker, tmp_path):
         await prisma.organization.delete_many(
             where={"id": {"in": [org.id for org in orgs]}}
         )
-        await disconnect_live_transaction_lease_database()
-        await prisma.disconnect()
+        if lease_connected_here:
+            await disconnect_live_transaction_lease_database()
+        if connected_here:
+            await prisma.disconnect()
 
 
 async def test_same_template_hires_and_rehires_are_independent(organizations, mocker):

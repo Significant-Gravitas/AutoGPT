@@ -20,6 +20,11 @@ from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.pro_activation import UsageActivationState
 
 
+@asynccontextmanager
+async def _allowed_lease(*_args, **_kwargs):
+    yield True
+
+
 @pytest.fixture
 def fifo(monkeypatch: pytest.MonkeyPatch):
     @asynccontextmanager
@@ -44,6 +49,8 @@ def fifo(monkeypatch: pytest.MonkeyPatch):
     session.metadata.llm_credential_id = None
     monkeypatch.setattr(turn_queue, "chat_db", lambda: db)
     monkeypatch.setattr(utils, "chat_db", lambda: db)
+    monkeypatch.setattr(turn_queue, "live_resource_lease", _allowed_lease)
+    monkeypatch.setattr(turn_queue, "require_exact_chat_session_scope", AsyncMock())
     monkeypatch.setattr(turn_queue, "_get_session_lock", lock)
     monkeypatch.setattr(turn_queue, "invalidate_session_cache", AsyncMock())
     monkeypatch.setattr(turn_queue, "track_user_message", MagicMock())
@@ -95,7 +102,11 @@ def pending(metadata):
 async def test_admission_captures_authoritative_attribution_without_parent(fifo):
     db, _publisher, current = fifo
     await turn_queue.enqueue_turn(
-        user_id="user-1", session_id="session-1", message="queued work"
+        user_id="user-1",
+        session_id="session-1",
+        organization_id=None,
+        team_id=None,
+        message="queued work",
     )
     current.assert_awaited_once_with("user-1")
     assert db.add_chat_message.call_args.kwargs["metadata"]["cost_context"] == {
@@ -112,7 +123,11 @@ async def test_unavailable_attribution_prevents_queue_admission(fifo):
     current.side_effect = UsageActivationUnavailable("Usage activation is processing")
     with pytest.raises(UsageActivationUnavailable):
         await turn_queue.enqueue_turn(
-            user_id="user-1", session_id="session-1", message="queued work"
+            user_id="user-1",
+            session_id="session-1",
+            organization_id=None,
+            team_id=None,
+            message="queued work",
         )
     db.add_chat_message.assert_not_awaited()
     db.update_chat_session_status.assert_not_awaited()
@@ -132,6 +147,8 @@ async def test_queued_turn_keeps_admission_context_across_activation(
         await turn_queue.enqueue_turn(
             user_id="user-1",
             session_id="session-1",
+            organization_id=None,
+            team_id=None,
             message="queued work",
             message_metadata={"cost_context": {"user_id": "forged"}},
         )
