@@ -30,6 +30,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     hold_sandbox,
     kill_sandbox,
+    proxy_trust_envs,
     release_sandbox,
     uses_platform_e2b_key,
 )
@@ -228,10 +229,12 @@ class BaseE2BExecutorMixin:
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
+            # The kernel predates any login shell: it is given the proxy CA's
+            # paths itself.  The caller's own values win.
             execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
-                envs=envs or {},
+                envs={**await proxy_trust_envs(sandbox), **(envs or {})},
                 on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 

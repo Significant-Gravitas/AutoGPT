@@ -28,6 +28,7 @@ from backend.util.e2b_network import (
     hold_sandbox,
     kill_sandbox,
     pause_sandbox,
+    proxy_trust_envs,
     reattach_command,
     release_sandbox,
     secret_digest,
@@ -832,3 +833,67 @@ class TestReleaseNeverRaises:
             cls.pause = AsyncMock()
             await release_sandbox("sb-1", None, api_key="k")
         cls.pause.assert_awaited_once_with("sb-1", api_key="k")
+
+
+class TestProxyCA:
+    """A pinned box is made to trust the proxy's CA; an unpinned one is not."""
+
+    @pytest.mark.asyncio
+    async def test_create_and_connect_install_it_on_a_pinned_box(self):
+        box, redis = _box("sb-1"), _redis()
+        cls = _sdk(box)
+        trust = AsyncMock(return_value=True)
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}.trust_proxy_ca", trust),
+        ):
+            await create_sandbox(cls, _OWNER, template="t", api_key="k")
+            await connect_sandbox(cls, "sb-1", _OWNER, api_key="k")
+        assert [c.args for c in trust.await_args_list] == [(box,), (box,)]
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_installed_without_a_proxy_or_without_a_pin(self):
+        box, redis = _box("sb-1"), _redis()
+        cls = _sdk(box)
+        trust = AsyncMock(return_value=True)
+        with (
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}.trust_proxy_ca", trust),
+        ):
+            with _configured(None):
+                await create_sandbox(cls, _OWNER, template="t", api_key="k")
+                await connect_sandbox(cls, "sb-1", _OWNER, api_key="k")
+                assert await proxy_trust_envs(box) == {}
+            with _configured(_PROXY):
+                # A connect that only pauses or kills the box pins nothing.
+                await connect_sandbox(
+                    cls, "sb-1", _OWNER, apply_network=False, api_key="k"
+                )
+        trust.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_create_installs_nothing(self):
+        cls = MagicMock()
+        cls.create = AsyncMock(side_effect=RuntimeError("E2B down"))
+        trust = AsyncMock(return_value=True)
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=_redis())),
+            patch(f"{_M}.trust_proxy_ca", trust),
+            pytest.raises(RuntimeError),
+        ):
+            await create_sandbox(cls, _OWNER, template="t", api_key="k")
+        trust.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("trusted", [True, False])
+    async def test_a_kernel_gets_the_paths_only_when_the_box_trusts_the_ca(
+        self, trusted
+    ):
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.trust_proxy_ca", AsyncMock(return_value=trusted)),
+        ):
+            envs = await proxy_trust_envs(_box())
+        assert bool(envs) is trusted
