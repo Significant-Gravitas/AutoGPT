@@ -209,6 +209,23 @@ async def test_handshake_rejects_mismatched_session(daemon: ShimDaemon) -> None:
     assert ws.close_calls[-1]["code"] == 4403
 
 
+class _CloseFails(_FakeWebSocket):
+    async def close(self, *, code: int = 1000, reason: str = "") -> None:
+        await super().close(code=code, reason=reason)
+        raise OSError("the connection was reset")
+
+
+async def test_a_close_that_fails_keeps_why_the_handshake_failed(daemon: ShimDaemon) -> None:
+    """The close's error replaced the session mismatch, so run() took it for
+    a dropped connection and reconnected instead of stopping."""
+    ws = _CloseFails(inbound=[_make_hello_ack(session_id="another-session")])
+
+    with pytest.raises(DaemonAuthenticationError, match="session"):
+        await daemon._handshake(ws)
+
+    assert ws.close_calls[-1]["code"] == 4403
+
+
 async def test_handshake_rejects_unadvertised_capability(daemon: ShimDaemon) -> None:
     ws = _FakeWebSocket(inbound=[_make_hello_ack(granted_capabilities=["files", "shell"])])
 
