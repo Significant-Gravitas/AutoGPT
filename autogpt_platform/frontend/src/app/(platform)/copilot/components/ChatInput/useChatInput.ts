@@ -1,6 +1,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { isTouchDevice } from "@/lib/platform";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { focusComposer } from "./helpers";
 import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
@@ -58,7 +59,7 @@ export function useChatInput({
       // Guided flows can prefill while the composer is already mounted
       // (e.g. from a copilot modal) — put the caret in the input so the
       // draft is immediately editable/sendable.
-      if (!isTouchDevice()) document.getElementById(inputId)?.focus();
+      if (!isTouchDevice()) focusComposer(inputId);
     },
     [initialPrompt, setInitialPrompt, inputId, setValue],
   );
@@ -77,7 +78,7 @@ export function useChatInput({
   useEffect(
     function focusOnMount() {
       if (!autoFocus || isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      focusComposer(inputId);
     },
     [autoFocus, inputId],
   );
@@ -85,7 +86,7 @@ export function useChatInput({
   useEffect(
     function focusWhenEnabled() {
       if (!autoFocus || disabled || isTouchDevice()) return;
-      document.getElementById(inputId)?.focus();
+      focusComposer(inputId);
     },
     [autoFocus, disabled, inputId],
   );

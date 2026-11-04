@@ -101,19 +101,15 @@ export function usePreparingStep({ onComplete }: { onComplete: () => void }) {
 
       const pct = Math.min(100, (elapsed / duration) * 100);
       const items = Math.min(
-        checklist.length,
-        Math.floor(elapsed / stepInterval) + 1,
+        checklist.length - 1,
+        Math.floor(elapsed / stepInterval),
       );
       // The last step stays unchecked while its work is genuinely still
       // running server-side.
       setProgress(
         isWaitingOnRecommendations ? Math.min(pct, WAITING_PROGRESS_CAP) : pct,
       );
-      setCompletedItems(
-        isWaitingOnRecommendations
-          ? Math.min(items, checklist.length - 1)
-          : items,
-      );
+      setCompletedItems(items);
     }, 50);
 
     return () => clearInterval(progressInterval);

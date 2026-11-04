@@ -28,7 +28,7 @@ const STATUS_CONFIG: Record<
   scheduled: {
     label: "Scheduled",
     bg: "",
-    text: "text-yellow-600",
+    text: "text-yellow-foreground",
     pulse: false,
   },
   idle: {
@@ -50,7 +50,7 @@ export function StatusBadge({ status, className }: Props) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium",
         config.bg,
         config.text,
         className,
@@ -77,8 +77,8 @@ function statusDotColor(status: AgentStatus): string {
     case "listening":
       return "bg-brand";
     case "scheduled":
-      return "bg-yellow-500";
+      return "bg-yellow";
     case "idle":
-      return "bg-zinc-400";
+      return "bg-foreground-subtle";
   }
 }

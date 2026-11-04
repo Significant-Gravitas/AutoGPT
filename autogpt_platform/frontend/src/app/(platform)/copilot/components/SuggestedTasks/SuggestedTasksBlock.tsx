@@ -22,16 +22,17 @@ export function SuggestedTasksBlock({ suggestions, disabled }: Props) {
     >
       <div className="mb-2 flex items-center justify-between px-1">
         <Text variant="eyebrow">Suggested first tasks</Text>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={suggestions.hideAll}
-          disabled={suggestions.sendingId !== null}
-          className="text-foreground-subtle opacity-0 transition-opacity duration-150 hover:text-foreground-body focus-visible:opacity-100 group-focus-within/block:opacity-100 group-hover/block:opacity-100 [@media(hover:none)]:opacity-100"
-        >
-          Hide all
-        </Button>
+        <span className="flex opacity-0 transition-opacity duration-150 group-focus-within/block:opacity-100 group-hover/block:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
+          <Button
+            type="button"
+            variant="ghost-subtle"
+            size="xs"
+            onClick={suggestions.hideAll}
+            disabled={suggestions.sendingId !== null}
+          >
+            Hide all
+          </Button>
+        </span>
       </div>
       <SuggestedTaskList
         tasks={suggestions.tasks}

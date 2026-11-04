@@ -10,7 +10,7 @@ function Fixture() {
       {new URLSearchParams(location.search).has("covered") ? (
         <div
           data-testid="overlay"
-          className="pointer-events-none absolute -inset-8 z-10 bg-gray-100"
+          className="pointer-events-none absolute -inset-8 z-10 bg-surface-hover"
         />
       ) : null}
       <RecommendedExpertCard

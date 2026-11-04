@@ -22,9 +22,10 @@ const ICONS = {
 } as const;
 
 export function HeldReceiptRow({ approval, receipt, heading = false }: Props) {
+  // oxlint-disable-next-line design-system/require-static-classes -- ICONS holds whole, static class strings
   const [icon, tone] = ICONS[receipt.outcome];
   return (
-    <div className="flex items-center gap-2 px-4 py-2 text-sm text-foreground-secondary">
+    <div className="flex items-center gap-2 px-4 py-2 text-body text-foreground-secondary">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
       {heading ? (
         <h3 className="min-w-0 truncate">

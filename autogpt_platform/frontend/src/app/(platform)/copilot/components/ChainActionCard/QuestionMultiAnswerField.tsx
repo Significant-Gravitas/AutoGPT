@@ -99,7 +99,7 @@ export const QuestionMultiAnswerField = forwardRef<
             onSubmit();
           }}
           placeholder="Add your own answer"
-          className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-base leading-relaxed text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:outline-none focus:ring-border-strong"
+          className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-body-lg leading-relaxed text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:ring-border-strong focus:outline-none"
         />
       ) : (
         <button
@@ -108,7 +108,7 @@ export const QuestionMultiAnswerField = forwardRef<
             setToggled(true);
             setTyping(true);
           }}
-          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-border-base px-4 py-3 text-left text-base text-foreground-tertiary transition-colors hover:border-border-strong hover:text-foreground-body"
+          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-border-base px-4 py-3 text-left text-body-lg text-foreground-tertiary transition-colors hover:border-border-strong hover:text-foreground-body"
         >
           <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
           Type something…

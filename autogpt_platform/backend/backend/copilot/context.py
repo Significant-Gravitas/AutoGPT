@@ -5,8 +5,11 @@ All context variables and their accessors live here so that
 without creating circular dependencies.
 """
 
+import asyncio
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -40,6 +43,7 @@ _UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", re.IGNOR
 _current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
 
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+_current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
@@ -135,6 +139,28 @@ _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
 _current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
     "_current_hidden_tools", default=frozenset()
 )
+# Set while an approved held call replays with the arguments it was stored with;
+# see ``replaying_bound_args``. Never from the model's arguments.
+_replaying_bound_args: ContextVar[bool] = ContextVar(
+    "_replaying_bound_args", default=False
+)
+
+
+@contextmanager
+def replaying_bound_args(bound: bool) -> Iterator[None]:
+    """Replay a held call whose arguments were already resolved when it was
+    held, so the tool runs them as approved instead of resolving them again."""
+    token = _replaying_bound_args.set(bound)
+    try:
+        yield
+    finally:
+        _replaying_bound_args.reset(token)
+
+
+def args_already_bound() -> bool:
+    return _replaying_bound_args.get()
+
+
 # Whether anyone is watching the running turn; see ``set_turn_unattended``.
 _current_turn_unattended: ContextVar[bool] = ContextVar(
     "_current_turn_unattended", default=False
@@ -179,6 +205,15 @@ def set_execution_context(
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
+
+
+def set_current_turn_id(turn_id: str | None) -> None:
+    """Record the executor turn ID, independently of any shared analytics trace."""
+    _current_turn_id.set(turn_id)
+
+
+def get_current_turn_id() -> str | None:
+    return _current_turn_id.get()
 
 
 def get_current_permissions() -> "CopilotPermissions | None":
@@ -283,7 +318,14 @@ def is_sdk_tool_path(path: str) -> bool:
 # bounce off ``Permission denied`` repeatedly.
 #
 # Two shapes are matched:
-#   (1) absolute SDK path:  /<...>/.claude/projects/<cwd>/<uuid>/tool-results/<file>.json
+#   (1) anything under the SDK projects dir — files, folders and globs
+#       alike (``cd …/tool-results/``,
+#       ``ls /root/.claude/projects/*/*/tool-results/``). The sandbox has
+#       no such folder, so any reference to it ends in ``Permission denied``.
+#       The path must start a shell token and be the configured
+#       ``SDK_PROJECTS_DIR`` or a home-level ``.claude/projects`` (``~``,
+#       ``$HOME``, ``/root``, ``/home/<name>``, or relative), so a repo
+#       folder like ``/home/user/my-repo/.claude/projects`` still runs.
 #   (2) model shorthand:    tool-(results|outputs)/<toolu|mcp>_<id>.json
 #
 # The shorthand branch requires the SDK's actual ID prefix so a user
@@ -291,20 +333,47 @@ def is_sdk_tool_path(path: str) -> bool:
 # trigger a false redirect on legitimate paths like
 # ``my-pipeline/tool-outputs/data.json``.
 _SDK_TOOL_RESULT_RE = re.compile(
-    r"(?:^|[/\s'\"])/?\.claude/projects/[^/\s]+/[^/\s]+/tool-(?:results|outputs)/"
-    r"[\w-]+\.json"
+    r"(?:^|(?<=[\s'\"=(`;&|<>]))"
+    rf"(?:{re.escape(SDK_PROJECTS_DIR)}"
+    r"|(?:(?:~|\$HOME|\$\{HOME\}|/root|/home/[^/\s'\"]+)/|/)?\.claude/projects)"
+    r"(?![\w.-])"
     r"|(?:^|[/\s'\"])tool-(?:results|outputs)/(?:toolu|mcp)_[\w-]+\.json",
     re.IGNORECASE,
 )
 
 
+# The bash_exec command as the model wrote it with its ``@@agptfile:`` refs
+# cut out, set by the SDK tool adapter before it expands them. The redirect
+# check reads this, so neither a ref to an SDK tool result (the route the
+# redirect itself suggests) nor a ``.claude/projects`` path that is only text
+# inside an inlined file blocks the command. Left unset when the command is
+# nothing but refs: then the expanded file is the script that runs, so the
+# check reads that.
+_bash_command_as_written: ContextVar[str | None] = ContextVar(
+    "_bash_command_as_written", default=None
+)
+
+
+@contextmanager
+def bash_command_as_written(command: str | None) -> Iterator[None]:
+    token = _bash_command_as_written.set(command)
+    try:
+        yield
+    finally:
+        _bash_command_as_written.reset(token)
+
+
+def get_bash_command_as_written() -> str | None:
+    return _bash_command_as_written.get()
+
+
 def looks_like_sdk_tool_result_path(text: str) -> bool:
-    """Return True if *text* references a host-side SDK tool-result file.
+    """Return True if *text* references a host-side SDK tool-result path.
 
     Anchored regex match — avoids false positives on user paths that
     happen to contain a ``tool-outputs/`` directory by requiring either
-    the full ``.claude/projects/<…>/tool-(results|outputs)/<file>.json``
-    shape or the SDK's ``(toolu|mcp)_<id>.json`` filename pattern.
+    a ``.claude/projects`` path (file, folder or glob) or the SDK's
+    ``(toolu|mcp)_<id>.json`` filename pattern.
     """
     if not text:
         return False
@@ -423,13 +492,21 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain. Expert turns get a manager confined to
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id, session_id)
+    workspace, scope = await asyncio.gather(
+        workspace_db().get_or_create_workspace(user_id),
+        current_workspace_scope(user_id, session_id),
+    )
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
-    """Return True if *path* is within an allowed host-filesystem location.
+    """Return True if *path* is within an allowed host-filesystem location."""
+    return resolve_allowed_local_path(path, sdk_cwd) is not None
+
+
+def resolve_allowed_local_path(path: str, sdk_cwd: str | None = None) -> str | None:
+    """The real path of *path* if it is within an allowed host-filesystem
+    location, else ``None``.  Open it with ``host_fs.open_no_follow``.
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
@@ -439,7 +516,7 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
       the UUID segment is validated with ``_UUID_RE``.
     """
     if not path:
-        return False
+        return None
 
     if path.startswith("~"):
         resolved = os.path.realpath(os.path.expanduser(path))
@@ -451,14 +528,14 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
     if sdk_cwd:
         norm_cwd = os.path.realpath(sdk_cwd)
         if resolved == norm_cwd or resolved.startswith(norm_cwd + os.sep):
-            return True
+            return resolved
 
     encoded = _current_project_dir.get("")
     if encoded:
         project_dir = os.path.realpath(os.path.join(SDK_PROJECTS_DIR, encoded))
         # Defence-in-depth: ensure project_dir didn't escape the base.
         if not project_dir.startswith(SDK_PROJECTS_DIR + os.sep):
-            return False
+            return None
         # Only allow: <encoded-cwd>/<uuid>/<tool-dir>/<file>
         # The SDK always creates a conversation UUID directory between
         # the project dir and the tool directory.
@@ -474,6 +551,6 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
                 and _UUID_RE.match(parts[0])
                 and parts[1] in ("tool-results", "tool-outputs")
             ):
-                return True
+                return resolved
 
-    return False
+    return None

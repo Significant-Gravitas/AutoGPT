@@ -51,11 +51,7 @@ function SafeModeButton({
           {isEnabled ? (
             <>
               <Icon icon={SecurityCheckIcon} size={16} />
-              <Text
-                // TODO(tokens): no fitting role for text-zinc-200 #DADADC; #DADADC is surface-active (a surface fill), border-base (a border colour)
-                variant="body"
-                className="text-zinc-200"
-              >
+              <Text variant="body" className="text-border-base">
                 {label}: ON
               </Text>
             </>
@@ -74,11 +70,7 @@ function SafeModeButton({
           <Text variant="small-medium-lh-normal" as="div" tone="inherit">
             {label}: {isEnabled ? "ON" : "OFF"}
           </Text>
-          <Text
-            variant="small-tight"
-            as="div"
-            className="mt-1 text-muted-foreground"
-          >
+          <Text variant="small-tight" tone="muted" as="div" className="mt-1">
             {isEnabled ? tooltipEnabled : tooltipDisabled}
           </Text>
         </div>
