@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from backend.blocks.treg._api import TregError, TregResponse, usd_header
-from backend.blocks.treg._base import coerce
+from backend.blocks.treg._base import coerce, headcount_as_text
 from backend.blocks.treg._config import (
     PLATFORM_CREDENTIALS_ID,
     TEST_CREDENTIALS,
@@ -322,6 +322,20 @@ async def test_get_tool_rejects_ids_that_are_not_tool_ids():
 )
 def test_coerce_keeps_only_values_of_the_declared_type(value, kind, expected):
     assert coerce(value, kind) == expected
+
+
+@pytest.mark.parametrize(
+    "employees, expected",
+    [(8000, "8000"), (8000.0, "8000"), ("51-200", "51-200"), (True, True)],
+)
+def test_headcount_as_text_keeps_numeric_headcounts(employees: Any, expected: Any):
+    # Providers send a range or a number; the text output must keep both.
+    output = headcount_as_text({"name": "Stripe", "employees": employees})
+    assert output == {"name": "Stripe", "employees": expected}
+
+
+def test_headcount_as_text_leaves_a_missing_headcount_alone():
+    assert headcount_as_text({"name": "Stripe"}) == {"name": "Stripe"}
 
 
 @pytest.mark.asyncio

@@ -215,6 +215,19 @@ def require_one(identities: dict[str, bool], hint: str) -> None:
         raise TregError(f"Nothing to look up: {hint}")
 
 
+def headcount_as_text(output: dict[str, Any]) -> dict[str, Any]:
+    """The output with a numeric ``employees`` turned into text.
+
+    Treg relays each provider's own headcount, so it comes as a range such as
+    "51-200" from some and as a number such as 8000 from others. Both fit the
+    text output; a number would otherwise be dropped as the wrong type.
+    """
+    employees = output.get("employees")
+    if isinstance(employees, bool) or not isinstance(employees, (int, float)):
+        return output
+    return {**output, "employees": str(int(employees))}
+
+
 def typed_fields(
     output: dict[str, Any], spec: dict[str, type]
 ) -> Iterator[tuple[str, Any]]:

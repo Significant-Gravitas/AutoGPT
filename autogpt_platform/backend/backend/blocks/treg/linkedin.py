@@ -10,7 +10,13 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._base import TregBlockBase, TregRoutedInput, TregRoutedOutput, typed_fields
+from ._base import (
+    TregBlockBase,
+    TregRoutedInput,
+    TregRoutedOutput,
+    headcount_as_text,
+    typed_fields,
+)
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._test import mock_routed, routed_details
 from .people import TEST_PERSON
@@ -189,7 +195,9 @@ class TregGetLinkedInCompanyBlock(TregBlockBase):
         )
         found = bool(routed.get("name"))
         if found:
-            for output in typed_fields(routed.output, LINKEDIN_COMPANY_FIELDS):
+            for output in typed_fields(
+                headcount_as_text(routed.output), LINKEDIN_COMPANY_FIELDS
+            ):
                 yield output
         for output in self.route_details(routed, found):
             yield output

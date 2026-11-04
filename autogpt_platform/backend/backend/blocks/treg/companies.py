@@ -14,6 +14,7 @@ from ._base import (
     TregBlockBase,
     TregRoutedInput,
     TregRoutedOutput,
+    headcount_as_text,
     require_one,
     rows,
     typed_fields,
@@ -219,7 +220,9 @@ class TregEnrichCompanyBlock(TregBlockBase):
         )
         found = bool(routed.get("name"))
         if found:
-            for output in typed_fields(routed.output, COMPANY_FIELDS):
+            for output in typed_fields(
+                headcount_as_text(routed.output), COMPANY_FIELDS
+            ):
                 yield output
         for output in self.route_details(routed, found):
             yield output
