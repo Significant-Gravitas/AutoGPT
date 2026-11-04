@@ -116,12 +116,12 @@ export function MentionDropdown({
             : null,
         )}
         {isLoading ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-foreground-tertiary">
             <Icon icon={Loading03Icon} className="h-4 w-4 shrink-0" />
             Loading skills…
           </p>
         ) : options.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+          <p className="px-3 py-2 text-body text-foreground-tertiary">
             No matching skills.
           </p>
         ) : null}
@@ -265,13 +265,13 @@ function SkillOption({ skill }: { skill: SkillCommand }) {
       <span className="flex min-w-0 items-baseline gap-2">
         <span className="truncate font-medium">/{skill.name}</span>
         {skill.argumentHint && (
-          <span className="shrink-0 text-xs text-foreground-subtle">
+          <span className="shrink-0 text-caption text-foreground-subtle">
             {skill.argumentHint}
           </span>
         )}
       </span>
       <span
-        className="block truncate text-xs text-foreground-tertiary"
+        className="block truncate text-caption text-foreground-tertiary"
         title={skill.description}
       >
         {skill.description}
