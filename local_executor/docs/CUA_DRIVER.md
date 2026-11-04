@@ -91,7 +91,7 @@ reviewed against cua-driver 0.38.0:
 |---|---|---|
 | Observe | `list_apps`, `list_windows`, `get_window_state`, `get_desktop_state`, `zoom`, `verify_state`, `get_screen_size`, `get_cursor_position`, `check_permissions`, `get_guide` | Read-only. `check_permissions` only reports. |
 | Act | `launch_app`, `click`, `double_click`, `right_click`, `type_text`, `press_key`, `hotkey`, `scroll`, `drag`, `set_value`, `invoke_menu`, `set_window_frame`, `bring_to_front`, `move_cursor`, `mouse_button_down`, `mouse_button_up`, `mouse_drag`, `run_steps`, `run_script` | `run_steps` batches input; `run_script` runs sandboxed JavaScript whose only API is the driver's. |
-| Browser | `get_browser_state`, `browser_prepare`, `browser_navigate`, `browser_click`, `browser_type`, `browser_select`, `browser_pointer`, `browser_dialog` | Typed control of Chromium pages. In `standard` mode, without a grant, which the shim never gives, the driver reaches only a browser it launched with its own profile, never the person's signed-in one. |
+| Browser | `get_browser_state`, `browser_prepare`, `browser_navigate`, `browser_click`, `browser_type`, `browser_select`, `browser_pointer`, `browser_dialog`, `browser_set_input_files` | Typed control of Chromium pages. In `standard` mode, without a grant, which the shim never gives, the driver reaches only a browser it launched with its own profile, never the person's signed-in one. `browser_set_input_files` hands files from the disk to a page, so every call needs approval (below). |
 | Clipboard | `clipboard_read`, `clipboard_write` | Only with `--enable-clipboard`; see [Clipboard](#clipboard). |
 
 Not offered:
@@ -103,7 +103,7 @@ Not offered:
 | `set_agent_cursor_enabled`, `set_agent_cursor_motion`, `set_agent_cursor_theme`, `get_agent_cursor_state` | The cursor overlay shows the person where the agent is working; the agent may not hide or restyle it. |
 | `start_recording`, `stop_recording`, `get_recording_state`, `replay_trajectory` | Write and read trajectories on disk. |
 | `kill_app` | Ends processes. |
-| `browser_download`, `browser_set_input_files` | Write downloads to, and upload files from, the disk. |
+| `browser_download` | Writes downloads to the disk, and needs cua-driver's own host approval, which the shim doesn't relay yet. |
 | `page` | Runs arbitrary JavaScript in pages (cua-driver allows it only in `unrestricted` mode anyway). |
 | `parse_visual_regions` | Needs the `cua-perception` extension, which is AGPL. Never install it with the shim. |
 | `parallel_mouse_drag`, `get_accessibility_tree`, `health_report` | Not needed: `drag` and `get_window_state` cover them, and `autogpt-shim doctor` reports health. |
@@ -123,20 +123,26 @@ sixteen tools; all of them are in the catalog, which
 **The shim** (`handlers.ComputerUseHandler`):
 
 - Only an offered tool is relayed (`FEATURE_NOT_SUPPORTED` otherwise).
-- These arguments are refused, at the top level and in every `run_steps`
-  step: `screenshot_out_file` on `get_window_state` and `get_desktop_state`
-  (images come back in the result instead of landing on disk at a path the
-  model chose), `file_path` and `image_path` on `clipboard_write` (they put
-  a file from anywhere on disk onto the clipboard), and `prompt: true` on
-  `check_permissions` (permission prompts are raised by the person, with
-  `autogpt-shim doctor`).
+- Arguments that reach the disk need the person's approval, per call:
+  `screenshot_out_file` on `get_window_state` and `get_desktop_state`
+  (writes the screenshot to a file), `file_path` and `image_path` on
+  `clipboard_write` (puts a file from anywhere on disk on the clipboard),
+  and `files` on `browser_set_input_files` (hands files to a page). The
+  tool list names them in each tool's `approval_arguments`. The platform
+  asks the person on an approval card that shows the path, and only then
+  sends the call with the argument in `approved_arguments`; without it the
+  shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
+  `run_steps` step may not use one at all.
+- `prompt: true` on `check_permissions` is refused: permission prompts are
+  raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
 - A deadline per call (120 s unless the platform asks for 1-600 s); past it
   the driver is told to cancel.
 - One call at a time per machine.
-- An audit record for every call, refused ones too.
+- An audit record for every call, refused ones too. An approved call's
+  record names the approved arguments and keeps their paths whole.
 
 **Why a policy and not a capability manifest.** cua-driver's capability
 manifest is its strongest control, but it makes every window, app, display
@@ -154,24 +160,24 @@ Computer use acts with the person's own rights through their GUI. An agent
 that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
 to each session, every call is audited, and the agent cursor shows where the
-agent works. The argument refusals keep disk access out of side channels the
-person can't see; they are not a sandbox around the GUI.
+agent works. The approval arguments keep disk access out of side channels the
+person can't see: each one waits for the person to approve it. They are not a
+sandbox around the GUI.
 
 Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
-  `get_window_state` inside the driver, writing a PNG where the script says.
-  cua-driver 0.38's policy can allow a tool but can't forbid one of its
-  arguments, and the shim can't see into scripts. This adds no power beyond
-  the GUI, but the write is silent. It belongs upstream, as a policy
-  constraint that forbids an argument.
+  `get_window_state` inside the driver, writing a PNG where the script says,
+  without the approval a direct call needs. cua-driver 0.38's policy can
+  allow a tool but can't forbid one of its arguments, and the shim can't see
+  into scripts. This adds no power beyond the GUI, but the write is silent.
+  It belongs upstream, as a policy constraint that forbids an argument.
 - `launch_app` accepts `launch_path` and `additional_arguments` (on Linux,
   the `Exec=` line of a `.desktop` file), so it can start any program with
   any arguments. Again no more than the GUI allows; each launch is audited.
-- `set_value` writes a field's value directly. The 1.x design left it out
-  because the text appeared without visible keystrokes and without an audit
-  record. `type_text` now does the same in the background through the
-  accessibility API, and the shim audits both, so both are offered.
+- `set_value` writes a field's value directly, without visible keystrokes.
+  `type_text` does the same in the background through the accessibility
+  API; the shim audits both.
 
 ## Clipboard
 
@@ -233,7 +239,7 @@ prompt for the shim's app (the driver leaves prompting to its host).
 1. Bump the pin in `pyproject.toml` and `REVIEWED_DRIVER_VERSION`.
 2. Diff the new release's `tools/list` against the old: new tools stay off
    until reviewed; new arguments on offered tools need the same review as
-   the refusals above, file paths especially.
+   the approval arguments and refusals above, file paths especially.
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes.
 4. Run `tests/test_cua_driver_contract.py` on macOS, Windows and Linux; CI

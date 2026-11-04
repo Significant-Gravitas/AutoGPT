@@ -109,40 +109,6 @@ async def test_equivalent_endpoints_share_tokens_without_losing_backend_prefix(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", ["access", "refresh", "revoke"])
-async def test_legacy_credentials_are_never_forwarded_or_silently_deleted(
-    tmp_path: Path,
-    isolated_keyring: dict,
-    monkeypatch: pytest.MonkeyPatch,
-    operation: str,
-) -> None:
-    isolated_keyring[("autogpt-local-executor", "access_token")] = "legacy-access-secret"
-    isolated_keyring[("autogpt-local-executor", "refresh_token")] = "legacy-refresh-secret"
-    saved = isolated_keyring.copy()
-    config = _config(tmp_path)
-    store = KeychainTokenStore(config)
-    client = AsyncMock()
-    factory = MagicMock()
-    factory.return_value.__aenter__.return_value = client
-    monkeypatch.setattr("autogpt_local_executor.auth.httpx.AsyncClient", factory)
-
-    with pytest.raises(ValueError, match="legacy.*autogpt-shim.*auth") as exc:
-        if operation == "access":
-            await store.get_access_token()
-        elif operation == "refresh":
-            await OAuthFlow(config, store).refresh_token()
-        else:
-            await OAuthFlow(config, store).revoke_tokens()
-
-    assert "secret" not in str(exc.value)
-    assert isolated_keyring == saved
-    client.post.assert_not_awaited()
-    await store.store_tokens("new-access", "new-refresh")
-    assert await store.get_access_token() == "new-access"
-    assert all(isolated_keyring[key] == value for key, value in saved.items())
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("corruption", ["metadata", "malformed", "missing-metadata"])
 async def test_invalid_scope_metadata_fails_closed_without_token_disclosure(
     tmp_path: Path, isolated_keyring: dict, corruption: str

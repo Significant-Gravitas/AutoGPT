@@ -25,7 +25,8 @@ import time
 
 CATALOG = [
     "bring_to_front", "browser_click", "browser_dialog", "browser_navigate",
-    "browser_pointer", "browser_prepare", "browser_select", "browser_type",
+    "browser_pointer", "browser_prepare", "browser_select", "browser_set_input_files",
+    "browser_type",
     "check_permissions", "click", "clipboard_read", "clipboard_write",
     "double_click", "drag", "get_browser_state", "get_cursor_position",
     "get_desktop_state", "get_guide", "get_screen_size", "get_window_state",
@@ -106,8 +107,11 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
         )
         return text_result("permissions", granted)
     if name == "clipboard_write":
+        value = arguments.get("text")
+        if value is None:
+            value = "file://" + (arguments.get("file_path") or arguments.get("image_path") or "")
         with open(os.environ["FAKE_CUA_CLIPBOARD"], "w", encoding="utf-8") as handle:
-            handle.write(arguments["text"])
+            handle.write(value)
         return text_result("written", {"ok": True})
     if name == "clipboard_read":
         try:

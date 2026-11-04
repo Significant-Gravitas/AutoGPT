@@ -84,10 +84,7 @@ on the platform side, the session SHOULD be torn down with code 4426).
 | Shim | `2.0` | `autogpt_local_executor.protocol.VERSION` |
 | Platform | `2.0` | Mirror this constant in the platform repo. |
 
-| Version | Change |
-|---|---|
-| `2.0` | Computer use relays cua-driver's tools: `COMPUTER_TOOLS_REQUEST` / `COMPUTER_TOOLS_RESPONSE` and `COMPUTER_TOOL_CALL` / `COMPUTER_TOOL_RESULT` replace the screen-coordinate operations (`SCREENSHOT_REQUEST`, `INPUT_ACTION`, `CURSOR_POSITION_REQUEST`, `DISPLAY_INFO_REQUEST`, `WINDOW_LIST_REQUEST`, `WINDOW_FOCUS`, `APP_LIST_REQUEST`, `APP_LAUNCH`, `CLIPBOARD_READ`, `CLIPBOARD_WRITE`, `PERMISSIONS_CHECK_REQUEST` and their responses). `HELLO.computer_use_driver` and `HELLO.computer_use_tools` replace `computer_use_features` and `computer_use_features_coarse`. `WINDOW_STALE` and `INPUT_OUT_OF_BOUNDS` are gone. Machine control needs no particular minor. |
-| `1.1` | Machine control: the control connection, `DIRECTORY_LIST_*`, `ATTACH_SESSION`, `ACTIVATE_SESSION`, `RESTORE_SESSION`, `DETACH_SESSION`. |
+`2.0` is the first released version; nothing older is spoken.
 
 ---
 
@@ -827,8 +824,9 @@ once the driver has started.
       {
         "name": "get_window_state",
         "description": "...",
-        "input_schema": {"type": "object", "properties": {"pid": {"type": "integer"}}},
-        "annotations": {"readOnlyHint": true}
+        "input_schema": {"type": "object", "properties": {"pid": {"type": "integer"}, "screenshot_out_file": {"type": "string"}}},
+        "annotations": {"readOnlyHint": true},
+        "approval_arguments": {"screenshot_out_file": "writes the screenshot to this file"}
       }
     ]
   }
@@ -865,11 +863,18 @@ the deadline the shim tells the driver to stop it and answers
 `COMMAND_TIMEOUT`, though an action the driver already made stays made.
 Calls from every session on a machine take turns: there is one screen.
 
+`approved_arguments` (at most 8, default empty) names the tool's approval
+arguments the person approved for this call. An argument in a tool's
+`approval_arguments` reaches the disk (`screenshot_out_file`, clipboard
+`file_path` / `image_path`, `browser_set_input_files.files`); a call that
+uses one without naming it there gets `APPROVAL_REQUIRED` with
+`details.tool` and `details.argument`, and nothing reaches the driver. Only
+an approval argument of the called tool may be named.
+
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
-doesn't offer, and, with `details.argument` too, an argument that reaches
-past the screen: `screenshot_out_file` (images come back in the result),
-clipboard `file_path` / `image_path`, and `check_permissions` with
-`prompt: true`. It looks inside `run_steps` batches for these as well.
+doesn't offer, and, with `details.argument` too, an argument it never
+accepts: `check_permissions` with `prompt: true`, and any approval argument
+inside a `run_steps` step.
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json
@@ -894,7 +899,7 @@ The driver's own answer, including its refusals and failed actions:
 token, a refused background delivery), not a shim failure. Shim failures
 come back as `ERROR`: `DEPENDENCY_MISSING` (no usable cua-driver),
 `INTERNAL_ERROR` (the driver stopped), `COMMAND_TIMEOUT`,
-`CLIPBOARD_CONCEALED`, `FEATURE_NOT_SUPPORTED`.
+`CLIPBOARD_CONCEALED`, `FEATURE_NOT_SUPPORTED`, `APPROVAL_REQUIRED`.
 
 Content is text and image blocks; another kind of block becomes a text
 note. Images are base64 as the driver produced them, at most
@@ -965,8 +970,11 @@ Error codes:
   Accessibility / Screen Recording) isn't granted. Distinct from
   `CAPABILITY_NOT_GRANTED`. See [COMPUTER_USE.md](COMPUTER_USE.md).
 - `FEATURE_NOT_SUPPORTED` — a computer tool this machine doesn't offer, or
-  an argument it refuses (`details.tool`, `details.argument`). See
+  an argument it never accepts (`details.tool`, `details.argument`). See
   [CUA_DRIVER.md](CUA_DRIVER.md).
+- `APPROVAL_REQUIRED` — a computer tool call used an argument that reaches
+  the disk without the person's approval (`details.tool`,
+  `details.argument`).
 - `CLIPBOARD_CONCEALED` — `clipboard_read` found content this session may
   not read; `details.reason` says why. See [COMPUTER_USE.md](COMPUTER_USE.md).
 - `MODEL_NOT_AVAILABLE` — `LOCAL_LLM_COMPLETION.model` not present in
@@ -1056,7 +1064,7 @@ the close come first; the shim then waits up to 10 seconds for such work,
 lets go of any still running, and sends none of its replies.
 
 Receivers MUST tolerate unknown future `reason` values (forward-compatible
-minor extension); the spec table above is the v1.0 set.
+minor extension); the table above is the 2.0 set.
 
 #### WS close-code table
 
@@ -1190,7 +1198,7 @@ Emission cadence:
 Receivers MUST treat `STATUS` as advisory — the per-response
 `pending_capacity` remains the authoritative number. A receiver that
 doesn't understand `STATUS` MAY drop it; the field is forward-compatible
-and the spec's discriminated union just gains it within v1.x.
+and the spec's discriminated union just gains it within a major.
 
 > The platform-side consumer that reads `pending_capacity` / `STATUS`
 > and throttles issuance lives in a separate ticket; this section is

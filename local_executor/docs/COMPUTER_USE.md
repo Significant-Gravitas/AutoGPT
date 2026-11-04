@@ -74,8 +74,8 @@ WSL2 can't drive Windows apps; run the shim on Windows itself.
 
 ## Clipboard
 
-`--enable-clipboard` offers `clipboard_write` (text only) and
-`clipboard_read`. What a read returns depends on a second setting:
+`--enable-clipboard` offers `clipboard_write` and `clipboard_read`. What a
+read returns depends on a second setting:
 
 - **Default:** only text the agent itself put on the clipboard in the last
   30 seconds. Anything you copied comes back as `CLIPBOARD_CONCEALED`.
@@ -85,7 +85,18 @@ WSL2 can't drive Windows apps; run the shim on Windows itself.
   `CLIPBOARD_CONCEALED`. On Linux the shim checks with `xclip` (X11) or
   `wl-paste` (Wayland); without the tool it refuses rather than guess.
 
-The agent can't put a file or image on the clipboard.
+The agent can put a file or an image file on the clipboard only after you
+approve that call (see [Files on the disk](#files-on-the-disk)).
+
+## Files on the disk
+
+Three things reach this computer's disk outside the folders you shared:
+saving a screenshot to a file, putting a file or image file on the
+clipboard, and handing files to a web page's upload field. Otto asks you
+first, every time, on an approval card in the chat that shows the path; the
+shim runs the call only once you approve it (an Unsupervised chat doesn't
+ask). Without an approval the shim answers `APPROVAL_REQUIRED` and nothing
+happens.
 
 ## What leaves this computer
 
@@ -107,12 +118,5 @@ Start with `autogpt-shim doctor`. Then:
 | `DEPENDENCY_MISSING` | No cua-driver, or one of another release. Reinstall with the computer-use extra. |
 | Windows look empty to the agent (`degraded: true`) on Linux | AT-SPI unreachable: the session bus isn't in the shim's environment, or the app doesn't expose accessibility. |
 | Results arrive without screenshots | The per-minute screenshot budget is spent; the result says so. |
-| `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it refuses, such as writing a screenshot to disk. |
-
-## Protocol 2.0
-
-Protocol 1.x had its own screen-coordinate operations (`SCREENSHOT_REQUEST`,
-`INPUT_ACTION`, `WINDOW_LIST_REQUEST` and the rest) served by pyautogui,
-mss, pyobjc and pywin32. Protocol 2.0 replaced them with cua-driver's tools;
-a 2.0 shim and a 1.x platform refuse each other at the handshake (close code
-4426), so update both.
+| `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it never accepts, such as `check_permissions` with `prompt: true`. |
+| `APPROVAL_REQUIRED` | The call reaches the disk and you haven't approved it. |

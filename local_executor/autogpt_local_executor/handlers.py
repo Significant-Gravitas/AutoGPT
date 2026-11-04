@@ -34,6 +34,8 @@ from typing import Any, Literal, TypeVar
 from . import local_llm_limits, platform_info
 from .audit import AuditWriter
 from .computer_use import (
+    APPROVAL_ARGUMENTS,
+    ApprovalRequired,
     ArgumentRefused,
     ClipboardConcealedError,
     ClipboardWritebackRegistry,
@@ -1431,6 +1433,7 @@ class ComputerUseHandler:
                 description=str(tool.get("description") or ""),
                 input_schema=without_session(tool.get("inputSchema") or {"type": "object"}),
                 annotations=tool.get("annotations") or None,
+                approval_arguments=APPROVAL_ARGUMENTS.get(tool["name"], {}),
             )
             for tool in snapshot.tools
         ]
@@ -1450,13 +1453,19 @@ class ComputerUseHandler:
         start = time.monotonic()
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
+        approved = msg.payload.approved_arguments
         details: dict[str, Any] = {
             "tool": tool,
-            # What launches is kept whole, as EXECUTE_COMMAND keeps argv.
-            "arguments": _audit_arguments(arguments, truncate=tool != "launch_app"),
+            # What launches, and the paths the person approved, are kept
+            # whole, as EXECUTE_COMMAND keeps argv.
+            "arguments": _audit_arguments(
+                arguments, truncate=tool != "launch_app" and not approved
+            ),
         }
+        if approved:
+            details["approved_arguments"] = sorted(approved)
         try:
-            result = await self._relay(tool, arguments, msg.payload.timeout_seconds)
+            result = await self._relay(tool, arguments, msg.payload.timeout_seconds, approved)
         except asyncio.CancelledError:
             # The action may have happened: the driver was told to stop,
             # but it can't take back a click it already made.
@@ -1499,7 +1508,11 @@ class ComputerUseHandler:
         return ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload)
 
     async def _relay(
-        self, tool: str, arguments: dict[str, Any], timeout_seconds: int | None
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        timeout_seconds: int | None,
+        approved: list[str],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
         snapshot = await self.driver.snapshot()
         spec = snapshot.tool(tool)
@@ -1510,7 +1523,13 @@ class ComputerUseHandler:
                 details={"tool": tool},
             )
         try:
-            check_arguments(tool, arguments)
+            check_arguments(tool, arguments, approved)
+        except ApprovalRequired as exc:
+            raise ComputerUseError(
+                ErrorCode.APPROVAL_REQUIRED,
+                str(exc),
+                details={"tool": tool, "argument": exc.argument},
+            ) from exc
         except ArgumentRefused as exc:
             raise ComputerUseError(
                 ErrorCode.FEATURE_NOT_SUPPORTED,
@@ -1526,7 +1545,11 @@ class ComputerUseHandler:
         else:
             raw = await self.driver.call_tool(tool, arguments, timeout=timeout)
             if tool == "clipboard_write" and not raw.get("isError"):
-                self.clipboard_writeback.record_write(arguments["text"])
+                if isinstance(arguments.get("text"), str):
+                    self.clipboard_writeback.record_write(arguments["text"])
+                else:
+                    # A file or image replaced the text this shim wrote.
+                    self.clipboard_writeback.clear()
         return self._result_payload(tool, raw)
 
     async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -1735,11 +1758,14 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "On this machine (AutoGPT local executor):",
         "- Calls arrive through the AutoGPT platform. The executor sets `session` on "
         "every call; leave it out.",
-        "- Screenshots come back in results; `screenshot_out_file` is refused, and at "
-        f"most {config.max_screenshots_per_minute} images are sent a minute.",
+        "- Screenshots come back in results, at most "
+        f"{config.max_screenshots_per_minute} images a minute.",
+        "- Arguments that read or write this computer's disk (each tool's "
+        "`approval_arguments`) wait for the person's approval on every call. Use one only "
+        "when the task needs that file.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
-        "recording, process control, file transfers and page JavaScript are not.",
+        "recording, process control, downloads and page JavaScript are not.",
     ]
     return snapshot.instructions.rstrip() + "\n" + "\n".join(notes) + "\n"
 

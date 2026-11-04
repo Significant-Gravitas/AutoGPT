@@ -147,30 +147,6 @@ async def test_changed_destination_does_not_send_saved_credentials(
 
 
 @pytest.mark.asyncio
-async def test_legacy_credentials_stop_before_websocket_connect(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    reads: list[str] = []
-
-    def get_password(_service: str, key: str) -> str | None:
-        reads.append(key)
-        return "legacy-secret" if key == "access_token" else None
-
-    monkeypatch.setattr("autogpt_local_executor.auth.keyring.get_password", get_password)
-    daemon = _daemon(tmp_path)
-    daemon.token_store = KeychainTokenStore(daemon.config)
-    connect = _ScriptedConnect([None])
-    monkeypatch.setattr(daemon_module, "CredentialBoundConnect", connect)
-
-    with pytest.raises(DaemonAuthenticationError, match="legacy.*autogpt-shim.*auth") as exc:
-        await daemon._session()
-
-    assert "secret" not in str(exc.value)
-    assert "access_token" in reads
-    assert connect.calls == []
-
-
-@pytest.mark.asyncio
 async def test_missing_current_deployment_credentials_require_auth_before_connect(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

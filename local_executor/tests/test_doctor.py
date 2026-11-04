@@ -152,7 +152,7 @@ def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     )
     assert lines["cua-driver AT-SPI"] == ("OK", "org.a11y.Bus reachable")
     assert "cua-driver binary" not in lines
-    assert lines["cua-driver start"] == ("OK", "0.38.0, 37 tools offered")
+    assert lines["cua-driver start"] == ("OK", "0.38.0, 38 tools offered")
     assert lines["display"] == ("OK", "1920x1080 (scale 1)")
 
 

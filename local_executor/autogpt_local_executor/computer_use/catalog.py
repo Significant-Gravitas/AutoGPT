@@ -1,5 +1,5 @@
-"""Which cua-driver tools the shim relays, and what it refuses in their
-arguments.
+"""Which cua-driver tools the shim relays, which of their arguments need the
+person's approval, and what it refuses.
 
 The list was reviewed against one driver release. The shim states it twice:
 as the YAML permission policy the driver enforces on every call, including
@@ -62,7 +62,8 @@ ACT_TOOLS = frozenset(
 
 # Typed control of Chromium pages. Without a grant, which the shim never
 # gives, the driver reaches only browsers it launched with their own
-# profile, never the person's signed-in one.
+# profile, never the person's signed-in one. `browser_set_input_files`
+# hands files from the disk to a page, so every call needs approval.
 BROWSER_TOOLS = frozenset(
     {
         "browser_click",
@@ -71,6 +72,7 @@ BROWSER_TOOLS = frozenset(
         "browser_pointer",
         "browser_prepare",
         "browser_select",
+        "browser_set_input_files",
         "browser_type",
         "get_browser_state",
     }
@@ -81,9 +83,9 @@ CLIPBOARD_TOOLS = frozenset({"clipboard_read", "clipboard_write"})
 
 # Everything else the driver has stays off: its configuration, updates,
 # extensions and session lifecycle; recording and replay; killing
-# processes; file uploads and downloads; arbitrary page JavaScript; and the
-# agent-cursor controls, so the overlay that shows the person where the
-# agent is working can't be hidden.
+# processes; downloads, which need cua-driver's own host approval; arbitrary
+# page JavaScript; and the agent-cursor controls, so the overlay that shows
+# the person where the agent is working can't be hidden.
 
 
 def offered_tools(*, enable_clipboard: bool) -> frozenset[str]:
@@ -99,15 +101,18 @@ def policy_document(tools: Iterable[str]) -> str:
     return json.dumps({"allow": {"tools": sorted(set(tools))}}, indent=2) + "\n"
 
 
-# Arguments the shim refuses, per tool, with the reason the caller sees.
-_IMAGES_INLINE = "screenshots come back in the result; this machine does not write them to its disk"
-REFUSED_ARGUMENTS: dict[str, dict[str, str]] = {
-    "get_window_state": {"screenshot_out_file": _IMAGES_INLINE},
-    "get_desktop_state": {"screenshot_out_file": _IMAGES_INLINE},
+# Arguments that reach the computer's disk, per tool, with what each does
+# there. The shim runs a call that uses one only when the platform says the
+# person approved that call (`approved_arguments`); the platform asks on a
+# card that shows the path.
+APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
+    "get_window_state": {"screenshot_out_file": "writes the screenshot to this file"},
+    "get_desktop_state": {"screenshot_out_file": "writes the screenshot to this file"},
     "clipboard_write": {
-        "file_path": "only text can be put on the clipboard",
-        "image_path": "only text can be put on the clipboard",
+        "file_path": "puts this file on the clipboard, to paste into an app",
+        "image_path": "puts this image file on the clipboard",
     },
+    "browser_set_input_files": {"files": "hands these files to the page, which can upload them"},
 }
 
 
@@ -119,12 +124,39 @@ class ArgumentRefused(Exception):
         self.reason = reason
 
 
-def check_arguments(tool: str, arguments: Mapping[str, Any]) -> None:
-    """Raise ArgumentRefused for an argument this machine doesn't accept,
-    looking inside `run_steps` too, whose steps the shim can see."""
-    for argument, reason in REFUSED_ARGUMENTS.get(tool, {}).items():
-        if arguments.get(argument) not in (None, ""):
-            raise ArgumentRefused(tool, argument, reason)
+class ApprovalRequired(Exception):
+    """The call uses an argument the person hasn't approved."""
+
+    def __init__(self, tool: str, argument: str, reason: str) -> None:
+        super().__init__(
+            f"{tool}: {argument!r} {reason}, so the person must approve this call first"
+        )
+        self.tool = tool
+        self.argument = argument
+        self.reason = reason
+
+
+def approval_arguments(tool: str, arguments: Mapping[str, Any]) -> list[str]:
+    """The arguments of this call that need the person's approval."""
+    return [
+        argument
+        for argument in APPROVAL_ARGUMENTS.get(tool, {})
+        if arguments.get(argument) not in (None, "", [])
+    ]
+
+
+def check_arguments(tool: str, arguments: Mapping[str, Any], approved: Iterable[str] = ()) -> None:
+    """Raise ApprovalRequired for a disk argument the person hasn't approved,
+    and ArgumentRefused for one this machine never accepts, looking inside
+    `run_steps` too, whose steps the shim can see."""
+    approved = set(approved)
+    if unknown := approved - set(APPROVAL_ARGUMENTS.get(tool, {})):
+        raise ArgumentRefused(
+            tool, sorted(unknown)[0], "only an argument that needs approval can be approved"
+        )
+    for argument in approval_arguments(tool, arguments):
+        if argument not in approved:
+            raise ApprovalRequired(tool, argument, APPROVAL_ARGUMENTS[tool][argument])
     if tool == "check_permissions" and arguments.get("prompt"):
         raise ArgumentRefused(
             tool,
@@ -132,11 +164,22 @@ def check_arguments(tool: str, arguments: Mapping[str, Any]) -> None:
             "permission prompts are raised by the person at this machine, "
             "with `autogpt-shim doctor`",
         )
-    if tool == "clipboard_write" and not isinstance(arguments.get("text"), str):
-        raise ArgumentRefused(tool, "text", "clipboard_write needs the text to write")
+    if tool == "clipboard_write":
+        values = [name for name in ("text", "file_path", "image_path") if name in arguments]
+        if len(values) != 1 or not isinstance(arguments[values[0]], str):
+            raise ArgumentRefused(
+                tool, "text", "clipboard_write takes exactly one of text, file_path or image_path"
+            )
     if tool == "run_steps":
         for index, step in enumerate(arguments.get("steps") or []):
             for step_tool, step_args in _step_calls(step):
+                if used := approval_arguments(step_tool, step_args):
+                    raise ArgumentRefused(
+                        tool,
+                        f"steps[{index}].{used[0]}",
+                        "a step can't touch the disk; call the tool on its own so the "
+                        "person can approve it",
+                    )
                 try:
                     check_arguments(step_tool, step_args)
                 except ArgumentRefused as exc:
@@ -187,12 +230,14 @@ def same_minor(version: str, reviewed: str = REVIEWED_DRIVER_VERSION) -> bool:
 
 __all__ = [
     "ACT_TOOLS",
+    "APPROVAL_ARGUMENTS",
     "BROWSER_TOOLS",
     "CLIPBOARD_TOOLS",
     "OBSERVE_TOOLS",
-    "REFUSED_ARGUMENTS",
     "REVIEWED_DRIVER_VERSION",
+    "ApprovalRequired",
     "ArgumentRefused",
+    "approval_arguments",
     "check_arguments",
     "offered_tools",
     "policy_document",

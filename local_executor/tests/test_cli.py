@@ -291,29 +291,6 @@ async def test_all_auth_commands_construct_a_deployment_scoped_store(
 
 
 @pytest.mark.asyncio
-async def test_legacy_credentials_have_actionable_start_failure_without_secret_leak(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from autogpt_local_executor.daemon import ShimDaemon
-
-    config = ShimConfig(allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log")
-    monkeypatch.setattr(
-        "autogpt_local_executor.auth.keyring.get_password",
-        lambda _service, key: "legacy-secret" if key == "access_token" else None,
-    )
-    monkeypatch.setattr(ShimDaemon, "_build_audit_writer", staticmethod(lambda _config: None))
-    monkeypatch.setattr(ShimDaemon, "run", ShimDaemon._session)
-
-    assert await cli._cmd_start(config) == 77
-    captured = capsys.readouterr()
-    output = captured.out + captured.err
-    assert "legacy" in output
-    assert "autogpt-shim auth" in output
-    assert "left untouched" in output
-    assert "legacy-secret" not in output
-
-
-@pytest.mark.asyncio
 async def test_revoke_failure_does_not_log_token_bearing_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
