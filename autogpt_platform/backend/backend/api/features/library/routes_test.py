@@ -115,6 +115,9 @@ def test_list_presets_refuses_a_page_past_its_bounds_before_the_query(
 
     assert response.status_code == (422 if refused else 200)
     assert list_presets.await_count == (0 if refused else 1)
+    if not refused:
+        assert list_presets.await_args.kwargs["page"] == page
+        assert list_presets.await_args.kwargs["page_size"] == page_size
 
 
 @pytest.fixture(autouse=True)

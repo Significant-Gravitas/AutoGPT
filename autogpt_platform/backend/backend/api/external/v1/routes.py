@@ -495,7 +495,7 @@ async def get_store_creators(
         search_query: Search creators by profile description
         sorted_by: Sort by "agent_rating", "agent_runs", or "num_agents"
         page: Page number for pagination (default 1)
-        page_size: Number of creators per page (default 20)
+        page_size: Number of creators per page (default 20, maximum 100)
 
     Returns:
         CreatorsResponse: Paginated list of creators matching the filters
