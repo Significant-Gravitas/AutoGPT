@@ -4620,15 +4620,12 @@ def test_get_session_reports_background_state_from_the_durable_record(
         new_callable=AsyncMock,
         return_value=(None, None),
     )
-    until = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
     mocker.patch.object(
         chat_routes,
         "background_task_db",
         return_value=MagicMock(
             get_session_background_state=AsyncMock(
-                return_value=BackgroundSessionState(
-                    outcome="completed", pending_until=until
-                )
+                return_value=BackgroundSessionState(outcome="completed", pending=True)
             )
         ),
     )
@@ -4638,7 +4635,7 @@ def test_get_session_reports_background_state_from_the_durable_record(
     assert response.status_code == 200
     data = response.json()
     assert data["background_outcome"] == "completed"
-    assert data["background_pending_until"] == until.isoformat()
+    assert data["background_pending"] is True
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(

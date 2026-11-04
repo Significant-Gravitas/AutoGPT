@@ -562,9 +562,9 @@ class SessionDetailResponse(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
-    # outcome, and until when a parent may still receive a follow-up.
+    # outcome, and whether a parent still has a continuation to come.
     background_outcome: str | None = None
-    background_pending_until: str | None = None
+    background_pending: bool = False
 
 
 class SessionSummaryResponse(BaseModel):
@@ -1473,9 +1473,7 @@ async def get_session(
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
-        background_pending_until=(
-            background.pending_until.isoformat() if background.pending_until else None
-        ),
+        background_pending=background.pending,
     )
 
 

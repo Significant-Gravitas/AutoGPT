@@ -26,12 +26,10 @@ other turn.
 import json
 import logging
 import time
-from datetime import timedelta
 from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.background_subtasks import start_background_subtask
-from backend.copilot.background_task import DELIVERY_SECONDS, FOLLOWUP_SECONDS
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -133,9 +131,9 @@ class RunSubSessionTool(BaseTool):
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "Only if the user asks for background work: fresh subtask, "
-                        "10-minute deadline, then one budgeted summary here without tools. "
-                        "Returns immediately; no polling."
+                        "Only if the user asks for background work: a fresh subtask "
+                        "runs on its own and this chat is woken to carry on when it "
+                        "finishes. Returns immediately; no polling."
                     ),
                     "title": "Run in background",
                 },
@@ -197,14 +195,11 @@ class RunSubSessionTool(BaseTool):
                 sub_autopilot_session_id=task.child_session_id,
                 sub_autopilot_session_link=_sub_session_link(task.child_session_id),
                 background_task_id=task.id,
-                background_expires_at=(
-                    task.deadline
-                    + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
-                ).isoformat(),
                 message=(
-                    "Subtask accepted in the background. You can finish this reply now. "
-                    "Otto will follow up here within the original budget. "
-                    "Use the subtask's Stop control to cancel it. No polling is needed."
+                    "Subtask accepted in the background. You can finish this reply now; "
+                    "when it finishes, you are woken in this chat to carry on with its "
+                    "result. Use the subtask's Stop control to cancel it. No polling "
+                    "is needed."
                 ),
             ).from_outside()
 

@@ -23,7 +23,7 @@ def test_background_delivery_is_explicitly_opt_in():
 
 
 @pytest.mark.asyncio
-async def test_worker_enforces_the_saved_deadline_even_during_silent_work():
+async def test_worker_enforces_an_inherited_deadline_even_during_silent_work():
     entry = CoPilotExecutionEntry(
         session_id="child",
         user_id="owner",
@@ -44,7 +44,7 @@ async def test_worker_enforces_the_saved_deadline_even_during_silent_work():
     async def silent_work(*_args, **_kwargs):
         try:
             await asyncio.sleep(0.3)
-            pytest.fail("The worker ran beyond the saved deadline")
+            pytest.fail("The worker ran beyond the inherited deadline")
         finally:
             cancelled.set()
 
@@ -79,12 +79,17 @@ async def test_worker_enforces_the_saved_deadline_even_during_silent_work():
     assert cancelled.is_set()
 
 
-def test_background_work_fails_closed_without_a_deadline_and_foreground_is_unchanged():
+def test_background_work_keeps_no_clock_of_its_own_and_foreground_is_unchanged():
     entry = CoPilotExecutionEntry(session_id="session", user_id="owner", message="work")
     assert background_timeout(entry) is None
     entry.message_metadata = {"background_task_id": "task"}
-    with pytest.raises(ValueError, match="deadline"):
-        background_timeout(entry)
+    assert background_timeout(entry) is None
+    # Only a deadline the launching turn already had is enforced.
+    entry.envelope = TurnEnvelope(
+        tree_id="tree", depth=1, deadline_at=datetime.now(UTC) + timedelta(seconds=30)
+    )
+    timeout = background_timeout(entry)
+    assert timeout is not None and 0 < timeout <= 30
 
 
 @pytest.mark.asyncio

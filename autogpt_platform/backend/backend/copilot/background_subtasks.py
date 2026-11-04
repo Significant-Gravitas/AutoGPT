@@ -2,11 +2,9 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
 
 from backend.copilot.active_turns import get_inflight_turn_limit
 from backend.copilot.background_task import (
-    TASK_SECONDS,
     BackgroundContext,
     BackgroundTask,
     operation_id,
@@ -72,7 +70,7 @@ async def start_background_subtask(
         )
     child_envelope = derive_child_envelope(
         envelope,
-        SpawnRequest(shares_memory=True, max_seconds=TASK_SECONDS),
+        SpawnRequest(may_spawn=True, shares_memory=True),
         spawner_permissions=get_current_permissions(),
     )
     await admit_turn(child_envelope, user_id=user_id)
@@ -97,8 +95,7 @@ async def start_background_subtask(
             child_session_id=child.session_id,
             launch_turn_id=turn_id,
             child_turn_id=operation_id(task_id, "child"),
-            deadline=child_envelope.deadline_at
-            or datetime.now(UTC) + timedelta(seconds=TASK_SECONDS),
+            deadline=child_envelope.deadline_at,
             context=BackgroundContext(
                 envelope=envelope,
                 child_envelope=child_envelope,

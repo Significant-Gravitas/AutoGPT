@@ -1,4 +1,4 @@
-"""Persisted bounds and identity for one background subtask and its follow-up."""
+"""Persisted identity and context for one background subtask and its continuation."""
 
 from datetime import datetime
 from typing import Any, Literal
@@ -13,9 +13,6 @@ from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 
-TASK_SECONDS = 600
-FOLLOWUP_SECONDS = 120
-DELIVERY_SECONDS = 600
 BACKGROUND_TASK_KEY = "background_task_id"
 BACKGROUND_STAGE_KEY = "background_task_stage"
 BACKGROUND_TIMEOUT_MESSAGE = "Background work reached its deadline."
@@ -48,9 +45,9 @@ class BackgroundTask(BaseModel):
     launch_turn_id: str
     child_turn_id: str
     context: BackgroundContext | Json[BackgroundContext]
-    deadline: datetime
+    # Only a deadline the launching turn already had; the work has no clock of its own.
+    deadline: datetime | None = None
     outcome: BackgroundOutcome | None = None
-    result: str | None = None
     started_at: datetime | None = None
     followup_started_at: datetime | None = None
     followup_state: Literal["waiting", "queued", "finished", "suppressed"] = "waiting"
@@ -65,7 +62,8 @@ class BackgroundSessionState(BaseModel):
     """What a chat shows about background work without its transcript."""
 
     outcome: BackgroundOutcome | None = None
-    pending_until: datetime | None = None
+    # A parent whose continuation has not run yet; an open chat polls while this holds.
+    pending: bool = False
 
 
 def operation_id(parent: str, operation: str) -> str:

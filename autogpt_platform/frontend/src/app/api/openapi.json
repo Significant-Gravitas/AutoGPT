@@ -34220,9 +34220,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Background Outcome"
           },
-          "background_pending_until": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Background Pending Until"
+          "background_pending": {
+            "type": "boolean",
+            "title": "Background Pending",
+            "default": false
           }
         },
         "type": "object",

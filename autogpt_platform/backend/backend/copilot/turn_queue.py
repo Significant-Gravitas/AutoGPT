@@ -352,8 +352,7 @@ async def cancel_queued_turn(
                 f"cancelled before it started, spawned={spawned}"
             )
             if spawned and pending is not None:
-                if not (pending.metadata or {}).get("background_task_id"):
-                    child = _child_node(pending.metadata or {})
+                child = _child_node(pending.metadata or {})
                 await _note_cancel(db, session_id)
             await invalidate_session_cache(session_id)
     finally:
@@ -507,7 +506,7 @@ async def _promote_head(user_id: str) -> bool | None:
                 head, UNREADABLE_SPAWN, release=_child_node(metadata)
             )
             return None
-        child = queued_envelope if spawned and not background else None
+        child = queued_envelope if spawned else None
         if (
             is_answer_row(pending)
             and queued_envelope is None

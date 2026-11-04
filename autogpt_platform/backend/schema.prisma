@@ -986,9 +986,8 @@ model ChatBackgroundTask {
   launchTurnId      String
   childTurnId       String      @unique
   context           Json
-  deadline          DateTime
+  deadline          DateTime?
   outcome           String?
-  result            String?
   startedAt         DateTime?
   followupStartedAt DateTime?
   followupState     String      @default("waiting")

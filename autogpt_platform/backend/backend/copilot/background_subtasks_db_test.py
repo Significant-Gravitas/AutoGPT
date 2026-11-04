@@ -34,8 +34,6 @@ from backend.copilot.background_execution import (
 )
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
-    DELIVERY_SECONDS,
-    FOLLOWUP_SECONDS,
     BackgroundSessionState,
     BackgroundTask,
 )
@@ -134,10 +132,10 @@ async def test_result_outlives_parent_and_wakes_once_with_original_limits(world:
     await background_delivery.reconcile_background_subtasks()
     wake = world.entry(world.parent.session_id)
     assert wake.turn_id == task.wake_id
-    assert "The answer is 42." in wake.message
-    assert wake.envelope and wake.envelope.tree_id == task.context.envelope.tree_id
-    assert wake.envelope.depth > 0 and wake.envelope.tainted
-    assert wake.envelope.tools == frozenset()
+    assert task.child_session_id in wake.message
+    assert "get_sub_session_result" in wake.message
+    # The chat carries on under the launching turn's own envelope.
+    assert wake.envelope == task.context.envelope
     assert wake.unattended
     assert wake.envelope.spend_session_id == world.parent.session_id
     assert await claim_background_execution(wake)
@@ -169,7 +167,7 @@ async def test_shared_trace_does_not_change_the_launching_turn(world: World):
 
 
 @pytest.mark.parametrize("blocks_exclude", [False, True])
-async def test_background_child_keeps_block_restrictions_after_queuing(
+async def test_background_child_keeps_block_restrictions_and_may_delegate(
     world: World, blocks_exclude: bool
 ):
     task = await world.launch(
@@ -193,23 +191,24 @@ async def test_background_child_keeps_block_restrictions_after_queuing(
         _permission_denied("forbidden", "ForbiddenBlock", child.session_id) is not None
     )
     assert entry.envelope.permits("run_capability")
-    assert not entry.envelope.permits("run_sub_session")
+    # Like a foreground subtask, it may hand work on within the tree's depth.
+    assert entry.envelope.permits("run_sub_session")
 
 
-async def test_spent_tree_refuses_followup_without_a_fresh_budget(world: World):
+async def test_spent_subtask_tree_does_not_stop_the_chat_from_carrying_on(
+    world: World,
+):
+    """The continuation is a turn of the chat, governed by the user's
+    allowance like any other, not by the subtask's node."""
     task = await world.launch()
     await world.finish_parent()
     await world.finish_child(task)
     await (await get_tree_ledger()).charge(task.context.envelope.tree_id, 1_000_000)
     await background_delivery.reconcile_background_subtasks()
-    assert len(world.published.await_args_list) == 1
-    messages = await DbMessage.prisma().find_many(
-        where={"sessionId": world.parent.session_id}
-    )
-    assert any(
-        m.role == "assistant" and "budget" in (m.content or "").lower()
-        for m in messages
-    )
+    await background_delivery.reconcile_background_subtasks()
+    wake = world.entry(world.parent.session_id)
+    assert wake.turn_id == task.wake_id
+    assert await claim_background_execution(wake)
 
 
 async def test_worker_rechecks_budget_after_queue_publish(world: World):
@@ -276,7 +275,6 @@ async def test_delayed_completion_preserves_the_workers_outcome(
     )
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == outcome
-    assert stored.result == "The answer is 42."
 
 
 @pytest.mark.parametrize("expired_before_pickup", [False, True])
@@ -334,7 +332,7 @@ async def test_child_stop_reports_cancellation_and_parent_stop_suppresses_wake(
     )
     await world.finish_parent()
     await background_delivery.reconcile_background_subtasks()
-    assert '"outcome": "cancelled"' in world.entry(world.parent.session_id).message
+    assert "cancelled" in world.entry(world.parent.session_id).message
 
 
 async def test_parent_stop_suppresses_wake(world: World):
@@ -353,18 +351,6 @@ async def test_parent_stop_suppresses_wake(world: World):
     await background_delivery.reconcile_background_subtasks()
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "suppressed"
-
-
-async def test_deadline_is_recovered_even_without_worker_completion(world: World):
-    task = await world.launch()
-    await world.finish_parent()
-    await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
-        task.id,
-        datetime.now(UTC) - timedelta(seconds=1),
-    )
-    await background_delivery.reconcile_background_subtasks()
-    assert '"outcome": "timed_out"' in world.entry(world.parent.session_id).message
 
 
 async def test_scope_change_and_other_owner_cannot_receive_or_claim(world: World):
@@ -671,8 +657,12 @@ async def test_worker_to_durable_handoff_to_parent_reply(
             else "Your background subtask found 42."
         )
         if session_id == task.parent_session_id:
-            assert kwargs["envelope"].tools == frozenset()
-            assert "The answer is 42." in kwargs["message"]
+            # The chat carries on under the launching turn's own envelope, with
+            # its tools, and reads the result from the subtask's chat.
+            assert kwargs["envelope"] == task.context.envelope
+            assert kwargs["envelope"].permits("run_sub_session")
+            assert task.child_session_id in kwargs["message"]
+            assert "The answer is 42." not in kwargs["message"]
         await append_and_save_message(
             session_id, ChatMessage(role="assistant", content=text)
         )
@@ -792,10 +782,8 @@ async def test_recovery_preserves_only_a_matching_success_after_a_completion_wri
     )
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == expected
-    if expected == "completed":
-        assert stored.result == "The answer is 42."
     wake = world.entry(world.parent.session_id)
-    assert f'"outcome": "{expected}"' in wake.message
+    assert expected in wake.message
     engine.assert_called_once()
     assert len(world.published.await_args_list) == 2
 
@@ -840,7 +828,6 @@ async def test_completed_work_persists_even_when_cleanup_crosses_the_deadline(
 
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.outcome == "completed"
-    assert stored.result == "Finished before the deadline."
     active = await stream_registry.get_session(task.child_session_id)
     assert active and active.status == "completed"
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
@@ -1056,7 +1043,7 @@ async def test_stop_endpoint_cancels_an_accepted_queued_subtask(
     assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
 
 
-async def test_cancelled_queued_child_retains_its_node_for_the_followup(
+async def test_cancelled_queued_child_gives_its_node_back(
     world: World, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
@@ -1069,19 +1056,17 @@ async def test_cancelled_queued_child_retains_its_node_for_the_followup(
     )
     task = await world.launch()
     assert not world.published.await_count
+    with pytest.raises(TreeRefusal, match="lifetime budget"):
+        await world.launch("second-while-queued")
     response = await cancel_session_task(task.child_session_id, world.user_id)
     assert response.cancelled
-    with pytest.raises(TreeRefusal, match="lifetime budget"):
-        await world.launch("replacement-before-summary")
 
+    replacement = await world.launch("replacement")
+    assert replacement.id != task.id
     await world.finish_parent()
     await background_delivery.reconcile_background_subtasks()
     wake = world.entry(task.parent_session_id)
-    assert '"outcome": "cancelled"' in wake.message
-    assert await claim_background_execution(wake)
-    await finish_background_execution(wake, None)
-    with pytest.raises(TreeRefusal, match="lifetime budget"):
-        await world.launch("replacement-after-summary")
+    assert "cancelled" in wake.message
 
 
 @pytest.mark.parametrize("dispatch_source", ["none", "scheduled", "chat", "direct"])
@@ -1131,28 +1116,6 @@ async def test_parent_stop_without_redis_cancels_children_and_suppresses_wake(
     await background_delivery.reconcile_background_subtasks()
     assert len(world.published.await_args_list) == 1
     assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
-
-
-async def test_expired_worker_without_redis_meta_releases_its_slot(world: World):
-    task = await world.launch()
-    await world.finish_parent()
-    deadline = datetime.now(UTC) - timedelta(seconds=1)
-    await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
-        task.id,
-        deadline,
-    )
-    await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
-        task.child_session_id,
-        deadline - timedelta(seconds=1),
-    )
-    await (await get_redis_async()).delete(
-        stream_registry._get_session_meta_key(task.child_session_id)
-    )
-    await background_delivery.reconcile_background_subtasks()
-    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
-    assert '"outcome": "timed_out"' in world.entry(task.parent_session_id).message
 
 
 async def test_orphan_stop_is_scoped_to_the_observed_turn_and_owner(world: World):
@@ -1335,177 +1298,6 @@ async def test_dispatch_cancelled_before_recording_cannot_release_a_successor(
     assert active and active.turn_id == winner
 
 
-async def test_busy_parent_past_delivery_window_gets_one_notice_when_idle(world: World):
-    task = await world.launch()
-    await world.finish_child(task)
-    await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
-        task.id,
-        datetime.now(UTC) - timedelta(seconds=DELIVERY_SECONDS + 1),
-    )
-    await background_delivery.reconcile_background_subtasks()
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "waiting"
-    await world.finish_parent()
-    await background_delivery.reconcile_background_subtasks()
-    await background_delivery.reconcile_background_subtasks()
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "suppressed"
-    messages = await DbMessage.prisma().find_many(
-        where={"sessionId": world.parent.session_id}
-    )
-    notices = [m for m in messages if m.role == "assistant"]
-    assert len(notices) == 1
-    assert "follow-up window expired" in (notices[0].content or "")
-    assert task.child_session_id in (notices[0].content or "")
-    assert len(world.published.await_args_list) == 1
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        "queued",
-        "queued_with_pending",
-        "running",
-        "running_with_pending",
-        "orphaned_with_pending",
-    ],
-)
-async def test_expired_followup_is_recovered_once(
-    world: World,
-    monkeypatch: pytest.MonkeyPatch,
-    state: str,
-):
-    running = not state.startswith("queued")
-    task = await world.launch()
-    await world.finish_child(task)
-    await world.finish_parent()
-    if not running:
-        monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
-    await background_delivery.reconcile_background_subtasks()
-    if running:
-        assert await claim_background_execution(world.entry(world.parent.session_id))
-    pending = await chat_db().get_latest_user_message_in_session(
-        world.parent.session_id
-    )
-    assert pending and pending.metadata
-    envelope = TurnEnvelope.model_validate(pending.metadata["envelope"])
-    assert envelope.deadline_at
-    if state.endswith("with_pending"):
-        session = await model.get_chat_session(task.parent_session_id, world.user_id)
-        assert session
-        assert await persist_pending_as_user_rows(
-            session,
-            None,
-            [PendingMessage(content="Keep the update short.")],
-            log_prefix="background-recovery-test",
-        )
-        latest = await chat_db().get_latest_user_message_in_session(
-            task.parent_session_id
-        )
-        assert latest and (latest.metadata or {}).get("turn_id") != task.wake_id
-        if state == "orphaned_with_pending":
-            await stream_registry.delete_session_meta(
-                task.parent_session_id, turn_id=task.wake_id
-            )
-        await background_delivery.reconcile_background_subtasks()
-        stored = await background_task_db.get_background_task(task.id, world.user_id)
-        assert stored and stored.followup_state == "queued"
-    clock = MagicMock(wraps=datetime)
-    clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
-    monkeypatch.setattr(background_delivery, "datetime", clock)
-    if state == "queued_with_pending":
-        await background_delivery.reconcile_background_subtasks()
-        stored = await background_task_db.get_background_task(task.id, world.user_id)
-        assert stored and stored.followup_state == "queued"
-        assert (
-            await chat_db().get_chat_session_status(task.parent_session_id) == "queued"
-        )
-        assert await turn_queue.cancel_queued_turn(
-            user_id=world.user_id, session_id=task.parent_session_id
-        )
-    for _ in range(3):
-        assert await model.get_chat_session(task.parent_session_id, world.user_id)
-        await background_delivery.reconcile_background_subtasks()
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "finished"
-    assert await chat_db().get_chat_session_status(world.parent.session_id) == "idle"
-    messages = await DbMessage.prisma().find_many(
-        where={"sessionId": world.parent.session_id}
-    )
-    notices = [m for m in messages if m.id == task.wake_id + "-notice"]
-    assert len(notices) == 1 and notices[0].role == "assistant"
-    assert (notices[0].content or "").startswith(
-        "Otto couldn't complete the background follow-up."
-        if running or state == "queued_with_pending"
-        else "Otto couldn't complete the background follow-up within its limits."
-    )
-    assert task.child_session_id in (notices[0].content or "")
-    assert len(world.published.await_args_list) == (2 if running else 1)
-
-    session = await model.get_chat_session(task.parent_session_id, world.user_id)
-    assert session and any(m.content == notices[0].content for m in session.messages)
-
-
-@pytest.mark.parametrize("stream_lost", [False, True])
-async def test_expiry_losing_queue_cancellation_keeps_the_followup_recoverable(
-    world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
-):
-    task = await world.launch()
-    await world.finish_child(task)
-    await world.finish_parent()
-    monkeypatch.setattr(background_delivery, "dispatch_next_for_user", AsyncMock())
-    await background_delivery.reconcile_background_subtasks()
-    envelope = await background_task_db.get_background_followup_envelope(
-        task.id, world.user_id
-    )
-    assert envelope and envelope.deadline_at
-    cancel = background_delivery.cancel_queued_turn
-
-    async def promote_before_cancel(**kwargs):
-        assert await turn_queue.dispatch_next_for_user(world.user_id)
-        return await cancel(**kwargs)
-
-    clock = MagicMock(wraps=datetime)
-    clock.now.return_value = envelope.deadline_at + timedelta(seconds=10)
-    monkeypatch.setattr(background_delivery, "datetime", clock)
-    monkeypatch.setattr(background_execution, "datetime", clock)
-    monkeypatch.setattr(
-        background_delivery, "cancel_queued_turn", promote_before_cancel
-    )
-
-    await background_delivery.reconcile_background_subtasks()
-
-    assert await chat_db().get_chat_session_status(task.parent_session_id) == "running"
-    wake = world.entry(task.parent_session_id)
-    if stream_lost:
-        await stream_registry.delete_session_meta(
-            task.parent_session_id, turn_id=task.wake_id
-        )
-        await background_delivery.reconcile_background_subtasks()
-    else:
-        worker = processor.CoPilotProcessor()
-        worker.execution_loop = asyncio.get_running_loop()
-        run_turn = AsyncMock()
-        monkeypatch.setattr(worker, "_run_turn", run_turn)
-        with pytest.raises(TimeoutError, match=BACKGROUND_TIMEOUT_MESSAGE):
-            await asyncio.to_thread(
-                worker.execute, wake, threading.Event(), MagicMock()
-            )
-        run_turn.assert_not_awaited()
-    await background_delivery.reconcile_background_subtasks()
-    await background_delivery.reconcile_background_subtasks()
-
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "finished"
-    assert await chat_db().get_chat_session_status(task.parent_session_id) == "idle"
-    notices = await DbMessage.prisma().find_many(
-        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
-    )
-    assert len(notices) == 1
-    assert len(world.published.await_args_list) == 2
-
-
 @pytest.mark.parametrize("stream_lost", [False, True])
 async def test_recovery_during_promotion_preserves_the_unstarted_followup(
     world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
@@ -1541,92 +1333,6 @@ async def test_recovery_during_promotion_preserves_the_unstarted_followup(
     await finish_background_execution(wake, None)
     stored = await background_task_db.get_background_task(task.id, world.user_id)
     assert stored and stored.followup_state == "finished"
-
-
-@pytest.mark.parametrize("stream_lost", [False, True])
-async def test_recovery_does_not_cancel_a_newer_parent_turn(
-    world: World, monkeypatch: pytest.MonkeyPatch, stream_lost: bool
-):
-    task = await world.launch()
-    await world.finish_child(task)
-    await world.finish_parent()
-    await background_delivery.reconcile_background_subtasks()
-    wake = world.entry(task.parent_session_id)
-    assert wake.envelope and wake.envelope.deadline_at
-    await stream_registry.mark_session_completed(
-        task.parent_session_id, turn_id=task.wake_id
-    )
-    next_turn = await utils.schedule_chat_turn(
-        session_id=task.parent_session_id,
-        user_id=world.user_id,
-        message="Start the next task.",
-    )
-    assert next_turn
-    if stream_lost:
-        await stream_registry.delete_session_meta(
-            task.parent_session_id, turn_id=next_turn
-        )
-    clock = MagicMock(wraps=datetime)
-    clock.now.return_value = wake.envelope.deadline_at + timedelta(seconds=10)
-    monkeypatch.setattr(background_delivery, "datetime", clock)
-
-    await background_delivery.reconcile_background_subtasks()
-
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "queued"
-    active = await stream_registry.get_session(task.parent_session_id)
-    if stream_lost:
-        assert active is None
-    else:
-        assert active and active.turn_id == next_turn and active.status == "running"
-    assert await chat_db().get_chat_session_status(task.parent_session_id) == "running"
-
-    if stream_lost:
-        assert await chat_db().update_chat_session_status(
-            session_id=task.parent_session_id,
-            user_id=world.user_id,
-            expect_status="running",
-            status="idle",
-        )
-    else:
-        await stream_registry.mark_session_completed(
-            task.parent_session_id, turn_id=next_turn
-        )
-    for _ in range(2):
-        await background_delivery.reconcile_background_subtasks()
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.followup_state == "finished"
-    notices = await DbMessage.prisma().find_many(
-        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
-    )
-    assert len(notices) == 1
-    assert (notices[0].content or "").startswith(
-        "Otto couldn't complete the background follow-up."
-    )
-
-
-async def test_recovery_envelope_remains_owner_and_route_scoped(world: World):
-    task = await world.launch()
-    await world.finish_child(task)
-    await world.finish_parent()
-    await background_delivery.reconcile_background_subtasks()
-    assert (
-        await background_task_db.get_background_followup_envelope(
-            task.id, world.user_id
-        )
-        == world.entry(task.parent_session_id).envelope
-    )
-    assert not await background_task_db.get_background_followup_envelope(
-        task.id, "someone-else"
-    )
-    await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatSession" SET metadata=metadata || $2::jsonb WHERE id=$1',
-        task.parent_session_id,
-        '{"llm_auth_provider":"codex"}',
-    )
-    assert not await background_task_db.get_background_followup_envelope(
-        task.id, world.user_id
-    )
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -1678,7 +1384,7 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
             await db.disconnect()
 
 
-async def test_session_state_reports_the_outcome_and_the_followup_window(
+async def test_session_state_reports_the_outcome_and_a_pending_continuation(
     world: World,
 ):
     task = await world.launch()
@@ -1686,17 +1392,14 @@ async def test_session_state_reports_the_outcome_and_the_followup_window(
     state = background_task_db.get_session_background_state
 
     assert await state(child_id, world.user_id) == BackgroundSessionState()
-    assert await state(parent_id, world.user_id) == BackgroundSessionState(
-        pending_until=task.deadline
-        + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
-    )
+    assert await state(parent_id, world.user_id) == BackgroundSessionState(pending=True)
     assert await state(child_id, str(uuid4())) == BackgroundSessionState()
 
     await world.finish_parent()
     await world.finish_child(task)
     await background_delivery.reconcile_background_subtasks()
     assert (await state(child_id, world.user_id)).outcome == "completed"
-    assert (await state(parent_id, world.user_id)).pending_until is not None
+    assert (await state(parent_id, world.user_id)).pending
 
     entry = world.entry(parent_id)
     assert await claim_background_execution(entry)
@@ -1705,7 +1408,7 @@ async def test_session_state_reports_the_outcome_and_the_followup_window(
 
 
 @pytest.mark.parametrize("completion", ["matching", "missing", "wrong_turn"])
-async def test_followup_recovery_keeps_a_delivered_summary(
+async def test_followup_recovery_keeps_a_delivered_continuation(
     world: World, completion: str
 ):
     task = await world.launch()
@@ -1741,38 +1444,6 @@ async def test_followup_recovery_keeps_a_delivered_summary(
         where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
     )
     assert len(notices) == (0 if completion == "matching" else 1)
-
-
-@pytest.mark.parametrize("turn_held", [True, False])
-async def test_result_selection_bounds_by_the_turn_the_worker_still_holds(
-    world: World, turn_held: bool
-):
-    """A clarification the child drained mid-turn is a user row. The worker
-    that still holds the turn keeps the answer after it; recovery, which may
-    run after the chat moved on, stops at that row."""
-    task = await world.launch()
-    await world.finish_parent()
-    entry = world.entry(task.child_session_id)
-    assert await claim_background_execution(entry)
-    for role, content in (
-        ("assistant", "Working on it."),
-        ("user", "Use metric units."),
-        ("assistant", "The answer is 42 km."),
-    ):
-        await append_and_save_message(
-            task.child_session_id, ChatMessage(role=role, content=content)
-        )
-
-    if turn_held:
-        await finish_background_execution(entry, None)
-    else:
-        await background_task_db.finish_background_turn(
-            world.user_id, task.child_session_id, task.child_turn_id, None
-        )
-
-    stored = await background_task_db.get_background_task(task.id, world.user_id)
-    assert stored and stored.outcome == "completed"
-    assert stored.result == ("The answer is 42 km." if turn_held else "Working on it.")
 
 
 async def test_a_dispatcher_that_lost_its_admission_cannot_record_its_turn(
