@@ -137,6 +137,47 @@ export function buildSafeWorkspaceDownloadHeaders(
   };
 }
 
+// Only the backend's device-login page may render as a page; any other page
+// type downloads.
+export function hardenRelayedResponseHeaders(
+  path: string[],
+  headers: Headers,
+): void {
+  headers.set("X-Content-Type-Options", "nosniff");
+  if (
+    !isDocumentContentType(headers.get("content-type")) ||
+    isCodexDeviceLoginPage(path)
+  ) {
+    return;
+  }
+  headers.set(
+    "Content-Disposition",
+    getSafeDownloadContentDisposition(headers.get("content-disposition")),
+  );
+}
+
+const DOCUMENT_CONTENT_TYPES = new Set([
+  "text/html",
+  "text/xsl",
+  "multipart/x-mixed-replace",
+]);
+
+function isDocumentContentType(contentType: string | null): boolean {
+  const type = contentType?.split(";")[0].trim().toLowerCase() ?? "";
+  return (
+    DOCUMENT_CONTENT_TYPES.has(type) ||
+    type.endsWith("/xml") ||
+    type.endsWith("+xml")
+  );
+}
+
+function isCodexDeviceLoginPage(path: string[]): boolean {
+  return (
+    path.length === 5 &&
+    path.slice(0, 4).join("/") === "api/integrations/codex/device-login"
+  );
+}
+
 export function isRedirectStatus(status: number): boolean {
   return [301, 302, 303, 307, 308].includes(status);
 }

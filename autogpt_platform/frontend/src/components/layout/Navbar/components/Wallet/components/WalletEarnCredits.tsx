@@ -74,12 +74,7 @@ function EarnCreditsHeader({
             <Text as="span" variant="large-medium" tone="primary">
               Earn credits
             </Text>
-            <Text
-              as="span"
-              variant="small"
-              tone="secondary"
-              className="tabular-nums"
-            >
+            <Text as="span" variant="small" tone="secondary" tabular>
               {available > 0
                 ? `$${available.toFixed(2)} available`
                 : "All claimed"}
@@ -93,10 +88,9 @@ function EarnCreditsHeader({
               icon={ArrowDown01Icon}
               size={16}
               aria-hidden
-              className={cn(
-                "shrink-0 text-foreground-tertiary transition-transform motion-reduce:transition-none",
-                open && "rotate-180",
-              )}
+              tone="muted"
+              motion="transform"
+              className={cn("shrink-0", open && "rotate-180")}
             />
           </span>
         </button>
@@ -122,10 +116,9 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
           <Icon
             icon={ArrowDown01Icon}
             size={14}
-            className={cn(
-              "mt-1 shrink-0 text-foreground-subtle transition-transform duration-200",
-              open && "rotate-180",
-            )}
+            tone="subtle"
+            motion="transform"
+            className={cn("mt-1 shrink-0", open && "rotate-180")}
           />
         </span>
         <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
@@ -159,16 +152,11 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CheckmarkBadge01Icon}
           size={18}
-          className="text-success"
+          tone="success"
           aria-label="completed"
         />
       ) : (
-        <Icon
-          icon={CircleIcon}
-          size={16}
-          className="text-foreground-subtle"
-          aria-label="pending"
-        />
+        <Icon icon={CircleIcon} size={16} tone="subtle" aria-label="pending" />
       )}
     </span>
   );
