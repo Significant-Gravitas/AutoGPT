@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from backend.api.features.experts import experts_db
+from backend.api.features.library import db
 from backend.api.features.library.triggers import (
     delete_preset_with_webhook_cleanup,
     setup_triggered_preset,
@@ -90,6 +91,65 @@ async def _setup(*, expert_id: str | None = None, trigger_config: dict | None = 
         agent_credentials={},
         expert_id=expert_id,
     )
+
+
+@pytest.mark.asyncio
+async def test_a_refused_trigger_config_registers_no_webhook():
+    """Nothing is registered with the provider for a value the write refuses.
+
+    The preset write bounds its own text and inputs, so without this check the
+    webhook would be registered and then left behind when that write refuses.
+    """
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_expert, p_create, p_webhook as webhook_mock:
+        with pytest.raises(InvalidInputError, match="Preset name is too long"):
+            await setup_triggered_preset(
+                user_id=_USER,
+                graph_id="graph-1",
+                graph_version=1,
+                name="x" * (db.MAX_PRESET_NAME_LENGTH + 1),
+                description="",
+                trigger_config={"repo": "owner/repo"},
+                agent_credentials={},
+            )
+    webhook_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_trigger_config_over_the_byte_bound_registers_no_webhook():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_expert, p_create, p_webhook as webhook_mock:
+        with pytest.raises(InvalidInputError, match="inputs hold at most"):
+            await setup_triggered_preset(
+                user_id=_USER,
+                graph_id="graph-1",
+                graph_version=1,
+                name="My Trigger",
+                description="",
+                trigger_config={"repo": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)},
+                agent_credentials={},
+            )
+    webhook_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_webhook_is_pruned_when_the_preset_write_fails():
+    """Whatever the write fails on, the webhook does not outlive the attempt."""
+    p_graph, p_creds, p_webhook, _p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook,
+        patch(
+            f"{_PATH}.db.create_preset",
+            new=AsyncMock(side_effect=RuntimeError("the write failed")),
+        ),
+        patch(f"{_PATH}._prune_dangling_webhook", new=AsyncMock()) as prune_mock,
+    ):
+        with pytest.raises(RuntimeError, match="the write failed"):
+            await _setup()
+    prune_mock.assert_awaited_once_with(_USER, "wh-1")
 
 
 @pytest.mark.asyncio
@@ -554,6 +614,46 @@ async def test_an_update_filled_to_the_bound_registers_no_webhook():
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
     m["prune"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_with_an_oversized_name_registers_no_webhook():
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="Preset name is too long"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+                name="x" * (db.MAX_PRESET_NAME_LENGTH + 1),
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_with_an_oversized_payload_registers_no_webhook():
+    """A `payload` the caller sends is what is stored, so it is what is measured."""
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="inputs hold at most"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_setup_with_an_oversized_payload_registers_no_webhook():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_expert, p_create, p_webhook as webhook_mock:
+        with pytest.raises(InvalidInputError, match="inputs hold at most"):
+            await _setup(
+                trigger_config={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)}
+            )
+    webhook_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

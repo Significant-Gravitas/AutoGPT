@@ -1,10 +1,12 @@
 // The colour roles, grouped by job. Each is an RGB triplet in
-// src/app/globals.css (`--color-<name>`), which its `@theme` registers as a
-// Tailwind colour; the Tokens/Colors story draws them from here.
+// src/app/tokens/theme.css (`--color-<name>`), which globals.css's `@theme`
+// registers as a Tailwind colour; the Tokens/Colors story draws them from
+// here.
 export const COLOR_ROLE_GROUPS = [
   {
     name: "Surfaces",
-    description: "Page and card backgrounds, hover and pressed fills.",
+    description:
+      "Page and card backgrounds, hover and pressed fills, and the dark scrim behind dialogs and in shadows.",
     roles: [
       "canvas",
       "surface",
@@ -12,6 +14,7 @@ export const COLOR_ROLE_GROUPS = [
       "surface-hover",
       "surface-active",
       "overlay",
+      "scrim",
     ],
   },
   {
@@ -62,6 +65,22 @@ export const COLOR_ROLE_GROUPS = [
       "info",
       "info-foreground",
       "info-surface",
+    ],
+  },
+  {
+    name: "Accents",
+    description:
+      "Hues that are not a status: categories, usage meters, data types and badges. A pale tint is the hue at an opacity (bg-orange/10, ring-sky/30).",
+    roles: [
+      "orange",
+      "orange-foreground",
+      "yellow",
+      "yellow-foreground",
+      "sky",
+      "sky-foreground",
+      "indigo",
+      "pink",
+      "pink-foreground",
     ],
   },
   {

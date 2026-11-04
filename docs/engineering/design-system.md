@@ -4,7 +4,7 @@ The rules for styling in `autogpt_platform/frontend`, and the lint rule that enf
 
 ## How the rules are enforced
 
-`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip the four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
+`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`) but not the colour-system rules (`no-alias-colours`, `no-palette-colours`, `no-hex-colours`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
 
 Six of the rules are [`@shadcn/lint`](https://github.com/shadcn-ui/lint) rules, wrapped by `design-system.mts`. The rest are our own.
 
@@ -33,30 +33,34 @@ Never raise a count to make new code pass. Fix the code, or suppress the one lin
 
 ## Tokens
 
-Colour comes from the role tokens in `src/app/globals.css` (`--color-<role>` on `:root`, registered in its `@theme`). Use them with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`.
+The app has one colour system: the role tokens. Their values live in one place, `src/app/tokens/theme.css`, as RGB triplets on `:root` (`--color-<role>`); `src/app/globals.css` registers each in its `@theme inline` block, so `bg-surface` reads `rgb(var(--color-surface) / 1)` at runtime. A theme is a second block that redefines the same names, with no component edit (the T3 Code layout). Use the roles with any colour utility, opacity modifiers included: `bg-surface`, `text-foreground-secondary`, `border-border-base`, `ring-focus`, `bg-overlay/20`. In a string that needs a colour (an inline style, a drag image, an xyflow marker) write `rgb(var(--color-<role>))`.
 
-- Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`
+- Surfaces: `canvas`, `surface`, `surface-muted`, `surface-hover`, `surface-active`, `overlay`, `scrim` (the dark backdrop behind dialogs, and the colour of a coloured shadow)
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
 - Borders: `separator`, `border-base`, `border-strong`, `focus`
-- Action and accent: `action`, `action-hover`, `action-foreground`, `brand`, `brand-hover`, `accent-surface`, `accent-strong`
+- Action and brand: `action`, `action-hover`, `action-foreground`, `brand`, `brand-hover`, `accent-surface`, `accent-strong`
 - Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`
+- Accents, hues that are not a status (categories, usage meters, data types, badges): `orange`, `orange-foreground`, `yellow`, `yellow-foreground`, `sky`, `sky-foreground`, `indigo`, `pink`, `pink-foreground`. A pale tint or border of a hue is the hue at an opacity: `bg-orange/10`, `bg-pink/10`, `ring-sky/30`.
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
 
-The raw palette (`zinc-*`, `neutral-*`, `purple-*`, …) lives in `tailwind.v3-preset.ts`, and hex values belong in `globals.css` only. The palette stays out of `globals.css`'s `@theme` because `@shadcn/lint` reads every colour there as a token.
+`src/components/styles/color-roles.ts` lists every role (the Tokens/Colors story draws it). To add one, write its triplet in `theme.css`, register it in `globals.css`'s `@theme` and list it there; add one only when real, repeated uses need a colour no role has.
 
-- **Rule `design-system/no-raw-colors`:** palette classes such as `bg-zinc-200`, in `className`, `cn()`/`cva()` and any other string.
-- **Rule `design-system/no-arbitrary-values`:** arbitrary colours such as `bg-[#fff]` and `text-[rgb(…)]`.
+Three rules keep the other colour systems out, in every string (`className`, `cn()`/`cva()`, style objects, template literals), stories included:
 
-The error names the token with the same colour when one exists: `"text-zinc-500" … Use "text-foreground-tertiary" instead`. It reads the exact matches from `scripts/codemod-tokens.ts` and the role values from `globals.css`. When no token has the colour, the error lists the roles for that utility. Pick the one whose meaning fits and check the screen, because the colour changes, or add a role.
+- **Rule `design-system/no-alias-colours`:** the shadcn names (`bg-background`, `text-muted-foreground`, `border-border`, `ring-ring`, `bg-accent`, `bg-sidebar`, …). The error names the role each one aliased, which renders the same colour. `theme.css` keeps seven of them (`background`, `foreground`, `muted`, `muted-foreground`, `border`, `primary`, `primary-foreground`) for streamdown's prebuilt markup, which Tailwind scans in `node_modules`; they are not for app code.
+- **Rule `design-system/no-palette-colours`:** the Tailwind palette (`bg-zinc-200`, `text-orange-600`, `bg-white`, `shadow-black/10`). The error names the role `scripts/ds/palette-map.json` maps the class to.
+- **Rule `design-system/no-hex-colours`:** hex colours (`"#fff"`, `bg-[#123456]`).
+- `design-system/no-raw-colors` still fails named colours in SVG attributes (`fill="white"`), and `design-system/no-arbitrary-values` arbitrary colours such as `text-[rgb(…)]`.
 
-`white`, `black` and the old `customGray-*` aren't flagged yet; write `bg-surface` and `text-foreground-base` anyway. The shadcn names (`background`, `foreground`, `muted-foreground`, `border`, `primary`, `accent`, `destructive`, …) still resolve, but several render a different value from the role with the same intent (`TODO(tokens)` in `globals.css`), so prefer the role in new code.
+Artwork, logos, chart series (recharts writes them as SVG attributes, where CSS variables do not resolve), user-picked colour palettes and markup that never reaches the app's stylesheet keep their colours through `ds-colour-exempt.json`: a file glob, optionally the classes or hex values allowed in it, and a reason. It is the only way: a suppression comment for these three rules fails `scripts/__tests__/colour-exempt.test.ts`, which also checks every entry still matches a file and every allowed value is still used, and that no stylesheet other than `theme.css` (and exempt ones) writes a hex colour.
 
-When you migrate a class, keep the value: same value, new name. If no role has the exact value, leave the class and add `// TODO(tokens)`. Never pick the nearest role.
+The codemods that did the migration stay for branches that still use the old names: `npx tsx scripts/ds/alias-to-role.ts --write <dir>` (the shadcn names; no pixel moves, `scripts/check-token-equivalence.ts` proves it against a base checkout) and `npx tsx scripts/ds/palette-to-role.ts --write <dir>` (the palette, by `palette-map.json`, whose rows say whether the colour stays the same, shifts a shade, or changes hue). The palette itself (`tailwind.v3-preset.ts`) is still compiled for streamdown and the exempt files.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
-- every role on `globals.css`'s `:root` is registered in its `@theme`, and the other way round, and `color-roles.ts` lists them all;
+- every role on `theme.css`'s `:root` is registered in `globals.css`'s `@theme`, and the other way round, and `color-roles.ts` lists them all;
+- no shadcn name is left but streamdown's, each aliasing a role;
 - `.dark` only redefines names that `:root` declares;
-- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours, and `globals.css` declares none.
+- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours.
 
 ## Dark mode
 
@@ -64,9 +68,15 @@ No `dark:` or `light:` classes. A theme is a set of token values, not a second s
 
 ## Primitives
 
-`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant` or `size` (and a `tone` on `Text`). Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
+`src/components/{atoms,molecules,organisms}` own their look. At the call site, pick a `variant`, `size`, `tone` or `shape`. Use `className` only for layout: width, flex and grid placement, margin, position. A treatment you repeat becomes a variant on the primitive, never a class string copied between call sites.
 
-`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty` and text alignment; `Icon` accepts layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. It is off inside the three design-system directories, which define the looks.
+The props that replace the usual restyles:
+
+- **`Text`:** `tone` (colour), `weight`, `mono`, `tabular`, `italic`, `decoration`, `transform` and `align`, on top of the `variant`. A line height that differs from the variant's is a variant of its own (`body-tight`, `small-loose`, ...), not a `leading-*` class.
+- **`Icon`:** `tone` (the same values as `Text`, from `src/components/styles/tones.ts`; without one the icon takes the colour around it), `spin` for a loading indicator and `motion` (`transform`, `colors`, `opacity`) for an icon that animates a class change, such as a chevron's rotation.
+- **`Button`:** the quiet `ghost-muted`, `ghost-subtle` and `ghost-danger` variants, the `row` (32px), `inline`, `inline-xs` (no box, for a link in copy) and `icon-2xs` (24px) sizes, and `shape` (`pill`, `rounded`, `soft`) for the corner radius.
+
+`Text` also accepts `truncate`, `line-clamp-*`, `whitespace-*`, `break-*`, `text-balance`, `text-pretty`, `text-ellipsis`, `gap-*` and text alignment; `Icon` and `Button` accept layout only; `Skeleton` also accepts shape. Rule: `design-system/no-restyle`. Inside the three design-system directories, which define the looks, it checks only `Text`, `Icon` and `Button`, so a molecule restyles them through their props like any call site.
 
 Classes on a primitive must be static strings the linter can read, so no `` `bg-${tone}` ``; map a prop to whole class names instead. Rule: `design-system/require-static-classes`.
 
@@ -88,30 +98,32 @@ No arbitrary values except for layout and transitions (`w-[320px]`, `top-[7px]` 
 
 ## Typography
 
-Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`) and `tone` for the colour. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
+Text renders through the `Text` atom by default: `<Text variant="body">`, with `as` for the tag (`<Text variant="small" as="span">`), `tone` for the colour and `weight`, `mono` or `tabular` to adjust the variant. `<Text>` owns its typography and colour; `className` takes layout, truncation, wrapping and alignment only (the `Text` contract of `design-system/no-restyle`).
 
-Use a role class only where `Text` can't render the element identically, and inside primitives. Each role bundles its line-height:
+Use a scale class only where `Text` can't render the element identically, and inside primitives. The type scale is the app's only set of text sizes: its values are in `src/app/tokens/typography.css` (one `:root` block, mapped to `text-<step>` by `@theme` in `globals.css`), so a redesign changes that file and every size follows. Each step bundles its line-height:
 
-| Role | Size / line-height |
-| --- | --- |
-| `text-tiny` | 10/14px |
-| `text-caption-sm` | 11/16px |
-| `text-caption` | 12/18px |
-| `text-body-sm` | 13/20px |
-| `text-body` | 14/22px |
-| `text-body-md` | 15/24px |
-| `text-body-lg` | 16/26px |
-| `text-lead` | 20/28px |
-| `text-heading-sm` | 22/24px |
-| `text-heading` | 28/40px |
-| `text-title` | 32/40px |
-| `text-display` | 44/56px |
+| Step | Size / line-height | Replaced (SECRT-3152) |
+| --- | --- | --- |
+| `text-tiny` | 10/14px | |
+| `text-caption-sm` | 11/16px | |
+| `text-caption` | 12/18px | Tailwind `xs` (12/16) |
+| `text-body-sm` | 13/20px | |
+| `text-body` | 14/22px | Tailwind `sm` (14/20) |
+| `text-body-md` | 15/24px | |
+| `text-body-lg` | 16/26px | Tailwind `base` (16/24) |
+| `text-lead` | 20/28px | Tailwind `lg` (18/28) and `xl` (20/28) |
+| `text-heading-sm` | 22/24px | |
+| `text-heading-md` | 24/32px | Tailwind `2xl` (24/32) |
+| `text-heading` | 28/40px | Tailwind `3xl` (30/36) |
+| `text-title` | 32/40px | Tailwind `4xl` (36/40) |
+| `text-display` | 44/56px | Tailwind `5xl` (48/48) |
+| `text-hero` | 64/64px | Tailwind `6xl` to `9xl` |
 
 - **Line-height:** override it only with `leading-inherit`, `leading-4.5`, `leading-5.5`, `leading-6.5` or a Tailwind step.
 - **Letter-spacing:** `tracking-display`, `tracking-heading`, `tracking-title`, `tracking-caps` or `tracking-eyebrow`.
 - **Weight:** Tailwind's scale (`font-medium`, `font-semibold`).
 
-Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. A few rare sizes are still raw (5, 6, 9, 17, 23, 26, 35, 36, 48 and 64px, plus fractional rems). They carry `// TODO(tokens): SECRT-3152` until they are snapped; never round one to the nearest role.
+Tailwind's own sizes are reset in the theme (`--text-*: initial`), so `text-sm` or `md:text-2xl` renders nothing. Rule `design-system/no-raw-text-size` fails them, and arbitrary sizes (`text-[13px]`, `text-[length:..]`), naming the step to use; `scripts/ds/text-size-scale.ts` holds the mapping above and rewrites a file with `--write`. Never use raw sizes: no `text-[13px]`, `leading-[..]`, `tracking-[..]`, `font-[..]` or inline font styles. Streamdown, the chat's markdown renderer, still writes Tailwind's names in its own markup; `globals.css` sizes them from the same steps inside `[data-streamdown]`.
 
 ## Icons
 

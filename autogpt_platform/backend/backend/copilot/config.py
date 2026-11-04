@@ -762,6 +762,23 @@ class ChatConfig(BaseSettings):
         "Send __test_transient_error__, __test_fatal_error__, or "
         "__test_slow_response__ to trigger specific scenarios.",
     )
+    load_test_email_domain: str = Field(
+        default="",
+        description="Email domain of the accounts a load test sends chat turns "
+        "from. An account named loadtest-dummy-…@<domain> runs its turns on the "
+        "dummy engine, and loadtest-scripted-…@<domain> on the SDK engine "
+        "against load_test_model_url; every other account keeps its usual "
+        "engine and model (backend/copilot/load_test.py). Empty, the default, "
+        "routes no account and looks nothing up.",
+    )
+    load_test_model_url: str = Field(
+        default="",
+        description="Base URL, ending in /v1, of the scripted model that plays "
+        "the provider for loadtest-scripted accounts (autogpt_platform/"
+        "scripted_model). Their CLI gets it without /v1 as ANTHROPIC_BASE_URL, "
+        "with a placeholder token rather than the deployment's key. Unset, "
+        "their turns fail rather than reach a real model.",
+    )
 
     # E2B Sandbox Configuration
     use_e2b_sandbox: bool = Field(

@@ -125,7 +125,7 @@ export function UseExistingCredentialsDialog({
               <button
                 type="button"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
+                className="flex w-fit items-center gap-1 text-body text-foreground-tertiary hover:text-foreground-emphasis"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections

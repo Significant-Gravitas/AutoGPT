@@ -1,4 +1,6 @@
 @import "./tailwind-v3-preflight.css";
+@import "./tokens/theme.css";
+@import "./tokens/typography.css";
 @config "../../tailwind.config.ts";
 
 /* Defaults Tailwind 4 reads from its own theme, which is not loaded: the
@@ -7,7 +9,7 @@
   --default-transition-duration: 150ms;
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   --default-ring-width: 3px;
-  --default-ring-color: rgb(59 130 246 / 0.5);
+  --default-ring-color: rgb(var(--color-info) / 0.5);
   --default-outline-width: medium;
 }
 
@@ -19,123 +21,30 @@
    forces the light theme, so no `dark:` class renders today. */
 @custom-variant dark (&:is(.dark *));
 
-/* Design tokens. Each colour is an RGB channel triplet, so a colour can be
-   read with an alpha (`rgb(var(--color-surface) / 0.5)`) and Tailwind's
-   opacity modifiers keep working: the theme below registers every name.
-   Values are what renders today; the hex beside each one is the class it
-   replaces. */
+/* The shadcn radius steps (`rounded-sm`, `rounded-md`, `rounded-lg`) read
+   this one. The colour roles are in tokens/theme.css. */
 :root {
-  /* Surfaces */
-  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
-  --color-surface: 254 254 254; /* white #FEFEFE */
-  --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
-  --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
-  --color-surface-active: 218 218 220; /* zinc-200 #DADADC */
-  --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
-
-  /* Text */
-  --color-foreground-base: 20 20 20; /* black #141414, the Text default */
-  --color-foreground-strong: 44 44 48; /* zinc-900 #2C2C30 */
-  --color-foreground-emphasis: 62 62 67; /* zinc-800 #3E3E43 */
-  --color-foreground-body: 80 80 87; /* zinc-700 #505057 */
-  --color-foreground-secondary: 104 104 111; /* zinc-600 #68686F */
-  --color-foreground-tertiary: 131 131 140; /* zinc-500 #83838C */
-  --color-foreground-subtle: 173 173 179; /* zinc-400 #ADADB3 */
-  --color-foreground-disabled: 197 197 201; /* zinc-300 #C5C5C9 */
-  --color-placeholder: 131 131 140; /* zinc-500 #83838C */
-
-  /* Borders */
-  --color-separator: 239 239 240; /* zinc-100 #EFEFF0 */
-  --color-border-base: 218 218 220; /* zinc-200 #DADADC */
-  --color-border-strong: 197 197 201; /* zinc-300 #C5C5C9 */
-  --color-focus: 10 10 10; /* neutral-950 #0A0A0A, the Button focus ring */
-
-  /* Action */
-  --color-action: 62 62 67; /* zinc-800 #3E3E43, primary Button */
-  --color-action-hover: 44 44 48; /* zinc-900 #2C2C30 */
-  --color-action-foreground: 254 254 254; /* white #FEFEFE */
-
-  /* Accent */
-  --color-brand: 119 51 245; /* purple-500 #7733F5 */
-  --color-brand-hover: 108 46 223; /* purple-600 #6C2EDF */
-  --color-accent-surface: 245 243 255; /* violet-50 #F5F3FF */
-  --color-accent-strong: 109 40 217; /* violet-700 #6D28D9 */
-
-  /* Status */
-  --color-error: 239 68 68; /* red-500 #EF4444 */
-  --color-error-hover: 217 54 54; /* red-600 #D93636 */
-  --color-error-foreground: 170 48 48; /* red-700 #AA3030 */
-  --color-error-surface: 254 245 245; /* red-50 #FEF5F5 */
-  --color-warning: 245 158 11; /* amber-500 #F59E0B */
-  --color-warning-foreground: 180 83 9; /* amber-700 #B45309 */
-  --color-warning-surface: 255 251 235; /* amber-50 #FFFBEB */
-  --color-warning-border: 253 230 138; /* amber-200 #FDE68A */
-  --color-success: 20 148 67; /* green-600 #149443 */
-  --color-success-foreground: 16 116 53; /* green-700 #107435 */
-  --color-success-surface: 232 246 237; /* green-50 #E8F6ED */
-  --color-info: 59 130 246; /* blue-500 #3B82F6 */
-  --color-info-foreground: 37 99 235; /* blue-600 #2563EB */
-  --color-info-surface: 239 246 255; /* blue-50 #EFF6FF */
-
-  /* Builder (flow editor) */
-  --color-builder-canvas: 249 249 249; /* #F9F9F9, what the transparent canvas shows (the app inset); not read yet */
-  --color-builder-grid: 145 145 154; /* #91919A, xyflow's default dot colour */
-  --color-node-surface: 254 254 254; /* white #FEFEFE, the node card */
-  --color-node-border: 207 212 219; /* slate-200 #CFD4DB, the node ring at /60 */
-  --color-node-selected: 207 212 219; /* slate-200 #CFD4DB, the selected node's ring */
-  --color-edge: 131 131 140; /* zinc-500 #83838C, an untyped edge (at /50, solid on hover) */
-  --color-handle: 156 163 175; /* gray-400 #9CA3AF, a node's input and output handles */
-
-  /* shadcn names, kept as aliases of the role of the same intent so the
-     classes that still use them render the roles. Each name is renamed to
-     its role class in the directory PRs; the aliases go once none is left. */
-  --color-background: var(--color-canvas);
-  --color-foreground: var(--color-foreground-base);
-  --color-card: var(--color-surface);
-  --color-card-foreground: var(--color-foreground-base);
-  --color-popover: var(--color-surface);
-  --color-popover-foreground: var(--color-foreground-base);
-  --color-primary: var(--color-action);
-  --color-primary-foreground: var(--color-action-foreground);
-  --color-secondary: var(--color-surface-hover);
-  --color-secondary-foreground: var(--color-foreground-strong);
-  --color-muted: var(--color-surface-hover);
-  --color-muted-foreground: var(--color-foreground-tertiary);
-  --color-accent: var(--color-brand);
-  --color-accent-foreground: var(--color-action-foreground);
-  --color-destructive: var(--color-error);
-  --color-destructive-foreground: var(--color-action-foreground);
-  --color-border: var(--color-border-base);
-  --color-input: var(--color-border-strong);
-  --color-ring: var(--color-focus);
-  --color-sidebar: var(--color-surface-muted);
-  --color-sidebar-foreground: var(--color-foreground-emphasis);
-  --color-sidebar-primary: var(--color-action);
-  --color-sidebar-primary-foreground: var(--color-action-foreground);
-  --color-sidebar-accent: var(--color-surface-hover);
-  --color-sidebar-accent-foreground: var(--color-foreground-strong);
-  --color-sidebar-border: var(--color-border-base);
-  --color-sidebar-ring: var(--color-info);
-
   --radius: 0.5rem;
 }
 
 /* The theme: the colour roles, type scale and radii, read by Tailwind from
    here instead of tailwind.config.ts. `inline` writes each value into the
    class, and `reference` keeps Tailwind from also writing these variables
-   onto `:root`, so a role's entry can share the name of its RGB triplet above
-   and read it: `bg-surface` is `rgb(var(--color-surface) / 1)` and
-   `bg-surface/50` is `rgb(var(--color-surface) / 0.5)`, as before. The raw
-   palette stays in tailwind.v3-preset.ts: @shadcn/lint reads every colour
-   in this file's `@theme` as a design token. */
+   onto `:root`, so a role's entry can share the name of its RGB triplet in
+   tokens/theme.css and read it: `bg-surface` is
+   `rgb(var(--color-surface) / 1)` and `bg-surface/50` is
+   `rgb(var(--color-surface) / 0.5)`. These roles are the only colour names
+   app code uses; the raw palette in tailwind.v3-preset.ts is failed by
+   design-system/no-palette-colours. */
 @theme inline reference {
-  /* Roles, the triplets above */
+  /* Roles, the triplets in tokens/theme.css */
   --color-canvas: rgb(var(--color-canvas) / 1);
   --color-surface: rgb(var(--color-surface) / 1);
   --color-surface-muted: rgb(var(--color-surface-muted) / 1);
   --color-surface-hover: rgb(var(--color-surface-hover) / 1);
   --color-surface-active: rgb(var(--color-surface-active) / 1);
   --color-overlay: rgb(var(--color-overlay) / 1);
+  --color-scrim: rgb(var(--color-scrim) / 1);
   --color-foreground-base: rgb(var(--color-foreground-base) / 1);
   --color-foreground-strong: rgb(var(--color-foreground-strong) / 1);
   --color-foreground-emphasis: rgb(var(--color-foreground-emphasis) / 1);
@@ -170,6 +79,15 @@
   --color-info: rgb(var(--color-info) / 1);
   --color-info-foreground: rgb(var(--color-info-foreground) / 1);
   --color-info-surface: rgb(var(--color-info-surface) / 1);
+  --color-orange: rgb(var(--color-orange) / 1);
+  --color-orange-foreground: rgb(var(--color-orange-foreground) / 1);
+  --color-yellow: rgb(var(--color-yellow) / 1);
+  --color-yellow-foreground: rgb(var(--color-yellow-foreground) / 1);
+  --color-sky: rgb(var(--color-sky) / 1);
+  --color-sky-foreground: rgb(var(--color-sky-foreground) / 1);
+  --color-indigo: rgb(var(--color-indigo) / 1);
+  --color-pink: rgb(var(--color-pink) / 1);
+  --color-pink-foreground: rgb(var(--color-pink-foreground) / 1);
   --color-builder-canvas: rgb(var(--color-builder-canvas) / 1);
   --color-builder-grid: rgb(var(--color-builder-grid) / 1);
   --color-node-surface: rgb(var(--color-node-surface) / 1);
@@ -178,95 +96,43 @@
   --color-edge: rgb(var(--color-edge) / 1);
   --color-handle: rgb(var(--color-handle) / 1);
 
-  /* shadcn names, the aliases above */
-  --color-border: rgb(var(--color-border) / 1);
-  --color-input: rgb(var(--color-input) / 1);
-  --color-ring: rgb(var(--color-ring) / 1);
-  --color-background: rgb(var(--color-background) / 1);
-  --color-foreground: rgb(var(--color-foreground) / 1);
-  --color-primary: rgb(var(--color-primary) / 1);
-  --color-primary-foreground: rgb(var(--color-primary-foreground) / 1);
-  --color-secondary: rgb(var(--color-secondary) / 1);
-  --color-secondary-foreground: rgb(var(--color-secondary-foreground) / 1);
-  --color-destructive: rgb(var(--color-destructive) / 1);
-  --color-destructive-foreground: rgb(var(--color-destructive-foreground) / 1);
-  --color-muted: rgb(var(--color-muted) / 1);
-  --color-muted-foreground: rgb(var(--color-muted-foreground) / 1);
-  --color-accent: rgb(var(--color-accent) / 1);
-  --color-accent-foreground: rgb(var(--color-accent-foreground) / 1);
-  --color-popover: rgb(var(--color-popover) / 1);
-  --color-popover-foreground: rgb(var(--color-popover-foreground) / 1);
-  --color-card: rgb(var(--color-card) / 1);
-  --color-card-foreground: rgb(var(--color-card-foreground) / 1);
-  --color-sidebar: rgb(var(--color-sidebar) / 1);
-  --color-sidebar-foreground: rgb(var(--color-sidebar-foreground) / 1);
-  --color-sidebar-primary: rgb(var(--color-sidebar-primary) / 1);
-  --color-sidebar-primary-foreground: rgb(
-    var(--color-sidebar-primary-foreground) / 1
-  );
-  --color-sidebar-accent: rgb(var(--color-sidebar-accent) / 1);
-  --color-sidebar-accent-foreground: rgb(
-    var(--color-sidebar-accent-foreground) / 1
-  );
-  --color-sidebar-border: rgb(var(--color-sidebar-border) / 1);
-  --color-sidebar-ring: rgb(var(--color-sidebar-ring) / 1);
-
   /* Type. A size bundles its line-height. */
   --font-sans: var(--font-geist-sans);
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: var(--font-geist-mono);
   --font-poppins: var(--font-poppins);
 
-  --text-xs: 0.75rem;
-  --text-xs--line-height: 1rem;
-  --text-sm: 0.875rem;
-  --text-sm--line-height: 1.25rem;
-  --text-base: 1rem;
-  --text-base--line-height: 1.5rem;
-  --text-lg: 1.125rem;
-  --text-lg--line-height: 1.75rem;
-  --text-xl: 1.25rem;
-  --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.5rem;
-  --text-2xl--line-height: 2rem;
-  --text-3xl: 1.875rem;
-  --text-3xl--line-height: 2.25rem;
-  --text-4xl: 2.25rem;
-  --text-4xl--line-height: 2.5rem;
-  --text-5xl: 3rem;
-  --text-5xl--line-height: 1;
-  --text-6xl: 3.75rem;
-  --text-6xl--line-height: 1;
-  --text-7xl: 4.5rem;
-  --text-7xl--line-height: 1;
-  --text-8xl: 6rem;
-  --text-8xl--line-height: 1;
-  --text-9xl: 8rem;
-  --text-9xl--line-height: 1;
-  --text-tiny: 0.625rem;
-  --text-tiny--line-height: 0.875rem;
-  --text-caption-sm: 0.6875rem;
-  --text-caption-sm--line-height: 1rem;
-  --text-caption: 0.75rem;
-  --text-caption--line-height: 1.125rem;
-  --text-body-sm: 0.8125rem;
-  --text-body-sm--line-height: 1.25rem;
-  --text-body: 0.875rem;
-  --text-body--line-height: 1.375rem;
-  --text-body-md: 0.9375rem;
-  --text-body-md--line-height: 1.5rem;
-  --text-body-lg: 1rem;
-  --text-body-lg--line-height: 1.625rem;
-  --text-lead: 1.25rem;
-  --text-lead--line-height: 1.75rem;
-  --text-heading-sm: 1.375rem;
-  --text-heading-sm--line-height: 1.5rem;
-  --text-heading: 1.75rem;
-  --text-heading--line-height: 2.5rem;
-  --text-title: 2rem;
-  --text-title--line-height: 2.5rem;
-  --text-display: 2.75rem;
-  --text-display--line-height: 3.5rem;
+  /* The type scale, the values in tokens/typography.css. Tailwind's own
+     sizes (`text-xs` ... `text-9xl`) are reset, so they generate nothing. */
+  --text-*: initial;
+  --text-tiny: var(--text-tiny);
+  --text-tiny--line-height: var(--text-tiny--line-height);
+  --text-caption-sm: var(--text-caption-sm);
+  --text-caption-sm--line-height: var(--text-caption-sm--line-height);
+  --text-caption: var(--text-caption);
+  --text-caption--line-height: var(--text-caption--line-height);
+  --text-body-sm: var(--text-body-sm);
+  --text-body-sm--line-height: var(--text-body-sm--line-height);
+  --text-body: var(--text-body);
+  --text-body--line-height: var(--text-body--line-height);
+  --text-body-md: var(--text-body-md);
+  --text-body-md--line-height: var(--text-body-md--line-height);
+  --text-body-lg: var(--text-body-lg);
+  --text-body-lg--line-height: var(--text-body-lg--line-height);
+  --text-lead: var(--text-lead);
+  --text-lead--line-height: var(--text-lead--line-height);
+  --text-heading-sm: var(--text-heading-sm);
+  --text-heading-sm--line-height: var(--text-heading-sm--line-height);
+  --text-heading-md: var(--text-heading-md);
+  --text-heading-md--line-height: var(--text-heading-md--line-height);
+  --text-heading: var(--text-heading);
+  --text-heading--line-height: var(--text-heading--line-height);
+  --text-title: var(--text-title);
+  --text-title--line-height: var(--text-title--line-height);
+  --text-display: var(--text-display);
+  --text-display--line-height: var(--text-display--line-height);
+  --text-hero: var(--text-hero);
+  --text-hero--line-height: var(--text-hero--line-height);
 
   --leading-3: 0.75rem;
   --leading-4: 1rem;
@@ -326,17 +192,13 @@
     scrollbar-width: initial;
   }
   :root {
-    --smooth-ring-color: rgba(0, 0, 0, 0.05);
     --smooth-ring-width: 1px;
-  }
-  .dark {
-    --smooth-ring-color: rgba(255, 255, 255, 0.18);
   }
 }
 
 /* A soft layered shadow with a hairline ring. */
 @utility smooth-shadow-ring-sm {
-  --smooth-shadow-color: var(--tw-shadow-color, rgb(0 0 0));
+  --smooth-shadow-color: var(--tw-shadow-color, rgb(var(--color-scrim)));
   box-shadow:
     0 18px 47px 0 color-mix(in srgb, var(--smooth-shadow-color) 3%, transparent),
     0 7.5px 19px 0
@@ -367,21 +229,22 @@
   }
 }
 
-/* The chat message table's glowing header text. */
+/* The chat message table's glowing header text. The violet glow is the
+   brand purple. */
 @utility text-shadow-message-table-violet {
   text-shadow:
-    0 0 6px rgba(139, 92, 246, 0.45),
-    0 0 18px rgba(139, 92, 246, 0.55);
+    0 0 6px rgb(var(--color-brand) / 0.45),
+    0 0 18px rgb(var(--color-brand) / 0.55);
 }
 @utility text-shadow-message-table-indigo {
   text-shadow:
-    0 0 6px rgba(99, 102, 241, 0.45),
-    0 0 18px rgba(99, 102, 241, 0.55);
+    0 0 6px rgb(var(--color-indigo) / 0.45),
+    0 0 18px rgb(var(--color-indigo) / 0.55);
 }
 @utility text-shadow-message-table-blue {
   text-shadow:
-    0 0 6px rgba(59, 130, 246, 0.45),
-    0 0 18px rgba(59, 130, 246, 0.55);
+    0 0 6px rgb(var(--color-info) / 0.45),
+    0 0 18px rgb(var(--color-info) / 0.55);
 }
 
 /* The scrollbar utilities of tailwind-scrollbar 3.1.0 (MIT License,
@@ -539,10 +402,10 @@
 }
 
 * {
-  @apply border-border;
+  @apply border-border-base;
 }
 body {
-  @apply bg-canvas font-sans text-foreground antialiased transition-colors;
+  @apply bg-canvas font-sans text-foreground-base antialiased transition-colors;
 }
 
 /* Touch screens: no grey flash on tap, and no double-tap zoom on controls,
@@ -565,7 +428,7 @@ textarea,
 /* *** AutoGPT Design Components *** */
 
 .agpt-border-input {
-  @apply m-0.5 border border-input focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none data-[state=open]:border-foreground-subtle data-[state=open]:ring-1 data-[state=open]:ring-foreground-subtle;
+  @apply m-0.5 border border-border-strong focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none data-[state=open]:border-foreground-subtle data-[state=open]:ring-1 data-[state=open]:ring-foreground-subtle;
 }
 
 .agpt-shadow-input {
@@ -578,6 +441,42 @@ textarea,
 
 .agpt-card {
   @apply rounded-2xl border border-border-strong bg-surface p-[1px];
+}
+
+/* Streamdown (the chat's markdown renderer, a dependency) writes Tailwind's
+   size names on its headings, table cells, code and menus, and the theme no
+   longer has them. Inside its markup they take the type scale's step the
+   codemod gives each one (scripts/ds/text-size-scale.ts). This covers every
+   size Streamdown writes today (xs to 3xl); after a Streamdown upgrade,
+   check its dist for larger ones and add them here. They come before
+   the utilities and weigh one class, so a size class the app passes in
+   still wins, as before. */
+:where([data-streamdown], [data-streamdown] *) {
+  &.text-xs {
+    font-size: var(--text-caption);
+    line-height: var(--text-caption--line-height);
+  }
+  &.text-sm {
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+  &.text-base {
+    font-size: var(--text-body-lg);
+    line-height: var(--text-body-lg--line-height);
+  }
+  &.text-lg,
+  &.text-xl {
+    font-size: var(--text-lead);
+    line-height: var(--text-lead--line-height);
+  }
+  &.text-2xl {
+    font-size: var(--text-heading-md);
+    line-height: var(--text-heading-md--line-height);
+  }
+  &.text-3xl {
+    font-size: var(--text-heading);
+    line-height: var(--text-heading--line-height);
+  }
 }
 
 /*! tailwind-utilities:start (postcss.tailwind3-compat.cjs orders them) */
@@ -763,30 +662,30 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
 
 @keyframes orbit-loader-ball1 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
   }
   50% {
-    box-shadow: 0 0 0 #18181b;
+    box-shadow: 0 0 0 rgb(var(--color-foreground-strong));
     margin-bottom: 0;
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 #18181b;
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-strong));
     margin-bottom: calc(var(--gap));
   }
 }
 
 @keyframes orbit-loader-ball2 {
   0% {
-    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
   }
   50% {
-    box-shadow: 0 0 0 #a1a1aa;
+    box-shadow: 0 0 0 rgb(var(--color-foreground-subtle));
     margin-top: calc(var(--ball-size) * -1);
     transform: translate(calc(var(--spacing) / 2), calc(var(--spacing) / 2));
   }
   100% {
-    box-shadow: calc(var(--spacing)) 0 0 #a1a1aa;
+    box-shadow: calc(var(--spacing)) 0 0 rgb(var(--color-foreground-subtle));
     margin-top: 0;
   }
 }

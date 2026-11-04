@@ -79,6 +79,14 @@ def dumps(
     )
 
 
+def same_json(left: Any, right: Any) -> bool:
+    """Whether two values serialize to the same JSON. Python's ``==`` counts
+    ``True`` as ``1`` and ``1.0`` as ``1``; what a block or MCP server is sent
+    does not."""
+    option = orjson.OPT_SORT_KEYS | orjson.OPT_NON_STR_KEYS
+    return dumps(left, option=option) == dumps(right, option=option)
+
+
 T = TypeVar("T")
 
 # Sentinel value to detect when fallback is not provided
@@ -287,6 +295,29 @@ def sanitize_string(value: str) -> str:
     into PostgreSQL text/varchar columns.
     """
     return POSTGRES_CONTROL_CHARS.sub("", value)
+
+
+def nesting_depth(data: Any) -> int:
+    """How many levels of lists and dicts ``data`` contains: 0 for a scalar,
+    1 for a flat list or dict, 2 for a list of dicts, and so on.
+
+    Walks iteratively, so it also measures data too deep for ``to_dict`` or
+    ``orjson`` to serialize.
+    """
+    deepest = 0
+    pending: list[tuple[Any, int]] = [(data, 0)]
+    while pending:
+        current, depth = pending.pop()
+        if isinstance(current, dict):
+            children = current.values()
+        elif isinstance(current, (list, tuple)):
+            children = current
+        else:
+            continue
+        depth += 1
+        deepest = max(deepest, depth)
+        pending.extend((child, depth) for child in children)
+    return deepest
 
 
 def sanitize_json(data: Any) -> Any:

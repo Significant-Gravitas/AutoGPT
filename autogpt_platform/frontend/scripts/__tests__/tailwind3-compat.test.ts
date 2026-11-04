@@ -65,7 +65,7 @@ const CLASSES = [
   "aria-pressed:text-zinc-900",
   "focus-visible:outline-none",
   "focus-visible:-outline-offset-2",
-  "text-lg",
+  "text-lead",
   "leading-relaxed",
   "[&>svg]:size-4",
   "max-md:[&>svg]:size-5",
@@ -220,7 +220,7 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
       "var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)",
     );
     expect(declarations(root, ".ring")["--tw-ring-shadow"]).toContain(
-      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5))",
+      "calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(var(--color-info) / 0.5))",
     );
     expect(declarations(root, ".w-\\(--sidebar-width\\)")).toEqual({
       width: "var(--sidebar-width)",
@@ -302,7 +302,9 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(at(".focus-visible\\:outline-none:focus-visible")).toBeLessThan(
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
-    expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    expect(declarations(root, ".text-lead")["line-height"]).toBe(
+      "var(--text-lead--line-height)",
+    );
     // Arbitrary properties come after the other utilities of the same
     // variants, so they beat tailwindcss-animate's `ease-*` timing.
     const easeRules: number[] = [];

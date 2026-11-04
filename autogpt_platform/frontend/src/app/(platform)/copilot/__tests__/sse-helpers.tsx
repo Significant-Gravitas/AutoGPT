@@ -23,6 +23,7 @@ import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetStarToastCounts } from "../helpers/githubStarToast";
 import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
@@ -34,10 +35,12 @@ export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
 export type StreamPath = (typeof STREAM_PATHS)[number];
 export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
 
-/** Both paths keep a per-session runtime in a module-level map. */
+/** Both paths keep a per-session runtime in a module-level map; the GitHub
+ *  star toast keeps the prompts it has counted in one too. */
 export function resetChatRuntimes() {
   resetCopilotChatRegistry();
   resetTurnRuntimes();
+  resetStarToastCounts();
 }
 
 export interface SessionOverride {
@@ -47,6 +50,7 @@ export interface SessionOverride {
   chat_status?: string;
   expert_id?: string | null;
   metadata?: SessionDetailResponse["metadata"];
+  background_pending_until?: string | null;
 }
 
 /**
@@ -67,6 +71,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     active_stream: opts.active_stream ?? null,
     metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
     expert_id: opts.expert_id ?? null,
+    background_pending_until: opts.background_pending_until ?? null,
   });
 }
 
