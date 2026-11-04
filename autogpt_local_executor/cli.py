@@ -828,7 +828,7 @@ def _install_export(temp: Path, output: Path, *, numbered: bool) -> Path:
 
 
 def _audit_rotate(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key
+    from .audit import AuditLogCorruptError, AuditWriter, get_or_create_audit_key
 
     if not current.is_file():
         print(f"Audit log not found: {current}")
@@ -838,7 +838,18 @@ def _audit_rotate(current: Path) -> int:
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    writer = AuditWriter(path=current, audit_key=key)
+    # Opening the log verifies it first, as every writer does.
+    try:
+        writer = AuditWriter(path=current, audit_key=key)
+    except AuditLogCorruptError as exc:
+        print(
+            f"{exc}: {current}. Check it with `autogpt-shim audit verify`, and move it "
+            "aside to start a new log."
+        )
+        return 1
+    except OSError as exc:
+        print(f"Could not open {current}: {exc}")
+        return 1
     try:
         rotated = writer.force_rotate()
     except OSError as exc:
