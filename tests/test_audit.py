@@ -1425,3 +1425,13 @@ async def test_an_existing_log_is_made_owner_only(tmp_path: Path) -> None:
     AuditWriter(path=w.path, audit_key=KEY)
 
     assert stat.S_IMODE(w.path.stat().st_mode) == 0o600
+
+
+def test_prune_refuses_a_duration_too_long_to_convert(tmp_path: Path, capsys) -> None:
+    """int() refuses a string of more than 4300 digits, and the ValueError
+    ended `audit prune` with a traceback instead of the duration message."""
+    current = tmp_path / "audit.log"
+    current.write_text("")
+
+    assert cli._audit_prune(current, "9" * 5000 + "d") == 2
+    assert "Could not parse duration" in capsys.readouterr().out
