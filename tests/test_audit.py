@@ -1273,3 +1273,15 @@ def test_a_record_with_an_integer_past_pythons_limit_is_a_parse_error(
     assert cli._audit_show(path, 1) != 0
     cli._print_record_line(huge.encode() + b"\n")
     assert "[unparseable]" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "record",
+    ['{"seq": null, "op": "X"}', '{"seq": 1, "op": ["X"]}', '{"seq": {"a": 1}, "op": null}'],
+)
+def test_tail_prints_a_record_whose_seq_or_op_is_not_a_plain_value(capsys, record: str) -> None:
+    """`{seq:>5}` and `{op:<22}` raise TypeError for null, a list or an
+    object, so one such record ended audit tail."""
+    cli._print_record_line(record.encode() + b"\n")
+
+    assert "seq=" in capsys.readouterr().out
