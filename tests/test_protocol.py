@@ -392,7 +392,7 @@ def test_negotiate_version_major_mismatch_shim_older() -> None:
     assert reason["error"] == "PROTOCOL_VERSION_MISMATCH"
     assert reason["shim_max"] == "1.5"
     assert reason["platform_max"] == "2.0"
-    assert "hint" in reason
+    assert "hint" not in reason
 
 
 def test_negotiate_version_major_mismatch_platform_older() -> None:

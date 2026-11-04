@@ -56,7 +56,7 @@ sides compute the **effective negotiated version** as:
 |---|---|
 | Same major, same minor | That version. |
 | Same major, different minor | Same major, `min(shim_minor, platform_minor)`. Both sides MUST tolerate forward-compatible additions within a major. |
-| Different majors | **Hard error.** Platform closes the WebSocket with close code **4426** and reason `{"error": "PROTOCOL_VERSION_MISMATCH", "shim_max": "...", "platform_max": "...", "hint": "..."}` (JSON-encoded). The shim MUST log the mismatch and MUST NOT auto-reconnect until restarted — this avoids hot-reconnect storms against an incompatible peer. |
+| Different majors | **Hard error.** The side that notices closes the WebSocket with close code **4426**. A close reason holds at most 123 bytes (RFC 6455 §5.5), so it is short: the shim sends compact JSON, `{"error":"PROTOCOL_VERSION_MISMATCH","shim_max":"...","platform_max":"..."}` (just the `error` field if the versions don't fit), and logs the upgrade hint; the platform sends a short text reason. The shim MUST log the mismatch and MUST NOT auto-reconnect until restarted — this avoids hot-reconnect storms against an incompatible peer. |
 
 ### Frame-level `version`
 

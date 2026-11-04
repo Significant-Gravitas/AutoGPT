@@ -270,7 +270,27 @@ async def test_handshake_major_mismatch_closes_with_4426(daemon: ShimDaemon) -> 
     assert reason["error"] == "PROTOCOL_VERSION_MISMATCH"
     assert reason["shim_max"] == VERSION
     assert reason["platform_max"] == "2.0"
-    assert "hint" in reason
+    # The hint stays in the log: with it the reason is 230 bytes, and a close
+    # frame refuses anything over 123 (RFC 6455 §5.5), so nothing was sent.
+    assert "hint" not in reason
+    _assert_sendable_close(4426, call["reason"])
+
+
+async def test_a_long_platform_version_still_leaves_a_sendable_4426(daemon: ShimDaemon) -> None:
+    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2." + "0" * 200)])
+    with pytest.raises(ProtocolVersionMismatch):
+        await daemon._handshake(ws)
+
+    call = ws.close_calls[-1]
+    assert call["code"] == 4426
+    assert json.loads(call["reason"]) == {"error": "PROTOCOL_VERSION_MISMATCH"}
+    _assert_sendable_close(4426, call["reason"])
+
+
+def _assert_sendable_close(code: int, reason: str) -> None:
+    from websockets.frames import Close, Frame, Opcode
+
+    Frame(Opcode.CLOSE, Close(code, reason).serialize()).check()
 
 
 async def test_run_disables_reconnect_on_version_mismatch(

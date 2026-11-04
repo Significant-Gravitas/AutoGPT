@@ -35,6 +35,7 @@ from autogpt_local_executor.protocol import (
     HelloAckMessage,
     HelloAckPayload,
     MessageType,
+    PingMessage,
     SessionRevokedMessage,
     SessionRevokedPayload,
     dump_message,
@@ -457,3 +458,30 @@ def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) 
 
     cap = daemon.config.reconnect_max_delay
     assert cap <= delay <= cap + daemon.config.reconnect_jitter_seconds
+
+
+# ── Idle tracking ────────────────────────────────────────────────────────────
+
+
+async def test_a_ping_does_not_count_as_activity(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform's keepalive must not keep an idle child session from
+    being reaped; a request still counts."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    daemon._last_request_at = 1000.0
+
+    await daemon._on_frame(ws, dump_message(PingMessage(id=new_id(), ts=now_ts())))
+
+    assert daemon._last_request_at == 1000.0
+
+    async def handle(msg, *, send):
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert daemon._last_request_at > 1000.0
