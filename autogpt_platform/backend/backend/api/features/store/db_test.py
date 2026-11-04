@@ -13,6 +13,7 @@ from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFa
 
 from . import categories as store_categories
 from . import db
+from . import exceptions as store_exceptions
 from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 
 
@@ -1237,11 +1238,11 @@ async def test_delete_store_submission_blocks_cross_org(mocker):
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
-    result = await db.delete_store_submission(
-        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
-    )
+    with pytest.raises(store_exceptions.SubmissionNotFoundError):
+        await db.delete_store_submission_or_raise(
+            user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
+        )
 
-    assert result is False
     mock_client.delete.assert_not_called()
 
 
@@ -1255,11 +1256,10 @@ async def test_delete_store_submission_allows_own_org(mocker):
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
-    result = await db.delete_store_submission(
+    await db.delete_store_submission_or_raise(
         user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
-    assert result is True
     mock_client.delete.assert_called_once()
 
 
@@ -1275,12 +1275,66 @@ async def test_delete_store_submission_tenantless_personal_fallback(mocker):
         prisma.models.StoreListingVersion, "prisma", return_value=mock_client
     )
 
-    result = await db.delete_store_submission(
+    await db.delete_store_submission_or_raise(
         user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
-    assert result is True
     mock_client.delete.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_missing(mocker):
+    mock_client = AsyncMock()
+    mock_client.find_unique.return_value = None
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(store_exceptions.SubmissionNotFoundError):
+        await db.delete_store_submission_or_raise(
+            user_id="user-1",
+            store_listing_version_id="missing",
+            organization_id="org-A",
+        )
+
+    mock_client.delete.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_another_user(mocker):
+    version = _submission_version(owning_org_id=None, owning_user_id="user-2")
+    mock_client = AsyncMock()
+    mock_client.find_unique.return_value = version
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(store_exceptions.SubmissionNotFoundError):
+        await db.delete_store_submission_or_raise(
+            user_id="user-1", store_listing_version_id="slv-1", organization_id=None
+        )
+
+    mock_client.delete.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_approved(mocker):
+    version = _submission_version(owning_org_id="org-A")
+    version.submissionStatus = prisma.enums.SubmissionStatus.APPROVED
+    mock_client = AsyncMock()
+    mock_client.find_unique.return_value = version
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(
+        store_exceptions.InvalidOperationError, match="approved store listings"
+    ):
+        await db.delete_store_submission_or_raise(
+            user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
+        )
+
+    mock_client.delete.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1509,6 +1563,18 @@ async def test_get_available_graph_never_carries_picked_files(mocker):
     graph = await db.get_available_graph("slv-1", hide_nodes=False)
 
     assert graph.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_available_graph_missing_raises_not_found(mocker):
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = None
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.get_available_graph("missing")
 
 
 PRIVATE_URL = "https://storage.googleapis.com/media-bucket/users/owner-id/images"

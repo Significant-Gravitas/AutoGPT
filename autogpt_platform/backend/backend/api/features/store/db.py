@@ -413,6 +413,8 @@ async def get_available_graph(
         graph.clear_auto_credentials()
         return graph
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch workflow") from e
@@ -800,22 +802,6 @@ async def get_store_submissions(
     except Exception:
         logger.exception("Error fetching store submissions")
         raise
-
-
-async def delete_store_submission(
-    user_id: str,
-    store_listing_version_id: str,
-    organization_id: str | None = None,
-) -> bool:
-    """`delete_store_submission_or_raise`, answering False for any failure."""
-    try:
-        await delete_store_submission_or_raise(
-            user_id, store_listing_version_id, organization_id
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
 
 
 async def delete_store_submission_or_raise(

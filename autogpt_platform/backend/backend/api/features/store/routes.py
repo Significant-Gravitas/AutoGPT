@@ -417,12 +417,12 @@ async def delete_submission(
     ),
 ) -> bool:
     """Delete a marketplace listing submission"""
-    result = await store_db.delete_store_submission(
+    await store_db.delete_store_submission_or_raise(
         user_id=user_id,
         store_listing_version_id=submission_id,
         organization_id=getattr(ctx, "org_id", None),
     )
-    return result
+    return True
 
 
 @router.get(
