@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime
 
 from backend.copilot import stream_registry
-from backend.copilot.background_delivery import cancel_background_subtasks
+from backend.copilot.background_delivery import stop_cancelled_subtasks
 from backend.copilot.background_task import (
     BACKGROUND_STAGE_KEY,
     BACKGROUND_TASK_KEY,
@@ -125,7 +125,11 @@ async def finish_background_execution(
     if entry.user_id and error == CANCELLED_MESSAGE:
         # A cancelled turn, a chat's or a child's, also stops the background
         # work it launched and suppresses those wakes.
-        await cancel_background_subtasks(entry.user_id, entry.session_id, entry.turn_id)
+        await stop_cancelled_subtasks(
+            await background_task_db().cancel_background_tasks(
+                entry.user_id, entry.session_id, entry.turn_id
+            )
+        )
     if entry.user_id and (entry.message_metadata or {}).get(BACKGROUND_TASK_KEY):
         await background_task_db().finish_background_turn(
             entry.user_id, entry.session_id, entry.turn_id, error

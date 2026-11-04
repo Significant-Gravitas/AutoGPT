@@ -24,7 +24,7 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.background_delivery import cancel_background_subtasks
-from backend.copilot.background_task import BackgroundChildResult
+from backend.copilot.background_task import BACKGROUND_TASK_KEY, BackgroundChildResult
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import (
@@ -222,8 +222,12 @@ class GetSubSessionResultTool(BaseTool):
         refusal = None if turn_in_flight else queued_turn_refusal(sub)
         # A finished background child is read from its own turn, so a later
         # turn in its chat is never handed back as its result.
-        recorded = await background_task_db().background_child_result(
-            inner_session_id, user_id
+        recorded = (
+            await background_task_db().background_child_result(
+                inner_session_id, user_id
+            )
+            if _is_background_child(sub)
+            else None
         )
         outcome: SessionOutcome
         result: SessionResult
@@ -300,6 +304,16 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+def _is_background_child(sub: ChatSession) -> bool:
+    """A background child's launch row carries its task id, as the queue and
+    the UI read it."""
+    return any(
+        (message.metadata or {}).get(BACKGROUND_TASK_KEY)
+        for message in sub.messages
+        if message.role == "user"
+    )
 
 
 def _recorded_result(

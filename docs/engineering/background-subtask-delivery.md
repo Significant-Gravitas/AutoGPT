@@ -17,7 +17,8 @@ link to its own chat. The child runs under the same spawn rules as a foreground
 subtask: the launching turn's tools minus the descent denials, its budget tree,
 cost attribution, credential pins, account route and scope, and it may spawn
 further work within the tree's depth. It keeps no deadline of its own; the only
-deadline it can have is one the launching turn already had.
+deadline it can have is one the launching turn already had, which the worker
+enforces once the child runs and the sweep enforces while it is still queued.
 
 When the child completes, fails or is stopped, Otto is woken once in the
 original chat, as soon as that chat is idle, however long that takes. The wake

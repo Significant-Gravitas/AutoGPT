@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -1600,3 +1600,35 @@ async def test_background_child_starts_in_the_parents_enforced_mode(
         world.parent, None
     )
     assert recorded["inherited_autopilot_mode"] == "ask_first"
+
+
+async def test_queued_child_past_an_inherited_deadline_is_closed_as_timed_out(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """A child the queue never promoted cannot reach the worker's clock, so
+    the sweep closes it once the deadline it inherited has passed; a child
+    with no inherited deadline waits as long as it takes."""
+    monkeypatch.setattr(background_subtasks, "dispatch_next_for_user", AsyncMock())
+    task = await world.launch()
+    assert task.deadline is None
+    # The sweep's own dispatch would promote the queued child; hold it so
+    # the child is still queued when its deadline passes.
+    with patch.object(background_delivery, "dispatch_next_for_user", AsyncMock()):
+        await background_delivery.reconcile_background_subtasks()
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome is None
+
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatBackgroundTask" SET deadline=$2::timestamptz WHERE id=$1',
+        task.id,
+        datetime.now(UTC) - timedelta(seconds=1),
+    )
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored and stored.outcome == "timed_out"
+    assert await chat_db().get_chat_session_status(task.child_session_id) == "idle"
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+    assert "timed out" in world.entry(task.parent_session_id).message

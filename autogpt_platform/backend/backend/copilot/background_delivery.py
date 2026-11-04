@@ -35,6 +35,12 @@ async def cancel_background_subtasks(
     except Exception:
         logger.exception(f"Could not persist background cancellation for {session_id}")
         return
+    await stop_cancelled_subtasks(tasks)
+
+
+async def stop_cancelled_subtasks(tasks: list[BackgroundTask]) -> None:
+    """Stop the children of handoffs just recorded as cancelled, and refresh
+    their chats."""
     for task in tasks:
         await _stop_child(task)
         await invalidate_session_cache(task.child_session_id)
@@ -48,9 +54,7 @@ async def cancel_orphaned_background_subtasks(
     )
     if tasks is None:
         return False
-    for task in tasks:
-        await _stop_child(task)
-        await invalidate_session_cache(task.child_session_id)
+    await stop_cancelled_subtasks(tasks)
     await invalidate_session_cache(session_id)
     return True
 
@@ -84,6 +88,19 @@ async def _reconcile(task: BackgroundTask) -> None:
             await background_task_db().complete_background_task(
                 task.id, task.user_id, "failed"
             )
+        elif (
+            status == "queued"
+            and task.deadline is not None
+            and datetime.now(UTC) >= task.deadline
+        ):
+            # Only a deadline the launching turn already had: a child still
+            # queued past it would be refused at pickup, so close it here
+            # instead of nudging the queue forever. Once promoted, the
+            # worker's own clock bounds it.
+            await background_task_db().complete_background_task(
+                task.id, task.user_id, "timed_out"
+            )
+            await _stop_child(task)
         else:
             if status == "running" and task.started_at is not None:
                 await _release_if_abandoned(
