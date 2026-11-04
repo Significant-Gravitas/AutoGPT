@@ -1143,14 +1143,12 @@ export default class BackendAPI {
           }
         };
 
+        // The browser fires `close` after every `error`, and onclose reports
+        // the drop with its close code, so this event is not reported again.
         this.webSocket.onerror = (error) => {
           if (this.webSocket?.state == "connected") {
-            const { summary, extra } = describeErrorEvent(error, this.wsUrl);
-            logWebSocketIssue(
-              "error",
-              `[BackendAPI] WebSocket error: ${summary}`,
-              extra,
-            );
+            const { summary } = describeErrorEvent(error, this.wsUrl);
+            console.debug(`[BackendAPI] WebSocket error: ${summary}`);
           }
         };
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
