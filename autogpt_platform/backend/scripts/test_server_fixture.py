@@ -256,6 +256,51 @@ async def test_the_server_refuses_a_service_that_exited_during_start_up(
     assert not any(process.is_alive() for process in stand_ins.values())
 
 
+async def test_a_failed_start_up_stops_the_services_and_keeps_its_error(
+    stand_in_services, mocker
+):
+    """Cleanup after a failed start-up can fail too. The services are still
+    stopped, and the start-up error is the one raised."""
+    _, stand_ins = stand_in_services
+    mocker.patch(
+        "backend.util.test.create_default_user",
+        AsyncMock(side_effect=RuntimeError("start-up failed")),
+    )
+    mocker.patch(
+        "backend.data.db.disconnect",
+        AsyncMock(side_effect=RuntimeError("disconnect failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="start-up failed"):
+        async with SpinTestServer():
+            pass
+
+    assert len(stand_ins) == 4
+    assert not any(process.is_alive() for process in stand_ins.values())
+
+
+async def test_a_service_that_fails_to_stop_does_not_keep_the_others_running(
+    stand_in_services, mocker
+):
+    _, stand_ins = stand_in_services
+    real_stop = AppProcess.stop
+
+    def stop(service: AppProcess) -> None:
+        if service.service_name == "Scheduler":
+            raise RuntimeError("Scheduler failed to stop")
+        real_stop(service)
+
+    mocker.patch.object(AppProcess, "stop", autospec=True, side_effect=stop)
+
+    with pytest.raises(RuntimeError, match="Scheduler failed to stop"):
+        async with SpinTestServer():
+            pass
+
+    others = [name for name in stand_ins if name != "Scheduler"]
+    assert len(others) == 3
+    assert not any(stand_ins[name].is_alive() for name in others)
+
+
 async def test_the_server_names_a_service_that_died_during_the_session(
     stand_in_services,
 ):

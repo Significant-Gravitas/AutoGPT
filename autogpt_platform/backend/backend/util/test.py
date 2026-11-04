@@ -3,6 +3,7 @@ import inspect
 import logging
 import time
 import uuid
+from contextlib import ExitStack
 from typing import Sequence, cast
 
 from autogpt_libs.auth import get_user_id
@@ -58,7 +59,11 @@ class SpinTestServer:
         except BaseException as e:
             # A failed __aenter__ gets no __aexit__, and a service left running
             # would hang the session at exit, which joins every child process.
-            await self.__aexit__(type(e), e, e.__traceback__)
+            # The start-up error stays the one raised.
+            try:
+                await self.__aexit__(type(e), e, e.__traceback__)
+            except Exception:
+                log.exception("Cleanup after a failed start-up also failed")
             raise
 
         return self
@@ -69,19 +74,16 @@ class SpinTestServer:
         # and die after it; this names it instead of passing the run.
         died = self._exited_services() if exc_type is None else []
         try:
-            await redis_client.disconnect_async()
+            try:
+                await redis_client.disconnect_async()
+            finally:
+                await db.disconnect()
         finally:
-            await db.disconnect()
-
-        self.scheduler.__exit__(exc_type, exc_val, exc_tb)
-        self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
-        self.db_api.__exit__(exc_type, exc_val, exc_tb)
-        self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
-
-        # Give services time to fully shut down
-        #  This prevents event loop issues where services haven't fully cleaned up
-        # before the next test starts
-        await asyncio.sleep(0.5)
+            self._stop_services()
+            # Give services time to fully shut down
+            #  This prevents event loop issues where services haven't fully
+            # cleaned up before the next test starts
+            await asyncio.sleep(0.5)
 
         if died:
             raise RuntimeError(
@@ -99,6 +101,19 @@ class SpinTestServer:
                 "Test service processes exited during start-up: "
                 f"{', '.join(exited)}. Their own log lines say why."
             )
+
+    def _stop_services(self) -> None:
+        """Stop every service, even when stopping one fails: one left running
+        would hang the session at exit. Stopped in this order, as before."""
+        with ExitStack() as stack:
+            for service in (
+                self.notif_manager,
+                self.db_api,
+                self.exec_manager,
+                self.scheduler,
+            ):
+                # Callbacks run last-registered first.
+                stack.callback(service.stop)
 
     def _exited_services(self) -> list[str]:
         services: list[AppProcess] = [
