@@ -2,7 +2,7 @@
 Better Auth link emails and the account-closed confirmation."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal, assert_never
 
 from prisma.enums import AccountDeletionSource
@@ -78,15 +78,23 @@ def render_auth_email(
 
 
 async def send_account_deleted_email(
-    to: str, source: AccountDeletionSource, erase_after: datetime
+    to: str,
+    source: AccountDeletionSource,
+    erase_after: datetime,
+    *,
+    now: datetime | None = None,
 ) -> None:
     """Confirm a closed account to its owner, with the date until which they
-    can still keep it and replies going to the shared inbox. Raises when
-    delivery fails; the caller decides what that means."""
+    can still keep it and replies going to the shared inbox. Sent once that
+    date is past (the erasure sends the confirmation closing could not), it
+    says the account is being erased instead. Raises when delivery fails; the
+    caller decides what that means."""
+    if erase_after <= (now or datetime.now(timezone.utc)):
+        preheader = ACCOUNT_BEING_ERASED_PREHEADER
+    else:
+        preheader = account_closed_preheader(erase_after)
     email = render_auth_email(
-        "account_deleted",
-        reason=_deletion_reason(source),
-        preheader=account_closed_preheader(erase_after),
+        "account_deleted", reason=_deletion_reason(source), preheader=preheader
     )
     await asyncio.to_thread(
         get_notification_manager_client().send_email_or_raise,
@@ -96,6 +104,12 @@ async def send_account_deleted_email(
         email.text,
         reply_to=settings.config.billing_reply_to_email,
     )
+
+
+ACCOUNT_BEING_ERASED_PREHEADER = (
+    "The 14 days to keep it are over, so everything in your account is being "
+    "erased now."
+)
 
 
 def account_closed_preheader(erase_after: datetime) -> str:
@@ -118,6 +132,8 @@ def _deletion_reason(source: AccountDeletionSource) -> str:
     match source:
         case AccountDeletionSource.SETTINGS | AccountDeletionSource.PAYWALL:
             return "You deleted your account in AutoGPT."
+        case AccountDeletionSource.EMAIL:
+            return "You asked us by email to delete your account."
         case _:
             assert_never(source)
 

@@ -73,6 +73,7 @@ class RuntimeConfigTest(unittest.TestCase):
                     "UNSUBSCRIBE_SECRET_KEY",
                     "GRAPHITI_FALKORDB_PASSWORD",
                     "INTERNAL_API_KEY",
+                    "BAN_RECORD_HASH_KEY",
                     "VAPID_PRIVATE_KEY",
                     "VAPID_PUBLIC_KEY",
                 },
@@ -94,6 +95,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
             "GRAPHITI_FALKORDB_PASSWORD": "f" * 40,
             "INTERNAL_API_KEY": "i" * 40,
+            "BAN_RECORD_HASH_KEY": "h" * 40,
             "VAPID_PRIVATE_KEY": vapid_private,
             "VAPID_PUBLIC_KEY": vapid_public,
         }
@@ -225,8 +227,8 @@ class RuntimeConfigTest(unittest.TestCase):
             (
                 "unsupported version",
                 lambda content: content.replace(
-                    "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
                     "AUTOGPT_RUNTIME_CONFIG_VERSION=3",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=4",
                 ),
                 "unsupported runtime configuration version",
             ),
@@ -271,16 +273,19 @@ class RuntimeConfigTest(unittest.TestCase):
             upgraded = runtime_config.ensure_runtime_config(path, {})
 
             key = upgraded.pop("INTERNAL_API_KEY")
-            self.assertGreaterEqual(len(key), 32)
-            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
-            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            ban_key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            for generated in (key, ban_key):
+                self.assertGreaterEqual(len(generated), 32)
+                self.assertRegex(generated, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
             self.assertEqual(
                 {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
             )
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             again = runtime_config.ensure_runtime_config(path, {})
             self.assertEqual(again["INTERNAL_API_KEY"], key)
-            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], ban_key)
+            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_version_1_config_takes_a_configured_internal_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -326,6 +331,57 @@ class RuntimeConfigTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runtime_config.ensure_runtime_config(path, {})
                 self.assertEqual(path.read_bytes(), before)
+
+    def test_version_2_config_gains_a_ban_record_key_and_keeps_the_rest(
+        self,
+    ) -> None:
+        """Ban records hash with this key, so an upgrade never replaces one."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            original = _version_2_values()
+            _write_config_lines(path, original)
+
+            upgraded = runtime_config.ensure_runtime_config(path, {})
+
+            key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            self.assertGreaterEqual(len(key), 32)
+            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
+            self.assertEqual(
+                {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "2"}, original
+            )
+            again = runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], key)
+
+    def test_version_2_config_takes_a_configured_ban_record_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(path, _version_2_values())
+            configured = {"BAN_RECORD_HASH_KEY": "h" * 40}
+
+            upgraded = runtime_config.ensure_runtime_config(path, configured)
+
+            self.assertEqual(upgraded["BAN_RECORD_HASH_KEY"], "h" * 40)
+
+    def test_rejects_version_2_config_that_already_has_a_ban_record_key(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(
+                path, {**_version_2_values(), "BAN_RECORD_HASH_KEY": "h" * 40}
+            )
+            before = path.read_bytes()
+
+            with self.assertRaises(ValueError):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_the_version_2_step_produces_version_3_after_later_bumps(self) -> None:
+        with mock.patch.object(runtime_config, "CONFIG_VERSION", "4"):
+            upgraded = runtime_config._upgraded_from_version_2(_version_2_values(), {})
+
+        self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_the_version_1_step_produces_version_2_after_later_bumps(self) -> None:
         with mock.patch.object(runtime_config, "CONFIG_VERSION", "3"):
@@ -1456,6 +1512,15 @@ def _version_1_values() -> dict[str, str]:
         "VAPID_PUBLIC_KEY": (
             base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
         ),
+    }
+
+
+def _version_2_values() -> dict[str, str]:
+    """Every key a version 2 image wrote, before BAN_RECORD_HASH_KEY existed."""
+    return {
+        **_version_1_values(),
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
+        "INTERNAL_API_KEY": "i" * 40,
     }
 
 
