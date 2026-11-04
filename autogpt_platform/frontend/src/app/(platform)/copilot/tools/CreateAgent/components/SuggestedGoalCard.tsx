@@ -23,14 +23,10 @@ export function SuggestedGoalCard({
   return (
     <div className="rounded-xl border border-warning-border bg-warning-surface/50 p-4">
       <div className="flex items-start gap-3">
-        <Icon
-          icon={BulbIcon}
-          size={20}
-          className="mt-0.5 text-warning-foreground"
-        />
+        <Icon icon={BulbIcon} size={20} tone="warning" className="mt-0.5" />
         <div className="flex-1 space-y-3">
           <div>
-            <Text tone="primary" variant="body-medium" className="font-medium">
+            <Text variant="body-medium" tone="primary">
               {goalType === "unachievable"
                 ? "Goal cannot be accomplished"
                 : "Goal needs more detail"}
@@ -41,7 +37,12 @@ export function SuggestedGoalCard({
           </div>
 
           <div className="rounded-lg border border-warning-border bg-surface p-3">
-            <Text tone="warning" variant="small" className="mb-1 font-semibold">
+            <Text
+              variant="small"
+              tone="warning"
+              weight="semibold"
+              className="mb-1"
+            >
               Suggested alternative:
             </Text>
             <Text tone="primary" variant="body-medium">

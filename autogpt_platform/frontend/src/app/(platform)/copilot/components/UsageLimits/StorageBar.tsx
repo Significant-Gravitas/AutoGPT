@@ -20,7 +20,7 @@ export function StorageBar() {
         <Text tone="body" variant="body-medium">
           File storage
         </Text>
-        <Text tone="muted" variant="body" className="tabular-nums">
+        <Text variant="body" tone="muted" tabular>
           {percentLabel}
         </Text>
       </div>

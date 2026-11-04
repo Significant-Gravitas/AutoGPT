@@ -20,7 +20,7 @@ export function QueueHeader({
 }: Props) {
   return (
     <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-separator bg-surface-muted/60 px-4 py-2">
-      <span className="flex items-baseline gap-2 text-sm font-medium text-foreground-strong">
+      <span className="flex items-baseline gap-2 text-body font-medium text-foreground-strong">
         Waiting for you
         <span className="text-foreground-tertiary tabular-nums">{count}</span>
       </span>

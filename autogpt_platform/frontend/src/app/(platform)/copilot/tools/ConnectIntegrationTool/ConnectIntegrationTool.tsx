@@ -84,7 +84,7 @@ export function ConnectIntegrationTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-muted-foreground">
         <MorphingTextAnimation
           text={label}
           className={isError ? "text-error" : undefined}

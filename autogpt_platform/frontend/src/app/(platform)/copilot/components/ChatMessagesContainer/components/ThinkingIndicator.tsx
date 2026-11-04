@@ -1,11 +1,9 @@
 import { useNowSecond } from "@/hooks/useNowSecond";
+import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
 import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
 import { SwapText } from "../../ToolChain/SwapText";
-
-/** Only show elapsed time after this many seconds. */
-const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   active: boolean;
@@ -41,7 +39,7 @@ export function ThinkingIndicator({
 
   return (
     <span
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-foreground-secondary"
+      className="inline-flex w-fit items-center gap-2.5 text-body text-foreground-secondary"
       role="status"
       aria-live="polite"
     >
@@ -49,10 +47,10 @@ export function ThinkingIndicator({
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer
-        className="text-sm"
+        className="text-body"
       />
       {showTime && (
-        <span className="font-mono text-xs text-foreground-subtle tabular-nums">
+        <span className="font-mono text-caption text-foreground-subtle tabular-nums">
           {formatElapsed(seconds)}
         </span>
       )}
