@@ -63,6 +63,7 @@ async def test_user_stop_suppresses_cancellation_without_hiding_failures(mocker,
     mocker.patch.object(
         processor, "close_browser_daemon", AsyncMock(return_value=False)
     )
+    mocker.patch.object(processor, "finish_background_execution", AsyncMock())
     mocker.patch.object(processor, "trial_cost_context", no_trial_cost)
     mocker.patch.object(processor, "ChatConfig", return_value=MagicMock(test_mode=True))
     mocker.patch.object(processor, "stream_chat_completion_dummy", return_value=None)

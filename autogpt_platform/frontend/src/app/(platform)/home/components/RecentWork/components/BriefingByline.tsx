@@ -25,7 +25,7 @@ export function BriefingByline({ briefing }: Props) {
           {author.role}
         </Text>
       </div>
-      <Text variant="body" tone="secondary" className="leading-5 text-pretty">
+      <Text variant="body-tight" tone="secondary" className="text-pretty">
         {narrative}
       </Text>
     </div>
