@@ -1318,12 +1318,16 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
             )
 
 
-async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
-    """
-    Deletes a library agent for the given user
-    """
-    await prisma.models.LibraryAgent.prisma().delete_many(
-        where={"agentGraphId": graph_id, "userId": user_id}
+async def cleanup_graph_for_permanent_delete(graph_id: str, user_id: str) -> None:
+    """Stop everything that drives the user's graph before it is permanently
+    deleted: the same schedule, webhook and trigger-agent cleanup that
+    `delete_library_agent` does for a library entry. The library entries and
+    presets themselves are removed with the graph by
+    `graph_db.delete_graph_permanently`."""
+    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_trigger_agents_for_graph(
+        action_graph_id=graph_id, user_id=user_id, soft_delete=False
     )
 
 
