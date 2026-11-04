@@ -297,8 +297,10 @@ def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) 
     window = _capturable_window(tmp_path, monkeypatch)
     window.user32.PrintWindow.return_value = 0
     mfc_dc = window.win32ui.CreateDCFromHandle.return_value
+    save_dc = mfc_dc.CreateCompatibleDC.return_value
     freed = MagicMock()
-    freed.attach_mock(mfc_dc.CreateCompatibleDC.return_value.DeleteDC, "delete_save_dc")
+    freed.attach_mock(save_dc.SelectObject, "select")
+    freed.attach_mock(save_dc.DeleteDC, "delete_save_dc")
     freed.attach_mock(mfc_dc.DeleteDC, "delete_mfc_dc")
     freed.attach_mock(window.win32gui.DeleteObject, "delete_object")
     freed.attach_mock(window.win32gui.ReleaseDC, "release_dc")
@@ -308,7 +310,10 @@ def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) 
 
     bitmap = window.win32ui.CreateBitmap.return_value.GetHandle.return_value
     hwnd_dc = window.win32gui.GetWindowDC.return_value
+    # The DC's own bitmap goes back in before anything is freed.
     assert freed.mock_calls == [
+        call.select(window.win32ui.CreateBitmap.return_value),
+        call.select(save_dc.SelectObject.return_value),
         call.delete_save_dc(),
         call.delete_mfc_dc(),
         call.delete_object(bitmap),

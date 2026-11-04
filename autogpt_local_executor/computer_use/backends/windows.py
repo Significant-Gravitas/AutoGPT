@@ -235,7 +235,7 @@ class WindowsBackend(ComputerUseBackend):
             )
         # Acquired inside the try, so whatever was acquired is released even
         # when a later step (the bitmap, say) fails.
-        hwnd_dc = mfc_dc = save_dc = bmp = None
+        hwnd_dc = mfc_dc = save_dc = bmp = previous = None
         bitmap_made = False
         try:
             hwnd_dc = win32gui.GetWindowDC(hwnd)
@@ -244,7 +244,8 @@ class WindowsBackend(ComputerUseBackend):
             bmp = win32ui.CreateBitmap()
             bmp.CreateCompatibleBitmap(mfc_dc, w, h)
             bitmap_made = True
-            save_dc.SelectObject(bmp)
+            # The DC's own bitmap, which goes back in before the DC is deleted.
+            previous = save_dc.SelectObject(bmp)
             # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
             # It returns 0 when the window did not render into the bitmap.
             try:
@@ -272,7 +273,12 @@ class WindowsBackend(ComputerUseBackend):
             )
         finally:
             # GDI does not delete a bitmap still selected into a DC, so the
-            # DCs go before the bitmap.
+            # DC gets its own bitmap back, then the DCs go, then the bitmap.
+            if save_dc is not None and previous is not None:
+                try:
+                    save_dc.SelectObject(previous)
+                except Exception:
+                    logger.debug("could not restore the DC's own bitmap", exc_info=True)
             if save_dc is not None:
                 save_dc.DeleteDC()
             if mfc_dc is not None:
