@@ -24,8 +24,9 @@ from backend.copilot.model import (
     create_chat_session,
 )
 from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
+from backend.data.db import execute_raw_with_schema
 from backend.data.db import prisma as db_client
-from backend.data.db import transaction
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.db_accessors import chat_db
 from backend.util.test import SpinTestServer
 
@@ -266,10 +267,21 @@ async def test_an_admit_flips_only_an_idle_session_under_the_cap(
                 status=status,
                 user_id=user_id,
             )
+        # The turn the session last recorded: an admit drops it so the next
+        # dispatch can record its own; a refusal leaves a running turn's alone.
+        await execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession"
+            SET metadata = metadata || jsonb_build_object('_active_turn_id', $2::text)
+            WHERE id = $1""",
+            session.session_id,
+            "previous-turn",
+        )
         before = await copilot_db.PrismaChatSession.prisma().find_unique(
             where={"id": session.session_id}
         )
         assert before is not None
+        before_turn, before_rest = await _recorded_turn(session.session_id)
+        assert before_turn == "previous-turn"
 
         assert (
             await copilot_db.admit_chat_session_turn(
@@ -285,13 +297,18 @@ async def test_an_admit_flips_only_an_idle_session_under_the_cap(
             where={"id": session.session_id}
         )
         assert after is not None
+        after_turn, after_rest = await _recorded_turn(session.session_id)
+        # The rest of the metadata is never touched.
+        assert after_rest == before_rest
         if admit == "admitted":
             assert after.chatStatus == CHAT_STATUS_RUNNING
             # Every transition touches the row: updatedAt is its time.
             assert after.updatedAt > before.updatedAt
+            assert after_turn is None
         else:
             assert after.chatStatus == status
             assert after.updatedAt == before.updatedAt
+            assert after_turn == "previous-turn"
     finally:
         await User.prisma().delete(where={"id": user_id})
 
@@ -334,6 +351,17 @@ async def _admit(user_id: str, session_id: str, capacity: int) -> bool:
 
 async def _keep_slot(slot: TurnSlot, **_) -> None:
     slot.keep()
+
+
+async def _recorded_turn(session_id: str) -> tuple[str | None, str]:
+    """The session's recorded turn, and the rest of its metadata as text."""
+    rows = await query_raw_with_schema(
+        """SELECT metadata->>'_active_turn_id' AS turn,
+            (metadata - '_active_turn_id')::text AS rest
+        FROM {schema_prefix}"ChatSession" WHERE id = $1""",
+        session_id,
+    )
+    return rows[0]["turn"], rows[0]["rest"]
 
 
 @pytest_asyncio.fixture(autouse=True)
