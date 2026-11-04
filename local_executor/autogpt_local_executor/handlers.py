@@ -215,6 +215,11 @@ def _ok_result(duration_ms: int, *, exit_code: int | None = None) -> dict:
     return {"ok": True, "exit_code": exit_code, "duration_ms": duration_ms, "error_code": None}
 
 
+# The audit `error_code` of a command stopped because its session ended or
+# was revoked. Not a wire ErrorCode: no reply is sent for it.
+_CANCELLED_ERROR_CODE = "CANCELLED"
+
+
 def _err_result(duration_ms: int, error_code: str, *, exit_code: int | None = None) -> dict:
     return {
         "ok": False,
@@ -598,6 +603,18 @@ class CommandHandler:
                     await asyncio.wait_for(wait(), timeout=2.0)
                 except (TimeoutError, ProcessLookupError):
                     pass
+            # Its session ended or was revoked, but the command ran, so it is
+            # recorded as one that was stopped. The write finishes through a
+            # further cancel (_finish_then_cancel).
+            await self._audit(
+                msg.id,
+                payload,
+                cwd=str(cwd),
+                result=_err_result(
+                    _elapsed_ms(start), _CANCELLED_ERROR_CODE, exit_code=proc.returncode
+                ),
+                env=env,
+            )
             raise
         exit_code = proc.returncode if proc.returncode is not None else -1
 

@@ -64,7 +64,7 @@ single JSON object with this shape:
 | `result.ok` | bool | True if the op completed without error |
 | `result.exit_code` | int \| null | For EXECUTE_COMMAND only |
 | `result.duration_ms` | int | Op elapsed time |
-| `result.error_code` | string \| null | ErrorCode enum value on failure (see PROTOCOL.md error codes) |
+| `result.error_code` | string \| null | ErrorCode enum value on failure (see PROTOCOL.md error codes), or `CANCELLED` for an `EXECUTE_COMMAND` stopped because its session ended or was revoked |
 | `seq` | int | Monotonic per-log-file sequence number, starts at 1, resets on rotation |
 | `prev_hmac` | string \| null | HMAC of the previous record (null for the first record in a file) |
 | `hmac` | string | HMAC of THIS record (see "Tamper-evidence chain") |

@@ -34,6 +34,8 @@ KEYCHAIN_ACCESS_TOKEN_KEY = "access_token"
 KEYCHAIN_REFRESH_TOKEN_KEY = "refresh_token"
 # How long `autogpt-shim auth` waits for the browser to come back.
 CALLBACK_TIMEOUT_SECONDS = 300.0
+# The last of the redirect ports the OAuth app registers (41899-41910).
+CALLBACK_LAST_PORT = 41910
 # How long the callback server waits for one connection's request. It takes
 # one connection at a time, so without this a connection that never sends
 # (a browser preconnect, say) would hold off the real redirect.
@@ -395,13 +397,17 @@ class OAuthFlow:
                 pass
 
         first_port = self.config.oauth_redirect_port
-        for port in range(first_port, first_port + 12):
+        # The OAuth app lists 41899-41910 as redirect URIs; a port past that is
+        # rejected on the redirect. A configured port outside the range is the
+        # only one known to be registered.
+        last_port = CALLBACK_LAST_PORT if first_port <= CALLBACK_LAST_PORT else first_port
+        for port in range(first_port, last_port + 1):
             try:
                 server = _CallbackServer(("127.0.0.1", port), CallbackHandler)
                 return server, auth_code, oauth_error, port
             except OSError:
                 continue
-        raise RuntimeError(f"Could not bind OAuth callback on ports {first_port}-{first_port + 11}")
+        raise RuntimeError(f"Could not bind OAuth callback on ports {first_port}-{last_port}")
 
     @staticmethod
     def _wait_for_callback(

@@ -136,6 +136,7 @@ def test_clipboard_writeback_round_trip(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: state["seq"])
     monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
     b.clipboard_write(content="hello")
     res = b.clipboard_read()
@@ -197,6 +198,7 @@ def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=Fal
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: state["seq"])
     # CF_UNICODETEXT (13), plus a CF_PRIVATE format (0x0200) when asked.
     monkeypatch.setattr(
         b,
@@ -220,6 +222,24 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
     assert clipboard["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+def test_a_copy_made_after_the_snapshot_is_not_pasted_over(tmp_path, monkeypatch) -> None:
+    """A copy landing between the snapshot and the paste's write was
+    overwritten by the paste, and the restore then put the older text back,
+    so the newer copy was lost. The text is typed instead."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: clipboard["seq"] + 1)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.hotkey.assert_not_called()
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
 
 
 def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monkeypatch) -> None:
@@ -384,6 +404,40 @@ def test_a_release_that_fails_still_frees_the_rest(tmp_path, monkeypatch) -> Non
     window.win32gui.ReleaseDC.assert_called_once_with(
         window.hwnd, window.win32gui.GetWindowDC.return_value
     )
+
+
+def test_a_window_that_stops_responding_during_the_capture_frees_the_request(
+    tmp_path, monkeypatch
+) -> None:
+    """IsHungAppWindow is checked once, before PrintWindow, which waits for
+    the window to paint itself. A window that stopped responding after the
+    check held the capture, and its request slot, until it answered. The
+    capture is given up on after a deadline; it releases its DCs itself when
+    PrintWindow returns."""
+    import threading
+
+    from autogpt_local_executor.computer_use.backends import windows as windows_backend
+
+    window = _capturable_window(tmp_path, monkeypatch)
+    answer = threading.Event()
+
+    def print_window(*_args) -> int:
+        answer.wait(30)
+        return 1
+
+    window.user32.PrintWindow.side_effect = print_window
+    monkeypatch.setattr(windows_backend, "PRINT_WINDOW_SECONDS", 0.1, raising=False)
+    try:
+        with pytest.raises(FeatureNotSupportedError, match="stopped responding"):
+            window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+        window.win32gui.ReleaseDC.assert_not_called()
+    finally:
+        answer.set()
+        for thread in threading.enumerate():
+            if thread.name == "window-capture":
+                thread.join(30)
+
+    window.win32gui.ReleaseDC.assert_called_once()
 
 
 def test_a_window_that_is_not_responding_is_not_captured(tmp_path, monkeypatch) -> None:
@@ -978,3 +1032,54 @@ def test_window_list_refuses_an_app_filter_it_cannot_apply(tmp_path, monkeypatch
         b.window_list(app_bundle_id="com.apple.Safari")
 
     assert b.window_registry.lookup(earlier) is not None
+
+
+_SIDE_BY_SIDE = [
+    DisplayMonitor(
+        index=0,
+        primary=True,
+        physical_size=(1920, 1080),
+        logical_size=(1920, 1080),
+        scale=1.0,
+        origin=(0, 0),
+    ),
+    DisplayMonitor(
+        index=1,
+        primary=False,
+        physical_size=(1920, 1080),
+        logical_size=(1920, 1080),
+        scale=1.0,
+        origin=(1920, 0),
+    ),
+]
+
+
+def test_windows_report_the_display_they_are_on(tmp_path, monkeypatch) -> None:
+    """window_list said display 0 for every window, and a capture read the
+    display from a key the listing never stored, so it said 0 as well."""
+    windows = {1: (100, 100, 900, 700), 2: (2000, 100, 2600, 500)}
+    win32gui = MagicMock()
+    win32gui.EnumWindows.side_effect = lambda enum, extra: [enum(h, extra) for h in windows]
+    win32gui.IsWindowVisible.return_value = True
+    win32gui.GetWindowText.side_effect = lambda h: f"Window {h}"
+    win32gui.IsIconic.return_value = False
+    win32gui.GetClassName.return_value = "Window"
+    win32gui.GetWindowRect.side_effect = lambda h: windows[h]
+    win32gui.GetForegroundWindow.return_value = 1
+    win32process = MagicMock()
+    win32process.GetWindowThreadProcessId.return_value = (1, 4242)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    monkeypatch.setitem(sys.modules, "win32process", win32process)
+    b = WindowsBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE)
+
+    assert [(w.title, w.monitor) for w in b.window_list()] == [("Window 1", 0), ("Window 2", 1)]
+
+
+def test_a_window_capture_reports_the_display_the_window_is_on(tmp_path, monkeypatch) -> None:
+    window = _capturable_window(tmp_path, monkeypatch, rect=(2000, 100, 2600, 500))
+    monkeypatch.setattr(window.backend, "display_info", lambda: _SIDE_BY_SIDE)
+
+    result = window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+
+    assert (result.monitor, result.display_id) == (1, 1)

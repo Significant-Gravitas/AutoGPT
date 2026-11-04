@@ -969,9 +969,15 @@ def _parse_duration(s: str) -> float | None:
     number = s[:-1]
     # A positive whole number only: `-1d` would put the cutoff a day ahead,
     # and prune would delete every rotated file.
-    if not (number.isascii() and number.isdigit()) or int(number) == 0:
+    if not (number.isascii() and number.isdigit()):
         return None
-    return int(number) * units[suffix]
+    try:
+        value = int(number)
+    except ValueError:
+        return None  # more digits than int() converts (4300 by default)
+    if value == 0:
+        return None
+    return value * units[suffix]
 
 
 def _print_record_line(raw: bytes) -> None:

@@ -157,6 +157,9 @@ class MacInputCaptureSource(CaptureSource):
             except queue.Full:
                 self.dropped_events += 1
         except Exception:
+            # The action happened but can't be recorded: the recording is
+            # missing it, as it would be had the queue been full.
+            self.dropped_events += 1
             logger.debug("macOS capture: event marshal failed", exc_info=True)
         return event
 
@@ -231,17 +234,29 @@ class MacInputCaptureSource(CaptureSource):
             return
         from .session import RecordingError
 
+        def check_dropped() -> None:
+            if self.dropped_events:
+                raise RecordingError(
+                    f"The input capture fell behind and dropped {self.dropped_events} "
+                    "events, so the recording is incomplete"
+                )
+
         try:
             while not self._stop.is_set():
-                if self.dropped_events:
-                    raise RecordingError(
-                        f"The input capture fell behind and dropped {self.dropped_events} "
-                        "events, so the recording is incomplete"
-                    )
+                check_dropped()
                 try:
                     rec = await asyncio.to_thread(self._q.get, True, self._poll)
                 except queue.Empty:
                     continue
                 yield self._to_step(rec)
+            # Events queued before the stop belong to the recording, and a
+            # drop after the last check above must still fail it.
+            while True:
+                try:
+                    rec = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                yield self._to_step(rec)
+            check_dropped()
         finally:
             self.stop()

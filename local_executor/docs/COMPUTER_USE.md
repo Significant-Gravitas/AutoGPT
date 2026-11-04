@@ -159,7 +159,8 @@ Semantics:
   on Linux X11 we surface `WINDOW_NOT_VISIBLE` because XComposite isn't
   guaranteed). On Windows a window that has stopped responding answers
   `FEATURE_NOT_SUPPORTED` instead, since the capture would wait on it to
-  paint forever.
+  paint forever, and so does one that stops responding during the capture,
+  after 10 seconds.
 - On macOS the window's frame is read before and after the capture. A
   window that moved or was resized in between answers
   `FEATURE_NOT_SUPPORTED`, since the image's `origin` and `logical_size`
@@ -354,9 +355,12 @@ trips IME/autocomplete on web forms.
    later than that pastes the restored contents instead of the text. A
    copy made after the snapshot but before the shim writes the text is
    lost: the write replaces it, and the restore, which finds only the
-   pasted text, puts the snapshot back. The clipboard has no
-   compare-and-set to close that gap. If the write itself fails, the
-   snapshot goes back only onto a clipboard that is still empty.
+   pasted text, puts the snapshot back. On Windows the shim checks the
+   sequence number again just before the write and types the text when a
+   copy landed since, which narrows that gap; the clipboard has no
+   compare-and-set to close it. If the write itself fails, macOS and
+   Windows put the snapshot back only onto a clipboard that is still
+   empty; Linux doesn't put it back.
 
 ```json
 {
@@ -595,7 +599,9 @@ instead of `ACK`, so later input never lands in another window.
 ### New: `APP_LIST_REQUEST` / `APP_LIST_RESPONSE`
 
 Lists what's *running*, not what's installed. Cheaper and more useful for
-"is Slack open already?".
+"is Slack open already?". Without `include_background`, only apps with a
+window are listed. On Linux that takes `wmctrl` on X11; on Wayland, or
+without it, every process is listed, as with `include_background: true`.
 
 ```json
 {
@@ -721,9 +727,11 @@ multi-app workflow is half-blind without clipboard access.
 Responds with `ACK`, or `INTERNAL_ERROR` when the text did not land on
 the clipboard (for example, another app holds it open). A paste with
 `paste: true` stops before the paste keystroke in that case, so it never
-pastes what was already there. With `preserve_clipboard: true`, the user's
-text is put back first, since clearing the clipboard may have gone through
-before the write failed; a restore that fails too is logged.
+pastes what was already there. With `preserve_clipboard: true` on macOS and
+Windows, the user's text is put back first, since clearing the clipboard may
+have gone through before the write failed, but only onto a clipboard that is
+still empty (anything on it was copied since); a restore that fails too is
+logged. Linux doesn't put it back.
 
 Both clipboard directions are bounded by
 `HELLO_ACK.max_file_size_bytes`. `CLIPBOARD_READ` rejects an oversized backend

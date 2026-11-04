@@ -582,25 +582,18 @@ class LinuxBackend(ComputerUseBackend):
     # ── Apps ─────────────────────────────────────────────────────────
 
     def app_list(self, *, include_background: bool = False) -> list[AppInfo]:
+        # Apps are processes with a window, as on macOS and Windows. Telling
+        # them apart needs wmctrl on X11; without it every process is listed,
+        # as with include_background.
+        windows = self._window_counts_by_pid()
         out: list[AppInfo] = []
-        try:
-            entries = os.listdir("/proc")
-        except OSError as exc:
-            raise FeatureNotSupportedError("app.list", reason=str(exc)) from exc
-        for entry in entries:
-            if not entry.isdigit():
+        for pid in self._running_pids():
+            if not include_background and windows is not None and pid not in windows:
                 continue
-            pid = int(entry)
-            try:
-                with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
-                    name = f.read().strip()
-            except OSError:
+            details = self._process_details(pid)
+            if details is None:
                 continue
-            exe = None
-            try:
-                exe = os.readlink(f"/proc/{pid}/exe")
-            except OSError:
-                pass
+            name, exe = details
             out.append(
                 AppInfo(
                     pid=pid,
@@ -608,10 +601,50 @@ class LinuxBackend(ComputerUseBackend):
                     bundle_id=None,
                     executable_path=exe,
                     is_frontmost=False,
-                    window_count=0,
+                    window_count=(windows or {}).get(pid, 0),
                 )
             )
         return out
+
+    def _window_counts_by_pid(self) -> dict[int, int] | None:
+        """How many top-level windows each process has, from `wmctrl -l -p`;
+        None where windows can't be listed (Wayland, no wmctrl)."""
+        if self._wayland or not self._has_wmctrl:
+            return None
+        try:
+            listed = subprocess.check_output(["wmctrl", "-l", "-p"], text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        counts: dict[int, int] = {}
+        for line in listed.splitlines():
+            # <window id> <desktop> <pid> <host> <title...>
+            fields = line.split(None, 3)
+            if len(fields) >= 3 and fields[2].isdigit() and int(fields[2]) > 0:
+                pid = int(fields[2])
+                counts[pid] = counts.get(pid, 0) + 1
+        return counts
+
+    @staticmethod
+    def _running_pids() -> list[int]:
+        try:
+            entries = os.listdir("/proc")
+        except OSError as exc:
+            raise FeatureNotSupportedError("app.list", reason=str(exc)) from exc
+        return [int(entry) for entry in entries if entry.isdigit()]
+
+    @staticmethod
+    def _process_details(pid: int) -> tuple[str, str | None] | None:
+        """A process's name and executable, or None once it has gone."""
+        try:
+            with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
+                name = f.read().strip()
+        except OSError:
+            return None
+        try:
+            exe: str | None = os.readlink(f"/proc/{pid}/exe")
+        except OSError:
+            exe = None
+        return name, exe
 
     def app_launch(
         self,

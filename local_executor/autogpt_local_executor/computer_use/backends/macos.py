@@ -35,6 +35,7 @@ from ..window_registry import WindowFingerprint
 from ._common import (
     capture_fields,
     chord_keys,
+    display_index_for,
     ensure_typeable,
     image_to_base64,
     in_any_rect,
@@ -375,18 +376,11 @@ class MacOSBackend(ComputerUseBackend):
 
     def _display_index_for(self, bounds: tuple[int, int, int, int]) -> int:
         """The display holding the centre of `bounds` (points), else 0."""
-        cx = (bounds[0] + bounds[2]) / 2
-        cy = (bounds[1] + bounds[3]) / 2
         try:
             displays = self.display_info()
         except Exception:
             return 0
-        for d in displays:
-            ox, oy = d.origin
-            w, h = d.logical_size
-            if ox <= cx < ox + w and oy <= cy < oy + h:
-                return d.index
-        return 0
+        return display_index_for(displays, bounds)
 
     # ── Input ────────────────────────────────────────────────────────
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import stat
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -310,11 +311,20 @@ def load_config(
     overrides = dict(overrides or {})
     file_overrides: dict[str, Any] = {}
     path = config_path or _default_config_path()
-    if config_path is not None and not path.is_file():
+    # A stat, not is_file(): that raises PermissionError past here up to
+    # Python 3.13 and answers False from 3.14, so a config the shim can't
+    # reach crashed it, or was skipped for the defaults.
+    try:
+        is_file = stat.S_ISREG(path.stat().st_mode)
+    except (FileNotFoundError, NotADirectoryError):
+        is_file = False
+    except OSError as exc:
+        raise ConfigFileError(f"{path}: {exc}") from exc
+    if config_path is not None and not is_file:
         # A --config that names nothing ran the shim on the defaults without
         # a word. (Without --config, a missing default file means defaults.)
         raise ConfigFileError(f"{path}: no such config file")
-    if path.is_file():
+    if is_file:
         try:
             with open(path, "rb") as f:
                 file_overrides = tomllib.load(f)

@@ -32,7 +32,9 @@ Grant types:   authorization_code, refresh_token
 ```
 
 Ports 41899–41910 (12 ports) are reserved for the shim's local callback
-server. The shim binds the first free port in that range, so a busy 41899
+server. The shim binds the first free port in that range, from
+`oauth_redirect_port` on and never past 41910 (a configured port outside the
+range is the only one it tries, since no other is known to be registered), so a busy 41899
 (held by another app, a stale shim process, or a developer's local dev
 server) doesn't break first-time auth. The platform's OAuth client
 registration MUST accept all ports in this range as valid `redirect_uri`

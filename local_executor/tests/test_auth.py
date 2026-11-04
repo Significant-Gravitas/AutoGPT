@@ -418,10 +418,17 @@ def test_the_callback_takes_its_port_exclusively_on_windows(
     assert (socket.SO_REUSEADDR in options) is not exclusive
 
 
-def test_callback_uses_next_port_when_first_is_busy(tmp_path: Path) -> None:
+def test_callback_uses_next_port_when_first_is_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autogpt_local_executor.auth as auth_module
+
     blocker = socket.socket()
     blocker.bind(("127.0.0.1", 0))
     first_port = blocker.getsockname()[1]
+    # A free port is rarely in the registered 41899-41910, so the range is
+    # moved to start at it.
+    monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", first_port + 11)
     flow = OAuthFlow(_config(tmp_path, callback_port=first_port), token_store=object())
 
     server, _codes, _errors, bound_port = flow._bind_callback_server(expected_state="state")
@@ -659,3 +666,32 @@ def test_a_request_that_trickles_in_cannot_hold_the_callback(
         trickler.join(timeout=90)
         redirector.join(timeout=90)
         slow.close()
+
+
+@pytest.mark.parametrize(
+    ("first", "tried"),
+    [(41899, list(range(41899, 41911))), (41905, list(range(41905, 41911))), (50000, [50000])],
+    ids=["default", "within-range", "custom"],
+)
+def test_the_callback_binds_only_registered_ports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: int, tried: list[int]
+) -> None:
+    """The fallback tried twelve ports from the configured one, so a start
+    above 41899 could bind 41911 or higher, which the OAuth app doesn't list,
+    and sign-in failed on the redirect. A port outside 41899-41910 is the
+    only one known to be registered."""
+    import autogpt_local_executor.auth as auth_module
+
+    attempts: list[int] = []
+
+    def busy(address, _handler):
+        attempts.append(address[1])
+        raise OSError("address in use")
+
+    monkeypatch.setattr(auth_module, "_CallbackServer", busy)
+    flow = OAuthFlow(_config(tmp_path, callback_port=first), token_store=object())
+
+    with pytest.raises(RuntimeError, match="Could not bind"):
+        flow._bind_callback_server(expected_state="state")
+
+    assert attempts == tried

@@ -161,6 +161,36 @@ def test_window_list_without_wmctrl(tmp_path, monkeypatch) -> None:
     assert "wmctrl" in ei.value.details["reason"]
 
 
+@pytest.mark.parametrize("include_background", [False, True])
+def test_app_list_leaves_out_processes_without_windows_unless_asked(
+    tmp_path, monkeypatch, include_background: bool
+) -> None:
+    """include_background was ignored: every readable /proc entry came back,
+    where macOS and Windows list only apps with windows unless asked."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_wayland", False)
+    monkeypatch.setattr(b, "_running_pids", lambda: [100, 200, 300])
+    monkeypatch.setattr(
+        b,
+        "_process_details",
+        lambda pid: ({100: "terminal", 200: "editor", 300: "sshd"}[pid], None),
+    )
+    windows = (
+        "0x01000003  0 100    host Terminal\n"
+        "0x01000004  0 100    host Terminal 2\n"
+        "0x02000004  0 200    host Editor\n"
+    )
+    monkeypatch.setattr(linux_backend.subprocess, "check_output", lambda *a, **kw: windows)
+
+    apps = b.app_list(include_background=include_background)
+
+    if include_background:
+        assert [app.name for app in apps] == ["terminal", "editor", "sshd"]
+    else:
+        assert [(app.name, app.window_count) for app in apps] == [("terminal", 2), ("editor", 1)]
+
+
 def test_window_list_refuses_an_app_filter_it_cannot_apply(tmp_path, monkeypatch) -> None:
     """X11 windows have no bundle ID, so app_bundle_id was ignored and every
     window came back, from unrelated apps too."""
