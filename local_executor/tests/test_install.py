@@ -55,6 +55,10 @@ def test_render_macos_plist_has_all_placeholders_filled(
     assert "net.autogpt.shim" in out
     assert "/opt/bin/autogpt-shim" in out
     assert "/opt/etc/autogpt-local-executor/config.toml" in out
+    # KeepAlive restarts any non-zero exit; the marker lets `start` exit 0
+    # after an authentication failure so launchd stops retrying it.
+    environment = plistlib.loads(out.encode("utf-8"))["EnvironmentVariables"]
+    assert environment["AUTOGPT_SHIM_SUPERVISOR"] == "launchd"
 
 
 def test_render_systemd_unit_has_all_placeholders_filled(
@@ -68,6 +72,8 @@ def test_render_systemd_unit_has_all_placeholders_filled(
         in out
     )
     assert "Restart=on-failure" in out
+    # An authentication failure (exit 77) won't fix itself on a restart.
+    assert "RestartPreventExitStatus=77" in out
     assert "WantedBy=default.target" in out
 
 

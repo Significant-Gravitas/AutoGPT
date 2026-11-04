@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,7 @@ class _RecordingAudit:
 
     def __init__(self) -> None:
         self.events: list[tuple[str, dict[str, Any]]] = []
+        self.disconnects: list[str] = []
 
     def set_machine_id(self, _mid: str) -> None:
         pass
@@ -142,8 +144,8 @@ class _RecordingAudit:
     async def ws_connected(self, *_a: Any, **_k: Any) -> None:
         pass
 
-    async def ws_disconnected(self, *_a: Any, **_k: Any) -> None:
-        pass
+    async def ws_disconnected(self, reason: str = "", *_a: Any, **_k: Any) -> None:
+        self.disconnects.append(reason)
 
     async def config_reloaded(self, *_a: Any, **_k: Any) -> None:
         pass
@@ -376,3 +378,82 @@ async def test_session_revoked_blocks_further_sends(
     assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
     assert ws.close_calls
     assert ws.sent == sent_before_revocation
+
+
+# ── Fatal handshake errors ───────────────────────────────────────────────────
+
+
+async def test_a_handshake_the_platform_refuses_is_not_audited_as_a_clean_exit(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def refuse(_ws: Any) -> None:
+        daemon._disable_reconnect = True
+        raise RuntimeError("Platform does not support the persistent machine-control protocol")
+
+    monkeypatch.setattr(daemon, "_handshake", refuse)
+    with pytest.raises(RuntimeError):
+        await daemon._run_session(_FakeWebSocket([]))
+
+    assert audit.disconnects == ["handshake_failed: RuntimeError"]
+
+
+async def test_run_says_why_it_stops_after_an_error_it_will_not_retry(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The process then exits 0 so no supervisor restarts it; the log is the
+    only place the reason shows up."""
+
+    async def refuse() -> None:
+        daemon._disable_reconnect = True
+        raise RuntimeError("HELLO_ACK id does not match HELLO id")
+
+    monkeypatch.setattr(daemon, "_session", refuse)
+    with caplog.at_level(logging.ERROR, logger="autogpt_local_executor.daemon"):
+        await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert "HELLO_ACK id does not match HELLO id" in caplog.text
+
+
+# ── Reconnect backoff ────────────────────────────────────────────────────────
+
+
+async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session that ran and then dropped must reconnect promptly, not at
+    the delay built up by the failures before it."""
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise OSError("connection refused")
+        if calls == 4:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2, 0]
+
+
+def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:
+    """2 ** attempt times a float delay overflows at attempt 1024."""
+    delay = daemon._backoff_delay(5000)
+
+    cap = daemon.config.reconnect_max_delay
+    assert cap <= delay <= cap + daemon.config.reconnect_jitter_seconds

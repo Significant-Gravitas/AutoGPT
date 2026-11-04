@@ -249,6 +249,9 @@ class ShimDaemon:
         # be sent on it, and the revocation is audited before the socket is
         # closed, so `_send_frame` checks this instead of waiting for the close.
         self._revoked_ws: Any = None
+        # Whether the current connection got through its handshake. A session
+        # that was up and then dropped starts the reconnect backoff over.
+        self._session_up = False
         # Backpressure / health bookkeeping (#38). _in_flight = tasks
         # currently holding the semaphore; _queue_depth = tasks waiting
         # to acquire it. Maintained explicitly so we don't have to poke
@@ -312,6 +315,7 @@ class ShimDaemon:
         attempt = 0
         try:
             while self._running:
+                self._session_up = False
                 try:
                     await self._session()
                 except asyncio.CancelledError:
@@ -337,8 +341,18 @@ class ShimDaemon:
                     self._disable_reconnect = True
                     break
                 except Exception as exc:
-                    if not self._running or self._disable_reconnect:
+                    if self._disable_reconnect:
+                        # run() returns normally next (`start` exits 0, so no
+                        # supervisor restarts it), leaving this log as the only
+                        # record of why.
+                        logger.error("Not reconnecting: %s", exc)
                         break
+                    if not self._running:
+                        break
+                    if self._session_up:
+                        # The drop ended a working session, not a run of failed
+                        # connects, so reconnect promptly.
+                        attempt = 0
                     delay = self._backoff_delay(attempt)
                     logger.warning(
                         "Disconnected (%s). Reconnecting in %.1fs (attempt %d)",
@@ -399,7 +413,9 @@ class ShimDaemon:
         """Per docs/PROTOCOL.md Reconnection: 2^attempt * 1s, capped at 60s,
         plus 0-5s jitter."""
         cap = self.config.reconnect_max_delay
-        base = min(self.config.reconnect_base_delay * (2**attempt), cap)
+        # Bound the exponent: 2**1024 times a float delay overflows, and the
+        # cap is reached long before that anyway.
+        base = min(self.config.reconnect_base_delay * (2 ** min(attempt, 32)), cap)
         jitter = random.uniform(0, self.config.reconnect_jitter_seconds)
         return base + jitter
 
@@ -483,7 +499,12 @@ class ShimDaemon:
                 logger.debug("WS_CONNECTED audit emit failed", exc_info=True)
         disconnect_reason = "clean_exit"
         try:
-            await self._handshake(ws)
+            try:
+                await self._handshake(ws)
+            except Exception as exc:
+                disconnect_reason = f"handshake_failed: {exc.__class__.__name__}"
+                raise
+            self._session_up = True
             # Start the periodic STATUS ticker AFTER handshake — we want
             # max_concurrent from HELLO_ACK before announcing capacity.
             self._status_task = asyncio.create_task(self._status_ticker(ws))

@@ -136,6 +136,16 @@ paths only; navigation and selection use short-lived opaque references.
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
+An authentication failure (`start` exits 77, `EX_NOPERM`) stops the
+service instead of restarting it, since a restart would only retry the
+rejected credentials. The systemd unit sets `RestartPreventExitStatus=77`.
+launchd's `KeepAlive` restarts any non-zero exit, so the LaunchAgent sets
+`AUTOGPT_SHIM_SUPERVISOR=launchd` and `start` exits 0 for this case.
+Task Scheduler retries three times, a minute apart. Run
+`autogpt-shim auth`, then restart the service. Errors the shim won't
+retry, such as a protocol mismatch or a revoked session, already exit 0
+and are logged.
+
 ### Packaging & install
 
 | Dimension | macOS | Linux | Windows | Notes |
