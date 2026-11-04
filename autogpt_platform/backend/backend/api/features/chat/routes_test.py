@@ -2901,10 +2901,14 @@ async def test_create_session_abandoned_mid_lookup_leaves_no_lookup_running(
         request = asyncio.create_task(
             async_client.post("/sessions", json={"expert_id": "expert-1"})
         )
-        await asyncio.wait_for(all_started.wait(), timeout=5)
-        request.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await request
+        try:
+            await asyncio.wait_for(all_started.wait(), timeout=5)
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
 
     assert sorted(started) == ["chatgpt", "expert", "microsoft", "saved default"]
     assert sorted(stopped) == sorted(started)
