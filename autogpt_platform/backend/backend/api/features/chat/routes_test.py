@@ -5714,3 +5714,25 @@ def test_attachments_do_not_carry_a_message_of_only_server_only_blocks(
 
     assert response.status_code == 422
     mocks.enqueue.assert_not_awaited()
+
+
+def test_a_refused_message_writes_nothing_first(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The refusal comes before the mode change and every other write."""
+    mocks = _mock_stream_internals(mocker)
+    apply_mode = mocker.patch.object(
+        chat_routes, "_apply_autopilot_mode", new=AsyncMock()
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "autopilot_mode": "unsupervised",
+        },
+    )
+
+    assert response.status_code == 422
+    apply_mode.assert_not_awaited()
+    mocks.enqueue.assert_not_awaited()
