@@ -113,7 +113,6 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
-  params?: Record<string, string | undefined>;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };

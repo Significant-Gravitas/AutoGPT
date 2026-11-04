@@ -316,7 +316,7 @@ describe("email verification", () => {
 describe("team email sign-up", () => {
   type CreateUserHook = (
     user: { email: string; emailVerified?: boolean },
-    ctx: { path?: string; params?: Record<string, string> } | null,
+    ctx: { path?: string } | null,
   ) => Promise<void>;
 
   async function loadCreateUserHook() {
@@ -343,7 +343,7 @@ describe("team email sign-up", () => {
     await expect(
       createUser(
         { email: "someone@agpt.co", emailVerified: true },
-        { path: "/callback/:id", params: { id: "google" } },
+        { path: "/callback/google" },
       ),
     ).resolves.toBeUndefined();
   });

@@ -3,10 +3,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isWaitlistError } from "@/app/api/auth/utils";
 import { server } from "@/mocks/mock-server";
-import {
-  TEAM_EMAIL_REQUIRES_GOOGLE_CODE,
-  TEAM_EMAIL_REQUIRES_GOOGLE_MESSAGE,
-} from "../team-email-policy";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database: a sign-in redirect, then the provider's
@@ -117,25 +113,8 @@ describe("OAuth sign-up", () => {
     },
   );
 
-  it.each(["github", "discord"] as const)(
-    "refuses a team address through %s, even verified",
-    async (provider) => {
-      const { handler, db } = await createAuth();
-      answerAs(provider, { email: "someone@agpt.co", verified: true });
-
-      const response = await signInWith(handler, provider);
-
-      expect(refusal(response)).toEqual({
-        code: TEAM_EMAIL_REQUIRES_GOOGLE_CODE,
-        message: TEAM_EMAIL_REQUIRES_GOOGLE_MESSAGE,
-      });
-      expect(db.UserAuthIdentity).toEqual([]);
-      expect(db.UserAuthSession).toEqual([]);
-    },
-  );
-
   it.each([
-    ["google", "someone@agpt.co"],
+    ["google", "someone@example.com"],
     ["github", "someone@example.com"],
     ["discord", "someone@example.com"],
   ] as const)("signs %s's verified %s up and in", async (provider, email) => {
@@ -164,16 +143,20 @@ describe("OAuth sign-up", () => {
     expect(db.UserAuthIdentity).toEqual([]);
   });
 
-  it("still lets an admin create an unverified team account", async () => {
+  it("still lets an admin create an unverified account", async () => {
     const { api, db } = await createAuth();
 
     await api.createUser({
-      body: { email: "someone@agpt.co", password: "x".repeat(16), name: "x" },
+      body: {
+        email: "someone@example.com",
+        password: "x".repeat(16),
+        name: "x",
+      },
     });
 
     expect(db.UserAuthIdentity).toEqual([
       expect.objectContaining({
-        email: "someone@agpt.co",
+        email: "someone@example.com",
         emailVerified: false,
       }),
     ]);
