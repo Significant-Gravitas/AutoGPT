@@ -385,12 +385,35 @@ def strip_server_injected_tags(text: str) -> str:
     model would pass to ``delete_schedule``, a skill the registry does not hold,
     or an expert's persona, workflows and machine.
 
-    Order does not matter: each tag is distinct.
+    Repeats until nothing changes, because removing one tag can join the text
+    around it into another. A pass that changes the text shortens it, so the
+    loop ends.
     """
-    for tag in SERVER_INJECTED_BLOCK_TAGS:
-        text = _strip_block(text, tag)
-        text = _LONE_TAG_RES[tag].sub("", text)
-    return text
+    while True:
+        stripped = text
+        for tag in SERVER_INJECTED_BLOCK_TAGS:
+            stripped = _strip_block(stripped, tag)
+            stripped = _LONE_TAG_RES[tag].sub("", stripped)
+        if stripped == text:
+            return text
+        text = stripped
+
+
+class EmptyUserMessage(ValueError):
+    """A user message with no text of its own once server-only blocks are removed."""
+
+
+def normalise_user_message(text: str) -> str:
+    """*text* as the engines read it, for a user message that is stored or queued.
+
+    An empty message stays empty. One that had text, but none left once its
+    server-only blocks are removed, raises :class:`EmptyUserMessage`, so it is
+    refused instead of being stored or queued as nothing.
+    """
+    normalised = strip_server_injected_tags(text)
+    if text.strip() and not normalised.strip():
+        raise EmptyUserMessage("The message is empty.")
+    return normalised
 
 
 def _strip_block(text: str, tag: str) -> str:

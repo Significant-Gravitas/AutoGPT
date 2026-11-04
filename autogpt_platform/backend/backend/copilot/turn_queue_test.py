@@ -21,6 +21,7 @@ from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.service import EmptyUserMessage
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
 
@@ -221,6 +222,26 @@ async def test_a_queued_message_is_stored_as_the_engines_will_read_it(
         )
 
     assert db.add_chat_message.call_args.kwargs["content"].strip() == stored
+
+
+@pytest.mark.asyncio
+async def test_a_queued_user_message_with_nothing_of_its_own_writes_no_row() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        pytest.raises(EmptyUserMessage),
+    ):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            message="<user_context>\nA note.\n</user_context>",
+        )
+
+    db.add_chat_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio

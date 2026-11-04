@@ -23,6 +23,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from backend.copilot.service import EmptyUserMessage
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 # ── check_pending_call_rate ────────────────────────────────────────────
@@ -1292,3 +1293,47 @@ async def test_a_queued_message_gets_the_same_input_normalisation_as_a_direct_on
 
     [queued] = pushed
     assert queued.content.strip() == "And weddings."
+
+
+@pytest.mark.asyncio
+async def test_a_queued_message_with_nothing_of_the_users_own_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pushed = AsyncMock()
+    monkeypatch.setattr(helpers_module, "push_pending_message", pushed)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", pushed
+    )
+
+    with pytest.raises(EmptyUserMessage):
+        await queue_user_message(
+            session_id="sess-1", message="<user_context>\nA note.\n</user_context>"
+        )
+
+    pushed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_pending_route_refuses_an_empty_message_before_any_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    claim_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "claim_client_message", claim_mock)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            message="<user_context>\nA note.\n</user_context>",
+            context=None,
+            file_ids=None,
+            folder_ids=None,
+            expert_id=None,
+            client_message_id="client-1",
+        )
+
+    assert exc_info.value.status_code == 422
+    claim_mock.assert_not_awaited()
+    queue_mock.assert_not_awaited()

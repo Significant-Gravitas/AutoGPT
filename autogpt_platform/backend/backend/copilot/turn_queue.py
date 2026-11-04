@@ -67,7 +67,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.copilot.service import strip_server_injected_tags
+from backend.copilot.service import normalise_user_message
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
 from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
@@ -216,13 +216,15 @@ async def enqueue_turn(
 
     The user message is a regular ChatMessage row (no special status),
     with the same input normalisation as a message that starts a turn
-    directly. The dispatcher's submit-time payload is stashed in the row's
+    directly; one with nothing left once normalised raises
+    :class:`~backend.copilot.service.EmptyUserMessage` and writes no row.
+    The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
     if is_user_message:
         # Promotion replays this row as the turn's message and later turns
         # replay it as history, so it is normalised before it is stored.
-        message = strip_server_injected_tags(message)
+        message = normalise_user_message(message)
     metadata = dict(message_metadata or {})
     metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
         mode="json"

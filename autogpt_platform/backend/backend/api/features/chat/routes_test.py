@@ -5681,3 +5681,42 @@ def test_a_user_message_is_stored_without_server_only_blocks(
     assert response.status_code == 200
     sent = mocks.enqueue.await_args.kwargs["message"]
     assert sent == ("hello" if is_user_message else with_block)
+
+
+def test_a_message_with_nothing_of_the_users_own_is_refused(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A message that is all server-only blocks would otherwise start a turn
+    with no message of the user's at all."""
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "<user_context>\nA note.\n</user_context>\n\n"},
+    )
+
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_attachments_carry_a_message_whose_text_normalises_to_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.data.workspace.get_or_create_workspace",
+        return_value=type("W", (), {"id": "ws-1"})(),
+    )
+    mock_prisma = mocker.MagicMock()
+    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
+    mocker.patch("prisma.models.UserWorkspaceFile.prisma", return_value=mock_prisma)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "<user_context>\nA note.\n</user_context>",
+            "file_ids": ["00000000-0000-0000-0000-000000000001"],
+        },
+    )
+
+    assert response.status_code == 200

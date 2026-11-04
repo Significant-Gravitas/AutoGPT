@@ -132,8 +132,9 @@ from backend.copilot.response_model import (
     StreamStatus,
 )
 from backend.copilot.service import (
+    EmptyUserMessage,
+    normalise_user_message,
     strip_injected_context_for_display,
-    strip_server_injected_tags,
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -1973,7 +1974,14 @@ async def stream_chat_post(
         # The same input normalisation as the engines' own, applied before
         # the message is stored or queued: the stored row is replayed as
         # history on later turns, past the engines' entry sanitising.
-        message = strip_server_injected_tags(message)
+        try:
+            message = normalise_user_message(message)
+        except EmptyUserMessage as exc:
+            # Attachments are the user's own content: a message that has them
+            # goes on as an attachments-only send.
+            if not (request.file_ids or request.folder_ids):
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            message = ""
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)
     message_id = (
