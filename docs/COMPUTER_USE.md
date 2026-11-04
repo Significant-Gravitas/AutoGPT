@@ -135,8 +135,8 @@ hardcoded `scale_factor: 1.0`), and a `meta` block carrying the crop's
   "payload": {
     "image_base64": "...",
     "mime_type": "image/jpeg",
-    "width": 800,
-    "height": 500,
+    "width": 1600,
+    "height": 1000,
     "monitor": 0,
     "region": [100, 200, 900, 700],
     "display_scale": 2.0,
