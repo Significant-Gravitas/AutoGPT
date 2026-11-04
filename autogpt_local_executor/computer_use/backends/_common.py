@@ -24,13 +24,17 @@ def capture_fields(
 ) -> tuple[int, float, tuple[int, int] | None]:
     """`monitor`, `display_scale` and `logical_size` for a screenshot.
 
+    `display_scale` is the scale the capture actually came back at, image
+    pixels per input unit, measured rather than taken from the display:
+    whether mss returns a Retina display at its backing resolution depends on
+    the mss version, and agents divide image points by this before clicking.
     The stitched desktop (`monitor: -1`) is no single display, so it reports
-    its own logical size and the scale the capture actually came back at.
+    its own logical size.
     """
+    scale = round(image_width / grabbed_width, 2) if grabbed_width else 1.0
     if not stitched:
         target = displays[monitor]
-        return target.index, target.scale, target.logical_size
-    scale = round(image_width / grabbed_width, 2) if grabbed_width else 1.0
+        return target.index, scale, target.logical_size
     return -1, scale, (int(virtual_desktop["width"]), int(virtual_desktop["height"]))
 
 
