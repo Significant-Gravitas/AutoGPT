@@ -105,13 +105,15 @@ async def list_trials_ending_unrenewed(
             "endsAt": {"gt": after, "lte": until},
         }
     )
-    trials = []
-    for row in rows:
-        try:
-            trials.append(TrialState.from_db(row))
-        except Exception:
-            logger.exception(f"Trial {row.id} for user {row.userId} is unreadable")
-    return trials
+    return [trial for row in rows if (trial := _readable_trial(row)) is not None]
+
+
+def _readable_trial(row: SubscriptionTrial) -> TrialState | None:
+    try:
+        return TrialState.from_db(row)
+    except Exception:
+        logger.exception(f"Trial {row.id} for user {row.userId} is unreadable")
+        return None
 
 
 async def has_received_onboarding_credit(user_id: str) -> bool:

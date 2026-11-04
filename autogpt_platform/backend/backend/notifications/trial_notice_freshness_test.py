@@ -364,3 +364,28 @@ async def test_queued_not_renewing_notice_is_dropped_once_another_plan_is_live(
         patch.object(notices, "stripe_call", _stripe(raw, others)),
     ):
         assert await notices.trial_notice_disposition(trial.user_id, data) == expected
+
+
+@pytest.mark.asyncio
+async def test_not_renewing_notice_stands_when_the_other_plan_ends_first(trial):
+    """A second plan set to end before the trial does not keep access past
+    it, so "your access ends" is still true."""
+    trial = trial.model_copy(
+        update={
+            "cancel_at_period_end": True,
+            "ends_at": datetime.now(UTC) + timedelta(days=1),
+        }
+    )
+    data = notices.trial_notice_data(trial, "last_call", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "last_call")
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+    )
+    raw = subscription(trial)
+    ends_first = raw["trial_end"] - 3600
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(notices, "stripe_call", _stripe(raw, ("sub_max",), ends_first)),
+    ):
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "current"

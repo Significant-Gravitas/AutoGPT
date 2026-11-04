@@ -98,13 +98,19 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
     return trial, raw
 
 
-def _stripe(raw: dict, others: tuple[str, ...] = ()) -> AsyncMock:
+def _stripe(
+    raw: dict, others: tuple[str, ...] = (), others_cancel_at: int | None = None
+) -> AsyncMock:
     """The live subscription, on a customer whose only other live
-    subscriptions are `others` (none by default)."""
+    subscriptions are `others` (none by default), each set to end at
+    `others_cancel_at` (never by default)."""
 
     async def call(fn, *args, **kwargs):
         if fn == notices.stripe.Subscription.list_async:
-            data = [SimpleNamespace(id=sub_id) for sub_id in others]
+            data = [
+                SimpleNamespace(id=sub_id, cancel_at=others_cancel_at)
+                for sub_id in others
+            ]
             return SimpleNamespace(data=data, has_more=False)
         return raw
 

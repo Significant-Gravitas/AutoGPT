@@ -120,7 +120,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if skip := _notice_skip_reason(trial, kind, current):
         logger.info(f"Dropped trial {kind} notice for user {user_id}: {skip}")
         return True
-    if kind in ("expiring", "last_call") and await _another_plan_is_live(
+    if kind in ("expiring", "last_call") and await _another_plan_outlives(
         trial, current
     ):
         # A newer plan keeps their access past the trial's end, so the notice
@@ -223,7 +223,7 @@ async def trial_notice_disposition(
         return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
         return "obsolete"
-    if data.kind in ("expiring", "last_call") and await _another_plan_is_live(
+    if data.kind in ("expiring", "last_call") and await _another_plan_outlives(
         trial, current
     ):
         return "obsolete"
@@ -442,6 +442,16 @@ async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
     """A trial ended by buying another plan is not news, and its trial_canceled
     status must not overwrite the new plan's. The person still leaves the
     trial group."""
+    return await _another_plan(trial, current, until=None)
+
+
+async def _another_plan_outlives(trial: TrialState, current: dict) -> bool:
+    """Another live plan keeps access past the trial's end, so a notice that
+    says access ends then would be wrong. A plan set to end first does not."""
+    return await _another_plan(trial, current, until=current.get("trial_end") or 0)
+
+
+async def _another_plan(trial: TrialState, current: dict, until: int | None) -> bool:
     for status in ("active", "trialing"):
         page = await stripe_call(
             stripe.Subscription.list_async,
@@ -450,6 +460,10 @@ async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:
             limit=100,
         )
         async for other in stripe_list_items(page):
-            if other.id != current.get("id"):
+            if other.id == current.get("id"):
+                continue
+            # Stripe sets cancel_at on a plan scheduled to end.
+            ends = getattr(other, "cancel_at", None)
+            if until is None or ends is None or ends > until:
                 return True
     return False
