@@ -8,7 +8,10 @@ import pytest
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
-from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
+from backend.copilot.tools.workspace_files import (
+    ReadWorkspaceFileTool,
+    WorkspaceFileMetadataResponse,
+)
 from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.workspace_test import _make_workspace_file
 
@@ -67,9 +70,11 @@ async def test_an_expert_turn_reads_the_owners_files_but_not_another_experts(
             "user-1", session, file_id="file-1"
         )
 
-    assert (
-        isinstance(result, ErrorResponse) and result.error == "access_denied"
-    ) is refused
+    if refused:
+        assert isinstance(result, ErrorResponse) and result.error == "access_denied"
+    else:
+        assert isinstance(result, WorkspaceFileMetadataResponse), result
+        assert result.path == path
 
 
 async def test_personal_autopilot_turn_is_unrestricted(db):
