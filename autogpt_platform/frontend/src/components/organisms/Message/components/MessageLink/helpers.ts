@@ -3,25 +3,8 @@ import type { MouseEvent } from "react";
 // Streamdown's href for a link whose markdown is still streaming in.
 export const INCOMPLETE_LINK_HREF = "streamdown:incomplete-link";
 
-type LinkClick = "plain" | "modified" | "middle" | "other";
-
-// The clicks on a link to another site that ask first. Middle-clicks and
-// Ctrl/Cmd/Shift/Alt-clicks are left to the browser, which opens the link
-// without asking, as its "Open in new tab" menu does (SECRT-2096).
-const ASKS_BEFORE_LEAVING: Record<LinkClick, boolean> = {
-  plain: true,
-  modified: false,
-  middle: false,
-  other: false,
-};
-
-function kindOfClick(event: MouseEvent): LinkClick {
-  if (event.button === 1) return "middle";
-  if (event.button !== 0) return "other";
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-    return "modified";
-  return "plain";
-}
+const LEFT_BUTTON = 0;
+const MIDDLE_BUTTON = 1;
 
 export function isSameOriginLink(url: string) {
   try {
@@ -33,6 +16,16 @@ export function isSameOriginLink(url: string) {
   }
 }
 
-export function asksBeforeOpening(event: MouseEvent, url: string) {
-  return ASKS_BEFORE_LEAVING[kindOfClick(event)] && !isSameOriginLink(url);
+// Every way of opening a link to another site asks first (SECRT-2096): a left
+// click, with or without Ctrl, Cmd, Shift or Alt, and a middle-click. The right
+// button only opens the context menu, which offers no "Open in new tab" for a
+// button. On macOS a Ctrl-click is a right-click, so it opens that menu too.
+export function asksBeforeOpening(event: MouseEvent) {
+  return event.button === LEFT_BUTTON || event.button === MIDDLE_BUTTON;
+}
+
+// A middle press starts the browser's autoscroll on some systems, which can
+// swallow the auxclick that asks.
+export function isMiddlePress(event: MouseEvent) {
+  return event.button === MIDDLE_BUTTON;
 }

@@ -1,16 +1,15 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
-import { ExternalLinkModal } from "./components/ExternalLinkModal";
-import { INCOMPLETE_LINK_HREF } from "./helpers";
-import { useMessageLink } from "./useMessageLink";
+import { ExternalLinkButton } from "./components/ExternalLinkButton/ExternalLinkButton";
+import { INCOMPLETE_LINK_HREF, isSameOriginLink } from "./helpers";
 
 interface Props extends ComponentProps<"a"> {
   node?: unknown;
 }
 
-// Streamdown's own link turns into a button without an href while link safety
-// is on, so middle-click, Ctrl/Cmd-click and "Open in new tab" had nothing to
-// open. This one stays a real anchor and asks only on the clicks helpers names.
+// Links to our own pages are real anchors, so middle-click, Ctrl/Cmd-click and
+// the browser's "Open in new tab" work on them. Links to other sites stay
+// buttons that always ask first (SECRT-2096).
 export function MessageLink({
   children,
   className,
@@ -20,36 +19,27 @@ export function MessageLink({
 }: Props) {
   const isIncomplete = href === INCOMPLETE_LINK_HREF;
   const url = isIncomplete ? undefined : href;
-  const { isAsking, handleClick, handleConfirm, handleClose } =
-    useMessageLink(url);
+
+  if (url && !isSameOriginLink(url)) {
+    return (
+      <ExternalLinkButton url={url} className={className}>
+        {children}
+      </ExternalLinkButton>
+    );
+  }
 
   return (
-    <>
-      <a
-        {...props}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handleClick}
-        onAuxClick={handleClick}
-        data-incomplete={isIncomplete}
-        data-streamdown="link"
-        // Doubled to outrank the chat's `[&_a]` colour, as WorkspaceLink does.
-        className={cn(
-          "font-medium [&&]:text-primary [&&]:underline",
-          className,
-        )}
-      >
-        {children}
-      </a>
-      {url ? (
-        <ExternalLinkModal
-          url={url}
-          isOpen={isAsking}
-          onClose={handleClose}
-          onConfirm={handleConfirm}
-        />
-      ) : null}
-    </>
+    <a
+      {...props}
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-incomplete={isIncomplete}
+      data-streamdown="link"
+      // Doubled to outrank the chat's `[&_a]` colour, as WorkspaceLink does.
+      className={cn("font-medium [&&]:text-primary [&&]:underline", className)}
+    >
+      {children}
+    </a>
   );
 }

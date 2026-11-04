@@ -20,16 +20,26 @@ async function renderReply(markdown: string) {
 
 function linksOf(container: HTMLElement) {
   return Array.from(
-    container.querySelectorAll<HTMLAnchorElement>('[data-streamdown="link"]'),
+    container.querySelectorAll<HTMLElement>('[data-streamdown="link"]'),
   );
 }
 
-function middleClick(link: HTMLElement) {
+function auxClick(link: HTMLElement, button: number) {
   return fireEvent(
     link,
-    new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 }),
+    new MouseEvent("auxclick", { bubbles: true, cancelable: true, button }),
   );
 }
+
+// The ways of opening a link. A Ctrl-click on macOS is a right-click, which
+// fires no click; this is the Ctrl-click of Windows and Linux.
+const CLICKS: [string, (link: HTMLElement) => void][] = [
+  ["a plain click", (link) => fireEvent.click(link)],
+  ["a middle-click", (link) => auxClick(link, 1)],
+  ["a Ctrl-click", (link) => fireEvent.click(link, { ctrlKey: true })],
+  ["a Cmd-click", (link) => fireEvent.click(link, { metaKey: true })],
+  ["a Shift-click", (link) => fireEvent.click(link, { shiftKey: true })],
+];
 
 // Whether the browser would follow the link after the app's handlers ran. The
 // test environment would then load the page, so the default is stopped here,
@@ -89,63 +99,85 @@ describe("MessageResponse links", () => {
     expect(hrefOf(linksOf(container)[0])).toBe(`/library/agents/${AGENT_ID}`);
   });
 
-  it("opens a same-site link in a new tab without asking", async () => {
-    const container = await renderReply(
-      `[open it](/library/agents/${AGENT_ID})`,
-    );
-    const link = screen.getByRole("link", { name: "open it" });
-
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(leavesToBrowser(link, fireEvent.click)).toBe(true);
-    expect(screen.queryByText("Open external link")).toBeNull();
-    expect(linksOf(container)).toEqual([link]);
-  });
-
-  it("asks before a plain click leaves the site", async () => {
-    await renderReply("[docs](https://docs.agpt.co/guide)");
-    const link = screen.getByRole("link", { name: "docs" });
-
-    expect(hrefOf(link)).toBe("https://docs.agpt.co/guide");
-    expect(leavesToBrowser(link, fireEvent.click)).toBe(false);
-    expect(await screen.findByText("https://docs.agpt.co/guide")).toBeTruthy();
-    expect(window.open).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open link" }));
-    expect(window.open).toHaveBeenCalledWith(
-      "https://docs.agpt.co/guide",
-      "_blank",
-      "noreferrer",
-    );
-    await waitFor(() =>
-      expect(screen.queryByText("Open external link")).toBeNull(),
-    );
-  });
-
-  it.each([
-    ["a middle-click", middleClick],
-    [
-      "a Ctrl-click",
-      (link: HTMLElement) => fireEvent.click(link, { ctrlKey: true }),
-    ],
-    [
-      "a Cmd-click",
-      (link: HTMLElement) => fireEvent.click(link, { metaKey: true }),
-    ],
-    [
-      "a Shift-click",
-      (link: HTMLElement) => fireEvent.click(link, { shiftKey: true }),
-    ],
-  ])(
-    "leaves %s on a link to another site to the browser",
+  it.each(CLICKS)(
+    "leaves %s on a same-site link to the browser",
     async (_, clickLink) => {
-      await renderReply("[docs](https://docs.agpt.co/guide)");
-      const link = screen.getByRole("link", { name: "docs" });
+      const container = await renderReply(
+        `[open it](/library/agents/${AGENT_ID})`,
+      );
+      const link = screen.getByRole("link", { name: "open it" });
 
+      expect(link.getAttribute("target")).toBe("_blank");
       expect(leavesToBrowser(link, clickLink)).toBe(true);
       expect(screen.queryByText("Open external link")).toBeNull();
       expect(window.open).not.toHaveBeenCalled();
+      expect(linksOf(container)).toEqual([link]);
     },
   );
+
+  it("draws a link to another site as a button without an href", async () => {
+    const container = await renderReply("[docs](https://docs.agpt.co/guide)");
+    const link = screen.getByRole("button", { name: "docs" });
+
+    expect(linksOf(container)).toEqual([link]);
+    expect(link.hasAttribute("href")).toBe(false);
+    expect(screen.queryByRole("link", { name: "docs" })).toBeNull();
+  });
+
+  it.each(CLICKS)(
+    "asks before %s leaves the site, then opens a new tab",
+    async (_, clickLink) => {
+      await renderReply("[docs](https://docs.agpt.co/guide)");
+      const link = screen.getByRole("button", { name: "docs" });
+
+      clickLink(link);
+      expect(
+        await screen.findByText("https://docs.agpt.co/guide"),
+      ).toBeTruthy();
+      expect(window.open).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Open link" }));
+      expect(window.open).toHaveBeenCalledWith(
+        "https://docs.agpt.co/guide",
+        "_blank",
+        "noreferrer",
+      );
+      await waitFor(() =>
+        expect(screen.queryByText("Open external link")).toBeNull(),
+      );
+    },
+  );
+
+  it("opens nothing when the dialog is cancelled", async () => {
+    await renderReply("[docs](https://docs.agpt.co/guide)");
+
+    fireEvent.click(screen.getByRole("button", { name: "docs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Open external link")).toBeNull(),
+    );
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it("leaves a right-click on a link to another site to the context menu", async () => {
+    await renderReply("[docs](https://docs.agpt.co/guide)");
+    const link = screen.getByRole("button", { name: "docs" });
+
+    fireEvent.contextMenu(link, { button: 2 });
+    auxClick(link, 2);
+
+    expect(screen.queryByText("Open external link")).toBeNull();
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it("holds back autoscroll on a middle press on a link to another site", async () => {
+    await renderReply("[docs](https://docs.agpt.co/guide)");
+    const link = screen.getByRole("button", { name: "docs" });
+
+    expect(fireEvent.mouseDown(link, { button: 1 })).toBe(false);
+    expect(fireEvent.mouseDown(link, { button: 0 })).toBe(true);
+  });
 
   it("still blocks a javascript: link", async () => {
     const container = await renderReply("[click](javascript:alert(1))");
