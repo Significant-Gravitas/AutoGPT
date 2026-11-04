@@ -632,7 +632,9 @@ class CoPilotProcessor:
         """
         with turn_transaction(entry) as turn:
             load_test, load_test_known = await _tag_load_test_account(entry, turn)
-            if not await claim_background_execution(entry):
+            if not await claim_background_execution(
+                entry, on_claimed_elsewhere=turn.claimed_elsewhere
+            ):
                 return False
             async with asyncio.timeout(background_timeout(entry)) as deadline:
                 await self._run_turn(

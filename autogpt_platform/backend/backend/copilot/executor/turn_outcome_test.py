@@ -286,6 +286,30 @@ async def test_a_background_pickup_another_worker_claimed_is_not_counted(
 
 
 @pytest.mark.asyncio
+async def test_an_unclaimed_pickup_whose_cleanup_raises_is_not_counted(
+    posthog: MagicMock, counted: Counted
+) -> None:
+    """Closing a pickup another worker owns can fail. The turn is still that
+    worker's to count, so this one counts nothing."""
+
+    async def claimed_elsewhere_then_cleanup_fails(entry, *, on_claimed_elsewhere):
+        on_claimed_elsewhere()
+        raise ConnectionError("database unavailable")
+
+    with (
+        patch(
+            f"{_PROCESSOR}.claim_background_execution",
+            new=claimed_elsewhere_then_cleanup_fails,
+        ),
+        pytest.raises(ConnectionError),
+    ):
+        await _run([StreamTextDelta(id="t", delta="Done.")])
+
+    posthog.assert_not_called()
+    assert counted() == {}
+
+
+@pytest.mark.asyncio
 async def test_a_background_turn_refused_at_admission_is_counted_failed(
     sentry_transactions: list[dict], counted: Counted
 ) -> None:

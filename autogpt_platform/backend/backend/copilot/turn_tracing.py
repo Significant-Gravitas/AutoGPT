@@ -78,6 +78,7 @@ class TurnTrace:
         # The code of the notice the turn's output last ended on, if any.
         self._no_reply: str | None = None
         self._ended = False
+        self._claimed_elsewhere = False
         self.engine: str | None = None
         self.load_test: str | None = None
         self.origin: str | None = None
@@ -141,10 +142,16 @@ class TurnTrace:
         else:
             self._end("completed", "ok", error_code)
 
+    def claimed_elsewhere(self) -> None:
+        """Another worker claimed this background turn and reports its
+        outcome, so this worker records none for it, even when closing its
+        own pickup raises."""
+        self._claimed_elsewhere = True
+
     def raised(self, error: BaseException) -> None:
         """End a turn that raised before its outcome was set: cancelled by a
         cancellation, failed by anything else."""
-        if self._ended:
+        if self._ended or self._claimed_elsewhere:
             return
         if isinstance(error, (asyncio.CancelledError, GeneratorExit)):
             self._end("cancelled", "cancelled", None)
