@@ -59,21 +59,20 @@ def test_every_bounded_offset_fits_in_64_bits():
 
 
 @pytest.mark.parametrize(
-    "handler", [v1_routes.get_store_agents, v1_routes.get_store_creators]
-)
-@pytest.mark.parametrize(
-    "page,page_size,refused",
+    "handler,page,page_size,refused",
     [
-        (MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE, False),
-        (MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE + 1, True),
-        (1, 2**63, True),
+        (v1_routes.get_store_agents, MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE, False),
+        (v1_routes.get_store_agents, MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE + 1, True),
+        (v1_routes.get_store_agents, 1, 2**63, True),
+        (v1_routes.get_store_creators, MAX_PAGE, 100, False),
+        (v1_routes.get_store_creators, 1, 101, True),
     ],
 )
-async def test_an_uncapped_v1_page_size_never_overflows_the_query(
+async def test_a_v1_store_page_the_query_cannot_serve_is_refused(
     handler, page: int, page_size: int, refused: bool, mocker: pytest_mock.MockFixture
 ):
     """The two v1 routes in ALLOWED_UNBOUNDED answer 422, not a database 500,
-    once the offset or the limit would not fit in 64 bits."""
+    for a page the store query cannot serve."""
     cache = mocker.patch.object(v1_routes, "store_cache")
     for name in ("get_cached_store_agents", "get_cached_store_creators"):
         setattr(cache, name, mocker.AsyncMock(return_value="page"))
