@@ -1095,8 +1095,9 @@ class MacOSBackend(ComputerUseBackend):
             written_count = self._write_pasteboard_text(text)
         except ClipboardWriteError:
             # clearContents may have gone through before the write failed,
-            # taking the user's text with it.
-            if restore is not None:
+            # taking the user's text with it. It goes back only onto a
+            # pasteboard that is still empty: anything on it was copied since.
+            if restore is not None and self._read_pasteboard_types() == []:
                 try:
                     self._write_pasteboard_text(restore)
                 except ClipboardWriteError:

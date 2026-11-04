@@ -336,7 +336,12 @@ trips IME/autocomplete on web forms.
    path adds a slim "user-action-during-paste cancels restore"
    protection but does not close the snooping window itself. The restore
    runs 50 ms after the paste hotkey, so an app that handles the paste
-   later than that pastes the restored contents instead of the text.
+   later than that pastes the restored contents instead of the text. A
+   copy made after the snapshot but before the shim writes the text is
+   lost: the write replaces it, and the restore, which finds only the
+   pasted text, puts the snapshot back. The clipboard has no
+   compare-and-set to close that gap. If the write itself fails, the
+   snapshot goes back only onto a clipboard that is still empty.
 
 ```json
 {
