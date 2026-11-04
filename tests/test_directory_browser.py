@@ -6,6 +6,7 @@ import pytest
 
 from autogpt_local_executor.directory_browser import (
     MAX_DIRECTORY_ENTRIES,
+    MAX_REFS_PER_BROWSE,
     DirectoryBrowseError,
     DirectoryBrowser,
 )
@@ -59,6 +60,24 @@ def test_listing_is_bounded_and_paginated(tmp_path: Path) -> None:
     )
     assert [entry.name for entry in (*first.entries, *second.entries)] == [
         f"dir-{index:03d}" for index in range(MAX_DIRECTORY_ENTRIES + 10)
+    ]
+
+
+def test_listing_a_directory_again_reuses_its_references(tmp_path: Path) -> None:
+    """Each listing used to mint new references, so going back and forth
+    spent the browse's reference budget and later listings came back empty."""
+    for index in range(40):
+        (tmp_path / f"dir-{index:02d}").mkdir()
+    browser = DirectoryBrowser(platform_name="linux", home=tmp_path)
+    roots, home = _root_listing(browser)
+
+    first = browser.list_directories(roots.browse_id, home.directory_ref)
+    for _ in range(MAX_REFS_PER_BROWSE // 40 + 1):
+        again = browser.list_directories(roots.browse_id, home.directory_ref)
+
+    assert again.truncated is False
+    assert [entry.directory_ref for entry in again.entries] == [
+        entry.directory_ref for entry in first.entries
     ]
 
 
