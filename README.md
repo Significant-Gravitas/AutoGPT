@@ -16,7 +16,7 @@ Once connected, AutoGPT can:
 - Read and write files on your filesystem (jailed to the folder selected for that chat)
 - *(Optional, disabled by default)* Execute shell commands as your user
   (per-OS shell selection — bash/zsh/pwsh/cmd)
-- *(Optional)* Take screenshots and control mouse/keyboard via Claude's computer use API
+- *(Optional)* Operate apps on this computer through [cua-driver](https://github.com/trycua/cua): read windows, click, type, fill forms, in the background where it can
 - *(Optional)* Access local hardware (serial, USB, GPIO)
 - Local-model routing is disabled scaffolding; it is not a supported chat mode.
 
@@ -103,7 +103,8 @@ documentation, not a currently enabled product promise.
 | [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) | Per-OS support matrix and path-jail strategy |
 | [AUDIT_LOG.md](docs/AUDIT_LOG.md) | Audit log format, HMAC tamper-evidence, CLI |
 | [HARDWARE.md](docs/HARDWARE.md) | Hardware access wire spec (serial / USB / GPIO) |
-| [COMPUTER_USE.md](docs/COMPUTER_USE.md) | Computer-use wire spec — screenshots, input, windows, clipboard |
+| [COMPUTER_USE.md](docs/COMPUTER_USE.md) | Computer use: setup per OS, clipboard, privacy, troubleshooting |
+| [CUA_DRIVER.md](docs/CUA_DRIVER.md) | How the shim runs cua-driver: tool catalog, policy, enforcement, residual risk |
 | [MULTI_MACHINE.md](docs/MULTI_MACHINE.md) | Multi-machine orchestration spec (one session, N shims) |
 | [PRIVACY_MODE.md](docs/PRIVACY_MODE.md) | Privacy mode design proposal — not a current guarantee that files or local-model content stay on the machine |
 | [RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) | Operator runbook for PyPI / Homebrew / Scoop publish |

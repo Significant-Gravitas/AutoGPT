@@ -26,7 +26,7 @@ All messages are JSON with this envelope:
   "type": "MESSAGE_TYPE",
   "id": "uuid-v4",
   "ts": 1712345678.123,
-  "version": "1.1",
+  "version": "2.0",
   "payload": { ... }
 }
 ```
@@ -81,8 +81,13 @@ on the platform side, the session SHOULD be torn down with code 4426).
 
 | Side | Maximum | Notes |
 |---|---|---|
-| Shim | `1.1` | `autogpt_local_executor.protocol.VERSION` |
-| Platform | `1.1` | Mirror this constant in the platform repo. |
+| Shim | `2.0` | `autogpt_local_executor.protocol.VERSION` |
+| Platform | `2.0` | Mirror this constant in the platform repo. |
+
+| Version | Change |
+|---|---|
+| `2.0` | Computer use relays cua-driver's tools: `COMPUTER_TOOLS_REQUEST` / `COMPUTER_TOOLS_RESPONSE` and `COMPUTER_TOOL_CALL` / `COMPUTER_TOOL_RESULT` replace the screen-coordinate operations (`SCREENSHOT_REQUEST`, `INPUT_ACTION`, `CURSOR_POSITION_REQUEST`, `DISPLAY_INFO_REQUEST`, `WINDOW_LIST_REQUEST`, `WINDOW_FOCUS`, `APP_LIST_REQUEST`, `APP_LAUNCH`, `CLIPBOARD_READ`, `CLIPBOARD_WRITE`, `PERMISSIONS_CHECK_REQUEST` and their responses). `HELLO.computer_use_driver` replaces `computer_use_features` and `computer_use_features_coarse`. `WINDOW_STALE` and `INPUT_OUT_OF_BOUNDS` are gone. Machine control needs no particular minor. |
+| `1.1` | Machine control: the control connection, `DIRECTORY_LIST_*`, `ATTACH_SESSION`, `ACTIVATE_SESSION`, `RESTORE_SESSION`, `DETACH_SESSION`. |
 
 ---
 
@@ -96,25 +101,26 @@ on the platform side, the session SHOULD be torn down with code 4426).
   "type": "HELLO",
   "id": "uuid",
   "ts": 1234567890.0,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "shim_version": "0.1.0",
-    "protocol_version": "1.1",     // max wire version this shim supports
+    "protocol_version": "2.0",     // max wire version this shim supports
     "machine_id": "hostname-uuid4",
     "platform": "darwin",          // "darwin" | "linux" | "windows" | "wsl2"
     "arch": "arm64",               // "x86_64" | "arm64" (normalized; see below)
-    "screen_resolution": [2560, 1440],   // null if computer_use not available
+    "screen_resolution": [2560, 1440],   // main display's logical size; null without computer_use
     "capabilities": [
       "directory_browse",          // control WS only
       "shell",                     // optional: explicit local --enable-shell opt-in
       "files",                     // always present
-      "computer_use",              // optional: pyautogui available
+      "computer_use",              // optional: cua-driver installed and started
       "local_llm",                 // optional: ollama running
       "hardware_serial",           // optional: pyserial available
       "hardware_usb",              // optional: pyusb available
       "hardware_gpio"              // optional: RPi.GPIO available
     ],
     "allowed_root": null,        // control WS; canonical root on a data WS
+    "computer_use_driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "local_llm_models": ["llama3.2:3b", "mistral:7b"],   // empty if no local_llm cap
     "hardware_devices": [
       {"type": "serial", "port": "/dev/ttyUSB0", "desc": "Arduino Uno"},
@@ -134,11 +140,11 @@ flag is enabled, until capture and interpretation are complete end to end.
   "type": "HELLO_ACK",
   "id": "same-uuid-as-HELLO",
   "ts": 1234567890.1,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "session_id": null,          // null on control; exact ID on data WS
     "connection_id": null,       // optional platform presence generation
-    "protocol_version": "1.1",     // max wire version this platform supports
+    "protocol_version": "2.0",     // max wire version this platform supports
     "granted_capabilities": ["shell", "files"],  // subset platform approved
     "max_file_size_bytes": 10485760,
     "command_timeout_seconds": 30,
@@ -161,8 +167,9 @@ ceiling but cannot expand access beyond the user's local policy.
 The ACK must carry the same message ID as `HELLO` and only capabilities
 advertised by the shim. On a data connection it must carry the exact selected
 session ID. On the base control connection it must carry a null/empty session
-ID, an opaque `connection_id`, protocol 1.1 (named in `protocol_version`,
-not left to its default), and the `directory_browse` capability. A control
+ID, an opaque `connection_id`, a 2.x protocol version (named in
+`protocol_version`, not left to its default), and the `directory_browse`
+capability. A control
 daemon fails terminally when any of those fields are missing, closing with
 4426, or when the ACK doesn't parse at all, closing with 4400. The shim
 enforces the granted subset on every subsequent request.
@@ -699,7 +706,7 @@ currently supported chat path. A missing capability must never be overridden.
   "type": "LOCAL_LLM_COMPLETION",
   "id": "req-uuid",
   "ts": 1234567890.0,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "model": "llama3.2:3b",
     "messages": [
@@ -737,7 +744,7 @@ currently supported chat path. A missing capability must never be overridden.
   "type": "LOCAL_LLM_COMPLETION_CHUNK",
   "id": "req-uuid",
   "ts": 1234567890.1,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "delta": "The user spent ",
     "finish_reason": null
@@ -764,7 +771,7 @@ across the platform protocol is still a prerequisite for activation.
   "type": "LOCAL_LLM_COMPLETION_RESPONSE",
   "id": "req-uuid",
   "ts": 1234567890.5,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "content": "The user spent ...",
     "finish_reason": "stop",
@@ -784,111 +791,119 @@ wall-clock backend time, not the platform's round-trip.
 
 ### Computer Use
 
-**For the full v1 computer-use feature spec and per-OS capability matrix, see [COMPUTER_USE.md](COMPUTER_USE.md).**
+Computer use relays [cua-driver](https://github.com/trycua/cua)'s own tools.
+The shim runs `cua-driver mcp` and offers a reviewed subset of its tools
+under its own policy; the platform lists them, then calls them by name with
+the driver's arguments. Coordinates, window IDs and element tokens are the
+driver's, scoped to a window and a state snapshot, not a shim-wide screen.
+[CUA_DRIVER.md](CUA_DRIVER.md) has the design, the catalog and its policy;
+[COMPUTER_USE.md](COMPUTER_USE.md) has setup and behavior per OS.
 
-#### `SCREENSHOT_REQUEST` (platform → shim)
+`HELLO.computer_use_driver` names the driver once it has started:
+`{"name": "cua-driver", "version": "0.38.0", "runtime": "direct"}`, where
+`runtime` is `service` when the driver relays to CuaDriver.app on macOS.
+`computer_use` is advertised only then.
+
+#### `COMPUTER_TOOLS_REQUEST` (platform → shim)
 ```json
-{
-  "type": "SCREENSHOT_REQUEST",
-  "id": "req-uuid",
-  "ts": 1234567890.0,
-  "payload": {
-    "monitor": 0,                       // 0 = primary, -1 = all monitors stitched
-    "quality": 75,                      // JPEG quality 1-100
-    "region": null,                     // optional [x1, y1, x2, y2]
-    "window_id": null,                  // optional opaque ID from WINDOW_LIST_RESPONSE
-    "format": "jpeg",                   // "jpeg" | "png"
-    "include_cursor": true              // overlay the OS cursor in the capture
-  }
-}
+{"type": "COMPUTER_TOOLS_REQUEST", "id": "req-uuid", "ts": 1234567890.0, "payload": {}}
 ```
 
-`region` and `window_id` are mutually exclusive. Coordinates in `region`
-are display-global, unscaled, top-left-origin pixels — same as
-`INPUT_ACTION.coordinate`. See
-[COMPUTER_USE.md](COMPUTER_USE.md) for the full feature spec.
-
-#### `SCREENSHOT_RESPONSE` (shim → platform)
+#### `COMPUTER_TOOLS_RESPONSE` (shim → platform)
 ```json
 {
-  "type": "SCREENSHOT_RESPONSE",
+  "type": "COMPUTER_TOOLS_RESPONSE",
   "id": "req-uuid",
   "ts": 1234567890.2,
   "payload": {
-    "image_base64": "...",
-    "mime_type": "image/jpeg",
-    "width": 2560,
-    "height": 1440,
-    "monitor": 0,
-    "region": null,                     // echoed when request had one
-    "display_scale": 1.0,
-    "logical_size": [2560, 1440],
-    "meta": {                           // see COMPUTER_USE.md Q1
-      "origin": [0, 0],
-      "display_id": 0
-    }
+    "driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
+    "instructions": "cua-driver: background GUI automation. ...",
+    "tools": [
+      {
+        "name": "get_window_state",
+        "description": "...",
+        "input_schema": {"type": "object", "properties": {"pid": {"type": "integer"}}},
+        "annotations": {"readOnlyHint": true}
+      }
+    ]
   }
 }
 ```
 
-The shim checks raw screenshot bytes against
-`HELLO_ACK.max_file_size_bytes` before base64 encoding. Oversized captures
-return `FILE_TOO_LARGE` instead of building an envelope that exceeds the relay
-limit.
+`instructions` is the driver's own operating guidance with the shim's notes
+for this machine appended (clipboard mode, screenshot budget, what is not
+offered). The model should see it before it acts. `tools` holds only what
+this machine offers: the clipboard tools appear only with
+`--enable-clipboard`, and a tool the driver lacks on this OS is absent.
+Schemas never show `session`: the shim sets it on every call, one label per
+shim session, so each session gets its own agent cursor and cleanup. The
+list doesn't change while the shim runs; the platform may cache it per
+connection. Listing tools never waits for a running action.
 
-#### `INPUT_ACTION` (platform → shim)
+#### `COMPUTER_TOOL_CALL` (platform → shim)
 ```json
 {
-  "type": "INPUT_ACTION",
+  "type": "COMPUTER_TOOL_CALL",
   "id": "req-uuid",
   "ts": 1234567890.0,
   "payload": {
-    "action": "left_click",     // "left_click" | "right_click" | "double_click"
-                                // | "middle_click" | "triple_click"
-                                // | "mouse_move" | "mouse_down" | "mouse_up"
-                                // | "drag" | "type" | "key" | "hold_key"
-                                // | "scroll" | "wait"
-    "coordinate": [500, 300],   // for click/move/scroll
-    "text": null,               // for "type"
-    "key": null,                // for "key" e.g. "ctrl+s"
-    "direction": null,          // for "scroll": "up" | "down"
-    "clicks": null,             // for "scroll": number of clicks
-    "button": null,             // "left" | "middle" | "right" — for mouse_down/up/drag
-    "modifiers": null,          // subset of "shift"|"ctrl"|"alt"|"super" — for click/scroll
-    "scroll_amount": null,      // alternative to clicks for "scroll"
-    "scroll_direction": null,   // alternative to direction for "scroll"
-    "duration_ms": null,        // for "hold_key" and "wait"
-    "path": null,               // [[x,y], ...] for "drag"
-    "paste": false,             // for "type" — see Q4
-    "preserve_clipboard": false // for "type" with paste — see Q4
+    "tool": "run_steps",
+    "arguments": {"pid": 844, "window_id": 10725, "steps": [{"tool": "click", "args": {"element_token": "s0000002a:14"}}], "observe": {}},
+    "timeout_seconds": 120
   }
 }
 ```
 
-Coordinates are always **display-global, unscaled, top-left-origin
-virtual-display pixels** regardless of any prior region screenshot. On a
-HiDPI display that means logical units (points on macOS). To turn a
-point in a screenshot into a coordinate, divide it by the screenshot's
-`display_scale`, then add its `meta.origin`.
-Out-of-bounds coordinates return `INPUT_OUT_OF_BOUNDS`. See
-[COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
+`tool` matches `^[a-z][a-z0-9_]{0,63}$`. `arguments` follows the tool's
+`input_schema`. `timeout_seconds` (1-600, default 120) bounds the call; at
+the deadline the shim tells the driver to stop it and answers
+`COMMAND_TIMEOUT`, though an action the driver already made stays made.
+Calls from every session on a machine take turns: there is one screen.
 
-#### Other computer-use ops (xref)
+The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
+doesn't offer, and, with `details.argument` too, an argument that reaches
+past the screen: `screenshot_out_file` (images come back in the result),
+clipboard `file_path` / `image_path`, and `check_permissions` with
+`prompt: true`. It looks inside `run_steps` batches for these as well.
 
-The following message types are specified in full in
-[COMPUTER_USE.md](COMPUTER_USE.md). Brief signatures:
+#### `COMPUTER_TOOL_RESULT` (shim → platform)
+```json
+{
+  "type": "COMPUTER_TOOL_RESULT",
+  "id": "req-uuid",
+  "ts": 1234567890.4,
+  "payload": {
+    "tool": "run_steps",
+    "is_error": false,
+    "content": [
+      {"type": "text", "text": "1/1 steps ok ..."},
+      {"type": "image", "data": "iVBORw0...", "mime_type": "image/png"}
+    ],
+    "structured_content": {"ok": true, "executed": 1}
+  }
+}
+```
 
-| Type | Direction | Returns |
-|---|---|---|
-| `CURSOR_POSITION_REQUEST` | platform → shim | `CURSOR_POSITION_RESPONSE` with `{x, y, monitor}` |
-| `DISPLAY_INFO_REQUEST` | platform → shim | `DISPLAY_INFO_RESPONSE` with per-monitor `index`, `primary`, `physical_size`, `logical_size`, `scale`, `origin` |
-| `WINDOW_LIST_REQUEST` | platform → shim | `WINDOW_LIST_RESPONSE` with `windows[].window_id` (shim-minted `win_<uuid>`, see Q2) |
-| `WINDOW_FOCUS` | platform → shim | `ACK` (or `WINDOW_STALE`) |
-| `APP_LIST_REQUEST` | platform → shim | `APP_LIST_RESPONSE` |
-| `APP_LAUNCH` | platform → shim | `ACK` with `pid` |
-| `CLIPBOARD_READ` | platform → shim | `CLIPBOARD_READ_RESPONSE` or `CLIPBOARD_CONCEALED` |
-| `CLIPBOARD_WRITE` | platform → shim | `ACK` |
-| `PERMISSIONS_CHECK_REQUEST` | platform → shim | `PERMISSIONS_CHECK_RESPONSE` |
+The driver's own answer, including its refusals and failed actions:
+`is_error: true` is a result the model reads and acts on (a stale element
+token, a refused background delivery), not a shim failure. Shim failures
+come back as `ERROR`: `DEPENDENCY_MISSING` (no usable cua-driver),
+`INTERNAL_ERROR` (the driver stopped), `COMMAND_TIMEOUT`,
+`CLIPBOARD_CONCEALED`, `FEATURE_NOT_SUPPORTED`.
+
+Content is text and image blocks; another kind of block becomes a text
+note. Images are base64 as the driver produced them, at most
+`max_screenshots_per_minute` a minute (default 10) per machine; past that,
+or when the frame would exceed the WebSocket limit, images are left out and
+a text block says why. `structured_content` is the driver's
+`structuredContent`, dropped only when the result can't otherwise fit.
+
+`clipboard_read` returns text under the shim's rules: by default only text
+this shim wrote in the last 30 seconds (else `CLIPBOARD_CONCEALED` with
+`details.reason` `writeback_only` or `writeback_overwritten`); with
+`--enable-clipboard-read-foreign` anything except content a password
+manager marked private (`concealed_type`, with `details.marker`), and never
+a copy made while it was read (`changed`).
 
 ---
 
@@ -925,10 +940,11 @@ Error codes:
 - `AUTH_FAILED` — token invalid or expired
 - `SHIM_OVERLOADED` — too many concurrent requests (exceeded `max_concurrent`)
 - `INTERNAL_ERROR` — unexpected shim error
-- `FILE_TOO_LARGE` — file, screenshot, clipboard, or command output exceeded
+- `FILE_TOO_LARGE` — file or command output exceeded
   `HELLO_ACK.max_file_size_bytes`
-- `DEPENDENCY_MISSING` — a runtime dep needed for the op (pyautogui,
-  Pillow, xclip, etc.) isn't installed on the shim host
+- `DEPENDENCY_MISSING` — a runtime dependency the op needs isn't installed
+  on the shim host: no cua-driver, or one of a version the shim wasn't
+  reviewed against
 - `DIRECTORY_REFERENCE_INVALID` — browse/reference pair is malformed,
   expired, consumed, or belongs to a prior control connection
 - `DIRECTORY_UNAVAILABLE` — selected directory disappeared, changed into a
@@ -940,22 +956,14 @@ Error codes:
   data runtime was active; detach first
 - `SESSION_REVISION_MISMATCH` — activation/restore supplied a stale or
   conflicting root revision
-- `WINDOW_STALE` — computer-use `window_id` no longer maps to a live
-  window. Caller must re-issue `WINDOW_LIST_REQUEST`. See
-  [COMPUTER_USE.md §Q2](COMPUTER_USE.md#q2--window_id-lifetime-locked).
-- `PERMISSION_PENDING` — an OS-level permission required for the op
-  (macOS Accessibility / Screen Recording) wasn't granted, or was
-  revoked mid-session. Distinct from `CAPABILITY_NOT_GRANTED`. See
-  [COMPUTER_USE.md §Q5](COMPUTER_USE.md#q5--macos-tcc-first-prompt-ux-locked).
-- `FEATURE_NOT_SUPPORTED` — requested computer-use op is not in
-  `HELLO.computer_use_features`, or attempted on an unsupported OS /
-  session (e.g. Wayland input). See [COMPUTER_USE.md](COMPUTER_USE.md).
-- `CLIPBOARD_CONCEALED` — clipboard contents are not readable under the
-  active sandbox policy. See [COMPUTER_USE.md §Q3](COMPUTER_USE.md#q3--clipboard-sandbox-model-locked).
-- `INPUT_OUT_OF_BOUNDS` — `INPUT_ACTION.coordinate` is outside the
-  union of connected display rects. Error payload includes the valid
-  display rects so the caller can correct. See
-  [COMPUTER_USE.md §Q1](COMPUTER_USE.md#q1--coordinate-space-locked).
+- `PERMISSION_PENDING` — an OS-level permission computer use needs (macOS
+  Accessibility / Screen Recording) isn't granted. Distinct from
+  `CAPABILITY_NOT_GRANTED`. See [COMPUTER_USE.md](COMPUTER_USE.md).
+- `FEATURE_NOT_SUPPORTED` — a computer tool this machine doesn't offer, or
+  an argument it refuses (`details.tool`, `details.argument`). See
+  [CUA_DRIVER.md](CUA_DRIVER.md).
+- `CLIPBOARD_CONCEALED` — `clipboard_read` found content this session may
+  not read; `details.reason` says why. See [COMPUTER_USE.md](COMPUTER_USE.md).
 - `MODEL_NOT_AVAILABLE` — `LOCAL_LLM_COMPLETION.model` not present in
   the `HELLO.local_llm_models` advertisement, OR the backend reports
   the model is no longer loaded (e.g. Ollama 404 on `/api/chat`). The
@@ -973,8 +981,7 @@ Error codes:
   [LOCAL_LLM.md](LOCAL_LLM.md).
 
 Error `ERROR.payload` MAY carry an optional `details` object whose shape
-depends on `code` — see the per-code examples in
-[COMPUTER_USE.md](COMPUTER_USE.md).
+depends on `code`.
 
 ---
 
@@ -1020,7 +1027,7 @@ orphaning the prior shim's pending requests with no clean error.
   "type": "SESSION_REVOKED",
   "id": "uuid",
   "ts": 1234567890.0,
-  "version": "1.1",
+  "version": "2.0",
   "payload": {
     "reason": "another_shim_connected",   // | "user_revoked" | "platform_shutdown"
     "new_shim_machine_id": "macbook-air-7f3c"   // optional, set when reason is another_shim_connected
@@ -1073,6 +1080,8 @@ for the base backoff before reconnecting, preventing a hot loop.
 The platform may send multiple requests before receiving responses (pipelined). The shim
 assigns each request its own async task and responds with matching `id` when complete.
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
+`COMPUTER_TOOL_CALL`s from every session on a machine take turns, since
+they share one screen.
 
 ---
 
@@ -1096,11 +1105,8 @@ retrying).
 | `FILE_WRITE` | yes | Last-write-wins; replay produces same file state. |
 | `FILE_DELETE` | yes | Re-delete with `missing_ok: true` is a no-op; the platform retries with `missing_ok: true`. |
 | `FILE_MOVE` | **no** | Source path is gone after success; replay → `PATH_NOT_FOUND`. Platform surfaces, doesn't auto-retry. |
-| `SCREENSHOT_REQUEST` | yes | Pure read of current display. |
-| `INPUT_ACTION` | **no** | Mouse clicks / key presses have side effects. Never auto-retry. |
-| `WINDOW_FOCUS` / `APP_LAUNCH` | **no** | State-mutating UI ops. |
-| `CLIPBOARD_READ` | yes | Pure read. |
-| `CLIPBOARD_WRITE` | yes | Last-write-wins. |
+| `COMPUTER_TOOLS_REQUEST` | yes | Pure read of the tool list. |
+| `COMPUTER_TOOL_CALL` | **no** | Most tools click, type or launch. Never auto-retry, even a read-only one: the model decides what to do after a failure. |
 | `LOCAL_LLM_COMPLETION` | yes | Same prompt almost certainly produces different output (sampling), but for retry semantics the platform CAN safely re-issue — the user-facing turn is non-destructive and the worst case is "you got a slightly different answer". The auto-retry layer treats it as idempotent. |
 | `REQUEST_RECORDING_CONSENT` | **no** | Displays a local user prompt. Never auto-retry or duplicate prompts. |
 | `START_RECORDING` | **no** | Mints a fresh `recording_id` and begins capture; a re-issue while one is active gets `RECORDING_ALREADY_ACTIVE`. Platform surfaces, doesn't auto-retry. |
@@ -1153,7 +1159,7 @@ ticket; this section is the contract.
   "type": "STATUS",
   "id": "uuid",
   "ts": 1234567890.0,
-  "version": "1.1",
+  "version": "2.0",
   "pending_capacity": 3,
   "payload": {
     "in_flight": 1,

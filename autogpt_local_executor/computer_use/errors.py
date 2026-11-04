@@ -1,12 +1,4 @@
-"""
-Structured backend errors → wire ERROR envelopes.
-
-Each backend method raises one of these on a recoverable failure; the
-dispatcher in `computer_use.backend` converts to an `ErrorMessage` with
-the matching `ErrorCode` and a `details` payload the platform can
-inspect (display rects, window_id hints, etc). See docs/COMPUTER_USE.md
-Q1-Q5 for the per-code shape.
-"""
+"""Computer-use failures the shim reports as wire ERROR envelopes."""
 
 from __future__ import annotations
 
@@ -15,63 +7,26 @@ from typing import Any
 from ..protocol import ErrorCode
 
 
-class BackendError(Exception):
-    """Base class for structured backend errors."""
+class ComputerUseError(Exception):
+    """A refusal or failure with the wire error code it maps to."""
 
-    code: ErrorCode
-
-    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
+        self.code = code
         self.message = message
         self.details = details or {}
 
 
-class WindowStaleError(BackendError):
-    code = ErrorCode.WINDOW_STALE
-
-    def __init__(self, window_id: str, *, message: str | None = None) -> None:
-        super().__init__(
-            message or f"window_id {window_id} no longer maps to a live window",
-            details={"window_id": window_id, "hint": "re-list windows"},
-        )
-
-
-class PermissionPendingError(BackendError):
-    code = ErrorCode.PERMISSION_PENDING
-
-    def __init__(
-        self,
-        permission: str,
-        platform: str,
-        *,
-        message: str | None = None,
-        hint: str | None = None,
-    ) -> None:
-        details: dict[str, Any] = {"permission": permission, "platform": platform}
-        if hint:
-            details["hint"] = hint
-        super().__init__(
-            message or f"{permission} permission required but not granted",
-            details=details,
-        )
-
-
-class FeatureNotSupportedError(BackendError):
-    code = ErrorCode.FEATURE_NOT_SUPPORTED
-
-    def __init__(self, feature: str, *, reason: str | None = None) -> None:
-        details: dict[str, Any] = {"feature": feature}
-        if reason:
-            details["reason"] = reason
-        super().__init__(
-            f"feature {feature!r} is not supported on this backend"
-            + (f": {reason}" if reason else ""),
-            details=details,
-        )
-
-
-class ClipboardConcealedError(BackendError):
-    code = ErrorCode.CLIPBOARD_CONCEALED
+class ClipboardConcealedError(ComputerUseError):
+    """The clipboard holds content this session may not read: text the shim
+    didn't write (without --enable-clipboard-read-foreign), or content a
+    password manager marked private."""
 
     def __init__(
         self,
@@ -87,43 +42,10 @@ class ClipboardConcealedError(BackendError):
         if writeback_age_seconds is not None:
             details["writeback_age_seconds"] = writeback_age_seconds
         super().__init__(
+            ErrorCode.CLIPBOARD_CONCEALED,
             message or f"clipboard contents not readable: {reason}",
             details=details,
         )
 
 
-class ClipboardWriteError(BackendError):
-    """The clipboard could not be written, e.g. another app holds it open."""
-
-    code = ErrorCode.INTERNAL_ERROR
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(f"Could not write the clipboard: {reason}", details={"reason": reason})
-
-
-class InputOutOfBoundsError(BackendError):
-    code = ErrorCode.INPUT_OUT_OF_BOUNDS
-
-    def __init__(
-        self,
-        coordinate: tuple[int, int],
-        displays: list[dict[str, Any]],
-    ) -> None:
-        super().__init__(
-            f"coordinate {tuple(coordinate)} is outside the union of connected display bounds",
-            details={
-                "requested_coordinate": list(coordinate),
-                "displays": displays,
-            },
-        )
-
-
-__all__ = [
-    "BackendError",
-    "ClipboardConcealedError",
-    "ClipboardWriteError",
-    "FeatureNotSupportedError",
-    "InputOutOfBoundsError",
-    "PermissionPendingError",
-    "WindowStaleError",
-]
+__all__ = ["ClipboardConcealedError", "ComputerUseError"]

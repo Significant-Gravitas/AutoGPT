@@ -18,14 +18,14 @@ in `HELLO.capabilities` and the platform degrades gracefully.
 
 | OS | Architecture | Tier | Notes |
 |---|---|---|---|
-| macOS 13+ (Ventura/Sonoma/Sequoia) | arm64 (Apple Silicon) | **Tier 1** | Primary dev target. Computer use requires Accessibility + Screen Recording TCC grant. |
+| macOS 13+ (Ventura/Sonoma/Sequoia) | arm64 (Apple Silicon) | **Tier 1** | Primary dev target. Computer use requires Accessibility + Screen Recording, held by CuaDriver.app when it is installed. |
 | macOS 13+ | x86_64 (Intel) | **Tier 1** | Same code path as arm64; Rosetta not required. |
 | Windows 10 / 11 | x86_64 | **Tier 1** | Computer use works on Win32 desktop; UAC-elevated windows are uncontrollable from a non-elevated shim. |
-| Ubuntu 22.04 / 24.04, Debian 12 | x86_64 | **Tier 1** | Computer use works on X11. **Wayland sessions block input injection** — the shim advertises `computer_use` only in an X11 session (no `WAYLAND_DISPLAY`) whose `DISPLAY` accepts a connection. |
+| Ubuntu 22.04 / 24.04, Debian 12 | x86_64 | **Tier 1** | Computer use needs a desktop session: X11, or Wayland through XWayland (or cua-driver's native Wayland backend, opt-in). |
 | Ubuntu / Debian | arm64 | **Tier 2** | Same code path; not all hardware features tested. |
-| Fedora 39+ / RHEL 9+ | x86_64 | **Tier 2** | Same code path as Ubuntu. Wayland is default — same X11 caveat applies. |
+| Fedora 39+ / RHEL 9+ | x86_64 | **Tier 2** | Same code path as Ubuntu. Wayland is the default; computer use goes through XWayland. |
 | WSL2 (Ubuntu/Debian on Windows) | x86_64 | **Tier 2** | Treated as Linux. `/mnt/c/...` paths work but cross the Windows/Linux permission boundary; see [WSL2 section](#wsl2). No computer use (no display). |
-| Windows on ARM | arm64 | **Best-effort** | Untested. Python 3.11+ runs natively; `pyautogui` should work. |
+| Windows on ARM | arm64 | **Best-effort** | Untested. Python 3.11+ runs natively; cua-driver ships a `win_arm64` wheel. |
 | Other Linux distros (Arch, openSUSE, Alpine, NixOS) | x86_64 / arm64 | **Best-effort** | Should work via pipx. Keychain backend depends on installed Secret Service implementation. |
 | FreeBSD, OpenBSD, illumos | any | **Unsupported** | Out of scope. |
 
@@ -117,22 +117,25 @@ paths only; navigation and selection use short-lived opaque references.
 | Line ending on disk | `\n` | `\n` | `\r\n` (when an app writes "text" mode) | Shim does NOT auto-translate. See [PROTOCOL.md FILE_READ semantics](PROTOCOL.md). |
 | Console / subprocess encoding | UTF-8 | UTF-8 (depends on `LC_*`) | OEM code page (e.g., CP437) or UTF-8 if `PYTHONIOENCODING=utf-8` | Shim sets `PYTHONIOENCODING=utf-8` and `chcp 65001` on Windows before subprocess. |
 
-### Computer use (screen capture + input injection)
+### Computer use
 
-| Dimension | macOS | Linux (X11) | Linux (Wayland) | Windows | Notes |
-|---|---|---|---|---|---|
-| Screen capture | `screencapture` / `mss` | `mss` / `pyautogui` | **Blocked** unless using portal+pipewire | `mss` / `pyautogui` | Wayland sessions: `capabilities` omits `computer_use`. |
-| Input injection | `pyautogui` (Quartz) | `xdotool` / `pyautogui` | **Blocked** | `pyautogui` (Win32 SendInput) | Wayland: blocked. |
-| Permission prompt | TCC: Accessibility (input) + Screen Recording (capture) | none | n/a | UAC: non-elevated shim cannot inject into elevated windows | `autogpt-shim doctor` proactively surfaces the macOS dialog via `AXIsProcessTrustedWithOptions({AXTrustedCheckOptionPrompt: True})`; the daemon refuses to bind WS (exit 78) when computer-use is requested but consent is missing, and launchd's `KeepAlive: SuccessfulExit=false` re-launches it after the user grants consent. Revocation mid-session returns `PERMISSION_PENDING` on the next AX-dependent op; the platform LLM retries on the next turn. See [COMPUTER_USE.md §Q5](COMPUTER_USE.md#q5--macos-tcc-first-prompt-ux-locked). |
-| DPI scaling | Logical points: input coordinates and display rects are in points; screenshots are captured at the backing resolution | 1:1 typically | n/a | Per-monitor DPI; shim sets process DPI aware via `SetProcessDpiAwareness(2)` | Input coordinates on the wire are display-global logical units (points on macOS). A screenshot can be larger by its `display_scale`; to send a point in the image as a coordinate, divide it by `display_scale` and add the screenshot's `meta.origin`. |
-| Multi-monitor | Supported | Supported | n/a | Supported | `monitor: -1` stitches; `monitor: N` selects. |
+Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
+[CUA_DRIVER.md](CUA_DRIVER.md).
+
+| Dimension | macOS | Linux | Windows |
+|---|---|---|---|
+| Driver runtime | CuaDriver.app when installed, else the driver process itself (`--direct`) | the driver process | the driver process |
+| Reading windows | Accessibility (AX) tree + ScreenCaptureKit | AT-SPI over the session bus + X11/Wayland capture | UI Automation tree + window capture |
+| Acting | AX actions in the background, pixel and foreground input as fallbacks | AT-SPI actions, XSendEvent on X11; foreground input on Wayland | UIA patterns and window messages in the background, foreground input as fallback |
+| Permissions | Accessibility + Screen Recording; `doctor` raises the prompts; a missing one makes the daemon exit 78 and launchd retry | none | a non-elevated shim can't drive elevated windows |
+| Not supported | | sessions without a display | session 0 services; WSL2 (no Windows desktop) |
 
 ### Autostart / background daemon
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` reverses it. |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: it powers the TCC re-launch chain (the daemon exits 78 when computer-use is requested but Accessibility / Screen Recording aren't granted; the OS re-spawns the daemon on the next TCC.db change, so granting consent in System Settings auto-recovers without the user touching launchctl). See [COMPUTER_USE.md §Q5](COMPUTER_USE.md#q5--macos-tcc-first-prompt-ux-locked). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: it powers the TCC re-launch chain (the daemon exits 78 when computer-use is requested but Accessibility / Screen Recording aren't granted; the OS re-spawns the daemon on the next TCC.db change, so granting consent in System Settings auto-recovers without the user touching launchctl). See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
@@ -152,7 +155,7 @@ missing keychain backend stops it. The systemd unit doesn't restart on 78
 either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
 failure fails the same way every time, and Linux has no permission prompt
 to wait for. Under launchd, a bad config and a preflight failure no
-restart can fix (a preview turned on, pyobjc missing) exit 0 for the same
+restart can fix (a preview turned on, no cua-driver) exit 0 for the same
 reason. A missing macOS permission still exits 78, so launchd relaunches
 the shim once it is granted.
 

@@ -7,7 +7,7 @@ Implements the tables in docs/CROSS_PLATFORM.md:
 - "Machine ID source"
 - "Default allowed_root"
 - "Audit log location"
-- Capability probes (pyautogui / ollama / pyserial / pyusb / RPi.GPIO)
+- Capability probes (cua-driver / ollama / pyserial / pyusb / RPi.GPIO)
 
 Everything in this module is sync — the daemon calls it once at startup.
 """
@@ -21,7 +21,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import threading
 import uuid
 from functools import lru_cache
 from pathlib import Path
@@ -79,6 +78,7 @@ def detect_capabilities(
     enable_local_llm: bool = False,
     enable_hardware: bool = False,
     enable_recording: bool = False,
+    cua_driver_path: str | None = None,
 ) -> list[str]:
     """Return the list of capabilities to advertise in HELLO.
 
@@ -89,7 +89,7 @@ def detect_capabilities(
     if enable_shell:
         caps.append("shell")
     caps.append("files")  # always present
-    if enable_computer_use and _can_do_computer_use():
+    if enable_computer_use and can_do_computer_use(cua_driver_path):
         caps.append("computer_use")
     if enable_hardware:
         if _module_available("serial"):
@@ -109,96 +109,21 @@ def available_recording_channels() -> list[str]:
     return []
 
 
-# The third-party modules each computer-use backend imports. The
-# computer-use extra installs them, and tests/test_computer_use_requirements.py
-# keeps the backends, this list and the extra in step.
-_COMPUTER_USE_MODULES = ("pyautogui", "PIL", "mss")
-_COMPUTER_USE_PLATFORM_MODULES = {
-    "darwin": ("Quartz", "AppKit", "Cocoa", "ApplicationServices"),
-    "windows": (
-        "win32api",
-        "win32clipboard",
-        "win32con",
-        "win32gui",
-        "win32process",
-        "win32ui",
-    ),
-}
+def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
+    """Whether computer use can be offered: cua-driver is installed and, on
+    Linux, has a display to drive, an X server or a Wayland compositor (it
+    uses XWayland unless CUA_DRIVER_RS_ENABLE_WAYLAND=1). WSL2 has neither
+    for Windows apps. The daemon advertises it only once the driver starts."""
+    from .computer_use.driver import find_driver_binary
 
-
-def computer_use_modules(platform_name: str) -> tuple[str, ...]:
-    return (*_COMPUTER_USE_MODULES, *_COMPUTER_USE_PLATFORM_MODULES.get(platform_name, ()))
-
-
-def _can_do_computer_use() -> bool:
-    """Advertise computer_use only when every module its backend imports is
-    installed and, per CROSS_PLATFORM.md, not on Wayland, which blocks input
-    injection.
-    """
     plat = detect_platform()
-    if not all(_module_available(name) for name in computer_use_modules(plat)):
-        return False
-    if plat in ("linux",):
-        # Computer use needs an X display, and Wayland sessions can't inject
-        # input even into XWayland apps — see CROSS_PLATFORM.md row.
-        wayland = os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" or bool(
-            os.environ.get("WAYLAND_DISPLAY")
-        )
-        if wayland or not os.environ.get("DISPLAY"):
-            return False
-        if not _x11_display_opens():
-            return False
     if plat == "wsl2":
         return False
+    if find_driver_binary(cua_driver_path) is None:
+        return False
+    if plat == "linux":
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     return True
-
-
-# How long the X server has to answer the display probe.
-X11_PROBE_SECONDS = 5.0
-
-
-# The probe still running, if any, and where it puts its outcome.
-_x11_probe: tuple[threading.Thread, list[bool]] | None = None
-_x11_probe_lock = threading.Lock()
-
-
-def _x11_display_opens() -> bool:
-    """Whether the X server DISPLAY names accepts a connection. A set DISPLAY
-    can still name a server that has gone, such as a closed SSH forward.
-    pyautogui connects through python-xlib, so the probe does too.
-
-    python-xlib waits for the server's setup reply with no time limit, so a
-    server that takes the connection and never answers would hang HELLO and
-    doctor. The probe runs in a daemon thread, so one left waiting never holds
-    up exit, and counts as failed after X11_PROBE_SECONDS. A probe still
-    waiting from an earlier call is waited on again rather than joined by
-    another, so a server that never answers holds one thread and one
-    connection, not one more per reconnect.
-    """
-    global _x11_probe
-    with _x11_probe_lock:
-        if _x11_probe is not None and _x11_probe[0].is_alive():
-            thread, outcome = _x11_probe
-        else:
-            outcome = []
-            thread = threading.Thread(
-                target=_probe_x11_display, args=(outcome,), name="x11-display-probe", daemon=True
-            )
-            _x11_probe = (thread, outcome)
-            thread.start()
-    thread.join(X11_PROBE_SECONDS)
-    return outcome == [True]
-
-
-def _probe_x11_display(outcome: list[bool]) -> None:
-    try:
-        from Xlib.display import Display  # type: ignore[import-not-found]
-
-        Display().close()
-    except Exception:
-        outcome.append(False)
-    else:
-        outcome.append(True)
 
 
 # ── Machine ID ───────────────────────────────────────────────────────────────
@@ -340,22 +265,6 @@ def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
         return sys.platform in ("win32", "darwin")
 
 
-# ── Screen resolution ────────────────────────────────────────────────────────
-
-
-def detect_screen_resolution() -> tuple[int, int] | None:
-    """Return (width, height) when computer_use is supported, else None."""
-    if not _can_do_computer_use():
-        return None
-    try:
-        import pyautogui  # type: ignore[import-untyped]
-
-        size = pyautogui.size()
-        return int(size[0]), int(size[1])
-    except Exception:
-        return None
-
-
 # ── Shell detection (used by EXECUTE_COMMAND handler) ────────────────────────
 
 
@@ -410,6 +319,7 @@ def resolve_shell(shell: str) -> tuple[str, list[str]] | None:
 
 
 __all__ = [
+    "can_do_computer_use",
     "available_recording_channels",
     "default_allowed_root",
     "default_audit_log_path",
@@ -417,7 +327,6 @@ __all__ = [
     "detect_capabilities",
     "detect_machine_id",
     "detect_platform",
-    "detect_screen_resolution",
     "is_case_insensitive_fs",
     "resolve_shell",
 ]

@@ -1,13 +1,10 @@
 """
-Clipboard sandbox primitives.
+Clipboard writeback registry.
 
-Implements docs/COMPUTER_USE.md Q3:
-- Writeback registry: every CLIPBOARD_WRITE records (sha256, sequence,
-  timestamp) so a subsequent CLIPBOARD_READ in writeback-only mode can
-  confirm the contents are still ours and haven't aged past 30 s.
-- ConcealedType / CF_PRIVATE marker detection lives here only as the
-  shape used by callers; per-OS lookup is in the backends because each
-  pasteboard API exposes it differently.
+Every clipboard_write records (sha256, sequence, timestamp), so that in
+writeback-only mode a later clipboard_read can confirm the contents are
+still the shim's own and no older than 30 s. Private-content markers
+(ConcealedType, CF_PRIVATE) are checked in `concealed`, per OS.
 """
 
 from __future__ import annotations

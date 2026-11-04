@@ -437,7 +437,7 @@ class _AckSocket:
 _CONTROL_ACK: dict[str, Any] = {
     "connection_id": "connection-1",
     "granted_capabilities": ["files", "directory_browse"],
-    "protocol_version": "1.1",
+    "protocol_version": "2.0",
 }
 
 
@@ -457,7 +457,7 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
     """PROTOCOL.md: a control daemon fails terminally when its HELLO_ACK
     lacks a required field. One without granted_capabilities failed to parse
     before the flag was set, so run() reconnected with backoff; one without
-    protocol_version was taken for 1.1; and a close that raised skipped the
+    protocol_version was taken for the shim's own; and a close that raised skipped the
     flag on every path."""
     daemon = _control_daemon(tmp_path)
     payload = {key: value for key, value in _CONTROL_ACK.items() if key != missing}

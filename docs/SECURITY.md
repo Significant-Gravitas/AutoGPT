@@ -127,8 +127,8 @@ selecting your home, filesystem root, or executor state/configuration folders.
 
 ### Layer 3: Command Auditing
 
-Wire operations (`EXECUTE_COMMAND`, `FILE_*`, `INPUT_ACTION`,
-`SCREENSHOT_REQUEST`) plus shim-internal events (start/stop, WS
+Wire operations (`EXECUTE_COMMAND`, `FILE_*`, `COMPUTER_TOOL_CALL`) plus
+shim-internal events (start/stop, WS
 connect/disconnect, `JAIL_VIOLATION`, `TOKEN_REFRESHED`) attempt to append to
 a JSONL audit log in the per-OS state directory (see
 [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-location)).

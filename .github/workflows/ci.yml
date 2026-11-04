@@ -3,7 +3,8 @@ name: ci
 # Runs on every push + PR. Three jobs:
 #
 #   - test:     pytest across Linux / macOS / Windows × Python 3.11 / 3.12.
-#               The optional extras (computer-use / hardware / local-llm) are
+#               The computer-use extra must install (its contract tests
+#               run cua-driver); hardware / local-llm are
 #               install-best-effort because some wheels are OS-specific
 #               (RPi.GPIO is Linux/ARM only, etc.) — we don't want a failing
 #               extras install to block the unit tests.
@@ -44,13 +45,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      # Optional extras — install best-effort. RPi.GPIO refuses to build on
+      # cua-driver ships wheels for every OS here, and the contract tests
+      # (tests/test_cua_driver_contract.py) run it for real, so this one
+      # must install.
+      - name: Install the computer-use extra
+        run: python -m pip install -e ".[computer-use]"
+
+      # Other extras — install best-effort. RPi.GPIO refuses to build on
       # non-Linux-ARM platforms, pyusb needs libusb on macOS/Windows, etc.
       # The unit tests don't require these; what we want from CI is a signal
       # that the core package always installs cleanly on every supported OS.
       - name: Install optional extras (best-effort)
         continue-on-error: true
-        run: python -m pip install -e ".[computer-use,hardware,local-llm]"
+        run: python -m pip install -e ".[hardware,local-llm]"
 
       - name: Install test deps
         run: python -m pip install pytest pytest-asyncio pytest-mock

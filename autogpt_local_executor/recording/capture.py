@@ -114,19 +114,12 @@ class ScreenshotActionFloor(CaptureSource):
     ) -> None:
         self._input_events = input_events
         self._config = config
-        # `backend` is a ComputerUseBackend; typed as object to avoid importing
-        # the heavy backend module at construction. Lazily resolved.
+        # A live cursor source with `cursor_position() -> (x, y, monitor)`.
+        # Computer use now runs through cua-driver, which this design
+        # preview doesn't use, so without one the producer's value stands.
         self._backend = backend
 
     def _get_backend(self) -> object | None:
-        if self._backend is None:
-            try:
-                from ..computer_use import get_backend
-
-                self._backend = get_backend(self._config)
-            except Exception:
-                logger.debug("floor: could not build computer-use backend", exc_info=True)
-                self._backend = None
         return self._backend
 
     def _snapshot_cursor(self, fallback: tuple[int, int]) -> tuple[int, int]:

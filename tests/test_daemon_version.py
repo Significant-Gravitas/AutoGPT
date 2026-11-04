@@ -131,7 +131,7 @@ async def test_hello_never_advertises_recording_preview(
 
 async def test_handshake_negotiates_minor_floor(daemon: ShimDaemon) -> None:
     """Platform advertises a higher minor; shim wins the floor."""
-    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="1.9")])
+    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2.9")])
     await daemon._handshake(ws)
     # Effective version is min(shim_minor, platform_minor) on shared major.
     shim_major = int(VERSION.split(".")[0])
@@ -142,11 +142,10 @@ async def test_handshake_negotiates_minor_floor(daemon: ShimDaemon) -> None:
 
 async def test_handshake_negotiates_when_shim_higher_minor(daemon: ShimDaemon) -> None:
     """Platform reports an older minor; negotiation floors to platform's."""
-    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="1.0")])
+    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2.0")])
     await daemon._handshake(ws)
-    # Shim and platform both at 1.0 in the default VERSION; this also covers
-    # the case where the shim is on 1.x and platform is on 1.0.
-    assert daemon._negotiated_version == "1.0"
+    # A shim on 2.x and a platform on 2.0 meet at 2.0.
+    assert daemon._negotiated_version == "2.0"
 
 
 async def test_handshake_uses_lower_server_limits_without_raising_local_ceilings(
@@ -273,12 +272,12 @@ async def test_platform_can_withhold_advertised_file_capability(
 async def test_handshake_major_mismatch_closes_with_4426(daemon: ShimDaemon) -> None:
     """A platform announcing a different major triggers close-code 4426
     with a structured JSON reason and raises ProtocolVersionMismatch."""
-    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2.0")])
+    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="1.1")])
     with pytest.raises(ProtocolVersionMismatch) as exc_info:
         await daemon._handshake(ws)
     err = exc_info.value
     assert err.shim_max == VERSION
-    assert err.platform_max == "2.0"
+    assert err.platform_max == "1.1"
     # ws.close() called with the structured close reason.
     assert ws.close_calls, "expected ws.close() to be invoked"
     call = ws.close_calls[-1]
@@ -286,7 +285,7 @@ async def test_handshake_major_mismatch_closes_with_4426(daemon: ShimDaemon) -> 
     reason = json.loads(call["reason"])
     assert reason["error"] == "PROTOCOL_VERSION_MISMATCH"
     assert reason["shim_max"] == VERSION
-    assert reason["platform_max"] == "2.0"
+    assert reason["platform_max"] == "1.1"
     # The hint stays in the log: with it the reason is 230 bytes, and a close
     # frame refuses anything over 123 (RFC 6455 §5.5), so nothing was sent.
     assert "hint" not in reason
@@ -294,7 +293,7 @@ async def test_handshake_major_mismatch_closes_with_4426(daemon: ShimDaemon) -> 
 
 
 async def test_a_long_platform_version_still_leaves_a_sendable_4426(daemon: ShimDaemon) -> None:
-    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2." + "0" * 200)])
+    ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="3." + "0" * 200)])
     with pytest.raises(ProtocolVersionMismatch):
         await daemon._handshake(ws)
 

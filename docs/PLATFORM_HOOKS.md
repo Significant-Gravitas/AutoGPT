@@ -430,7 +430,7 @@ How the four sketched pieces actually landed:
 3. **UI consent gate.**
    `autogpt_platform/frontend/src/app/(platform)/copilot/components/LocalPCComputerUseConsent.tsx`
    pops a per-session modal the first time the user enters a copilot
-   session with a shim that advertises `computer_use_features`. The
+   session with a shim that advertises `computer_use`. The
    user explicitly approves "Claude can screenshot / move my mouse /
    type / list+launch apps / read+write clipboard for THIS session";
    acked sessionIds are stored as a JSON array in localStorage under

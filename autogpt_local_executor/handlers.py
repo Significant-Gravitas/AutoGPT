@@ -14,7 +14,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
-import io
+import hashlib
+import json
 import logging
 import mimetypes
 import os
@@ -28,15 +29,24 @@ import time
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal, TypeVar
 
 from . import local_llm_limits, platform_info
 from .audit import AuditWriter
 from .computer_use import (
-    BackendError,
-    ComputerUseBackend,
-    get_backend,
+    ArgumentRefused,
+    ClipboardConcealedError,
+    ClipboardWritebackRegistry,
+    ComputerUseError,
+    CuaDriverBridge,
+    DriverSnapshot,
+    DriverUnavailable,
+    check_arguments,
+    offered_tools,
 )
+from .computer_use.catalog import takes_session, without_session
+from .computer_use.concealed import clipboard_state, marker_in
+from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
 from .fsops import rename_no_replace
 from .local_llm_limits import bounded_chunks, read_json_lines
@@ -52,25 +62,18 @@ from .protocol import (
     MAX_WIRE_BASE64_CONTENT_BYTES,
     MAX_WIRE_TEXT_CONTENT_BYTES,
     AckMessage,
-    AppLaunchAckMessage,
-    AppLaunchAckPayload,
-    AppLaunchMessage,
-    AppListRequestMessage,
-    AppListResponseMessage,
-    AppListResponsePayload,
     ApplyRecordingReviewMessage,
-    ClipboardReadMessage,
-    ClipboardReadResponseMessage,
-    ClipboardReadResponsePayload,
-    ClipboardWriteMessage,
     CommandResultMessage,
     CommandResultPayload,
-    CursorPositionRequestMessage,
-    CursorPositionResponseMessage,
-    CursorPositionResponsePayload,
-    DisplayInfoRequestMessage,
-    DisplayInfoResponseMessage,
-    DisplayInfoResponsePayload,
+    ComputerImageContent,
+    ComputerTextContent,
+    ComputerToolCallMessage,
+    ComputerToolResultMessage,
+    ComputerToolResultPayload,
+    ComputerToolSpec,
+    ComputerToolsRequestMessage,
+    ComputerToolsResponseMessage,
+    ComputerToolsResponsePayload,
     Encoding,
     ErrorCode,
     ErrorMessage,
@@ -89,7 +92,6 @@ from .protocol import (
     FileStatResponseMessage,
     FileStatResponsePayload,
     FileWriteMessage,
-    InputActionMessage,
     LocalLLMCompletionChunkMessage,
     LocalLLMCompletionChunkPayload,
     LocalLLMCompletionMessage,
@@ -97,9 +99,6 @@ from .protocol import (
     LocalLLMCompletionResponsePayload,
     LocalLLMFinishReason,
     LocalLLMTokensUsage,
-    PermissionsCheckRequestMessage,
-    PermissionsCheckResponseMessage,
-    PermissionsCheckResponsePayload,
     RecordingConsentResultMessage,
     RecordingConsentResultPayload,
     RecordingDataMessage,
@@ -114,16 +113,8 @@ from .protocol import (
     RecordingSummaryMessage,
     RecordingSummaryPayload,
     RequestRecordingConsentMessage,
-    ScreenshotRequestMessage,
-    ScreenshotResponseMessage,
-    ScreenshotResponseMeta,
-    ScreenshotResponsePayload,
     StartRecordingMessage,
     StopRecordingMessage,
-    WindowFocusMessage,
-    WindowListRequestMessage,
-    WindowListResponseMessage,
-    WindowListResponsePayload,
     make_ack,
     make_error,
     new_id,
@@ -142,14 +133,6 @@ from .recording import (
 )
 from .recording.consent import CONSENT_TOKEN_TTL_SECONDS
 from .recording.crypto import RecordingCipher
-
-# Kept for legacy tests that monkeypatch h_mod._pyautogui / h_mod._Image.
-try:
-    import pyautogui as _pyautogui  # type: ignore[import-untyped]
-    from PIL import Image as _Image  # type: ignore[import-untyped]
-except Exception:
-    _pyautogui = None  # type: ignore[assignment]
-    _Image = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -1348,583 +1331,412 @@ class FileHandler:
 
 
 class ComputerUseHandler:
-    """Dispatches computer-use wire ops to a per-OS ComputerUseBackend.
+    """Relays computer use to cua-driver (see docs/CUA_DRIVER.md).
 
-    Backends raise BackendError subclasses on recoverable failures; the
-    dispatcher turns each into the matching wire ERROR envelope (with
-    `details` carrying the structured payload — see protocol.py and
-    docs/COMPUTER_USE.md Q1-Q5).
+    COMPUTER_TOOLS_REQUEST answers with the driver's guidance and the tools
+    this machine offers. COMPUTER_TOOL_CALL checks the call against the
+    catalog, sets the session label, applies the clipboard rules, relays it,
+    and returns what the driver said: its own errors as a result the model
+    reads, the shim's refusals and failures as ERROR.
     """
 
     def __init__(
         self,
         config: ShimConfig,
         audit: AuditWriter | None = None,
-        backend: ComputerUseBackend | None = None,
+        driver: CuaDriverBridge | None = None,
     ) -> None:
         self.config = config
         self.audit = audit
-        self._backend = backend  # lazily built when first needed
+        self._driver = driver
+        # A child session's handler uses its parent's driver and never stops it.
+        self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
+        self.clipboard_writeback = ClipboardWritebackRegistry()
 
     @property
-    def backend(self) -> ComputerUseBackend:
-        if self._backend is None:
-            self._backend = get_backend(self.config)
-        return self._backend
+    def driver(self) -> CuaDriverBridge:
+        if self._driver is None:
+            self._driver = CuaDriverBridge(
+                tools=offered_tools(enable_clipboard=self.config.enable_clipboard),
+                binary=self.config.cua_driver_path,
+                client_version=_shim_version(),
+            )
+        return self._driver
 
-    def on_hello(self) -> None:
-        """Forward (re)connect lifecycle to the backend so window IDs reset."""
-        self.backend.on_hello()
+    def share_with(self, other: ComputerUseHandler) -> None:
+        """Make `other`, a child session's handler, use this one's driver
+        process, screenshot budget and clipboard record: they are the
+        machine's, not the session's."""
+        other._driver = self.driver
+        other._owns_driver = False
+        other._screenshot_rate = self._screenshot_rate
+        other.clipboard_writeback = self.clipboard_writeback
 
-    async def handle(self, msg) -> Any:
+    async def screen_size(self) -> tuple[int, int] | None:
+        """The main display's logical size, from the driver, for HELLO."""
+        try:
+            raw = await self.driver.call_tool(
+                "get_screen_size", {"session": self.session_label}, timeout=SCREEN_SIZE_SECONDS
+            )
+        except (DriverUnavailable, TimeoutError):
+            return None
+        structured = raw.get("structuredContent")
+        if raw.get("isError") or not isinstance(structured, dict):
+            return None
+        width, height = structured.get("width"), structured.get("height")
+        if isinstance(width, int | float) and isinstance(height, int | float):
+            return int(width), int(height)
+        return None
+
+    async def close(self) -> None:
+        """Stop the driver process, if this handler started one."""
+        if self._owns_driver and self._driver is not None:
+            await self._driver.close()
+
+    @property
+    def session_label(self) -> str:
+        """The cua-driver session every call from this shim session carries,
+        so each gets its own agent cursor and cleanup."""
+        session_id = self.config.session_id or "default"
+        return "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
+
+    async def handle(self, msg: Any) -> Any:
         if not self.config.enable_computer_use:
             return make_error(
                 msg.id,
                 ErrorCode.CAPABILITY_NOT_GRANTED,
                 "Computer use is not enabled on this shim.",
             )
-        if isinstance(msg, ScreenshotRequestMessage):
-            return await self._screenshot(msg)
-        if isinstance(msg, InputActionMessage):
-            return await self._input_action(msg)
-        if isinstance(msg, CursorPositionRequestMessage):
-            return await self._cursor_position(msg)
-        if isinstance(msg, DisplayInfoRequestMessage):
-            return await self._display_info(msg)
-        if isinstance(msg, WindowListRequestMessage):
-            return await self._window_list(msg)
-        if isinstance(msg, WindowFocusMessage):
-            return await self._window_focus(msg)
-        if isinstance(msg, AppListRequestMessage):
-            return await self._app_list(msg)
-        if isinstance(msg, AppLaunchMessage):
-            return await self._app_launch(msg)
-        if isinstance(msg, ClipboardReadMessage):
-            return await self._clipboard_read(msg)
-        if isinstance(msg, ClipboardWriteMessage):
-            return await self._clipboard_write(msg)
-        if isinstance(msg, PermissionsCheckRequestMessage):
-            return await self._permissions_check(msg)
+        if isinstance(msg, ComputerToolsRequestMessage):
+            return await self._tools(msg)
+        if isinstance(msg, ComputerToolCallMessage):
+            return await self._call(msg)
         return make_error(
             msg.id,
             ErrorCode.INTERNAL_ERROR,
             f"Unknown computer-use message: {type(msg).__name__}",
         )
 
-    # ── Dispatch error helper ─────────────────────────────────────────
+    # ── COMPUTER_TOOLS_REQUEST ───────────────────────────────────────
 
-    @staticmethod
-    def _to_wire_error(msg_id: str, exc: BackendError) -> ErrorMessage:
-        return make_error(msg_id, exc.code, exc.message, details=exc.details or None)
+    async def _tools(self, msg: ComputerToolsRequestMessage) -> Any:
+        try:
+            snapshot = await self.driver.snapshot()
+        except DriverUnavailable as exc:
+            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+        tools = [
+            ComputerToolSpec(
+                name=tool["name"],
+                description=str(tool.get("description") or ""),
+                input_schema=without_session(tool.get("inputSchema") or {"type": "object"}),
+                annotations=tool.get("annotations") or None,
+            )
+            for tool in snapshot.tools
+        ]
+        return ComputerToolsResponseMessage(
+            id=msg.id,
+            ts=now_ts(),
+            payload=ComputerToolsResponsePayload(
+                driver=snapshot.info,
+                instructions=_instructions(snapshot, self.config),
+                tools=tools,
+            ),
+        )
 
-    async def _emit(
-        self,
-        op: str,
-        request_id: str,
-        details: dict,
-        result: dict,
-    ) -> None:
+    # ── COMPUTER_TOOL_CALL ───────────────────────────────────────────
+
+    async def _call(self, msg: ComputerToolCallMessage) -> Any:
+        start = time.monotonic()
+        tool = msg.payload.tool
+        arguments = dict(msg.payload.arguments)
+        details: dict[str, Any] = {
+            "tool": tool,
+            # What launches is kept whole, as EXECUTE_COMMAND keeps argv.
+            "arguments": _audit_arguments(arguments, truncate=tool != "launch_app"),
+        }
+        try:
+            result = await self._relay(tool, arguments, msg.payload.timeout_seconds)
+        except asyncio.CancelledError:
+            # The action may have happened: the driver was told to stop,
+            # but it can't take back a click it already made.
+            await self._emit(
+                msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
+            )
+            raise
+        except ComputerUseError as exc:
+            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
+            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+        except DriverUnavailable as exc:
+            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
+            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+        except McpError as exc:
+            if exc.code != INVALID_PARAMS:
+                await self._emit(
+                    msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value)
+                )
+                return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}")
+            # Arguments the driver rejected are the model's to fix.
+            result = self._result_payload(
+                tool, {"isError": True, "content": [{"type": "text", "text": exc.message}]}
+            )
+        except TimeoutError:
+            await self._emit(
+                msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
+            )
+            return make_error(
+                msg.id,
+                ErrorCode.COMMAND_TIMEOUT,
+                f"{tool} did not finish in time; the driver was told to stop it.",
+            )
+        payload, summary = result
+        await self._emit(msg.id, {**details, **summary}, _ok_result(_elapsed_ms(start)))
+        return ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload)
+
+    async def _relay(
+        self, tool: str, arguments: dict[str, Any], timeout_seconds: int | None
+    ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
+        snapshot = await self.driver.snapshot()
+        spec = snapshot.tool(tool)
+        if spec is None:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                f"{tool} is not available on this machine.",
+                details={"tool": tool},
+            )
+        try:
+            check_arguments(tool, arguments)
+        except ArgumentRefused as exc:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                str(exc),
+                details={"tool": tool, "argument": exc.argument},
+            ) from exc
+        if takes_session(spec.get("inputSchema") or {}):
+            arguments["session"] = self.session_label
+        timeout = float(timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
+
+        if tool == "clipboard_read":
+            raw = await self._clipboard_read(arguments, timeout)
+        else:
+            raw = await self.driver.call_tool(tool, arguments, timeout=timeout)
+            if tool == "clipboard_write" and not raw.get("isError"):
+                self.clipboard_writeback.record_write(arguments["text"])
+        return self._result_payload(tool, raw)
+
+    async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
+        """Relay a clipboard read under the shim's rules: by default only
+        text this shim wrote in the last 30 s comes back; with
+        --enable-clipboard-read-foreign anything does, unless a password
+        manager marked it private."""
+        arguments["include_text"] = True
+        foreign = self.config.enable_clipboard_read_foreign
+        before = await asyncio.to_thread(clipboard_state) if foreign else None
+        if before is not None and before.marker:
+            raise ClipboardConcealedError("concealed_type", marker=before.marker)
+        raw = await self.driver.call_tool("clipboard_read", arguments, timeout=timeout)
+        if raw.get("isError"):
+            return raw
+        structured = raw.get("structuredContent")
+        structured = structured if isinstance(structured, dict) else {}
+        text = structured.get("text")
+        if before is not None:
+            # The types the driver saw with the text, then the OS again: a
+            # copy can land between the first look and the read.
+            listed = marker_in(structured.get("types"))
+            if listed:
+                raise ClipboardConcealedError("concealed_type", marker=listed)
+            after = await asyncio.to_thread(clipboard_state)
+            if after.marker:
+                raise ClipboardConcealedError("concealed_type", marker=after.marker)
+            if before.sequence is not None and after.sequence != before.sequence:
+                raise ClipboardConcealedError(
+                    "changed",
+                    message="The clipboard changed while it was read. Read it again.",
+                )
+            return raw
+        if self.clipboard_writeback.check(
+            live_content=text if isinstance(text, str) else None, live_sequence=None
+        ):
+            return raw
+        record = self.clipboard_writeback.snapshot()
+        if record is None:
+            raise ClipboardConcealedError("writeback_only")
+        age = record.age()
+        if age > self.clipboard_writeback.window_seconds:
+            raise ClipboardConcealedError("writeback_only", writeback_age_seconds=age)
+        raise ClipboardConcealedError("writeback_overwritten")
+
+    def _result_payload(
+        self, tool: str, raw: dict[str, Any]
+    ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
+        """The wire result: text and image blocks within the frame limit, at
+        most `max_screenshots_per_minute` images, and a note for anything
+        left out."""
+        content: list[ComputerTextContent | ComputerImageContent] = []
+        notes: list[str] = []
+        withheld = 0
+        for block in raw.get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            kind = block.get("type")
+            if kind == "text" and isinstance(block.get("text"), str):
+                content.append(ComputerTextContent(text=block["text"]))
+            elif kind == "image" and isinstance(block.get("data"), str):
+                if self._screenshot_rate.allow():
+                    content.append(
+                        ComputerImageContent(
+                            data=block["data"],
+                            mime_type=str(block.get("mimeType") or "image/png"),
+                        )
+                    )
+                else:
+                    withheld += 1
+            else:
+                notes.append(f"A {kind or 'untyped'} block was left out.")
+        if withheld:
+            notes.append(
+                f"{withheld} screenshot(s) left out: this machine sends at most "
+                f"{self.config.max_screenshots_per_minute} a minute. Read the "
+                "accessibility tree instead, or ask again shortly."
+            )
+        structured = raw.get("structuredContent")
+        structured = structured if isinstance(structured, dict) else None
+
+        budget = MAX_WIRE_BASE64_CONTENT_BYTES
+        size = sum(_block_size(block) for block in content) + len(
+            json.dumps(structured) if structured is not None else ""
+        )
+        if size > budget:
+            images = [block for block in content if isinstance(block, ComputerImageContent)]
+            content = [block for block in content if isinstance(block, ComputerTextContent)]
+            size -= sum(_block_size(block) for block in images)
+            if images:
+                notes.append(
+                    f"{len(images)} screenshot(s) left out: the result was too large to "
+                    "send. Ask for a smaller image (max_image_dimension) or zoom in."
+                )
+        if size > budget:
+            structured = None
+            first_text = next(
+                (block for block in content if isinstance(block, ComputerTextContent)), None
+            )
+            content = []
+            if first_text is not None:
+                content.append(
+                    ComputerTextContent(
+                        text=_truncate_utf8(first_text.text, MAX_WIRE_TEXT_CONTENT_BYTES)
+                    )
+                )
+            notes.append("The result was cut down to fit the connection's message limit.")
+        content.extend(ComputerTextContent(text=note) for note in notes)
+
+        payload = ComputerToolResultPayload(
+            tool=tool,
+            is_error=bool(raw.get("isError")),
+            content=content,
+            structured_content=structured,
+        )
+        summary = {
+            "is_error": payload.is_error,
+            "images": sum(isinstance(block, ComputerImageContent) for block in content),
+            "images_withheld": withheld,
+            "text_bytes": sum(
+                len(block.text.encode("utf-8"))
+                for block in content
+                if isinstance(block, ComputerTextContent)
+            ),
+        }
+        return payload, summary
+
+    async def _emit(self, request_id: str, details: dict, result: dict) -> None:
         if self.audit is None:
             return
         try:
             await _finish_then_cancel(
-                self.audit.write(op, request_id=request_id, details=details, result=result)
+                self.audit.write(
+                    "COMPUTER_TOOL_CALL", request_id=request_id, details=details, result=result
+                )
             )
         except Exception:
-            logger.debug("Failed to write %s audit record", op, exc_info=True)
+            logger.debug("Failed to write COMPUTER_TOOL_CALL audit record", exc_info=True)
 
-    # ── SCREENSHOT ───────────────────────────────────────────────────
 
-    async def _screenshot(self, msg: ScreenshotRequestMessage) -> Any:
-        start = time.monotonic()
-        p = msg.payload
-        details = {
-            "monitor": p.monitor,
-            "quality": p.quality,
-            "region": list(p.region) if p.region else None,
-            "window_id": p.window_id,
-            "format": p.format,
-        }
-        screenshot_limit = min(
-            self.config.max_file_size_bytes,
-            MAX_WIRE_BASE64_CONTENT_BYTES,
+# How long HELLO waits for the driver's screen size.
+SCREEN_SIZE_SECONDS = 10.0
+
+# How long one computer tool call may run unless the platform asks for less
+# or more. The driver's own bounded waits (verify_state, run_script) fit.
+DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS = 120
+
+# Arguments whose values the audit log keeps only the length of: what the
+# agent typed, pasted, or scripted.
+_AUDIT_REDACTED_ARGUMENTS = frozenset({"prompt_text", "script", "text", "value"})
+_AUDIT_STRING_LIMIT = 200
+
+
+def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = True) -> Any:
+    if isinstance(value, dict):
+        return {k: _audit_arguments(v, k, truncate=truncate) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_audit_arguments(item, key, truncate=truncate) for item in value]
+    if isinstance(value, str):
+        if key in _AUDIT_REDACTED_ARGUMENTS:
+            return {"redacted_chars": len(value)}
+        if truncate and len(value) > _AUDIT_STRING_LIMIT:
+            return value[:_AUDIT_STRING_LIMIT] + f"… ({len(value)} chars)"
+    return value
+
+
+def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
+    if isinstance(block, ComputerImageContent):
+        return len(block.data)
+    return len(block.text.encode("utf-8"))
+
+
+def _truncate_utf8(text: str, limit: int) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= limit:
+        return text
+    return encoded[:limit].decode("utf-8", "ignore")
+
+
+def _shim_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("autogpt-local-executor")
+    except Exception:
+        return "0"
+
+
+def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
+    """cua-driver's own guidance, then what differs on this machine."""
+    offered = {tool["name"] for tool in snapshot.tools}
+    if "clipboard_read" not in offered:
+        clipboard = "Clipboard tools are off on this machine."
+    elif config.enable_clipboard_read_foreign:
+        clipboard = (
+            "clipboard_read returns what is on the clipboard, except content a password "
+            "manager marked private."
         )
-        if not self._screenshot_rate.allow():
-            await self._emit(
-                "SCREENSHOT_REQUEST",
-                msg.id,
-                {**details, "image_bytes_returned": 0},
-                _err_result(_elapsed_ms(start), ErrorCode.SHIM_OVERLOADED.value),
-            )
-            return make_error(
-                msg.id,
-                ErrorCode.SHIM_OVERLOADED,
-                "Screenshot rate limit exceeded "
-                f"({self.config.max_screenshots_per_minute}/minute).",
-            )
-
-        # Legacy test compatibility: when the old module-level pyautogui
-        # mock is in place, honor it instead of the backend so existing
-        # tests that monkey-patch h_mod._pyautogui keep working.
-        if (
-            _Image is not None
-            and _pyautogui is not None
-            and getattr(_pyautogui, "_extract_mock_name", None) is not None
-        ):
-            try:
-                buf = io.BytesIO()
-                img = _pyautogui.screenshot()
-                img.convert("RGB").save(buf, format="JPEG", quality=p.quality)
-                img_bytes = buf.getvalue()
-                if len(img_bytes) > screenshot_limit:
-                    await self._emit(
-                        "SCREENSHOT_REQUEST",
-                        msg.id,
-                        {**details, "image_bytes_returned": len(img_bytes)},
-                        _err_result(_elapsed_ms(start), ErrorCode.FILE_TOO_LARGE.value),
-                    )
-                    return make_error(
-                        msg.id,
-                        ErrorCode.FILE_TOO_LARGE,
-                        f"Screenshot is {len(img_bytes)} bytes; limit is {screenshot_limit} bytes.",
-                    )
-                await self._emit(
-                    "SCREENSHOT_REQUEST",
-                    msg.id,
-                    {**details, "image_bytes_returned": len(img_bytes)},
-                    _ok_result(_elapsed_ms(start)),
-                )
-                return ScreenshotResponseMessage(
-                    id=msg.id,
-                    ts=now_ts(),
-                    payload=ScreenshotResponsePayload(
-                        image_base64=base64.b64encode(img_bytes).decode("ascii"),
-                        mime_type="image/jpeg",
-                        width=img.width,
-                        height=img.height,
-                        monitor=p.monitor,
-                    ),
-                )
-            except Exception:
-                pass
-
-        try:
-            result = await asyncio.to_thread(
-                self.backend.screenshot,
-                monitor=p.monitor,
-                quality=p.quality,
-                region=p.region,
-                window_id=p.window_id,
-                format=p.format,
-                include_cursor=p.include_cursor,
-            )
-        except BackendError as exc:
-            await self._emit(
-                "SCREENSHOT_REQUEST",
-                msg.id,
-                {**details, "image_bytes_returned": 0},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        except Exception as exc:
-            await self._emit(
-                "SCREENSHOT_REQUEST",
-                msg.id,
-                {**details, "image_bytes_returned": 0},
-                _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
-            )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
-
-        if len(result.image_bytes) > screenshot_limit:
-            await self._emit(
-                "SCREENSHOT_REQUEST",
-                msg.id,
-                {**details, "image_bytes_returned": len(result.image_bytes)},
-                _err_result(_elapsed_ms(start), ErrorCode.FILE_TOO_LARGE.value),
-            )
-            return make_error(
-                msg.id,
-                ErrorCode.FILE_TOO_LARGE,
-                f"Screenshot is {len(result.image_bytes)} bytes; limit is "
-                f"{screenshot_limit} bytes.",
-            )
-
-        await self._emit(
-            "SCREENSHOT_REQUEST",
-            msg.id,
-            {
-                **details,
-                "image_bytes_returned": len(result.image_bytes),
-                "width": result.width,
-                "height": result.height,
-            },
-            _ok_result(_elapsed_ms(start)),
+    else:
+        clipboard = (
+            "clipboard_read returns only text this session put on the clipboard in the "
+            "last 30 seconds."
         )
-        return ScreenshotResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=ScreenshotResponsePayload(
-                image_base64=base64.b64encode(result.image_bytes).decode("ascii"),
-                mime_type=result.mime_type,
-                width=result.width,
-                height=result.height,
-                monitor=result.monitor,
-                region=result.region,
-                display_scale=result.display_scale,
-                logical_size=result.logical_size,
-                meta=ScreenshotResponseMeta(origin=result.origin, display_id=result.display_id),
-            ),
-        )
-
-    # ── INPUT_ACTION ─────────────────────────────────────────────────
-
-    async def _input_action(self, msg: InputActionMessage) -> Any:
-        start = time.monotonic()
-        p = msg.payload
-        details = {
-            "action": p.action,
-            "coordinate": list(p.coordinate) if p.coordinate else None,
-            "key": p.key,
-            "direction": p.direction,
-            "clicks": p.clicks,
-            "text_length": len(p.text) if p.text is not None else None,
-            "modifiers": list(p.modifiers) if p.modifiers else None,
-            "button": p.button,
-            "paste": p.paste,
-        }
-        try:
-            await _run_to_completion(
-                self.backend.input_action,
-                p.action,
-                coordinate=p.coordinate,
-                text=p.text,
-                key=p.key,
-                direction=p.direction,
-                clicks=p.clicks,
-                button=p.button,
-                modifiers=cast(list[str] | None, p.modifiers),
-                scroll_amount=p.scroll_amount,
-                scroll_direction=p.scroll_direction,
-                duration_ms=p.duration_ms,
-                path=p.path,
-                paste=p.paste,
-                preserve_clipboard=p.preserve_clipboard,
-            )
-        except BackendError as exc:
-            await self._emit(
-                "INPUT_ACTION",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        except Exception as exc:
-            await self._emit(
-                "INPUT_ACTION",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
-            )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
-
-        await self._emit("INPUT_ACTION", msg.id, details, _ok_result(_elapsed_ms(start)))
-        return make_ack(msg.id)
-
-    # ── CURSOR_POSITION ──────────────────────────────────────────────
-
-    async def _cursor_position(self, msg: CursorPositionRequestMessage) -> Any:
-        start = time.monotonic()
-        try:
-            x, y, mon = await asyncio.to_thread(self.backend.cursor_position)
-        except BackendError as exc:
-            await self._emit(
-                "CURSOR_POSITION_REQUEST",
-                msg.id,
-                {},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit("CURSOR_POSITION_REQUEST", msg.id, {}, _ok_result(_elapsed_ms(start)))
-        return CursorPositionResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=CursorPositionResponsePayload(x=x, y=y, monitor=mon),
-        )
-
-    # ── DISPLAY_INFO ─────────────────────────────────────────────────
-
-    async def _display_info(self, msg: DisplayInfoRequestMessage) -> Any:
-        start = time.monotonic()
-        try:
-            monitors = await asyncio.to_thread(self.backend.display_info)
-        except BackendError as exc:
-            await self._emit(
-                "DISPLAY_INFO_REQUEST",
-                msg.id,
-                {},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit(
-            "DISPLAY_INFO_REQUEST",
-            msg.id,
-            {"monitor_count": len(monitors)},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return DisplayInfoResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=DisplayInfoResponsePayload(monitors=monitors),
-        )
-
-    # ── WINDOW_LIST ──────────────────────────────────────────────────
-
-    async def _window_list(self, msg: WindowListRequestMessage) -> Any:
-        start = time.monotonic()
-        p = msg.payload
-        details = {
-            "app_bundle_id": p.app_bundle_id,
-            "include_minimized": p.include_minimized,
-            "include_offscreen": p.include_offscreen,
-        }
-        try:
-            windows = await asyncio.to_thread(
-                self.backend.window_list,
-                app_bundle_id=p.app_bundle_id,
-                include_minimized=p.include_minimized,
-                include_offscreen=p.include_offscreen,
-            )
-        except BackendError as exc:
-            await self._emit(
-                "WINDOW_LIST_REQUEST",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit(
-            "WINDOW_LIST_REQUEST",
-            msg.id,
-            {**details, "windows_returned": len(windows)},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return WindowListResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=WindowListResponsePayload(windows=windows),
-        )
-
-    # ── WINDOW_FOCUS ─────────────────────────────────────────────────
-
-    async def _window_focus(self, msg: WindowFocusMessage) -> Any:
-        start = time.monotonic()
-        details = {"window_id": msg.payload.window_id, "raise": msg.payload.raise_}
-        try:
-            await _run_to_completion(
-                self.backend.window_focus,
-                msg.payload.window_id,
-                raise_=msg.payload.raise_,
-            )
-        except BackendError as exc:
-            await self._emit(
-                "WINDOW_FOCUS",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit("WINDOW_FOCUS", msg.id, details, _ok_result(_elapsed_ms(start)))
-        return make_ack(msg.id)
-
-    # ── APP_LIST ─────────────────────────────────────────────────────
-
-    async def _app_list(self, msg: AppListRequestMessage) -> Any:
-        start = time.monotonic()
-        try:
-            apps = await asyncio.to_thread(
-                self.backend.app_list, include_background=msg.payload.include_background
-            )
-        except BackendError as exc:
-            await self._emit(
-                "APP_LIST_REQUEST",
-                msg.id,
-                {"include_background": msg.payload.include_background},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit(
-            "APP_LIST_REQUEST",
-            msg.id,
-            {"include_background": msg.payload.include_background, "apps_returned": len(apps)},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return AppListResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=AppListResponsePayload(apps=apps),
-        )
-
-    # ── APP_LAUNCH ───────────────────────────────────────────────────
-
-    async def _app_launch(self, msg: AppLaunchMessage) -> Any:
-        start = time.monotonic()
-        p = msg.payload
-        details = {
-            "bundle_id": p.bundle_id,
-            "executable_path": p.executable_path,
-            # In full, as EXECUTE_COMMAND keeps argv: they decide what runs.
-            "args": list(p.args),
-            "activate": p.activate,
-        }
-        try:
-            pid = await _run_to_completion(
-                self.backend.app_launch,
-                bundle_id=p.bundle_id,
-                executable_path=p.executable_path,
-                args=p.args,
-                activate=p.activate,
-            )
-        except BackendError as exc:
-            await self._emit(
-                "APP_LAUNCH",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit(
-            "APP_LAUNCH",
-            msg.id,
-            {**details, "pid": pid},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return AppLaunchAckMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=AppLaunchAckPayload(ok=True, pid=pid or None),
-        )
-
-    # ── CLIPBOARD_READ ───────────────────────────────────────────────
-
-    async def _clipboard_read(self, msg: ClipboardReadMessage) -> Any:
-        start = time.monotonic()
-        details = {"format": msg.payload.format}
-        try:
-            result = await asyncio.to_thread(self.backend.clipboard_read, format=msg.payload.format)
-        except BackendError as exc:
-            await self._emit(
-                "CLIPBOARD_READ",
-                msg.id,
-                {**details, "size_bytes": 0},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        clipboard_limit = min(
-            self.config.max_file_size_bytes,
-            (
-                MAX_WIRE_TEXT_CONTENT_BYTES
-                if result.format == "text"
-                else MAX_WIRE_BASE64_CONTENT_BYTES
-            ),
-        )
-        if result.size_bytes > clipboard_limit:
-            await self._emit(
-                "CLIPBOARD_READ",
-                msg.id,
-                {**details, "size_bytes": result.size_bytes},
-                _err_result(_elapsed_ms(start), ErrorCode.FILE_TOO_LARGE.value),
-            )
-            return make_error(
-                msg.id,
-                ErrorCode.FILE_TOO_LARGE,
-                f"Clipboard content is {result.size_bytes} bytes; limit is "
-                f"{clipboard_limit} bytes.",
-            )
-        await self._emit(
-            "CLIPBOARD_READ",
-            msg.id,
-            {**details, "size_bytes": result.size_bytes},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return ClipboardReadResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=ClipboardReadResponsePayload(
-                format=cast(Literal["text", "image"], result.format),
-                content=result.content,
-                size_bytes=result.size_bytes,
-            ),
-        )
-
-    # ── CLIPBOARD_WRITE ──────────────────────────────────────────────
-
-    async def _clipboard_write(self, msg: ClipboardWriteMessage) -> Any:
-        start = time.monotonic()
-        p = msg.payload
-        size_bytes = len(p.content.encode("utf-8"))
-        details = {"format": p.format, "size_bytes": size_bytes}
-        if size_bytes > self.config.max_file_size_bytes:
-            await self._emit(
-                "CLIPBOARD_WRITE",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), ErrorCode.FILE_TOO_LARGE.value),
-            )
-            return make_error(
-                msg.id,
-                ErrorCode.FILE_TOO_LARGE,
-                f"Clipboard content is {size_bytes} bytes; limit is "
-                f"{self.config.max_file_size_bytes} bytes.",
-            )
-        try:
-            await _run_to_completion(
-                self.backend.clipboard_write, format=p.format, content=p.content
-            )
-        except BackendError as exc:
-            await self._emit(
-                "CLIPBOARD_WRITE",
-                msg.id,
-                details,
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit("CLIPBOARD_WRITE", msg.id, details, _ok_result(_elapsed_ms(start)))
-        return make_ack(msg.id)
-
-    # ── PERMISSIONS_CHECK ────────────────────────────────────────────
-
-    async def _permissions_check(self, msg: PermissionsCheckRequestMessage) -> Any:
-        start = time.monotonic()
-        try:
-            perms = await asyncio.to_thread(self.backend.permissions_check, msg.payload.permissions)
-        except BackendError as exc:
-            await self._emit(
-                "PERMISSIONS_CHECK_REQUEST",
-                msg.id,
-                {"permissions": msg.payload.permissions},
-                _err_result(_elapsed_ms(start), exc.code.value),
-            )
-            return self._to_wire_error(msg.id, exc)
-        await self._emit(
-            "PERMISSIONS_CHECK_REQUEST",
-            msg.id,
-            {"permissions": msg.payload.permissions},
-            _ok_result(_elapsed_ms(start)),
-        )
-        return PermissionsCheckResponseMessage(
-            id=msg.id,
-            ts=now_ts(),
-            payload=PermissionsCheckResponsePayload(
-                permissions=cast(
-                    dict[str, Literal["granted", "denied", "unknown", "not_applicable"]],
-                    perms,
-                )
-            ),
-        )
-
-
-# ── Local LLM ────────────────────────────────────────────────────────────────
+    notes = [
+        "",
+        "On this machine (AutoGPT local executor):",
+        "- Calls arrive through the AutoGPT platform. The executor sets `session` on "
+        "every call; leave it out.",
+        "- Screenshots come back in results; `screenshot_out_file` is refused, and at "
+        f"most {config.max_screenshots_per_minute} images are sent a minute.",
+        f"- {clipboard}",
+        "- Only the tools listed are available. Driver configuration, sessions, "
+        "recording, process control, file transfers and page JavaScript are not.",
+    ]
+    return snapshot.instructions.rstrip() + "\n" + "\n".join(notes) + "\n"
 
 
 class OllamaBackendError(Exception):

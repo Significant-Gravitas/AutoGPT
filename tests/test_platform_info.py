@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -145,142 +144,84 @@ def _fake_open(file_contents: dict[str, str]):
 _SESSION_VARIABLES = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE")
 
 
-def _linux_session(monkeypatch: pytest.MonkeyPatch, **env: str) -> None:
+def _session(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_name: str = "linux",
+    *,
+    driver: bool = True,
+    **env: str,
+) -> list:
+    """A machine of `platform_name` with `env` set, and cua-driver installed
+    or not. Returns the paths the driver lookup was asked for."""
     for name in _SESSION_VARIABLES:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setattr(platform_info, "_module_available", lambda _name: True)
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
+    asked: list = []
+
+    def find(explicit=None):
+        asked.append(explicit)
+        return Path("/opt/cua-driver") if driver else None
+
+    from autogpt_local_executor.computer_use import driver as driver_module
+
+    monkeypatch.setattr(driver_module, "find_driver_binary", find)
+    return asked
 
 
 @pytest.mark.parametrize(
     "env",
     [
-        {},
-        {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"},
-        {"DISPLAY": ":0", "XDG_SESSION_TYPE": "wayland"},
+        {"DISPLAY": ":0"},
+        {"WAYLAND_DISPLAY": "wayland-0"},
+        {"DISPLAY": ":0", "WAYLAND_DISPLAY": "w"},
     ],
-    ids=["headless", "xwayland", "wayland-session"],
+    ids=["x11", "wayland", "xwayland"],
 )
-def test_linux_computer_use_needs_an_x11_display(
+def test_linux_computer_use_is_advertised_with_a_display(
     monkeypatch: pytest.MonkeyPatch, env: dict[str, str]
 ) -> None:
-    """Without an X display there is no screen, and Wayland blocks input
-    injection even for XWayland apps."""
-    _linux_session(monkeypatch, **env)
-
-    assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
-
-
-class _DisplayConnectionError(Exception):
-    """What python-xlib raises when the X server can't be reached."""
-
-
-def _fake_xlib(monkeypatch: pytest.MonkeyPatch, display: MagicMock) -> None:
-    """Install `display` as python-xlib's `Xlib.display.Display`."""
-    xlib = types.ModuleType("Xlib")
-    xlib_display = types.ModuleType("Xlib.display")
-    xlib_display.Display = display
-    xlib.display = xlib_display
-    monkeypatch.setitem(sys.modules, "Xlib", xlib)
-    monkeypatch.setitem(sys.modules, "Xlib.display", xlib_display)
-
-
-def test_linux_computer_use_is_advertised_in_an_x11_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
-    display = MagicMock()
-    _fake_xlib(monkeypatch, display)
+    """cua-driver drives X11, and Wayland through XWayland or its own
+    backend, so either display will do."""
+    _session(monkeypatch, **env)
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
-    display.return_value.close.assert_called_once_with()
 
 
-def test_linux_computer_use_needs_an_x11_display_that_opens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A DISPLAY naming an X server that has gone, such as a closed SSH
-    forward, passed as a usable display."""
-    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
-    _fake_xlib(
-        monkeypatch,
-        MagicMock(side_effect=_DisplayConnectionError('Can\'t connect to display ":0"')),
-    )
+def test_linux_computer_use_needs_a_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    _session(monkeypatch)
 
     assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
 
 
-def test_linux_computer_use_without_python_xlib_is_not_advertised(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _linux_session(monkeypatch, DISPLAY=":0", XDG_SESSION_TYPE="x11")
-    monkeypatch.setitem(sys.modules, "Xlib", None)
+@pytest.mark.parametrize("platform_name", ["darwin", "linux", "windows"])
+def test_computer_use_needs_cua_driver(monkeypatch: pytest.MonkeyPatch, platform_name: str) -> None:
+    _session(monkeypatch, platform_name, driver=False, DISPLAY=":0")
 
     assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
 
 
-def test_an_x_server_that_never_answers_counts_as_no_display(monkeypatch) -> None:
-    """python-xlib waits for the server's setup reply with no time limit, so
-    a server that accepted the connection and never answered hung HELLO and
-    doctor."""
-    import threading
-    import time
+@pytest.mark.parametrize("platform_name", ["darwin", "windows"])
+def test_computer_use_is_advertised_with_cua_driver(
+    monkeypatch: pytest.MonkeyPatch, platform_name: str
+) -> None:
+    _session(monkeypatch, platform_name)
 
-    answer = threading.Event()
-
-    def stalled(*_args, **_kwargs):
-        answer.wait(10)
-        return MagicMock()
-
-    _fake_xlib(monkeypatch, MagicMock(side_effect=stalled))
-    monkeypatch.setattr(platform_info, "X11_PROBE_SECONDS", 0.2, raising=False)
-    started = time.monotonic()
-    try:
-        assert platform_info._x11_display_opens() is False
-    finally:
-        answer.set()
-        _join_probe_threads()
-    assert time.monotonic() - started < 5
+    assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
 
 
-def _probe_threads() -> list:
-    import threading
+def test_wsl2_never_advertises_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    _session(monkeypatch, "wsl2", DISPLAY=":0")
 
-    return [t for t in threading.enumerate() if t.name == "x11-display-probe"]
-
-
-def _join_probe_threads() -> None:
-    for thread in _probe_threads():
-        thread.join(30)
+    assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
 
 
-def test_a_stalled_x_server_holds_at_most_one_probe_thread(monkeypatch) -> None:
-    """A probe the server never answers stays blocked for good, and each
-    reconnect's HELLO started another, each holding an X connection. A later
-    probe waits on the one already running instead, and once the server
-    answers, the next one starts afresh."""
-    import threading
+def test_the_configured_driver_path_is_the_one_looked_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = _session(monkeypatch, "darwin")
 
-    answer = threading.Event()
-    connects: list[int] = []
+    platform_info.detect_capabilities(enable_computer_use=True, cua_driver_path="/x/cua-driver")
 
-    def stalled(*_args, **_kwargs):
-        connects.append(1)
-        answer.wait(30)
-        return MagicMock()
-
-    _fake_xlib(monkeypatch, MagicMock(side_effect=stalled))
-    monkeypatch.setattr(platform_info, "X11_PROBE_SECONDS", 0.05)
-    try:
-        assert platform_info._x11_display_opens() is False
-        assert platform_info._x11_display_opens() is False
-        assert len(_probe_threads()) == 1
-    finally:
-        answer.set()
-        _join_probe_threads()
-
-    assert platform_info._x11_display_opens() is True
-    assert len(connects) == 2
-    _join_probe_threads()
+    assert asked == ["/x/cua-driver"]

@@ -1,0 +1,234 @@
+"""A stand-in for `cua-driver mcp`, run as `python fake_cua_driver.py mcp`.
+
+It speaks MCP over stdio like the real driver and enforces the YAML policy
+named by CUA_DRIVER_POLICY_FILE (an `allow.tools` list) the same way. What
+it does is set through environment variables, and it logs what it saw, one
+JSON object per line, to FAKE_CUA_LOG:
+
+  FAKE_CUA_VERSION       serverInfo.version (default 0.38.0)
+  FAKE_CUA_EXTRA_TOOLS   comma-separated tools listed beyond the catalog
+  FAKE_CUA_PERMISSIONS   JSON for check_permissions' structured result
+  FAKE_CUA_CLIPBOARD     file holding the clipboard text
+  FAKE_CUA_CLIPBOARD_TYPES  comma-separated clipboard types
+  FAKE_CUA_IMAGE_BYTES   size of the image get_window_state returns
+  FAKE_CUA_EXIT_AT_START exit before answering initialize
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import sys
+import threading
+import time
+
+CATALOG = [
+    "bring_to_front", "browser_click", "browser_dialog", "browser_navigate",
+    "browser_pointer", "browser_prepare", "browser_select", "browser_type",
+    "check_permissions", "click", "clipboard_read", "clipboard_write",
+    "double_click", "drag", "get_browser_state", "get_cursor_position",
+    "get_desktop_state", "get_guide", "get_screen_size", "get_window_state",
+    "hotkey", "invoke_menu", "launch_app", "list_apps", "list_windows",
+    "mouse_button_down", "mouse_button_up", "mouse_drag", "move_cursor",
+    "press_key", "right_click", "run_script", "run_steps", "scroll",
+    "set_value", "set_window_frame", "type_text", "verify_state", "zoom",
+]  # fmt: skip
+
+_write_lock = threading.Lock()
+_cancelled: set[int] = set()
+
+
+def log(**record: object) -> None:
+    path = os.environ.get("FAKE_CUA_LOG")
+    if path:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+
+
+def send(message: dict) -> None:
+    with _write_lock:
+        sys.stdout.write(json.dumps(message) + "\n")
+        sys.stdout.flush()
+
+
+def allowed_tools() -> set[str] | None:
+    path = os.environ.get("CUA_DRIVER_POLICY_FILE")
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as handle:
+        return set(json.load(handle)["allow"]["tools"])
+
+
+def tool_list() -> list[dict]:
+    extra = [t for t in os.environ.get("FAKE_CUA_EXTRA_TOOLS", "").split(",") if t]
+    allowed = allowed_tools()
+    names = [n for n in CATALOG + extra if allowed is None or n in allowed]
+    return [
+        {
+            "name": name,
+            "description": f"The {name} tool.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"session": {"type": "string"}, "pid": {"type": "integer"}},
+                "required": ["session"] if name == "zoom" else [],
+            },
+            "annotations": {"readOnlyHint": name.startswith("get_")},
+        }
+        for name in names
+    ]
+
+
+def text_result(text: str, structured: dict | None = None, *, error: bool = False) -> dict:
+    result: dict = {"content": [{"type": "text", "text": text}]}
+    if structured is not None:
+        result["structuredContent"] = structured
+    if error:
+        result["isError"] = True
+    return result
+
+
+def call_tool(request_id: int, name: str, arguments: dict) -> dict:
+    log(event="call", tool=name, arguments=arguments)
+    allowed = allowed_tools()
+    if allowed is not None and name not in allowed:
+        return text_result(
+            f"Permission denied: user policy: tool '{name}' is not allowed by the YAML policy",
+            {"code": "permission_denied"},
+            error=True,
+        )
+    if name == "get_screen_size":
+        return text_result("1920x1080", {"width": 1920, "height": 1080, "scale_factor": 1.0})
+    if name == "check_permissions":
+        granted = json.loads(
+            os.environ.get("FAKE_CUA_PERMISSIONS")
+            or '{"accessibility": true, "screen_recording": true}'
+        )
+        return text_result("permissions", granted)
+    if name == "clipboard_write":
+        with open(os.environ["FAKE_CUA_CLIPBOARD"], "w", encoding="utf-8") as handle:
+            handle.write(arguments["text"])
+        return text_result("written", {"ok": True})
+    if name == "clipboard_read":
+        try:
+            with open(os.environ["FAKE_CUA_CLIPBOARD"], encoding="utf-8") as handle:
+                text = handle.read()
+        except FileNotFoundError:
+            text = None
+        types = [t for t in os.environ.get("FAKE_CUA_CLIPBOARD_TYPES", "").split(",") if t]
+        return text_result(
+            f"clipboard: {text}",
+            {"supported": True, "types": types, "text": text, "privacy_sensitive": True},
+        )
+    if name == "get_window_state":
+        size = int(os.environ.get("FAKE_CUA_IMAGE_BYTES", "12"))
+        data = base64.b64encode(b"\x89PNG" + b"x" * max(size - 4, 0)).decode()
+        return {
+            "content": [
+                {"type": "text", "text": "window"},
+                {"type": "image", "data": data, "mimeType": "image/png"},
+                {"type": "resource", "resource": {"uri": "x"}},
+            ],
+            "structuredContent": {"elements": []},
+        }
+    if name == "zoom" and arguments.get("pid") == -1:
+        return text_result("no such window", {"code": "stale"}, error=True)
+    if name == "drag" and arguments.get("pid") == -2:
+        # A slow action: runs until cancelled.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and request_id not in _cancelled:
+            time.sleep(0.01)
+        log(event="slow_done", cancelled=request_id in _cancelled)
+        return text_result("slow")
+    if name == "drag" and arguments.get("pid") == -3:
+        log(event="exiting")
+        os._exit(3)
+    return text_result(json.dumps(arguments), {"arguments": arguments})
+
+
+def handle(message: dict) -> None:
+    method = message.get("method")
+    request_id = message.get("id")
+    if method == "initialize":
+        log(
+            event="initialize",
+            argv=sys.argv[1:],
+            env={
+                key: os.environ.get(key)
+                for key in (
+                    "CUA_DRIVER_POLICY_FILE",
+                    "CUA_DRIVER_PERMISSION_MODE",
+                    "CUA_DRIVER_DISABLE_UNRESTRICTED",
+                    "DO_NOT_TRACK",
+                    "CUA_DRIVER_RS_TELEMETRY_ENABLED",
+                    "CUA_DRIVER_RS_UPDATE_CHECK",
+                    "CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS",
+                    "CUA_DRIVER_CAPABILITY_MANIFEST_FILE",
+                )
+            },
+            policy=sorted(allowed_tools() or []),
+        )
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": message["params"]["protocolVersion"],
+                    "serverInfo": {
+                        "name": "cua-driver",
+                        "version": os.environ.get("FAKE_CUA_VERSION", "0.38.0"),
+                    },
+                    "capabilities": {"tools": {}},
+                    "instructions": "Fake cua-driver guidance.",
+                },
+            }
+        )
+    elif method == "tools/list":
+        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": tool_list()}})
+    elif method == "tools/call":
+        params = message["params"]
+        pid = (params.get("arguments") or {}).get("pid")
+        if params["name"] == "set_window_frame" and pid in (-4, -5):
+            # A JSON-RPC error instead of a tool result.
+            code, text = (-32602, "width must be positive") if pid == -4 else (-32603, "boom")
+            send({"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": text}})
+            return
+
+        def run() -> None:
+            result = call_tool(request_id, params["name"], params.get("arguments") or {})
+            send({"jsonrpc": "2.0", "id": request_id, "result": result})
+
+        threading.Thread(target=run, daemon=True).start()
+    elif method == "notifications/cancelled":
+        _cancelled.add(message["params"]["requestId"])
+        log(event="cancelled", request=message["params"]["requestId"])
+    elif method == "ping-me":
+        # Asks the client a question, as a server may.
+        send({"jsonrpc": "2.0", "id": "server-1", "method": "ping"})
+        send({"jsonrpc": "2.0", "id": request_id, "result": {}})
+    elif method is None:
+        log(event="client_reply", message=message)
+    elif request_id is not None and method is not None:
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32601, "message": f"{method} not found"},
+            }
+        )
+
+
+def main() -> None:
+    if os.environ.get("FAKE_CUA_EXIT_AT_START"):
+        sys.stderr.write("fake driver failed to start\n")
+        sys.stderr.flush()
+        sys.exit(4)
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            handle(json.loads(line))
+    log(event="stdin_closed")
+
+
+if __name__ == "__main__":
+    main()

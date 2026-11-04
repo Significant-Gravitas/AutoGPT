@@ -149,20 +149,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--enable-computer-use",
         action="store_true",
         default=False,
-        help="Advertise the computer_use capability and enable screen + input ops.",
+        help="Advertise the computer_use capability, served by cua-driver "
+        "(see docs/CUA_DRIVER.md).",
     )
     start_p.add_argument(
         "--enable-clipboard",
         action="store_true",
         default=False,
-        help="Permit CLIPBOARD_READ / CLIPBOARD_WRITE (default-deny; see docs/COMPUTER_USE.md Q3).",
+        help="Offer cua-driver's clipboard tools (default off; see docs/COMPUTER_USE.md).",
     )
     start_p.add_argument(
         "--enable-clipboard-read-foreign",
         action="store_true",
         default=False,
         help="With --enable-clipboard, also permit reading clipboard contents "
-        "the shim didn't write (subject to ConcealedType / CF_PRIVATE).",
+        "the shim didn't write, except content a password manager marked private.",
     )
     start_p.add_argument(
         "--enable-recording",
@@ -340,7 +341,7 @@ async def _cmd_start(config) -> int:
             _print_launchagent_stopped("Fix the above")
             return 0
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
-        # re-launches us on the next TCC change. See COMPUTER_USE.md Q5.
+        # re-launches us on the next TCC change. See COMPUTER_USE.md "macOS".
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)

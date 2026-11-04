@@ -1,15 +1,25 @@
-"""Tests for `autogpt-shim doctor` and the daemon TCC preflight."""
+"""Tests for `autogpt-shim doctor` and the daemon's computer-use preflight."""
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from autogpt_local_executor import doctor
 from autogpt_local_executor.audit import AuditWriter
+from autogpt_local_executor.computer_use import driver as driver_module
 from autogpt_local_executor.config import ShimConfig
+from autogpt_local_executor.daemon import DaemonPreflightError
+from autogpt_local_executor.protocol import ErrorCode
+from tests.cua_fakes import FAKE, fake_bridge, fake_log
+
+__all__ = ["fake_log"]  # a fixture, used by name
 
 
 def _config(tmp_path: Path, **overrides) -> ShimConfig:
@@ -22,20 +32,11 @@ def _config(tmp_path: Path, **overrides) -> ShimConfig:
     )
 
 
-def test_doctor_returns_zero_when_computer_use_not_requested(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
-    """No computer-use requested → blocking permissions don't block."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
-    monkeypatch.setattr(doctor, "_ax_trusted_with_prompt", lambda: False)
-    monkeypatch.setattr(doctor, "_screen_recording_granted", lambda: False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
+def test_doctor_returns_zero_when_computer_use_not_requested(tmp_path: Path, capsys) -> None:
     config = _config(tmp_path, enable_computer_use=False)
-    rc = doctor.run_doctor(config)
-    assert rc == 0
+
+    assert doctor.run_doctor(config) == 0
+    assert "not requested in config" in capsys.readouterr().out
 
 
 def test_control_doctor_checks_browser_without_creating_legacy_root(
@@ -43,10 +44,6 @@ def test_control_doctor_checks_browser_without_creating_legacy_root(
 ) -> None:
     missing_root = tmp_path / "must-not-be-created"
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
     config = _config(tmp_path, session_id=None)
     config.allowed_root = missing_root
 
@@ -54,66 +51,196 @@ def test_control_doctor_checks_browser_without_creating_legacy_root(
     assert not missing_root.exists()
 
 
-def test_doctor_returns_78_when_ax_denied_and_computer_use_requested(
-    tmp_path: Path, monkeypatch
+# ── Computer use ─────────────────────────────────────────────────────────
+
+
+def _driver_report(version: str = "0.38.0", probes: list[dict] | None = None) -> str:
+    return json.dumps(
+        {
+            "build": {"version": version},
+            "ok": True,
+            "probes": probes
+            if probes is not None
+            else [
+                {"label": "binary", "message": f"cua-driver {version}", "status": "ok"},
+                {"label": "AT-SPI", "message": "org.a11y.Bus reachable", "status": "ok"},
+            ],
+        }
+    )
+
+
+class _Commands(list):
+    """The cua-driver commands doctor ran, and the report `doctor --json`
+    answers with."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.state: dict[str, Any] = {"report": _driver_report()}
+
+
+@pytest.fixture
+def driver_commands(monkeypatch: pytest.MonkeyPatch) -> _Commands:
+    ran = _Commands()
+
+    def run(argv, **_kwargs):
+        ran.append(list(argv[1:]))
+        stdout = ran.state["report"] if argv[1:] == ["doctor", "--json"] else ""
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+    return ran
+
+
+@pytest.fixture
+def a_fake_driver(monkeypatch: pytest.MonkeyPatch, fake_log: Path):
+    """doctor's driver probes run the fake, as if on `platform`."""
+    settings: dict[str, Any] = {"platform": "linux"}
+
+    def bridge(*, tools, binary):
+        return fake_bridge(platform=settings["platform"])
+
+    monkeypatch.setattr(doctor, "CuaDriverBridge", bridge)
+    return settings
+
+
+def _report(out: str) -> dict[str, tuple[str, str]]:
+    """doctor's output as {label: (marker, detail)}."""
+    lines = {}
+    for line in out.splitlines():
+        match = re.match(r"\[(\w+)\s*\] (.+?)\s{2,}(.*)$", line)
+        if match:
+            lines[match.group(2)] = (match.group(1), match.group(3))
+    return lines
+
+
+def _with_driver(tmp_path: Path, plat: str = "linux", **overrides) -> ShimConfig:
+    return _config(tmp_path, enable_computer_use=True, cua_driver_path=str(FAKE), **overrides)
+
+
+def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == doctor.EX_CONFIG
+    assert "computer-use]" in capsys.readouterr().out
+
+
+def test_doctor_runs_the_drivers_own_probes_and_starts_it(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
+) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    driver_commands.state["report"] = _driver_report(
+        probes=[
+            {"label": "binary", "message": "cua-driver 0.38.0", "status": "ok"},
+            {
+                "label": "display server",
+                "message": "neither DISPLAY nor WAYLAND_DISPLAY set",
+                "detail": "run from a desktop session",
+                "status": "warn",
+            },
+            {"label": "AT-SPI", "message": "org.a11y.Bus reachable", "status": "ok"},
+        ]
+    )
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == 0
+    assert driver_commands[0] == ["doctor", "--json"]
+    assert lines["cua-driver display server"] == (
+        "WARN",
+        "neither DISPLAY nor WAYLAND_DISPLAY set (run from a desktop session)",
+    )
+    assert lines["cua-driver AT-SPI"] == ("OK", "org.a11y.Bus reachable")
+    assert "cua-driver binary" not in lines
+    assert lines["cua-driver start"] == ("OK", "direct runtime, 37 tools offered")
+    assert lines["display"] == ("OK", "1920x1080 (scale 1)")
+
+
+def test_doctor_fails_on_a_driver_probe_error(
+    tmp_path, monkeypatch, driver_commands, a_fake_driver
+) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    driver_commands.state["report"] = _driver_report(
+        probes=[{"label": "AT-SPI", "message": "no session bus", "status": "error"}]
+    )
+
+    assert doctor.run_doctor(_with_driver(tmp_path)) == doctor.EX_CONFIG
+
+
+def test_doctor_fails_on_another_driver_version(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
+) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    driver_commands.state["report"] = _driver_report(version="0.40.1")
+
+    assert doctor.run_doctor(_with_driver(tmp_path)) == doctor.EX_CONFIG
+    assert "0.40.1" in capsys.readouterr().out
+
+
+def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
+
+    assert doctor.run_doctor(_with_driver(tmp_path)) == doctor.EX_CONFIG
+
+
+@pytest.mark.parametrize("app", [True, False], ids=["cuadriver-app", "direct"])
+def test_doctor_on_macos_reports_missing_grants_and_raises_the_prompts(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, app: bool
+) -> None:
+    """The prompts belong to CuaDriver.app, so doctor asks it to raise them,
+    as the old in-process probe did for the shim; without the app the grants
+    belong to whatever starts the shim, which doctor can only name."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(driver_module, "macos_app_installed", lambda: app)
+    a_fake_driver["platform"] = "darwin"
+    monkeypatch.setenv("FAKE_CUA_PERMISSIONS", '{"accessibility": true, "screen_recording": false}')
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == doctor.EX_CONFIG
+    holder = "CuaDriver" if app else "the app that starts the local executor"
+    assert lines["Accessibility"] == ("OK", f"granted to {holder}")
+    assert lines["Screen Recording"][0] == "FAIL"
+    assert lines["Screen Recording"][1].endswith(f"enable {holder}")
+    assert (["permissions", "grant"] in driver_commands) is app
+
+
+def test_doctor_on_macos_passes_with_both_grants(
+    tmp_path, monkeypatch, driver_commands, a_fake_driver
 ) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
-    monkeypatch.setattr(doctor, "_ax_trusted_with_prompt", lambda: False)
-    monkeypatch.setattr(doctor, "_screen_recording_granted", lambda: True)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-    config = _config(tmp_path, enable_computer_use=True)
-    rc = doctor.run_doctor(config)
-    assert rc == doctor.EX_CONFIG
+    monkeypatch.setattr(driver_module, "macos_app_installed", lambda: True)
+    a_fake_driver["platform"] = "darwin"
+
+    assert doctor.run_doctor(_with_driver(tmp_path)) == 0
+    assert ["permissions", "grant"] not in driver_commands
 
 
-def test_doctor_linux_wayland_warns_when_computer_use_on(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-    config = _config(tmp_path, enable_computer_use=True)
-    rc = doctor.run_doctor(config)
-    assert rc == doctor.EX_CONFIG
-
-
-def test_doctor_linux_x11_ok_when_computer_use_on(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
-    monkeypatch.setenv("DISPLAY", ":0")
+@pytest.mark.parametrize(("present", "marker"), [(True, "OK"), (False, "WARN")])
+def test_doctor_checks_the_tool_foreign_clipboard_reads_need(
+    monkeypatch, present: bool, marker: str
+) -> None:
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-    config = _config(tmp_path, enable_computer_use=True)
-    rc = doctor.run_doctor(config)
-    assert rc == 0
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: name if present else None)
+
+    result = doctor._check_linux_clipboard_types()
+
+    assert result.marker == marker
+    assert "xclip" in result.detail
 
 
-def test_doctor_wsl2_blocks_when_computer_use_on(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-    config = _config(tmp_path, enable_computer_use=True)
-    rc = doctor.run_doctor(config)
-    assert rc == doctor.EX_CONFIG
-
-
-# ── Daemon TCC preflight (C2) ───────────────────────────────────────────
+# ── Daemon preflight ─────────────────────────────────────────────────────
 
 
 def _daemon(config: ShimConfig):
     from autogpt_local_executor.daemon import ShimDaemon
 
     audit = AuditWriter(path=config.audit_log_path, audit_key=b"a" * 32)
-    return ShimDaemon(config=config, token_store=MagicMock(), audit=audit)
+    daemon = ShimDaemon(config=config, token_store=MagicMock(), audit=audit)
+    daemon._computer_handler._driver = fake_bridge(platform="darwin")
+    return daemon
 
 
 @pytest.mark.asyncio
@@ -122,143 +249,69 @@ async def test_daemon_preflight_passes_when_computer_use_off(tmp_path) -> None:
     await _daemon(config)._preflight_or_raise()
 
 
-async def test_daemon_preflight_raises_when_ax_denied_on_macos(tmp_path, monkeypatch) -> None:
-    """Q5: macOS + computer_use requested + AX denied → DaemonPreflightError."""
-    from autogpt_local_executor.daemon import DaemonPreflightError
+async def test_daemon_preflight_stops_for_good_without_cua_driver(tmp_path, monkeypatch) -> None:
+    config = _config(tmp_path, enable_computer_use=True, cua_driver_path=str(tmp_path / "x"))
 
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "darwin",
-    )
-    import sys
-
-    fake_appsvc = MagicMock()
-    fake_appsvc.AXIsProcessTrusted = lambda: False
-    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
-    _fake_screen_recording(monkeypatch, granted=True)
-    config = _config(tmp_path, enable_computer_use=True)
-    d = _daemon(config)
-    with pytest.raises(DaemonPreflightError, match="^Accessibility permission not granted"):
-        await d._preflight_or_raise()
-    assert '"op": "DAEMON_PREFLIGHT_FAILED"' in config.audit_log_path.read_text()
-
-
-async def test_daemon_preflight_passes_when_ax_granted_on_macos(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "darwin",
-    )
-    import sys
-
-    fake_appsvc = MagicMock()
-    fake_appsvc.AXIsProcessTrusted = lambda: True
-    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
-    _fake_screen_recording(monkeypatch, granted=True)
-    config = _config(tmp_path, enable_computer_use=True)
-    await _daemon(config)._preflight_or_raise()
-
-
-def _fake_screen_recording(monkeypatch: pytest.MonkeyPatch, *, granted: bool) -> None:
-    import sys
-
-    fake_quartz = MagicMock()
-    fake_quartz.CGPreflightScreenCaptureAccess = lambda: granted
-    monkeypatch.setitem(sys.modules, "Quartz", fake_quartz)
-
-
-async def test_daemon_preflight_raises_when_screen_recording_denied_on_macos(
-    tmp_path, monkeypatch
-) -> None:
-    """Without Screen Recording, macOS captures show only the wallpaper and
-    menu bar, so computer use can't work; exit 78 as for Accessibility."""
-    import json
-    import sys
-
-    from autogpt_local_executor.daemon import DaemonPreflightError
-
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "darwin",
-    )
-    fake_appsvc = MagicMock()
-    fake_appsvc.AXIsProcessTrusted = lambda: True
-    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
-    _fake_screen_recording(monkeypatch, granted=False)
-    config = _config(tmp_path, enable_computer_use=True)
-
-    with pytest.raises(DaemonPreflightError, match="^Screen Recording permission not granted"):
+    with pytest.raises(DaemonPreflightError) as raised:
         await _daemon(config)._preflight_or_raise()
 
-    [record] = [json.loads(line) for line in config.audit_log_path.read_text().splitlines()]
-    assert record["op"] == "DAEMON_PREFLIGHT_FAILED"
-    assert record["details"]["missing_permissions"] == ["screen_recording"]
+    assert raised.value.permanent is True
+    assert "cua_driver" in (tmp_path / "_audit.log").read_text()
 
 
-async def test_daemon_preflight_no_op_on_non_macos(tmp_path, monkeypatch) -> None:
-    """Per Q5, the AX gate only applies to macOS — Windows/Linux are
-    handled by their own permission models."""
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "linux",
-    )
-    config = _config(tmp_path, enable_computer_use=True)
-    await _daemon(config)._preflight_or_raise()
-
-
-@pytest.mark.asyncio
-async def test_daemon_preflight_fails_closed_when_ax_probe_is_unavailable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import sys
-
-    from autogpt_local_executor.daemon import DaemonPreflightError
-
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "darwin",
-    )
-    monkeypatch.setitem(sys.modules, "ApplicationServices", None)
-    config = _config(tmp_path, enable_computer_use=True)
-
-    with pytest.raises(DaemonPreflightError, match="Cannot verify Accessibility"):
-        await _daemon(config)._preflight_or_raise()
-
-
-@pytest.mark.asyncio
-async def test_daemon_preflight_fails_closed_when_ax_probe_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import sys
-
-    from autogpt_local_executor.daemon import DaemonPreflightError
-
-    monkeypatch.setattr(
-        "autogpt_local_executor.daemon.platform_info.detect_platform",
-        lambda: "darwin",
-    )
-    fake_appsvc = MagicMock()
-    fake_appsvc.AXIsProcessTrusted.side_effect = RuntimeError("TCC unavailable")
-    monkeypatch.setitem(sys.modules, "ApplicationServices", fake_appsvc)
-    _fake_screen_recording(monkeypatch, granted=True)
-    config = _config(tmp_path, enable_computer_use=True)
-
-    with pytest.raises(DaemonPreflightError, match="Could not verify Accessibility"):
-        await _daemon(config)._preflight_or_raise()
-
-
-def test_doctor_linux_blocks_when_no_display_session_is_detected(tmp_path, monkeypatch) -> None:
-    """Without XDG_SESSION_TYPE, DISPLAY or WAYLAND_DISPLAY there is no screen to
-    use, which blocks computer use just as Wayland and WSL2 do."""
+async def test_daemon_preflight_needs_no_grants_off_macos(tmp_path, monkeypatch, fake_log) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    for name in ("XDG_SESSION_TYPE", "DISPLAY", "WAYLAND_DISPLAY"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
+    daemon = _daemon(_with_driver(tmp_path))
 
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == doctor.EX_CONFIG
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=False)) == 0
+    await daemon._preflight_or_raise()
+
+    assert daemon._computer_handler.driver.info is None  # never started
+
+
+@pytest.mark.parametrize(
+    ("grants", "missing"),
+    [
+        ({"accessibility": False, "screen_recording": True}, ["accessibility"]),
+        ({"accessibility": True, "screen_recording": False}, ["screen_recording"]),
+        ({}, ["accessibility", "screen_recording"]),
+    ],
+)
+async def test_daemon_preflight_on_macos_needs_both_grants(
+    tmp_path, monkeypatch, fake_log, grants: dict, missing: list[str]
+) -> None:
+    """Without Screen Recording a capture shows only the wallpaper and menu
+    bar; without Accessibility there is no input."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setenv("FAKE_CUA_PERMISSIONS", json.dumps(grants))
+    daemon = _daemon(_with_driver(tmp_path))
+    try:
+        with pytest.raises(DaemonPreflightError) as raised:
+            await daemon._preflight_or_raise()
+    finally:
+        await daemon._computer_handler.close()
+
+    assert raised.value.permanent is False
+    record = next(
+        json.loads(line)
+        for line in (tmp_path / "_audit.log").read_text().splitlines()
+        if "DAEMON_PREFLIGHT_FAILED" in line
+    )
+    assert record["details"]["missing_permissions"] == missing
+    assert record["result"]["error_code"] == ErrorCode.PERMISSION_PENDING.value
+
+
+async def test_daemon_preflight_on_macos_passes_with_both_grants(
+    tmp_path, monkeypatch, fake_log
+) -> None:
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    daemon = _daemon(_with_driver(tmp_path))
+    try:
+        await daemon._preflight_or_raise()
+    finally:
+        await daemon._computer_handler.close()
+
+
+# ── Keychain ─────────────────────────────────────────────────────────────
 
 
 def test_doctor_keychain_warning_states_the_real_requirement(monkeypatch) -> None:
@@ -276,37 +329,6 @@ def test_doctor_keychain_warning_states_the_real_requirement(monkeypatch) -> Non
     assert "fallback will be used" not in result.detail
     assert "sign-in" in result.detail
     assert "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE" in result.detail
-
-
-def test_doctor_linux_reads_display_when_the_session_type_is_unrecognized(
-    tmp_path, monkeypatch
-) -> None:
-    """XDG_SESSION_TYPE=tty with DISPLAY set, as in a remote shell into a
-    running X session, still has a usable X11 display."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "tty")
-    monkeypatch.setenv("DISPLAY", ":0")
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 0
-
-
-def test_doctor_linux_warns_when_an_x11_session_has_no_display(tmp_path, monkeypatch) -> None:
-    """XDG_SESSION_TYPE=x11 with DISPLAY unset was reported as full computer_use."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
-    monkeypatch.delenv("DISPLAY", raising=False)
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
 
 
 class _MemoryKeyring:
@@ -363,17 +385,6 @@ def test_doctor_warns_on_a_keyring_backend_that_can_store_nothing(monkeypatch) -
 
 
 @pytest.fixture(autouse=True)
-def _the_computer_use_modules_are_installed(monkeypatch):
-    monkeypatch.setattr(doctor.platform_info, "_module_available", lambda _name: True)
-
-
-@pytest.fixture(autouse=True)
-def _an_x_server_that_answers(monkeypatch):
-    """doctor opens the X display as HELLO does; none answers here."""
-    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: True)
-
-
-@pytest.fixture(autouse=True)
 def _a_keychain_that_works(monkeypatch):
     """doctor round-trips a probe through the keychain; keep the real one,
     which may block on an unlock prompt, out of these tests."""
@@ -403,21 +414,6 @@ def test_doctor_does_not_hang_on_a_keychain_that_never_answers(monkeypatch) -> N
     assert "did not answer" in result.detail
 
 
-def test_doctor_follows_the_backend_when_a_wayland_display_is_set(tmp_path, monkeypatch) -> None:
-    """With WAYLAND_DISPLAY set the backend refuses input, but doctor looked at
-    XDG_SESSION_TYPE=x11 and reported full computer_use."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
-    monkeypatch.setenv("DISPLAY", ":0")
-    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
-
-
 def test_doctor_does_not_hang_finding_a_keyring_backend(monkeypatch) -> None:
     """Finding the backend can block too (the Secret Service check makes
     D-Bus calls), and it ran before the time limit started."""
@@ -439,88 +435,3 @@ def test_doctor_does_not_hang_finding_a_keyring_backend(monkeypatch) -> None:
     assert time.monotonic() - started < 5
     assert result.marker == "WARN"
     assert "did not answer" in result.detail
-
-
-def test_doctor_warns_when_the_x_server_does_not_answer(tmp_path, monkeypatch) -> None:
-    """With DISPLAY naming a server that had gone, doctor reported full
-    computer_use while HELLO left it out."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
-    monkeypatch.setenv("DISPLAY", "localhost:10.0")
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: False)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    result = next(
-        r
-        for r in doctor._check_linux(_config(tmp_path), is_wsl2=False)
-        if r.label == "display_server"
-    )
-
-    assert result.marker == "WARN"
-    assert "localhost:10.0" in result.detail
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
-
-
-def test_doctor_warns_when_a_computer_use_module_is_missing(tmp_path, monkeypatch, capsys) -> None:
-    """HELLO leaves computer_use out when a module it needs is missing, but
-    doctor reported X11 computer_use as available and exited 0."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
-    monkeypatch.setenv("DISPLAY", ":0")
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.platform_info, "_module_available", lambda name: name != "mss")
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
-    out = capsys.readouterr().out
-    assert "mss" in out
-    assert "full computer_use available" not in out
-
-
-@pytest.mark.parametrize(
-    ("session", "tools", "ok"),
-    [
-        ("x11", {"wl-copy"}, False),
-        ("x11", {"xclip"}, True),
-        ("wayland", {"wl-copy"}, True),
-        ("wayland", {"xclip"}, True),
-        ("wayland", set(), False),
-    ],
-    ids=["x11-wl-copy-only", "x11-xclip", "wayland-wl-copy", "wayland-xclip", "wayland-none"],
-)
-def test_doctor_checks_the_clipboard_tool_the_session_uses(
-    tmp_path, monkeypatch, session: str, tools: set[str], ok: bool
-) -> None:
-    """On X11, doctor passed the clipboard check with only wl-copy, which
-    can't reach an X11 clipboard; the backend then offered no clipboard."""
-    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
-    monkeypatch.setenv("XDG_SESSION_TYPE", session)
-    monkeypatch.setenv("DISPLAY", ":0")
-    if session == "wayland":
-        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
-    else:
-        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: True)
-    import shutil
-
-    # doctor imports shutil inside the check, so the module's own is patched.
-    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}" if name in tools else None)
-    monkeypatch.setattr(
-        "autogpt_local_executor.computer_use.get_backend",
-        lambda _: MagicMock(display_info=lambda: []),
-    )
-
-    result = next(
-        r
-        for r in doctor._check_linux(_config(tmp_path, enable_clipboard=True), is_wsl2=False)
-        if r.label == "clipboard tools"
-    )
-
-    assert (result.marker == "OK") is ok, result
