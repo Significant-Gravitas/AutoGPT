@@ -4,11 +4,14 @@ Sales invoices the customer; an admin sets the team organization's plan and
 adds the invoice's credits; the team works under that plan until its end date.
 Drives the real app against the real database: the paywall every paid route
 asks, the organization's seats, its wallet paying for a run, and the plan's end.
-Run with ``ENABLE_CREDIT=true``, so the run is charged.
+Billing is off in tests by default, so the test turns it on itself.
 """
 
+import asyncio
 import uuid
+from collections.abc import Coroutine
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import httpx
 import pytest
@@ -19,6 +22,7 @@ from prisma.models import AuditLog
 from backend.api.model import CreateGraph
 from backend.api.rest_api import app
 from backend.copilot.rate_limit import SubscriptionTier, set_user_tier
+from backend.data import credit, db_manager
 from backend.data.credit import UserCredit
 from backend.data.execution import GraphExecutionEntry, NodeExecutionEntry
 from backend.data.org_access import has_org_access
@@ -64,6 +68,15 @@ def payments_on(monkeypatch):
 
 
 @pytest.fixture
+def credits_on(monkeypatch):
+    """Turn billing on where this test's charge and wallet reads check it:
+    the executor's billing, and the credit ledgers (org_credit reads
+    credit's settings)."""
+    monkeypatch.setattr(billing.settings.config, "enable_credit", True)
+    monkeypatch.setattr(credit.settings.config, "enable_credit", True)
+
+
+@pytest.fixture
 async def client():
     previous = dict(app.dependency_overrides)
     transport = httpx.ASGITransport(app=app)
@@ -101,6 +114,7 @@ async def _paid_status(
 async def test_a_team_plan_from_sale_to_its_end_date(
     server: SpinTestServer,
     payments_on,
+    credits_on,
     real_entitlement,
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -230,6 +244,34 @@ async def test_a_team_plan_from_sale_to_its_end_date(
     assert actions == ["org_plan.set", "org_credits.grant", "org_plan.set"]
 
 
+class _InProcessBillingDb:
+    """Billing's database client, answered in this process.
+
+    The executor's billing asks the database manager, a separate process
+    that reads the billing switch from its own environment. This test turns
+    billing on here instead (``credits_on``), so the ledger calls run here:
+    billing runs in a worker thread, and each call runs on the test's loop,
+    where the database client lives."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def _run(self, call: Coroutine[Any, Any, int]) -> int:
+        return asyncio.run_coroutine_threadsafe(call, self._loop).result()
+
+    def spend_org_credits(self, **kwargs: Any) -> int:
+        return self._run(db_manager.spend_org_credits(**kwargs))
+
+    def spend_credits(self, **kwargs: Any) -> int:
+        return self._run(db_manager.spend_credits(**kwargs))
+
+    def get_org_credits(self, **kwargs: Any) -> int:
+        return self._run(db_manager.get_org_credits(**kwargs))
+
+    def get_credits(self, **kwargs: Any) -> int:
+        return self._run(db_manager.get_credits(**kwargs))
+
+
 async def _charge_a_team_run(
     client: httpx.AsyncClient,
     owner: _Account,
@@ -241,6 +283,8 @@ async def _charge_a_team_run(
 
     The run is taken off the queue so the shared test executor doesn't run it;
     its queued context is what billing reads to pick the wallet."""
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(billing, "get_db_client", lambda: _InProcessBillingDb(loop))
     queued: list[str] = []
 
     class _Queue:
@@ -280,7 +324,7 @@ async def _charge_a_team_run(
         execution_context=entry.execution_context,
     )
     # Every N-th node execution of a run costs credits: charge that one.
-    total, _, _ = billing.charge_usage(
-        node_exec, Config().execution_cost_count_threshold
+    total, _, _ = await asyncio.to_thread(
+        billing.charge_usage, node_exec, Config().execution_cost_count_threshold
     )
     return total

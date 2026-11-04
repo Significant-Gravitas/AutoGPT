@@ -1,6 +1,7 @@
 """Tests for the block and file-upload routes."""
 
 import json
+from contextlib import asynccontextmanager
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -36,6 +37,23 @@ def _test_ctx(user_id: str) -> RequestContext:
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def allow_live_scope(mocker: pytest_mock.MockFixture):
+    """These tests pin the routes, not the live tenancy barriers. A real
+    barrier reads memberships in a database transaction, and the sync
+    TestClient runs it on its own event loop, which leaves the shared Prisma
+    client unusable for every later test in the process."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    mocker.patch("backend.api.live_auth.live_resource_permission_barrier", allowed)
+    mocker.patch(
+        "backend.api.features.blocks.routes.live_resource_permission_barrier", allowed
+    )
 
 
 @pytest.fixture(autouse=True)
