@@ -1843,7 +1843,8 @@ def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch)
     assert call.kwargs["id"] == "send_trial_last_calls"
     assert call.kwargs["max_instances"] == 1
     assert isinstance(call.args[1], CronTrigger)
-    assert str(call.args[1].fields[CronTrigger.FIELD_NAMES.index("minute")]) == "15"
+    hourly = CronTrigger.from_crontab("15 * * * *")
+    assert [str(f) for f in call.args[1].fields] == [str(f) for f in hourly.fields]
 
 
 def test_memory_cron_reconcile_registered_after_start_on_its_interval(

@@ -40,4 +40,5 @@ async def test_unreadable_trial_row_is_left_out_of_the_last_call_listing(caplog)
     assert where["cancelAtPeriodEnd"] is True
     assert where["status"] == "trialing"
     assert where["convertedAt"] is None
+    assert where["stripeSubscriptionId"] == {"not": None}
     assert where["endsAt"] == {"gt": now, "lte": now + timedelta(hours=7)}

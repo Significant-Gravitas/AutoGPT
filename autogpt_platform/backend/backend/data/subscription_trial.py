@@ -102,8 +102,10 @@ async def list_trials_ending_unrenewed(
             "status": "trialing",
             "cancelAtPeriodEnd": True,
             "convertedAt": None,
+            "stripeSubscriptionId": {"not": None},
             "endsAt": {"gt": after, "lte": until},
-        }
+        },
+        order={"endsAt": "asc"},
     )
     return [trial for row in rows if (trial := _readable_trial(row)) is not None]
 

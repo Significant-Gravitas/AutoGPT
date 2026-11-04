@@ -67,6 +67,8 @@ TrialNoticeKind = Literal[
 ]
 # Notices that only describe a trial set not to renew.
 CANCEL_PENDING_KINDS = ("canceled", "expiring", "last_call")
+# The reminders for a trial set not to renew.
+NOT_RENEWING_KINDS = ("expiring", "last_call")
 
 TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
     "started": PostHogEvent.TRIAL_STARTED,
@@ -120,25 +122,34 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if skip := _notice_skip_reason(trial, kind, current):
         logger.info(f"Dropped trial {kind} notice for user {user_id}: {skip}")
         return True
-    if kind in ("expiring", "last_call") and await _another_plan_outlives(
-        trial, current
-    ):
-        # A newer plan keeps their access past the trial's end, so the notice
-        # would be wrong.
-        logger.info(f"Dropped trial {kind} notice for user {user_id}: another plan")
-        return True
-    user = await user_db().get_user_by_id(user_id)
-    if kind == "ended" and await _another_plan_is_live(trial, current):
-        await leave_trial_group(user)
-        return True
-    data = trial_notice_data(
-        trial, kind, first_name(user.name, user.email) or "there", current
-    )
     claim = trial_notice_key(trial, kind)
-    data.notice_key = claim
-    if not await claim_once(claim):
-        return True
+    claimed = False
+    if kind in NOT_RENEWING_KINDS:
+        # Claimed before the plan listing: the hourly pass sees a due trial on
+        # several runs, and one already notified should cost no more Stripe
+        # calls.
+        if not await claim_once(claim):
+            return True
+        claimed = True
     try:
+        if kind in NOT_RENEWING_KINDS and await _another_plan_outlives(trial, current):
+            # A newer plan keeps their access past the trial's end, so the
+            # notice would be wrong.
+            logger.info(f"Dropped trial {kind} notice for user {user_id}: another plan")
+            await release_claim(claim)
+            return True
+        user = await user_db().get_user_by_id(user_id)
+        if kind == "ended" and await _another_plan_is_live(trial, current):
+            await leave_trial_group(user)
+            return True
+        data = trial_notice_data(
+            trial, kind, first_name(user.name, user.email) or "there", current
+        )
+        data.notice_key = claim
+        if not claimed:
+            if not await claim_once(claim):
+                return True
+            claimed = True
         await queue_trial_audience_change(kind, user)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
@@ -148,7 +159,8 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         if not result.success:
             raise RuntimeError(f"Could not queue trial notice: {result.message}")
     except Exception:
-        await release_claim(claim)
+        if claimed:
+            await release_claim(claim)
         raise
     if kind == "converted":
         await join_paying_audience(user)
@@ -223,9 +235,7 @@ async def trial_notice_disposition(
         return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
         return "obsolete"
-    if data.kind in ("expiring", "last_call") and await _another_plan_outlives(
-        trial, current
-    ):
+    if data.kind in NOT_RENEWING_KINDS and await _another_plan_outlives(trial, current):
         return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name, current)
     if not _notice_matches_current_terms(data, expected, trial, current):
