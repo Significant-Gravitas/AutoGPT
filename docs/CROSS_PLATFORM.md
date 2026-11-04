@@ -148,11 +148,13 @@ and are logged.
 
 A keychain that can't be read yet (still locked at login, say) is not a
 failed sign-in: the shim keeps retrying with its reconnect backoff. Only a
-missing keychain backend stops it. A preflight failure that every restart
-would hit again (a preview turned on in the config, or pyobjc missing)
-also exits 0 under either supervisor, since both templates set
-`AUTOGPT_SHIM_SUPERVISOR`. A missing macOS permission still exits 78, so
-launchd relaunches the shim once it is granted.
+missing keychain backend stops it. The systemd unit doesn't restart on 78
+either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
+failure fails the same way every time, and Linux has no permission prompt
+to wait for. Under launchd, a bad config and a preflight failure no
+restart can fix (a preview turned on, pyobjc missing) exit 0 for the same
+reason. A missing macOS permission still exits 78, so launchd relaunches
+the shim once it is granted.
 
 ### Packaging & install
 

@@ -571,7 +571,6 @@ async def test_an_embedder_logging_at_debug_never_sees_the_bearer_token(
     ("supervisor", "permanent", "code"),
     [
         ("launchd", True, 0),
-        ("systemd", True, 0),
         (None, True, 78),
         ("launchd", False, 78),
     ],
@@ -609,3 +608,22 @@ async def test_a_preflight_failure_a_restart_cannot_fix_stops_a_supervised_shim(
 
     assert await cli._cmd_start(config) == code
     assert "Preflight failed: preview is disabled" in capsys.readouterr().err
+
+
+def test_a_bad_config_stops_the_launchagent_instead_of_looping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """launchd restarts any non-zero exit, and a bad config fails the same
+    way every time; exit 78 looped every ten seconds."""
+    import sys
+
+    config = tmp_path / "config.toml"
+    config.write_text("allowed_root = [unclosed\n")
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "start"])
+    monkeypatch.setenv("AUTOGPT_SHIM_SUPERVISOR", "launchd")
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 0
+    assert "launchctl kickstart" in capsys.readouterr().err

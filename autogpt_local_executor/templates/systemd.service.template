@@ -20,15 +20,13 @@ Type=simple
 ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5
-# 77 is an authentication failure: a restart would only retry the rejected
-# credentials. Run `autogpt-shim auth`, then restart the unit.
-RestartPreventExitStatus=77
+# 77 is an authentication failure, 78 a configuration or preflight failure:
+# a restart would only fail the same way. (Linux has no TCC relaunch chain to
+# keep 78 restarting for.) Fix it, then restart the unit.
+RestartPreventExitStatus=77 78
 StandardOutput=append:{stdout_log}
 StandardError=append:{stderr_log}
 Environment=PYTHONUNBUFFERED=1
-# Lets `start` stop, rather than restart, on a preflight failure that every
-# restart would hit again (a preview turned on in the config).
-Environment=AUTOGPT_SHIM_SUPERVISOR=systemd
 
 [Install]
 WantedBy=default.target
