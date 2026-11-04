@@ -355,7 +355,13 @@ class ExpertTemplate(Expert):
 
 class CheckedExpert(BaseModel):
     """An owner's active PRIVATE expert, with the owner's personal
-    organization and team that the expert's work belongs to."""
+    organization and team that the expert's work belongs to.
+
+    Only the expert's own columns are loaded. Roster enrichments such as
+    workflows, credential counts/providers, latest run and weekly spend
+    retain their model defaults; those values are not authoritative. Use
+    the roster's get_expert or list_experts paths when those fields are needed.
+    """
 
     # The expert's own columns only: no workflows, latest run or spend.
     expert: Expert
