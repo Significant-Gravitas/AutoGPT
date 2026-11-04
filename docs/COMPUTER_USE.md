@@ -599,7 +599,9 @@ instead of `ACK`, so later input never lands in another window.
 ### New: `APP_LIST_REQUEST` / `APP_LIST_RESPONSE`
 
 Lists what's *running*, not what's installed. Cheaper and more useful for
-"is Slack open already?".
+"is Slack open already?". Without `include_background`, only apps with a
+window are listed. On Linux that takes `wmctrl` on X11; on Wayland, or
+without it, every process is listed, as with `include_background: true`.
 
 ```json
 {
