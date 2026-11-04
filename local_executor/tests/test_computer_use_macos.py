@@ -1147,6 +1147,35 @@ def test_a_window_capture_uses_the_live_window_frame_and_its_display(tmp_path, m
     assert (result.monitor, result.display_id) == (1, 1)
 
 
+def test_a_window_that_moves_during_its_capture_is_not_reported_with_the_wrong_frame(
+    tmp_path, monkeypatch
+) -> None:
+    """The frame was read once, after the capture, so a window that moved
+    or was resized in between came back with pixels from one frame and the
+    origin and size of another, and a click worked out from it missed."""
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    quartz = MagicMock()
+    quartz.CGWindowListCopyWindowInfo.side_effect = [
+        [{"kCGWindowBounds": {"X": 100, "Y": 100, "Width": 400, "Height": 300}}],
+        [{"kCGWindowBounds": {"X": 700, "Y": 100, "Width": 400, "Height": 300}}],
+    ]
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
+    monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
+    pil = MagicMock()
+    pil.Image.open.return_value = SimpleNamespace(width=800, height=600)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setattr(macos_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE_RETINA)
+    fp = WindowFingerprint(pid=7, class_name="Notes", creation_timestamp=None)
+    window_id = b.window_registry.mint(42, fp, extra={"bounds": (100, 100, 500, 400), "monitor": 0})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _handle: fp)
+
+    with pytest.raises(FeatureNotSupportedError, match="moved or was resized"):
+        b._screenshot_window(window_id, quality=75, format="png", include_cursor=False)
+
+
 def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, monkeypatch) -> None:
     """pyautogui types only ASCII; anything else was skipped without a word."""
     b = MacOSBackend(_config(tmp_path, enable_clipboard=True))

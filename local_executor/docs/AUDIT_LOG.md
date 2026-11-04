@@ -21,8 +21,9 @@ Per [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-locat
 | Windows | `%LOCALAPPDATA%\autogpt-local-executor\logs\audit.log` |
 | WSL2 | Linux path |
 
-Permissions: created `0600` on POSIX (owner-only); ACL'd to the running
-user on Windows. The shim refuses to start if the audit log can't be
+Permissions: created `0600` on POSIX (owner-only), and an existing log
+(one an older version made, say) is set to `0600` when the shim opens it;
+ACL'd to the running user on Windows. The shim refuses to start if the audit log can't be
 opened for append.
 
 ## Format
@@ -240,11 +241,15 @@ If two rotations land within the same wall-clock second (rare, but
 possible under burst writes or explicit `rotate` after a recent
 size-triggered rotation), the second rotated file gets a `-N` counter
 suffix: `audit.log.YYYYMMDD-HHMMSS-1`, `-2`, etc. The writer never
-clobbers an existing rotated file.
+clobbers an existing rotated file. Only files named this way count as
+rotated logs: `audit export`, `verify-all` and `prune` leave any other
+`audit.log.*` file alone.
 
 Rotated files are kept indefinitely by default. `autogpt-shim audit
-prune --older-than 90d` deletes files where the newest record is older
-than the threshold. A file whose newest record has no timestamp is kept.
+prune --older-than 90d` deletes files whose newest record is older than
+the threshold: the latest timestamp of any record in the file, not the last
+line's, which a clock that went back can make older. A file with a record
+that has no timestamp is kept.
 Prune reads the rotated files without the lock, so writers don't wait on
 it, and deletes under the lock only files that are still the ones it read.
 The shim never auto-prunes — log loss is the user's call.

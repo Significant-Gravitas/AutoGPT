@@ -1353,3 +1353,75 @@ async def test_audit_show_reads_the_logs_under_the_writers_lock(
 
     assert cli._audit_show(writer.path, 1) == 0
     assert held == [True]
+
+
+@pytest.mark.asyncio
+async def test_a_non_ascii_hmac_is_a_mismatch_not_a_crash(tmp_path: Path) -> None:
+    """hmac.compare_digest raises TypeError for a non-ASCII str, so one
+    damaged record stopped verify and verify-all with a traceback."""
+    w = _writer(tmp_path)
+    await w.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    record = json.loads(w.path.read_text())
+    record["hmac"] = "\u00e9" * 64
+    w.path.write_text(json.dumps(record) + "\n")
+
+    violations = AuditWriter.verify(w.path, KEY)
+
+    assert [v.kind for v in violations] == ["hmac_mismatch"]
+
+
+def test_only_files_named_like_rotated_logs_are_rotated_logs(tmp_path: Path) -> None:
+    """Any file named audit.log.* counted, so export packed a stray
+    audit.log.private-notes into the archive, and prune could delete it.
+    Collision suffixes also sorted as text, putting -10 before -2."""
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    names = [
+        "audit.log.private-notes",
+        "audit.log.bak",
+        "audit.log.20261104-0600",
+        "audit.log.20261104-060000-10",
+        "audit.log.20261104-060000",
+        "audit.log.20261104-060000-2",
+        "audit.log.20261103-235959",
+    ]
+    for name in names:
+        (tmp_path / name).write_text("")
+
+    assert [p.name for p in list_rotated_files(current)] == [
+        "audit.log.20261103-235959",
+        "audit.log.20261104-060000",
+        "audit.log.20261104-060000-2",
+        "audit.log.20261104-060000-10",
+    ]
+
+
+def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path) -> None:
+    """A clock that went back while the file was written leaves its last
+    record older than one before it. Prune judged the file by its last
+    record, so it deleted the newer record with it."""
+    import time
+
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20200101-000000"
+    records = [{"seq": 1, "ts": time.time()}, {"seq": 2, "ts": 1.0}]
+    rotated.write_text("".join(json.dumps(record) + "\n" for record in records))
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert rotated.exists()
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_an_existing_log_is_made_owner_only(tmp_path: Path) -> None:
+    """Only a log the writer created got 0600, so one an older shim made, or
+    one someone loosened, stayed readable by other accounts as it grew."""
+    w = _writer(tmp_path)
+    await w.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    w.path.chmod(0o644)
+
+    AuditWriter(path=w.path, audit_key=KEY)
+
+    assert stat.S_IMODE(w.path.stat().st_mode) == 0o600

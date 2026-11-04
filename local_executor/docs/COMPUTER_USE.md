@@ -160,6 +160,10 @@ Semantics:
   guaranteed). On Windows a window that has stopped responding answers
   `FEATURE_NOT_SUPPORTED` instead, since the capture would wait on it to
   paint forever.
+- On macOS the window's frame is read before and after the capture. A
+  window that moved or was resized in between answers
+  `FEATURE_NOT_SUPPORTED`, since the image's `origin` and `logical_size`
+  would describe another frame than its pixels; capture it again.
 
 #### Q1 — Coordinate space (locked)
 
@@ -314,7 +318,10 @@ trips IME/autocomplete on web forms.
    explicitly asks, the shim snapshots the clipboard before pasting and
    restores it afterwards — **but skips the restore if the OS
    `changeCount` / clipboard-sequence-number changed after the shim's
-   own write, or the clipboard no longer holds the pasted text.** A
+   own write, the clipboard no longer holds the pasted text, or the
+   clipboard can't be read back.** An unreadable clipboard could already
+   hold someone else's copy, and with no compare-and-set, writing the
+   snapshot over it could lose that; the paste is still acknowledged. A
    changed number means the user (or another app) copied something
    during the paste, and clobbering that with the pre-paste snapshot
    would lose their action; the text check catches a copy that lands
@@ -454,6 +461,10 @@ the others — same posture for us.
   }
 }
 ```
+
+`app_bundle_id` filters by macOS bundle ID. Windows and Linux windows have
+none, so there a request that sets it answers `FEATURE_NOT_SUPPORTED` instead of
+listing every window, and window IDs from an earlier listing stay valid.
 
 Hidden and untitled windows are never listed. On macOS,
 `include_minimized` also lists windows on other Spaces, and

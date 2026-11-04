@@ -515,6 +515,12 @@ class WindowsBackend(ComputerUseBackend):
         include_minimized: bool = False,
         include_offscreen: bool = False,
     ) -> list[WindowInfo]:
+        if app_bundle_id:
+            # Before the registry is cleared, so earlier window IDs stay valid.
+            raise FeatureNotSupportedError(
+                "window.list.app_bundle_id",
+                reason="windows have no bundle ID on Windows, so app_bundle_id can't filter them",
+            )
         try:
             import win32gui  # type: ignore[import-not-found]
             import win32process  # type: ignore[import-not-found]
@@ -769,13 +775,24 @@ class WindowsBackend(ComputerUseBackend):
         try:
             import win32clipboard  # type: ignore[import-not-found]
             import win32con  # type: ignore[import-not-found]
+            import win32gui  # type: ignore[import-not-found]
 
-            win32clipboard.OpenClipboard()
+            # EmptyClipboard makes the window that opened the clipboard its
+            # owner, and with none (NULL), SetClipboardData fails, as Microsoft
+            # documents. A message-only window of our own owns it for the
+            # write; the text is copied in, so it outlasts the window.
+            owner = win32gui.CreateWindowEx(
+                0, "STATIC", None, 0, 0, 0, 0, 0, win32con.HWND_MESSAGE, None, None, None
+            )
             try:
-                win32clipboard.EmptyClipboard()
-                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, content)
+                win32clipboard.OpenClipboard(owner)
+                try:
+                    win32clipboard.EmptyClipboard()
+                    win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, content)
+                finally:
+                    win32clipboard.CloseClipboard()
             finally:
-                win32clipboard.CloseClipboard()
+                win32gui.DestroyWindow(owner)
         except Exception as exc:
             raise ClipboardWriteError(str(exc)) from exc
         return self._clipboard_sequence()

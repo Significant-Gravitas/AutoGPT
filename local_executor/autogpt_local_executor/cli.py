@@ -928,28 +928,32 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
 
 
 def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
-    """A rotated log's identity and its newest record's timestamp; None when
-    it can't be read, is empty, or that record has no timestamp."""
+    """A rotated log's identity and the latest timestamp of any record in it;
+    None when it can't be read, is empty, or a record has no timestamp.
+
+    The latest, not the last line's: a clock that went back while the file
+    was written leaves its last record older than one before it, and judging
+    by the last would delete the newer one with the file. A record can run
+    past any fixed window (an EXECUTE_COMMAND with a long command, say), so
+    every line is read whole."""
     import json
 
     try:
-        # The newest record is the last line, however long: a record can run
-        # past any fixed tail window (an EXECUTE_COMMAND with a long command,
-        # say).
-        last = b""
+        newest_ts: float | None = None
         with open(path, "rb") as f:
             info = os.fstat(f.fileno())
             for line in f:
-                if line.strip():
-                    last = line
-        if not last:
-            return None
-        newest = json.loads(last)
-        newest_ts = newest.get("ts") if isinstance(newest, dict) else None
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                ts = record.get("ts") if isinstance(record, dict) else None
+                if ts is None:
+                    print(f"Kept {path.name}: a record in it has no timestamp.")
+                    return None
+                newest_ts = float(ts) if newest_ts is None else max(newest_ts, float(ts))
         if newest_ts is None:
-            print(f"Kept {path.name}: its newest record has no timestamp.")
             return None
-        return (info.st_dev, info.st_ino, info.st_size), float(newest_ts)
+        return (info.st_dev, info.st_ino, info.st_size), newest_ts
     except (OSError, TypeError, ValueError):
         return None
 

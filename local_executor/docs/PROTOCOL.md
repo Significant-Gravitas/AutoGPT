@@ -280,7 +280,13 @@ detach before attaching a different folder.
 The control daemon also stops a non-recording child after ten minutes without
 a data request, while retaining its signed binding for `RESTORE_SESSION`. This
 prevents abandoned chats from consuming the eight-child safety cap; the
-platform transparently restores the child when the next turn begins.
+platform transparently restores the child when the next turn begins. A child
+with a request still queued or running is not idle, however long that request
+takes. The stop is audited (`IDLE_SESSION_DETACH`) before it happens, and from
+the moment the daemon decides on it the child refuses requests with
+`SHIM_OVERLOADED` (`details.reason: "detaching"`), so none starts only to be cut
+off; the platform retries once the child is restored. If the audit record
+can't be written, the child keeps running.
 
 #### `HELLO.platform` enum
 
@@ -488,7 +494,10 @@ The shim creates parents only after both checks pass.
 **Replacing, not truncating**: the content goes to a new file beside the
 target, which is then renamed over it, so a write that fails part way (a
 full disk, say) leaves the old contents whole. An existing file keeps its
-mode; a new one gets the usual default (0o666 less the umask). Because the
+mode, except set-user-ID and set-group-ID, which a write drops so that new
+contents never run with the file owner's privileges (Linux drops them for an
+unprivileged writer; the shim drops them whatever it runs as); a new one gets
+the usual default (0o666 less the umask). Because the
 target gets a new inode, a hard link made to it from elsewhere keeps the
 old contents, and extended attributes and ACLs on the old file don't carry
 over. Where the directory takes no new entries, or (on Windows) another

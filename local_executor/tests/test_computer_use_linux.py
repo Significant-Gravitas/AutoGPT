@@ -161,6 +161,20 @@ def test_window_list_without_wmctrl(tmp_path, monkeypatch) -> None:
     assert "wmctrl" in ei.value.details["reason"]
 
 
+def test_window_list_refuses_an_app_filter_it_cannot_apply(tmp_path, monkeypatch) -> None:
+    """X11 windows have no bundle ID, so app_bundle_id was ignored and every
+    window came back, from unrelated apps too."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path))
+    listed = MagicMock(return_value="0x01000003  0 12345 100 100 800 600 host  Terminal\n")
+    monkeypatch.setattr(linux_backend.subprocess, "check_output", listed)
+
+    with pytest.raises(FeatureNotSupportedError, match="app_bundle_id"):
+        b.window_list(app_bundle_id="org.gnome.Calculator")
+
+    listed.assert_not_called()
+
+
 def test_window_list_with_wmctrl_parses_output(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
     b = LinuxBackend(_config(tmp_path))
