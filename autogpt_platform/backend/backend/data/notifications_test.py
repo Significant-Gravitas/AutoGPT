@@ -12,10 +12,7 @@ from unittest.mock import MagicMock
 from prisma.enums import BriefingFrequency
 
 from backend.api.features.user.routes import _preference_with_choice
-from backend.data.notifications import (
-    NotificationPreference,
-    NotificationPreferenceDTO,
-)
+from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.user import _preference_from_user
 
 RESERVED_EMAIL = "test-1@autogpt.test"
