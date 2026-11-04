@@ -114,8 +114,7 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
       type="button"
       onClick={onOpen}
       aria-label={`Open ${name} pod`}
-      // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-      className="flex flex-col gap-3 rounded-2xl bg-surface p-4 text-left transition-colors smooth-shadow-ring-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      className="flex flex-col gap-3 rounded-2xl bg-surface p-4 text-left smooth-shadow-ring-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none"
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-foreground-secondary">
@@ -138,15 +137,12 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
       {experts.length > 0 ? (
         <ul className="flex flex-wrap gap-1.5">
           {experts.map((expert) => (
-            <Text
+            <li
               key={expert.id}
-              variant="small"
-              as="li"
-              tone="secondary"
-              className="max-w-full truncate rounded-md bg-surface-muted px-2 py-0.5 ring-1 ring-inset ring-border-base"
+              className="max-w-full truncate rounded-md bg-surface-muted px-2 py-0.5 font-sans text-caption text-foreground-secondary ring-1 ring-border-base ring-inset"
             >
               {expert.name}
-            </Text>
+            </li>
           ))}
         </ul>
       ) : (

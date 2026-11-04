@@ -20,13 +20,10 @@ export function CreatorPageLoading() {
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
               <div
-                // TODO(tokens): no exact role: from-blue-100/50 #DBEAFE, to-indigo-100/50 #E0E7FF
-                className="rounded-2xl bg-gradient-to-r from-blue-100/50 to-indigo-100/50 p-[1px]"
+                // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
+                className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo-100/50 p-px"
               >
-                <div
-                  // TODO(tokens): no exact role: bg-gray-50 #F9FAFB
-                  className="flex flex-col rounded-[calc(1rem-2px)] bg-gray-50 p-4"
-                >
+                <div className="flex flex-col rounded-large bg-surface-muted p-4">
                   {/* Avatar */}
                   <Skeleton className="mb-4 h-20 w-20 rounded-full sm:h-24 sm:w-24" />
 

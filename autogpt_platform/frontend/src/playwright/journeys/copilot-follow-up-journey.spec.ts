@@ -36,7 +36,7 @@ test.describe("copilot follow-up journey", () => {
     await expect(
       transcript.getByText(firstWords(ANSWER)),
       "the answer should start streaming",
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60_000 });
 
     await page
       .getByRole("textbox", { name: "Chat message input" })

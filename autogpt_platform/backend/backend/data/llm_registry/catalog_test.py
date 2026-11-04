@@ -434,6 +434,67 @@ def test_gemini_3_8_flash_bills_at_authored_rates():
     assert flash_entry.context_window == 1048576
 
 
+def test_gemini_3_5_flash_bills_at_authored_rates():
+    """Gemini 3.5 Flash (OpenRouter list price $1.50/$9.00 per 1M,
+    $0.15/1M cached input as of 2026-09-30) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    flash = LLMModel("google/gemini-3.5-flash")
+    assert MODEL_COST[flash] == 4
+    assert TOKEN_COST[flash].model_dump() == {
+        "input": 225.0,
+        "output": 1350.0,
+        "cache_read": 22.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[flash].max_output_tokens == 65536
+    flash_entry = next(m for m in CATALOG.models if m.slug == "google/gemini-3.5-flash")
+    assert flash_entry.price_tier == 2
+    assert flash_entry.context_window == 1048576
+    assert flash_entry.supports_tools is True
+
+
+def test_gemini_3_5_flash_lite_bills_at_authored_rates():
+    """Gemini 3.5 Flash Lite (OpenRouter list price $0.30/$2.50 per 1M,
+    $0.03/1M cached input as of 2026-09-30) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    lite = LLMModel("google/gemini-3.5-flash-lite")
+    assert MODEL_COST[lite] == 1
+    assert TOKEN_COST[lite].model_dump() == {
+        "input": 45.0,
+        "output": 375.0,
+        "cache_read": 4.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[lite].max_output_tokens == 65536
+    lite_entry = next(
+        m for m in CATALOG.models if m.slug == "google/gemini-3.5-flash-lite"
+    )
+    assert lite_entry.price_tier == 1
+    assert lite_entry.context_window == 1048576
+    assert lite_entry.supports_tools is True
+
+
+def test_gemini_3_1_flash_lite_bills_at_authored_rates():
+    """Gemini 3.1 Flash Lite GA (OpenRouter list price $0.25/$1.50 per 1M,
+    $0.025/1M cached input as of 2026-09-30, same as the preview) — flat
+    tier and per-1M projections must match the authored catalog entry."""
+    lite = LLMModel("google/gemini-3.1-flash-lite")
+    assert MODEL_COST[lite] == 1
+    assert TOKEN_COST[lite].model_dump() == {
+        "input": 37.5,
+        "output": 225.0,
+        "cache_read": 3.75,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[lite].max_output_tokens == 65536
+    lite_entry = next(
+        m for m in CATALOG.models if m.slug == "google/gemini-3.1-flash-lite"
+    )
+    assert lite_entry.price_tier == 1
+    assert lite_entry.context_window == 1048576
+    assert lite_entry.supports_tools is True
+
+
 def test_muse_spark_1_3_bills_at_authored_rates():
     """Muse Spark 1.3 (OpenRouter, Meta list price $1.25/$4.25 per 1M) —
     flat tier and per-1M projections must match the authored catalog
@@ -786,14 +847,14 @@ def test_routing_cells_use_transport_ready_spellings():
 
 
 def test_mistral_large_4_bills_at_authored_rates():
-    """Mistral Large 4 (OpenRouter live rate $1.36/$4.18 per 1M, $0.07/1M
-    cached input as of 2026-10-21) — flat tier and per-1M projections must
+    """Mistral Large 4 (OpenRouter live rate $0.70/$2.10 per 1M, $0.07/1M
+    cached input as of 2026-10-29) — flat tier and per-1M projections must
     match the authored catalog entry."""
     large = LLMModel("mistralai/mistral-large-4-0")
     assert MODEL_COST[large] == 2
     assert TOKEN_COST[large].model_dump() == {
-        "input": 204.0,
-        "output": 627.0,
+        "input": 105.0,
+        "output": 315.0,
         "cache_read": 10.5,
         "cache_creation": 0.0,
     }

@@ -26,7 +26,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
       : "text-foreground-secondary";
 
   return (
-    <li className="flex items-start gap-2 text-sm">
+    <li className="flex items-start gap-2 text-body">
       <span className="mt-0.5 flex-shrink-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
@@ -61,11 +61,9 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
-              // TODO(tokens): no fitting role for bg-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-zinc-400"
+              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-foreground-subtle"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
-              style={{ transformOrigin: "left" }}
               transition={{ duration: 0.25, ease: EASE_OUT, delay: ICON_EXIT }}
             />
           )}

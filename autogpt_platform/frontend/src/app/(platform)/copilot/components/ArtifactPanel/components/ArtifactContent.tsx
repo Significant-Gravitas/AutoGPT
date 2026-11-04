@@ -18,9 +18,6 @@ import {
 } from "@/lib/iframe-sandbox-csp";
 import { useArtifactContent } from "./useArtifactContent";
 
-// Text is typed with <p> props; the retry buttons keep their type="button".
-const BUTTON_TYPE = { type: "button" } as const;
-
 interface Props {
   artifact: ArtifactRef;
   isSourceView: boolean;
@@ -51,17 +48,20 @@ function ArtifactContentLoader({
         <Text variant="small-tight" as="p" tone="subtle">
           {error}
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={retry}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -107,21 +107,24 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         <Text variant="body-tight" as="p" tone="muted">
           Failed to load image
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={() => {
             setError(false);
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -134,7 +137,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
           className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md"
         />
       )}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- an artifact URL with a cache-busting query, not an optimisable static asset */}
       <img
         src={withCacheBust(src, retryNonce)}
         alt={alt}
@@ -160,21 +163,24 @@ function ArtifactVideo({ src }: { src: string }) {
         <Text variant="body-tight" as="p" tone="muted">
           Failed to load video
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={() => {
             setError(false);
             setLoaded(false);
             setRetryNonce((n) => n + 1);
           }}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -229,9 +235,8 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "pdf" && pdfUrl) {
-    // No sandbox — Chrome/Edge block PDF rendering in sandboxed iframes
-    // (Chromium bug #413851). The blob URL has a null origin so it can't
-    // access the parent page regardless.
+    // Chromium does not render PDFs in sandboxed iframes. The fetch hook
+    // validates the response before creating this unsandboxed blob URL.
     return (
       <iframe src={pdfUrl} className="h-full w-full" title={artifact.title} />
     );
@@ -242,14 +247,16 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <Text
-        variant="body-mono-tight"
-        as="pre"
-        tone="emphasis"
-        className="whitespace-pre-wrap break-words p-4"
-      >
-        {content}
-      </Text>
+      <div className="p-4">
+        <Text
+          variant="body-mono-tight"
+          as="pre"
+          tone="emphasis"
+          className="break-words whitespace-pre-wrap"
+        >
+          {content}
+        </Text>
+      </div>
     );
   }
 
@@ -338,14 +345,16 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <Text
-      variant="body-mono-tight"
-      as="pre"
-      tone="emphasis"
-      className="whitespace-pre-wrap break-words p-4"
-    >
-      {content}
-    </Text>
+    <div className="p-4">
+      <Text
+        variant="body-mono-tight"
+        as="pre"
+        tone="emphasis"
+        className="break-words whitespace-pre-wrap"
+      >
+        {content}
+      </Text>
+    </div>
   );
 }
 

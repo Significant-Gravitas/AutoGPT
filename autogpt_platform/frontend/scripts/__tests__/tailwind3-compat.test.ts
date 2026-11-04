@@ -65,7 +65,7 @@ const CLASSES = [
   "aria-pressed:text-zinc-900",
   "focus-visible:outline-none",
   "focus-visible:-outline-offset-2",
-  "text-lg",
+  "text-lead",
   "leading-relaxed",
   "[&>svg]:size-4",
   "max-md:[&>svg]:size-5",
@@ -102,11 +102,15 @@ function rulesFor(root: Root, selector: string) {
   return rules;
 }
 
+// Values as written, whitespace collapsed (globals.css is Prettier-formatted,
+// so a long value there spans lines), with `!important` from the flag
+// Tailwind sets for an `@utility` declaration.
 function declarations(root: Root, selector: string) {
   const out: Record<string, string> = {};
   for (const rule of rulesFor(root, selector)) {
     rule.walkDecls((decl) => {
-      out[decl.prop] = decl.value;
+      const value = decl.value.replace(/\s+/g, " ");
+      out[decl.prop] = decl.important ? `${value} !important` : value;
     });
   }
   return out;
@@ -298,7 +302,9 @@ describe("Tailwind 4 renders the app's classes as Tailwind 3 did", () => {
     expect(at(".focus-visible\\:outline-none:focus-visible")).toBeLessThan(
       at(".focus-visible\\:-outline-offset-2:focus-visible"),
     );
-    expect(declarations(root, ".text-lg")["line-height"]).toBe("1.75rem");
+    expect(declarations(root, ".text-lead")["line-height"]).toBe(
+      "var(--text-lead--line-height)",
+    );
     // Arbitrary properties come after the other utilities of the same
     // variants, so they beat tailwindcss-animate's `ease-*` timing.
     const easeRules: number[] = [];

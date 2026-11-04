@@ -111,6 +111,11 @@ if TYPE_CHECKING:
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .skill_frontmatter import (
+    SkillFrontmatterError,
+    dump_skill_frontmatter,
+    load_skill_frontmatter,
+)
 from .skill_merge import merge_skill_markdown
 from .workdir import (
     read_workdir_bytes,
@@ -378,8 +383,8 @@ def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | No
         return None
     raw_meta, body = match.group(1), match.group(2)
     try:
-        meta = yaml.safe_load(raw_meta) or {}
-    except yaml.YAMLError:
+        meta = load_skill_frontmatter(raw_meta) or {}
+    except (yaml.YAMLError, ValueError):
         return None
     if not isinstance(meta, dict):
         return None
@@ -404,6 +409,21 @@ def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | No
     )
 
 
+def skill_markdown_error(text: str) -> str | None:
+    """Why :func:`parse_skill_markdown` refused ``text`` when its frontmatter
+    broke a parsing limit, or None when it was refused for any other reason."""
+    match = _FRONTMATTER_RE.match(text.replace("\r\n", "\n").replace("\r", "\n"))
+    if not match:
+        return None
+    try:
+        load_skill_frontmatter(match.group(1))
+    except SkillFrontmatterError as exc:
+        return str(exc)
+    except (yaml.YAMLError, ValueError):
+        return None
+    return None
+
+
 def render_skill_markdown(skill: ParsedSkill) -> str:
     """Render a :class:`ParsedSkill` to canonical ``SKILL.md`` text.
 
@@ -419,7 +439,7 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
         meta["triggers"] = list(skill.triggers)
     if skill.version:
         meta["version"] = skill.version
-    frontmatter = yaml.safe_dump(meta, sort_keys=False).strip()
+    frontmatter = dump_skill_frontmatter(meta)
     return f"---\n{frontmatter}\n---\n\n{skill.body.rstrip()}\n"
 
 
@@ -1427,6 +1447,11 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         origin=origin,
     )
     rendered = render_skill_markdown(parsed)
+    if parse_skill_markdown(rendered) is None:
+        raise ValueError(
+            skill_markdown_error(rendered)
+            or "The skill could not be written as a valid SKILL.md."
+        )
     if write.files is not None:
         # Whole-package validation before the first write, so a package that
         # breaks a cap leaves the stored skill exactly as it was.
@@ -2855,7 +2880,7 @@ _UPDATE_HINTS = {
 
 async def is_skills_feature_enabled(user_id: str | None) -> bool:
     """Per-user kill-switch for the skills feature (``COPILOT_SKILLS``
-    LaunchDarkly flag).  Default-on; the flag exists only so we can
+    feature flag).  Default-on; the flag exists only so we can
     disable the feature without a redeploy.  Anonymous calls
     (no ``user_id``) treat as enabled so unauthenticated paths don't
     surprise-break.
@@ -3098,6 +3123,10 @@ class StoreSkillTool(BaseTool):
     (name, description, optional triggers) plus a markdown body.
     """
 
+    # Updates the skill index, which ``list_skills`` reads back.  Run on its own
+    # so a ``list_skills`` call in the same message sees the update.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "store_skill"
@@ -3168,7 +3197,7 @@ class StoreSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "Skill registry is currently disabled for this user. "
-                    "Re-enable the ``copilot-skills`` LaunchDarkly flag to "
+                    "Re-enable the ``copilot-skills`` feature flag to "
                     "use ``store_skill`` / ``read_skill`` / ``delete_skill`` "
                     "/ ``list_skills``."
                 ),
@@ -3285,6 +3314,8 @@ async def resolve_loaded_skill_version(
 class ReadSkillTool(BaseTool):
     """Load a skill by name: its body, its package listing, and a copy of
     that package in the working directory the model's shell runs in."""
+
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -3523,6 +3554,10 @@ class ReadSkillTool(BaseTool):
 
 class DeleteSkillTool(BaseTool):
     """Remove a user-created skill (cannot delete built-in defaults)."""
+
+    # Removes from the skill index, which ``list_skills`` reads back.  Run on its
+    # own so a ``list_skills`` call in the same message sees the removal.
+    writes_files = True
 
     @property
     def name(self) -> str:

@@ -48,13 +48,14 @@ export function ChainTile({ item, size }: Props) {
       {item.provider ? (
         <IntegrationLogo provider={item.provider} size={isSmall ? 16 : 22} />
       ) : (
-        <Icon
-          icon={fallback.icon}
-          size={isSmall ? 16 : 20}
-          role="img"
-          aria-label={fallback.label}
-          className="text-foreground-secondary"
-        />
+        <span className="inline-flex text-foreground-secondary">
+          <Icon
+            icon={fallback.icon}
+            size={isSmall ? 16 : 20}
+            role="img"
+            aria-label={fallback.label}
+          />
+        </span>
       )}
     </span>
   );

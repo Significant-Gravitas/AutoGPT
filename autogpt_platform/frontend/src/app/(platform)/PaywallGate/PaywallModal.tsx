@@ -58,11 +58,10 @@ export function PaywallModal() {
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
           <div className="flex w-full justify-start">
             <Button
-              variant="ghost"
+              variant="ghost-muted"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
             >
               Log out
             </Button>
@@ -82,14 +81,14 @@ export function PaywallModal() {
 
               <div className="relative mt-2 w-full">
                 {isLoading || trial.isLoading ? (
-                  <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
+                  <div className="grid w-full grid-cols-1 gap-4 px-4 md:grid-cols-3 md:px-0">
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="flex flex-col items-center gap-3">
-                    <p className="text-center text-sm text-zinc-500">
+                    <p className="text-center text-body text-foreground-tertiary">
                       Subscriptions are temporarily unavailable. Please try
                       again shortly.
                     </p>

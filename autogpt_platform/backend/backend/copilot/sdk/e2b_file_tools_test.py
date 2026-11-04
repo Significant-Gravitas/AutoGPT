@@ -47,11 +47,15 @@ def _clear_edit_locks():
     _edit_locks.clear()
 
 
-def _expected_bridge_path(file_path: str, prefix: str = "/tmp") -> str:
+def _expected_bridge_path(
+    file_path: str, prefix: str = "/tmp", transformed: bool = False
+) -> str:
     """Compute the expected sandbox path for a bridged file."""
     expanded = os.path.realpath(os.path.expanduser(file_path))
     basename = os.path.basename(expanded)
-    source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+    source_id = hashlib.sha256(
+        (f"{expanded}:transformed" if transformed else expanded).encode()
+    ).hexdigest()[:12]
     return f"{prefix}/{source_id}-{basename}"
 
 
@@ -552,6 +556,23 @@ class TestBridgeToSandbox:
 
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_content_is_written_instead_of_the_file(self, tmp_path):
+        """A caller that showed the model the unwrapped payload hands it to
+        bash too, under the file's sandbox path."""
+        f = tmp_path / "toolu_1.json"
+        f.write_text('[{"type": "text", "text": "envelope"}]')
+        payload = "page line\n" * 6_000
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT, content=payload
+        )
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user", transformed=True)
+        assert result == expected
+        sandbox.files.write.assert_called_once_with(expected, payload)
 
 
 # ---------------------------------------------------------------------------
@@ -1343,3 +1364,19 @@ class TestReadFileE2BRouting:
         assert not result.get("isError"), result["content"][0]["text"]
         assert "sandbox result" in result["content"][0]["text"]
         sandbox.files.read.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_raw_bridge_does_not_replace_the_transformed_copy(tmp_path):
+    source = tmp_path / "toolu-result.json"
+    raw = "raw envelope " * 4_000
+    payload = "unwrapped content " * 4_000
+    source.write_text(raw)
+    sandbox = _make_bridge_sandbox()
+    transformed = await bridge_to_sandbox(
+        sandbox, str(source), 0, _DEFAULT_READ_LIMIT, content=payload
+    )
+    original = await bridge_to_sandbox(sandbox, str(source), 0, _DEFAULT_READ_LIMIT)
+    assert transformed != original
+    assert sandbox.files.write.await_args_list[0].args == (transformed, payload)
+    assert sandbox.files.write.await_args_list[1].args == (original, raw)

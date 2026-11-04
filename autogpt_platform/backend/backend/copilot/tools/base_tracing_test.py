@@ -38,7 +38,9 @@ async def test_a_tool_call_is_a_child_transaction_of_its_turn(sentry_transaction
             return ErrorResponse(message="fine", session_id="s1")
 
     with tracing.start_transaction("copilot.turn", "copilot.turn") as turn:
-        await _tool(body).execute("u1", MagicMock(session_id="s1"), "call-1")
+        await _tool(body).execute(
+            "u1", MagicMock(session_id="s1", external_caller=False), "call-1"
+        )
 
     call, outer = sentry_transactions
     trace = call["contexts"]["trace"]
