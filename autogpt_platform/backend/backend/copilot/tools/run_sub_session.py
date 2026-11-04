@@ -26,12 +26,11 @@ other turn.
 import json
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime
 from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.background_subtasks import start_background_subtask
-from backend.copilot.background_task import DELIVERY_SECONDS, FOLLOWUP_SECONDS
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -133,9 +132,9 @@ class RunSubSessionTool(BaseTool):
                     "type": "boolean",
                     "default": False,
                     "description": (
-                        "Only if the user asks for background work: fresh subtask, "
-                        "10-minute deadline, then one budgeted summary here without tools. "
-                        "Returns immediately; no polling."
+                        "Only if the user asks for background work: a fresh subtask "
+                        "runs on its own and this chat is woken to carry on when it "
+                        "finishes. Returns immediately; no polling."
                     ),
                     "title": "Run in background",
                 },
@@ -197,14 +196,11 @@ class RunSubSessionTool(BaseTool):
                 sub_autopilot_session_id=task.child_session_id,
                 sub_autopilot_session_link=_sub_session_link(task.child_session_id),
                 background_task_id=task.id,
-                background_expires_at=(
-                    task.deadline
-                    + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
-                ).isoformat(),
                 message=(
-                    "Subtask accepted in the background. You can finish this reply now. "
-                    "Otto will follow up here within the original budget. "
-                    "Use the subtask's Stop control to cancel it. No polling is needed."
+                    "Subtask accepted in the background. You can finish this reply now; "
+                    "when it finishes, you are woken in this chat to carry on with its "
+                    "result. Use the subtask's Stop control to cancel it. No polling "
+                    "is needed."
                 ),
             ).from_outside()
 
@@ -390,9 +386,15 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
 async def list_sub_workspace_files(
     user_id: str,
     inner_session_id: str,
+    *,
+    written_from: datetime | None = None,
+    written_until: datetime | None = None,
 ) -> list[WorkspaceFileInfoData] | None:
     """Authoritative manifest of the persistent files a sub wrote, read from
-    the sub's session workspace.
+    the sub's session workspace. ``written_from`` and ``written_until``
+    restrict the query to the files written in that window, ahead of the
+    manifest limit: a recorded background result lists the files of its own
+    turn, so a later turn's never join it, nor crowd it out.
 
     A sub may deliver its real output by writing workspace files and only
     summarising in its final message (SECRT-2377). This queries the sub's
@@ -417,6 +419,8 @@ async def list_sub_workspace_files(
             limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
             metadata_equals=AGENT_CREATED_METADATA,
             include_internal=False,
+            created_after=written_from,
+            created_before=written_until,
         )
     except Exception:
         logger.warning(

@@ -20628,13 +20628,21 @@
             "enum": [
               "reset_password",
               "verify_email",
+              "verify_new_email",
               "change_email",
               "set_password"
             ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
-          "url": { "type": "string", "title": "Url" }
+          "url": { "type": "string", "title": "Url" },
+          "new_email": {
+            "anyOf": [
+              { "type": "string", "format": "email" },
+              { "type": "null" }
+            ],
+            "title": "New Email"
+          }
         },
         "type": "object",
         "required": ["type", "to", "url"],
@@ -22703,6 +22711,15 @@
           "update": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Update"
+          },
+          "argument_hint": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Argument Hint"
+          },
+          "user_invocable": {
+            "type": "boolean",
+            "title": "User Invocable",
+            "default": true
           }
         },
         "type": "object",
@@ -34364,9 +34381,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Background Outcome"
           },
-          "background_pending_until": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Background Pending Until"
+          "background_pending": {
+            "type": "boolean",
+            "title": "Background Pending",
+            "default": false
           }
         },
         "type": "object",
@@ -37691,6 +37709,12 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Trigger Config"
+          },
+          "constant_inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Constant Inputs",
+            "description": "Regular graph input values"
           },
           "agent_credentials": {
             "additionalProperties": {

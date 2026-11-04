@@ -82,6 +82,14 @@ _CHILD = {"tree_id": "t1", "depth": 1}
 
 
 @pytest.fixture(autouse=True)
+def no_tree_reopen(monkeypatch):
+    """Promotion of a background row reopens an expired tree through the
+    ledger and the user's ceiling, which the real-database handoff suite
+    covers; here the ledger is not the subject."""
+    monkeypatch.setattr(turn_queue, "reopen_closed_tree", AsyncMock())
+
+
+@pytest.fixture(autouse=True)
 def no_session_lock():
     """The Redis session lock is the DB tests' to exercise."""
     with patch.object(turn_queue, "_get_session_lock", return_value=_NoopAsyncCM()):
