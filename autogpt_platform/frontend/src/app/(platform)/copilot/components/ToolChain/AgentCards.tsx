@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { BackgroundSubtaskStop } from "./BackgroundSubtaskStop";
 import { Text } from "@/components/atoms/Text/Text";
 
 function agentHref(agent: Record<string, unknown>): string | null {
@@ -196,13 +197,24 @@ export function SubSessionCard({
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
   const subSessionId = str(output, "sub_session_id");
-  const status = useSubSessionEffectiveStatus(subSessionId, frozenStatus);
+  const background = !!str(output, "background_task_id");
+  const backgroundExpiresAt = background
+    ? str(output, "background_expires_at")
+    : null;
+  const status = useSubSessionEffectiveStatus(
+    subSessionId,
+    frozenStatus,
+    background,
+    backgroundExpiresAt,
+  );
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
-  const name = (expert && str(expert, "name")) ?? "Expert";
+  const name =
+    (expert && str(expert, "name")) ??
+    (background ? "Background subtask" : "Expert");
   return (
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
@@ -227,10 +239,15 @@ export function SubSessionCard({
           </span>
         )}
         {status && <StatusPill status={status} />}
+        {background &&
+          subSessionId &&
+          ["running", "queued", "unknown"].includes(status ?? "") && (
+            <BackgroundSubtaskStop sessionId={subSessionId} />
+          )}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
       {!minimal && response && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-foreground-tertiary">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption text-foreground-tertiary">
           {response}
         </p>
       )}
@@ -240,6 +257,8 @@ export function SubSessionCard({
       {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
+          background={background}
+          backgroundExpiresAt={backgroundExpiresAt}
           active={["running", "queued"].includes(
             frozenStatus?.toLowerCase() ?? "",
           )}

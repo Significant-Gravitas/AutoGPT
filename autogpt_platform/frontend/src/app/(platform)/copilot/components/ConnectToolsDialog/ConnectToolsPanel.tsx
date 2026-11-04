@@ -158,7 +158,7 @@ export function ConnectToolsPanel({
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search services..."
                       aria-label="Search services"
-                      className="h-9 w-full rounded-md border border-border-base bg-surface pr-3 pl-9 text-sm leading-5.5 text-foreground-strong transition-colors placeholder:text-foreground-subtle focus:border-action-hover focus:outline-none"
+                      className="h-9 w-full rounded-md border border-border-base bg-surface pr-3 pl-9 text-body leading-5.5 text-foreground-strong transition-colors placeholder:text-foreground-subtle focus:border-action-hover focus:outline-none"
                     />
                   </div>
 

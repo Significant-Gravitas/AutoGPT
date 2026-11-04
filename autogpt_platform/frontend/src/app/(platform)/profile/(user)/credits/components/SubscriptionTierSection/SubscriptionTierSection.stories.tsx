@@ -5,11 +5,10 @@ import { SubscriptionTierSection } from "./SubscriptionTierSection";
 import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
-// The tier buttons only show with billing on, which the server flags answer:
-// the flags request is mocked with billing on, and the auth store marked as
-// loaded so the flags request is made.
+// The tier buttons only show with payment on, which the platform config
+// answers: that request is mocked with payment on.
 const SUBSCRIPTION_URL = "*/api/credits/subscription";
-const FLAGS_URL = "*/api/feature-flags";
+const PLATFORM_CONFIG_URL = "*/api/platform-config";
 // A fixed date that stays in the future, so a pending change reads as upcoming.
 const PENDING_EFFECTIVE_AT = "2099-02-15T00:00:00Z";
 
@@ -27,16 +26,13 @@ function subscription(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const flagsHandler = http.get(FLAGS_URL, () =>
-  HttpResponse.json({
-    flags: { "enable-platform-payment": true },
-    configured: true,
-  }),
+const paymentOnHandler = http.get(PLATFORM_CONFIG_URL, () =>
+  HttpResponse.json({ payment_enabled: true }),
 );
 
 function handlers(data: Record<string, unknown>) {
   return [
-    flagsHandler,
+    paymentOnHandler,
     http.get(SUBSCRIPTION_URL, () => HttpResponse.json(data)),
     // A tier change never answers, so a click shows the busy state.
     http.post(SUBSCRIPTION_URL, async () => {
@@ -117,7 +113,7 @@ export const LoadError: Story = {
   parameters: {
     msw: {
       handlers: [
-        flagsHandler,
+        paymentOnHandler,
         http.get(SUBSCRIPTION_URL, () =>
           HttpResponse.json({ detail: "boom" }, { status: 500 }),
         ),
@@ -142,7 +138,7 @@ export const TierChangeError: Story = {
   parameters: {
     msw: {
       handlers: [
-        flagsHandler,
+        paymentOnHandler,
         http.get(SUBSCRIPTION_URL, () => HttpResponse.json(subscription())),
         http.post(SUBSCRIPTION_URL, () =>
           HttpResponse.json(

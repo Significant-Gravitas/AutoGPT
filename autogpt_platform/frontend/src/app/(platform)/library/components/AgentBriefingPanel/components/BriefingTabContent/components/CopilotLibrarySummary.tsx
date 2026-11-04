@@ -48,7 +48,7 @@ export function CopilotLibrarySummary() {
       {showSkills ? (
         <Link
           href="/library/skills"
-          className="text-sm text-accent-strong hover:underline"
+          className="text-body text-accent-strong hover:underline"
           data-testid="copilot-library-skills-link"
         >
           {skillsCount} skill{skillsCount === 1 ? "" : "s"}
@@ -61,7 +61,7 @@ export function CopilotLibrarySummary() {
         <Link
           href="/library/followups"
           // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-          className="text-sm text-yellow-700 hover:underline"
+          className="text-body text-yellow-700 hover:underline"
           data-testid="copilot-library-followups-link"
         >
           {followupCount} follow-up{followupCount === 1 ? "" : "s"}

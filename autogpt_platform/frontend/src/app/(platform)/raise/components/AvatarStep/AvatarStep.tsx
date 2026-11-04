@@ -34,7 +34,7 @@ export function AvatarStep({
           avatarUrl={avatarUrl}
           size={40}
         />
-        <span className="text-sm font-medium text-foreground">
+        <span className="text-body font-medium text-foreground">
           {name ? `${name} has an avatar` : "Picture set"}
         </span>
       </div>

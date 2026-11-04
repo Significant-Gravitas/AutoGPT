@@ -243,6 +243,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -993,6 +999,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
+    )
+
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
     )
 
     max_request_body_mb: int = Field(

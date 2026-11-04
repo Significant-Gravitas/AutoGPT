@@ -22,6 +22,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util.logging import configure_logging
+from backend.util.platform_payment import settings as platform_payment_settings
 from backend.util.tracing import traces_sampler
 
 load_dotenv()
@@ -138,6 +139,24 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
     flag-off test. Tests that want the switch on set it themselves."""
     monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
     monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def platform_payment_off(set_platform_payment):
+    """Payment is off unless a test turns it on, whatever this machine's ``.env`` sets."""
+    set_platform_payment(False)
+
+
+@pytest.fixture
+def set_platform_payment(monkeypatch: pytest.MonkeyPatch):
+    """Turn ``ENABLE_PLATFORM_PAYMENT`` on or off for one test."""
+
+    def set_payment(enabled: bool) -> None:
+        monkeypatch.setattr(
+            platform_payment_settings.config, "enable_platform_payment", enabled
+        )
+
+    return set_payment
 
 
 @pytest.fixture(autouse=True)

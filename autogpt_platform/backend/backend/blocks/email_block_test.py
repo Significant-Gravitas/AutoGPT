@@ -2,13 +2,21 @@
 a login with no scope is only used in a graph version the running user saved."""
 
 import re
+import smtplib
+import socket
+import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks.email_block import SendEmailBlock, UserPasswordCredentials
+from backend.blocks.email_block import (
+    SendEmailBlock,
+    SMTPConfig,
+    UserPasswordCredentials,
+    _BoundedSMTP,
+)
 
 
 def _make_credentials(scope: str | None) -> UserPasswordCredentials:
@@ -160,3 +168,62 @@ async def test_login_with_scope_ignores_graph_ownership(scope: str):
     )
     assert "different server" in outputs["error"]
     send_email.assert_not_called()
+
+
+def _send_to_local_server(serve) -> Exception | str:
+    """Call send_email against a server on localhost that handles one connection."""
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        port = listener.getsockname()[1]
+
+        def accept_one():
+            connection, _ = listener.accept()
+            with connection:
+                serve(connection)
+
+        server = threading.Thread(target=accept_one, daemon=True)
+        server.start()
+        try:
+            result: Exception | str = SendEmailBlock.send_email(
+                SMTPConfig(smtp_server="127.0.0.1", smtp_port=port),
+                "recipient@example.com",
+                "Subject",
+                "Body",
+                _make_credentials(None),
+            )
+        except (smtplib.SMTPException, OSError) as exc:
+            result = exc
+        server.join(timeout=10)
+        return result
+
+
+def test_a_reply_that_never_ends_is_cut_off():
+    sent = 0
+
+    def never_finish_the_greeting(connection: socket.socket):
+        nonlocal sent
+        line = b"220-" + b"A" * 8000 + b"\r\n"
+        try:
+            while sent < 100 * _BoundedSMTP.MAX_REPLY_BYTES:
+                connection.sendall(line)
+                sent += len(line)
+        except OSError:
+            pass
+
+    result = _send_to_local_server(never_finish_the_greeting)
+
+    assert isinstance(result, smtplib.SMTPServerDisconnected)
+    # Socket buffers hold a few MB more than the client read.
+    assert sent < 20 * _BoundedSMTP.MAX_REPLY_BYTES
+
+
+def test_an_ordinary_multiline_reply_is_still_read():
+    def no_starttls(connection: socket.socket):
+        connection.sendall(b"220 mail.example.com ESMTP\r\n")
+        connection.recv(1024)  # EHLO
+        connection.sendall(b"250-mail.example.com\r\n250-SIZE 1000\r\n250 8BITMIME\r\n")
+        connection.recv(1024)  # QUIT
+        connection.sendall(b"221 Bye\r\n")
+
+    result = _send_to_local_server(no_starttls)
+
+    assert isinstance(result, smtplib.SMTPNotSupportedError)

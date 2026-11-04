@@ -84,7 +84,7 @@ export function BlockOutputCard({ output }: Props) {
   return (
     <ContentGrid>
       {output.is_dry_run && (
-        <div className="flex items-center gap-1.5 rounded-md border border-warning-border bg-warning-surface px-2.5 py-1.5 text-xs font-medium text-warning-foreground">
+        <div className="flex items-center gap-1.5 rounded-md border border-warning-border bg-warning-surface px-2.5 py-1.5 text-caption font-medium text-warning-foreground">
           <span>⚡</span>
           <span>Simulated — no real execution occurred</span>
         </div>

@@ -67,30 +67,30 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
     <div className={className ?? "rounded-md border bg-surface p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h2 className="mb-1 text-lg font-semibold">
+          <h2 className="mb-1 text-lead font-semibold">
             Rate Limits for {data.user_email ?? data.user_id}
           </h2>
           {data.user_email && (
-            <p className="text-xs text-foreground-tertiary">
+            <p className="text-caption text-foreground-tertiary">
               User ID: {data.user_id}
             </p>
           )}
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ${TIER_COLORS[currentTier] ?? "bg-surface-hover text-foreground-body"}`}
+          className={`rounded-full px-3 py-1 text-caption font-medium ${TIER_COLORS[currentTier] ?? "bg-surface-hover text-foreground-body"}`}
         >
           {currentTier}
         </span>
       </div>
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium text-foreground-body">
+        <label className="text-body font-medium text-foreground-body">
           Subscription Tier
         </label>
         <select
           aria-label="Subscription tier"
           value={currentTier}
-          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-body"
           disabled
         >
           {TIERS.map((tier) => (
@@ -103,7 +103,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-foreground-body">
+          <h3 className="text-body font-medium text-foreground-body">
             Daily Spend
           </h3>
           <UsageBar
@@ -112,7 +112,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-foreground-body">
+          <h3 className="text-body font-medium text-foreground-body">
             Weekly Spend
           </h3>
           <UsageBar
@@ -127,7 +127,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           aria-label="Reset scope"
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
-          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-body"
           disabled={isResetting}
         >
           <option value="daily">Reset daily only</option>

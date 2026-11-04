@@ -5,6 +5,7 @@ import pytest
 from ._test_data import make_session
 from .models import WebFetchResponse
 from .web_fetch import (
+    _MAX_CONVERTED_CHARS,
     _MAX_DOWNLOAD_BYTES,
     _MAX_TEXT_CHARS,
     WebFetchTool,
@@ -268,3 +269,12 @@ async def test_execute_handles_text_truncation_only():
     assert f"truncated to {_MAX_TEXT_CHARS:,} chars" in result.message
     assert f"limit of {_MAX_TEXT_CHARS:,} characters reached" in result.content
     assert len(result.content) < _MAX_TEXT_CHARS + 200
+
+
+def test_html_that_expands_when_converted_is_cut_off_while_converting():
+    page = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
+
+    text = _html_to_text(page)
+
+    assert text.startswith("first words")
+    assert len(text) <= _MAX_CONVERTED_CHARS

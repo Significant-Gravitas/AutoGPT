@@ -57,7 +57,7 @@ export function JsonDataInput({
       value={text}
       onChange={(e) => handleChange(e.target.value)}
       placeholder="Edit JSON data"
-      className="font-mono text-sm"
+      className="font-mono text-body"
     />
   );
 }

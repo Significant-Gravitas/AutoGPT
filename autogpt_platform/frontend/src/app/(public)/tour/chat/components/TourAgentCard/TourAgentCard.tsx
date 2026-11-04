@@ -24,7 +24,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         </Text>
         <span
           className={cn(
-            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-sm font-semibold text-success-foreground",
+            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
             !runCompleted &&
               // oxlint-disable-next-line design-system/no-arbitrary-values -- the live run's emerald glow, no shadow token
               "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-success/70",
@@ -52,7 +52,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5 text-sm text-foreground-secondary">
+      <div className="flex items-center gap-1.5 text-body text-foreground-secondary">
         <Icon icon={Clock01Icon} className="size-4 shrink-0" />
         <span>{agent.schedule} · created from your sentence</span>
       </div>
@@ -65,7 +65,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
                 <Icon icon={ArrowRight02Icon} className="size-3.5 shrink-0" />
               </span>
             )}
-            <span className="rounded-md bg-surface-hover px-2.5 py-1 font-mono text-xs text-foreground-body">
+            <span className="rounded-md bg-surface-hover px-2.5 py-1 font-mono text-caption text-foreground-body">
               {block}
             </span>
           </Fragment>

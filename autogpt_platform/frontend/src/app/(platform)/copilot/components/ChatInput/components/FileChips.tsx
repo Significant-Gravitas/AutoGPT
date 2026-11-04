@@ -117,9 +117,9 @@ export function FileChips({
                       isFolder ? `Folder: ${name}, ${count}` : undefined
                     }
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-sm text-foreground-body",
+                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-body text-foreground-body",
                       stacked &&
-                        "gap-1.5 border border-border-base bg-surface py-0.5 pr-1.5 pl-2 text-xs text-foreground-strong shadow-sm",
+                        "gap-1.5 border border-border-base bg-surface py-0.5 pr-1.5 pl-2 text-caption text-foreground-strong shadow-sm",
                     )}
                   >
                     {isPreviewableImage(mimeType) ? (

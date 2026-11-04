@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.sdk.env import cli_prompt_text, cli_user_message
+from backend.copilot.sdk.env import build_sdk_env, cli_prompt_text, cli_user_message
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -832,3 +832,50 @@ class TestCliUserMessage:
             "session_id": "s1",
             "client_composed": True,
         }
+
+
+class TestBuildSdkEnvStandInModel:
+    """A load-test account's turn talks to the scripted model, never to the
+    deployment's provider with the deployment's key."""
+
+    def test_the_cli_talks_to_the_stand_in_without_the_deployment_key(self):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-deployment-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            result = build_sdk_env(
+                session_id="sess-1",
+                user_id="user-1",
+                stand_in_model_url=(
+                    "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api/v1"
+                ),
+            )
+
+        assert (
+            result["ANTHROPIC_BASE_URL"]
+            == "http://pr-1-scripted-model.pr-1.svc.cluster.local:4010/api"
+        )
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "load-test"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert "sk-or-deployment-key" not in result.values()
+        # OpenRouter Broadcast's attribution is for OpenRouter only.
+        assert "x-user-id" not in result.get("ANTHROPIC_CUSTOM_HEADERS", "")
+        assert "pr-1-scripted-model.pr-1.svc.cluster.local" in result["NO_PROXY"].split(
+            ","
+        )
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_a_turn_has_one_model_endpoint(self):
+        with pytest.raises(ValueError, match="one model endpoint"):
+            build_sdk_env(
+                codex_gateway_url="http://127.0.0.1:43210",
+                codex_gateway_token="loopback-capability",
+                stand_in_model_url="http://scripted-model:4010/api/v1",
+            )
+
+    def test_the_stand_in_must_be_an_http_url(self):
+        with pytest.raises(ValueError, match="http"):
+            build_sdk_env(stand_in_model_url="scripted-model:4010/api/v1")

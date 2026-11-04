@@ -385,7 +385,7 @@ export function SetupRequirementsCard({
           {hasAdvancedFields && (
             <button
               type="button"
-              className="text-xs text-muted-foreground underline"
+              className="text-caption text-muted-foreground underline"
               onClick={() => setShowAdvanced((v) => !v)}
             >
               {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
