@@ -4029,7 +4029,24 @@ def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str
     assert graph.validate_graph_get_errors(for_run=True) == {}
 
 
-@pytest.mark.parametrize("tool_input_schema", [None, "not a schema"])
+def test_a_nested_link_into_a_tool_that_declares_tool_arguments_provides_nothing():
+    """Such a tool's executor passes `tool_arguments_#_query` into its own
+    `tool_arguments` parameter, so a run must still find `query` missing."""
+    graph = _value_to_mcp_tool_graph("tool_arguments_#_query", required=["query"])
+    schema = graph.nodes[1].input_default["tool_input_schema"]
+    schema["properties"]["tool_arguments"] = {"type": "object"}
+
+    errors = make_graph_model(graph, user_id="user-1").validate_graph_get_errors(
+        for_run=True
+    )
+
+    assert errors == {"tool": {"query": "This field is required"}}
+
+
+@pytest.mark.parametrize(
+    "tool_input_schema",
+    [None, "not a schema", {"type": "object", "properties": 5}],
+)
 def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
     tool_input_schema: Any,
 ):
