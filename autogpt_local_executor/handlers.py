@@ -1488,6 +1488,11 @@ class ComputerUseHandler:
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
                 f"{tool} did not finish in time; the driver was told to stop it.",
+                details={
+                    "tool": tool,
+                    "timeout_seconds": msg.payload.timeout_seconds
+                    or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS,
+                },
             )
         payload, summary = result
         await self._emit(msg.id, {**details, **summary}, _ok_result(_elapsed_ms(start)))

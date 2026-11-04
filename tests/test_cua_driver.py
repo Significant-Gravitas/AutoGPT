@@ -560,6 +560,7 @@ async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details == {"tool": "drag", "timeout_seconds": 1}
     for _ in range(200):
         if _records(fake_log, "cancelled"):
             break
