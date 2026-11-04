@@ -287,7 +287,7 @@ export function PendingReviewsList({
               </AttentionCard.Icon>
               <Text
                 variant="large-semibold"
-                className="overflow-hidden text-ellipsis text-textBlack"
+                className="overflow-hidden text-ellipsis text-foreground-base"
               >
                 Your review is needed
               </Text>
