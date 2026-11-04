@@ -101,7 +101,9 @@ export function setupAuth(options) {
     });
   }
 
-  const accounts = listed || throwawayAccounts(readAccountCount(), only);
+  const defaultCount = options && options.defaultCount;
+  const accounts =
+    listed || throwawayAccounts(readAccountCount(defaultCount), only);
   const sessions = accounts.map((account, index) => {
     if (index > 0 && index % AUTH_BURST === 0) sleep(AUTH_PAUSE_SECONDS);
     const label = `account ${index + 1} of ${accounts.length}`;
@@ -252,9 +254,11 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
 }
 
-function readAccountCount() {
+function readAccountCount(fallback) {
   const raw = __ENV.LOAD_TEST_ACCOUNT_COUNT;
-  if (raw === undefined || raw === "") return DEFAULT_THROWAWAY_ACCOUNTS;
+  if (raw === undefined || raw === "") {
+    return fallback || DEFAULT_THROWAWAY_ACCOUNTS;
+  }
   const count = Number(raw);
   if (!Number.isInteger(count) || count < 1 || count > MAX_THROWAWAY_ACCOUNTS) {
     throw new Error(

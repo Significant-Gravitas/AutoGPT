@@ -171,18 +171,30 @@ export function profileName() {
 }
 
 // The profile with the env overrides applied: RATE_SCALE multiplies every
-// rate, WARMUP and DURATION replace the phase lengths.
+// rate, THRESHOLD_SCALE every threshold, WARMUP and DURATION replace the
+// phase lengths.
 export function loadProfile() {
   const base = PROFILES[profileName()];
-  const scale = Number(__ENV.RATE_SCALE || 1);
-  if (!(scale > 0)) throw new Error("RATE_SCALE must be a positive number");
   return {
     name: profileName(),
-    scale: base.scale * scale,
+    scale: base.scale * positiveNumber("RATE_SCALE"),
     warmup: __ENV.WARMUP || base.warmup,
     duration: __ENV.DURATION || base.duration,
-    thresholdScale: base.thresholdScale * Number(__ENV.THRESHOLD_SCALE || 1),
+    thresholdScale: base.thresholdScale * positiveNumber("THRESHOLD_SCALE"),
   };
+}
+
+// A multiplier from the environment, 1 when unset. Anything that is not a
+// finite positive number stops the run at init rather than turning every
+// rate or threshold into NaN.
+function positiveNumber(name) {
+  const raw = __ENV[name];
+  if (raw === undefined || raw === "") return 1;
+  const value = Number(raw);
+  if (!(Number.isFinite(value) && value > 0)) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
+  return value;
 }
 
 // SCENARIOS=copilot_turn,store_browse runs a subset. copilot_turn_real runs

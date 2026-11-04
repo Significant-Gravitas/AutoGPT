@@ -214,7 +214,10 @@ export function copilotTurn(data, profile) {
       {},
       "copilot.session_create",
     );
-    if (!sessionId) return;
+    if (!sessionId) {
+      recordUnstartedTurn("dummy", phase);
+      return;
+    }
     created = true;
   }
 

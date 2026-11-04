@@ -25,11 +25,22 @@ import { MESSAGES } from "../scenarios/copilot.js";
 
 const config = getEnvironmentConfig();
 
-const TURNS = Math.max(1, Math.min(50, Number(__ENV.COPILOT_REAL_TURNS || 5)));
-const CONCURRENCY = Math.max(
-  1,
-  Math.min(5, Number(__ENV.COPILOT_REAL_CONCURRENCY || 1)),
-);
+const TURNS = wholeNumber("COPILOT_REAL_TURNS", 5, 1, 50);
+const CONCURRENCY = wholeNumber("COPILOT_REAL_CONCURRENCY", 1, 1, 5);
+
+// A whole number from the environment, `fallback` when unset; anything else
+// out of [min, max] stops the run at init.
+function wholeNumber(name, fallback, min, max) {
+  const raw = __ENV[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(
+      `${name} must be a whole number from ${min} to ${max}, got "${raw}"`,
+    );
+  }
+  return value;
+}
 const COST_PER_TURN_USD = realTurnCostUsd();
 const TURN_TIMEOUT = __ENV.COPILOT_TURN_TIMEOUT || "300s";
 
@@ -78,7 +89,9 @@ export function setup() {
       ).toFixed(2)} (COPILOT_REAL_COST_PER_TURN_USD to adjust)`,
   );
   const started = Date.now();
-  const data = setupAuth({ mode: "real" });
+  // One account per VU unless LOAD_TEST_ACCOUNT_COUNT says otherwise: the
+  // turns go one at a time per VU, so more accounts would sit idle.
+  const data = setupAuth({ mode: "real", defaultCount: CONCURRENCY });
   const usage = api("GET", "/chat/usage", {
     data,
     endpoint: "copilot.usage",
@@ -99,6 +112,12 @@ export function realTurn(data) {
   });
   const sessionId = created.json && created.json.id;
   if (!sessionId) {
+    if (created.status === 402 && __ITER === 0) {
+      console.warn(
+        "copilot_real: the target asks this account for a subscription (402), and this test does not subscribe its accounts. " +
+          "On a paywalled preview run tests/workload.js with LOAD_TEST_COPILOT_REAL_TURNS and STRIPE_TEST_SECRET_KEY instead (README: Real-model turns).",
+      );
+    }
     // A turn that could not start is a failed turn, so a run that sends
     // none fails copilot_turn_errors instead of passing with no samples.
     recordUnstartedTurn("real", "steady");
