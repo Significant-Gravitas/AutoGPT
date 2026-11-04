@@ -413,7 +413,7 @@ def _cmd_audit(config, args) -> int:
         return _audit_tail(config.audit_log_path)
     if sub == "show":
         return _audit_show(config.audit_log_path, args.seq)
-    if sub in ("verify", "verify-all", "export"):
+    if sub in ("verify", "verify-all", "export", "prune"):
         from .audit import AuditLockError
 
         try:
@@ -421,15 +421,16 @@ def _cmd_audit(config, args) -> int:
                 return _audit_verify(config.audit_log_path)
             if sub == "verify-all":
                 return _audit_verify_all(config.audit_log_path)
-            return _audit_export(config.audit_log_path, args.output)
+            if sub == "export":
+                return _audit_export(config.audit_log_path, args.output)
+            return _audit_prune(config.audit_log_path, args.older_than)
         except AuditLockError as exc:
-            # Reading without the writers' lock could meet a half-written record.
+            # Without the writers' lock a read could meet a half-written record,
+            # and a prune could delete a file an export is reading.
             print(f"Could not lock the audit log: {exc}", file=sys.stderr)
             return 2
     if sub == "rotate":
         return _audit_rotate(config.audit_log_path)
-    if sub == "prune":
-        return _audit_prune(config.audit_log_path, args.older_than)
     print(f"Unknown audit subcommand: {sub}")
     return 2
 
@@ -628,16 +629,25 @@ def _audit_prune(current: Path, older_than: str) -> int:
 
     Threshold parser accepts `Nd` (days), `Nh` (hours), `Nm` (minutes). The
     shim never auto-prunes — this is operator-initiated."""
-    import json
     import time
 
-    from .audit import list_rotated_files
+    from .audit import holding_log_lock
 
     seconds = _parse_duration(older_than)
     if seconds is None:
         print(f"Could not parse duration: {older_than!r}. Use e.g. 90d, 12h, 30m.")
         return 2
     cutoff = time.time() - seconds
+    # Under the writers' lock, so an export never loses a file it has listed.
+    with holding_log_lock(current):
+        return _prune_rotated(current, cutoff)
+
+
+def _prune_rotated(current: Path, cutoff: float) -> int:
+    import json
+
+    from .audit import list_rotated_files
+
     rotated = list_rotated_files(current)
     if not rotated:
         print("No rotated audit files to prune.")

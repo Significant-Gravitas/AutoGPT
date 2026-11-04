@@ -151,6 +151,19 @@ class DaemonAuthenticationError(RuntimeError):
     """Terminal WebSocket authentication or session-authorization failure."""
 
 
+# RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
+# close code. A longer reason fails to send, and the close code with it.
+MAX_CLOSE_REASON_BYTES = 123
+
+
+def _close_reason_json(fields: dict[str, str]) -> str:
+    """`fields` as compact JSON, or just their `error` if that won't fit."""
+    reason = json.dumps(fields, separators=(",", ":"))
+    if len(reason.encode("utf-8")) <= MAX_CLOSE_REASON_BYTES:
+        return reason
+    return json.dumps({"error": fields["error"]}, separators=(",", ":"))
+
+
 class SessionRevokedSendError(RuntimeError):
     """A frame was offered on a connection that SESSION_REVOKED has ended."""
 
@@ -724,7 +737,7 @@ class ShimDaemon:
                 platform_max=payload.protocol_version,
             )
         except ProtocolVersionMismatch as exc:
-            close_reason = json.dumps(exc.to_close_reason())
+            close_reason = _close_reason_json(exc.to_close_reason())
             try:
                 await ws.close(
                     code=WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
@@ -882,7 +895,6 @@ class ShimDaemon:
         except (ValidationError, ValueError) as exc:
             logger.warning("Failed to parse inbound frame: %s", exc)
             return
-        self._last_request_at = now_ts()
 
         # PING is handled inline so a saturated semaphore can't starve keepalive.
         if isinstance(msg, PingMessage):
@@ -891,6 +903,8 @@ class ShimDaemon:
             except Exception:
                 logger.debug("Failed to send PONG", exc_info=True)
             return
+        # Keepalive doesn't count: an idle child session must still be reaped.
+        self._last_request_at = now_ts()
 
         # SESSION_REVOKED is a one-shot lifecycle event. We audit it, send
         # nothing further, gracefully close, and disable auto-reconnect.

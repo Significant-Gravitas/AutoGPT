@@ -707,8 +707,10 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
     log.write_text("")
     config = types.SimpleNamespace(audit_log_path=log)
 
-    for command in ("verify", "verify-all", "export"):
-        args = types.SimpleNamespace(audit_command=command, output=tmp_path / "out.zip")
+    for command in ("verify", "verify-all", "export", "prune"):
+        args = types.SimpleNamespace(
+            audit_command=command, output=tmp_path / "out.zip", older_than="1d"
+        )
         assert cli._cmd_audit(config, args) == 2
         assert "Could not lock the audit log" in capsys.readouterr().err
 
@@ -761,3 +763,30 @@ async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch
     with zipfile.ZipFile(output) as zf:
         names = set(zf.namelist())
     assert rotated and {p.name for p in rotated} <= names
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_prune_deletes_under_the_lock(tmp_path: Path, monkeypatch) -> None:
+    """An export reads the files it listed under the lock; a prune deleting
+    one meanwhile would end it with a half-written zip."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    [rotated] = list_rotated_files(writer.path)
+    old = json.loads(rotated.read_text().splitlines()[-1])
+    os.utime(rotated, (1, 1))
+    held: list[bool] = []
+    real_unlink = Path.unlink
+
+    def unlink(self: Path, *args, **kwargs) -> None:
+        if self == rotated:
+            held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    monkeypatch.setattr("time.time", lambda: old["ts"] + 10 * 86400)
+
+    assert cli._audit_prune(writer.path, "1d") == 0
+    assert held == [True]
+    assert not rotated.exists()

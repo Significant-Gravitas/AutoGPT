@@ -95,11 +95,13 @@ class ProtocolVersionMismatch(Exception):
         )
 
     def to_close_reason(self) -> dict[str, str]:
+        """The fields the 4426 close reason carries. The hint is left out: a
+        close reason holds at most 123 bytes (RFC 6455 §5.5), and the hint
+        alone is about that long, so it goes to the log instead."""
         return {
             "error": "PROTOCOL_VERSION_MISMATCH",
             "shim_max": self.shim_max,
             "platform_max": self.platform_max,
-            "hint": self.hint,
         }
 
 

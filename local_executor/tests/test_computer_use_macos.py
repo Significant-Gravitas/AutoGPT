@@ -809,6 +809,31 @@ def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeyp
     assert result.display_scale == 2.0
     image_option = quartz.CGWindowListCreateImage.call_args.args[3]
     assert image_option is quartz.kCGWindowImageBoundsIgnoreFraming
+    pil.ImageDraw.Draw.return_value.polygon.assert_not_called()
+
+
+def test_a_window_capture_draws_the_cursor_when_asked(tmp_path, monkeypatch) -> None:
+    """The cursor is in points; the window image is in backing pixels."""
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    quartz = MagicMock()
+    quartz.NSEvent.mouseLocation.return_value = SimpleNamespace(x=300, y=900 - 150)
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
+    monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
+    pil = MagicMock()
+    pil.Image.open.return_value = SimpleNamespace(width=1600, height=1200)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setattr(macos_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_primary_display_size", lambda: (1440, 900))
+    fp = WindowFingerprint(pid=7, class_name="Notes", creation_timestamp=None)
+    window_id = b.window_registry.mint(42, fp, extra={"bounds": (100, 50, 900, 650)})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _handle: fp)
+
+    b._screenshot_window(window_id, quality=75, format="png", include_cursor=True)
+
+    [arrow] = pil.ImageDraw.Draw.return_value.polygon.call_args.args
+    assert arrow[0] == ((300 - 100) * 2, (150 - 50) * 2)
 
 
 _SIDE_BY_SIDE_RETINA = [
@@ -999,3 +1024,21 @@ def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, mon
 
     assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
     assert clipboard["content"] == "copied in the gap"
+
+
+def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkeypatch) -> None:
+    """pyautogui's fail-safe raises before sending any key, after the text is
+    already on the pasteboard."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    pyautogui.hotkey.side_effect = RuntimeError("fail-safe")
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user text")
+
+    with pytest.raises(RuntimeError, match="fail-safe"):
+        b.input_action(
+            "type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True
+        )
+
+    assert clipboard["content"] == "user text"

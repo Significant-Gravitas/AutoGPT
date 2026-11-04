@@ -326,6 +326,11 @@ class MacOSBackend(ComputerUseBackend):
             max(int(bounds[3]) - int(bounds[1]), 1),
         )
         scale = round(img.width / logical_size[0], 2)
+        if include_cursor:
+            try:
+                self._composite_cursor(img, origin, scale)
+            except Exception:
+                logger.debug("cursor composite failed", exc_info=True)
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
             image_bytes=img_bytes,
@@ -1039,16 +1044,22 @@ class MacOSBackend(ComputerUseBackend):
         written_count = self._write_pasteboard_text(text)
         # Re-record writeback so the inner read sees us as the writer.
         self.clipboard_writeback.record_write(text, sequence=written_count)
-        pyautogui.hotkey("command", "v")
-        if restore is None:
-            return
+        try:
+            pyautogui.hotkey("command", "v")
+        finally:
+            # Also when the hotkey raised (pyautogui's fail-safe fires before
+            # any key goes out): the user's text is already overwritten.
+            if restore is not None:
+                self._restore_after_paste(text, restore, written_count)
+
+    def _restore_after_paste(self, pasted: str, restore: str, written_count: int) -> None:
         time.sleep(0.05)  # let the paste consume the clipboard
         current, current_count = self._read_pasteboard_text()
         # Restore only if the pasteboard still holds exactly our write. A
         # changed changeCount means the user copied during the paste (compare
         # with what our write left, not the snapshot); other text under our
         # count means a copy landed before we read the count.
-        if current_count == written_count and current == text:
+        if current_count == written_count and current == pasted:
             # The restored contents are the user's, not ours, so they are
             # not recorded as a writeback: a writeback-only read refuses them.
             try:

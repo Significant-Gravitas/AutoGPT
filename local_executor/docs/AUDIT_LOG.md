@@ -165,7 +165,10 @@ record              = {**record_without_hmac, "hmac": hmac.hex()}
 a float is written as Python's `repr` gives it. An integer-valued float
 keeps its `.0` (`1712345678.0`, where RFC 8785 writes `1712345678`),
 and very large or small floats use Python's exponent spelling
-(`1e-07`). Integers and booleans match RFC 8785.
+(`1e-07`). Booleans match RFC 8785, and so do integers up to 2^53 - 1 in
+absolute value. A larger integer can differ: the shim writes its exact
+digits, while RFC 8785 writes the nearest IEEE 754 double, though some
+larger integers come out the same.
 
 The shim ships this hand-rolled canonicalizer over the input shapes used
 in this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`)

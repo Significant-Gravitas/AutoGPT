@@ -113,7 +113,9 @@ class WindowsBackend(ComputerUseBackend):
             raise FeatureNotSupportedError("screenshot", reason=str(exc)) from exc
 
         if window_id is not None:
-            return self._screenshot_window(window_id, quality=quality, format=format)
+            return self._screenshot_window(
+                window_id, quality=quality, format=format, include_cursor=include_cursor
+            )
 
         displays = self.display_info()
         if not displays:
@@ -198,6 +200,7 @@ class WindowsBackend(ComputerUseBackend):
         *,
         quality: int,
         format: str,
+        include_cursor: bool = False,
     ) -> ScreenshotResult:
         try:
             import win32gui  # type: ignore[import-not-found]
@@ -255,6 +258,11 @@ class WindowsBackend(ComputerUseBackend):
             mfc_dc.DeleteDC()
             win32gui.ReleaseDC(hwnd, hwnd_dc)
 
+        if include_cursor:
+            try:
+                self._composite_cursor(img, (left, top))
+            except Exception:
+                logger.debug("cursor composite failed", exc_info=True)
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         return ScreenshotResult(
             image_bytes=img_bytes,
@@ -738,9 +746,15 @@ class WindowsBackend(ComputerUseBackend):
 
         written_seq = self._write_clipboard_text(text)
         self.clipboard_writeback.record_write(text, sequence=written_seq)
-        pyautogui.hotkey("ctrl", "v")
-        if restore is None:
-            return
+        try:
+            pyautogui.hotkey("ctrl", "v")
+        finally:
+            # Also when the hotkey raised (pyautogui's fail-safe fires before
+            # any key goes out): the user's text is already overwritten.
+            if restore is not None:
+                self._restore_after_paste(text, restore, written_seq)
+
+    def _restore_after_paste(self, text: str, restore: str, written_seq: int | None) -> None:
         time.sleep(0.05)
         current, current_seq = self._read_clipboard_text()
         # Restore only if the clipboard still holds exactly our write. A
