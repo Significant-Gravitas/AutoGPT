@@ -22,6 +22,7 @@ from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
+from backend.util.process import AppProcess
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class SpinTestServer:
     def __init__(self):
         self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
+        # Only for its test_* helpers: tests call the REST API in process, so
+        # its server process is never started.
         self.agent_server = AgentServer()
         self.scheduler = Scheduler(
             register_system_tasks=False, throwaway_jobstores=True
@@ -42,15 +45,21 @@ class SpinTestServer:
 
     async def __aenter__(self):
         self.setup_dependency_overrides()
-        self.db_api.__enter__()
-        self.agent_server.__enter__()
-        self.exec_manager.__enter__()
-        self.scheduler.__enter__()
-        self.notif_manager.__enter__()
+        try:
+            self.db_api.__enter__()
+            self.exec_manager.__enter__()
+            self.scheduler.__enter__()
+            self.notif_manager.__enter__()
 
-        await db.connect()
-        await initialize_blocks()
-        await create_default_user()
+            await db.connect()
+            await initialize_blocks()
+            await create_default_user()
+            self._require_running_services()
+        except BaseException as e:
+            # A failed __aenter__ gets no __aexit__, and a service left running
+            # would hang the session at exit, which joins every child process.
+            await self.__aexit__(type(e), e, e.__traceback__)
+            raise
 
         return self
 
@@ -62,7 +71,6 @@ class SpinTestServer:
 
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
-        self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.db_api.__exit__(exc_type, exc_val, exc_tb)
         self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
 
@@ -70,6 +78,27 @@ class SpinTestServer:
         #  This prevents event loop issues where services haven't fully cleaned up
         # before the next test starts
         await asyncio.sleep(0.5)
+
+    def _require_running_services(self) -> None:
+        """Fail on a service process that has already exited. One that dies at
+        start-up only logs why, and the tests that need it then fail with
+        errors that don't name it, or hang retrying its calls."""
+        services: list[AppProcess] = [
+            self.db_api,
+            self.exec_manager,
+            self.scheduler,
+            self.notif_manager,
+        ]
+        exited = [
+            f"{service.service_name} (exit code {process.exitcode})"
+            for service in services
+            if (process := service.process) is not None and not process.is_alive()
+        ]
+        if exited:
+            raise RuntimeError(
+                "Test service processes exited during start-up: "
+                f"{', '.join(exited)}. Their own log lines say why."
+            )
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing

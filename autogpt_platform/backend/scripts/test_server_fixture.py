@@ -1,12 +1,19 @@
+import os
 import subprocess
 import sys
+import time
+from collections.abc import Iterator
+from multiprocessing import Process
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from backend import conftest as fixtures
+from backend.api import rest_api
 from backend.util.exceptions import DatabaseError
+from backend.util.process import AppProcess
+from backend.util.test import SpinTestServer
 
 pytest_plugins = ["pytester"]
 
@@ -178,3 +185,72 @@ async def test_a_fixture_user_is_retried_once_through_the_uncached_lookup():
     with patch("backend.data.user.get_or_create_user_with_status", create):
         await fixtures._create_user_with_loop_retry({"sub": "user"})
     assert create.await_count == 2
+
+
+@pytest.fixture
+def stand_in_services(mocker) -> Iterator[tuple[dict[str, int], dict[str, Process]]]:
+    """Have ``SpinTestServer`` start a stand-in process for each service, and
+    skip its database and Redis work. A service named in the yielded exit
+    codes gets a stand-in that exits at once with that code; the others sleep
+    until stopped. Also yields the stand-ins, by service name."""
+    exit_codes: dict[str, int] = {}
+    stand_ins: dict[str, Process] = {}
+
+    def start(service: AppProcess, **kwargs) -> int:
+        exit_code = exit_codes.get(service.service_name)
+        if exit_code is None:
+            process = Process(target=time.sleep, args=(600,), daemon=True)
+            process.start()
+        else:
+            process = Process(target=os._exit, args=(exit_code,), daemon=True)
+            process.start()
+            process.join()
+        service.process = stand_ins[service.service_name] = process
+        return process.pid or 0
+
+    mocker.patch.object(AppProcess, "start", autospec=True, side_effect=start)
+    mocker.patch.dict(rest_api.app.dependency_overrides)
+    mocker.patch("backend.util.test.initialize_blocks", AsyncMock())
+    mocker.patch("backend.util.test.create_default_user", AsyncMock())
+    mocker.patch("backend.data.db.connect", AsyncMock())
+    mocker.patch("backend.data.db.disconnect", AsyncMock())
+    mocker.patch("backend.data.redis_client.disconnect_async", AsyncMock())
+    yield exit_codes, stand_ins
+    for process in stand_ins.values():
+        process.kill()
+        process.join()
+
+
+async def test_the_server_starts_every_service_but_the_rest_api(stand_in_services):
+    """Tests call the REST API in process, so its own server process would
+    only run start-up work (data migrations included) against the test
+    database."""
+    _, stand_ins = stand_in_services
+
+    async with SpinTestServer():
+        assert sorted(stand_ins) == [
+            "DatabaseManager",
+            "ExecutionManager",
+            "NotificationManager",
+            "Scheduler",
+        ]
+
+    assert not any(process.is_alive() for process in stand_ins.values())
+
+
+async def test_the_server_refuses_a_service_that_exited_during_start_up(
+    stand_in_services,
+):
+    exit_codes, stand_ins = stand_in_services
+    exit_codes["Scheduler"] = 3
+
+    with pytest.raises(RuntimeError) as refused:
+        async with SpinTestServer():
+            pass
+
+    assert "Scheduler (exit code 3)" in str(refused.value)
+    assert "DatabaseManager" not in str(refused.value)
+    # The others are stopped too: one left running would hang the session
+    # at exit, which joins every child process.
+    assert len(stand_ins) > 1
+    assert not any(process.is_alive() for process in stand_ins.values())
