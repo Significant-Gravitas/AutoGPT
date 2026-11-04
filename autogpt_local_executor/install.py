@@ -47,13 +47,16 @@ class AutostartContext:
 
     # The program that starts the shim, and any arguments before its own.
     shim_command: tuple[str, ...]
-    config_path: str
+    # The config file the service names with --config; None when it names
+    # none, and the shim finds its default itself.
+    config_path: str | None
     stdout_log: str
     stderr_log: str
 
     @property
     def start_argv(self) -> tuple[str, ...]:
-        return (*self.shim_command, "--config", self.config_path, "start")
+        config = ("--config", self.config_path) if self.config_path is not None else ()
+        return (*self.shim_command, *config, "start")
 
 
 def _read_template(name: str) -> str:
@@ -174,12 +177,16 @@ def default_config_path() -> Path:
 
 
 def build_context(config_path: Path | None) -> AutostartContext:
-    cfg = config_path or default_config_path()
+    # A --config that names no file is an error at start, so the default
+    # location is named only when a config file is there. The CLI has already
+    # checked that an explicit one exists.
+    cfg = config_path if config_path is not None else default_config_path()
+    named = config_path is not None or cfg.expanduser().is_file()
     return AutostartContext(
         shim_command=resolve_shim_command(),
         # The service manager starts the shim in its own working directory.
         # abspath, not resolve(): a config that is a symlink stays one.
-        config_path=os.path.abspath(cfg.expanduser()),
+        config_path=os.path.abspath(cfg.expanduser()) if named else None,
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
     )

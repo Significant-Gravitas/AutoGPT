@@ -251,3 +251,21 @@ def test_reconnect_delays_must_be_finite(tmp_path: Path, field: str, value: floa
     """An infinite delay passes gt=0, and asyncio.sleep(inf) never returns."""
     with pytest.raises(ValidationError):
         ShimConfig(allowed_root=tmp_path, **{field: value})
+
+
+def test_a_config_file_named_with_config_that_does_not_exist_is_an_error(tmp_path: Path) -> None:
+    """A typo in --config ran the shim on the defaults without a word."""
+    from autogpt_local_executor.config import ConfigFileError
+
+    with pytest.raises(ConfigFileError, match="no such config file"):
+        load_config(config_path=tmp_path / "missing.toml")
+
+
+def test_without_config_a_missing_default_file_means_the_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autogpt_local_executor.config as config_module
+
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent.toml")
+
+    assert isinstance(load_config(), ShimConfig)
