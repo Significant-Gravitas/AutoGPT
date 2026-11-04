@@ -13,9 +13,12 @@
 //
 // Each frame is `data: <json>` with a `type`; `data: [DONE]` ends the stream;
 // `: heartbeat` and `: usage` comments arrive with empty data. A session that
-// already has a turn running, or a user at the running-turn cap, gets a 200
-// stream with no text (the message is queued), counted as queued rather than
-// as a completed turn.
+// already has a turn running gets a 200 stream with no text and a
+// `data-follow-up-queued` frame: the message is queued, and the turn counts
+// as queued rather than completed. Any other stream that finishes without
+// text counts as failed. A user at the running-turn cap gets one too, with
+// nothing to say so, and the journeys keep every account well under that
+// cap, so an empty reply is never mistaken for a queued one.
 import sse from "k6/x/sse";
 import { check } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
@@ -227,8 +230,11 @@ export function streamTurn(sessionId, message, options) {
     turn.outcome = "failed";
   } else if (turn.finish && turn.textDeltas > 0) {
     turn.outcome = "completed";
-  } else if (turn.finish) {
+  } else if (turn.finish && turn.followUpQueued) {
     turn.outcome = "queued";
+  } else if (turn.finish) {
+    turn.outcome = "failed";
+    turn.error = "the turn finished without a reply";
   } else {
     turn.outcome = "timeout";
     turn.error = "stream ended without a finish frame";

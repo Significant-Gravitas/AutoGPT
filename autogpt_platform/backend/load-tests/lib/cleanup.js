@@ -172,13 +172,20 @@ function graphRuns(graphId, headers) {
 // after the run's setup began: the turn journeys', the expert journeys' and
 // the probes'. The list holds expert chats too and is sorted by last update,
 // so it is read until it reaches sessions untouched since then.
+//
+// Only an account that exists for load tests is swept that way: one the run
+// signed up, or one named for a load-test engine. Anyone could be using any
+// other account in LOAD_TEST_ACCOUNTS at the same time, so the run deletes
+// only the sessions it seeded there and leaves the ones its journeys started.
 function runSessions(account, data, headers) {
   const ids = new Set(
     account.sessionIds.concat(
       account.experts ? account.experts.sessionIds : [],
     ),
   );
-  if (!data.startsSessions || account.chat !== COVERED) {
+  const loadTestOnly =
+    data.signedUp || account.mode === "dummy" || account.mode === "scripted";
+  if (!data.startsSessions || account.chat !== COVERED || !loadTestOnly) {
     return { ids: Array.from(ids), complete: true };
   }
   const since = timestamp(data.startedAt);
