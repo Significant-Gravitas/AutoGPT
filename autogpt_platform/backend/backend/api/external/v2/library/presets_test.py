@@ -302,6 +302,8 @@ async def test_setting_up_a_trigger_stores_its_config_beside_the_agent_s_inputs(
         id="graph-1",
         version=1,
         webhook_input_node=Mock(id=TRIGGER_NODE),
+        # The key's owner owns the workflow in the scope the trigger lands in.
+        user_id=USER_ID,
         organization_id=ORG,
         team_id=None,
     )
@@ -346,6 +348,20 @@ async def test_setting_up_a_trigger_stores_its_config_beside_the_agent_s_inputs(
             webhook=True, inputs=kwargs["preset"].inputs
         ),
     )
+
+    # The key may still create in its scope, and nothing else is attaching
+    # to the workflow: the barriers' own tests cover their database side.
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    @asynccontextmanager
+    async def unlocked(*_args, **_kwargs):
+        yield
+
+    triggers_module = "backend.api.features.library.triggers"
+    mocker.patch(f"{triggers_module}.live_resource_access_barrier", allowed)
+    mocker.patch(f"{triggers_module}.agent_graph_attachment_barrier", unlocked)
 
     created = await presets.setup_trigger(
         request=AgentTriggerSetupRequest(

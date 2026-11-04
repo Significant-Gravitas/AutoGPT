@@ -482,6 +482,18 @@ def test_get_graph_not_found(
     assert "not found" in response.json()["detail"]
 
 
+def _deletable_graph(owner_id: str) -> GraphModel:
+    return GraphModel(
+        id="graph-123",
+        version=1,
+        is_active=True,
+        name="Test Graph",
+        description="A test graph",
+        user_id=owner_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
+    )
+
+
 def test_delete_graph(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -502,6 +514,10 @@ def test_delete_graph(
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.get_graph",
         return_value=mock_graph,
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[mock_graph],
     )
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.user_owns_graph",
@@ -530,7 +546,9 @@ def test_delete_graph(
     response_data = response.json()
     assert response_data["version_counts"] == 3
     deactivate.assert_awaited_once_with(mock_graph, user_id=test_user_id)
-    cleanup.assert_awaited_once_with("graph-123", test_user_id)
+    cleanup.assert_awaited_once_with(
+        "graph-123", test_user_id, organization_id=None, team_id=None
+    )
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
@@ -541,9 +559,14 @@ def test_delete_graph(
 
 def test_delete_graph_in_use_returns_409_and_keeps_triggers(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
     """A graph other users or a store listing reference is refused with 409
     (not a 500 FK violation), before its triggers are deactivated."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[_deletable_graph(test_user_id)],
+    )
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.user_owns_graph",
         return_value=True,
@@ -577,7 +600,12 @@ def test_delete_graph_by_non_owner_returns_200_with_zero_count(
     """A non-owner's delete keeps the pre-#15637 behaviour: 200 with
     version_counts 0, without the in-use check (whose 409 would wrongly say
     "in use by other users" and confirm the graph exists), deactivation or
-    any cleanup."""
+    any cleanup. Here the caller sees the graph through a team grant, so the
+    live delete check finds it."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        return_value=[_deletable_graph("someone-else")],
+    )
     owns = mocker.patch(
         "backend.api.features.graphs.routes.graph_db.user_owns_graph",
         return_value=False,
@@ -1357,7 +1385,7 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
         AsyncMock(return_value=credit_model),
     )
     mocker.patch(
-        "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
+        "backend.executor.utils.require_entitlement", AsyncMock(return_value=None)
     )
     mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
     created = mocker.patch(

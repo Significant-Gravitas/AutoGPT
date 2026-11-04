@@ -10,7 +10,7 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as rest_app
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.onboarding_steps import OnboardingStep
 from backend.util.exceptions import MissingConfigError
 from backend.util.models import MAX_PAGE, Pagination
@@ -124,6 +124,10 @@ def test_execute_a_webhook_triggered_preset_returns_400(
                 "updated_at": now,
                 "webhook_id": "hook-1",
                 "webhook": None,
+                # The preset sits in the caller's scope, so only its trigger
+                # can refuse the run.
+                "organization_id": "test-org",
+                "team_id": "test-team",
             }
         ),
     )

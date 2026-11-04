@@ -124,7 +124,15 @@ async def test_delete_graph_keeps_versions_saved_under_another_org(
     server: SpinTestServer,
 ):
     created = await _create_graph(server)
-    # The owner saved a later version while another org was active.
+    # The owner saved a later version while another org, where they are an
+    # active member, was active.
+    suffix = uuid4().hex[:8]
+    other_org = await prisma.models.Organization.prisma().create(
+        data={"name": f"Other org {suffix}", "slug": f"other-org-{suffix}"}
+    )
+    await prisma.models.OrgMember.prisma().create(
+        data={"orgId": other_org.id, "userId": DEFAULT_USER_ID, "status": "ACTIVE"}
+    )
     other_org_version = await prisma.models.AgentGraph.prisma().create(
         data={
             "id": created.id,
@@ -132,7 +140,7 @@ async def test_delete_graph_keeps_versions_saved_under_another_org(
             "name": created.name,
             "isActive": False,
             "userId": DEFAULT_USER_ID,
-            "organizationId": f"other-org-{uuid4()}",
+            "organizationId": other_org.id,
         }
     )
     other_org_preset = await prisma.models.AgentPreset.prisma().create(
@@ -163,6 +171,9 @@ async def test_delete_graph_keeps_versions_saved_under_another_org(
         )
         await prisma.models.AgentGraph.prisma().delete_many(
             where={"id": created.id, "version": other_org_version.version}
+        )
+        await prisma.models.Organization.prisma().delete_many(
+            where={"id": other_org.id}
         )
 
 

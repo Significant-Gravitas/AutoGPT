@@ -4,6 +4,7 @@ under a time budget."""
 import asyncio
 import threading
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from unittest.mock import Mock
 
 import fastapi
@@ -20,6 +21,22 @@ app.include_router(router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@pytest.fixture(autouse=True)
+def allow_live_scope(mocker: pytest_mock.MockFixture):
+    """These tests pin the run budget, not the live tenancy barrier, whose real
+    database transaction would run on this test's event loop rather than the
+    session's, and leave the shared Prisma client unusable afterwards."""
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    mocker.patch("backend.api.live_auth.live_resource_permission_barrier", allowed)
+    mocker.patch(
+        "backend.api.features.blocks.routes.live_resource_permission_barrier", allowed
+    )
 
 
 @pytest.fixture(autouse=True)

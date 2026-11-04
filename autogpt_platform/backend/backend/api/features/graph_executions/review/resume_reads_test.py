@@ -46,7 +46,13 @@ async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_w
         patch.object(review_service, "add_graph_execution", add_execution),
     ):
         await review_service._resume(
-            USER_ID, "x1", "g1", 3, organization_id="org-1", team_id="team-1"
+            USER_ID,
+            "x1",
+            "g1",
+            3,
+            run_scope=("org-1", "team-1"),
+            organization_id="org-1",
+            team_id="team-1",
         )
 
     assert sorted(answered_before_the_workspace) == ["settings", "user"]
@@ -55,6 +61,7 @@ async def test_a_resumed_run_reads_its_user_and_settings_side_by_side_then_its_w
     assert context.workspace_id == "workspace-1"
     assert context.human_in_the_loop_safe_mode is False
     assert context.sensitive_action_safe_mode is True
+    assert (context.organization_id, context.team_id) == ("org-1", "team-1")
     assert add_execution.await_args.kwargs["graph_exec_id"] == "x1"
 
 
@@ -79,7 +86,13 @@ async def test_a_resume_whose_settings_read_fails_gets_no_workspace_and_restarts
         patch.object(review_service, "add_graph_execution", add_execution),
     ):
         await review_service._resume(
-            USER_ID, "x1", "g1", 3, organization_id=None, team_id=None
+            USER_ID,
+            "x1",
+            "g1",
+            3,
+            run_scope=(None, None),
+            organization_id=None,
+            team_id=None,
         )
 
     workspace.assert_not_awaited()

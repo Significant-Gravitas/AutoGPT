@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
@@ -182,12 +182,10 @@ async def test_existing_shared_subscription_keeps_live_auth_after_flag_turns_off
         "_open_subscription",
         ConnectionManager._open_subscription.__get__(manager),
     )
-    subscription = MagicMock()
-    subscription.start = AsyncMock()
-    mocker.patch.object(conn_manager, "_Subscription", return_value=subscription)
+    redis_subscribe = mocker.patch.object(manager, "_subscribe", AsyncMock())
     forward = mocker.patch.object(manager, "_forward_exec_event", AsyncMock())
     await subscribe(subscriptions, "graph", "shared", "shared-team")
-    on_message = subscription.start.await_args.args[0]
+    on_message = redis_subscribe.await_args.args[3]
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "false")
     live.reset_mock()
 

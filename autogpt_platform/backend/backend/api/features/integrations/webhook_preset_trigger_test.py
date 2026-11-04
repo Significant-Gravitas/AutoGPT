@@ -2,6 +2,7 @@
 execution path that separates the trigger node's input mask (nested under
 ``_node_input_mask_{node_id}``) from the regular graph inputs."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,22 @@ import pytest
 from backend.api.features.integrations.router import _execute_webhook_preset_trigger
 
 _PATH = "backend.api.features.integrations.router"
+
+
+@pytest.fixture(autouse=True)
+def live_trigger():
+    """The webhook's owner may still run work in the preset's scope, and the
+    preset is still attached, so the delivery reads it as it is now."""
+
+    @asynccontextmanager
+    async def attached(preset, _webhook):
+        yield preset
+
+    with (
+        patch(f"{_PATH}.has_live_resource_access", AsyncMock(return_value=True)),
+        patch(f"{_PATH}._live_preset_webhook_trigger", attached),
+    ):
+        yield
 
 
 def _graph_with_trigger(*, triggers_on_event=True):
@@ -29,6 +46,8 @@ def _preset(inputs):
     preset.graph_id = "graph-1"
     preset.graph_version = 1
     preset.user_id = "user-1"
+    preset.organization_id = "org-1"
+    preset.team_id = None
     preset.inputs = inputs
     preset.credentials = {}
     # Explicit: a MagicMock attribute would be truthy, sending the preset down

@@ -17,7 +17,7 @@ from backend.util.models import Pagination
 from backend.util.testing import Rendezvous
 
 USER_ID = "user-1"
-NO_ORG = SimpleNamespace(org_id=None)
+NO_ORG = SimpleNamespace(org_id=None, team_id=None)
 
 
 def _onboarding(execution_id: str | None) -> SimpleNamespace:
@@ -64,7 +64,7 @@ async def test_a_runs_page_completes_the_results_step_once_its_workflow_is_found
 
     assert result is run
     get_graph.assert_awaited_once_with(
-        graph_id="g1", version=3, user_id=USER_ID, organization_id=None
+        graph_id="g1", version=3, user_id=USER_ID, organization_id=None, team_id=None
     )
     complete_step.assert_awaited_once_with(USER_ID, OnboardingStep.GET_RESULTS)
 

@@ -97,6 +97,8 @@ async def test_an_org_at_the_workspace_bound_cannot_create_another(tx):
 @pytest.mark.asyncio
 async def test_an_org_below_the_workspace_bound_creates_one(tx):
     tx.team.count.return_value = MAX_TEAMS_PER_ORG - 1
+    # The creator is still an active member when the workspace is written.
+    tx.orgmember.find_first = AsyncMock(return_value=MagicMock(isOwner=True))
 
     with pytest.raises(_Written):
         await team_db.create_team("org-1", "a name", "user-1")
@@ -116,8 +118,11 @@ def converting(tx, mocker):
     mocker.patch.object(
         org_migration, "_resolve_unique_slug", AsyncMock(return_value="a-slug")
     )
-    orgs_db.prisma.organization.find_unique = AsyncMock(
-        return_value=MagicMock(isPersonal=True, slug="a-slug")
+    # The convert is authorized, and the org read, under the org's lock.
+    orgs_db.prisma.tx = lambda **_: transaction()
+    mocker.patch.object(orgs_db, "_lock_authorized_org_action", AsyncMock())
+    tx.organization.find_unique = AsyncMock(
+        return_value=MagicMock(isPersonal=True, slug="a-slug", deletedAt=None)
     )
     orgs_db.prisma.user.find_unique = AsyncMock(return_value=None)
     return tx

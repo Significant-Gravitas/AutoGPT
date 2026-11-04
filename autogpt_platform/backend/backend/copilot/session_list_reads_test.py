@@ -23,7 +23,12 @@ async def test_a_sessions_page_and_its_total_are_read_side_by_side(
     mocker.patch.object(chat_model, "chat_db", return_value=db)
 
     sessions, total = await chat_model.get_user_sessions(
-        "user-1", 2, 0, organization_id="org-1", expert_id="expert-1"
+        "user-1",
+        2,
+        0,
+        organization_id="org-1",
+        team_id="team-1",
+        expert_id="expert-1",
     )
 
     assert (sessions, total) == (["s1", "s2"], 7)
@@ -32,10 +37,16 @@ async def test_a_sessions_page_and_its_total_are_read_side_by_side(
         2,
         0,
         organization_id="org-1",
+        team_id="team-1",
+        team_ids=None,
         title_contains=None,
         expert_id="expert-1",
         pinned_first=True,
     )
     db.get_user_session_count.assert_awaited_once_with(
-        "user-1", organization_id="org-1", expert_id="expert-1"
+        "user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        team_ids=None,
+        expert_id="expert-1",
     )

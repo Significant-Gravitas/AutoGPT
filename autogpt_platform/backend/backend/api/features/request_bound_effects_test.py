@@ -5,6 +5,7 @@ pins is that the write or route actually calls it, and what a client gets back
 when it refuses.
 """
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -70,6 +71,13 @@ async def test_creating_credentials_answers_400_when_the_store_refuses(mocker):
 async def test_the_external_api_answers_400_when_the_store_refuses(mocker):
     from backend.api.external.v1 import integrations as external_integrations
 
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    mocker.patch.object(
+        external_integrations, "live_resource_permission_barrier", allowed
+    )
     mocker.patch.object(
         external_integrations.creds_manager,
         "create",
@@ -82,7 +90,9 @@ async def test_the_external_api_answers_400_when_the_store_refuses(mocker):
             request=external_integrations.CreateAPIKeyCredentialRequest(
                 type="api_key", api_key="a-key", title="a title"
             ),
-            auth=MagicMock(user_id=USER_ID),
+            auth=MagicMock(
+                user_id=USER_ID, organization_id=None, team_id_restriction=None
+            ),
         )
 
     assert caught.value.status_code == 400
@@ -93,16 +103,35 @@ async def test_the_external_api_answers_400_when_the_store_refuses(mocker):
 async def test_an_invitation_stores_each_team_once(mocker):
     from backend.api.features.orgs import invitation_routes
 
-    prisma_client = MagicMock()
-    prisma_client.team.find_many = AsyncMock(
+    # The invitation is written under the org's locks in one transaction; the
+    # owner may invite, the org has a free seat and invitations are switched on.
+    tx = MagicMock()
+    tx.organization.find_unique = AsyncMock(
+        return_value=SimpleNamespace(isPersonal=False)
+    )
+    tx.user.find_first = AsyncMock(return_value=None)
+    tx.orginvitation.find_first = AsyncMock(return_value=None)
+    tx.team.find_many = AsyncMock(
         return_value=[SimpleNamespace(id=TEAM_ID, orgId=ORG_ID, archivedAt=None)]
     )
-    prisma_client.orginvitation.find_first = AsyncMock(return_value=None)
-    prisma_client.orgmember.find_first = AsyncMock(return_value=None)
-    prisma_client.orginvitation.create = AsyncMock(
-        return_value=MagicMock(teamIds=[TEAM_ID])
-    )
+    tx.orginvitation.create = AsyncMock(return_value=MagicMock(teamIds=[TEAM_ID]))
+
+    @asynccontextmanager
+    async def transaction():
+        yield tx
+
+    prisma_client = MagicMock()
+    prisma_client.user.find_first = AsyncMock(return_value=None)
     mocker.patch.object(invitation_routes, "prisma", prisma_client)
+    mocker.patch.object(invitation_routes, "transaction", transaction)
+    mocker.patch.object(invitation_routes, "require_org_collaboration", AsyncMock())
+    mocker.patch.object(invitation_routes, "check_invitation_rate", AsyncMock())
+    mocker.patch.object(
+        invitation_routes,
+        "_lock_invitation_admin",
+        AsyncMock(return_value=_owner_context()),
+    )
+    mocker.patch.object(invitation_routes, "assert_free_seat", AsyncMock())
     mocker.patch.object(
         invitation_routes.InvitationCreateResponse,
         "from_db",
@@ -117,7 +146,7 @@ async def test_an_invitation_stores_each_team_once(mocker):
         ctx=_owner_context(),
     )
 
-    stored = prisma_client.orginvitation.create.await_args.kwargs["data"]["teamIds"]
+    stored = tx.orginvitation.create.await_args.kwargs["data"]["teamIds"]
     assert stored == [TEAM_ID]
 
 

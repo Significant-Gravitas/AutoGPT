@@ -430,6 +430,14 @@ async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
 
     monkeypatch.setattr(redis_client, "connect_sharded_pubsub_async", counting_connect)
 
+    async def _fake_exact(_uid, gex_id, _organization_id, _team_id):
+        return _meta(user_id, gex_id.removeprefix("exec-"), gex_id)
+
+    monkeypatch.setattr(
+        "backend.api.conn_manager.get_graph_execution_exact_scope",
+        _fake_exact,
+    )
+
     cm = ConnectionManager()
     ws: AsyncMock = AsyncMock(spec=WebSocket)
     sent: list[str] = []
@@ -443,7 +451,11 @@ async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
         await cm.connect_socket(ws, user_id=user_id)
         for graph_id in graph_ids:
             await cm.subscribe_graph_execs(
-                user_id=user_id, graph_id=graph_id, websocket=ws
+                user_id=user_id,
+                graph_id=graph_id,
+                organization_id=None,
+                team_id=None,
+                websocket=ws,
             )
         await asyncio.sleep(0.2)
 
@@ -468,7 +480,10 @@ async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
         delivered = await _wait_until(lambda: len(sent) >= len(graph_ids), 10.0)
         assert delivered, f"only delivered {len(sent)}/{len(graph_ids)}"
         assert {json.loads(m)["channel"] for m in sent} == {
-            _graph_execs_channel_key(user_id, graph_id=g) for g in graph_ids
+            _graph_execs_channel_key(
+                user_id, graph_id=g, organization_id=None, team_id=None
+            )
+            for g in graph_ids
         }
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)

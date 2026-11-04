@@ -99,10 +99,13 @@ def test_every_websocket_request_string_is_length_bounded() -> None:
 
 
 def test_an_overlong_id_is_refused() -> None:
-    with pytest.raises(pydantic.ValidationError):
-        api_model.WSSubscribeGraphExecutionsRequest.model_validate(
-            {"graph_id": "g" * (api_model.WS_ID_MAX_LENGTH + 1)}
-        )
+    request = {"graph_id": "g", "organization_id": None, "team_id": None}
+    api_model.WSSubscribeGraphExecutionsRequest.model_validate(request)
+    for field in ("graph_id", "organization_id", "team_id"):
+        with pytest.raises(pydantic.ValidationError):
+            api_model.WSSubscribeGraphExecutionsRequest.model_validate(
+                {**request, field: "g" * (api_model.WS_ID_MAX_LENGTH + 1)}
+            )
 
 
 @pytest.mark.asyncio

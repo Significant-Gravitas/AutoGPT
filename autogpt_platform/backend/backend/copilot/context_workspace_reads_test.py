@@ -17,6 +17,19 @@ def _expert_session(user_id: str) -> MagicMock:
     return MagicMock(user_id=user_id, expert_id="expert-1", session_id="session-1")
 
 
+def _stored_session(mocker: MockerFixture, user_id: str) -> None:
+    """The chat's stored row, which the manager reads beside the workspace for
+    its owner and its organization and team."""
+    chat_db = SimpleNamespace(
+        get_chat_session_metadata=AsyncMock(
+            return_value=SimpleNamespace(
+                user_id=user_id, organization_id=None, team_id=None
+            )
+        )
+    )
+    mocker.patch.object(context, "chat_db", return_value=chat_db)
+
+
 @pytest.mark.asyncio
 async def test_an_experts_workspace_and_its_scope_are_read_side_by_side(
     mocker: MockerFixture,
@@ -33,6 +46,7 @@ async def test_an_experts_workspace_and_its_scope_are_read_side_by_side(
         ),
     )
     mocker.patch.object(context, "workspace_db", return_value=workspace_db)
+    _stored_session(mocker, "user-1")
     set_execution_context("user-1", _expert_session("user-1"))
 
     manager = await context.get_workspace_manager("user-1", "session-1")
@@ -54,6 +68,7 @@ async def test_a_session_of_another_user_still_gets_no_workspace_manager(
         resolve_expert_workspace_scope=AsyncMock(),
     )
     mocker.patch.object(context, "workspace_db", return_value=workspace_db)
+    _stored_session(mocker, "someone-else")
     set_execution_context("user-1", _expert_session("someone-else"))
 
     with pytest.raises(WorkspaceAccessDeniedError):

@@ -1361,7 +1361,7 @@ async def world(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[World]:
     )
     monkeypatch.setattr(
         background_subtasks,
-        "capture_cost_context",
+        "capture_org_cost_context",
         AsyncMock(return_value=TrialCostContext(user_id=user_id, trial_id=None)),
     )
     monkeypatch.setattr(background_delivery, "enqueue_cancel_task", AsyncMock())

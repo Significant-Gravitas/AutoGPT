@@ -47,8 +47,17 @@ def prisma(mocker: MockerFixture) -> Mock:
 
 
 def _org_member(prisma: Mock, *, personal: bool) -> None:
-    member = Mock(status="ACTIVE", isOwner=True, isAdmin=True, isBillingManager=False)
+    """The caller's active membership: the personal-org lookup returns it with
+    its org, and a request that names its org reads the same row."""
+    member = Mock(
+        orgId="org-1",
+        status="ACTIVE",
+        isOwner=True,
+        isAdmin=True,
+        isBillingManager=False,
+    )
     member.Org = Mock(deletedAt=None, isPersonal=personal)
+    prisma.orgmember.find_first = AsyncMock(return_value=member)
     prisma.orgmember.find_unique = AsyncMock(return_value=member)
 
 

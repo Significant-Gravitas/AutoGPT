@@ -5,6 +5,7 @@ unpublished, and nothing else happens. Chat's ``run_block`` path is covered in
 copilot turns open a session scoped to the expert (their own tests pin that)
 and then spend through these same seams."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -42,7 +43,11 @@ async def test_schedule_fire_is_parked(mocker, parked) -> None:
     mocker.patch.object(
         scheduler,
         "get_database_manager_async_client",
-        return_value=MagicMock(increment_onboarding_runs=AsyncMock()),
+        return_value=MagicMock(
+            increment_onboarding_runs=AsyncMock(),
+            # The owner may still run work in the schedule's org and team.
+            has_live_resource_access=AsyncMock(return_value=True),
+        ),
     )
     args = scheduler.GraphExecutionJobArgs(
         user_id="owner",
@@ -80,6 +85,17 @@ async def test_webhook_trigger_is_parked(mocker, parked) -> None:
         "get_graph",
         AsyncMock(return_value=MagicMock(webhook_input_node=trigger_node)),
     )
+
+    # The owner may still run work in the expert's scope, and the preset is
+    # still attached to the webhook.
+    @asynccontextmanager
+    async def attached(live_preset, _webhook):
+        yield live_preset
+
+    mocker.patch.object(
+        ingress, "has_live_resource_access", AsyncMock(return_value=True)
+    )
+    mocker.patch.object(ingress, "_live_preset_webhook_trigger", attached)
     preset = MagicMock(
         id="preset-1",
         user_id="owner",

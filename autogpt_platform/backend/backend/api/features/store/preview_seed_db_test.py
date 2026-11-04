@@ -55,6 +55,8 @@ async def _remove_seed() -> None:
     await prisma.models.SkillListing.prisma().delete_many(
         where={"slug": {"in": [skill.slug for skill in SKILLS]}}
     )
+    # Then the graphs, which sit in the seeded creators' teams.
+    await prisma.models.AgentGraph.prisma().delete_many(where={"id": {"in": graph_ids}})
     await prisma.models.Organization.prisma().delete_many(
         where={"bootstrapUserId": {"in": user_ids}}
     )

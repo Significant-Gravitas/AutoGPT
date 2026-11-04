@@ -15,6 +15,17 @@ from backend.api.features.experts import experts_db
 from backend.util.testing import Rendezvous
 
 USER_ID = "user-1"
+ORG_ID = "org-1"
+
+
+@pytest.fixture(autouse=True)
+def live_access():
+    """The caller still belongs to the expert's organization; these tests pin
+    the order of the reads, not the tenancy check before them."""
+    with patch.object(
+        experts_db, "has_live_resource_access", AsyncMock(return_value=True)
+    ):
+        yield
 
 
 def _expert_prisma(**methods) -> MagicMock:
@@ -26,7 +37,10 @@ def _expert_prisma(**methods) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_a_roster_whose_runs_cannot_be_read_seeds_no_grants() -> None:
-    rows = [SimpleNamespace(id="e1"), SimpleNamespace(id="e2")]
+    rows = [
+        SimpleNamespace(id="e1", organizationId=ORG_ID, teamId=None),
+        SimpleNamespace(id="e2", organizationId=ORG_ID, teamId=None),
+    ]
     providers = AsyncMock(return_value={})
     with (
         patch.object(
@@ -43,7 +57,7 @@ async def test_a_roster_whose_runs_cannot_be_read_seeds_no_grants() -> None:
         patch.object(experts_db, "_credential_providers", providers),
         pytest.raises(RuntimeError, match="runs read failed"),
     ):
-        await experts_db.list_experts(USER_ID)
+        await experts_db.list_experts(USER_ID, organization_id=ORG_ID)
 
     providers.assert_not_awaited()
 
@@ -56,7 +70,11 @@ async def test_an_experts_page_whose_run_cannot_be_read_seeds_no_grants() -> Non
             prisma.models.Expert,
             "prisma",
             return_value=_expert_prisma(
-                find_first=AsyncMock(return_value=SimpleNamespace(id="e1"))
+                find_first=AsyncMock(
+                    return_value=SimpleNamespace(
+                        id="e1", organizationId=ORG_ID, teamId=None
+                    )
+                )
             ),
         ),
         patch.object(
@@ -68,7 +86,9 @@ async def test_an_experts_page_whose_run_cannot_be_read_seeds_no_grants() -> Non
         patch.object(experts_db, "_credential_providers", providers),
         pytest.raises(RuntimeError, match="runs read failed"),
     ):
-        await experts_db.get_expert(USER_ID, "e1", include_credentials=True)
+        await experts_db.get_expert(
+            USER_ID, "e1", include_credentials=True, organization_id=ORG_ID
+        )
 
     providers.assert_not_awaited()
 

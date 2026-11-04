@@ -293,6 +293,10 @@ async def test_slot_race_uses_busy_fallback_without_overwriting_active_turn(
         patch("backend.copilot.turn_queue.count_inflight_turns", return_value=0),
         patch.object(active_turns, "chat_db", return_value=raced_db),
         patch("backend.copilot.sdk.session_waiter.chat_db", return_value=raced_db),
+        patch(
+            "backend.copilot.sdk.session_waiter.live_resource_lease",
+            _allow_live_resource_lease,
+        ),
         patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch),
         patch("backend.copilot.sdk.session_waiter.queue_user_message", new=queued),
         patch("backend.copilot.sdk.session_waiter.wait_for_session_result", new=wait),
@@ -316,6 +320,9 @@ async def test_slot_race_uses_busy_fallback_without_overwriting_active_turn(
     else:
         queued.assert_awaited_once_with(
             session_id="raced-session",
+            user_id="u1",
+            organization_id=None,
+            team_id=None,
             message="Follow up",
             metadata={"from_session_id": "parent"},
         )
