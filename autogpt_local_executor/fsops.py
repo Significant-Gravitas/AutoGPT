@@ -9,7 +9,9 @@ import ctypes.util
 import errno
 import functools
 import os
+import secrets
 import sys
+from pathlib import Path
 
 # The rename flags that refuse an existing destination.
 _RENAME_NOREPLACE = 1  # Linux renameat2(2)
@@ -17,6 +19,22 @@ _RENAME_EXCL = 0x00000004  # macOS renamex_np(2)
 _AT_FDCWD = -100
 # A filesystem or kernel without the flag answers with one of these.
 _UNSUPPORTED = {errno.EINVAL, errno.ENOSYS, getattr(errno, "ENOTSUP", errno.EOPNOTSUPP)}
+
+
+# How much of a file's name a temporary name beside it keeps, in bytes, so
+# the temporary name stays well under the 255 bytes filesystems allow.
+_TEMPORARY_NAME_BYTES = 100
+
+
+def temporary_sibling(path: Path) -> Path:
+    """A fresh hidden name beside `path`, `.<name>.<random>.tmp`, for a file
+    that is then renamed over it. The name is cut to 100 bytes on a
+    character boundary: one of multi-byte characters, valid at 255 bytes,
+    would otherwise make a temporary name too long to create."""
+    name = path.name
+    while len(os.fsencode(name)) > _TEMPORARY_NAME_BYTES:
+        name = name[:-1]
+    return path.with_name(f".{name}.{secrets.token_hex(6)}.tmp")
 
 
 def rename_no_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:

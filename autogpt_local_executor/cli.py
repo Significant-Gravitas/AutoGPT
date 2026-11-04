@@ -715,7 +715,6 @@ def _audit_export(current: Path, output: Path | None) -> int:
     import hashlib
     import hmac
     import json
-    import secrets
     import zipfile
 
     from .audit import (
@@ -724,6 +723,7 @@ def _audit_export(current: Path, output: Path | None) -> int:
         get_or_create_audit_key,
         holding_log_lock,
     )
+    from .fsops import temporary_sibling
 
     try:
         key = get_or_create_audit_key()
@@ -773,7 +773,7 @@ def _audit_export(current: Path, output: Path | None) -> int:
     # Built beside the output and moved into place when complete, so a failed
     # export leaves nothing behind. Owner-only, like the logs it holds,
     # whatever the umask.
-    temp = output.with_name(f".{output.name}.{secrets.token_hex(6)}.tmp")
+    temp = temporary_sibling(output)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     try:
         descriptor = os.open(temp, flags, 0o600)

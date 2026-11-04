@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 import platform as _platform
 import re
-import secrets
 import shutil
 import subprocess
 import sys
@@ -30,6 +29,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
 
 from . import platform_info
+from .fsops import temporary_sibling
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -222,7 +222,7 @@ def _write_atomic(target: Path, content: str, *, encoding: str = "utf-8") -> Pat
     target.parent.mkdir(parents=True, exist_ok=True)
     # A name of its own, created exclusively, so two installs at once can't
     # write into each other's file.
-    temp = target.with_name(f".{target.name}.{secrets.token_hex(6)}.tmp")
+    temp = temporary_sibling(target)
     try:
         with open(temp, "x", encoding=encoding) as file:
             file.write(content)
