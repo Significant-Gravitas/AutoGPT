@@ -587,7 +587,14 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
 }
 ```
 
-Glob is matched per-OS with `pathlib.PurePath.match`. On case-insensitive
+`truncated` is true only when something was left out: a match past
+`max_entries` (which is capped at 10,000), a match that would take the
+entries past the reply's size budget (16 MiB less 64 KiB, so the reply
+stays under the frame limit), or a directory entry past the walk's scan
+budget of 100,000 entries. Exactly `max_entries` matches come back with
+`truncated: false`. To see the rest, list a narrower path or glob.
+
+Glob is matched with `fnmatch.fnmatchcase`. On case-insensitive
 filesystems (macOS APFS default, Windows NTFS default), matching is
 case-insensitive; on case-sensitive Linux ext4, it's case-sensitive. The
 glob is matched against the **basename**, not the full path; combine with
