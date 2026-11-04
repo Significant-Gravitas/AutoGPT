@@ -422,6 +422,10 @@ class BashExecTool(BaseTool):
         machine, and no shell is assumed: ``shell="auto"`` picks the POSIX
         shell or cmd.exe, and the companion answers SHELL_NOT_AVAILABLE when
         neither exists.
+
+        Each stream keeps at most ``MAX_OUTPUT_SIZE``, as on E2B. The command
+        answers once, after it ends, so it cannot be stopped at that limit;
+        the companion sends at most a bounded prefix of its output.
         """
         try:
             result = await sandbox.commands.run(
@@ -438,14 +442,20 @@ class BashExecTool(BaseTool):
                 error="local_pc_execution_error",
                 session_id=session_id,
             ).from_outside(str(exc))
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
         return _build_completion_response(
-            result.stdout,
-            result.stderr,
+            stdout[:MAX_OUTPUT_SIZE],
+            stderr[:MAX_OUTPUT_SIZE],
             result.exit_code,
             [],
             session_id,
             timed_out=result.timed_out,
-            output_truncated=result.output_truncated,
+            output_truncated=(
+                result.output_truncated
+                or len(stdout) > MAX_OUTPUT_SIZE
+                or len(stderr) > MAX_OUTPUT_SIZE
+            ),
         )
 
     async def _execute_on_e2b(

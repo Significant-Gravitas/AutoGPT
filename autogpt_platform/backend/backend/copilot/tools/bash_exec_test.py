@@ -30,6 +30,7 @@ from ._test_data import make_session
 from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
 from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
+from .sandbox import MAX_OUTPUT_SIZE
 
 _USER = "user-bash-exec-test"
 _PICKED = {"github": "cred-picked"}
@@ -250,6 +251,43 @@ async def test_local_pc_preserves_timeout_and_truncation_metadata() -> None:
     assert result.message == (
         "Execution timed out and output was truncated by the Local PC executor limit."
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+async def test_local_pc_keeps_each_stream_to_the_output_limit(stream: str) -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(**{stream: "x" * (MAX_OUTPUT_SIZE + 5)})
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat big.log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(getattr(result, stream)) == MAX_OUTPUT_SIZE
+    assert result.output_truncated is True
+    assert "truncated" in result.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_output_within_the_limit_is_whole() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(stdout="x" * MAX_OUTPUT_SIZE, stderr="warn")
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(result.stdout) == MAX_OUTPUT_SIZE
+    assert result.stderr == "warn"
+    assert result.output_truncated is False
 
 
 @pytest.mark.asyncio(loop_scope="session")
