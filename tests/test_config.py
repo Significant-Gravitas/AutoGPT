@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -283,3 +285,25 @@ def test_without_config_a_missing_default_file_means_the_defaults(
     monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent.toml")
 
     assert isinstance(load_config(), ShimConfig)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or os.geteuid() == 0, reason="needs POSIX permissions, not root"
+)
+def test_a_default_config_that_cannot_be_reached_is_an_error(tmp_path: Path, monkeypatch) -> None:
+    """Path.is_file() raised PermissionError past load_config (Python 3.13
+    and earlier) or answered False (3.14), so the shim crashed, or started on
+    the defaults while ignoring the user's config."""
+    from autogpt_local_executor import config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "config.toml").write_text("max_concurrent = 2\n")
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: locked / "config.toml")
+    locked.chmod(0)
+    try:
+        with pytest.raises(ConfigFileError, match="config.toml"):
+            load_config()
+    finally:
+        locked.chmod(0o700)
