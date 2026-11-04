@@ -1497,6 +1497,18 @@ def check_chat_environment(environ, dotenv_paths):
 class CheckChatEnvTest(unittest.TestCase):
     """check-chat-env runs the backend's own check from its source."""
 
+    def test_legacy_settings_use_the_real_migration(self) -> None:
+        backend = Path(__file__).resolve().parents[2] / "backend"
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env"
+            env_file.write_text("CHAT_API_KEY=synthetic-route-key\\n", encoding="utf-8")
+            notes = runtime_config.check_chat_env(
+                env_file, {"AUTOGPT_BACKEND_DIR": str(backend)}
+            )
+            self.assertEqual(len(notes), 1)
+            self.assertIn("CHAT_API_KEY deprecated", notes[0])
+            self.assertNotIn("synthetic-route-key", notes[0])
+
     def _backend(self, root: Path) -> Path:
         module = root / "backend" / "copilot" / "chat_env.py"
         module.parent.mkdir(parents=True)

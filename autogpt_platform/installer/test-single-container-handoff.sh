@@ -260,7 +260,7 @@ if [ "${1:-}" = volume ] && [ "${2:-}" = create ]; then
 fi
 if [ "${1:-}" = run ] && [ "${2:-}" = --rm ]; then
 	if [ "${FAKE_CHAT_CHECK_FAIL:-false}" = true ]; then
-		printf '  - CHAT_USE_LOCAL is no longer read: replaced by CHAT_PLATFORM_ROUTE=local\n' >&2
+		printf '  - CHAT_LOCAL_ADAPTER is not an adapter\n' >&2
 		exit 2
 	fi
 	exit 0

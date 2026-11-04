@@ -37,7 +37,7 @@ AutoPilot's chat runs on one **platform route**, chosen by
 `CHAT_PLATFORM_ROUTE`: `openrouter`, `direct_anthropic`, `local`,
 `subscription` (this machine's Claude login; self-hosted only) or
 `disabled` (no platform model: users chat over the accounts they
-connect). Each route reads only its own settings, and the integration
+connect). With an explicit selector each route reads only its own settings, and the integration
 keys (`OPEN_ROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
 never configure the chat. With `CHAT_PLATFORM_ROUTE=local`:
 
@@ -62,11 +62,22 @@ in the shipped file, and they never override your `CHAT_STANDARD_MODEL`
 your settings stay authoritative. See
 [Managing LLM Models](contributing/managing-llm-models.md).
 
-Every backend service checks the chat settings when it starts. A
-setting from the old format, even one left empty, stops it with a list
-naming each such setting and what replaced it, and so does a route
-missing a setting it needs. The list names settings, never their
-values. Moving an existing local install over:
+Every backend service migrates dev's chat settings before it starts. Old
+names still work and produce one deprecation warning per name; explicit
+new names always win, including new names in a dotenv file. Without
+an explicit route, dev's subscription/local/OpenRouter selectors and
+integration-key fallbacks select the route. If no usable credential is
+available, the backend starts with its own chat model disabled and logs
+which names to configure. Explicit route selections use only chat credentials.
+
+Only an unknown explicit route or adapter, an invalid or too-small explicit
+context window, a selected remote route without its own key, or a cloud
+subscription stops startup. Diagnostics name settings, never values.
+For local legacy installs, the adapter defaults to OpenAI Chat Completions
+and the context window comes from the old CLI window or 65,536 tokens;
+set the server's actual window. Local model tiers replace the fast tiers;
+SDK routes replace the thinking tiers. The unused engine's settings produce
+warnings. Migrating an existing local install explicitly:
 
 | Old setting | Now |
 | --- | --- |
@@ -369,10 +380,12 @@ quantization concerns rather than config-routing bugs.
 
 ## Troubleshooting
 
-**The backend exits at startup, naming chat settings** â€” a setting from
-the old format is still set (an empty one counts), or the route is
-missing one it needs. Replace or add each setting the list names; see
-the table under "How it works" above.
+**The backend exits at startup, naming chat settings** — check the explicit
+route, adapter, context window and route credential. A subscription cannot
+run with BEHAVE_AS=cloud. Legacy names produce deprecation warnings and
+migrate automatically. If no usable legacy route can be selected, startup
+continues with the platform chat disabled.
+
 
 **Frontend shows "The assistant encountered an error"** â€” check the
 copilot_executor log for the upstream error. Common causes:

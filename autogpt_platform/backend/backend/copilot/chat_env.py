@@ -1,23 +1,16 @@
-"""The chat settings an operator sets, checked before any service starts.
+"""Migrate dev chat settings before service startup or standalone CLI use.
 
-AutoPilot's chat is configured by a handful of explicit names: the platform
-route (``CHAT_PLATFORM_ROUTE``), that route's key and URL, the two model tiers
-and, for a local server, its adapter and real context window. Everything else
-about a route is code (``route_table.py``).
-
-Settings parsing ignores names it does not know, so a deployment still setting
-a name this format replaced would start normally and quietly lose that setting.
-:func:`check_chat_environment` reads the process environment and the dotenv
-files the backend loads, before any settings object is built, and fails with one
-list naming every replaced setting and what replaces it, plus anything the
-selected route still needs. It reports names, never values.
-
-Import-light on purpose: the single-container image runs it through
-``runtime_config.py check-chat-env`` before any service starts.
+Environment overrides dotenv; a new name in either source wins over aliases.
+The pure migration supplies new names and names-only deprecation notes.
+run_processes exports those names to its children; ChatConfig uses the same
+migration as a settings source. Unusable legacy routes disable platform chat
+with an error note. Invalid explicit route settings and cloud subscriptions
+still stop startup.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -35,9 +28,7 @@ LOCAL_ADAPTERS = ("openai_chat", "anthropic_passthrough")
 # AutoPilot's prompt and tools beside a working conversation need this much.
 MIN_LOCAL_CONTEXT_TOKENS = 65_536
 
-# Every chat setting the old format accepted that this one does not, and what
-# replaced it. A deployment that sets any of them, even to an empty value, does
-# not start.
+# Legacy names and their migration guidance.
 RETIRED_CHAT_SETTINGS: dict[str, str] = {
     "CHAT_FAST_STANDARD_MODEL": "replaced by CHAT_STANDARD_MODEL",
     "CHAT_FAST_MODEL": "replaced by CHAT_STANDARD_MODEL",
@@ -185,26 +176,14 @@ ACCEPTED_CHAT_SETTINGS: frozenset[str] = frozenset(
 )
 CHAT_SETTINGS_READ_ELSEWHERE: frozenset[str] = frozenset({"CHAT_OPENAI_API_KEY"})
 
-# The settings each route reads, so one set for a route nobody selected is named.
-# CHAT_ANTHROPIC_API_KEY is left out: it is also the Batch API's key for the
-# platform's background jobs on any route, so it is never stray.
-_ROUTE_SETTINGS: dict[str, tuple[str, ...]] = {
-    "openrouter": ("CHAT_OPENROUTER_API_KEY", "CHAT_OPENROUTER_BASE_URL"),
-    "direct_anthropic": ("CHAT_ANTHROPIC_BASE_URL",),
-    "local": (
-        "CHAT_LOCAL_BASE_URL",
-        "CHAT_LOCAL_API_KEY",
-        "CHAT_LOCAL_ADAPTER",
-        "CHAT_LOCAL_CONTEXT_TOKENS",
-    ),
-}
 # Non-chat names the check reads: generic endpoint overrides that used to move
 # the chat, the integration keys the chat used to fall back to, and the
 # deployment mode.
-_INTEGRATION_KEYS = ("OPEN_ROUTER_API_KEY", "ANTHROPIC_API_KEY")
+_INTEGRATION_KEYS = ("OPEN_ROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY")
 _OTHER_SETTINGS = (
     "OPENROUTER_BASE_URL",
     "OPENAI_BASE_URL",
+    "ANTHROPIC_BASE_URL",
     "BEHAVE_AS",
     *_INTEGRATION_KEYS,
 )
@@ -263,146 +242,263 @@ def chat_environment_problems(
     dotenv_paths: Iterable[Path] = (),
 ) -> tuple[list[str], list[str]]:
     """``(problems, warnings)`` for these settings. Names only, never values."""
-    settings = read_chat_settings(environ, list(dotenv_paths))
-    problems = [
-        f"{name} is no longer read: {RETIRED_CHAT_SETTINGS[name]}"
-        for name in sorted(settings)
-        if name in RETIRED_CHAT_SETTINGS
-    ]
-    warnings = [
+    original = read_chat_settings(environ, dotenv_paths)
+    supplied, notes = migrate_chat_settings(original)
+    settings = {**original, **supplied}
+    warnings = list(notes)
+    warnings.extend(
         f"{name} is not a setting anything reads"
-        for name in sorted(settings)
+        for name in sorted(original)
         if name.startswith("CHAT_")
         and name not in RETIRED_CHAT_SETTINGS
         and name not in ACCEPTED_CHAT_SETTINGS
         and name not in CHAT_SETTINGS_READ_ELSEWHERE
-    ]
-
-    selector = settings.get("CHAT_PLATFORM_ROUTE", "")
-    if not selector.strip():
-        problems.append(
-            "CHAT_PLATFORM_ROUTE is not set: choose "
-            + ", ".join(PLATFORM_ROUTES)
-            + " (disabled runs without the platform's own chat model)"
-        )
-        return problems, warnings
-    route = parse_platform_route(selector)
+    )
+    problems: list[str] = []
+    route = parse_platform_route(settings.get("CHAT_PLATFORM_ROUTE"))
     if route is None:
+        problems.append("CHAT_PLATFORM_ROUTE is not a route")
+    if (
+        "CHAT_LOCAL_ADAPTER" in original
+        and parse_local_adapter(original["CHAT_LOCAL_ADAPTER"]) is None
+    ):
+        problems.append("CHAT_LOCAL_ADAPTER is not an adapter")
+    if "CHAT_LOCAL_CONTEXT_TOKENS" in original:
+        problems.extend(_local_window(original["CHAT_LOCAL_CONTEXT_TOKENS"]))
+    if (
+        route == "subscription"
+        and settings.get("BEHAVE_AS", "").strip().lower() == "cloud"
+    ):
         problems.append(
-            "CHAT_PLATFORM_ROUTE is not a route: choose " + ", ".join(PLATFORM_ROUTES)
+            "CHAT_PLATFORM_ROUTE=subscription cannot run with BEHAVE_AS=cloud"
         )
-        return problems, warnings
-
-    warnings.extend(_unused_route_settings(route, settings))
-    if route == "disabled":
-        keys = [name for name in _INTEGRATION_KEYS if settings.get(name, "").strip()]
-        if keys:
-            warnings.append(
-                f"{' and '.join(keys)} {'is' if len(keys) == 1 else 'are'} set, but "
-                "CHAT_PLATFORM_ROUTE is disabled: the platform runs no chat model of "
-                "its own, and integration keys never serve the chat (choose a route "
-                "and give it its own key, e.g. CHAT_PLATFORM_ROUTE=openrouter with "
-                "CHAT_OPENROUTER_API_KEY)"
-            )
-    if settings.get("CHAT_TEST_MODE", "").strip().lower() in _TRUE:
-        # The dummy engine answers every turn; no route credential is needed.
-        return problems, warnings
-    problems.extend(_route_problems(route, settings))
+    if "CHAT_PLATFORM_ROUTE" in original and route in (
+        "openrouter",
+        "direct_anthropic",
+    ):
+        key = (
+            "CHAT_OPENROUTER_API_KEY"
+            if route == "openrouter"
+            else "CHAT_ANTHROPIC_API_KEY"
+        )
+        if (
+            not settings.get(key, "").strip()
+            and settings.get("CHAT_TEST_MODE", "").lower() not in _TRUE
+        ):
+            problems.append(f"CHAT_PLATFORM_ROUTE needs {key}")
     return problems, warnings
 
 
-def _route_problems(route: str, settings: Mapping[str, str]) -> list[str]:
-    """What the selected route still needs."""
+def migrate_chat_settings(
+    settings: Mapping[str, str]
+) -> tuple[dict[str, str], list[str]]:
+    """Pure migration: supplied new names and one names-only note per old name."""
+    supplied: dict[str, str] = {}
+    notes = {
+        name: f"{name} deprecated; ignored"
+        for name in settings
+        if name in RETIRED_CHAT_SETTINGS
+    }
+    legacy = "CHAT_PLATFORM_ROUTE" not in settings
 
-    def needs(*names: str) -> list[str]:
-        return [
-            f"CHAT_PLATFORM_ROUTE={route} needs {name}"
-            for name in names
-            if not settings.get(name, "").strip()
-        ]
+    def get(name: str) -> str:
+        return settings.get(name, supplied.get(name, ""))
 
+    def copy(target: str, *sources: str, strip_v1: bool = False) -> None:
+        chosen = next(
+            (name for name in sources if settings.get(name, "").strip()), None
+        )
+        for name in sources:
+            if name in settings:
+                notes[name] = f"{name} deprecated; ignored in favour of {target}"
+        if chosen is None:
+            return
+        value = settings[chosen]
+        if strip_v1:
+            value = value.rstrip("/")
+            if value.endswith("/v1"):
+                value = value[:-3]
+        if target in settings:
+            if settings[target] != value:
+                notes[chosen] = (
+                    f"{chosen} deprecated; conflicts with {target}; {target} wins"
+                )
+        else:
+            supplied[target] = value
+            notes[chosen] = f"{chosen} deprecated; use {target}"
+
+    if get("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION").strip().lower() in _TRUE:
+        old_route = "subscription"
+    elif get("CHAT_USE_LOCAL").strip().lower() in _TRUE:
+        old_route = "local"
+    elif get("CHAT_USE_OPENROUTER").strip().lower() in ("false", "0", "no", "off"):
+        old_route = "direct_anthropic"
+    else:
+        old_route = "openrouter"
+    route = old_route if legacy else get("CHAT_PLATFORM_ROUTE").strip()
+    if legacy:
+        supplied["CHAT_PLATFORM_ROUTE"] = route
+    for name in (
+        "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
+        "CHAT_USE_LOCAL",
+        "CHAT_USE_OPENROUTER",
+    ):
+        if name in settings:
+            notes[name] = (
+                f"{name} deprecated; conflicts with CHAT_PLATFORM_ROUTE; CHAT_PLATFORM_ROUTE wins"
+                if not legacy and route != old_route
+                else f"{name} deprecated; use CHAT_PLATFORM_ROUTE"
+            )
     if route == "openrouter":
-        problems = needs("CHAT_OPENROUTER_API_KEY")
-        moved = [
-            n for n in ("OPENROUTER_BASE_URL", "OPENAI_BASE_URL") if settings.get(n)
-        ]
-        if moved and not settings.get("CHAT_OPENROUTER_BASE_URL", "").strip():
-            problems.append(
-                f"{' and '.join(moved)} no longer point the chat anywhere: set "
-                "CHAT_OPENROUTER_BASE_URL to the URL the chat should use "
-                "(https://openrouter.ai/api for OpenRouter itself)"
+        copy(
+            "CHAT_OPENROUTER_API_KEY",
+            "CHAT_API_KEY",
+            *(("OPEN_ROUTER_API_KEY", "OPENAI_API_KEY") if legacy else ()),
+        )
+        copy(
+            "CHAT_OPENROUTER_BASE_URL",
+            "CHAT_BASE_URL",
+            *(("OPENROUTER_BASE_URL", "OPENAI_BASE_URL") if legacy else ()),
+            strip_v1=True,
+        )
+    elif route == "local":
+        copy("CHAT_LOCAL_API_KEY", "CHAT_API_KEY")
+        copy("CHAT_LOCAL_BASE_URL", "CHAT_BASE_URL")
+    copy(
+        "CHAT_ANTHROPIC_API_KEY",
+        "CHAT_DIRECT_ANTHROPIC_API_KEY",
+        *(("ANTHROPIC_API_KEY",) if legacy else ()),
+    )
+    if route == "direct_anthropic" and legacy:
+        copy("CHAT_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL")
+    local = route == "local"
+    copy(
+        "CHAT_STANDARD_MODEL",
+        *(
+            ("CHAT_FAST_STANDARD_MODEL", "CHAT_FAST_MODEL")
+            if local
+            else ("CHAT_THINKING_STANDARD_MODEL", "CHAT_MODEL")
+        ),
+        "CHAT_CLAUDE_AGENT_MODEL",
+    )
+    copy(
+        "CHAT_ADVANCED_MODEL",
+        "CHAT_FAST_ADVANCED_MODEL" if local else "CHAT_THINKING_ADVANCED_MODEL",
+        "CHAT_CLAUDE_AGENT_MODEL",
+    )
+    copy("CHAT_AGENT_MAX_TURNS", "CHAT_CLAUDE_AGENT_MAX_TURNS")
+    if "CHAT_AGENT_MAX_TURNS" in supplied:
+        try:
+            int(supplied["CHAT_AGENT_MAX_TURNS"])
+        except ValueError:
+            del supplied["CHAT_AGENT_MAX_TURNS"]
+            notes["CHAT_CLAUDE_AGENT_MAX_TURNS"] = (
+                "CHAT_CLAUDE_AGENT_MAX_TURNS deprecated; ignored; set CHAT_AGENT_MAX_TURNS"
             )
-        return problems
-    if route == "direct_anthropic":
-        return needs("CHAT_ANTHROPIC_API_KEY") + _anthropic_tiers(route, settings)
-    if route == "subscription":
-        problems = _anthropic_tiers(route, settings)
-        if settings.get("BEHAVE_AS", "").strip().lower() == "cloud":
-            problems.append(
-                "CHAT_PLATFORM_ROUTE=subscription is for a self-hosted install; it "
-                "cannot run with BEHAVE_AS=cloud"
+    if local and (
+        legacy
+        or any(
+            name in settings
+            for name in (
+                "CHAT_FAST_STANDARD_MODEL",
+                "CHAT_FAST_MODEL",
+                "CHAT_FAST_ADVANCED_MODEL",
+                "CHAT_CLAUDE_AGENT_MODEL",
+                "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW",
             )
-        return problems
-    if route == "local":
-        return needs(
-            "CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL", "CHAT_ADVANCED_MODEL"
-        ) + _local_shape(settings)
+        )
+    ):
+        supplied.setdefault(
+            "CHAT_STANDARD_MODEL",
+            get("CHAT_STANDARD_MODEL") or "anthropic/claude-sonnet-5-5",
+        )
+        if "CHAT_ADVANCED_MODEL" not in settings:
+            advanced = get("CHAT_ADVANCED_MODEL")
+            if not advanced or advanced.startswith(
+                (
+                    "openai/",
+                    "anthropic/",
+                    "google/",
+                    "meta-llama/",
+                    "mistralai/",
+                    "deepseek/",
+                    "qwen/",
+                    "x-ai/",
+                    "cohere/",
+                )
+            ):
+                supplied["CHAT_ADVANCED_MODEL"] = get("CHAT_STANDARD_MODEL")
+    if local:
+        if "CHAT_LOCAL_ADAPTER" not in settings:
+            supplied["CHAT_LOCAL_ADAPTER"] = "openai_chat"
+        if "CHAT_LOCAL_CONTEXT_TOKENS" not in settings:
+            window = settings.get("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW", "")
+            supplied["CHAT_LOCAL_CONTEXT_TOKENS"] = (
+                window if not _local_window(window) else str(MIN_LOCAL_CONTEXT_TOKENS)
+            )
+            notes[
+                (
+                    "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"
+                    if "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW" in settings
+                    else "CHAT_LOCAL_CONTEXT_TOKENS"
+                )
+            ] = (
+                "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW deprecated; set CHAT_LOCAL_CONTEXT_TOKENS to the server window"
+                if "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW" in settings
+                else "CHAT_LOCAL_CONTEXT_TOKENS defaulted; set the server window"
+            )
+    if legacy:
+        key = {
+            "openrouter": "CHAT_OPENROUTER_API_KEY",
+            "direct_anthropic": "CHAT_ANTHROPIC_API_KEY",
+        }.get(route)
+        if (key and not get(key).strip()) or (
+            local and not get("CHAT_LOCAL_BASE_URL").strip()
+        ):
+            supplied["CHAT_PLATFORM_ROUTE"] = "disabled"
+            notes["CHAT_PLATFORM_ROUTE"] = (
+                f"CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and {key or 'CHAT_LOCAL_BASE_URL'}"
+            )
+    return supplied, [notes[name] for name in sorted(notes)]
+
+
+def _local_window(window: str) -> list[str]:
+    if not window.strip().isdecimal():
+        return ["CHAT_LOCAL_CONTEXT_TOKENS must be a whole number"]
+    try:
+        size = int(window)
+    except ValueError:
+        return ["CHAT_LOCAL_CONTEXT_TOKENS must be a whole number"]
+    if size < MIN_LOCAL_CONTEXT_TOKENS:
+        return ["CHAT_LOCAL_CONTEXT_TOKENS is below MIN_LOCAL_CONTEXT_TOKENS"]
     return []
 
 
-def _local_shape(settings: Mapping[str, str]) -> list[str]:
-    problems: list[str] = []
-    adapter = settings.get("CHAT_LOCAL_ADAPTER", "")
-    if not adapter.strip():
-        problems.append("CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_ADAPTER")
-    elif parse_local_adapter(adapter) is None:
-        problems.append(
-            "CHAT_LOCAL_ADAPTER is not an adapter: choose "
-            + " or ".join(LOCAL_ADAPTERS)
-        )
-    window = settings.get("CHAT_LOCAL_CONTEXT_TOKENS", "").strip()
-    if not window:
-        problems.append(
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_CONTEXT_TOKENS, the model's "
-            "context window as the server has it loaded"
-        )
-    elif not window.isdigit():
-        problems.append(
-            "CHAT_LOCAL_CONTEXT_TOKENS must be the model's context window in "
-            "tokens, a whole number"
-        )
-    elif int(window) < MIN_LOCAL_CONTEXT_TOKENS:
-        problems.append(
-            f"CHAT_LOCAL_CONTEXT_TOKENS is below {MIN_LOCAL_CONTEXT_TOKENS}: "
-            "AutoPilot's prompt and tools leave no room to work; load the model "
-            "with a larger context window"
-        )
-    return problems
+_logged_names: set[tuple[int, str]] = set()
 
 
-def _anthropic_tiers(route: str, settings: Mapping[str, str]) -> list[str]:
-    """The Anthropic routes serve Anthropic models only."""
-    return [
-        f"{name} names a model the {route} route cannot serve: use an "
-        "anthropic/* or claude-* model"
-        for name in ("CHAT_STANDARD_MODEL", "CHAT_ADVANCED_MODEL")
-        if (value := settings.get(name, "").strip())
-        and not (value.startswith("anthropic/") or value.startswith("claude-"))
-    ]
-
-
-def _unused_route_settings(route: str, settings: Mapping[str, str]) -> list[str]:
-    warnings: list[str] = []
-    for other, names in _ROUTE_SETTINGS.items():
-        stray = [
-            name for name in names if other != route and settings.get(name, "").strip()
-        ]
-        if stray:
-            warnings.append(
-                f"{', '.join(stray)} {'is' if len(stray) == 1 else 'are'} set, but "
-                f"CHAT_PLATFORM_ROUTE is {route}: the {other} route is not used"
+def log_chat_notes(notes: Iterable[str]) -> None:
+    """Log each named setting once per process, never its value."""
+    logger = logging.getLogger(__name__)
+    for note in notes:
+        name = note.split()[0]
+        key = (os.getpid(), name)
+        if key not in _logged_names:
+            _logged_names.add(key)
+            logger.log(
+                logging.ERROR if name == "CHAT_PLATFORM_ROUTE" else logging.WARNING,
+                note,
             )
-    return warnings
+
+
+def apply_chat_environment() -> None:
+    """Migrate before services start so child processes inherit supplied names."""
+    supplied, _ = migrate_chat_settings(
+        read_chat_settings(os.environ, backend_dotenv_paths())
+    )
+    notes = check_chat_environment()
+    log_chat_notes(notes)
+    os.environ.update(supplied)
 
 
 def read_chat_settings(

@@ -361,16 +361,22 @@ platform's own AutoPilot and memory extraction; until then,
 provider-backed requests return the same missing-credential errors as other
 AutoGPT deployment modes.
 
-`CHAT_PLATFORM_ROUTE` selects one route, and each route takes its own key:
-the integration keys below (`OPEN_ROUTER_API_KEY`, `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`) serve blocks and memory, never the chat. The image
-checks the chat settings before any service starts: a setting from the
-old format (`CHAT_USE_OPENROUTER`, `CHAT_USE_LOCAL`, `CHAT_BASE_URL`,
-`CHAT_API_KEY`, `CHAT_FAST_STANDARD_MODEL` and the like), even an empty
-one, or a route missing what it needs stops startup with a list naming
-each setting and its replacement. The list names settings, never their
-values. The release installer runs the same check before it creates the
-container.
+CHAT_PLATFORM_ROUTE selects one route and each route takes its own key.
+When this selector is explicit, integration keys serve blocks and memory,
+never the chat. Existing dev configurations without a selector migrate
+automatically: the subscription/local/OpenRouter switches choose a route;
+CHAT_API_KEY and dev's integration-key fallbacks supply credentials.
+New names always win over old names, even across environment/dotenv sources.
+
+The image and release installer run the same migration check. Old names
+produce deprecation warnings instead of blocking deployment. With no usable
+legacy credential, the backend starts with its own model disabled and an
+error naming the settings to supply. Invalid explicit route/adapter names,
+an invalid or too-small explicit local window, an explicitly selected remote
+route missing its key, and subscriptions with BEHAVE_AS=cloud still stop
+startup. Diagnostics contain names only. Local legacy configurations default
+to openai_chat and a 65,536-token window unless the old CLI window is set;
+configure the server's real window.
 
 ### OpenRouter with OpenAI embeddings
 

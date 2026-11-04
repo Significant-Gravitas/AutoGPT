@@ -1,9 +1,11 @@
-"""The startup check on the chat settings (``chat_env.py``)."""
+"""Legacy chat migration and names-only startup diagnostics."""
 
-from pathlib import Path
+import os
+from unittest.mock import MagicMock
 
 import pytest
 
+from backend.copilot import chat_env
 from backend.copilot.chat_env import (
     ACCEPTED_CHAT_SETTINGS,
     CHAT_SETTINGS_READ_ELSEWHERE,
@@ -13,232 +15,378 @@ from backend.copilot.chat_env import (
     ChatEnvironmentError,
     chat_environment_problems,
     check_chat_environment,
+    migrate_chat_settings,
+    read_chat_settings,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.route_table import PlatformRoute
-
-_SECRET = "sk-must-never-be-printed"
-_OPENROUTER = {
-    "CHAT_PLATFORM_ROUTE": "openrouter",
-    "CHAT_OPENROUTER_API_KEY": _SECRET,
-}
 
 
-def _problems(env: dict[str, str], dotenv: list[Path] | None = None) -> list[str]:
-    return chat_environment_problems(env, dotenv or [])[0]
+def resolved(env):
+    supplied, notes = migrate_chat_settings(env)
+    return {**env, **supplied}, notes
 
 
 @pytest.mark.parametrize("name", sorted(RETIRED_CHAT_SETTINGS))
-@pytest.mark.parametrize("value", ["", "false", _SECRET])
-def test_every_retired_setting_stops_startup_naming_its_replacement(name, value):
-    with pytest.raises(ChatEnvironmentError) as raised:
-        check_chat_environment({**_OPENROUTER, name: value}, [])
-    (problem,) = raised.value.problems
-    assert problem == f"{name} is no longer read: {RETIRED_CHAT_SETTINGS[name]}"
-    assert _SECRET not in str(raised.value)
+@pytest.mark.parametrize("value", ["", "false", "synthetic-private-value"])
+def test_retired_names_migrate_or_warn_without_stopping(name, value):
+    notes = check_chat_environment({"CHAT_PLATFORM_ROUTE": "disabled", name: value}, [])
+    assert sum(note.startswith(name + " ") for note in notes) == 1
+    assert "synthetic-private-value" not in str(notes)
 
 
-def test_the_retired_and_accepted_registries_do_not_overlap():
+def test_registries_match_config():
+    from typing import get_args
+
     assert not set(RETIRED_CHAT_SETTINGS) & ACCEPTED_CHAT_SETTINGS
     assert not set(RETIRED_CHAT_SETTINGS) & CHAT_SETTINGS_READ_ELSEWHERE
-
-
-def test_the_accepted_registry_is_every_setting_chatconfig_reads():
     assert ACCEPTED_CHAT_SETTINGS == {
         f"CHAT_{name.upper()}" for name in ChatConfig.model_fields
     }
-
-
-def test_the_route_list_matches_the_route_table():
-    from typing import get_args
+    from backend.copilot.route_table import PlatformRoute
 
     assert set(PLATFORM_ROUTES) == set(get_args(PlatformRoute))
 
 
-def test_old_names_only_fails_once_naming_every_replacement():
-    """A deployment still on the old format: one error, every name in it."""
-    old = {
-        "CHAT_USE_OPENROUTER": "true",
-        "CHAT_API_KEY": _SECRET,
-        "CHAT_BASE_URL": "https://openrouter.ai/api/v1",
-        "CHAT_THINKING_STANDARD_MODEL": "anthropic/claude-sonnet-5-5",
-        "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW": "200000",
-    }
-    with pytest.raises(ChatEnvironmentError) as raised:
-        check_chat_environment(old, [])
-    problems = raised.value.problems
-    for name in old:
-        assert any(p.startswith(f"{name} is no longer read: ") for p in problems)
-    assert problems[-1].startswith("CHAT_PLATFORM_ROUTE is not set")
-    assert len(problems) == len(old) + 1
-    assert _SECRET not in str(raised.value)
+@pytest.mark.parametrize(
+    "env,route",
+    [
+        (
+            {"CHAT_USE_CLAUDE_CODE_SUBSCRIPTION": "true", "CHAT_USE_LOCAL": "true"},
+            "subscription",
+        ),
+        (
+            {
+                "CHAT_USE_LOCAL": "true",
+                "CHAT_BASE_URL": "http://local/v1",
+                "CHAT_USE_OPENROUTER": "false",
+            },
+            "local",
+        ),
+        (
+            {"CHAT_USE_OPENROUTER": "false", "ANTHROPIC_API_KEY": "ant"},
+            "direct_anthropic",
+        ),
+        ({"CHAT_USE_OPENROUTER": "true", "CHAT_API_KEY": "chat"}, "openrouter"),
+        ({"CHAT_API_KEY": "chat"}, "openrouter"),
+        ({}, "disabled"),
+        ({"CHAT_USE_OPENROUTER": "false"}, "disabled"),
+        ({"CHAT_PLATFORM_ROUTE": "disabled", "CHAT_USE_LOCAL": "true"}, "disabled"),
+    ],
+)
+def test_route_selection(env, route):
+    assert resolved(env)[0]["CHAT_PLATFORM_ROUTE"] == route
+    assert chat_environment_problems(env)[0] == []
 
 
-def test_a_retired_name_in_a_dotenv_file_counts(tmp_path: Path):
-    env_file = tmp_path / ".env"
-    env_file.write_text("CHAT_USE_LOCAL=true\nCHAT_TITLE_MODEL=\n", encoding="utf-8")
-    problems = _problems(dict(_OPENROUTER), [env_file])
-    assert problems == [
-        f"CHAT_TITLE_MODEL is no longer read: {RETIRED_CHAT_SETTINGS['CHAT_TITLE_MODEL']}",
-        f"CHAT_USE_LOCAL is no longer read: {RETIRED_CHAT_SETTINGS['CHAT_USE_LOCAL']}",
-    ]
+@pytest.mark.parametrize(
+    "old,new,route,value,expected",
+    [
+        ("CHAT_API_KEY", "CHAT_OPENROUTER_API_KEY", "openrouter", "chat", "chat"),
+        ("CHAT_API_KEY", "CHAT_LOCAL_API_KEY", "local", "local-key", "local-key"),
+        (
+            "CHAT_DIRECT_ANTHROPIC_API_KEY",
+            "CHAT_ANTHROPIC_API_KEY",
+            "openrouter",
+            "ant",
+            "ant",
+        ),
+        (
+            "CHAT_BASE_URL",
+            "CHAT_OPENROUTER_BASE_URL",
+            "openrouter",
+            "https://proxy/api/v1/",
+            "https://proxy/api",
+        ),
+        (
+            "CHAT_BASE_URL",
+            "CHAT_LOCAL_BASE_URL",
+            "local",
+            "http://local/v1",
+            "http://local/v1",
+        ),
+        (
+            "CHAT_THINKING_STANDARD_MODEL",
+            "CHAT_STANDARD_MODEL",
+            "openrouter",
+            "sdk-model",
+            "sdk-model",
+        ),
+        ("CHAT_MODEL", "CHAT_STANDARD_MODEL", "openrouter", "sdk-model", "sdk-model"),
+        (
+            "CHAT_THINKING_ADVANCED_MODEL",
+            "CHAT_ADVANCED_MODEL",
+            "openrouter",
+            "sdk-advanced",
+            "sdk-advanced",
+        ),
+        (
+            "CHAT_FAST_STANDARD_MODEL",
+            "CHAT_STANDARD_MODEL",
+            "local",
+            "local-model",
+            "local-model",
+        ),
+        (
+            "CHAT_FAST_MODEL",
+            "CHAT_STANDARD_MODEL",
+            "local",
+            "local-model",
+            "local-model",
+        ),
+        (
+            "CHAT_FAST_ADVANCED_MODEL",
+            "CHAT_ADVANCED_MODEL",
+            "local",
+            "local-advanced",
+            "local-advanced",
+        ),
+        (
+            "CHAT_CLAUDE_AGENT_MODEL",
+            "CHAT_STANDARD_MODEL",
+            "openrouter",
+            "claude-override",
+            "claude-override",
+        ),
+        (
+            "CHAT_CLAUDE_AGENT_MODEL",
+            "CHAT_ADVANCED_MODEL",
+            "openrouter",
+            "claude-override",
+            "claude-override",
+        ),
+        (
+            "CHAT_CLAUDE_AGENT_MAX_TURNS",
+            "CHAT_AGENT_MAX_TURNS",
+            "openrouter",
+            "17",
+            "17",
+        ),
+        (
+            "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW",
+            "CHAT_LOCAL_CONTEXT_TOKENS",
+            "local",
+            "131072",
+            "131072",
+        ),
+    ],
+)
+def test_mapping_rows(old, new, route, value, expected):
+    env = {"CHAT_PLATFORM_ROUTE": route, old: value}
+    result, notes = resolved(env)
+    assert result[new] == expected
+    assert any(note.startswith(old + " ") for note in notes)
 
 
-def test_the_route_may_come_from_a_dotenv_file(tmp_path: Path):
-    env_file = tmp_path / ".env"
-    env_file.write_text(
-        "CHAT_PLATFORM_ROUTE=openrouter\nCHAT_OPENROUTER_API_KEY=k\n", encoding="utf-8"
+@pytest.mark.parametrize(
+    "source,target,extra",
+    [
+        ("OPEN_ROUTER_API_KEY", "CHAT_OPENROUTER_API_KEY", {}),
+        ("OPENAI_API_KEY", "CHAT_OPENROUTER_API_KEY", {}),
+        (
+            "ANTHROPIC_API_KEY",
+            "CHAT_ANTHROPIC_API_KEY",
+            {"CHAT_USE_OPENROUTER": "false"},
+        ),
+        (
+            "ANTHROPIC_BASE_URL",
+            "CHAT_ANTHROPIC_BASE_URL",
+            {"CHAT_USE_OPENROUTER": "false", "ANTHROPIC_API_KEY": "ant"},
+        ),
+        ("OPENROUTER_BASE_URL", "CHAT_OPENROUTER_BASE_URL", {"CHAT_API_KEY": "chat"}),
+        ("OPENAI_BASE_URL", "CHAT_OPENROUTER_BASE_URL", {"CHAT_API_KEY": "chat"}),
+    ],
+)
+def test_legacy_integration_fallbacks(source, target, extra):
+    result, _ = resolved({**extra, source: "fallback"})
+    assert result[target] == "fallback"
+    explicit, _ = resolved(
+        {**extra, source: "fallback", "CHAT_PLATFORM_ROUTE": "openrouter"}
     )
-    assert _problems({}, [env_file]) == []
+    assert target not in explicit
 
 
-def test_shared_names_keep_working():
+def test_key_fallback_priority_and_removal():
     env = {
-        **_OPENROUTER,
-        "CHAT_OPENAI_API_KEY": "embeddings",
-        "OPEN_ROUTER_API_KEY": "integration",
+        "CHAT_API_KEY": "chat",
+        "OPEN_ROUTER_API_KEY": "router",
+        "OPENAI_API_KEY": "openai",
+        "CHAT_DIRECT_ANTHROPIC_API_KEY": "direct",
         "ANTHROPIC_API_KEY": "batch",
-        "OPENAI_API_KEY": "voice",
     }
-    assert chat_environment_problems(env, []) == ([], [])
+    for removed, expected in [
+        (None, "chat"),
+        ("CHAT_API_KEY", "router"),
+        ("OPEN_ROUTER_API_KEY", "openai"),
+    ]:
+        if removed:
+            env.pop(removed)
+        actual, _ = resolved(env)
+        assert actual["CHAT_OPENROUTER_API_KEY"] == expected
+        assert actual["CHAT_ANTHROPIC_API_KEY"] == "direct"
+    env.pop("CHAT_DIRECT_ANTHROPIC_API_KEY")
+    assert resolved(env)[0]["CHAT_ANTHROPIC_API_KEY"] == "batch"
 
 
-def test_an_unknown_chat_name_is_a_warning_not_an_error():
-    problems, warnings = chat_environment_problems(
-        {**_OPENROUTER, "CHAT_OPENROUTER_KEY": "typo"}, []
+def test_local_defaults_and_other_engine_ignored():
+    local = {
+        "CHAT_USE_LOCAL": "true",
+        "CHAT_BASE_URL": "http://local/v1",
+        "CHAT_FAST_STANDARD_MODEL": "qwen:8b",
+        "CHAT_FAST_ADVANCED_MODEL": "anthropic/old",
+        "CHAT_THINKING_STANDARD_MODEL": "ignored",
+    }
+    result, notes = resolved(local)
+    assert result["CHAT_STANDARD_MODEL"] == result["CHAT_ADVANCED_MODEL"] == "qwen:8b"
+    assert result["CHAT_LOCAL_ADAPTER"] == "openai_chat"
+    assert result["CHAT_LOCAL_CONTEXT_TOKENS"] == str(MIN_LOCAL_CONTEXT_TOKENS)
+    assert any(
+        note.startswith("CHAT_THINKING_STANDARD_MODEL ") and "ignored" in note
+        for note in notes
     )
-    assert problems == []
-    assert warnings == ["CHAT_OPENROUTER_KEY is not a setting anything reads"]
-
-
-class TestRoute:
-    def test_missing_route_is_an_error_never_inferred_from_keys(self):
-        assert _problems({"CHAT_OPENROUTER_API_KEY": "k"})[0].startswith(
-            "CHAT_PLATFORM_ROUTE is not set"
+    assert (
+        resolved({"CHAT_API_KEY": "chat", "CHAT_FAST_MODEL": "ignored"})[0].get(
+            "CHAT_STANDARD_MODEL"
         )
+        is None
+    )
 
-    def test_an_unknown_route_is_named_without_its_value(self):
-        (problem,) = _problems({"CHAT_PLATFORM_ROUTE": _SECRET})
-        assert problem.startswith("CHAT_PLATFORM_ROUTE is not a route")
-        assert _SECRET not in problem
 
-    def test_disabled_needs_nothing(self):
-        assert _problems({"CHAT_PLATFORM_ROUTE": "disabled"}) == []
+@pytest.mark.parametrize("bad_number", ["bad", "²", "9" * 5000])
+def test_invalid_legacy_numeric_settings_do_not_stop(bad_number):
+    env = {
+        "CHAT_USE_LOCAL": "true",
+        "CHAT_BASE_URL": "http://local",
+        "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW": bad_number,
+        "CHAT_CLAUDE_AGENT_MAX_TURNS": bad_number,
+    }
+    result, _ = resolved(env)
+    assert result["CHAT_LOCAL_CONTEXT_TOKENS"] == str(MIN_LOCAL_CONTEXT_TOKENS)
+    assert "CHAT_AGENT_MAX_TURNS" not in result
+    assert check_chat_environment(env, [])
 
-    def test_openrouter_needs_its_key(self):
-        assert _problems({"CHAT_PLATFORM_ROUTE": "openrouter"}) == [
-            "CHAT_PLATFORM_ROUTE=openrouter needs CHAT_OPENROUTER_API_KEY"
-        ]
 
-    def test_a_generic_url_override_needs_an_explicit_chat_url(self):
-        (problem,) = _problems({**_OPENROUTER, "OPENAI_BASE_URL": "https://proxy"})
-        assert problem.startswith("OPENAI_BASE_URL no longer point the chat")
-        assert (
-            _problems(
-                {
-                    **_OPENROUTER,
-                    "OPENAI_BASE_URL": "https://proxy",
-                    "CHAT_OPENROUTER_BASE_URL": "https://openrouter.ai/api",
-                }
-            )
-            == []
-        )
+def test_new_names_win_even_from_dotenv(tmp_path):
+    envfile = tmp_path / ".env"
+    envfile.write_text("CHAT_OPENROUTER_API_KEY=new-key\n")
+    env = {"CHAT_API_KEY": "old-key"}
+    result, notes = resolved(read_chat_settings(env, [envfile]))
+    assert result["CHAT_OPENROUTER_API_KEY"] == "new-key"
+    assert any("conflicts with CHAT_OPENROUTER_API_KEY" in note for note in notes)
+    assert "old-key" not in str(notes)
+    assert "new-key" not in str(notes)
 
-    def test_direct_needs_its_key_and_anthropic_tiers(self):
-        assert _problems(
+
+@pytest.mark.parametrize(
+    "env,name",
+    [
+        ({"CHAT_PLATFORM_ROUTE": "bad"}, "CHAT_PLATFORM_ROUTE"),
+        ({"CHAT_PLATFORM_ROUTE": ""}, "CHAT_PLATFORM_ROUTE"),
+        ({"CHAT_LOCAL_ADAPTER": "bad"}, "CHAT_LOCAL_ADAPTER"),
+        ({"CHAT_LOCAL_CONTEXT_TOKENS": "not-a-number"}, "CHAT_LOCAL_CONTEXT_TOKENS"),
+        ({"CHAT_LOCAL_CONTEXT_TOKENS": "32768"}, "CHAT_LOCAL_CONTEXT_TOKENS"),
+        (
+            {"CHAT_PLATFORM_ROUTE": "openrouter", "OPEN_ROUTER_API_KEY": "integration"},
+            "CHAT_OPENROUTER_API_KEY",
+        ),
+        (
             {
                 "CHAT_PLATFORM_ROUTE": "direct_anthropic",
-                "CHAT_STANDARD_MODEL": "moonshotai/kimi-k2.6",
-            }
-        ) == [
-            "CHAT_PLATFORM_ROUTE=direct_anthropic needs CHAT_ANTHROPIC_API_KEY",
-            "CHAT_STANDARD_MODEL names a model the direct_anthropic route cannot "
-            "serve: use an anthropic/* or claude-* model",
-        ]
-
-    def test_subscription_is_refused_on_cloud(self):
-        (problem,) = _problems(
-            {"CHAT_PLATFORM_ROUTE": "subscription", "BEHAVE_AS": "cloud"}
-        )
-        assert "BEHAVE_AS=cloud" in problem
-
-    def test_local_needs_url_adapter_window_and_both_tiers(self):
-        assert _problems({"CHAT_PLATFORM_ROUTE": "local"}) == [
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_BASE_URL",
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_STANDARD_MODEL",
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_ADVANCED_MODEL",
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_ADAPTER",
-            "CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_CONTEXT_TOKENS, the model's "
-            "context window as the server has it loaded",
-        ]
-
-    @pytest.mark.parametrize(
-        ("adapter", "window", "expected"),
-        [
-            ("openai_chat", str(MIN_LOCAL_CONTEXT_TOKENS), []),
-            ("anthropic_passthrough", "262144", []),
-            ("ollama", "131072", ["CHAT_LOCAL_ADAPTER is not an adapter"]),
-            ("openai_chat", "32768", ["CHAT_LOCAL_CONTEXT_TOKENS is below 65536"]),
-            ("openai_chat", "64k", ["CHAT_LOCAL_CONTEXT_TOKENS must be"]),
-        ],
-    )
-    def test_local_adapter_and_window_are_validated(self, adapter, window, expected):
-        env = {
-            "CHAT_PLATFORM_ROUTE": "local",
-            "CHAT_LOCAL_BASE_URL": "http://ollama:11434/v1",
-            "CHAT_LOCAL_ADAPTER": adapter,
-            "CHAT_LOCAL_CONTEXT_TOKENS": window,
-            "CHAT_STANDARD_MODEL": "qwen3:8b",
-            "CHAT_ADVANCED_MODEL": "qwen3:32b",
-        }
-        problems = _problems(env)
-        assert len(problems) == len(expected)
-        for problem, start in zip(problems, expected):
-            assert problem.startswith(start)
-
-    def test_test_mode_needs_no_credential(self):
-        assert (
-            _problems({"CHAT_PLATFORM_ROUTE": "openrouter", "CHAT_TEST_MODE": "true"})
-            == []
-        )
-
-    def test_a_disabled_route_names_the_integration_keys_it_ignores(self):
-        # They used to drive the chat as a fallback; now nothing does.
-        _, warnings = chat_environment_problems(
-            {
-                "CHAT_PLATFORM_ROUTE": "disabled",
-                "OPEN_ROUTER_API_KEY": "sk-or-blocks",
-                "ANTHROPIC_API_KEY": "sk-ant-blocks",
+                "ANTHROPIC_API_KEY": "integration",
             },
-            [],
-        )
-        assert len(warnings) == 1
-        assert warnings[0].startswith(
-            "OPEN_ROUTER_API_KEY and ANTHROPIC_API_KEY are set, but "
-            "CHAT_PLATFORM_ROUTE is disabled"
-        )
-        assert "sk-" not in warnings[0]
+            "CHAT_ANTHROPIC_API_KEY",
+        ),
+        ({"CHAT_PLATFORM_ROUTE": "subscription", "BEHAVE_AS": "cloud"}, "BEHAVE_AS"),
+        (
+            {"CHAT_USE_CLAUDE_CODE_SUBSCRIPTION": "true", "BEHAVE_AS": "cloud"},
+            "BEHAVE_AS",
+        ),
+    ],
+)
+def test_stop_cases(env, name):
+    with pytest.raises(ChatEnvironmentError) as exc:
+        check_chat_environment(env, [])
+    assert name in str(exc.value)
+    assert "integration" not in str(exc.value)
 
-    def test_a_selected_route_does_not_warn_about_integration_keys(self):
-        _, warnings = chat_environment_problems(
-            {**_OPENROUTER, "OPEN_ROUTER_API_KEY": "sk-or-blocks"}, []
-        )
-        assert warnings == []
 
-    def test_the_anthropic_key_is_never_stray(self):
-        # The Batch API's key for the platform's background jobs, on any
-        # route.
-        _, warnings = chat_environment_problems(
-            {**_OPENROUTER, "CHAT_ANTHROPIC_API_KEY": "sk-ant-batch"}, []
-        )
-        assert warnings == []
+@pytest.fixture
+def clean_settings(monkeypatch):
+    for name in list(os.environ):
+        if name.startswith("CHAT_") or name in chat_env._OTHER_SETTINGS:
+            monkeypatch.delenv(name)
+    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
+    monkeypatch.setattr(chat_env, "backend_dotenv_paths", lambda: [])
+    yield
+    for name in list(os.environ):
+        if name.startswith("CHAT_") or name in chat_env._OTHER_SETTINGS:
+            os.environ.pop(name, None)
 
-    def test_a_key_for_a_route_nobody_selected_is_a_warning(self):
-        problems, warnings = chat_environment_problems(
-            {**_OPENROUTER, "CHAT_LOCAL_BASE_URL": "http://ollama:11434/v1"}, []
-        )
-        assert problems == []
-        assert warnings == [
-            "CHAT_LOCAL_BASE_URL is set, but CHAT_PLATFORM_ROUTE is openrouter: "
-            "the local route is not used"
-        ]
+
+def test_hosted_environment_starts_with_chat_and_batch_keys(
+    clean_settings, monkeypatch
+):
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
+    from backend.app import run_processes
+
+    env = {
+        "BEHAVE_AS": "cloud",
+        "CHAT_API_KEY": "hosted-chat",
+        "CHAT_OPENAI_API_KEY": "embeddings",
+        "ANTHROPIC_API_KEY": "hosted-batch",
+        "OPEN_ROUTER_API_KEY": "integration-router",
+    }
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    configs = []
+    process = MagicMock()
+
+    def start(**kwargs):
+        cfg = ChatConfig()
+        configs.append(cfg)
+        assert cfg.platform_route == "openrouter"
+        assert cfg.openrouter_api_key == "hosted-chat"
+        assert cfg.anthropic_api_key == cfg.batch_anthropic_api_key == "hosted-batch"
+        assert os.environ["CHAT_PLATFORM_ROUTE"] == "openrouter"
+
+    process.start.side_effect = start
+    # Standalone CLI construction must work before run_processes exports names.
+    cfg = ChatConfig()
+    assert cfg.openrouter_api_key == "hosted-chat"
+    assert cfg.anthropic_api_key == "hosted-batch"
+    run_processes(process)
+    assert len(configs) == 1
+    process.stop.assert_called_once()
+
+
+@pytest.mark.parametrize("local", [False, True])
+def test_full_dev_dotenv_config(clean_settings, tmp_path, local):
+    envfile = tmp_path / ".env"
+    text = (
+        "CHAT_USE_LOCAL=true\nCHAT_BASE_URL=http://localhost:11434/v1\n"
+        "CHAT_FAST_MODEL=qwen:8b\nCHAT_CLAUDE_AGENT_CONTEXT_WINDOW=131072\n"
+        if local
+        else "CHAT_USE_OPENROUTER=false\nANTHROPIC_API_KEY=self-host-ant\n"
+        "ANTHROPIC_BASE_URL=https://deployment.example\nCHAT_MODEL=claude-sonnet-5-5\n"
+    )
+    envfile.write_text(text)
+    cfg = ChatConfig(_env_file=envfile)
+    assert cfg.platform_route == ("local" if local else "direct_anthropic")
+    if local:
+        assert cfg.local_adapter == "openai_chat"
+        assert cfg.tier_model("standard") == cfg.tier_model("advanced") == "qwen:8b"
+        assert cfg.local_context_tokens == 131072
+    else:
+        assert cfg.anthropic_api_key == "self-host-ant"
+        assert cfg.anthropic_base_url == "https://deployment.example"
+
+
+def test_logs_once_per_name_and_error_when_disabled(monkeypatch, caplog):
+    monkeypatch.setattr(chat_env, "_logged_names", set())
+    _, notes = migrate_chat_settings({"CHAT_USE_OPENROUTER": "false"})
+    for _ in range(2):
+        chat_env.log_chat_notes(notes)
+    assert len(caplog.records) == len(notes)
+    assert any(
+        r.levelname == "ERROR" and r.message.startswith("CHAT_PLATFORM_ROUTE ")
+        for r in caplog.records
+    )

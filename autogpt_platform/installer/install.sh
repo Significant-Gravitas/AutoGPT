@@ -369,7 +369,7 @@ prepare_environment() {
 
 check_chat_settings() {
 	# The appliance's own startup check, run on this file before any container
-	# exists: a retired chat setting, or a route missing what it needs, is named
+	# exists: legacy settings migrate with warnings; invalid explicit settings are named
 	# here (names only, never values) instead of in a restart loop. The file is
 	# never rewritten. Releases without the check skip it.
 	step 'Checking the AutoPilot chat settings'

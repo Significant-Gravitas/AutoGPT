@@ -657,7 +657,7 @@ def _replace_atomically(path: Path, content: str) -> None:
 
 def check_chat_env(backend_env: Path, environment: Mapping[str, str]) -> list[str]:
     """Run the backend's own chat-settings check on this environment and the
-    backend's dotenv file; return its warnings, raise its problems.
+    backend's dotenv file; report migration notes, raise invalid explicit settings.
 
     Loaded from the backend's source rather than imported: this script's
     other commands run under a bare ``python3``, and the check must be the

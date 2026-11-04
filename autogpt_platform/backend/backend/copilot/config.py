@@ -1,20 +1,29 @@
-"""Configuration management for chat system.
+"""Chat route settings, including automatic dev-name migration.
 
-The platform route and its few settings are below; what each route does is
-code (``route_table.py``). Every service checks the chat settings before it
-starts (``chat_env.check_chat_environment``), so constructing a ``ChatConfig``
-never fails on them: a route value that is not a route reads as ``disabled``
-here, and the startup check is the one place that reports it.
+All entry points share the names-only migration through a settings source;
+run_processes also exports supplied names before launching child services.
 """
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
-from backend.copilot.chat_env import parse_local_adapter, parse_platform_route
+from backend.copilot.chat_env import (
+    check_chat_environment,
+    log_chat_notes,
+    migrate_chat_settings,
+    parse_local_adapter,
+    parse_platform_route,
+    read_chat_settings,
+)
 from backend.copilot.route_table import (
     DEFAULT_ADVANCED_MODEL,
     DEFAULT_STANDARD_MODEL,
@@ -49,12 +58,50 @@ CopilotLLMModel = Literal["standard", "advanced"]
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[Any, ...]:
+        def migrated() -> dict[str, Any]:
+            files = getattr(dotenv_settings, "env_file", None)
+            paths = [files] if isinstance(files, (str, os.PathLike)) else (files or [])
+            raw = read_chat_settings(os.environ, [Path(path) for path in paths])
+            initial = init_settings()
+            raw.update(
+                {
+                    f"CHAT_{key.upper()}": str(value)
+                    for key, value in initial.items()
+                    if value is not None
+                }
+            )
+            supplied, notes = migrate_chat_settings(raw)
+            if "platform_route" not in initial:
+                notes = check_chat_environment(raw, [])
+            log_chat_notes(notes)
+            return {
+                name.removeprefix("CHAT_").lower(): value
+                for name, value in supplied.items()
+            }
+
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            migrated,
+        )
+
     platform_route: PlatformRoute = Field(
         default="disabled",
         description="The route the platform's own chat model runs on: "
         "openrouter, direct_anthropic, local, subscription (a self-hosted "
         "install's Claude login), or disabled (no platform model; connected "
-        "accounts still work). Required at startup.",
+        "accounts still work). Legacy settings migrate automatically.",
     )
     openrouter_api_key: str | None = Field(
         default=None, description="The openrouter route's key."
@@ -717,6 +764,6 @@ class ChatConfig(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         # Unknown CHAT_* variables are ignored here; the startup check
-        # (``chat_env.py``) refuses the retired ones by name.
+        # (``chat_env.py``) migrates legacy names and logs deprecations.
         extra="ignore",
     )
