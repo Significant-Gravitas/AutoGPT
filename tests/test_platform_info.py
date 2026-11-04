@@ -241,4 +241,46 @@ def test_an_x_server_that_never_answers_counts_as_no_display(monkeypatch) -> Non
         assert platform_info._x11_display_opens() is False
     finally:
         answer.set()
+        _join_probe_threads()
     assert time.monotonic() - started < 5
+
+
+def _probe_threads() -> list:
+    import threading
+
+    return [t for t in threading.enumerate() if t.name == "x11-display-probe"]
+
+
+def _join_probe_threads() -> None:
+    for thread in _probe_threads():
+        thread.join(30)
+
+
+def test_a_stalled_x_server_holds_at_most_one_probe_thread(monkeypatch) -> None:
+    """A probe the server never answers stays blocked for good, and each
+    reconnect's HELLO started another, each holding an X connection. A later
+    probe waits on the one already running instead, and once the server
+    answers, the next one starts afresh."""
+    import threading
+
+    answer = threading.Event()
+    connects: list[int] = []
+
+    def stalled(*_args, **_kwargs):
+        connects.append(1)
+        answer.wait(30)
+        return MagicMock()
+
+    _fake_xlib(monkeypatch, MagicMock(side_effect=stalled))
+    monkeypatch.setattr(platform_info, "X11_PROBE_SECONDS", 0.05)
+    try:
+        assert platform_info._x11_display_opens() is False
+        assert platform_info._x11_display_opens() is False
+        assert len(_probe_threads()) == 1
+    finally:
+        answer.set()
+        _join_probe_threads()
+
+    assert platform_info._x11_display_opens() is True
+    assert len(connects) == 2
+    _join_probe_threads()
