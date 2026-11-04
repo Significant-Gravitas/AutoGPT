@@ -104,6 +104,32 @@ describe("Dictionary input preservation", () => {
     });
   });
 
+  it("trims whitespace around a key when it is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "  name \t" } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ name: "Keep this value" });
+      expect(screen.getByDisplayValue("name")).toBeDefined();
+    });
+  });
+
+  it("keeps the old key when a key of only whitespace is blurred", async () => {
+    render(<DictionaryForm values={{ title: "Keep this value" }} />);
+
+    const key = screen.getByDisplayValue("title");
+    fireEvent.change(key, { target: { value: "   " } });
+    fireEvent.blur(key);
+
+    await waitFor(() => {
+      expect(readDictionary()).toEqual({ title: "Keep this value" });
+      expect(screen.getByDisplayValue("title")).toBeDefined();
+    });
+  });
+
   it("removes an entry only through its remove action", async () => {
     render(<DictionaryForm values={{ title: "Remove this value" }} />);
 

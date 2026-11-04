@@ -64,10 +64,12 @@ export default function WrapIfAdditionalTemplate(
   const keyId = `${id}-key`;
 
   function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
-    if (e.currentTarget.value === "") {
+    const key = e.currentTarget.value.trim();
+    if (key === "") {
       e.currentTarget.value = label;
       return;
     }
+    e.currentTarget.value = key;
     onKeyRenameBlur(e);
   }
 
