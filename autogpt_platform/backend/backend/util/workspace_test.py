@@ -116,6 +116,7 @@ async def test_write_file_overwrite_conflict_then_retry_succeeds(
 
     mock_db.get_workspace_file_by_path.return_value = existing_file
     mock_db.create_workspace_file.side_effect = [_unique_violation(), created_file]
+    mock_db.get_workspace_file.return_value = None  # the insert retired it
 
     with (
         patch(

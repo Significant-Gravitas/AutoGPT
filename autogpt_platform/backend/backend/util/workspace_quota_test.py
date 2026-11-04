@@ -127,6 +127,28 @@ async def test_an_overwrite_racing_for_its_freed_space_never_empties_the_path(
     assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_overwrite_keeps_a_file_renamed_away_while_it_was_scanned(
+    manager: WorkspaceManager, tmp_path: Path
+):
+    """The overwrite replaces whatever is at the path when it commits; a file
+    renamed away meanwhile stays, with its blob."""
+    with _real_storage(tmp_path):
+        old = await manager.write_file(b"o" * 100, "a.bin")
+
+        async def rename_during_scan(*args, **kwargs):
+            await workspace_data.rename_workspace_file(
+                old.id, manager.workspace_id, "b.bin"
+            )
+
+        with patch("backend.util.workspace.scan_content_safe", rename_during_scan):
+            new = await manager.write_file(b"n" * 100, "a.bin", overwrite=True)
+
+    live = {f.path: f.id for f in await _live_files(manager)}
+    assert live == {"/a.bin": new.id, "/b.bin": old.id}
+    assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
+
+
 @contextmanager
 def _real_storage(tmp_path: Path) -> Iterator[None]:
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path))

@@ -176,7 +176,8 @@ async def create_workspace_file(
         storage_limit_bytes: The owner's storage quota (0 for none); a row
             that would not fit is refused with ``storage_limit_exceeded``
         replacing_file_id: The live file at ``path`` this one replaces; it is
-            soft-deleted in the same transaction, so a refused write keeps it
+            soft-deleted in the same transaction, so a refused write keeps it,
+            and only while it is still at ``path``
 
     Returns:
         Created WorkspaceFile instance
@@ -195,6 +196,7 @@ async def create_workspace_file(
                 where={
                     "id": replacing_file_id,
                     "workspaceId": workspace_id,
+                    "path": path,
                     "isDeleted": False,
                 },
                 data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},

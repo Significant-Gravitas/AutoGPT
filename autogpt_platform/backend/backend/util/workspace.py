@@ -399,6 +399,7 @@ class WorkspaceManager:
 
         replaced_storage_path: str | None = None
         replaced_file_id: str | None = None
+        replaced: WorkspaceFile | None = None
         try:
             if skill_owner_folder(path) is not None:
                 write = WorkspaceSkillWrite(
@@ -435,6 +436,9 @@ class WorkspaceManager:
             except Exception as e:
                 logger.warning(f"Failed to clean up orphaned storage file: {e}")
             raise
+
+        if replaced is not None and not await self._was_retired(replaced.id):
+            replaced_storage_path = replaced_file_id = None
 
         if replaced_storage_path and replaced_storage_path != storage_path:
             try:
@@ -478,6 +482,16 @@ class WorkspaceManager:
             logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
 
         return file
+
+    async def _was_retired(self, file_id: str) -> bool:
+        """Whether the replaced file is gone: one renamed away before the
+        insert is still live, and keeps its blob. Unknown counts as live."""
+        try:
+            live = await workspace_db().get_workspace_file(file_id, self.workspace_id)
+        except Exception:
+            logger.warning("Failed to check the replaced file", exc_info=True)
+            return False
+        return live is None
 
     async def write_skill_package(
         self,
