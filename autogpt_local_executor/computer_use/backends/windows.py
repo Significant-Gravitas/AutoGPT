@@ -34,11 +34,12 @@ from ..errors import (
 )
 from ..window_registry import WindowFingerprint
 from ._common import (
-    PASTE_THRESHOLD_CHARS,
     capture_fields,
+    ensure_typeable,
     image_to_base64,
     in_any_rect,
     normalize_displays_for_error,
+    paste_is_worth_it,
 )
 
 logger = logging.getLogger(__name__)
@@ -728,7 +729,7 @@ class WindowsBackend(ComputerUseBackend):
     def _type(self, text: str, *, paste: bool, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]
 
-        if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
+        if paste and paste_is_worth_it(text) and self._clipboard_enabled:
             if not preserve_clipboard:
                 self._do_paste(text, restore=None)
                 return
@@ -747,6 +748,7 @@ class WindowsBackend(ComputerUseBackend):
                 ):
                     self._do_paste(text, restore=previous)
                     return
+        ensure_typeable(text)
         pyautogui.write(text, interval=0.02)
 
     def _clipboard_snapshot(self) -> tuple[str | None, int | None, set[int] | None] | None:

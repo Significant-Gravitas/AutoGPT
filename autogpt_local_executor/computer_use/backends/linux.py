@@ -38,11 +38,12 @@ from ..errors import (
 )
 from ..window_registry import WindowFingerprint
 from ._common import (
-    PASTE_THRESHOLD_CHARS,
     capture_fields,
+    ensure_typeable,
     image_to_base64,
     in_any_rect,
     normalize_displays_for_error,
+    paste_is_worth_it,
 )
 
 logger = logging.getLogger(__name__)
@@ -590,7 +591,7 @@ class LinuxBackend(ComputerUseBackend):
 
         if (
             paste
-            and len(text) >= PASTE_THRESHOLD_CHARS
+            and paste_is_worth_it(text)
             and self._clipboard_enabled
             and (self._has_xclip or self._has_wlcopy)
         ):
@@ -604,6 +605,7 @@ class LinuxBackend(ComputerUseBackend):
             if previous is not None:
                 self._do_paste(text, restore=previous)
                 return
+        ensure_typeable(text)
         pyautogui.write(text, interval=0.02)
 
     def _do_paste(self, text: str, *, restore: str | None) -> None:
