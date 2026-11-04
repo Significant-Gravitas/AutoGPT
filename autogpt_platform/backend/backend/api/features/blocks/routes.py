@@ -27,8 +27,8 @@ from backend.api.live_auth import (
 )
 from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.execution import ExecutionContext
 from backend.data.tenancy import live_resource_permission_barrier
 from backend.data.user import get_user_by_id

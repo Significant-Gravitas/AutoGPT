@@ -11,7 +11,7 @@ import fastapi
 from fastapi import UploadFile
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
+from backend.data.entitlement_limits import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
     get_or_create_workspace,
@@ -73,7 +73,9 @@ async def store_workspace_upload(
             raise fastapi.HTTPException(status_code=413, detail=message) from e
         raise fastapi.HTTPException(status_code=409, detail=message) from e
 
-    await _undo_if_over_quota(manager, workspace_file, user_id, workspace.id)
+    await _undo_if_over_quota(
+        manager, workspace_file, user_id, workspace.id, organization_id
+    )
     return workspace_file
 
 
@@ -106,12 +108,16 @@ async def _undo_if_over_quota(
     workspace_file: WorkspaceFile,
     user_id: str,
     workspace_id: str,
+    organization_id: str | None,
 ) -> None:
     """Post-write quota check — eliminates the TOCTOU race a pre-check leaves.
 
     The quota is the user's, so it counts their files in every organization
-    and team, not only the scope the upload landed in."""
-    storage_limit_bytes = await get_workspace_storage_limit_bytes(user_id)
+    and team, not only the scope the upload landed in. Its size is the tier
+    the user works under in the organization the upload landed in."""
+    storage_limit_bytes = await get_workspace_storage_limit_bytes(
+        user_id, organization_id
+    )
     new_total = await get_workspace_total_size(workspace_id, all_scopes=True)
     if not storage_limit_bytes or new_total <= storage_limit_bytes:
         return

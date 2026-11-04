@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_request_context, get_user_id
+from autogpt_libs.auth.models import RequestContext
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import _get_provider_oauth_handler, router
@@ -126,9 +127,20 @@ def setup_auth():
     app.dependency_overrides[credential_user_id] = (
         lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
     )
-    # The routes' paywall dependency reads the signed-in user from the token.
     app.dependency_overrides[get_user_id] = (
         lambda: "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+    )
+    # The routes' paywall dependency reads the request's verified context.
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="3e53486c-cf57-477e-ba2a-cb02dc828e1a",
+        org_id="test-org",
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
     )
     yield
     app.dependency_overrides.clear()

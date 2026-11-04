@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from backend.api.credential_scope import credential_user_id
 from backend.blocks.airtable._api import list_bases
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.model import Credentials, is_sdk_default
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager

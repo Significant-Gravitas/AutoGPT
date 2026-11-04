@@ -11,7 +11,7 @@ from backend.copilot.constants import legacy_chat_session_id
 from backend.copilot.gate.held import answered_cards as held_answered_cards
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.execution import (
     ExecutionStatus,
     get_graph_execution_exact_scope,

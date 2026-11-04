@@ -576,7 +576,7 @@ class TestWebSearchToolDispatch:
         assert result.error == "usage_limit"
         assert "daily usage limit" in result.message
         client.assert_not_called()
-        spend_refusal.assert_awaited_once_with("u1")
+        spend_refusal.assert_awaited_once_with("u1", None)
 
     @pytest.mark.asyncio
     async def test_a_credit_billed_turn_searches_with_the_allowance_spent(

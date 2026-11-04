@@ -151,3 +151,57 @@ async def test_an_env_override_decides_before_any_grant(mocker, monkeypatch, for
     assert await rollout.org_collaboration_enabled("owner") is (forced == "true")
     assert await rollout.org_access_granted("owner") is False
     grants.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.real_org_access
+@pytest.mark.parametrize(
+    "own_grant, inherited, flag, allowed",
+    [
+        (True, True, False, True),
+        (False, True, False, False),
+        (False, False, True, True),
+        (False, False, False, False),
+    ],
+    ids=["own-grant", "inherited-only", "rollout-flag", "nothing"],
+)
+async def test_only_the_accounts_own_access_lets_it_create_organizations(
+    mocker, monkeypatch, own_grant, inherited, flag, allowed
+):
+    """An invitee whose access comes from someone else's team organization
+    may join it, but may not create or convert one of its own."""
+    monkeypatch.delenv("FORCE_FLAG_SHOW_ORG_SETTINGS", raising=False)
+    mocker.patch.object(
+        rollout, "has_own_org_access", AsyncMock(return_value=own_grant)
+    )
+    mocker.patch.object(rollout, "has_org_access", AsyncMock(return_value=inherited))
+    mocker.patch.object(rollout, "is_feature_enabled", AsyncMock(return_value=flag))
+
+    assert await rollout.org_creation_enabled("invitee") is allowed
+    assert await rollout.org_collaboration_enabled("invitee") is (
+        inherited or own_grant or flag
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.real_org_access
+@pytest.mark.parametrize("operation", ["create", "convert"])
+async def test_inherited_access_cannot_create_or_convert(
+    operation, mocker, monkeypatch
+):
+    monkeypatch.delenv("FORCE_FLAG_SHOW_ORG_SETTINGS", raising=False)
+    mocker.patch.object(rollout, "has_own_org_access", AsyncMock(return_value=False))
+    mocker.patch.object(rollout, "has_org_access", AsyncMock(return_value=True))
+    mocker.patch.object(rollout, "is_feature_enabled", AsyncMock(return_value=False))
+    blocked = AsyncMock(side_effect=AssertionError("reached the database"))
+    if operation == "create":
+        mocker.patch.object(routes.org_db, "create_org", blocked)
+        call = routes.create_org(CreateOrgRequest(name="Mine", slug="mine"), "owner")
+    else:
+        mocker.patch.object(routes.org_db, "convert_personal_org", blocked)
+        call = routes.convert_org("org", owner_context())
+
+    with pytest.raises(HTTPException) as error:
+        await call
+    assert error.value.status_code == 403
+    blocked.assert_not_awaited()

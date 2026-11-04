@@ -16,16 +16,12 @@ from pydantic import ValidationError
 
 from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.config import ChatConfig
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    get_global_rate_limits,
-    is_user_paywalled,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.copilot.tools.base import BaseTool, without_card_hints
 from backend.copilot.tools.run_agent import RunAgentInput
 from backend.data.credit import get_credit_model
+from backend.data.entitlement import paywall_message, paywall_reason
+from backend.data.entitlement_limits import check_rate_limit, get_global_rate_limits
 
 from .rate_limit import file_upload_limiter, graph_exec_limiter, search_limiter
 
@@ -136,18 +132,21 @@ def _starts_a_paid_run(args: dict[str, Any]) -> bool:
     return not (params.dry_run or params.schedule_name or params.cron)
 
 
-async def check_plan(user_id: str) -> None:
-    """Every tool call needs an active plan, as every chat turn does."""
+async def check_plan(user_id: str, organization_id: str) -> None:
+    """Every tool call needs an active plan, as every chat turn does: the
+    caller's own in a personal organization, the organization's in a team one."""
     try:
-        paywalled = await is_user_paywalled(user_id)
+        reason = await paywall_reason(user_id, organization_id)
     except Exception as exc:
         logger.warning(f"MCP paywall check failed for {user_id}: {exc}")
         raise ToolError("Couldn't check your plan; retry shortly") from exc
-    if paywalled:
+    if reason == "no_plan":
         raise ToolError("This tool needs an active subscription")
+    if reason is not None:
+        raise ToolError(paywall_message(reason, "use this tool"))
 
 
-async def check_spend_allowance(user_id: str) -> None:
+async def check_spend_allowance(user_id: str, organization_id: str) -> None:
     """The usage caps a chat turn checks, for a tool that spends what a turn does.
 
     Metering after the call only slows the next one down; without this a key
@@ -158,11 +157,13 @@ async def check_spend_allowance(user_id: str) -> None:
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
+            organization_id,
         )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
+            org_id=organization_id,
         )
     except RateLimitExceeded as exc:
         raise ToolError(str(exc)) from exc

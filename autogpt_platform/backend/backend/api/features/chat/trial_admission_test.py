@@ -112,7 +112,9 @@ def live_chat_scope(mocker: pytest_mock.MockerFixture) -> None:
 
 
 @pytest.fixture
-def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> RouteTrialAccount:
+def account(
+    mocker: pytest_mock.MockerFixture, test_user_id: str, real_entitlement
+) -> RouteTrialAccount:
     account = RouteTrialAccount(test_user_id)
     mocker.patch.object(rate_limit, "is_user_paywalled", _REAL_IS_USER_PAYWALLED)
     mocker.patch.object(

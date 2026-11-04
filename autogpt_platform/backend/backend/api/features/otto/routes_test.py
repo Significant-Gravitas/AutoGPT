@@ -19,9 +19,12 @@ client = fastapi.testclient.TestClient(app)
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    # The paywall reads the organization the request acts in.
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 

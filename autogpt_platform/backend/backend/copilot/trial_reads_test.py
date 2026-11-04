@@ -10,7 +10,6 @@ from backend.api.features.chat.routes import StreamChatRequest, stream_chat_post
 from backend.copilot.rate_limit import (
     SubscriptionTier,
     check_rate_limit,
-    enforce_payment_paywall,
     get_global_rate_limits,
 )
 from backend.copilot.trial_reads import (
@@ -21,6 +20,7 @@ from backend.copilot.trial_reads import (
     trial_reads_fresh,
     trial_reads_shared,
 )
+from backend.data.entitlement import enforce_entitlement
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
@@ -204,7 +204,7 @@ async def test_the_chat_routes_trial_checks_read_the_trial_once():
     database round trips before, one inside the route's block."""
 
     async def run_checks() -> None:
-        await enforce_payment_paywall("trial-user")
+        await enforce_entitlement("trial-user")
         daily, weekly, _ = await get_global_rate_limits("trial-user", 1, 1)
         await check_rate_limit("trial-user", daily, weekly)
 
@@ -310,7 +310,7 @@ async def test_the_chat_routes_checks_read_the_usage_state_once():
     three database round trips outside a block, one inside the route's."""
 
     async def run_checks() -> None:
-        await enforce_payment_paywall("u1")
+        await enforce_entitlement("u1")
         daily, weekly, tier = await get_global_rate_limits("u1", 1, 1)
         await check_rate_limit("u1", daily, weekly, expected_tier=tier)
 

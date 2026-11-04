@@ -25,7 +25,6 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AutoPilotBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.time_blocks import CountdownTimerBlock
-from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import (
@@ -36,6 +35,7 @@ from backend.data.db_accessors import (
     run_with_live_resource_lease_guard,
 )
 from backend.data.dynamic_fields import parse_execution_output
+from backend.data.entitlement_limits import platform_spend_refusal
 from backend.data.execution import (
     ExecutionContext,
     ExecutionQueue,
@@ -315,7 +315,7 @@ def _handle_completion_communications(
 
 RUN_OUTSIDE_ITS_ORG_ERROR = (
     "This run was stopped because it was queued in an organization or team "
-    "you aren't a member of. New runs go to your own."
+    "you aren't a member of."
 )
 
 
@@ -736,7 +736,9 @@ async def _execute_node_authorized(
     # A dry run skips credits, so a block it runs for real on the platform's
     # key is bounded by the user's allowance instead.
     if _dry_run_creds is not None and (
-        refusal := await platform_spend_refusal(user_id)
+        refusal := await platform_spend_refusal(
+            user_id, execution_context.organization_id
+        )
     ):
         log_metadata.warning(f"Dry-run block not run: {refusal}")
         yield "error", refusal
@@ -976,7 +978,12 @@ async def _execute_node_authorized(
 
     try:
         if execution_context.dry_run and _dry_run_input is None:
-            block_iter = simulate_block(node_block, input_data, user_id=user_id)
+            block_iter = simulate_block(
+                node_block,
+                input_data,
+                user_id=user_id,
+                org_id=execution_context.organization_id,
+            )
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 

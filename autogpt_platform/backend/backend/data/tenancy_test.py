@@ -11,6 +11,7 @@ from backend.data import tenancy
 from backend.data.tenancy import (
     get_user_team_ids,
     has_live_resource_access,
+    is_own_personal_org,
     live_agent_graph_access_barrier,
     organization_filter,
     visibility_filter,
@@ -608,6 +609,28 @@ async def test_untagged_rows_are_writable_only_from_the_personal_org(
     where = mock_prisma.orgmember.find_first.call_args.kwargs["where"]
     assert (where["userId"], where["orgId"]) == ("u1", "org-1")
     assert where["Org"] == {"isPersonal": True, "deletedAt": None}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owns_it", [True, False])
+async def test_own_personal_org_is_a_live_personal_org_the_caller_owns(
+    mocker, owns_it: bool
+):
+    mock_prisma = MagicMock()
+    mock_prisma.orgmember.find_first = AsyncMock(
+        return_value=MagicMock() if owns_it else None
+    )
+    mocker.patch.object(tenancy, "prisma", mock_prisma)
+
+    assert await is_own_personal_org("u1", "org-1") is owns_it
+    mock_prisma.orgmember.find_first.assert_awaited_once_with(
+        where={
+            "userId": "u1",
+            "orgId": "org-1",
+            "isOwner": True,
+            "Org": {"isPersonal": True, "deletedAt": None},
+        }
+    )
 
 
 def test_organization_filter_matches_untagged_rows_only_when_asked():

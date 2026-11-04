@@ -42,7 +42,7 @@ from backend.blocks.mcp.helpers import (
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler, MCPTokenEndpointAuthMethod
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.integrations.credential_lease import (
     CredentialLease,

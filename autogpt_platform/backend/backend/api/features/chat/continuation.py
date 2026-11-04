@@ -30,9 +30,9 @@ from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
 )
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.response_model import StreamStatus
 from backend.copilot.session_permissions import resolve_session_permissions
+from backend.data.entitlement import enforce_entitlement
 from backend.integrations.codex.access import enforce_codex_access_http
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,8 @@ async def continue_session(
     session = await _validate_and_get_writable_session(session_id, user_id)
     model = request.model if request is not None else None
     await enforce_model_entitlement(model, session, user_id)
-    await _admit(session, user_id)
+    org_id = session.organization_id or ctx.org_id
+    await _admit(session, user_id, org_id)
     await _refuse_if_busy(session_id)
     try:
         # Every note is the same text, so the trailing-text dedupe would refuse
@@ -92,7 +93,7 @@ async def continue_session(
             expert_id=session.expert_id,
             session_origin=session.metadata.origin,
             session_source_platform=session.metadata.source_platform,
-            organization_id=session.organization_id or ctx.org_id,
+            organization_id=org_id,
             team_id=session.team_id if session.organization_id else ctx.team_id,
             model=model,
             llm_auth_provider=session.metadata.llm_auth_provider,
@@ -111,11 +112,11 @@ async def continue_session(
     return ContinueSessionResponse(turn_id=turn_id)
 
 
-async def _admit(session: ChatSessionInfo, user_id: str) -> None:
+async def _admit(session: ChatSessionInfo, user_id: str, org_id: str | None) -> None:
     route = session.metadata.llm_auth_provider
     if route == "platform":
-        await enforce_payment_paywall(user_id)
-        await enforce_platform_allowance(user_id)
+        await enforce_entitlement(user_id, org_id)
+        await enforce_platform_allowance(user_id, org_id)
     elif route == "codex":
         await enforce_codex_access_http(user_id)
     elif route == "microsoft_365_copilot":

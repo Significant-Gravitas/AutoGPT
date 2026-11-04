@@ -33,7 +33,6 @@ from backend.api.features.skills.model import (
     UploadCopilotSkillRequest,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
@@ -53,6 +52,7 @@ from backend.copilot.tools.skills import (
     skill_folder,
     store_user_skill,
 )
+from backend.data.entitlement import enforce_payment_paywall
 
 logger = logging.getLogger(__name__)
 

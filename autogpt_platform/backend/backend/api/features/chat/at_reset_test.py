@@ -129,7 +129,7 @@ def test_resume_at_reset(scheduler, session, run_at, test_user_id):
     assert response.status_code == 200
     body = response.json()
     assert (body["kind"], _when(body), body["message"]) == ("resume", RUN_AT, None)
-    run_at.assert_awaited_once_with(test_user_id, SESSION, "resume")
+    run_at.assert_awaited_once_with(test_user_id, SESSION, "resume", "org-1")
     job = scheduler.add_copilot_turn_schedule.await_args.kwargs
     assert job["purpose"] == "resume"
     assert job["schedule_id"] == f"at-reset-resume-{SESSION}"

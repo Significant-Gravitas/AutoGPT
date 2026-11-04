@@ -83,6 +83,7 @@ from backend.data import dream_pass as dream_pass_db
 from backend.data import memory_schedule as memory_schedule_db
 from backend.data import memory_scope as memory_scope_db
 from backend.data import org_access as org_access_db
+from backend.data import org_plan as org_plan_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
@@ -681,6 +682,9 @@ class DatabaseManager(AppService):
     )
     register_memory_scope = _(memory_scope_db.register_memory_scope)
     query_org_access = _(org_access_db.query_org_access)
+    query_own_org_access = _(org_access_db.query_own_org_access)
+    query_org_plan_snapshot = _(org_plan_db.query_org_plan_snapshot)
+    query_active_membership = _(org_plan_db.query_active_membership)
     list_memory_scopes = _(memory_scope_db.list_memory_scopes)
     resolve_default_tenancy = _(resolve_default_tenancy)
     has_live_tenancy = _(has_live_tenancy)
@@ -1350,6 +1354,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_personal_memory_organization = d.get_personal_memory_organization
     register_memory_scope = d.register_memory_scope
     query_org_access = d.query_org_access
+    query_own_org_access = d.query_own_org_access
+    query_org_plan_snapshot = d.query_org_plan_snapshot
+    query_active_membership = d.query_active_membership
     list_memory_scopes = d.list_memory_scopes
     resolve_default_tenancy = d.resolve_default_tenancy
     has_live_tenancy = d.has_live_tenancy

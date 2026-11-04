@@ -2911,6 +2911,193 @@
         }
       }
     },
+    "/api/admin/org-plans/orgs": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "List an account's team organizations",
+        "description": "The team organizations an account belongs to, by id or sign-in email,\nwith each one's plan, seats in use and wallet balance. Admin-only.",
+        "operationId": "getAdminList an account's team organizations",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 320 },
+                { "type": "null" }
+              ],
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/OrgPlanSummary" },
+                  "title": "Response Getadminlist An Account'S Team Organizations"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/org-plans/orgs/{org_id}": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get a team organization's plan",
+        "description": "A team organization's plan, seats in use and wallet balance. Admin-only.",
+        "operationId": "getAdminGet a team organization's plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgPlanSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["admin", "admin"],
+        "summary": "Set a team organization's plan",
+        "description": "Set the plan's tier, seats, end date, status and note. Its members use\npaid features under the tier while the plan is active and not past its end\ndate. Admin-only.",
+        "operationId": "putAdminSet a team organization's plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OrgPlanInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrgPlanSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/org-plans/orgs/{org_id}/credits": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Add credits to a team organization",
+        "description": "Add credits to the organization's wallet. Repeating a reference adds\nnothing and answers with ``granted`` false. Admin-only.",
+        "operationId": "postAdminAdd credits to a team organization",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddOrgCreditsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgCreditGrantResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/platform-costs/dashboard": {
       "get": {
         "tags": ["v2", "admin", "platform-cost", "admin"],
@@ -13617,6 +13804,7 @@
       "post": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Create organization",
+        "description": "Create a team organization owned by the caller. Needs organizations\nturned on for the caller's own account, not only inherited access.",
         "operationId": "postV2Create organization",
         "requestBody": {
           "content": {
@@ -13654,13 +13842,14 @@
       "get": {
         "tags": ["v2", "orgs", "orgs"],
         "summary": "Get personal organization context",
+        "description": "The caller's personal organization, and whether the caller may create\nor convert organizations (``can_create_organization``).",
         "operationId": "getV2Get personal organization context",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/OrgResponse" }
+                "schema": { "$ref": "#/components/schemas/DefaultOrgResponse" }
               }
             }
           },
@@ -21036,6 +21225,34 @@
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
+      "AddOrgCreditsRequest": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "maximum": 100000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "description": "Credits to add (100 = $1)."
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reference",
+            "description": "The invoice or other reference; one reference adds once."
+          },
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["amount", "reference"],
+        "title": "AddOrgCreditsRequest"
+      },
       "AddTeamMemberRequest": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -24828,6 +25045,52 @@
         "required": ["step_id", "description", "action"],
         "title": "DecompositionStepModel",
         "description": "A single step in a decomposed agent-building plan."
+      },
+      "DefaultOrgResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "is_personal": { "type": "boolean", "title": "Is Personal" },
+          "member_count": { "type": "integer", "title": "Member Count" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "memory_hold_buffer": {
+            "type": "boolean",
+            "title": "Memory Hold Buffer",
+            "default": true
+          },
+          "can_create_organization": {
+            "type": "boolean",
+            "title": "Can Create Organization",
+            "description": "Whether this account may create a team organization or convert its personal one. Access inherited from someone else's team organization doesn't count."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "avatar_url",
+          "description",
+          "is_personal",
+          "member_count",
+          "created_at",
+          "can_create_organization"
+        ],
+        "title": "DefaultOrgResponse",
+        "description": "The caller's personal organization, with what the caller may do."
       },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
@@ -32495,6 +32758,17 @@
         "required": ["id", "alias_slug", "alias_type", "created_at"],
         "title": "OrgAliasResponse"
       },
+      "OrgCreditGrantResult": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "reference": { "type": "string", "title": "Reference" },
+          "granted": { "type": "boolean", "title": "Granted" },
+          "balance": { "type": "integer", "title": "Balance" }
+        },
+        "type": "object",
+        "required": ["org_id", "reference", "granted", "balance"],
+        "title": "OrgCreditGrantResult"
+      },
       "OrgMemberResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -32528,6 +32802,118 @@
           "joined_at"
         ],
         "title": "OrgMemberResponse"
+      },
+      "OrgPlanInput": {
+        "properties": {
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "seats": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Seats"
+          },
+          "ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ends At",
+            "description": "When the plan stops counting; none runs on."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "canceled"],
+            "title": "Status",
+            "default": "active"
+          },
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "seats"],
+        "title": "OrgPlanInput"
+      },
+      "OrgPlanSummary": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "owner_user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner User Id"
+          },
+          "owner_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Email"
+          },
+          "plan": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OrgPlanView" },
+              { "type": "null" }
+            ]
+          },
+          "members": { "type": "integer", "title": "Members" },
+          "pending_invitations": {
+            "type": "integer",
+            "title": "Pending Invitations"
+          },
+          "seats_in_use": { "type": "integer", "title": "Seats In Use" },
+          "balance": { "type": "integer", "title": "Balance" }
+        },
+        "type": "object",
+        "required": [
+          "org_id",
+          "name",
+          "slug",
+          "owner_user_id",
+          "owner_email",
+          "plan",
+          "members",
+          "pending_invitations",
+          "seats_in_use",
+          "balance"
+        ],
+        "title": "OrgPlanSummary"
+      },
+      "OrgPlanView": {
+        "properties": {
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "seats": { "type": "integer", "title": "Seats" },
+          "status": { "type": "string", "title": "Status" },
+          "ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ends At"
+          },
+          "note": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Note"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "in_effect": { "type": "boolean", "title": "In Effect" }
+        },
+        "type": "object",
+        "required": [
+          "tier",
+          "seats",
+          "status",
+          "ends_at",
+          "note",
+          "updated_at",
+          "in_effect"
+        ],
+        "title": "OrgPlanView"
       },
       "OrgResponse": {
         "properties": {

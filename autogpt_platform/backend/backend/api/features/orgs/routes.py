@@ -24,6 +24,7 @@ from .member_runs import stop_member_runs
 from .model import (
     CreateAliasRequest,
     CreateOrgRequest,
+    DefaultOrgResponse,
     OrgAliasResponse,
     OrgMemberResponse,
     OrgResponse,
@@ -34,7 +35,12 @@ from .model import (
     UpdateOrgData,
     UpdateOrgRequest,
 )
-from .rollout import org_collaboration_enabled, require_org_collaboration
+from .rollout import (
+    org_collaboration_enabled,
+    org_creation_enabled,
+    require_org_collaboration,
+    require_org_creation,
+)
 
 router = APIRouter()
 
@@ -67,7 +73,9 @@ async def create_org(
     request: CreateOrgRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OrgResponse:
-    await require_org_collaboration(user_id)
+    """Create a team organization owned by the caller. Needs organizations
+    turned on for the caller's own account, not only inherited access."""
+    await require_org_creation(user_id)
     return await org_db.create_org(
         name=request.name,
         slug=request.slug,
@@ -86,7 +94,7 @@ async def list_orgs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[OrgResponse]:
     if not await org_collaboration_enabled(user_id):
-        return [await get_default_org(user_id)]
+        return [await _personal_org(user_id)]
     return await org_db.list_user_orgs(user_id)
 
 
@@ -98,7 +106,17 @@ async def list_orgs(
 )
 async def get_default_org(
     user_id: Annotated[str, Security(get_user_id)],
-) -> OrgResponse:
+) -> DefaultOrgResponse:
+    """The caller's personal organization, and whether the caller may create
+    or convert organizations (``can_create_organization``)."""
+    org = await _personal_org(user_id)
+    return DefaultOrgResponse(
+        **org.model_dump(),
+        can_create_organization=await org_creation_enabled(user_id),
+    )
+
+
+async def _personal_org(user_id: str) -> OrgResponse:
     org_id, _ = await org_db.get_user_default_team(user_id)
     if org_id is None:
         raise HTTPException(503, detail="Personal workspace is temporarily unavailable")
@@ -313,7 +331,7 @@ async def convert_org(
     ],
 ) -> OrgResponse:
     _verify_org_path(ctx, org_id)
-    await require_org_collaboration(ctx.user_id)
+    await require_org_creation(ctx.user_id)
     return await org_db.convert_personal_org(org_id, ctx.user_id)
 
 

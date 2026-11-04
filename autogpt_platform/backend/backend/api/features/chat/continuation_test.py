@@ -61,7 +61,7 @@ def chat(mocker: pytest_mock.MockerFixture):
         new=AsyncMock(return_value=_session()),
     )
     mocks.paywall = mocker.patch.object(
-        continuation_routes, "enforce_payment_paywall", new=AsyncMock()
+        continuation_routes, "enforce_entitlement", new=AsyncMock()
     )
     mocks.codex_access = mocker.patch.object(
         continuation_routes, "enforce_codex_access_http", new=AsyncMock()

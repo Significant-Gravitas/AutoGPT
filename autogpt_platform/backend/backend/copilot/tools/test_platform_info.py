@@ -22,6 +22,8 @@ def tool():
 def mock_session():
     session = MagicMock()
     session.session_id = "test-session-123"
+    # The user's personal organization: their own plan decides.
+    session.organization_id = None
     return session
 
 

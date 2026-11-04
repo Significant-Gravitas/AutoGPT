@@ -12,19 +12,15 @@ from fastapi import APIRouter, HTTPException, Response, Security
 from pydantic import BaseModel, Field
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    enforce_payment_paywall,
-    get_global_rate_limits,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.copilot.speech import (
     AUDIO_MEDIA_TYPE,
     MAX_SPEECH_CHARS,
     SpeechUnavailable,
     synthesize_speech,
 )
+from backend.data.entitlement import enforce_entitlement
+from backend.data.entitlement_limits import check_rate_limit, get_global_rate_limits
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -63,12 +59,13 @@ class SpeechRequest(BaseModel):
 async def synthesize(
     request: SpeechRequest,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> Response:
     """Return *text* as MP3 audio, charging the caller for the synthesis."""
     if not await is_feature_enabled(Flag.COPILOT_VOICE_MODE, user_id):
         raise HTTPException(status_code=404, detail="Voice mode is not enabled")
 
-    await _enforce_spend_allowance(user_id)
+    await _enforce_spend_allowance(user_id, ctx.org_id)
 
     try:
         audio = await synthesize_speech(
@@ -84,25 +81,27 @@ async def synthesize(
     return Response(content=audio, media_type=AUDIO_MEDIA_TYPE)
 
 
-async def _enforce_spend_allowance(user_id: str) -> None:
+async def _enforce_spend_allowance(user_id: str, org_id: str) -> None:
     """The pre-flight a chat turn runs, before this route spends the same budget.
 
     Metering after the fact only slows the *next* turn down; without this a
     caller past their cap keeps synthesising and the platform pays.
     """
-    await enforce_payment_paywall(user_id)
+    await enforce_entitlement(user_id, org_id)
 
     try:
         daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
+            org_id,
         )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
             expected_tier=usage_tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc

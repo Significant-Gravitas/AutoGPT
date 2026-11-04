@@ -177,7 +177,7 @@ class WebSearchTool(BaseTool):
             ).from_outside()
 
         # Billed to the platform's key whoever pays for the turn's model.
-        if refusal := await tool_spend_refusal(user_id):
+        if refusal := await tool_spend_refusal(user_id, session.organization_id):
             return ErrorResponse(
                 message=f"Web search is unavailable: {refusal}",
                 error="usage_limit",

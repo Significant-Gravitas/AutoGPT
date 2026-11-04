@@ -17,7 +17,7 @@ from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
 from backend.api.rest_api import app
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 
 # These check in the handler, because whether the request does paid work
 # depends on its input: a chat's model route (the platform needs a plan, a

@@ -17,7 +17,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security
 
 from backend.api.live_auth import requires_live_resource_permission
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_entitlement
 
 from . import service
 from .model import GlobalSearchResponse
@@ -70,7 +70,7 @@ async def global_search_endpoint(
     # Only a query makes a paid embedding call; the empty one reads the
     # per-user cache, so it skips the paywall and the QPS cap.
     if q.strip():
-        await enforce_payment_paywall(user_id)
+        await enforce_entitlement(user_id, ctx.org_id)
         await enforce_global_search_rate_limit(user_id)
     return await service.global_search(
         query=q,

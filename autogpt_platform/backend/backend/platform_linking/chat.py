@@ -23,17 +23,13 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
 )
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    get_global_rate_limits,
-    is_user_paywalled,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
 from backend.copilot.turn_queue import count_inflight_turns
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.entitlement import is_user_paywalled
+from backend.data.entitlement_limits import check_rate_limit, get_global_rate_limits
 from backend.data.tenancy import has_live_resource_access, live_resource_access_barrier
 from backend.data.user import is_user_banned
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
@@ -153,10 +149,10 @@ async def _check_ban(user_id: str) -> TurnDenial | None:
     return TurnDenial(reason="banned", message="This account has been banned.")
 
 
-async def _check_paywall(user_id: str) -> TurnDenial | None:
+async def _check_paywall(user_id: str, org_id: str | None) -> TurnDenial | None:
     """Subscription paywall check — fail closed on lookup failure."""
     try:
-        paywalled = await is_user_paywalled(user_id)
+        paywalled = await is_user_paywalled(user_id, org_id)
     except Exception:
         # Tier lookup blip (Supabase / LD). The web maps this to a 503; fail
         # closed here too so a transient error can't bypass the paywall.
@@ -180,7 +176,7 @@ async def _check_paywall(user_id: str) -> TurnDenial | None:
     )
 
 
-async def _check_usage_limits(user_id: str) -> TurnDenial | None:
+async def _check_usage_limits(user_id: str, org_id: str | None) -> TurnDenial | None:
     """Daily/weekly USD-cap check — fail closed on any lookup failure."""
     cfg = ChatConfig()
     try:
@@ -188,12 +184,14 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
             user_id,
             cfg.daily_cost_limit_microdollars,
             cfg.weekly_cost_limit_microdollars,
+            org_id,
         )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily,
             weekly_cost_limit=weekly,
             expected_tier=_tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as exc:
         # str(exc) already reads e.g. "You've reached your daily usage limit.
@@ -226,11 +224,13 @@ async def evaluate_turn_gate(user_id: str) -> TurnDenial | None:
     route-level paywall dependency and the dispatcher's rate-limit check, so
     without this a NO_TIER / over-cap user would get unmetered free usage.
     Returns a :class:`TurnDenial` to surface, or None when the turn may run.
+    A bot conversation runs in the owner's personal organization (its default
+    team, or a private expert's), so the owner's own plan decides.
     """
     return (
         await _check_ban(user_id)
-        or await _check_paywall(user_id)
-        or await _check_usage_limits(user_id)
+        or await _check_paywall(user_id, None)
+        or await _check_usage_limits(user_id, None)
     )
 
 

@@ -53,19 +53,20 @@ def _session() -> ChatSession:
 @pytest.mark.asyncio
 async def test_a_turn_with_allowance_left_runs(allowance):
     _, check = allowance
-    assert await refusal_for("u-1") is None
+    assert await refusal_for("u-1", None) is None
     check.assert_awaited_once_with(
         user_id="u-1",
         daily_cost_limit=3_000_000,
         weekly_cost_limit=6_000_000,
         expected_tier=SubscriptionTier.PRO,
+        org_id=None,
     )
 
 
 @pytest.mark.asyncio
 async def test_a_turn_without_a_user_is_not_checked(allowance):
     limits, _ = allowance
-    assert await refusal_for(None) is None
+    assert await refusal_for(None, None) is None
     limits.assert_not_awaited()
 
 
@@ -73,7 +74,7 @@ async def test_a_turn_without_a_user_is_not_checked(allowance):
 async def test_a_used_up_window_refuses_the_turn_until_it_refills(allowance):
     _, check = allowance
     check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
-    assert await refusal_for("u-1") == TurnPause(
+    assert await refusal_for("u-1", None) == TurnPause(
         reason="weekly",
         resets_at=WEEKLY_RESET,
         checkpoint_saved=False,
@@ -86,7 +87,7 @@ async def test_a_spent_trial_refuses_the_turn_with_no_reset(allowance):
     # The trial's end rides on the exception, but it is not a refill.
     _, check = allowance
     check.side_effect = RateLimitExceeded("trial", WEEKLY_RESET)
-    pause = await refusal_for("u-1")
+    pause = await refusal_for("u-1", None)
     assert pause is not None
     assert (pause.reason, pause.resets_at, pause.started) == ("trial", None, False)
 
@@ -99,7 +100,7 @@ async def test_a_window_that_allows_nothing_refuses_with_no_reset(allowance):
     limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
     check.side_effect = RateLimitExceeded("weekly", WEEKLY_RESET)
     with _usage_state(SubscriptionTier.NO_TIER):
-        pause = await refusal_for("u-1")
+        pause = await refusal_for("u-1", None)
     assert pause is not None
     assert (pause.reason, pause.resets_at, pause.started) == ("weekly", None, False)
 
@@ -114,7 +115,7 @@ async def test_an_ended_trial_is_refused_without_reading_its_stale_tier(allowanc
     limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
     check.side_effect = RateLimitUnavailable("Subscription changed")
     with _usage_state(SubscriptionTier.TRIAL):
-        pause = await refusal_for("u-1")
+        pause = await refusal_for("u-1", None)
     # Named as the trial, which is what ended: Upgrade, not a reset.
     assert pause == TurnPause(
         reason="trial", resets_at=None, checkpoint_saved=False, started=False
@@ -127,7 +128,7 @@ async def test_an_unreadable_allowance_is_raised_for_the_caller(allowance):
     _, check = allowance
     check.side_effect = RateLimitUnavailable()
     with pytest.raises(RateLimitUnavailable):
-        await refusal_for("u-1")
+        await refusal_for("u-1", None)
 
 
 @pytest.mark.asyncio

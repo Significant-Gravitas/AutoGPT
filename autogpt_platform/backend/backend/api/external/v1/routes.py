@@ -19,13 +19,14 @@ from backend.api.external.middleware import (
     require_permission,
 )
 from backend.copilot.capabilities.block_meta import is_graph_only_block
-from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.entitlement import enforce_entitlement
 from backend.data.execution import ExecutionContext, ExecutionTrigger
 from backend.data.grants import resolve_graph_grant
 from backend.data.tenancy import (
@@ -113,7 +114,7 @@ async def execute_graph_block(
 async def _execute_graph_block_live(
     block_id: str, data: BlockInput, auth: APIAuthorizationInfo
 ) -> CompletedBlockOutput:
-    await enforce_payment_paywall(auth.user_id)
+    await enforce_entitlement(auth.user_id, auth.organization_id)
 
     obj = backend.blocks.get_block(block_id)
     if not obj:
@@ -227,7 +228,7 @@ async def execute_graph(
     # Strict route-level paywall: 503 on tier-lookup failure (rather
     # than fail-open via the deep gate inside add_graph_execution).
     # Consistent with the JWT-gated internal graph-execute route.
-    await enforce_payment_paywall(auth.user_id)
+    await enforce_entitlement(auth.user_id, auth.organization_id)
 
     # Attribute the execution to the API key's org when the key is org-scoped,
     # so a key issued for org A doesn't get billed/attributed to the user's

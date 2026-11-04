@@ -3,7 +3,7 @@ import logging
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, Depends, HTTPException, Security
 
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 
 from .models import ApiResponse, ChatRequest
 from .service import OttoService

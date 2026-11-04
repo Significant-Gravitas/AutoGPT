@@ -21,13 +21,16 @@ from backend.data.tenancy import lock_live_org_permission_scope
 from backend.util.exceptions import NotFoundError
 
 from .db import lock_org_membership
+from .invitation_limits import check_invitation_rate
 from .model import (
     CreateInvitationRequest,
     InvitationCreateResponse,
     InvitationResponse,
     UserInvitationResponse,
 )
+from .roles import require_owner_for_role_change
 from .rollout import require_org_collaboration
+from .seats import assert_free_seat
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +73,18 @@ async def _lock_invitation_admin(
     org_id: str,
     actor_user_id: str,
     target_user_id: str | None = None,
-) -> None:
-    if (
-        await lock_live_org_permission_scope(
-            client,
-            actor_user_id,
-            org_id,
-            OrgAction.MANAGE_MEMBERS,
-            [target_user_id] if target_user_id is not None else None,
-        )
-        is None
-    ):
+) -> RequestContext:
+    """Lock the org's membership and return the inviter's live context."""
+    actor = await lock_live_org_permission_scope(
+        client,
+        actor_user_id,
+        org_id,
+        OrgAction.MANAGE_MEMBERS,
+        [target_user_id] if target_user_id is not None else None,
+    )
+    if actor is None:
         raise HTTPException(403, detail="Organization admin access was revoked")
+    return actor
 
 
 PERSONAL_ORG_INVITE_REFUSED = (
@@ -110,6 +113,7 @@ async def create_invitation(
 ) -> InvitationCreateResponse:
     _verify_org_path(ctx, org_id)
     await require_org_collaboration(ctx.user_id)
+    await check_invitation_rate(org_id)
     return await _create_invitation_locked(org_id, request, ctx.user_id)
 
 
@@ -123,11 +127,18 @@ async def _create_invitation_locked(
     )
     try:
         async with transaction() as tx:
-            await _lock_invitation_admin(
+            actor = await _lock_invitation_admin(
                 tx,
                 org_id,
                 user_id,
                 preliminary_target.id if preliminary_target is not None else None,
+            )
+            require_owner_for_role_change(
+                actor,
+                is_admin=False,
+                is_billing_manager=False,
+                wants_admin=request.is_admin,
+                wants_billing_manager=request.is_billing_manager,
             )
             org = await tx.organization.find_unique(where={"id": org_id})
             if org is not None and org.isPersonal:
@@ -163,6 +174,7 @@ async def _create_invitation_locked(
             )
             if pending is not None:
                 raise HTTPException(409, detail="A pending invitation already exists")
+            await assert_free_seat(tx, org_id, user_id, accepting=False)
 
             if request.team_ids:
                 teams = await tx.team.find_many(where={"id": {"in": request.team_ids}})
@@ -298,6 +310,7 @@ async def resend_invitation(
     """
     _verify_org_path(ctx, org_id)
     await require_org_collaboration(ctx.user_id)
+    await check_invitation_rate(org_id, invitation_id)
     preliminary = await _get_org_invitation(org_id, invitation_id)
     async with transaction() as tx:
         await _lock_invitation_admin(tx, org_id, ctx.user_id, preliminary.targetUserId)
@@ -327,8 +340,6 @@ async def resend_invitation(
             raise NotFoundError(f"Invitation {invitation_id} not found")
 
     # TODO: Send email via Postmark with invitation link (same gap as create).
-    # Rate-limit resends (min-interval / per-invite cap) as part of that work —
-    # unbounded resend is only an email-bombing vector once delivery is wired up.
     return InvitationCreateResponse.from_db(refreshed)
 
 
@@ -458,6 +469,8 @@ async def accept_invitation(
                 client=tx,
             )
         continue_accept = not already_member
+        if continue_accept:
+            await assert_free_seat(tx, invitation.orgId, user_id, accepting=True)
         # A team archived or deleted between invite and accept is skipped, not
         # fatal, but never silently: the member ends up without the team access
         # the invite promised, which support needs to be able to trace.

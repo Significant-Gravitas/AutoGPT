@@ -16,7 +16,7 @@ from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.model import pauses_irreversible_actions
-from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.data import execution as execution_db
 from backend.data import grants as grants_db
 from backend.data import graph as graph_db
@@ -35,6 +35,7 @@ from backend.data.db_accessors import chat_db, credit_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
+from backend.data.entitlement import require_entitlement
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -75,6 +76,7 @@ from backend.util.exceptions import (
     GraphNotInLibraryError,
     GraphValidationError,
     InsufficientBalanceError,
+    NotAuthorizedError,
     NotFoundError,
     UserBannedError,
 )
@@ -84,6 +86,11 @@ from backend.util.type import coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
+
+RUN_OUTSIDE_ORG_REFUSAL = (
+    "You aren't a member of the organization or team this workflow would run "
+    "in, so it wasn't started."
+)
 
 # ============ Resource Helpers ============ #
 
@@ -1438,6 +1445,22 @@ async def _resolve_persisted_execution_root(
         current = parent
 
 
+async def _refuse_unless_runner_belongs(
+    user_id: str, organization_id: str, team_id: str | None
+) -> None:
+    """Refuse a run in an org (and team) its user isn't an active member of.
+
+    ``resolve_member_tenancy`` answers with the pair it was given when the
+    user belongs to it, and with the user's own default otherwise; a run must
+    not move there quietly, so any other answer refuses it.
+    """
+    if await _resolve_runner_tenancy(user_id, organization_id, team_id) != (
+        organization_id,
+        team_id,
+    ):
+        raise NotAuthorizedError(RUN_OUTSIDE_ORG_REFUSAL)
+
+
 async def _resolve_runner_tenancy(
     user_id: str, organization_id: str | None, team_id: str | None
 ) -> tuple[str | None, str | None]:
@@ -1448,6 +1471,15 @@ async def _resolve_runner_tenancy(
     return await get_database_manager_async_client().resolve_member_tenancy(
         user_id, organization_id, team_id
     )
+
+
+async def _require_run_entitlement(
+    user_id: str, organization_id: str | None, bypass_paywall: bool
+) -> None:
+    """The entitlement check for the org the run lands in. ``bypass_paywall``
+    marks admin recovery, which is exempt."""
+    if not bypass_paywall:
+        await require_entitlement(user_id, organization_id, action="run workflows")
 
 
 async def _enforce_expert_credential_scope(
@@ -1594,7 +1626,7 @@ async def _add_graph_execution(
             they run in the owner's personal organization and default team.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
-        bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
+        bypass_paywall: Skip the entitlement check. Set ONLY for admin
             recovery paths (requeueing stuck executions on behalf of a user
             who may be on NO_TIER) — never for user-initiated runs.
         trigger: How the run was started. Persisted on the execution row and
@@ -1610,11 +1642,16 @@ async def _add_graph_execution(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.
-        UserPaywalledError: If the user is on NO_TIER and ``ENABLE_PLATFORM_PAYMENT``
-            is on for them, **unless** ``bypass_paywall=True``. Raised here
-            so every entry point — HTTP routes, scheduled cron, webhook
-            triggers, external API, internal copilot tools — gets the same
-            gate without each having to remember a route-level dependency.
+        UserPaywalledError: If the entitlement check refuses the user in the
+            org the run lands in (``backend.data.entitlement``: their own plan
+            in a personal org, the org's plan in a team org), **unless**
+            ``bypass_paywall=True``. Raised here so every entry point — HTTP
+            routes, scheduled cron, webhook triggers, external API, internal
+            copilot tools — gets the same gate without each having to remember
+            a route-level dependency.
+        NotAuthorizedError: If the run's org (or team) is one the user isn't
+            an active member of. The run is refused, never moved to the
+            user's own org.
         Exception: Tier-lookup errors propagate as-is. The HTTP routes that
             call into ``add_graph_execution`` already wrap with
             ``enforce_payment_paywall`` upstream (which maps lookup failure
@@ -1630,13 +1667,10 @@ async def _add_graph_execution(
             f"schedule #{schedule_id}, webhook #{webhook_id}"
         )
 
-    if not bypass_paywall and await is_user_paywalled(user_id):
-        raise UserPaywalledError("A subscription is required to run workflows.")
     if await is_user_banned(user_id):
         raise UserBannedError("This account is banned, so its workflows can't run.")
 
     is_new_execution = graph_exec_id is None
-    tenancy_replaced = False
     nesting: list[GraphExecutionMeta | None] = []
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
@@ -1757,6 +1791,7 @@ async def _add_graph_execution(
                     raise
                 organization_id = graph_exec.organization_id
                 team_id = graph_exec.team_id
+            await _require_run_entitlement(user_id, organization_id, bypass_paywall)
             if not bypass_paywall:
                 await _enforce_expert_run_budget(user_id, expert_id)
             if graph_exec.status == ExecutionStatus.REVIEW:
@@ -1785,6 +1820,7 @@ async def _add_graph_execution(
             # isn't moved, as it has already run there: the executor stops it
             # when it picks it up.
             organization_id, team_id = graph_exec.organization_id, graph_exec.team_id
+            await _require_run_entitlement(user_id, organization_id, bypass_paywall)
 
         # The row stores the caller's raw masks and the run-time credential
         # inputs separately; rebuild the credential masks the same way the
@@ -1831,6 +1867,7 @@ async def _add_graph_execution(
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
             )
+            await _require_run_entitlement(user_id, organization_id, bypass_paywall)
             await _enforce_expert_run_budget(user_id, expert_id)
             await _enforce_expert_credential_scope(
                 user_id, expert_id, graph_credentials_inputs
@@ -1878,18 +1915,13 @@ async def _add_graph_execution(
         if organization_id and not expert_id:
             # The org/team comes from whatever started the run: a request's
             # verified context, a parent run, a preset, a trigger or a
-            # schedule. As for a request, it's kept only if the user belongs
-            # to it; otherwise the run gets the user's own default. Checked
-            # before the graph is validated and the credential owner resolved,
-            # so both run in the org the run lands in.
-            member_org_id, member_team_id = await _resolve_runner_tenancy(
-                user_id, organization_id, team_id
-            )
-            tenancy_replaced = (member_org_id, member_team_id) != (
-                organization_id,
-                team_id,
-            )
-            organization_id, team_id = member_org_id, member_team_id
+            # schedule. As for a request, the user must belong to it. A run
+            # is refused rather than moved to the user's own org, so a
+            # requested shared write never lands somewhere else. Checked
+            # before the graph is validated and the credential owner resolved.
+            await _refuse_unless_runner_belongs(user_id, organization_id, team_id)
+        if not expert_id:
+            await _require_run_entitlement(user_id, organization_id, bypass_paywall)
 
         # A sub-graph asks in the chat that started its parent run.
         if trigger == ExecutionTrigger.COPILOT:
@@ -2081,9 +2113,7 @@ async def _add_graph_execution(
                 None if parent_exec_id is not None else credentials_grant_id
             ),
         }
-        if tenancy_replaced or not is_new_execution:
-            # Billing reads the context, not the row, and a sub-graph is handed
-            # its parent's: the org/team the run was moved to must replace it.
+        if not is_new_execution:
             # A resumed run's context gets the org/team the run is stored with,
             # in place of any the caller's names; review resume builds one
             # with neither, before they're known.

@@ -357,7 +357,7 @@ class TestExecute:
         ), patch(_COMPLETE, completion):
             result = await self._run()
         completion.assert_not_awaited()
-        spend_refusal.assert_awaited_once_with("u-1")
+        spend_refusal.assert_awaited_once_with("u-1", None)
         assert isinstance(result, ConsultVerdictResponse)
         assert result.verdict == "insufficient"
         assert "daily usage limit" in result.reason

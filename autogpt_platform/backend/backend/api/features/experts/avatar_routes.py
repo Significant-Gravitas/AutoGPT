@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Security
 from backend.api.features.experts import avatar_jobs
 from backend.api.features.experts.avatar_generation import ExpertAvatarRequest
 from backend.api.features.experts.avatar_jobs import ExpertAvatarJob
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.util.settings import Settings
 
 router = APIRouter(

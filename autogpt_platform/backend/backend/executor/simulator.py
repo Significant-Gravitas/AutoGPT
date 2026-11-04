@@ -43,9 +43,9 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
-from backend.copilot.rate_limit import platform_spend_refusal
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.trial_cost_context import attributed_usage
+from backend.data.entitlement_limits import platform_spend_refusal
 from backend.data.model import NodeExecutionStats
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 
@@ -159,6 +159,7 @@ async def _call_llm_for_simulation(
     *,
     label: str = "simulate",
     user_id: str | None = None,
+    org_id: str | None = None,
     output_validator: Callable[[dict[str, Any]], list[str]] | None = None,
 ) -> dict[str, Any]:
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
@@ -180,7 +181,7 @@ async def _call_llm_for_simulation(
             is used up.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
-    if refusal := await platform_spend_refusal(user_id):
+    if refusal := await platform_spend_refusal(user_id, org_id):
         raise RuntimeError(f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] {refusal}")
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
@@ -690,6 +691,7 @@ async def simulate_block(
     input_data: dict[str, Any],
     *,
     user_id: str | None = None,
+    org_id: str | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
@@ -768,6 +770,7 @@ async def simulate_block(
             user_prompt,
             label=label,
             user_id=user_id,
+            org_id=org_id,
             output_validator=_make_output_validator(output_schema),
         )
 

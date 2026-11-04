@@ -90,6 +90,7 @@ from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
 from backend.copilot.turn_budget import resolve_turn_budget
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.db_accessors import chat_db, context_without_live_leases
+from backend.data.entitlement import get_user_tier
 from backend.copilot.graphiti.rollout import shared_memory_enabled
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -171,7 +172,6 @@ from ..prompting import (
     get_graphiti_supplement,
     get_sdk_supplement,
 )
-from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamCheckpoint,
@@ -5670,7 +5670,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 else (
                     credit_turn.budget
                     if credit_turn is not None
-                    else await resolve_turn_budget(user_id)
+                    else await resolve_turn_budget(user_id, session.organization_id)
                 )
             ),
             step_checkin=config.sdk_step_checkin,
@@ -5834,7 +5834,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
-        _user_tier = await get_user_tier(user_id) if user_id else None
+        _user_tier = (
+            await get_user_tier(user_id, session.organization_id) if user_id else None
+        )
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),
             "conversation_turn": str(turn),
@@ -6095,7 +6097,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # never to ``current_message``: that is what the transcript records and
         # the next turn replays, and it must not accumulate one stale figure
         # per turn.
-        budget_status = await build_turn_budget_block(envelope, user_id)
+        budget_status = await build_turn_budget_block(
+            envelope, user_id, session.organization_id
+        )
         # Same rule: true of this turn only, so never in ``current_message``.
         if use_e2b:
             budget_status += await build_sandbox_replaced_notice(session_id)

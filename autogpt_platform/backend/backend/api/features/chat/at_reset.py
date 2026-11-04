@@ -27,7 +27,8 @@ from backend.copilot.at_reset import (
 from backend.copilot.at_reset_lock import at_reset_job_lock
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.rate_limit import RateLimitUnavailable, enforce_payment_paywall
+from backend.copilot.rate_limit import RateLimitUnavailable
+from backend.data.entitlement import enforce_payment_paywall
 from backend.executor.scheduler import CopilotTurnJobInfo, SchedulerClient
 from backend.util.clients import get_scheduler_client
 
@@ -180,7 +181,9 @@ async def _run_at(
         # waiting on it and can carry on now.
         raise HTTPException(status_code=409, detail="not_out_of_budget")
     try:
-        return await next_reset_run_at(user_id, session.session_id, kind)
+        return await next_reset_run_at(
+            user_id, session.session_id, kind, session.organization_id
+        )
     except NoResetAhead as e:
         raise HTTPException(status_code=409, detail=e.reason) from e
     except RateLimitUnavailable as e:

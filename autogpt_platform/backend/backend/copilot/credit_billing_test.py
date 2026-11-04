@@ -611,10 +611,10 @@ async def test_outside_a_credit_billed_turn_a_tool_asks_the_allowance(mocker):
         "backend.copilot.credit_billing.platform_spend_refusal",
         AsyncMock(return_value="You've reached your daily usage limit."),
     )
-    assert await tool_spend_refusal("user-1") == (
+    assert await tool_spend_refusal("user-1", None) == (
         "You've reached your daily usage limit."
     )
-    allowance.assert_awaited_once_with("user-1")
+    allowance.assert_awaited_once_with("user-1", None)
 
 
 @pytest.mark.asyncio
@@ -630,6 +630,6 @@ async def test_a_credit_billed_turns_tools_spend_up_to_its_cap(
     turn = await _billed(credits, balance=75)
     async with credit_billing(turn):
         await record_credit_billed_cost("user-1", spent_credits * 10_000)
-        refusal = await tool_spend_refusal("user-1")
+        refusal = await tool_spend_refusal("user-1", None)
     assert (refusal is not None) is refused
     allowance.assert_not_awaited()

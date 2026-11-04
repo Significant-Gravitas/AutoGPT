@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
-from backend.copilot.rate_limit import is_user_paywalled
 from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.db_accessors import (
     execution_db,
@@ -19,6 +18,7 @@ from backend.data.db_accessors import (
     review_db,
     user_db,
 )
+from backend.data.entitlement import is_user_paywalled
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.user import is_user_banned
 from backend.util.clients import get_database_manager_async_client
@@ -272,7 +272,8 @@ async def _compose_fresh_briefing(
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
     if await is_user_banned(user_id):
         return {"status": "skipped", "reason": "banned"}
-    if await is_user_paywalled(user_id):
+    # The briefing is the account's own, in its personal organization.
+    if await is_user_paywalled(user_id, None):
         return {"status": "skipped", "reason": "paywalled"}
 
     user = await user_db().get_user_by_id(user_id)

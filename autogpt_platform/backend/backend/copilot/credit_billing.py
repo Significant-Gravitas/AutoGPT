@@ -43,12 +43,13 @@ from backend.copilot.constants import (
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
-from backend.copilot.rate_limit import RateLimitUnavailable, platform_spend_refusal
+from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
 from backend.copilot.turn_budget import BudgetWindow, TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db
+from backend.data.entitlement_limits import platform_spend_refusal
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
 
@@ -288,15 +289,16 @@ async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
         await turn.end()
 
 
-async def tool_spend_refusal(user_id: str | None) -> str | None:
+async def tool_spend_refusal(user_id: str | None, org_id: str | None) -> str | None:
     """Why a tool may not pay a provider on the platform's key now; None when it may.
 
     In a credit-billed turn the tool's cost lands on the turn's credits, so it
-    may spend until the turn's recorded cost reaches its cap.
+    may spend until the turn's recorded cost reaches its cap. Otherwise the
+    allowance is the tier the user works under in *org_id*.
     """
     turn = credit_billed_turn(user_id)
     if turn is None:
-        return await platform_spend_refusal(user_id)
+        return await platform_spend_refusal(user_id, org_id)
     if turn.spent_microdollars < turn.cap_credits * MICRODOLLARS_PER_CREDIT:
         return None
     return "This run has used all the credits it can spend."

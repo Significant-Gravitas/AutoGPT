@@ -1,4 +1,9 @@
-"""Admin endpoints for checking and resetting user CoPilot rate limit usage."""
+"""Admin endpoints for checking and resetting user CoPilot rate limit usage.
+
+These read and set a user's own plan, so they ask the entitlement check about
+the user's personal organization (no organization). A team organization's
+plan is managed on ``org_plan_admin_routes``.
+"""
 
 import asyncio
 import logging
@@ -11,14 +16,13 @@ from pydantic import BaseModel
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
     SubscriptionTier,
-    get_global_rate_limits,
     get_stripe_sweep_revert_warning,
     get_tier_multipliers,
-    get_usage_status,
-    get_user_tier,
     reset_user_usage,
     set_user_tier,
 )
+from backend.data.entitlement import get_user_tier
+from backend.data.entitlement_limits import get_global_rate_limits, get_usage_status
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)

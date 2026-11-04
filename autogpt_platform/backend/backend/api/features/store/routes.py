@@ -19,8 +19,8 @@ from backend.api.features.search import hybrid_search as search_engine
 from backend.api.features.search.rate_limit import enforce_public_search_rate_limit
 from backend.api.live_auth import requires_live_resource_permission
 from backend.api.utils.client_ip import ClientIP
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.db_accessors import live_resource_lease
+from backend.data.entitlement import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_downloaded

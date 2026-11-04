@@ -20,12 +20,10 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.workspace.preview import build_preview_response
 from backend.api.features.workspace.service import store_workspace_upload
 from backend.copilot.db import get_chat_session_expert_ids
-from backend.copilot.rate_limit import (
-    enforce_payment_paywall,
-    get_workspace_storage_limit_bytes,
-)
 from backend.data import workspace as workspace_db
 from backend.data.db_accessors import LiveResourceAccessRevoked, live_resource_lease
+from backend.data.entitlement import enforce_payment_paywall
+from backend.data.entitlement_limits import get_workspace_storage_limit_bytes
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
@@ -481,7 +479,7 @@ async def get_storage_usage(
                     team_id=ctx.team_id,
                     include_internal=False,
                 ),
-                get_workspace_storage_limit_bytes(ctx.user_id),
+                get_workspace_storage_limit_bytes(ctx.user_id, ctx.org_id),
             )
 
         (used_bytes, internal_bytes), file_count, limit_bytes = await guard.run(

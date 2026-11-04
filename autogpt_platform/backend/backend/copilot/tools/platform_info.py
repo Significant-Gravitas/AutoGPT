@@ -6,7 +6,8 @@ from typing import Any
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
-from backend.copilot.rate_limit import get_user_tier
+from backend.data.entitlement import get_user_tier
+from backend.data.entitlement_limits import org_plan_decides
 
 from .base import BaseTool
 from .models import ErrorResponse, PlatformInfoResponse, ToolResponseBase
@@ -67,7 +68,9 @@ class PlatformInfoTool(BaseTool):
         session_id = session.session_id
 
         if topic == "subscription":
-            return await self._handle_subscription(user_id, session_id)
+            return await self._handle_subscription(
+                user_id, session_id, session.organization_id
+            )
 
         return ErrorResponse(
             message=f"Unknown topic '{topic}'. Available topics: subscription",
@@ -79,6 +82,7 @@ class PlatformInfoTool(BaseTool):
         self,
         user_id: str | None,
         session_id: str | None,
+        organization_id: str | None = None,
     ) -> ToolResponseBase:
         if not user_id:
             return ErrorResponse(
@@ -112,7 +116,8 @@ class PlatformInfoTool(BaseTool):
             )
 
         try:
-            tier = await get_user_tier(user_id)
+            tier = await get_user_tier(user_id, organization_id)
+            org_plan = await org_plan_decides(organization_id)
         except Exception:
             logger.exception("Failed to fetch subscription info for user %s", user_id)
             return ErrorResponse(
@@ -122,6 +127,19 @@ class PlatformInfoTool(BaseTool):
             )
 
         display_name = _TIER_DISPLAY_NAMES.get(tier.value, tier.value)
+        if org_plan:
+            return PlatformInfoResponse(
+                message=(
+                    f"This chat is in a team organization on the {display_name} "
+                    "plan. The organization's plan applies here, not the user's "
+                    "own; its owner arranges plan changes with AutoGPT. "
+                    "Only mention the AutoGPT platform to the user."
+                ),
+                topic="subscription",
+                tier=tier.value,
+                billing_url=None,
+                session_id=session_id,
+            )
 
         return PlatformInfoResponse(
             message=(

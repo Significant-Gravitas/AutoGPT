@@ -666,7 +666,9 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id, organization_id=args.organization_id
             )
-            if await _refuse_if_turn_may_not_start(args, llm_auth_provider, routine):
+            if await _refuse_if_turn_may_not_start(
+                args, llm_auth_provider, routine, args.organization_id
+            ):
                 return
             new_session = await create_chat_session(
                 args.user_id,
@@ -783,7 +785,10 @@ async def _execute_copilot_turn(**kwargs):
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
             if await _refuse_if_turn_may_not_start(
-                args, session.metadata.llm_auth_provider, routine
+                args,
+                session.metadata.llm_auth_provider,
+                routine,
+                session.organization_id,
             ):
                 return
             target_session_id = args.session_id
@@ -899,6 +904,7 @@ async def _refuse_if_turn_may_not_start(
     job_args: "CopilotTurnJobArgs",
     llm_auth_provider: CopilotLlmAuthProvider,
     routine: ExpertRoutine | None,
+    org_id: str | None,
 ) -> bool:
     """Refuse a fire that may not start, as ``dispatch_next_for_user`` refuses
     a queued turn, and say whether it did: the owner has no access to the route
@@ -914,7 +920,7 @@ async def _refuse_if_turn_may_not_start(
     """
     retry = None
     try:
-        refusal = await turn_refusal(job_args.user_id, llm_auth_provider)
+        refusal = await turn_refusal(job_args.user_id, llm_auth_provider, org_id)
         if refusal is not None and refusal.transient:
             retry = _reschedule_one_shot_after_limits_unreadable
     except Exception as exc:

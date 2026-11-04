@@ -23,11 +23,13 @@ from backend.copilot.rate_limit import (
     RateLimitUnavailable,
     SubscriptionTier,
     UsageWindow,
+)
+from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.data.entitlement_limits import (
     get_global_rate_limits,
     get_remaining_usd_budget,
     get_usage_status,
 )
-from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 
 BudgetWindow = Literal["daily", "weekly", "trial", "task"]
 
@@ -52,8 +54,10 @@ class TurnBudget(BaseModel):
     hard_cap: bool = False
 
 
-async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
-    """Budget for a platform-billed turn starting now."""
+async def resolve_turn_budget(
+    user_id: str | None, org_id: str | None = None
+) -> TurnBudget:
+    """Budget for a platform-billed turn starting now in *org_id*."""
     task_cap = config.claude_agent_max_budget_usd
     whole_task = TurnBudget(usd=task_cap, limiting="task")
     if not user_id:
@@ -62,6 +66,7 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
     # A negative floor turns a Redis brown-out into -1 rather than a
     # made-up figure; the pre-turn gate has already failed closed on it.
@@ -71,6 +76,7 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
         weekly_cost_limit=weekly_limit,
         floor_usd=-1.0,
         expected_tier=tier,
+        org_id=org_id,
     )
     trial = tier == SubscriptionTier.TRIAL
     if trial:
@@ -79,7 +85,7 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
     if remaining < 0 or not math.isfinite(remaining) or task_cap <= remaining:
         return whole_task.model_copy(update={"hard_cap": trial})
     window, resets_at = await _limiting_window(
-        user_id, daily_limit, weekly_limit, tier, remaining
+        user_id, org_id, daily_limit, weekly_limit, tier, remaining
     )
     return TurnBudget(
         usd=remaining, limiting=window, resets_at=resets_at, hard_cap=trial
@@ -88,6 +94,7 @@ async def resolve_turn_budget(user_id: str | None) -> TurnBudget:
 
 async def _limiting_window(
     user_id: str,
+    org_id: str | None,
     daily_limit: int,
     weekly_limit: int,
     tier: SubscriptionTier,
@@ -100,7 +107,9 @@ async def _limiting_window(
     """
     unknown: BudgetWindow = "trial" if tier == SubscriptionTier.TRIAL else "daily"
     try:
-        status = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
+        status = await get_usage_status(
+            user_id, daily_limit, weekly_limit, tier=tier, org_id=org_id
+        )
     except RateLimitUnavailable:
         return unknown, None
     binding = [

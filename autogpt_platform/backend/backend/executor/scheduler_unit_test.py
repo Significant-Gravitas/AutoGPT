@@ -2954,7 +2954,8 @@ async def test_a_tick_that_may_start_fires(owner_gate, session_id):
     mocks = await _fire_hourly(session_id, "platform")
 
     mocks["schedule_turn"].assert_awaited_once()
-    owner_gate.is_user_paywalled.assert_awaited_once_with("user-1")
+    # Asked in the organization the scheduled chat runs in: here, none.
+    owner_gate.is_user_paywalled.assert_awaited_once_with("user-1", None)
     owner_gate.check_rate_limit.assert_awaited_once()
 
 

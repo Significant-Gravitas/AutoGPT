@@ -510,7 +510,7 @@ async def test_a_turn_held_for_a_hires_setup_is_charged_to_the_plan_after_it() -
     )
     expert_store.expert_setup_status = AsyncMock(side_effect=setup_status)
 
-    async def allowance_gate(user_id: str) -> None:
+    async def allowance_gate(user_id: str, _org_id: str | None) -> None:
         await get_ready_usage_state(user_id)
 
     charged_to: list[str | None] = []

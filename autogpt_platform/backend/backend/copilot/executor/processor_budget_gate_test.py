@@ -122,7 +122,8 @@ async def test_a_refused_turn_ends_paused_without_running():
 
     await turn.run(_entry(), refusal)
 
-    refusal.assert_awaited_once_with("user-1")
+    # Checked in the organization the chat runs in: here, none.
+    refusal.assert_awaited_once_with("user-1", None)
     turn.engine.assert_not_called()
     turn.stream.assert_not_called()
     paused = [c for c in turn.published() if isinstance(c, StreamTurnPaused)]

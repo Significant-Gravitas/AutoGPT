@@ -22,14 +22,14 @@ from pydantic import BaseModel
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession, upsert_chat_session
 from backend.copilot.pending_messages import peek_pending_count
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    SubscriptionTier,
-    check_rate_limit,
-    get_global_rate_limits,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, SubscriptionTier
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.copilot.usage_activation import get_ready_usage_state
+from backend.data.entitlement_limits import (
+    check_rate_limit,
+    get_global_rate_limits,
+    org_plan_decides,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,9 @@ class AutoContinueGate(BaseModel):
     pause: TurnPause | None = None
 
 
-async def refusal_for(user_id: str | None) -> TurnPause | None:
-    """The not-started pause for a platform turn starting now, or None to run.
+async def refusal_for(user_id: str | None, org_id: str | None) -> TurnPause | None:
+    """The not-started pause for a platform turn starting now in *org_id*, or
+    None to run.
 
     Raises ``RateLimitUnavailable`` when the allowance can't be read: callers
     fail closed rather than run a turn nobody metered.
@@ -56,6 +57,7 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
     if daily == 0 and weekly == 0:
         # No plan, or the trial is over: nothing to spend, and nothing that
@@ -64,7 +66,9 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
         # subscription change and report as unavailable -- and which is
         # what says the pause is the trial's rather than a missing plan's.
         state = await get_ready_usage_state(user_id)
-        ended_trial = state.tier == SubscriptionTier.TRIAL
+        ended_trial = (
+            state.tier == SubscriptionTier.TRIAL and not await org_plan_decides(org_id)
+        )
         return TurnPause(
             reason="trial" if ended_trial else "weekly",
             resets_at=None,
@@ -77,6 +81,7 @@ async def refusal_for(user_id: str | None) -> TurnPause | None:
             daily_cost_limit=daily,
             weekly_cost_limit=weekly,
             expected_tier=tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as exc:
         # A trial's allowance doesn't refill; its end is not a reset. Nor
@@ -122,7 +127,7 @@ async def gate_auto_continue(
     try:
         if not await peek_pending_count(session.session_id):
             return AutoContinueGate(proceed=True)
-        pause = await refusal_for(user_id)
+        pause = await refusal_for(user_id, session.organization_id)
     except Exception:
         logger.warning(
             f"Queued messages in session {session.session_id[:12]} wait for "

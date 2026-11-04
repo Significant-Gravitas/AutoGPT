@@ -596,7 +596,9 @@ async def _gather(
     the slot for an eligible concurrent pass on a shared FalkorDB. Raises
     ``PassEnded`` with the skip or failure that ends the pass early.
     """
-    budget_ok, budget_skip = await check_dream_budget(run.user_id, config=config)
+    budget_ok, budget_skip = await check_dream_budget(
+        run.user_id, config=config, org_id=scope.organization_id
+    )
     if not budget_ok:
         if budget_skip == "rate_limit_unavailable":
             raise PassEnded(

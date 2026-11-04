@@ -248,7 +248,7 @@ async def check_action(
     async def over_ceiling() -> Ruling | None:
         if effect not in METERED or estimate <= 0 or unsupervised:
             return None
-        spend = await spent_past_ceiling(user_id)
+        spend = await spent_past_ceiling(user_id, session.organization_id)
         if spend is None:
             return None
         return Ruling(

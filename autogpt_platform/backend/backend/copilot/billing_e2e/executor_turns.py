@@ -22,7 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.copilot import budget_gate
 from backend.copilot import model as chat_model
-from backend.copilot import rate_limit, stream_registry, tools
+from backend.copilot import stream_registry, tools
 from backend.copilot.baseline import service as baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor import processor
@@ -34,6 +34,7 @@ from backend.copilot.sdk import tool_adapter
 from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tree import root_envelope
+from backend.data import entitlement_limits
 
 from .baseline_turns import BaselineTurns
 from .provider import FakeProvider
@@ -175,7 +176,9 @@ class BaselineTurnsViaExecutor(BaselineTurns):
         self._executor = executor
         self.user_context = AsyncMock(return_value=None)
         # BaselineTurns stubs it; the trial is what sizes this budget.
-        monkeypatch.setattr(baseline, "build_budget_ctx", rate_limit.build_budget_ctx)
+        monkeypatch.setattr(
+            baseline, "build_budget_ctx", entitlement_limits.build_budget_ctx
+        )
         monkeypatch.setattr(baseline, "inject_user_context", self.user_context)
 
     async def __call__(

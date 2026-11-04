@@ -38,7 +38,7 @@ def ledger(monkeypatch) -> TreeLedger:
 
     monkeypatch.setattr(budget_signal, "get_tree_ledger", _get)
 
-    async def _limits(_uid, _d, _w):
+    async def _limits(_uid, _d, _w, _org=None):
         return 1_000_000, 7_000_000, "BASIC"
 
     async def _remaining(**_kw):
@@ -93,7 +93,7 @@ async def test_the_block_states_both_budgets_and_the_seats_left(ledger) -> None:
 async def test_a_tree_that_has_not_spawned_yet_shows_its_prospective_ceiling(
     ledger, monkeypatch
 ) -> None:
-    async def _ceiling(_user_id):
+    async def _ceiling(_user_id, _org=None):
         return 500_000
 
     monkeypatch.setattr(budget_signal, "resolve_root_ceiling_microdollars", _ceiling)

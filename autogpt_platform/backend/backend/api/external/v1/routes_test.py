@@ -385,7 +385,7 @@ def test_execute_graph_uses_key_org_not_user_default(
 
     app.dependency_overrides[require_auth] = fake_require_auth
 
-    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod, "enforce_entitlement", AsyncMock())
     captured: dict = {}
 
     async def fake_add(**kwargs):
@@ -428,7 +428,7 @@ def test_execute_graph_honors_key_team_restriction(
 
     app.dependency_overrides[require_auth] = fake_require_auth
 
-    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod, "enforce_entitlement", AsyncMock())
     captured: dict = {}
 
     async def fake_add(**kwargs):
@@ -460,7 +460,7 @@ def test_execute_graph_org_home_key_rejects_team_only_graph(
         )
 
     app.dependency_overrides[require_auth] = fake_require_auth
-    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod, "enforce_entitlement", AsyncMock())
     exact_lookup = AsyncMock(return_value=None)
     resolve_grant = AsyncMock()
     add_execution = AsyncMock()
@@ -503,7 +503,7 @@ def test_execute_graph_team_key_accepts_exact_team_grant(
         )
 
     app.dependency_overrides[require_auth] = fake_require_auth
-    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod, "enforce_entitlement", AsyncMock())
     monkeypatch.setattr(
         "backend.api.features.library.db.get_library_agent_by_graph_id",
         AsyncMock(return_value=None),
@@ -695,7 +695,7 @@ def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch)
     catch-all on this route, so we just lock the propagation."""
     monkeypatch.setattr(
         routes_mod,
-        "enforce_payment_paywall",
+        "enforce_entitlement",
         AsyncMock(side_effect=UserPaywalledError("subscription required")),
     )
 

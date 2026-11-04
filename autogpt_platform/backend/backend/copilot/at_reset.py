@@ -30,11 +30,13 @@ from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
     SubscriptionTier,
+)
+from backend.data.db_accessors import chat_db, credit_db
+from backend.data.entitlement_limits import (
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
 )
-from backend.data.db_accessors import chat_db, credit_db
 from backend.util.background import spawn_background_task
 from backend.util.clients import get_scheduler_client
 
@@ -88,7 +90,7 @@ def at_reset_schedule_id(kind: AtResetKind, session_id: str) -> str:
 
 
 async def next_reset_run_at(
-    user_id: str, session_id: str, kind: AtResetKind
+    user_id: str, session_id: str, kind: AtResetKind, org_id: str | None = None
 ) -> datetime:
     """When this chat's at-reset turn should fire.
 
@@ -101,7 +103,7 @@ async def next_reset_run_at(
     offset = timedelta(seconds=reset_jitter_seconds(session_id))
     if kind == "resume":
         offset += _RESUME_AFTER_SEND
-    return await _blocking_reset(user_id) + _AFTER_RESET + offset
+    return await _blocking_reset(user_id, org_id) + _AFTER_RESET + offset
 
 
 def reset_jitter_seconds(session_id: str) -> int:
@@ -151,7 +153,9 @@ async def fire_verdict(
     if session.metadata.llm_auth_provider != "platform":
         # Only the platform route spends this budget.
         return FireVerdict(action="fire")
-    return await _budget_verdict(session.user_id, session.session_id, kind)
+    return await _budget_verdict(
+        session.user_id, session.session_id, kind, session.organization_id
+    )
 
 
 def cancel_resume_at_reset_in_background(session_id: str, user_id: str) -> asyncio.Task:
@@ -179,11 +183,12 @@ async def _cancel_resume(session_id: str, user_id: str) -> None:
         )
 
 
-async def _blocking_reset(user_id: str) -> datetime:
+async def _blocking_reset(user_id: str, org_id: str | None) -> datetime:
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
     # A window that allows nothing (a lapsed trial or plan) never refills, and
     # nor does a trial's lifetime allowance. A trial's own daily or weekly
@@ -194,7 +199,7 @@ async def _blocking_reset(user_id: str) -> datetime:
         raise NoResetAhead("no_reset")
     # No usage, read off a Redis failure, would say the budget is already back.
     status = await get_usage_status(
-        user_id, daily_limit, weekly_limit, tier=tier, fail_closed=True
+        user_id, daily_limit, weekly_limit, tier=tier, fail_closed=True, org_id=org_id
     )
     # As in ``check_rate_limit``: a negative limit means no cap at all.
     exhausted = [w for w in (status.daily, status.weekly) if 0 <= w.limit <= w.used]
@@ -215,13 +220,14 @@ async def _trial_allowance_spent(user_id: str) -> bool:
 
 
 async def _budget_verdict(
-    user_id: str, session_id: str, kind: AtResetKind
+    user_id: str, session_id: str, kind: AtResetKind, org_id: str | None
 ) -> FireVerdict:
     try:
         daily_limit, weekly_limit, tier = await get_global_rate_limits(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
+            org_id,
         )
         if daily_limit == 0 and weekly_limit == 0:
             # No plan, or the trial is over. Settled here: an ended
@@ -233,19 +239,20 @@ async def _budget_verdict(
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
             expected_tier=tier,
+            org_id=org_id,
         )
     except RateLimitUnavailable:
         return FireVerdict(action="retry", why="the budget could not be read")
     except RateLimitExceeded:
-        return await _next_reset_verdict(user_id, session_id, kind)
+        return await _next_reset_verdict(user_id, session_id, kind, org_id)
     return FireVerdict(action="fire")
 
 
 async def _next_reset_verdict(
-    user_id: str, session_id: str, kind: AtResetKind
+    user_id: str, session_id: str, kind: AtResetKind, org_id: str | None
 ) -> FireVerdict:
     try:
-        run_at = await next_reset_run_at(user_id, session_id, kind)
+        run_at = await next_reset_run_at(user_id, session_id, kind, org_id)
     except NoResetAhead as e:
         if e.reason == "no_reset":
             return FireVerdict(action="drop", why="its allowance never refills")

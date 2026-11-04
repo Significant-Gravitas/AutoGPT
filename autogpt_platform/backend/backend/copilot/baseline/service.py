@@ -113,7 +113,6 @@ from backend.copilot.prompting import (
     get_team_building_supplement,
 )
 from backend.copilot.provider_failure import classify as classify_provider_failure
-from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamCheckpoint,
@@ -190,6 +189,7 @@ from backend.copilot.transcript import (
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.db_accessors import context_without_live_leases
+from backend.data.entitlement_limits import build_budget_ctx
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.llm.provider_billing import (
@@ -2228,6 +2228,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             default_daily_cost_limit=config.daily_cost_limit_microdollars,
             default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+            org_id=session.organization_id,
         )
         # Per-session follow-up awareness — gives the baseline model the
         # current session_id + pending follow-up summary on its first turn
@@ -2345,7 +2346,9 @@ async def stream_chat_completion_baseline(
     # pending fold so it lands on the message the model reads last, and never
     # on ``user_message_for_transcript``: that would persist one stale figure
     # per turn, the same trap the warm-context injection below names.
-    budget_status = await build_turn_budget_block(envelope, user_id)
+    budget_status = await build_turn_budget_block(
+        envelope, user_id, session.organization_id
+    )
     if e2b_sandbox is not None:
         budget_status += await build_sandbox_replaced_notice(session_id)
     if budget_status:

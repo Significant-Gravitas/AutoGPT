@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from prisma import Json, Prisma
 from prisma.errors import UniqueViolationError
@@ -20,6 +21,7 @@ from backend.data.org_migration import (
     _soft_delete_blocking_orphan,
     create_personal_org,
 )
+from backend.data.org_plan import forget_org_plan
 from backend.data.tenancy import (
     lock_live_org_membership_scope,
     lock_live_org_membership_scopes,
@@ -30,6 +32,7 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .memory_model import SharedMemoryOrgAccess, SharedMemoryTeamAccess
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
+from .roles import require_owner_for_role_change
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +43,22 @@ async def _lock_authorized_org_action(
     actor_user_id: str | None,
     action: OrgAction,
     related_user_ids: list[str] | None = None,
-) -> None:
+) -> RequestContext | None:
+    """Lock the org and check the actor may act; the actor's live context, or
+    None for a system change."""
     if actor_user_id is None:
         await lock_live_org_scope(client, org_id)
-        return
-    if (
-        await lock_live_org_permission_scope(
-            client,
-            actor_user_id,
-            org_id,
-            action,
-            related_user_ids,
-        )
-        is None
-    ):
+        return None
+    actor = await lock_live_org_permission_scope(
+        client,
+        actor_user_id,
+        org_id,
+        action,
+        related_user_ids,
+    )
+    if actor is None:
         raise NotAuthorizedError("Organization access was revoked")
+    return actor
 
 
 # ---------------------------------------------------------------------------
@@ -660,8 +664,10 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
         display_name=display_name,
         replaces_org_id=org_id,
     )
-    # New runs bill the team org's balance now, not after the cached minute.
+    # New runs bill the team org's balance now, not after the cached minute,
+    # and its own plan, not its owner's, decides what its members may use.
     forget_personal_org_owner(org_id)
+    forget_org_plan(org_id)
 
     return await get_org(org_id)
 
@@ -781,9 +787,9 @@ async def update_org_member(
     is_billing_manager: bool | None,
     requesting_user_id: str | None = None,
 ) -> OrgMemberResponse:
-    """Update a member's role flags."""
+    """Update a member's role flags. Only the owner changes them."""
     async with transaction() as tx:
-        await _lock_authorized_org_action(
+        actor = await _lock_authorized_org_action(
             tx,
             org_id,
             requesting_user_id,
@@ -800,6 +806,13 @@ async def update_org_member(
             raise ValueError(
                 "Cannot change the owner's role flags directly. Use transfer-ownership."
             )
+        require_owner_for_role_change(
+            actor,
+            is_admin=member.isAdmin,
+            is_billing_manager=member.isBillingManager,
+            wants_admin=is_admin,
+            wants_billing_manager=is_billing_manager,
+        )
 
         update_data: dict = {}
         if is_admin is not None:

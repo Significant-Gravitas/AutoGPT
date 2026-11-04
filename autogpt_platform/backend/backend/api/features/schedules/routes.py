@@ -26,10 +26,10 @@ from backend.api.live_auth import (
     requires_live_resource_permission as requires_resource_permission,
 )
 from backend.api.live_auth import resolve_write_team_id as _resolve_write_team_id
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.scheduled_chats import cadence_service, forget
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.grants import resolve_graph_grant
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import (

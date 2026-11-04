@@ -376,7 +376,7 @@ def _mock_stream_internals(
         return_value=None,
     )
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -1762,6 +1762,7 @@ def test_usage_returns_daily_and_weekly(
         weekly_cost_limit=50000,
         rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
         tier=SubscriptionTier.BASIC,
+        org_id="test-org",
     )
 
 
@@ -1783,6 +1784,7 @@ def test_usage_uses_config_limits(
         weekly_cost_limit=77777,
         rate_limit_reset_cost=500,
         tier=SubscriptionTier.BASIC,
+        org_id="test-org",
     )
 
 
@@ -2379,7 +2381,7 @@ def test_create_session_uses_the_saved_default(
     )
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2405,7 +2407,7 @@ def test_an_explicit_route_still_beats_the_saved_default(
     )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2427,7 +2429,7 @@ def test_a_saved_default_that_vanished_falls_back_instead_of_failing(
     )
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2552,7 +2554,7 @@ def test_create_session_codex_route_persists_owned_credential(
 ) -> None:
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
         side_effect=fastapi.HTTPException(
             status_code=402,
@@ -2582,7 +2584,7 @@ def test_create_session_microsoft_route_persists_owned_credential(
 ) -> None:
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
     codex_gate = mocker.patch.object(
@@ -2624,7 +2626,7 @@ def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     lookup.return_value = [credential]
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2636,7 +2638,7 @@ def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
     assert mock_create.call_args.kwargs["llm_credential_id"] is None
     lookup.assert_any_await(test_user_id, "codex")
-    mock_paywall.assert_awaited_once_with(test_user_id)
+    mock_paywall.assert_awaited_once_with(test_user_id, "test-org")
 
 
 def test_create_session_self_hosted_defaults_to_codex_when_unconfigured(
@@ -2650,7 +2652,7 @@ def test_create_session_self_hosted_defaults_to_codex_when_unconfigured(
     ]
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2716,7 +2718,7 @@ def test_create_session_self_hosted_rejects_invalid_codex_as_unconfigured(
     ]
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2739,7 +2741,7 @@ def test_create_session_self_hosted_requires_selection_for_multiple_codex_routes
     ]
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2757,7 +2759,7 @@ def test_create_session_respects_explicit_platform_route(
     lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
     )
 
@@ -2775,7 +2777,7 @@ def test_create_session_platform_route_still_enforces_paywall(
 ) -> None:
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
-        "backend.api.features.chat.routes.enforce_payment_paywall",
+        "backend.api.features.chat.routes.enforce_entitlement",
         new_callable=AsyncMock,
         side_effect=fastapi.HTTPException(
             status_code=402,
@@ -2990,6 +2992,8 @@ def _mock_stream_queue_internals(
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
         mock_session.expert_id = None
+        # A chat in the user's personal organization.
+        mock_session.organization_id = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,

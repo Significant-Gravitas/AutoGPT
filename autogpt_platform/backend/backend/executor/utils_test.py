@@ -645,8 +645,8 @@ async def test_add_graph_execution_owner_mode_threads_owner_and_audits(
         return_value=mocker.MagicMock(publish=mocker.AsyncMock()),
     )
     mocker.patch(
-        "backend.executor.utils.is_user_paywalled",
-        mocker.AsyncMock(return_value=False),
+        "backend.executor.utils.require_entitlement",
+        mocker.AsyncMock(return_value=None),
     )
 
     with caplog.at_level(logging.INFO, logger="backend.executor.utils"):
@@ -2332,13 +2332,14 @@ async def test_add_graph_execution_paywall_blocks_paywalled_user(
     mocker: MockerFixture,
 ):
     """Sanity: with ``bypass_paywall=False`` (default), a paywalled user
-    is rejected before any DB work happens."""
+    is rejected, in the org the run lands in, before the run is created."""
     from backend.copilot.rate_limit import UserPaywalledError
 
-    mocker.patch(
-        "backend.executor.utils.is_user_paywalled",
-        new=mocker.AsyncMock(return_value=True),
+    gate = mocker.patch(
+        "backend.executor.utils.require_entitlement",
+        new=mocker.AsyncMock(side_effect=UserPaywalledError("no plan")),
     )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_edb.create_graph_execution = mocker.AsyncMock()
 
@@ -2346,7 +2347,10 @@ async def test_add_graph_execution_paywall_blocks_paywalled_user(
         await add_graph_execution(
             graph_id="g",
             user_id="paywalled-user",
+            organization_id="org-1",
         )
+
+    gate.assert_awaited_once_with("paywalled-user", "org-1", action="run workflows")
 
     mock_edb.create_graph_execution.assert_not_called()
 
@@ -2358,8 +2362,8 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
     """``bypass_paywall=True`` skips the paywall gate entirely â€” admin
     requeue paths must succeed even when the original user is NO_TIER."""
     paywall_mock = mocker.patch(
-        "backend.executor.utils.is_user_paywalled",
-        new=mocker.AsyncMock(return_value=True),
+        "backend.executor.utils.require_entitlement",
+        new=mocker.AsyncMock(side_effect=AssertionError("gate must not run")),
     )
     # Stub everything downstream â€” we only care that the gate didn't fire.
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
@@ -3027,39 +3031,40 @@ def _runner_is_not_in_the_given_org(mocker: MockerFixture):
 
 
 @pytest.mark.asyncio
-async def test_a_run_given_an_org_the_user_isnt_in_goes_to_their_own(
+async def test_a_run_given_an_org_the_user_isnt_in_is_refused(
     mocker: MockerFixture,
 ):
     """A run can be handed an org the user isn't in, such as one a preset
-    carries from before presets were checked. The run, and the context billing
-    reads, get the user's own."""
+    carries from before presets were checked. It is refused, never moved to
+    the user's own org, and nothing is created or queued."""
+    from backend.util.exceptions import NotAuthorizedError
+
     mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
     membership = _runner_is_not_in_the_given_org(mocker)
+    queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
 
-    await add_graph_execution(
-        graph_id="g",
-        user_id="runner",
-        organization_id="other-org",
-        team_id="other-team",
-    )
+    with pytest.raises(NotAuthorizedError, match="aren't a member"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="runner",
+            organization_id="other-org",
+            team_id="other-team",
+        )
 
     membership.assert_awaited_once_with("runner", "other-org", "other-team")
-    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
-    assert create_kwargs["organization_id"] == "runner-org"
-    assert create_kwargs["team_id"] == "runner-team"
-    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
-        "execution_context"
-    ]
-    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+    mock_edb.create_graph_execution.assert_not_called()
+    queue.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
+async def test_a_sub_run_in_an_org_its_user_left_is_refused(
     mocker: MockerFixture,
 ):
-    """A sub-graph run is handed its parent's context, and billing reads the
-    context rather than the run: when the run moves, the context moves too."""
+    """A sub-graph run is handed its parent's context. When its user has left
+    the parent's org since, the sub-run is refused rather than billed to the
+    user's own org."""
     from backend.data.execution import ExecutionContext
+    from backend.util.exceptions import NotAuthorizedError
 
     mock_edb, _ = _mock_add_graph_execution_create_path(
         mocker, org_id="runner-org", team_id="runner-team"
@@ -3072,20 +3077,16 @@ async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
         team_id="other-team",
     )
 
-    await add_graph_execution(
-        graph_id="g",
-        user_id="runner",
-        execution_context=parent_context,
-        organization_id="other-org",
-        team_id="other-team",
-    )
+    with pytest.raises(NotAuthorizedError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="runner",
+            execution_context=parent_context,
+            organization_id="other-org",
+            team_id="other-team",
+        )
 
-    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
-    assert create_kwargs["organization_id"] == "runner-org"
-    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
-        "execution_context"
-    ]
-    assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+    mock_edb.create_graph_execution.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -3095,47 +3096,38 @@ async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
     """Sub-graph and scheduled runs start in processes without direct DB
     access, so the membership check has to go through the DB manager there."""
     import backend.executor.utils as executor_utils
+    from backend.util.exceptions import NotAuthorizedError
 
     mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
     executor_utils.prisma.is_connected.return_value = False
     rpc = mocker.MagicMock()
     rpc.create_graph_execution = mock_edb.create_graph_execution
-    rpc.update_graph_execution_stats = mock_edb.update_graph_execution_stats
-    rpc.update_node_execution_status_batch = mock_edb.update_node_execution_status_batch
-    rpc.get_user_by_id = executor_utils.user_db.get_user_by_id
-    rpc.get_graph_settings = executor_utils.graph_db.get_graph_settings
-    rpc.get_or_create_workspace = executor_utils.workspace_db.get_or_create_workspace
-    rpc.increment_onboarding_runs = (
-        executor_utils.onboarding_db.increment_onboarding_runs
-    )
     rpc.resolve_member_tenancy = mocker.AsyncMock(
         return_value=("runner-org", "runner-team")
     )
-    rpc.resolve_execution_credentials_owner = mocker.AsyncMock(return_value=None)
     mocker.patch(
         "backend.executor.utils.get_database_manager_async_client", return_value=rpc
     )
 
-    await add_graph_execution(
-        graph_id="g",
-        user_id="runner",
-        organization_id="other-org",
-        team_id="other-team",
-    )
+    with pytest.raises(NotAuthorizedError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="runner",
+            organization_id="other-org",
+            team_id="other-team",
+        )
 
     rpc.resolve_member_tenancy.assert_awaited_once_with(
         "runner", "other-org", "other-team"
     )
-    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
-    assert create_kwargs["organization_id"] == "runner-org"
-    assert create_kwargs["team_id"] == "runner-team"
+    mock_edb.create_graph_execution.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a_new_expert_run_isnt_put_through_the_org_check(
     mocker: MockerFixture,
 ):
-    """An expert run keeps its own tenancy rule, so the check that replaces
+    """An expert run keeps its own tenancy rule, so the check that refuses
     an org its runner isn't in doesn't apply to it."""
     mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
     _mock_expert_personal_tenancy(mocker)
@@ -4248,8 +4240,8 @@ async def _resume_and_capture_entry(mocker: MockerFixture, graph_exec, graph=Non
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     mocker.patch(
-        "backend.executor.utils.is_user_paywalled",
-        new=mocker.AsyncMock(return_value=False),
+        "backend.executor.utils.require_entitlement",
+        new=mocker.AsyncMock(return_value=None),
     )
     # A resume re-resolves OWNER-mode credentials; this run has no grant.
     mocker.patch(
@@ -4389,8 +4381,8 @@ async def test_a_subgraph_run_gets_its_own_identity_and_keeps_its_tree(
     )
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     mocker.patch(
-        "backend.executor.utils.is_user_paywalled",
-        new=mocker.AsyncMock(return_value=False),
+        "backend.executor.utils.require_entitlement",
+        new=mocker.AsyncMock(return_value=None),
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=child)

@@ -31,6 +31,7 @@ from backend.data.db_accessors import (
     require_exact_chat_session_scope,
     understanding_db,
 )
+from backend.data.entitlement import get_user_tier
 from backend.data.understanding import (
     BusinessUnderstanding,
     format_understanding_for_prompt,
@@ -730,9 +731,7 @@ async def inject_user_context(
         raw_ctx = format_understanding_for_prompt(understanding)
         # Append subscription tier so the agent has ambient awareness.
         if user_id:
-            from .rate_limit import get_user_tier
-
-            tier = await get_user_tier(user_id)
+            tier = await get_user_tier(user_id, organization_id)
             tier_line = f"Plan: {tier.value}"
             raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
         if not raw_ctx:

@@ -10,19 +10,19 @@ from prisma.enums import SubscriptionTier
 from pytest_snapshot.plugin import Snapshot
 
 from backend.copilot import rate_limit
-from backend.copilot.rate_limit import is_user_paywalled as _REAL_IS_USER_PAYWALLED
+from backend.data import entitlement
+from backend.data.org_plan import OrgPlanSnapshot
 from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
 from backend.util.feature_flag import Flag
 
-# Every module that imports the check by name.
+# The one check every paywall asks (``backend.data.entitlement``), and the
+# modules that call it by name.
 _PAYWALL_CHECK_SITES = (
-    "backend.copilot.rate_limit.is_user_paywalled",
-    "backend.executor.utils.is_user_paywalled",
-    "backend.api.features.integrations.router.is_user_paywalled",
-    "backend.api.external.v2.mcp_calls.is_user_paywalled",
-    "backend.copilot.gate.workflow.is_user_paywalled",
+    "backend.data.entitlement.paywall_reason",
+    "backend.api.external.v2.mcp_calls.paywall_reason",
 )
+_REAL_PAYWALL_REASON = entitlement.paywall_reason
 _BAN_CHECK_SITES = (
     "backend.data.user.is_user_banned",
     "backend.api.external.middleware.is_user_banned",
@@ -119,28 +119,32 @@ def mock_jwt_admin(admin_user_id):
 
 @pytest.fixture(autouse=True)
 def _bypass_paywall(mocker):
-    """Make every API test treat the user as paid by default.
+    """Make every API test treat the user as entitled by default.
 
-    Tests have no real Supabase row backing the JWT, so without this
-    bypass every paywalled route would 503 on the tier-lookup failure
-    inside ``enforce_payment_paywall`` and every graph execution would
-    raise ``UserPaywalledError`` from ``add_graph_execution`` once the
-    paywall is wired up. Tests that specifically exercise the paywall
-    (e.g. ``TestEnforcePaymentPaywall``, ``TestIsUserPaywalled``) live
-    in ``rate_limit_test.py`` and patch ``_fetch_user_tier`` directly,
-    bypassing this helper.
+    Tests have no real rows backing the JWT or its organization, so without
+    this bypass every paywalled route would 503 on the lookup failure inside
+    ``enforce_payment_paywall``. Tests of the check itself live beside
+    ``backend/data/entitlement.py``; ``paywalled_user`` runs it for real.
     """
-    paywall_off = mocker.AsyncMock(return_value=False)
+    paywall_off = mocker.AsyncMock(return_value=None)
     for site in _PAYWALL_CHECK_SITES:
         mocker.patch(site, new=paywall_off)
+
+
+@pytest.fixture
+def real_entitlement(mocker):
+    """Undoes ``_bypass_paywall``: the entitlement check reads the database."""
+    for site in _PAYWALL_CHECK_SITES:
+        mocker.patch(site, new=_REAL_PAYWALL_REASON)
 
 
 @pytest.fixture
 def paywalled_user(mocker, test_user_id):
     """Make the signed-in test user one without a plan, judged by the real check.
 
-    Undoes ``_bypass_paywall`` and stubs only the stored tier and the payments
-    flag, so a 402 comes from the same ``is_user_paywalled`` production runs.
+    Undoes ``_bypass_paywall`` and stubs only the stored tier, the payments
+    flag and the organization (the user's personal one), so a 402 comes from
+    the same entitlement check production runs.
     """
 
     async def no_plan(user_id: str) -> UsageActivationState:
@@ -151,8 +155,12 @@ def paywalled_user(mocker, test_user_id):
     async def payments_on(flag: Flag, *args, **kwargs) -> bool:
         return flag == Flag.ENABLE_PLATFORM_PAYMENT
 
+    async def personal_org(org_id: str) -> OrgPlanSnapshot:
+        return OrgPlanSnapshot(org_id=org_id, exists=True, is_personal=True)
+
     for site in _PAYWALL_CHECK_SITES:
-        mocker.patch(site, new=_REAL_IS_USER_PAYWALLED)
+        mocker.patch(site, new=_REAL_PAYWALL_REASON)
+    mocker.patch.object(entitlement, "get_org_plan_snapshot", new=personal_org)
     mocker.patch(
         "backend.copilot.usage_activation.pro_activation_db",
         return_value=SimpleNamespace(get_usage_activation_state=no_plan),

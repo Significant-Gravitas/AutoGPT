@@ -720,7 +720,7 @@ class CoPilotProcessor:
                 # An AutoPilot block turn the allowance can't cover may run on
                 # the credit balance instead (see backend.copilot.credit_billing).
                 try:
-                    pause = await refusal_for(entry.user_id)
+                    pause = await refusal_for(entry.user_id, session.organization_id)
                     if pause is not None:
                         # Billed to the tenancy the turn runs under (as
                         # streamed below), decided when the turn starts.

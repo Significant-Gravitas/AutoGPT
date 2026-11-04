@@ -150,7 +150,7 @@ async def run_nightly_batch_submit(
     # One pre-flight billing check for the whole fan-out: a paywalled /
     # over-budget user costs us one LD lookup + one Redis read for the
     # night, not one per submitter.
-    budget_ok, budget_skip = await check_dream_budget(user_id)
+    budget_ok, budget_skip = await check_dream_budget(user_id, org_id=organization_id)
     if not budget_ok:
         return _budget_stopped(
             user_id, expert_id, organization_id, nightly_id, started_at, budget_skip

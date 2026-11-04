@@ -17,7 +17,7 @@ from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.block import TEST_CREDENTIALS_INPUT, MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
 from backend.blocks.mcp.helpers import mcp_authorization_header
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
 from backend.util.request import HTTPClientError

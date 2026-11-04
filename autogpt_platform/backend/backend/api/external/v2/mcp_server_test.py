@@ -422,9 +422,9 @@ async def test_a_tool_that_spends_platform_money_checks_the_allowance_first(
         return_value=_token(APIKeyPermission.USE_TOOLS),
     )
     mocker.patch(
-        "backend.api.external.v2.mcp_calls.is_user_paywalled",
+        "backend.api.external.v2.mcp_calls.paywall_reason",
         new_callable=mock.AsyncMock,
-        return_value=allowance_failure.get("paywalled", False),
+        return_value="no_plan" if allowance_failure.get("paywalled") else None,
     )
     mocker.patch(
         "backend.api.external.v2.mcp_calls.get_global_rate_limits",
@@ -751,9 +751,9 @@ async def test_a_tool_that_fails_unexpectedly_returns_no_internal_text(
         return_value=_token(*_tool_scopes("get_agent_building_guide")),
     )
     mocker.patch(
-        "backend.api.external.v2.mcp_calls.is_user_paywalled",
+        "backend.api.external.v2.mcp_calls.paywall_reason",
         new_callable=mock.AsyncMock,
-        return_value=False,
+        return_value=None,
     )
     mocker.patch(
         "backend.api.external.v2.mcp_server._execute_tool_sync",

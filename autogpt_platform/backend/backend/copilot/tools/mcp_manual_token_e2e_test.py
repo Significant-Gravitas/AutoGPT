@@ -27,7 +27,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import router
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.model import Credentials
 
 from ._test_data import make_session

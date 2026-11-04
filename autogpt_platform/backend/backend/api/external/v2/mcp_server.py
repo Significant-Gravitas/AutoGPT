@@ -434,9 +434,9 @@ def _create_tool_handler(
             tool.name, kwargs, user_id, access_token.organization_id
         )
         await check_tool_limits(tool, kwargs, user_id, access_token.organization_id)
-        await check_plan(user_id)
+        await check_plan(user_id, access_token.organization_id)
         if tool.spends_platform_money:
-            await check_spend_allowance(user_id)
+            await check_spend_allowance(user_id, access_token.organization_id)
 
         # An automation session: nobody is watching to answer an approval
         # card, so the credential's scopes are the authorization, as in REST.

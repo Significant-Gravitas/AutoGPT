@@ -347,7 +347,7 @@ async def execute_block(
             coerce_inputs_to_schema(input_data, block.input_schema)
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in simulate_block(
-                block, input_data, user_id=user_id
+                block, input_data, user_id=user_id, org_id=organization_id
             ):
                 outputs[output_name].append(output_data)
             # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")

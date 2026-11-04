@@ -421,7 +421,7 @@ async def test_child_of_a_closed_tree_is_refused() -> None:
 
 @pytest.mark.asyncio
 async def test_admit_turn_fails_closed_for_children_open_for_roots(monkeypatch) -> None:
-    async def _ceiling(_user_id):
+    async def _ceiling(_user_id, _org=None):
         return 1_000_000
 
     monkeypatch.setattr(tree, "resolve_root_ceiling_microdollars", _ceiling)
@@ -434,7 +434,7 @@ async def test_admit_turn_fails_closed_for_children_open_for_roots(monkeypatch) 
 
 @pytest.mark.asyncio
 async def test_first_spawn_opens_the_tree_with_the_root_counted(monkeypatch) -> None:
-    async def _ceiling(_user_id):
+    async def _ceiling(_user_id, _org=None):
         return 42
 
     async def _auto_mode_off(*_args, **_kwargs):
@@ -472,7 +472,7 @@ def _ceiling(
     """Drive resolve_root_ceiling_microdollars with a fixed tier + balance."""
     weekly_limit = daily * 5 if weekly is None else weekly
 
-    async def _limits(_uid, _d, _w):
+    async def _limits(_uid, _d, _w, _org=None):
         return daily, weekly_limit, "TIER"
 
     async def _remaining(**_kw):

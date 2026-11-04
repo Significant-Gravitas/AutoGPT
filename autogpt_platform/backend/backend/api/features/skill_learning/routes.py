@@ -52,12 +52,12 @@ from backend.copilot.learning.owner_actions import (
 )
 from backend.copilot.learning.publish import PublishOutcome
 from backend.copilot.learning.revocation import invalidate_versions_for_source
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import invalidate_skills_index_cache
 from backend.data import skill_learning as learning_data
 from backend.data import skill_reviews as reviews_data
 from backend.data import skill_use as use_data
 from backend.data import skill_versions as versions_data
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.skill_deletion import DELETED_STATE
 from backend.data.skill_learning import owner_key_for
 from backend.util.feature_flag import Flag, is_feature_enabled

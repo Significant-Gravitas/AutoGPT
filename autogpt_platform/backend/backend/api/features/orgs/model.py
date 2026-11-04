@@ -90,6 +90,18 @@ class OrgResponse(BaseModel):
         )
 
 
+class DefaultOrgResponse(OrgResponse):
+    """The caller's personal organization, with what the caller may do."""
+
+    can_create_organization: bool = Field(
+        description=(
+            "Whether this account may create a team organization or convert its "
+            "personal one. Access inherited from someone else's team "
+            "organization doesn't count."
+        )
+    )
+
+
 class OrgMemberResponse(BaseModel):
     id: str
     user_id: str

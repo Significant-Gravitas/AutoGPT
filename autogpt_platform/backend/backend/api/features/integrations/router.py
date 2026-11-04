@@ -40,13 +40,13 @@ from backend.api.credential_scope import credential_user_id, oauth_credential_sc
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.api.middleware.body_limit import MiB, request_body_limit
-from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
 )
 from backend.data.credential_scope import scope_error
 from backend.data.db import get_database_schema, transaction
 from backend.data.db_accessors import experts_db
+from backend.data.entitlement import enforce_payment_paywall, is_user_paywalled
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.includes import AGENT_PRESET_INCLUDE
@@ -1638,7 +1638,7 @@ async def webhook_ingress_generic(
     has_triggers = bool(webhook.triggered_nodes or webhook.triggered_presets)
     # Each run would refuse a paywalled owner anyway. Stop before publishing and
     # the reward, so a retried delivery after a failed lookup repeats neither.
-    if has_triggers and await is_user_paywalled(user_id):
+    if has_triggers and await is_user_paywalled(user_id, webhook.organization_id):
         return
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")

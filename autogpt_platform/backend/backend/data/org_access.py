@@ -84,6 +84,25 @@ async def query_org_access(user_id: str) -> bool:
     return bool(rows and rows[0]["allowed"])
 
 
+@cached(maxsize=4096, ttl_seconds=ACCESS_CACHE_SECONDS, shared_cache=True)
+async def has_own_org_access(user_id: str) -> bool:
+    """Whether *user_id* holds an admin's grant itself. Access a team
+    organization passes on to its members and invitees doesn't count."""
+    return await org_access_db().query_own_org_access(user_id)
+
+
+async def query_own_org_access(user_id: str) -> bool:
+    """The uncached read behind :func:`has_own_org_access`."""
+    grant = await OrgAccessGrant.prisma().find_unique(where={"userId": user_id})
+    return grant is not None
+
+
+def forget_org_access(user_id: str) -> None:
+    """Drop both cached answers for *user_id* after its grant changed."""
+    has_org_access.cache_delete(user_id)
+    has_own_org_access.cache_delete(user_id)
+
+
 async def get_org_access_status(user_id: str) -> OrgAccessStatus:
     user = await User.prisma().find_unique(where={"id": user_id})
     if user is None:
@@ -148,7 +167,7 @@ async def grant_org_access(
                 }
             )
             await _audit(tx, admin_user_id, user_id, "grant", clean_note)
-    has_org_access.cache_delete(user_id)
+    forget_org_access(user_id)
     logger.info(f"Admin {admin_user_id} enabled organizations for user {user_id}")
     return await get_org_access_status(user_id)
 
@@ -160,7 +179,7 @@ async def revoke_org_access(user_id: str, admin_user_id: str) -> OrgAccessStatus
         deleted = await OrgAccessGrant.prisma(tx).delete_many(where={"userId": user_id})
         if deleted:
             await _audit(tx, admin_user_id, user_id, "revoke", None)
-    has_org_access.cache_delete(user_id)
+    forget_org_access(user_id)
     logger.info(f"Admin {admin_user_id} disabled organizations for user {user_id}")
     return await get_org_access_status(user_id)
 

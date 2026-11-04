@@ -861,7 +861,7 @@ class TestSimulatorCostTracking:
         assert outputs[0][0] == "error"
         assert "daily usage limit" in outputs[0][1]
         get_client.assert_not_called()
-        spend_refusal.assert_awaited_once_with("user-42")
+        spend_refusal.assert_awaited_once_with("user-42", None)
 
     @pytest.mark.asyncio
     async def test_an_unparseable_response_is_still_recorded(self) -> None:

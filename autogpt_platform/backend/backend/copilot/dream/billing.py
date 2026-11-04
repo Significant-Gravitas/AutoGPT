@@ -42,13 +42,9 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.graphiti.scope_resolution import memory_organization_id
 from backend.copilot.inference.context import InferenceContext, InferenceUsage
 from backend.copilot.inference.record import price, record
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    get_global_rate_limits,
-    is_user_paywalled,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.data.entitlement import is_user_paywalled
+from backend.data.entitlement_limits import check_rate_limit, get_global_rate_limits
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +66,10 @@ DreamBudgetSkipReason = Literal[
 
 
 async def check_dream_budget(
-    user_id: str, config: ChatConfig | None = None
+    user_id: str, config: ChatConfig | None = None, *, org_id: str | None = None
 ) -> tuple[bool, DreamBudgetSkipReason | None]:
-    """Pre-flight: is the user allowed to spend on a dream pass right now?
+    """Pre-flight: is the user allowed to spend on a dream pass right now, in
+    the organization whose memory it reviews (``None``: their personal one)?
 
     Returns ``(True, None)`` when the pass may proceed. Returns
     ``(False, reason)`` when the orchestrator should bail with a
@@ -91,7 +88,7 @@ async def check_dream_budget(
     config = config or ChatConfig()
 
     try:
-        paywalled = await is_user_paywalled(user_id)
+        paywalled = await is_user_paywalled(user_id, org_id)
     except Exception as exc:
         # Tier lookup failure during a background job — fail closed so
         # we don't run a paywalled user's dream pass on a transient
@@ -109,6 +106,7 @@ async def check_dream_budget(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
+            org_id,
         )
         await check_rate_limit(
             user_id=user_id,
@@ -116,6 +114,7 @@ async def check_dream_budget(
             weekly_cost_limit=weekly_limit,
             skip_daily=True,
             expected_tier=_tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as exc:
         logger.info(

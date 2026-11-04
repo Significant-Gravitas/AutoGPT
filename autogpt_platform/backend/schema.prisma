@@ -3661,6 +3661,10 @@ model AgentGraphGrant {
   @@index([agentGraphId, agentGraphVersion])
 }
 
+// A team organization's plan. An AutoGPT admin sets it for a sales-led plan
+// (backend/data/org_plan.py); its members use paid features under planTier
+// while status is "active" and endsAt has not passed. seats caps active
+// members plus pending invitations.
 model OrganizationSubscription {
   organizationId       String    @id
   planCode             String?
@@ -3671,6 +3675,10 @@ model OrganizationSubscription {
   renewalAt            DateTime?
   cancelAt             DateTime?
   entitlements         Json      @default("{}")
+  seats                Int       @default(1)
+  // The last moment the plan counts; null when it runs until an admin ends it.
+  endsAt               DateTime?
+  note                 String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

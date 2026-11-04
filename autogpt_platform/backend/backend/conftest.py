@@ -102,6 +102,7 @@ def no_org_access_grants(request: pytest.FixtureRequest, monkeypatch):
         return False
 
     monkeypatch.setattr(rollout, "org_access_granted", no_grant)
+    monkeypatch.setattr(rollout, "own_org_access_granted", no_grant)
 
 
 @pytest_asyncio.fixture(autouse=True)

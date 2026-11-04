@@ -295,7 +295,8 @@ async def test_generate_skips_a_paywalled_user_before_reading_anything(
     monkeypatch.setattr(generate_module, "user_db", lambda: db)
     result = await generate_module.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "paywalled"}
-    paid_user.assert_awaited_once_with("user-1")
+    # The briefing is the account's own, judged in its personal organization.
+    paid_user.assert_awaited_once_with("user-1", None)
     db.get_user_by_id.assert_not_called()
 
 

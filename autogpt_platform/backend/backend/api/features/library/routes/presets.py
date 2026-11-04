@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, st
 
 from backend.api.features.experts import experts_db
 from backend.api.live_auth import live_dependency, requires_live_resource_permission
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution

@@ -6,8 +6,8 @@ from autogpt_libs.auth import RequestContext, get_request_context
 from fastapi import Depends, Path, Query, Security
 
 from backend.api.features.experts import experts_db
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import SkillLimitError, SkillOwnedError
+from backend.data.entitlement import enforce_payment_paywall
 
 from . import skill_db, skill_model, skill_submission_db
 

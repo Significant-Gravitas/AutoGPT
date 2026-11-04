@@ -1264,7 +1264,7 @@ async def test_a_banned_owner_is_refused_on_every_route(route) -> None:
             turn_queue, "is_user_paywalled", new=AsyncMock(return_value=False)
         ),
     ):
-        refusal = await turn_queue.turn_refusal("u1", route)
+        refusal = await turn_queue.turn_refusal("u1", route, None)
 
     assert refusal == turn_queue.TurnRefusal(reason="is banned", kind="banned")
 
@@ -1508,7 +1508,8 @@ async def test_an_advanced_turn_without_the_tier_does_not_hold_up_the_queue() ->
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
     assert claim.await_args.args[0].session_id == "sub"
-    paywalled.assert_awaited_once_with("u1")
+    # Both chats are in the user's personal organization: one check for both.
+    paywalled.assert_awaited_once_with("u1", None)
 
 
 @pytest.mark.asyncio

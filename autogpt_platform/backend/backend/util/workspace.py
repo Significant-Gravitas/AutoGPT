@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Awaitable, Optional, TypeVar
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel
 
-from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import (
     LiveResourceAccessRevoked,
     live_resource_lease,
@@ -26,6 +25,7 @@ from backend.data.db_accessors import (
     workspace_folder_db,
     workspace_skill_db,
 )
+from backend.data.entitlement_limits import get_workspace_storage_limit_bytes
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.tenancy import ResourceAccess
 from backend.data.workspace import WorkspaceFile
@@ -434,7 +434,7 @@ class WorkspaceManager:
         # For overwrites, subtract the existing file's size so replacing a file
         # with a same-size or smaller file is not rejected near the cap.
         storage_limit, current_usage = await asyncio.gather(
-            get_workspace_storage_limit_bytes(self.user_id),
+            get_workspace_storage_limit_bytes(self.user_id, self.organization_id),
             workspace_db().get_workspace_total_size(self.workspace_id, all_scopes=True),
         )
         if overwrite:
@@ -727,7 +727,7 @@ class WorkspaceManager:
                 )
         db = workspace_db()
         storage_limit, current_usage = await asyncio.gather(
-            get_workspace_storage_limit_bytes(self.user_id),
+            get_workspace_storage_limit_bytes(self.user_id, self.organization_id),
             db.get_workspace_total_size(self.workspace_id, all_scopes=True),
         )
         for path in {item.path for item in package} | set(removed):

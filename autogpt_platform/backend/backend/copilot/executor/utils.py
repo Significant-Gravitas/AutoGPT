@@ -711,10 +711,16 @@ async def dispatch_turn(
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
-            turn_id, session_id, user_id, permissions, spawn, root=root
+            turn_id,
+            session_id,
+            user_id,
+            permissions,
+            spawn,
+            root=root,
+            org_id=organization_id,
         )
     else:
-        await readmit_turn(envelope, user_id=user_id)
+        await readmit_turn(envelope, user_id=user_id, org_id=organization_id)
         envelope = narrowed_by(envelope, permissions)
 
     # Everything after the admit above runs inside the try: the tree's node
@@ -854,9 +860,11 @@ async def _admitted_turn_envelope(
     spawn: SpawnRequest | None,
     *,
     root: bool = False,
+    org_id: str | None = None,
 ) -> TurnEnvelope:
     """Derive this turn's envelope from the running turn's (a child) or mint
-    a root, then admit it against the tree ledger.
+    a root, then admit it against the tree ledger, whose ceiling is the tier
+    the user works under in *org_id*.
 
     The spawner's envelope comes from the executor contextvar, so a caller
     outside any turn — the HTTP route, the scheduler, a graph block — is a
@@ -888,7 +896,7 @@ async def _admitted_turn_envelope(
                 "ai_parent_span_id": current_span_id(),
             }
         )
-    await admit_turn(envelope, user_id=user_id)
+    await admit_turn(envelope, user_id=user_id, org_id=org_id)
     return envelope
 
 

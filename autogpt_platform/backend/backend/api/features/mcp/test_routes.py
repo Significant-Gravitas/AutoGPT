@@ -13,7 +13,8 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_request_context, get_user_id
+from autogpt_libs.auth.models import RequestContext
 from multidict import CIMultiDict, CIMultiDictProxy
 from pydantic import SecretStr
 
@@ -27,8 +28,19 @@ from backend.util.request import HTTPClientError, HTTPServerError, Response
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[credential_user_id] = lambda: "test-user-id"
-# The router's paywall dependency reads the signed-in user from the token.
 app.dependency_overrides[get_user_id] = lambda: "test-user-id"
+# The router's paywall dependency reads the request's verified context.
+app.dependency_overrides[get_request_context] = lambda: RequestContext(
+    user_id="test-user-id",
+    org_id="test-org",
+    team_id=None,
+    is_org_owner=True,
+    is_org_admin=True,
+    is_org_billing_manager=False,
+    is_team_admin=False,
+    is_team_billing_manager=False,
+    seat_status="ACTIVE",
+)
 
 
 @pytest_asyncio.fixture(scope="module")

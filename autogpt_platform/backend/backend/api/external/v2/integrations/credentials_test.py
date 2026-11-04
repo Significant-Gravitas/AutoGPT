@@ -31,7 +31,7 @@ def _auth(mocker: pytest_mock.MockFixture):
 
     app.dependency_overrides[require_auth] = fake_auth
     mocker.patch(
-        "backend.api.external.v2.tenancy.enforce_payment_paywall",
+        "backend.api.external.v2.tenancy.enforce_entitlement",
         new_callable=AsyncMock,
     )
     yield

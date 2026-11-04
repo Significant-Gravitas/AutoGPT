@@ -34,9 +34,9 @@ from starlette import status
 
 from backend.api.external import middleware
 from backend.api.org_rollout import require_personal_scope_without_collaboration
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.db import prisma
+from backend.data.entitlement import enforce_entitlement
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ def require_paid_permission(*permissions: APIKeyPermission):
     async def check_plan(
         tenant: TenantContext = Security(check_permissions),
     ) -> TenantContext:
-        await enforce_payment_paywall(tenant.user_id)
+        await enforce_entitlement(tenant.user_id, tenant.organization_id)
         return tenant
 
     return check_plan

@@ -933,7 +933,7 @@ class TestInjectUserContextExpertWiring:
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
             patch(
-                "backend.copilot.rate_limit.get_user_tier",
+                "backend.copilot.service.get_user_tier",
                 new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
             ),
         ):

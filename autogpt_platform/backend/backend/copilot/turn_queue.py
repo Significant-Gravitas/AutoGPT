@@ -58,13 +58,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
-from backend.copilot.rate_limit import (
-    RateLimitExceeded,
-    RateLimitUnavailable,
-    check_rate_limit,
-    get_global_rate_limits,
-    is_user_paywalled,
-)
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
 from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
@@ -79,6 +73,8 @@ from backend.data.db_accessors import (
     live_resource_lease,
     require_exact_chat_session_scope,
 )
+from backend.data.entitlement import is_user_paywalled
+from backend.data.entitlement_limits import check_rate_limit, get_global_rate_limits
 from backend.data.user import is_user_banned
 from backend.integrations.codex.access import has_codex_access
 
@@ -651,7 +647,7 @@ async def _may_start(gates: "_UserGates", head: ChatSessionInfo) -> bool:
     """Whether ``head`` may start now: :func:`turn_refusal` for its route and,
     on the platform route, an Advanced turn's tier."""
     route_provider = head.metadata.llm_auth_provider
-    if not await gates.route_open(route_provider):
+    if not await gates.route_open(route_provider, head.organization_id):
         return False
     if route_provider != "platform":
         return True
@@ -679,15 +675,21 @@ class _UserGates:
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self._refusals: dict[CopilotLlmAuthProvider, TurnRefusal | None] = {}
+        # Keyed by the organization too: queued chats can be in several.
+        self._refusals: dict[
+            tuple[CopilotLlmAuthProvider, str | None], TurnRefusal | None
+        ] = {}
         self._advanced: bool | None = None
 
-    async def route_open(self, route: CopilotLlmAuthProvider) -> bool:
+    async def route_open(
+        self, route: CopilotLlmAuthProvider, org_id: str | None
+    ) -> bool:
         """Raises :class:`_QueueOnHold` when the gate could not read the user's
         state, which leaves the whole queue for the next tick."""
-        if route not in self._refusals:
-            self._refusals[route] = await turn_refusal(self.user_id, route)
-        refusal = self._refusals[route]
+        key = (route, org_id)
+        if key not in self._refusals:
+            self._refusals[key] = await turn_refusal(self.user_id, route, org_id)
+        refusal = self._refusals[key]
         if refusal is None:
             return True
         if refusal.transient:
@@ -857,9 +859,10 @@ class TurnRefusal(BaseModel):
 
 
 async def turn_refusal(
-    user_id: str, llm_auth_provider: CopilotLlmAuthProvider
+    user_id: str, llm_auth_provider: CopilotLlmAuthProvider, org_id: str | None
 ) -> TurnRefusal | None:
-    """Why a turn billed to this route may not start for this user, if so.
+    """Why a turn billed to this route may not start for this user in
+    *org_id*, if so.
 
     A ban first, on every route; then access (Codex entitlement, the platform
     paywall), then the platform route's usage: its daily and weekly windows and
@@ -874,7 +877,7 @@ async def turn_refusal(
         return TurnRefusal(reason="lacks Codex entitlement", kind="codex_access")
     if llm_auth_provider != "platform":
         return None
-    if await is_user_paywalled(user_id):
+    if await is_user_paywalled(user_id, org_id):
         return TurnRefusal(reason="paywalled", kind="no_plan")
     cfg = ChatConfig()
     try:
@@ -882,12 +885,14 @@ async def turn_refusal(
             user_id,
             cfg.daily_cost_limit_microdollars,
             cfg.weekly_cost_limit_microdollars,
+            org_id,
         )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
             expected_tier=usage_tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as exc:
         return TurnRefusal(

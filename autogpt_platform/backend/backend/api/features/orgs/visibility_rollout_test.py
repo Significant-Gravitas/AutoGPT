@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +12,7 @@ from backend.api.features.orgs import (
     team_routes,
 )
 from backend.api.features.orgs.grant_model import CreateGrantRequest
-from backend.api.features.orgs.model import UpdateOrgRequest
+from backend.api.features.orgs.model import OrgResponse, UpdateOrgRequest
 from backend.api.features.orgs.rollout_test import owner_context
 from backend.api.features.orgs.team_model import (
     AddTeamMemberRequest,
@@ -139,7 +140,16 @@ async def test_default_context_uses_canonical_owner_lookup(
     enabled, monkeypatch, mocker
 ):
     monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", enabled)
-    personal = MagicMock(id="my-personal-org")
+    personal = OrgResponse(
+        id="my-personal-org",
+        name="Me",
+        slug="me",
+        avatar_url=None,
+        description=None,
+        is_personal=True,
+        member_count=1,
+        created_at=datetime.now(timezone.utc),
+    )
     default = mocker.patch.object(
         routes.org_db,
         "get_user_default_team",
@@ -149,7 +159,12 @@ async def test_default_context_uses_canonical_owner_lookup(
         routes.org_db, "get_org", AsyncMock(return_value=personal)
     )
     roster = mocker.patch.object(routes.org_db, "list_user_orgs", AsyncMock())
-    assert await routes.get_default_org("owner") == personal
+    result = await routes.get_default_org("owner")
+    assert result.model_dump(exclude={"can_create_organization"}) == (
+        personal.model_dump()
+    )
+    # The installation override decides who may create organizations too.
+    assert result.can_create_organization is (enabled == "true")
     default.assert_awaited_once_with("owner")
     get_org.assert_awaited_once_with(personal.id)
     roster.assert_not_awaited()

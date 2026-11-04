@@ -7,7 +7,7 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
 from backend.api.live_auth import requires_live_resource_permission
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
 

@@ -12,7 +12,7 @@ from pydantic import SecretStr
 
 from backend.api.credential_scope import credential_user_id
 from backend.api.features.integrations.airtable import router
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.util.request import HTTPClientError, HTTPServerError
 

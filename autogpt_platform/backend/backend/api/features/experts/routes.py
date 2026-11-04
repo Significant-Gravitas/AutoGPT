@@ -47,9 +47,9 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLockError
+from backend.data.entitlement import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 

@@ -596,6 +596,19 @@ def org_access_db():
     return org_access_db
 
 
+def org_plan_db():
+    if db.is_connected():
+        from backend.data import org_plan as _org_plan_db
+
+        org_plan_db = _org_plan_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        org_plan_db = get_database_manager_async_client()
+
+    return org_plan_db
+
+
 def credit_db():
     if db.is_connected():
         from backend.data import db_manager as _credit_db

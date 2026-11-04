@@ -10,6 +10,7 @@ from backend.copilot import rate_limit, usage_activation
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.copilot.trial_reads import trial_reads_shared
 from backend.data import pro_activation
+from backend.data.entitlement_limits import build_budget_ctx
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
 
@@ -34,7 +35,6 @@ from .rate_limit import (
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
-    build_budget_ctx,
     check_rate_limit,
     get_daily_reset_count,
     get_global_rate_limits,
@@ -547,10 +547,12 @@ class TestEnforcePaymentPaywall:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         )
-        from .rate_limit import UserPaywalledError, enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
+
+        from .rate_limit import UserPaywalledError
 
         with pytest.raises(UserPaywalledError) as exc_info:
-            await enforce_payment_paywall(_USER)
+            await enforce_entitlement(_USER)
         assert "subscription" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -564,9 +566,9 @@ class TestEnforcePaymentPaywall:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=False),
         )
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
-        await enforce_payment_paywall(_USER)  # must not raise
+        await enforce_entitlement(_USER)  # must not raise
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -589,9 +591,9 @@ class TestEnforcePaymentPaywall:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         )
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
-        await enforce_payment_paywall(_USER)  # must not raise
+        await enforce_entitlement(_USER)  # must not raise
         # Short-circuits on tier check; flag lookup never happens for paid
         # tiers (avoids an unnecessary LD round-trip per paywalled route).
         is_feature_enabled_mock.assert_not_called()
@@ -757,10 +759,10 @@ class TestFetchUserTierErrorPropagation:
         mocker.patch("backend.copilot.rate_limit.user_db", return_value=mock_db)
         from fastapi import HTTPException
 
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
         with pytest.raises(HTTPException) as exc_info:
-            await enforce_payment_paywall(_USER)
+            await enforce_entitlement(_USER)
         assert exc_info.value.status_code == 503  # not 402
         assert exc_info.value.headers.get("Retry-After") == "30"
 
@@ -781,10 +783,12 @@ class TestEnforcePaymentPaywallInline:
             "backend.copilot.rate_limit.is_feature_enabled",
             new=AsyncMock(return_value=True),
         )
-        from .rate_limit import UserPaywalledError, enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
+
+        from .rate_limit import UserPaywalledError
 
         with pytest.raises(UserPaywalledError):
-            await enforce_payment_paywall(_USER)
+            await enforce_entitlement(_USER)
 
     @pytest.mark.asyncio
     async def test_passes_paid_user(self, mocker):
@@ -792,9 +796,9 @@ class TestEnforcePaymentPaywallInline:
             "backend.copilot.rate_limit._fetch_user_tier",
             new=AsyncMock(return_value=SubscriptionTier.PRO),
         )
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
-        await enforce_payment_paywall(_USER)  # must not raise
+        await enforce_entitlement(_USER)  # must not raise
 
     @pytest.mark.asyncio
     async def test_db_failure_raises_503(self, mocker):
@@ -807,10 +811,10 @@ class TestEnforcePaymentPaywallInline:
         )
         from fastapi import HTTPException
 
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
         with pytest.raises(HTTPException) as exc_info:
-            await enforce_payment_paywall(_USER)
+            await enforce_entitlement(_USER)
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers.get("Retry-After") == "30"
 
@@ -837,10 +841,10 @@ class TestEnforcePaymentPaywallContinued:
         )
         from fastapi import HTTPException
 
-        from .rate_limit import enforce_payment_paywall
+        from backend.data.entitlement import enforce_entitlement
 
         with pytest.raises(HTTPException) as exc_info:
-            await enforce_payment_paywall(_USER)
+            await enforce_entitlement(_USER)
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers.get("Retry-After") == "30"
         # Flag lookup never runs when tier is indeterminate — we don't

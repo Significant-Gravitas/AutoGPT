@@ -206,7 +206,7 @@ async def _audit_via_provider(
     ]
     try:
         # Billed to the platform's key whoever pays for the turn's model.
-        if refusal := await tool_spend_refusal(user_id):
+        if refusal := await tool_spend_refusal(user_id, session.organization_id):
             return _not_checked(f"{reviewer.name} was not asked: {refusal}")
         completion = await _complete(user_id, session, messages)
     except InferenceError as e:

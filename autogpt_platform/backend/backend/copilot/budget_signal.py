@@ -21,11 +21,14 @@ import logging
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import get_current_envelope
-from backend.copilot.rate_limit import get_global_rate_limits, get_remaining_usd_budget
 from backend.copilot.tree import (
     TurnEnvelope,
     get_tree_ledger,
     resolve_root_ceiling_microdollars,
+)
+from backend.data.entitlement_limits import (
+    get_global_rate_limits,
+    get_remaining_usd_budget,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,7 @@ CHECKPOINT_INSTRUCTION = (
 
 
 async def build_turn_budget_block(
-    envelope: TurnEnvelope | None, user_id: str | None
+    envelope: TurnEnvelope | None, user_id: str | None, org_id: str | None = None
 ) -> str:
     """The ``<budget_status>`` block for this turn, or ``""``.
 
@@ -51,9 +54,9 @@ async def build_turn_budget_block(
     if not config.tree_budget_signal_enabled or envelope is None:
         return ""
     try:
-        ceiling, spent, nodes, max_nodes = await _tree_state(envelope, user_id)
+        ceiling, spent, nodes, max_nodes = await _tree_state(envelope, user_id, org_id)
         line = _budget_line(ceiling, spent, nodes, max_nodes)
-        daily = await _remaining_daily_usd(user_id)
+        daily = await _remaining_daily_usd(user_id, org_id)
         if daily is not None:
             line += f" This account has ${daily:.2f} of today's budget left."
         if await _crossed_wrapup(envelope, ceiling, spent):
@@ -108,7 +111,7 @@ def _budget_line(ceiling: int, spent: int, nodes: int, max_nodes: int) -> str:
 
 
 async def _tree_state(
-    envelope: TurnEnvelope, user_id: str | None
+    envelope: TurnEnvelope, user_id: str | None, org_id: str | None
 ) -> tuple[int, int, int, int]:
     """``(ceiling, spent, nodes, max_nodes)`` in microdollars and counts.
 
@@ -126,14 +129,14 @@ async def _tree_state(
             snapshot.get("max_nodes", 0),
         )
     return (
-        await resolve_root_ceiling_microdollars(user_id),
+        await resolve_root_ceiling_microdollars(user_id, org_id),
         0,
         1,
         config.tree_max_nodes,
     )
 
 
-async def _remaining_daily_usd(user_id: str | None) -> float | None:
+async def _remaining_daily_usd(user_id: str | None, org_id: str | None) -> float | None:
     """``None`` rather than ``$0.00`` when the figure is unknowable — an
     unlimited account, or a Redis brown-out that already fails the turn's
     pre-gate closed."""
@@ -143,6 +146,7 @@ async def _remaining_daily_usd(user_id: str | None) -> float | None:
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
     remaining = await get_remaining_usd_budget(
         user_id=user_id,
@@ -152,6 +156,7 @@ async def _remaining_daily_usd(user_id: str | None) -> float | None:
         # as 0.0 and is the one figure worth telling the model.
         floor_usd=-1.0,
         expected_tier=_tier,
+        org_id=org_id,
     )
     return None if remaining < 0 or remaining == float("inf") else remaining
 

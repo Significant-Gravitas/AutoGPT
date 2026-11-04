@@ -37,7 +37,6 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -59,6 +58,7 @@ from backend.data.auth.oauth import (
     validate_redirect_uri,
     validate_scopes,
 )
+from backend.data.entitlement import enforce_payment_paywall
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 

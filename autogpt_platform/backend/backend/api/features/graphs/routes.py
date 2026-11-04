@@ -22,10 +22,10 @@ from backend.api.live_auth import (
 )
 from backend.api.live_auth import resolve_write_team_id
 from backend.api.model import CreateGraph, GraphExecutionSource, SetGraphActiveVersion
-from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.credit import get_credit_model
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.grants import resolve_graph_grant
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput

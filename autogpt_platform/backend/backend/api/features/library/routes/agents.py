@@ -6,7 +6,7 @@ from fastapi.responses import Response
 
 import backend.api.features.library._get_many as get_many
 from backend.api.live_auth import live_dependency, requires_live_resource_permission
-from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.entitlement import enforce_payment_paywall
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db

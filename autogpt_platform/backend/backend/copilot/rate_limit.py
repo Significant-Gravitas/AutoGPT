@@ -58,13 +58,10 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
 
-import fastapi
-from autogpt_libs.auth.dependencies import get_user_id
 from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.copilot.config import ChatConfig
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.copilot.trial_reads import forget_usage_state, shared_trial_read
 from backend.copilot.usage_activation import (
@@ -83,7 +80,9 @@ from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
-from backend.util.exceptions import UserPaywalledError
+
+# Re-exported: callers raise and catch it from here.
+from backend.util.exceptions import UserPaywalledError as UserPaywalledError
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 if TYPE_CHECKING:
@@ -92,8 +91,6 @@ if TYPE_CHECKING:
     from backend.data.subscription_trial import TrialState
 
 logger = logging.getLogger(__name__)
-
-_chat_config = ChatConfig()
 
 # "copilot:cost" (not the legacy "copilot:usage") so stale token-based
 # counters are not misread as microdollars.
@@ -553,6 +550,8 @@ async def get_usage_status(
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
     fail_closed: bool = False,
+    *,
+    org_plan: bool = False,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -567,6 +566,9 @@ async def get_usage_status(
         fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
             read, instead of reporting no usage. For callers that act on the
             figures rather than show them.
+        org_plan: The limits and ``tier`` come from an organization's plan
+            (``backend.data.entitlement``): the user's own tier and trial
+            don't apply, only their counters do.
 
     Returns:
         CoPilotUsageStatus with current usage and limits in microdollars.
@@ -578,9 +580,11 @@ async def get_usage_status(
         # counters don't matter. An ended trial still has its stale TRIAL
         # state here, which reports it as a spent trial rather than no plan.
         return _no_allowance_status(
-            now, tier, trial_ended=state.tier == SubscriptionTier.TRIAL
+            now,
+            tier,
+            trial_ended=not org_plan and state.tier == SubscriptionTier.TRIAL,
         )
-    if await _effective_usage_tier(user_id, state.tier) != tier:
+    if not org_plan and await _effective_usage_tier(user_id, state.tier) != tier:
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
     daily_used = 0
@@ -670,6 +674,7 @@ async def get_remaining_usd_budget(
     floor_usd: float = 0.5,
     *,
     expected_tier: SubscriptionTier | str | None = None,
+    org_plan: bool = False,
 ) -> float:
     """Return the user's remaining USD spend cap for the current windows.
 
@@ -704,15 +709,18 @@ async def get_remaining_usd_budget(
             handing the SDK a degenerate ``$0`` budget that would refuse
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
+        org_plan: The limits come from an organization's plan, so the user's
+            own tier and trial don't apply.
     """
     state = await get_ready_usage_state(user_id)
     if (
-        expected_tier is not None
+        not org_plan
+        and expected_tier is not None
         and await _effective_usage_tier(user_id, state.tier) != expected_tier
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     trial = None
-    if state.tier == SubscriptionTier.TRIAL:
+    if not org_plan and state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0.0
@@ -761,87 +769,6 @@ async def get_remaining_usd_budget(
     return max(floor_usd, remaining_usd)
 
 
-async def build_budget_ctx(
-    user_id: str | None,
-    default_daily_cost_limit: int,
-    default_weekly_cost_limit: int,
-) -> str:
-    """Build the inner content for an ``<budget_context>`` block.
-
-    Returns the *inner* text — the caller (``inject_user_context``)
-    wraps it in the ``<budget_context>`` tag.  Combines the tier-limit
-    lookup (``get_global_rate_limits``) and the remaining-USD lookup
-    (``get_remaining_usd_budget``) so callers don't have to compose
-    them by hand on every turn.
-
-    Returns ``""`` when:
-        * no ``user_id`` is available,
-        * the user has 0 remaining budget (they shouldn't be here — the
-          paywall dep raises 402 first — but defend against drift),
-        * Redis is unavailable (we'd rather emit nothing than a
-          misleading ``$0.00`` hint — the pre-turn gate already fails
-          closed at 503 in that case).
-    """
-    if not user_id:
-        return ""
-    daily_limit, weekly_limit, _tier = await get_global_rate_limits(
-        user_id,
-        default_daily_cost_limit,
-        default_weekly_cost_limit,
-    )
-    remaining = await get_remaining_usd_budget(
-        user_id=user_id,
-        daily_cost_limit=daily_limit,
-        weekly_cost_limit=weekly_limit,
-        # 0.0 here is a sentinel meaning "Redis brown-out / no value" —
-        # we map it back to "" below so the model doesn't see a
-        # misleading $0.00 hint when our metrics are degraded.
-        floor_usd=0.0,
-        expected_tier=_tier,
-    )
-    if remaining == float("inf") or remaining <= 0.0:
-        return ""
-    return (
-        f"Approximate remaining USD budget for this user: ${remaining:.2f}.\n"
-        "Pace your tool use and reasoning depth so the response stays "
-        "within this envelope."
-    )
-
-
-async def platform_spend_refusal(user_id: str | None) -> str | None:
-    """Why a call billed to the platform's own key may not run for *user_id* now.
-
-    Turn admission checks the allowance once per turn; a tool call or a dry run
-    that pays a provider itself asks again right before each call. Fails closed
-    when the allowance can't be read. ``None`` means the call may run.
-    """
-    if not user_id:
-        return None
-    daily, weekly, tier = await get_global_rate_limits(
-        user_id,
-        _chat_config.daily_cost_limit_microdollars,
-        _chat_config.weekly_cost_limit_microdollars,
-    )
-    if daily == 0 and weekly == 0:
-        return "Your plan has no usage allowance for this right now."
-    try:
-        await check_rate_limit(
-            user_id=user_id,
-            daily_cost_limit=daily,
-            weekly_cost_limit=weekly,
-            expected_tier=tier,
-        )
-    except RateLimitExceeded as e:
-        return str(e)
-    except RateLimitUnavailable:
-        logger.warning(
-            f"Usage limits unreadable for user {user_id}; refusing platform spend",
-            exc_info=True,
-        )
-        return "Usage limits can't be checked right now. Retry shortly."
-    return None
-
-
 async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
@@ -849,6 +776,7 @@ async def check_rate_limit(
     *,
     skip_daily: bool = False,
     expected_tier: SubscriptionTier | str | None = None,
+    org_plan: bool = False,
 ) -> None:
     """Check if user is within rate limits.
 
@@ -865,10 +793,11 @@ async def check_rate_limit(
     limit disables that window's check entirely — the explicit "no cap"
     sentinel that self-hosted distributions export (see ChatConfig) — so
     an uncapped window never raises. Routes that want to skip rate-limiting
-    entirely should not call this function. Entitlement (``NO_TIER`` +
-    ``ENABLE_PLATFORM_PAYMENT``) is enforced upstream by the route
-    dependency :func:`enforce_payment_paywall`, so this function is
-    purely about per-window USD usage.
+    entirely should not call this function. Entitlement is enforced
+    upstream by ``backend.data.entitlement`` (the ``enforce_payment_paywall``
+    route dependency), so this function is purely about per-window USD usage.
+    ``org_plan`` means the limits come from an organization's plan: the
+    user's own tier and trial don't apply, only their counters do.
 
     ``skip_daily`` skips the daily-cap check; the weekly cap still
     applies. Used by the dream pass so a user with a busy interactive
@@ -884,12 +813,13 @@ async def check_rate_limit(
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
     if (
-        expected_tier is not None
+        not org_plan
+        and expected_tier is not None
         and await _effective_usage_tier(user_id, state.tier) != expected_tier
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
-    if state.tier == SubscriptionTier.TRIAL:
+    if not org_plan and state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             raise RateLimitExceeded("trial", now)
@@ -1259,8 +1189,16 @@ get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-
 
 
 async def get_workspace_storage_limit_bytes(user_id: str) -> int:
-    """Return the workspace storage cap in bytes for the user's subscription tier."""
-    tier = await get_user_tier(user_id)
+    """Return the workspace storage cap in bytes for the user's own tier.
+
+    Callers outside ``backend.data.entitlement`` use its org-aware
+    ``get_workspace_storage_limit_bytes(user_id, org_id)`` instead.
+    """
+    return await storage_limit_bytes_for_tier(await get_user_tier(user_id))
+
+
+async def storage_limit_bytes_for_tier(tier: SubscriptionTier) -> int:
+    """The workspace storage cap in bytes that *tier* gives one person."""
     limits_mb = await get_workspace_storage_limits_mb()
     tier_key = getattr(tier, "value", str(tier))
     fallback_mb = limits_mb.get(
@@ -1477,6 +1415,24 @@ async def get_global_rate_limits(
 
     Returns:
         (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
+
+    The user's own tier; callers outside ``backend.data.entitlement`` use its
+    org-aware ``get_global_rate_limits`` instead.
+    """
+    tier = await get_user_tier(user_id)
+    return await rate_limits_for_tier(user_id, tier, config_daily, config_weekly)
+
+
+async def rate_limits_for_tier(
+    user_id: str,
+    tier: SubscriptionTier,
+    config_daily: int,
+    config_weekly: int,
+) -> tuple[int, int, SubscriptionTier]:
+    """The daily and weekly limits *tier* gives *user_id*, in microdollars.
+
+    A trial's limits are the user's own trial offer; an ended trial gives
+    nothing. ``NO_TIER`` gives nothing while payments are on for the user.
     """
     try:
         override = await _fetch_cost_limits_flag()
@@ -1493,7 +1449,6 @@ async def get_global_rate_limits(
     # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
     # only NO_TIER path that gets here is the beta cohort (flag off), which
     # falls back to BASIC limits so testers retain access.
-    tier = await get_user_tier(user_id)
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
@@ -1577,29 +1532,18 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Paywall enforcement
+# Personal paywall
 # ---------------------------------------------------------------------------
 #
-# Two primitives. Every gate uses one or the other:
-#
-#   1. ``is_user_paywalled(user_id) -> bool``  — the check. Lookup errors
-#      propagate so callers decide their own failure-mode.
-#   2. ``enforce_payment_paywall(user_id)``    — HTTP gate. Wraps (1) and
-#      raises ``UserPaywalledError`` (handler → 402) when paywalled, or
-#      ``HTTPException(503)`` + Retry-After on lookup error. Doubles as
-#      JWT route dep AND inline call from non-JWT routes (the explicit
-#      ``user_id`` arg overrides the ``Security`` default).
-#
-# Background callers (scheduled cron, webhook handlers, copilot internal
-# tools, ``add_graph_execution``) skip (2) and use (1) directly + raise
-# ``UserPaywalledError`` inline, so the framework's own retry layer
-# catches lookup errors — synthesising an ``HTTPException`` would be
-# wrong shape for non-HTTP contexts.
-#
+# The user's own plan only. Every caller goes through
+# ``backend.data.entitlement``, which applies this rule in the user's personal
+# organization (or when no organization is known) and an organization's plan
+# in a team organization; ``backend/data/entitlement_architecture_test.py``
+# refuses direct calls from anywhere else.
 
 
 async def is_user_paywalled(user_id: str) -> bool:
-    """Return ``True`` if the user has no entitlement to paywalled features.
+    """Return ``True`` if the user's own plan gives no paywalled features.
 
     Missing users, incomplete activations, and lookup errors propagate:
     HTTP gates return 503, and background work fails or retries without
@@ -1613,51 +1557,3 @@ async def is_user_paywalled(user_id: str) -> bool:
     if tier != SubscriptionTier.NO_TIER:
         return False
     return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
-
-
-async def enforce_payment_paywall(
-    user_id: str = fastapi.Security(get_user_id),
-) -> None:
-    """HTTP paywall gate — fail-closed on lookup error.
-
-    Two call shapes, same behaviour:
-
-    1. **JWT route dep**:
-       ``dependencies=[Depends(enforce_payment_paywall)]`` — FastAPI
-       auto-fills ``user_id`` from the JWT via the ``Security``
-       default. Mirrors the ``requires_admin_user`` pattern.
-
-    2. **Non-JWT route (inline)**: ``await enforce_payment_paywall(
-       auth.user_id)`` — for API-key-auth routes (external API) where
-       the JWT-based ``Security`` default doesn't apply; the explicit
-       positional argument wins.
-
-    Raises :class:`UserPaywalledError` (handled by the app-level
-    exception handler → HTTP 402) if the user is on NO_TIER with
-    ``ENABLE_PLATFORM_PAYMENT`` on. Tier-lookup failures map to
-    **HTTP 503 + Retry-After** so the client retries instead of
-    treating a transient Supabase / LD blip as a permanent paywall.
-
-    Background callers (scheduled cron, webhook handlers, copilot
-    internal tools) skip this function and call :func:`is_user_paywalled`
-    directly + raise inline, so the background framework's own error
-    handling decides what to do on lookup failure (typically: retry
-    on next tick) instead of synthesising an HTTP-shaped exception.
-    """
-    try:
-        paywalled = await is_user_paywalled(user_id)
-    except Exception as exc:
-        logger.warning(
-            "enforce_payment_paywall: tier lookup failed for %s: %s",
-            user_id[:8],
-            exc,
-        )
-        raise fastapi.HTTPException(
-            status_code=503,
-            detail="Subscription state temporarily unavailable, retry shortly.",
-            headers={"Retry-After": "30"},
-        ) from exc
-    if paywalled:
-        raise UserPaywalledError(
-            "A subscription is required to use this feature. Upgrade to continue."
-        )

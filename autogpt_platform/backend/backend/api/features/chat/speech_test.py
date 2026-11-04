@@ -78,7 +78,7 @@ def test_speech_refuses_a_paywalled_caller_before_spending(
 ) -> None:
     mocker.patch.object(
         speech_routes,
-        "enforce_payment_paywall",
+        "enforce_entitlement",
         new=AsyncMock(side_effect=UserPaywalledError("no active subscription")),
     )
 
@@ -230,7 +230,7 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         speech_routes, "is_feature_enabled", new=AsyncMock(return_value=True)
     )
     mocker.patch.object(
-        speech_routes, "enforce_payment_paywall", new=AsyncMock(return_value=None)
+        speech_routes, "enforce_entitlement", new=AsyncMock(return_value=None)
     )
     mocker.patch.object(
         speech_routes,

@@ -213,6 +213,7 @@ markers = [
     "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
     "real_login_chain: checks a sandbox's login files for real instead of reading them as unchanged",
     "real_org_access: reads admins' organization grants from the database instead of seeing none",
+    "real_seat_checks: counts organization invitations against seats and rate limits instead of skipping both",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",

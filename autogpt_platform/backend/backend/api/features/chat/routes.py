@@ -110,11 +110,7 @@ from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
     acquire_reset_lock,
-    check_rate_limit,
-    enforce_payment_paywall,
     get_daily_reset_count,
-    get_global_rate_limits,
-    get_usage_status,
     increment_daily_reset_count,
     release_reset_lock,
     reset_daily_usage,
@@ -191,6 +187,12 @@ from backend.data.db_accessors import (
     live_resource_scopes_lease,
     require_exact_chat_session_scope,
 )
+from backend.data.entitlement import enforce_entitlement, enforce_payment_paywall
+from backend.data.entitlement_limits import (
+    check_rate_limit,
+    get_global_rate_limits,
+    get_usage_status,
+)
 from backend.data.redis_client import get_redis_async
 from backend.data.tenancy import (
     ResourceAccess,
@@ -238,23 +240,26 @@ async def enforce_model_entitlement(
         raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
 
 
-async def enforce_platform_allowance(user_id: str) -> None:
+async def enforce_platform_allowance(user_id: str, org_id: str | None) -> None:
     """Refuse a platform-billed turn when the user's allowance is spent.
 
     Raises 429 with a structured ``ProviderFailure`` envelope, or 503 when the
-    allowance can't be read. Shared by every route that starts a turn.
+    allowance can't be read. Shared by every route that starts a turn; the
+    allowance is the tier the user works under in *org_id*.
     """
     try:
         daily_limit, weekly_limit, usage_tier = await get_global_rate_limits(
             user_id,
             config.daily_cost_limit_microdollars,
             config.weekly_cost_limit_microdollars,
+            org_id,
         )
         await check_rate_limit(
             user_id=user_id,
             daily_cost_limit=daily_limit,
             weekly_cost_limit=weekly_limit,
             expected_tier=usage_tier,
+            org_id=org_id,
         )
     except RateLimitExceeded as e:
         # Structured envelope (not a bare string) so the frontend can
@@ -1095,7 +1100,10 @@ async def create_session(
     )
 
     if llm_auth_provider == "platform":
-        await enforce_payment_paywall(user_id)
+        # A private expert's chat runs in its owner's personal organization.
+        await enforce_entitlement(
+            user_id, None if expert_id is not None else ctx.org_id
+        )
 
     logger.info(
         f"Creating session with user_id: "
@@ -1635,6 +1643,7 @@ async def get_session(
 )
 async def get_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> CoPilotUsagePublic:
     """Get CoPilot usage status for the authenticated user.
 
@@ -1647,6 +1656,7 @@ async def get_copilot_usage(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        ctx.org_id,
     )
     status = await get_usage_status(
         user_id=user_id,
@@ -1654,6 +1664,7 @@ async def get_copilot_usage(
         weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
+        org_id=ctx.org_id,
     )
     return CoPilotUsagePublic.from_status(status)
 
@@ -2117,7 +2128,7 @@ async def stream_chat_post(
 
     is_platform_route = session.metadata.llm_auth_provider == "platform"
     if is_platform_route:
-        await enforce_payment_paywall(user_id)
+        await enforce_entitlement(user_id, session.organization_id)
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
 
@@ -2225,7 +2236,7 @@ async def stream_chat_post(
     # pending-message frequency, and concurrent-turn caps remain enforced by
     # the shared scheduling path below.
     if user_id and is_platform_route:
-        await enforce_platform_allowance(user_id)
+        await enforce_platform_allowance(user_id, session.organization_id)
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -2589,7 +2600,7 @@ async def queue_pending_message(
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_writable_session(session_id, user_id, ctx)
     if session.metadata.llm_auth_provider == "platform":
-        await enforce_payment_paywall(user_id)
+        await enforce_entitlement(user_id, session.organization_id)
     elif session.metadata.llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
     client_message_id = (
