@@ -102,7 +102,7 @@ export function ArtifactPanelHeader({
             <Icon icon={ArrowLeft02Icon} size={18} />
           </HeaderButton>
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-muted-foreground">
           {isComputer ? (
             <>
               <Icon icon={ComputerIcon} size={18} className="shrink-0" />

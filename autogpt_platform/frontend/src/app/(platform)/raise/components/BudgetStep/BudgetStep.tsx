@@ -39,7 +39,7 @@ export function BudgetStep({
         onSelect={budget.selectPreset}
         onCustomChange={budget.changeCustomAmount}
       />
-      <p className="max-w-[42rem] text-right text-xs text-muted-foreground">
+      <p className="max-w-[42rem] text-right text-caption text-muted-foreground">
         Skip to use the default {creditsToUsdLabel(DEFAULT_BUDGET_CREDITS)} a
         week. $0 disables the weekly limit.
       </p>
@@ -50,7 +50,8 @@ export function BudgetStep({
             variant="primary"
             size="small"
             onClick={budget.submitCustom}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             {"That's it"}
           </Button>
@@ -60,7 +61,8 @@ export function BudgetStep({
           variant="ghost"
           size="small"
           onClick={onSkip}
-          className="h-[2.625rem] rounded-xl py-3"
+          shape="rounded"
+          className="h-[2.625rem]"
         >
           Skip
         </Button>

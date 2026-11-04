@@ -48,11 +48,7 @@ function ResultFavicon({ domain }: { domain: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!domain || failed) {
     return (
-      <Icon
-        icon={GlobeIcon}
-        size={14}
-        className="shrink-0 text-foreground-subtle"
-      />
+      <Icon icon={GlobeIcon} size={14} tone="subtle" className="shrink-0" />
     );
   }
   return (
@@ -108,7 +104,7 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
             className="flex items-center gap-2.5 px-3 py-2"
           >
             {citation !== null && (
-              <span className="shrink-0 text-xs text-foreground-secondary tabular-nums">
+              <span className="shrink-0 text-caption text-foreground-secondary tabular-nums">
                 [{citation}]
               </span>
             )}
@@ -193,7 +189,8 @@ export function TodoList({ row }: RowProps) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={15}
-                className="shrink-0 text-success"
+                tone="success"
+                className="shrink-0"
               />
             ) : (
               <Icon
@@ -238,11 +235,7 @@ export function FileCard({ row }: RowProps) {
     <div className={`${CARD} ${HALF} p-2.5`}>
       <div className="flex items-center gap-2.5">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-          <Icon
-            icon={fileIcon}
-            size={15}
-            className="text-foreground-secondary"
-          />
+          <Icon icon={fileIcon} size={15} tone="secondary" />
         </div>
         <Text
           variant="small-mono-tight"
@@ -264,7 +257,7 @@ export function FileCard({ row }: RowProps) {
         )}
       </div>
       {preview && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs whitespace-pre-wrap text-foreground-subtle">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-caption whitespace-pre-wrap text-foreground-subtle">
           {preview}
         </p>
       )}
@@ -323,7 +316,7 @@ export function KeyValueList({ value }: ValueProps) {
       {entries.map(([key, entryValue]) => (
         <div
           key={key}
-          className="flex items-baseline gap-3 py-1 text-xs first:pt-0 last:pb-0"
+          className="flex items-baseline gap-3 py-1 text-caption first:pt-0 last:pb-0"
         >
           <span className="shrink-0 text-foreground-subtle">
             {humanizeKey(key)}

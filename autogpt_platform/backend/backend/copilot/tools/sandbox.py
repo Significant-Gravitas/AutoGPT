@@ -9,16 +9,24 @@ and refuse to run if bubblewrap is not available.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import platform
 import shutil
 import signal
+from typing import BinaryIO
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 120
+# Kept per output stream (bytes here, characters for E2B's decoded text); a
+# command that prints more is stopped.
+MAX_OUTPUT_SIZE = 1_000_000
+_READ_CHUNK = 65536
+# A killed bwrap is reaped at once; this only bounds a wait that should not block.
+_REAP_TIMEOUT = 5
 
 
 # ---------------------------------------------------------------------------
@@ -240,39 +248,130 @@ async def run_sandboxed(
     full_command = _build_bwrap_command(command, cwd, safe_env)
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *full_command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-            env=safe_env,
-            start_new_session=True,  # Own process group for clean kill
-        )
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
-            return stdout, stderr, proc.returncode or 0, False
-        except asyncio.TimeoutError:
-            # Kill entire process group (bwrap + all children).
-            # proc.kill() alone only kills the bwrap parent, leaving
-            # children running until they finish naturally.
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass  # Already exited
-            except OSError as kill_err:
-                logger.warning(
-                    "Failed to kill process group %d: %s", proc.pid, kill_err
-                )
-            # Always reap the subprocess regardless of killpg outcome.
-            await proc.communicate()
-            return "", f"Execution timed out after {timeout}s", -1, True
-
+        return await _run_capped(full_command, cwd, safe_env, timeout)
     except RuntimeError:
         raise
     except Exception as e:
         return "", f"Sandbox error: {e}", -1, False
+
+
+async def _run_capped(
+    full_command: list[str], cwd: str, env: dict[str, str], timeout: int
+) -> tuple[str, str, int, bool]:
+    """Run *full_command*, keeping at most ``MAX_OUTPUT_SIZE`` per stream.
+
+    The output pipes are ours rather than the subprocess's, so a kill can close
+    them: anything the kill missed then stops feeding this process.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    out_r, out_w = os.pipe()
+    err_r, err_w = os.pipe()
+    pipes = [os.fdopen(out_r, "rb", 0), os.fdopen(err_r, "rb", 0)]
+    outputs = [bytearray(), bytearray()]
+    readers: list[asyncio.Task[bool]] = []
+    transports: list[asyncio.ReadTransport] = []
+    try:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *full_command,
+                stdout=out_w,
+                stderr=err_w,
+                cwd=cwd,
+                env=env,
+                start_new_session=True,  # Own process group for clean kill
+            )
+        finally:
+            os.close(out_w)
+            os.close(err_w)
+        outcome = "error"
+        try:
+            for pipe, output in zip(pipes, outputs):
+                reader, transport = await _open_reader(pipe)
+                transports.append(transport)
+                readers.append(asyncio.create_task(_read_capped(reader, output)))
+            outcome = await _until_done(proc, readers, deadline)
+        finally:
+            if outcome != "done":
+                _kill_sandbox(proc)
+            for task in readers:
+                task.cancel()
+            for transport in transports:
+                transport.close()
+            if outcome != "done":
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(proc.wait(), _REAP_TIMEOUT)
+    finally:
+        for pipe in pipes:
+            pipe.close()
+
+    if outcome == "timeout":
+        return "", f"Execution timed out after {timeout}s", -1, True
+    stdout, stderr = (o.decode("utf-8", errors="replace") for o in outputs)
+    if outcome == "exceeded":
+        note = (
+            f"Printed more than {MAX_OUTPUT_SIZE:,} bytes and was killed; "
+            "redirect output to a file and read parts of it"
+        )
+        return stdout, f"{note}\n{stderr}".rstrip("\n"), -1, False
+    return stdout, stderr, proc.returncode or 0, False
+
+
+async def _until_done(
+    proc: asyncio.subprocess.Process,
+    readers: "list[asyncio.Task[bool]]",
+    deadline: float,
+) -> str:
+    """Wait for both streams to end and the process to exit: ``"done"``, or
+    ``"exceeded"`` as soon as a stream passes the cap, or ``"timeout"``."""
+    loop = asyncio.get_running_loop()
+    pending = set(readers)
+    while pending:
+        done, pending = await asyncio.wait(
+            pending,
+            timeout=max(deadline - loop.time(), 0),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if not done:
+            return "timeout"
+        if any(task.result() for task in done):
+            return "exceeded"
+    try:
+        await asyncio.wait_for(proc.wait(), max(deadline - loop.time(), 0))
+    except asyncio.TimeoutError:
+        return "timeout"
+    return "done"
+
+
+async def _open_reader(
+    pipe: BinaryIO,
+) -> tuple[asyncio.StreamReader, asyncio.ReadTransport]:
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader(limit=_READ_CHUNK)
+    transport, _ = await loop.connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(reader), pipe
+    )
+    return reader, transport
+
+
+async def _read_capped(reader: asyncio.StreamReader, output: bytearray) -> bool:
+    """Read into *output* to end of stream, or stop at the first byte past the
+    cap and return True."""
+    while chunk := await reader.read(_READ_CHUNK):
+        room = MAX_OUTPUT_SIZE - len(output)
+        if len(chunk) > room:
+            output += chunk[:room]
+            return True
+        output += chunk
+    return False
+
+
+def _kill_sandbox(proc: asyncio.subprocess.Process) -> None:
+    """Kill bwrap's process group; ``proc.kill()`` alone would leave its
+    children running until they finish."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass  # Already exited
+    except OSError as kill_err:
+        logger.warning(f"Failed to kill process group {proc.pid}: {kill_err}")

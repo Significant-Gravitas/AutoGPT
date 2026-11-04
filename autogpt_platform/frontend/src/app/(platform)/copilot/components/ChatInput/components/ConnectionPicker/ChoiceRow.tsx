@@ -94,7 +94,7 @@ export function ChoiceRow({
             )}
           </span>
           {subtitle && (
-            <span className="text-sm leading-snug break-words text-foreground-tertiary">
+            <span className="text-body leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -113,8 +113,9 @@ export function ChoiceRow({
         icon={Tick02Icon}
         size={16}
         aria-hidden
+        motion="opacity"
         className={cn(
-          "flex-none text-primary transition-opacity",
+          "flex-none text-primary",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
@@ -141,14 +142,15 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-foreground-subtle"
+        tone="subtle"
+        className="mt-[3px] flex-none"
       />
       <span className="flex min-w-0 flex-col">
         <Text variant="body-medium-tight" as="span" tone="muted">
           {title}
         </Text>
         {subtitle && (
-          <span className="text-sm leading-snug break-words text-foreground-subtle">
+          <span className="text-body leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}

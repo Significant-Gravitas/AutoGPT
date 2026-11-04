@@ -6,7 +6,7 @@ from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util.exceptions import SharedCredentialsRefusedError
+from backend.util.exceptions import GraphActivationError, SharedCredentialsRefusedError
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -18,15 +18,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
-
-
-class GraphActivationError(Exception):
-    """Raised when a graph cannot be activated (e.g. a required credential is
-    missing, revoked, or its OAuth token can no longer be refreshed).
-
-    Callers in the API layer should map this to HTTP 400 so the user sees a
-    clear, actionable message instead of an opaque 500.
-    """
 
 
 async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":

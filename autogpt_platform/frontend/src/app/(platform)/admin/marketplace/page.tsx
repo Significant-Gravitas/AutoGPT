@@ -24,7 +24,7 @@ async function AdminMarketplaceDashboard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Marketplace Management</h1>
+            <h1 className="text-heading font-bold">Marketplace Management</h1>
             <p className="text-foreground-tertiary">
               Unified view for marketplace management and approval history
             </p>
@@ -44,7 +44,7 @@ async function AdminMarketplaceDashboard({
         </Suspense>
 
         <div className="mt-6 flex flex-col gap-3">
-          <h2 className="text-xl font-semibold">Skill submissions</h2>
+          <h2 className="text-lead font-semibold">Skill submissions</h2>
           <AdminSkillSubmissions />
         </div>
       </div>

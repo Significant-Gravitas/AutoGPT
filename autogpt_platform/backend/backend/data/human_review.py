@@ -540,13 +540,14 @@ async def get_reviews(
     if not steps_waiting_in_chat and (in_chat := await _steps_waiting_in_chat(user_id)):
         where["nodeExecId"] = {"not_in": in_chat}
 
-    total_count = await PendingHumanReview.prisma().count(where=where)
-
-    _reviews = await PendingHumanReview.prisma().find_many(
-        where=where,
-        order={"createdAt": "asc" if oldest_first else "desc"},
-        skip=(page - 1) * page_size if page_size else None,
-        take=page_size,
+    total_count, _reviews = await asyncio.gather(
+        PendingHumanReview.prisma().count(where=where),
+        PendingHumanReview.prisma().find_many(
+            where=where,
+            order={"createdAt": "asc" if oldest_first else "desc"},
+            skip=(page - 1) * page_size if page_size else None,
+            take=page_size,
+        ),
     )
 
     # node_id is filled in by the batched enrichment step.

@@ -202,7 +202,7 @@ export function ConnectCredentialDialog({
           {showExisting && existing?.error && (
             <span
               role="alert"
-              className="text-center text-xs text-error-foreground"
+              className="text-center text-caption text-error-foreground"
             >
               {existing.error}
             </span>

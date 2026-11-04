@@ -24,7 +24,8 @@ const fontWeights = defaults.classGroups["font-weight"].map((group) =>
     : group,
 );
 
-// Teach tailwind-merge the text token names in globals.css's theme, so that
+// Teach tailwind-merge the type scale's steps (tokens/typography.css) and the
+// other text token names in globals.css's theme, so that
 // `text-body` is read as a font size rather than a colour (and survives next
 // to `text-zinc-500`) and conflicting sizes, line-heights and letter-spacings
 // collapse to the last one. The radius names do the same for every
@@ -89,9 +90,11 @@ export const twMerge = extendTailwindMerge({
             "body-lg",
             "lead",
             "heading-sm",
+            "heading-md",
             "heading",
             "title",
             "display",
+            "hero",
           ],
         },
       ],

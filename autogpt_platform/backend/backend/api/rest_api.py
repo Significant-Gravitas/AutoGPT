@@ -11,7 +11,6 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
@@ -63,6 +62,7 @@ import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.platform_config.routes as platform_config_routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
@@ -113,6 +113,7 @@ from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
+from .middleware.compression import BoundedGZipMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
@@ -300,7 +301,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
-app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
+app.add_middleware(BoundedGZipMiddleware)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -490,6 +491,7 @@ app.include_router(
 )
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
+app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

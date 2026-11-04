@@ -23,6 +23,7 @@ import time
 from typing import Any
 
 from backend.copilot import stream_registry
+from backend.copilot.background_delivery import cancel_background_subtasks
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import (
@@ -183,6 +184,7 @@ class GetSubSessionResultTool(BaseTool):
             # still emit a little more output before the worker notices,
             # but the agent doesn't need to wait for that. A queued one has
             # nothing running yet, so it simply leaves the queue.
+            await cancel_background_subtasks(user_id, inner_session_id)
             if not (
                 queued
                 and await cancel_queued_turn(
