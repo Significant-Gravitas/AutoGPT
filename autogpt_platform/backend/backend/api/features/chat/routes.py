@@ -319,22 +319,12 @@ async def _validate_and_get_writable_session(
     return session
 
 
-# Minimum age before the orphan-reset paths (``get_session`` and
-# ``cancel_session_task``) will touch a ``chatStatus='running'`` session
-# that has no live Redis stream.  Lower bound has to clear the
-# ``acquire_turn_slot``→``dispatch_turn.create_session`` window (a few
-# ms in practice).  30s is a generous safety margin — anything still
-# at ``running`` after that without a Redis stream is genuinely an
-# orphan, not an in-flight admit racing this read.
-_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS = 30
-
-
 async def _try_release_orphan_running(
     session_id: str, user_id: str, *, cancel_background: bool = False
 ) -> bool:
     """Force-release a session if it's stuck in ``chatStatus='running'``
-    older than ``_ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS`` (= the
-    ``acquire_turn_slot``→``create_session`` race window).  Returns
+    older than ``ORPHAN_RUNNING_RESET_SECONDS`` (its rationale is with the
+    constant in ``active_turns``).  Returns
     True iff a release happened — callers map that into their response
     so the user can tell ``orphan_released`` apart from
     ``no_active_session``."""
@@ -348,7 +338,7 @@ async def _try_release_orphan_running(
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
     age = (datetime.now(timezone.utc) - updated_at).total_seconds()
-    if age <= _ORPHAN_RUNNING_RESET_THRESHOLD_SECONDS:
+    if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
         return await cancel_orphaned_background_subtasks(
@@ -576,9 +566,9 @@ class SessionDetailResponse(BaseModel):
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
-    # outcome, and until when a parent may still receive a follow-up.
+    # outcome, and whether a parent still has a continuation to come.
     background_outcome: str | None = None
-    background_pending_until: str | None = None
+    background_pending: bool = False
 
 
 class SessionSummaryResponse(BaseModel):
@@ -1487,9 +1477,7 @@ async def get_session(
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
-        background_pending_until=(
-            background.pending_until.isoformat() if background.pending_until else None
-        ),
+        background_pending=background.pending,
     )
 
 
