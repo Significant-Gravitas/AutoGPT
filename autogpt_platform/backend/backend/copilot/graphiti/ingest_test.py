@@ -801,6 +801,43 @@ class TestWorkerIdleTimeout:
         assert group_id not in state.group_workers
 
     @pytest.mark.asyncio
+    async def test_a_cancel_swallowed_during_a_write_still_stops_the_worker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cancel the write swallows must stop the worker once that episode
+        is done, not after its idle timeout. Python 3.11's asyncio.wait_for
+        drops a cancel that lands as its inner task finishes, and redis-py
+        sends every command through one: the copilot billing tests' 3.11 leg
+        waited out the 60 s timeout at every teardown that hit it."""
+        group_id = "user_swallow-user"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+        writing = asyncio.Event()
+
+        async def write_that_swallows_the_cancel(*_args: object) -> bool:
+            writing.set()
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                pass
+            return False
+
+        monkeypatch.setattr(ingest, "_write_or_requeue", write_that_swallows_the_cancel)
+        monkeypatch.setattr(ingest, "_WORKER_IDLE_TIMEOUT", 3600)
+        queue.put_nowait({"group_id": group_id})
+        worker = asyncio.create_task(
+            ingest._ingestion_worker("swallow-user", group_id, queue)
+        )
+        try:
+            await writing.wait()
+            worker.cancel()
+            done, _ = await asyncio.wait({worker}, timeout=10)
+            assert worker in done
+            assert worker.cancelled()
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+    @pytest.mark.asyncio
     async def test_enqueue_during_idle_retirement_keeps_payload_owned(self) -> None:
         """An enqueue already waiting on ``workers_lock`` must land before an
         idle worker can retire, and the worker must resume to process it."""
