@@ -301,6 +301,28 @@ async def test_a_service_that_fails_to_stop_does_not_keep_the_others_running(
     assert not any(stand_ins[name].is_alive() for name in others)
 
 
+async def test_a_dead_service_is_still_named_when_cleanup_fails(
+    stand_in_services, mocker
+):
+    """A failing disconnect at the end must not hide the service that died:
+    the dead service is the error raised, with the cleanup error as its
+    cause."""
+    _, stand_ins = stand_in_services
+    mocker.patch(
+        "backend.data.db.disconnect",
+        AsyncMock(side_effect=RuntimeError("disconnect failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="during the session") as reported:
+        async with SpinTestServer():
+            stand_ins["Scheduler"].kill()
+            stand_ins["Scheduler"].join()
+
+    assert "Scheduler (exit code -9)" in str(reported.value)
+    assert str(reported.value.__cause__) == "disconnect failed"
+    assert not any(process.is_alive() for process in stand_ins.values())
+
+
 async def test_the_server_names_a_service_that_died_during_the_session(
     stand_in_services,
 ):

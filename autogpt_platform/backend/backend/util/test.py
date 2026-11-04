@@ -75,21 +75,25 @@ class SpinTestServer:
         died = self._exited_services() if exc_type is None else []
         try:
             try:
-                await redis_client.disconnect_async()
+                try:
+                    await redis_client.disconnect_async()
+                finally:
+                    await db.disconnect()
             finally:
-                await db.disconnect()
-        finally:
-            self._stop_services()
-            # Give services time to fully shut down
-            #  This prevents event loop issues where services haven't fully
-            # cleaned up before the next test starts
-            await asyncio.sleep(0.5)
+                self._stop_services()
+                # Give services time to fully shut down
+                #  This prevents event loop issues where services haven't fully
+                # cleaned up before the next test starts
+                await asyncio.sleep(0.5)
+        except Exception as cleanup_error:
+            # A failing cleanup must not hide a service that died: report it,
+            # with the cleanup error as its cause.
+            if died:
+                raise _services_died(died) from cleanup_error
+            raise
 
         if died:
-            raise RuntimeError(
-                "Test service processes exited during the session: "
-                f"{', '.join(died)}. Their own log lines say why."
-            )
+            raise _services_died(died)
 
     def _require_running_services(self) -> None:
         """Fail on a service process that has already exited. One that dies at
@@ -133,6 +137,13 @@ class SpinTestServer:
         self.agent_server.set_test_dependency_overrides(
             {get_user_id: self.test_get_user_id}
         )
+
+
+def _services_died(died: list[str]) -> RuntimeError:
+    return RuntimeError(
+        "Test service processes exited during the session: "
+        f"{', '.join(died)}. Their own log lines say why."
+    )
 
 
 async def wait_execution(
