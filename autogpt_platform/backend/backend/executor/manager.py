@@ -442,8 +442,10 @@ async def execute_node(
                 merged_args[key] = input_data[key]
         # tool_arguments_#_<argument> links arrive nested, and beat a saved value,
         # unless the tool declares its own `tool_arguments`, which the loop set.
-        if "tool_arguments" not in tool_props:
-            merged_args.update(input_data.get("tool_arguments") or {})
+        linked = input_data.get("tool_arguments") or {}
+        # The Orchestrator block enqueues the saved dict itself; it overrides nothing.
+        if "tool_arguments" not in tool_props and linked != _mcp_data.tool_arguments:
+            merged_args.update(linked)
         _mcp_data.tool_arguments = merged_args
         input_data = _mcp_data.model_dump()
     data.inputs = input_data

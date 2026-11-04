@@ -48,7 +48,22 @@ async def test_a_value_linked_into_an_mcp_tool_argument_reaches_the_tool(
     argument, or ran with the saved one. A tool's own `tool_arguments`
     parameter stays one argument."""
     node = _mcp_tool_node(sink_name, saved, extra_props)
-    inputs, error = validate_exec(node, {sink_name: linked})
+
+    assert await _arguments_sent(node, {sink_name: linked}) == expected
+
+
+async def test_an_argument_the_orchestrator_supplies_beats_the_saved_one():
+    """The Orchestrator block enqueues a tool node with its saved inputs,
+    `tool_arguments` among them, plus the arguments the model chose."""
+    node = _mcp_tool_node("query", {"query": "saved", "limit": 3}, {})
+
+    sent = await _arguments_sent(node, {**node.input_default, "query": "the model's"})
+
+    assert sent == {"query": "the model's", "limit": 3}
+
+
+async def _arguments_sent(node: Node, enqueued: dict[str, Any]) -> dict[str, Any]:
+    inputs, error = validate_exec(node, enqueued)
     assert inputs is not None, error
     call_tool = AsyncMock(return_value="ok")
 
@@ -61,7 +76,7 @@ async def test_a_value_linked_into_an_mcp_tool_argument_reaches_the_tool(
         ]
 
     assert outputs == [("result", "ok")]
-    assert call_tool.await_args.kwargs["arguments"] == expected
+    return call_tool.await_args.kwargs["arguments"]
 
 
 def _mcp_tool_node(
