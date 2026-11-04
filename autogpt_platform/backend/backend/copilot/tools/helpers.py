@@ -12,6 +12,7 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
@@ -61,6 +62,7 @@ from backend.util.exceptions import (
     BlockInputError,
     InsufficientBalanceError,
 )
+from backend.util.json import same_json
 from backend.util.request import HTTPClientError
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -1221,11 +1223,6 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    from backend.copilot.capabilities.block_meta import (
-        COPILOT_EXCLUDED_BLOCK_IDS,
-        COPILOT_EXCLUDED_BLOCK_TYPES,
-    )
-
     block = get_block(block_id)
     if not block:
         return ErrorResponse(
@@ -1236,29 +1233,9 @@ async def prepare_block_for_execution(
             message=f"Block '{block_id}' is disabled", session_id=session_id
         ).from_outside()
 
-    if (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    ):
-        if block.block_type == BlockType.MCP_TOOL:
-            hint = (
-                " Use run_capability on the MCP server entry from find_capability instead — it handles "
-                "MCP server discovery, authentication, and execution."
-            )
-        elif block.block_type == BlockType.AGENT:
-            hint = " Use the `run_agent` tool instead."
-        else:
-            hint = " This block is designed for use within graphs only."
-        return ErrorResponse(
-            message=f"Block '{block.name}' cannot be run directly.{hint}",
-            session_id=session_id,
-        ).from_outside()
-
     # Before credentials: resolving them can provision a managed profile.
-    if denied := _permission_denied(block_id, block.name, session_id):
-        return denied
-    if denied := _provider_denied(block, block_id, session_id):
-        return denied
+    if refusal := block_run_refusal(block, block_id, session_id):
+        return refusal
 
     emit_tool_display_name(block.name)
 
@@ -1444,6 +1421,35 @@ async def prepare_block_for_execution(
     )
 
 
+def block_run_refusal(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when this turn may not run *block* directly: a block made
+    for graphs only, or one the session's permissions or provider ceiling
+    keep from the run.  Resuming an approved call answers to it too, since an
+    approval from an earlier turn is no exemption from this one's."""
+    if (
+        block.block_type in block_meta.COPILOT_EXCLUDED_BLOCK_TYPES
+        or block.id in block_meta.COPILOT_EXCLUDED_BLOCK_IDS
+    ):
+        if block.block_type == BlockType.MCP_TOOL:
+            hint = (
+                " Use run_capability on the MCP server entry from find_capability instead — it handles "
+                "MCP server discovery, authentication, and execution."
+            )
+        elif block.block_type == BlockType.AGENT:
+            hint = " Use the `run_agent` tool instead."
+        else:
+            hint = " This block is designed for use within workflows only."
+        return ErrorResponse(
+            message=f"Block '{block.name}' cannot be run directly.{hint}",
+            session_id=session_id,
+        ).from_outside()
+    if denied := _permission_denied(block_id, block.name, session_id):
+        return denied
+    return _provider_denied(block, block_id, session_id)
+
+
 def _permission_denied(
     block_id: str, block_name: str, session_id: str
 ) -> ErrorResponse | None:
@@ -1525,7 +1531,7 @@ async def check_hitl_review(
             for r in existing_reviews
             if r.node_id == synthetic_node_id
             and r.status.value == "WAITING"
-            and r.payload == input_data
+            and same_json(r.payload, input_data)
         ),
         None,
     )

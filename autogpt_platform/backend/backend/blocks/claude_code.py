@@ -365,9 +365,12 @@ class ClaudeCodeBlock(Block):
                 info = await BaseAsyncSandbox.get_info(
                     existing_sandbox_id, api_key=e2b_api_key
                 )
-                if not owned_by_user(info.metadata, execution_context.user_id):
+                if not owned_by_user(
+                    info.metadata, execution_context.user_id, kind="claude_code"
+                ):
                     raise PermissionError(
-                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                        f"Sandbox {existing_sandbox_id} does not belong to this "
+                        "user, or is not a Claude Code sandbox"
                     )
                 if pause_when_kept and not dispose_sandbox:
                     # Counted before the connect: a run on this box returning

@@ -438,6 +438,90 @@ class TestConnectToExistingSandbox:
         hold.assert_not_awaited()
         by_id.pause.assert_not_awaited()
 
+    async def test_the_users_own_box_of_another_kind_is_refused(self):
+        """A code step continues the boxes the code sandbox blocks make, not a
+        box the same user has from another block."""
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        claude_box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "claude_code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch("backend.blocks.code_executor.hold_sandbox", AsyncMock()) as hold,
+            patch(
+                "backend.blocks.code_executor.release_sandbox", AsyncMock()
+            ) as release,
+            patch(
+                "backend.blocks.code_executor.connect_sandbox", AsyncMock()
+            ) as connect,
+        ):
+            self._sdk(cls, claude_box)
+            with pytest.raises(PermissionError, match="not a code sandbox"):
+                await block.execute_code(
+                    api_key="k",
+                    code="print(1)",
+                    language=ProgrammingLanguage.PYTHON,
+                    sandbox_id="sb-claude",
+                    dispose_sandbox=False,
+                    pause_when_kept=True,
+                    execution_context=context,
+                )
+        # Refused before the box is counted as held, so nothing pauses it.
+        hold.assert_not_awaited()
+        release.assert_not_awaited()
+        connect.assert_not_awaited()
+        claude_box.run_code.assert_not_awaited()
+
+    async def test_the_users_own_code_box_is_reconnected(self):
+        block = ExecuteCodeStepBlock()
+        context = ExecutionContext(user_id="user-a", graph_exec_id="gexec-1")
+        code_box = self._sandbox(
+            {
+                "service": "autogpt-platform",
+                "autogpt_owner": "user:user-a",
+                "autogpt_kind": "code",
+                "autogpt_source": "block",
+                "autogpt_env": "dev",
+                "autogpt_user": "user-a",
+            }
+        )
+        code_box.sandbox_id = "sb-code"
+        code_box.run_code = AsyncMock(
+            return_value=MagicMock(
+                error=None,
+                results=[],
+                text="1",
+                logs=MagicMock(stdout=["1\n"], stderr=[]),
+            )
+        )
+        with (
+            patch("backend.blocks.code_executor.AsyncSandbox") as cls,
+            patch(
+                "backend.blocks.code_executor.connect_sandbox",
+                AsyncMock(return_value=code_box),
+            ) as connect,
+        ):
+            self._sdk(cls, code_box)
+            *_, sandbox_id, _ = await block.execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                sandbox_id="sb-code",
+                dispose_sandbox=False,
+                execution_context=context,
+            )
+        connect.assert_awaited_once()
+        code_box.run_code.assert_awaited_once()
+        assert sandbox_id == "sb-code"
+
     async def test_step_block_hands_the_caller_to_the_ownership_check(self):
         """The step block always reconnects by id, so without the caller's
         context every run would be refused as not the user's box."""
