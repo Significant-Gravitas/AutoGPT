@@ -90,7 +90,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 - Parametrize near-identical tests — five tests asserting the same fact with different inputs are one `@pytest.mark.parametrize` test; a copy-pasted stack of near-identical tests is a fixture
 - An absence test must be able to fail — before keeping a test that asserts something does *not* happen, make the mutation it's meant to catch and confirm the test goes red first; a test that can't fail has no power to catch a regression
-- Run `backend/util/architecture*_test.py` and `backend/blocks/test/test_block.py` for every backend change, whatever you touched — each architecture file sweeps whole packages and `test_block.py` runs every block, so no diff points at them. `architecture_test.py` rejects a new file that imports `dataclass` (this repo requires pydantic for structured data); `test_block.py` is the only suite that runs every block's `test_mock` lambdas, which are declared in the block definitions rather than in test files
+- Run `backend/util/architecture*_test.py` and `backend/blocks/test/test_block.py` for every backend change, whatever you touched — each architecture file sweeps whole packages and `test_block.py` is parametrized over every block, so no diff points at them. `architecture_test.py` rejects a new file outside a `lib`/`libs` directory that imports from `dataclasses` (this repo requires pydantic for structured data); `test_block.py` is the only suite that runs every block's `test_mock` lambdas (bar those in `SKIP_BLOCK_TESTS`), which live in the block definitions rather than in test files
 
 ### Tests That Don't Flake
 
