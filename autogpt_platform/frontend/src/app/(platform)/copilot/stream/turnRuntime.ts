@@ -5,6 +5,10 @@ import * as Sentry from "@sentry/nextjs";
 import type { FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
+import {
+  fetchWithCostApproval,
+  isCostConfirmationCancelled,
+} from "../costConfirmation";
 import { streamRequestBody } from "../copilotStreamTransport";
 import {
   CopilotAuthError,
@@ -506,6 +510,12 @@ export class TurnRuntime {
         ? { kind: "closed" }
         : { kind: "refused", status: result.status, body: result.body };
     } catch (error) {
+      if (isCostConfirmationCancelled(error)) {
+        if (this.slot === conn) this.slot = null;
+        this.dropUnsentUserRow();
+        this.emitNow();
+        throw error;
+      }
       end =
         error instanceof CopilotAuthError
           ? { kind: "denied", error }
@@ -1471,9 +1481,11 @@ function defaultDeps(sessionId: string): RuntimeDeps {
     baseUrl: () => environment.getAGPTServerBaseUrl(),
     headers: getCopilotAuthHeaders,
     // The token devtool reads the `: usage` comments off the same response.
-    fetch: isTokenDevtoolEnabled()
-      ? createUsageCapturingFetch(sessionId)
-      : (input, init) => fetch(input, init),
+    fetch: fetchWithCostApproval(
+      isTokenDevtoolEnabled()
+        ? createUsageCapturingFetch(sessionId)
+        : (input, init) => fetch(input, init),
+    ),
     fetchSession: async () => {
       const response = await getV2GetSession(sessionId);
       return response.status === 200 ? (response.data as SessionView) : null;

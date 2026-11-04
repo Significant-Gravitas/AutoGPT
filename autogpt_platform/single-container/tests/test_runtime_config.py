@@ -71,6 +71,7 @@ class RuntimeConfigTest(unittest.TestCase):
                     "BETTER_AUTH_SECRET",
                     "ENCRYPTION_KEY",
                     "UNSUBSCRIBE_SECRET_KEY",
+                    "COST_APPROVAL_SIGNING_KEY",
                     "GRAPHITI_FALKORDB_PASSWORD",
                     "INTERNAL_API_KEY",
                     "VAPID_PRIVATE_KEY",
@@ -225,8 +226,8 @@ class RuntimeConfigTest(unittest.TestCase):
             (
                 "unsupported version",
                 lambda content: content.replace(
-                    "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
                     "AUTOGPT_RUNTIME_CONFIG_VERSION=3",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=4",
                 ),
                 "unsupported runtime configuration version",
             ),
@@ -271,16 +272,20 @@ class RuntimeConfigTest(unittest.TestCase):
             upgraded = runtime_config.ensure_runtime_config(path, {})
 
             key = upgraded.pop("INTERNAL_API_KEY")
+            signing_key = upgraded.pop("COST_APPROVAL_SIGNING_KEY")
             self.assertGreaterEqual(len(key), 32)
+            self.assertGreaterEqual(len(signing_key), 32)
             self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
-            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertRegex(signing_key, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
             self.assertEqual(
                 {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
             )
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             again = runtime_config.ensure_runtime_config(path, {})
             self.assertEqual(again["INTERNAL_API_KEY"], key)
-            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertEqual(again["COST_APPROVAL_SIGNING_KEY"], signing_key)
+            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_version_1_config_takes_a_configured_internal_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
