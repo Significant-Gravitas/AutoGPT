@@ -64,6 +64,10 @@ class SpinTestServer:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Read before stopping them, which is what makes them exit. Without a
+        # preload (CI) a service can still be starting when start-up finishes
+        # and die after it; this names it instead of passing the run.
+        died = self._exited_services() if exc_type is None else []
         try:
             await redis_client.disconnect_async()
         finally:
@@ -79,26 +83,35 @@ class SpinTestServer:
         # before the next test starts
         await asyncio.sleep(0.5)
 
+        if died:
+            raise RuntimeError(
+                "Test service processes exited during the session: "
+                f"{', '.join(died)}. Their own log lines say why."
+            )
+
     def _require_running_services(self) -> None:
         """Fail on a service process that has already exited. One that dies at
         start-up only logs why, and the tests that need it then fail with
         errors that don't name it, or hang retrying its calls."""
+        exited = self._exited_services()
+        if exited:
+            raise RuntimeError(
+                "Test service processes exited during start-up: "
+                f"{', '.join(exited)}. Their own log lines say why."
+            )
+
+    def _exited_services(self) -> list[str]:
         services: list[AppProcess] = [
             self.db_api,
             self.exec_manager,
             self.scheduler,
             self.notif_manager,
         ]
-        exited = [
+        return [
             f"{service.service_name} (exit code {process.exitcode})"
             for service in services
             if (process := service.process) is not None and not process.is_alive()
         ]
-        if exited:
-            raise RuntimeError(
-                "Test service processes exited during start-up: "
-                f"{', '.join(exited)}. Their own log lines say why."
-            )
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing

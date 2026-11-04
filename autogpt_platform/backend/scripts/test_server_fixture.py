@@ -254,3 +254,22 @@ async def test_the_server_refuses_a_service_that_exited_during_start_up(
     # at exit, which joins every child process.
     assert len(stand_ins) > 1
     assert not any(process.is_alive() for process in stand_ins.values())
+
+
+async def test_the_server_names_a_service_that_died_during_the_session(
+    stand_in_services,
+):
+    """Without a preload (CI) the services take seconds to start, so one can
+    still be starting when start-up finishes and die after it. The session's
+    end names it, instead of the run passing with a dead service."""
+    _, stand_ins = stand_in_services
+
+    with pytest.raises(RuntimeError) as reported:
+        async with SpinTestServer():
+            stand_ins["Scheduler"].kill()
+            stand_ins["Scheduler"].join()
+
+    assert "during the session" in str(reported.value)
+    assert "Scheduler (exit code -9)" in str(reported.value)
+    assert "DatabaseManager" not in str(reported.value)
+    assert not any(process.is_alive() for process in stand_ins.values())

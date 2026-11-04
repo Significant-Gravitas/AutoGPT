@@ -50,7 +50,9 @@ process, through `TestClient` or the `test_*` helpers on `server.agent_server`.
 If a service process has already exited when the fixture's start-up is done, the
 fixture stops the others and fails, naming that service and its exit code.
 Without the preload described below (as in CI), the services are often still
-importing at that point, so this catches only a service that dies early.
+importing at that point, so one can die later. The fixture checks again when the
+session ends, before stopping them, and fails the run naming any service that
+died during the session.
 
 For local runs on platforms with `forkserver`, the service processes share
 preloaded code and models instead of importing separate copies. CI retains its
