@@ -5,6 +5,7 @@ import { ReactNode, useEffect, useState } from "react";
 import useCredits from "@/hooks/useCredits";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
 import { TopUpDialog } from "./TopUpDialog/TopUpDialog";
@@ -18,10 +19,14 @@ export function TopUpPromptProvider({ children }: Props) {
   const { user, isLoggedIn } = useAuth();
   const identityKey = user?.id ?? null;
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  // A team organization's credits can't be bought, so nothing here nudges
+  // anyone to top one up.
+  const { isTeamOrg } = useActiveOrgWallet();
+  const canPromptTopUp = isLoggedIn && !isTeamOrg;
   const { credits, autoTopUpConfig } = useCredits({
     identityKey,
-    fetchInitialCredits: isLoggedIn,
-    fetchInitialAutoTopUpConfig: isLoggedIn,
+    fetchInitialCredits: canPromptTopUp,
+    fetchInitialAutoTopUpConfig: canPromptTopUp,
   });
 
   // Backend treats amount === 0 as disabled, so auto-refill only actually
@@ -35,6 +40,7 @@ export function TopUpPromptProvider({ children }: Props) {
   // risk nudging a user who actually has auto-refill enabled.
   const isOutOfCredits =
     !!isBillingEnabled &&
+    !isTeamOrg &&
     credits !== null &&
     credits <= 0 &&
     autoTopUpConfig !== null &&
@@ -59,7 +65,7 @@ export function TopUpPromptProvider({ children }: Props) {
       value={{ isOutOfCredits, openTopUp, closeTopUp }}
     >
       {children}
-      <TopUpDialog isOpen={isOpen} onClose={closeTopUp} />
+      <TopUpDialog isOpen={isOpen && !isTeamOrg} onClose={closeTopUp} />
       {isOutOfCredits && <DailyTopUpAutoOpener />}
     </TopUpPromptContext.Provider>
   );

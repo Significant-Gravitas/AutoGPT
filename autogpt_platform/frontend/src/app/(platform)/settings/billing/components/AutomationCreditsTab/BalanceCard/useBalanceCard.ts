@@ -2,27 +2,15 @@
 
 import { useState } from "react";
 
-import {
-  useGetV1GetUserCredits,
-  usePostV1RequestCreditTopUp,
-} from "@/app/api/__generated__/endpoints/credits/credits";
+import { usePostV1RequestCreditTopUp } from "@/app/api/__generated__/endpoints/credits/credits";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 
+import { useAutomationCreditsBalance } from "../useAutomationCreditsBalance";
+
 export function useBalanceCard() {
-  const {
-    data: balanceCents,
-    isLoading,
-    isError,
-    refetch,
-  } = useGetV1GetUserCredits({
-    query: {
-      select: (res) => {
-        const raw = res.data as { credits?: number } | undefined;
-        return typeof raw?.credits === "number" ? raw.credits : null;
-      },
-    },
-  });
+  const { isTeamOrg, balanceCents, isLoading, isError, refetch } =
+    useAutomationCreditsBalance();
 
   const { mutateAsync: requestTopUp, isPending: isRequestingTopUp } =
     usePostV1RequestCreditTopUp();
@@ -90,7 +78,9 @@ export function useBalanceCard() {
   }
 
   return {
-    balanceCents: balanceCents ?? null,
+    balanceCents,
+    // A team organization's credits are added by AutoGPT for now.
+    canBuyCredits: !isTeamOrg,
     isLoading,
     isError,
     refetch,

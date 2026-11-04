@@ -129,6 +129,53 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
   });
 });
 
+describe("BackendAPI.getUserCredit", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function answerCredits(status: number, body: unknown) {
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  }
+
+  it("reports a team organization's 403 as forbidden, not as a failure", async () => {
+    const api = new BackendAPI("http://test", "ws://test").withTenantScope({
+      organizationId: "org-team",
+      teamId: null,
+    });
+    const fetchSpy = answerCredits(403, {
+      detail: "Missing org permission: MANAGE_BILLING",
+    });
+
+    await expect(api.getUserCredit()).resolves.toEqual({
+      credits: null,
+      forbidden: true,
+    });
+    expect(
+      new Headers(fetchSpy.mock.calls[0][1]?.headers).get(ORG_HEADER_NAME),
+    ).toBe("org-team");
+  });
+
+  it("still reports any other failure as an unknown balance", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    answerCredits(500, { detail: "boom" });
+
+    await expect(api.getUserCredit()).resolves.toEqual({ credits: null });
+  });
+
+  it("keeps an unpinned (personal) 403 an unknown balance, as before", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    answerCredits(403, { detail: "Organization access is inactive" });
+
+    await expect(api.getUserCredit()).resolves.toEqual({ credits: null });
+  });
+});
+
 describe("BackendAPI tenant scope", () => {
   afterEach(() => {
     vi.restoreAllMocks();

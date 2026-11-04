@@ -5,19 +5,26 @@ import {
   getV1GetCreditHistory,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
-import { useOrgTeamStore } from "@/services/org-team/store";
+import { getOrgWalletRequest } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { Transaction } from "./helpers";
 
 export function useTransactionHistoryCard() {
-  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const wallet = useActiveOrgWallet();
+  const request = getOrgWalletRequest(wallet);
   const history = useInfiniteQuery({
-    queryKey: [...getGetV1GetCreditHistoryQueryKey(), "receipts", activeOrgID],
+    queryKey: [
+      ...getGetV1GetCreditHistoryQueryKey(),
+      "receipts",
+      wallet.organizationID,
+      request,
+    ],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) => {
       const response = await getV1GetCreditHistory(
         { transaction_count_limit: 25, cursor: pageParam },
-        { signal },
+        { ...request, signal },
       );
       if (response.status !== 200)
         throw new Error("Transaction history could not be loaded");

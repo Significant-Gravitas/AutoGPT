@@ -27,6 +27,7 @@ export function useOrganizationSettingsPage() {
 
   const members = membersQuery.data ?? [];
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
+  const isOwner = Boolean(currentMember?.is_owner);
   const isAdmin = Boolean(currentMember?.is_owner || currentMember?.is_admin);
   // MANAGE_BILLING is owner + billing_manager only — admins do NOT get it
   // (matches _ORG_PERMISSIONS in autogpt_libs/auth/permissions.py).
@@ -38,6 +39,7 @@ export function useOrganizationSettingsPage() {
     org: orgQuery.data ?? null,
     members,
     currentMember,
+    isOwner,
     isAdmin,
     canManageBilling,
     isLoading:

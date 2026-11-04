@@ -24,6 +24,8 @@ export function Wallet({ compact = false }: Props) {
     state,
     groups,
     credits,
+    isCreditsForbidden,
+    isTeamOrg,
     formatCredits,
     flash,
     walletOpen,
@@ -42,7 +44,8 @@ export function Wallet({ compact = false }: Props) {
   const trialNoteID = useId();
 
   // Do not render until we have both credits and onboarding data
-  if (!isBillingEnabled || credits === null || !state) return null;
+  if (!isBillingEnabled || !state) return null;
+  if (credits === null && !isCreditsForbidden) return null;
 
   return (
     <>
@@ -80,6 +83,8 @@ export function Wallet({ compact = false }: Props) {
               groups={groups}
               completedSteps={state.completedSteps}
               formattedCredits={formatCredits(credits)}
+              isCreditsForbidden={isCreditsForbidden}
+              isTeamOrg={isTeamOrg}
               trialNoteID={trialNoteID}
               onAddCredits={onAddCredits}
               onOpenExplainer={onOpenExplainer}

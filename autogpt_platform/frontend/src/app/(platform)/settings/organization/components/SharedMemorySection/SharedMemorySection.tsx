@@ -35,7 +35,7 @@ export function SharedMemorySection({ org, isAdmin, onSaved }: Props) {
         </Text>
         <Text variant="body" className="text-zinc-500">
           Require an admin to approve shared facts written by non-admin members
-          before the organization’s agents can rely on them.
+          before Otto and the organization’s experts can rely on them.
         </Text>
       </div>
 

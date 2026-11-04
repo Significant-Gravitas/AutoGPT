@@ -17,6 +17,7 @@ import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import { ORG_ROLE_VALUES, roleToFlags } from "../OrgRoleSelect/roleAccess";
+import { getSeatRefusal } from "./helpers";
 
 const inviteSchema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
@@ -34,6 +35,7 @@ interface Args {
 export function useInvitationsSection({ orgId, isAdmin }: Args) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [seatRefusal, setSeatRefusal] = useState<string | null>(null);
 
   const invitationsQuery = useGetV2ListPendingInvitations(orgId, undefined, {
     query: {
@@ -65,6 +67,11 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     usePostV2CreateInvitation({
       mutation: {
         onError: (error) => {
+          const refusal = getSeatRefusal(error);
+          if (refusal) {
+            setSeatRefusal(refusal);
+            return;
+          }
           toast({
             title: "Failed to send invitation",
             description:
@@ -90,6 +97,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
 
   async function handleInvite(values: InviteFormValues) {
     const flags = roleToFlags(values.role);
+    setSeatRefusal(null);
     try {
       await createInvitation({
         orgId,
@@ -129,6 +137,8 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
         title: `Invitation to ${invitation.email} revoked`,
         variant: "success",
       });
+      // Revoking frees the seat the invitation held.
+      setSeatRefusal(null);
       invitationsQuery.refetch();
     } catch {
       return;
@@ -160,6 +170,7 @@ export function useInvitationsSection({ orgId, isAdmin }: Args) {
     teamNameById,
     isLoading: invitationsQuery.isLoading,
     isInviting,
+    seatRefusal,
     revokingId,
     resendingId,
     handleInvite,

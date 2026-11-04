@@ -1,7 +1,12 @@
 "use client";
 
-import { useGetV1GetCreditHistory } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetV1GetCreditHistoryQueryKey,
+  useGetV1GetCreditHistory,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
+import { getOrgWalletQueryOptions } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 export interface DailyUsageRow {
   day: string;
@@ -23,15 +28,21 @@ function toLocalDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+const USAGE_HISTORY_PARAMS = { transaction_count_limit: 200 };
+
 export function useUsageCard() {
-  const { data, isLoading } = useGetV1GetCreditHistory(
-    { transaction_count_limit: 200 },
-    {
-      query: {
-        select: (res) => res.data as TransactionHistory | undefined,
-      },
-    },
+  const wallet = useActiveOrgWallet();
+  const scoped = getOrgWalletQueryOptions(
+    getGetV1GetCreditHistoryQueryKey(USAGE_HISTORY_PARAMS),
+    wallet,
   );
+  const { data, isLoading } = useGetV1GetCreditHistory(USAGE_HISTORY_PARAMS, {
+    request: scoped.request,
+    query: {
+      ...scoped.query,
+      select: (res) => res.data as TransactionHistory | undefined,
+    },
+  });
 
   const transactions = data?.transactions ?? [];
   const today = new Date();

@@ -822,10 +822,6 @@
     "no-raw-colors": 11,
     "no-restyle": 6
   },
-  "src/app/(platform)/settings/organization/page.tsx": {
-    "no-raw-colors": 1,
-    "no-restyle": 1
-  },
   "src/components/atoms/Button/helpers.ts": {
     "no-unknown-classes": 7
   },

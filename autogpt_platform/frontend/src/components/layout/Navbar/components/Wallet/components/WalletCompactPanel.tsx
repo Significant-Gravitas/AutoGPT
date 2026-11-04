@@ -9,6 +9,10 @@ import {
   CreditCardIcon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
+import {
+  ORG_CREDITS_MANAGED_MESSAGE,
+  TEAM_ORG_TOP_UP_REFUSED_MESSAGE,
+} from "@/services/org-team/org-wallet";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { useId } from "react";
 import { TaskGroup } from "../helpers";
@@ -20,6 +24,8 @@ interface Props {
   groups: TaskGroup[];
   completedSteps: string[] | undefined;
   formattedCredits: string;
+  isCreditsForbidden?: boolean;
+  isTeamOrg?: boolean;
   trialNoteID: string;
   onAddCredits: () => void;
   onOpenExplainer: () => void;
@@ -30,6 +36,8 @@ export function WalletCompactPanel({
   groups,
   completedSteps,
   formattedCredits,
+  isCreditsForbidden = false,
+  isTeamOrg = false,
   trialNoteID,
   onAddCredits,
   onOpenExplainer,
@@ -58,15 +66,25 @@ export function WalletCompactPanel({
           >
             Automation credits
           </Text>
-          <Text
-            variant="large-semibold"
-            tone="primary"
-            className="tabular-nums"
-          >
-            {formattedCredits}
-          </Text>
+          {isCreditsForbidden ? null : (
+            <Text
+              variant="large-semibold"
+              tone="primary"
+              className="tabular-nums"
+            >
+              {formattedCredits}
+            </Text>
+          )}
         </div>
-        {isPaymentEnabled && (
+        {isCreditsForbidden ? (
+          <Text variant="small" tone="muted">
+            {ORG_CREDITS_MANAGED_MESSAGE}
+          </Text>
+        ) : isPaymentEnabled && isTeamOrg ? (
+          <Text variant="small" tone="muted">
+            {TEAM_ORG_TOP_UP_REFUSED_MESSAGE}
+          </Text>
+        ) : isPaymentEnabled ? (
           <Button
             type="button"
             variant="secondary"
@@ -77,7 +95,7 @@ export function WalletCompactPanel({
           >
             Add credits
           </Button>
-        )}
+        ) : null}
       </section>
       <WalletEarnCredits groups={groups} completedSteps={completedSteps} />
       <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-separator bg-surface px-3 py-2">

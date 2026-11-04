@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2GetCopilotUsageQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
+  getGetV1ManagePaymentMethodsQueryKey,
   useGetSubscriptionStatus,
   useGetV1ManagePaymentMethods,
   useUpdateSubscriptionTier,
@@ -28,6 +29,8 @@ import {
   trackPaywallViewed,
   trackPlanSelected,
 } from "@/services/analytics/monetization-analytics";
+import { getPersonalBillingQueryOptions } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
@@ -86,8 +89,17 @@ export function useYourPlanCard() {
     },
   });
 
+  // The plan is the person's own, so its billing portal is too, even while a
+  // team organization is active.
+  const wallet = useActiveOrgWallet();
+  const personalBilling = getPersonalBillingQueryOptions(
+    getGetV1ManagePaymentMethodsQueryKey(),
+    wallet,
+  );
   const paymentPortal = useGetV1ManagePaymentMethods({
+    request: personalBilling.request,
     query: {
+      ...personalBilling.query,
       select: (res) => {
         const raw = res.data as GetV1ManagePaymentMethods200 | undefined;
         const url = raw && typeof raw === "object" ? raw.url : undefined;

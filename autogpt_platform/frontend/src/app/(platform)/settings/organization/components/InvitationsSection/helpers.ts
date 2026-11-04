@@ -1,3 +1,12 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+
+// The backend answers 409 when the organization has no free seat (or no team
+// plan at all). Its message says which and what to do, so it is shown as is.
+export function getSeatRefusal(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  return error.message || null;
+}
+
 // Pill labels for the teams an invitee is pre-assigned to. Each resolved team
 // name becomes its own label; ids that can't be resolved (a team the viewer
 // can't see, or one deleted since the invite) collapse into a single "+N"

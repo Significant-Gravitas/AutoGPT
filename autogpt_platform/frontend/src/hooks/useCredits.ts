@@ -3,6 +3,7 @@ import {
   RefundRequest,
   TransactionHistory,
 } from "@/lib/autogpt-server-api/types";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +21,7 @@ export default function useCredits({
   fetchInitialRefundRequests?: boolean;
 } = {}): {
   credits: number | null;
+  isCreditsForbidden: boolean;
   fetchCredits: () => void;
   requestTopUp: (credit_amount: number) => Promise<void>;
   refundTopUp: (transaction_key: string, reason: string) => Promise<number>;
@@ -32,30 +34,47 @@ export default function useCredits({
   fetchRefundRequests: () => void;
   formatCredits: (credit: number | null) => string;
 } {
+  // A team organization has its own wallet: pin every request to it and keep
+  // its balance apart from the personal one. Personal organizations keep the
+  // client and identity they always had.
+  const wallet = useActiveOrgWallet();
+  const pinnedOrgID = wallet.isTeamOrg ? wallet.organizationID : null;
+  const scopedIdentityKey = pinnedOrgID
+    ? `${identityKey ?? ""}::${pinnedOrgID}`
+    : identityKey;
+
   const [credits, setCredits] = useState<number | null>(null);
+  const [creditsForbidden, setCreditsForbidden] = useState(false);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
     amount: number;
     threshold: number;
   } | null>(null);
-  const identityKeyRef = useRef(identityKey);
-  const [stateIdentityKey, setStateIdentityKey] = useState(identityKey);
+  const identityKeyRef = useRef(scopedIdentityKey);
+  const [stateIdentityKey, setStateIdentityKey] = useState(scopedIdentityKey);
 
   useEffect(() => {
-    identityKeyRef.current = identityKey;
-    setStateIdentityKey(identityKey);
+    identityKeyRef.current = scopedIdentityKey;
+    setStateIdentityKey(scopedIdentityKey);
     setCredits(null);
+    setCreditsForbidden(false);
     setAutoTopUpConfig(null);
-  }, [identityKey]);
+  }, [scopedIdentityKey]);
 
-  const api = useMemo(() => new AutoGPTServerAPI(), []);
+  const api = useMemo(() => {
+    const client = new AutoGPTServerAPI();
+    return pinnedOrgID
+      ? client.withTenantScope({ organizationId: pinnedOrgID, teamId: null })
+      : client;
+  }, [pinnedOrgID]);
   const router = useRouter();
 
   const fetchCredits = useCallback(async () => {
-    const requestIdentityKey = identityKey;
+    const requestIdentityKey = scopedIdentityKey;
     const response = await api.getUserCredit();
     if (identityKeyRef.current !== requestIdentityKey) return;
     setCredits(response.credits ?? null);
-  }, [api, identityKey]);
+    setCreditsForbidden(Boolean(response.forbidden));
+  }, [api, scopedIdentityKey]);
 
   useEffect(() => {
     if (!fetchInitialCredits) return;
@@ -63,11 +82,11 @@ export default function useCredits({
   }, [fetchCredits, fetchInitialCredits]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
-    const requestIdentityKey = identityKey;
+    const requestIdentityKey = scopedIdentityKey;
     const response = await api.getAutoTopUpConfig();
     if (identityKeyRef.current !== requestIdentityKey) return;
     setAutoTopUpConfig(response);
-  }, [api, identityKey]);
+  }, [api, scopedIdentityKey]);
 
   useEffect(() => {
     if (!fetchInitialAutoTopUpConfig) return;
@@ -151,12 +170,16 @@ export default function useCredits({
     return `${sign}$${(value / 100).toFixed(2)}`;
   }, []);
 
+  const isCurrentIdentity = stateIdentityKey === scopedIdentityKey;
+
   return {
-    credits: stateIdentityKey === identityKey ? credits : null,
+    credits: isCurrentIdentity ? credits : null,
+    isCreditsForbidden:
+      isCurrentIdentity && pinnedOrgID !== null && creditsForbidden,
     fetchCredits,
     requestTopUp,
     refundTopUp,
-    autoTopUpConfig: stateIdentityKey === identityKey ? autoTopUpConfig : null,
+    autoTopUpConfig: isCurrentIdentity ? autoTopUpConfig : null,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,
     transactionHistory,

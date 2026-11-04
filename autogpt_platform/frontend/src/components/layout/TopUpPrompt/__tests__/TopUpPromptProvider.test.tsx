@@ -1,12 +1,14 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import {
   getGetV1GetUserCreditsMockHandler,
   getGetV1GetAutoTopUpMockHandler,
@@ -178,6 +180,48 @@ describe("useTopUpPrompt without a provider", () => {
     // The inert openTopUp/closeTopUp must be safe no-ops.
     fireEvent.click(button);
     expect(button.textContent).toBe("has credits");
+  });
+});
+
+describe("TopUpPromptProvider in a team organization", () => {
+  const TEAM_ORG = {
+    id: "org-team",
+    name: "Acme Inc",
+    slug: "acme",
+    avatarUrl: null,
+    isPersonal: false,
+    memberCount: 3,
+  };
+
+  afterEach(() => {
+    useOrgTeamStore.setState({ activeOrgID: null, orgs: [] });
+  });
+
+  test("never nudges anyone to buy a team organization's credits", async () => {
+    useOrgTeamStore.setState({ activeOrgID: TEAM_ORG.id, orgs: [TEAM_ORG] });
+    let creditRequests = 0;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        creditRequests += 1;
+        return { credits: 0 };
+      }),
+      getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
+    );
+
+    renderProvider();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(creditRequests).toBe(0);
+    expect(screen.queryByText(/out of automation credits/i)).toBeNull();
+
+    // The same empty wallet in a personal organization does prompt.
+    act(() => {
+      useOrgTeamStore.setState({
+        orgs: [{ ...TEAM_ORG, isPersonal: true }],
+      });
+    });
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(creditRequests).toBe(1);
   });
 });
 

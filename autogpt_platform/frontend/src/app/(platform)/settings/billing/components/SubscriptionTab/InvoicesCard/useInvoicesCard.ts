@@ -1,9 +1,16 @@
 "use client";
 
-import { useGetV1ListStripeInvoices } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetV1ListStripeInvoicesQueryKey,
+  useGetV1ListStripeInvoices,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { InvoiceListItem } from "@/app/api/__generated__/models/invoiceListItem";
+import { getPersonalBillingQueryOptions } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 import { formatCents, formatShortDate } from "../../../helpers";
+
+const INVOICE_PARAMS = { limit: 24 };
 
 export interface InvoiceRow {
   id: string;
@@ -17,10 +24,17 @@ export interface InvoiceRow {
 }
 
 export function useInvoicesCard() {
+  const wallet = useActiveOrgWallet();
+  const personal = getPersonalBillingQueryOptions(
+    getGetV1ListStripeInvoicesQueryKey(INVOICE_PARAMS),
+    wallet,
+  );
   const { data, isLoading, isError, refetch } = useGetV1ListStripeInvoices(
-    { limit: 24 },
+    INVOICE_PARAMS,
     {
+      request: personal.request,
       query: {
+        ...personal.query,
         select: (res) => res.data as InvoiceListItem[] | undefined,
       },
     },

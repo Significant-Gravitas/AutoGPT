@@ -2,15 +2,27 @@
 
 import { useState } from "react";
 
-import { useGetV1ManagePaymentMethods } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetV1ManagePaymentMethodsQueryKey,
+  useGetV1ManagePaymentMethods,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/models/getV1ManagePaymentMethods200";
 import { trackBillingPortalOpened } from "@/services/analytics/monetization-analytics";
+import { getPersonalBillingQueryOptions } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 export function usePaymentMethodCard() {
   const [isOpening, setIsOpening] = useState(false);
+  const wallet = useActiveOrgWallet();
+  const personal = getPersonalBillingQueryOptions(
+    getGetV1ManagePaymentMethodsQueryKey(),
+    wallet,
+  );
 
   const { data: portalUrl } = useGetV1ManagePaymentMethods({
+    request: personal.request,
     query: {
+      ...personal.query,
       select: (res) => {
         const raw = res.data as GetV1ManagePaymentMethods200 | undefined;
         const url = raw && typeof raw === "object" ? raw.url : undefined;

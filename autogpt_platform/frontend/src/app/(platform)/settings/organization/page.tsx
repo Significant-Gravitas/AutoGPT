@@ -5,7 +5,9 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { OrgProfileSection } from "./components/OrgProfileSection/OrgProfileSection";
+import { MyInvitationsSection } from "./components/MyInvitationsSection/MyInvitationsSection";
+import { PersonalOrgSettings } from "./components/PersonalOrgSettings/PersonalOrgSettings";
+import { TeamOrgSettings } from "./components/TeamOrgSettings/TeamOrgSettings";
 import { useOrganizationSettingsPage } from "./useOrganizationSettingsPage";
 
 export default function OrganizationSettingsPage() {
@@ -25,8 +27,18 @@ function OrganizationSettingsSkeleton() {
 }
 
 function OrganizationSettingsPageContent() {
-  const { org, isAdmin, isLoading, isError, refetchOrg, refetchMembers } =
-    useOrganizationSettingsPage();
+  const {
+    org,
+    members,
+    currentMember,
+    isOwner,
+    isAdmin,
+    canManageBilling,
+    isLoading,
+    isError,
+    refetchOrg,
+    refetchMembers,
+  } = useOrganizationSettingsPage();
   if (isLoading) return <OrganizationSettingsSkeleton />;
   if (isError || !org)
     return (
@@ -47,11 +59,31 @@ function OrganizationSettingsPageContent() {
         <Text variant="h3" as="h1">
           Organization
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" tone="muted">
           Manage {org.name}
+          {org.is_personal ? ", your personal organization" : ""}
         </Text>
       </div>
-      <OrgProfileSection org={org} isAdmin={isAdmin} onSaved={refetchOrg} />
+      <MyInvitationsSection />
+      {org.is_personal ? (
+        <PersonalOrgSettings
+          org={org}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          onOrgChanged={refetchOrg}
+        />
+      ) : (
+        <TeamOrgSettings
+          org={org}
+          members={members}
+          currentMember={currentMember}
+          isOwner={isOwner}
+          isAdmin={isAdmin}
+          canManageBilling={canManageBilling}
+          onOrgChanged={refetchOrg}
+          onMembersChanged={refetchMembers}
+        />
+      )}
     </div>
   );
 }

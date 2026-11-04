@@ -22,15 +22,19 @@ import { useInvitationsSection } from "./useInvitationsSection";
 interface Props {
   orgId: string;
   isAdmin: boolean;
+  // Only the owner may invite someone as an admin or billing manager; admins
+  // invite plain members.
+  isOwner?: boolean;
 }
 
-export function InvitationsSection({ orgId, isAdmin }: Props) {
+export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
   const {
     form,
     invitations,
     assignableTeams,
     teamNameById,
     isInviting,
+    seatRefusal,
     revokingId,
     resendingId,
     handleInvite,
@@ -76,27 +80,35 @@ export function InvitationsSection({ orgId, isAdmin }: Props) {
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="role"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <OrgRoleSelect
-                    id="invite-role"
-                    ariaLabel="Role"
-                    value={field.value}
-                    onChange={field.onChange}
-                    size="medium"
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
+          {isOwner ? (
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <OrgRoleSelect
+                      id="invite-role"
+                      ariaLabel="Role"
+                      value={field.value}
+                      onChange={field.onChange}
+                      size="medium"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          ) : null}
           <Button type="submit" loading={isInviting}>
             Invite
           </Button>
         </div>
+
+        {seatRefusal ? (
+          <Text variant="small" tone="danger" role="alert">
+            {seatRefusal}
+          </Text>
+        ) : null}
 
         {assignableTeams.length > 0 ? (
           <FormField

@@ -8,6 +8,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { getTaskGroups } from "./helpers";
@@ -15,9 +16,11 @@ import { getTaskGroups } from "./helpers";
 export function useWallet() {
   const { state, updateState } = useOnboarding();
   const api = useBackendAPI();
-  const { credits, formatCredits, fetchCredits } = useCredits({
-    fetchInitialCredits: true,
-  });
+  const { credits, isCreditsForbidden, formatCredits, fetchCredits } =
+    useCredits({
+      fetchInitialCredits: true,
+    });
+  const { isTeamOrg } = useActiveOrgWallet();
 
   const groups = getTaskGroups(state);
 
@@ -178,6 +181,10 @@ export function useWallet() {
     state,
     groups,
     credits,
+    // In a team organization, members without billing rights can't read the
+    // wallet: they get a note instead of a balance, not a missing wallet.
+    isCreditsForbidden: Boolean(isCreditsForbidden),
+    isTeamOrg,
     formatCredits,
     flash,
     walletOpen,

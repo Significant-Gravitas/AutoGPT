@@ -34,7 +34,22 @@ import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMember
 import type { TeamMemberResponse } from "@/app/api/__generated__/models/teamMemberResponse";
 import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 
-import OrganizationSettingsPage from "../page";
+import { TeamsSection } from "../components/TeamsSection/TeamsSection";
+import { useOrganizationSettingsPage } from "../useOrganizationSettingsPage";
+
+// Team switching is off, so the settings page keeps its Teams tab hidden.
+// TeamsSection still ships, so drive it with the page's own data hook.
+function TeamsSectionHarness() {
+  const { org, members, currentMember } = useOrganizationSettingsPage();
+  if (!org) return null;
+  return (
+    <TeamsSection
+      orgId={org.id}
+      orgMembers={members}
+      currentMember={currentMember}
+    />
+  );
+}
 
 const OWNER_USER_ID = "user-owner";
 
@@ -170,11 +185,7 @@ function mockOrg({
   );
 }
 
-// TeamsSection now lives on the "Teams" tab; activate it before reading the
-// section. Clicking again once active is a no-op, so this is safe to call from
-// every teams-section lookup.
 async function showTeamsTab() {
-  await userEvent.click(await screen.findByRole("tab", { name: "Teams" }));
   return screen.findByTestId("org-teams-section");
 }
 
@@ -222,7 +233,7 @@ describe("TeamsSection", () => {
 
   it("labels each team with a single neutral Default or Private badge", async () => {
     mockOrg();
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     const section = await showTeamsTab();
     await within(section).findByText("Marketing");
@@ -248,7 +259,7 @@ describe("TeamsSection", () => {
         return { ...OPEN_TEAM, id: "team-new", name: "Engineering" };
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     await userEvent.click(screen.getByTestId("create-team-button"));
@@ -297,7 +308,7 @@ describe("TeamsSection", () => {
         return OPEN_TEAM;
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -320,7 +331,7 @@ describe("TeamsSection", () => {
 
   it("never offers a Join action on the auto-joined default team", async () => {
     mockOrg();
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     await openTeamMenu("General");
@@ -337,7 +348,7 @@ describe("TeamsSection", () => {
         deleteSpy();
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     await openTeamMenu("Skunkworks");
@@ -360,7 +371,7 @@ describe("TeamsSection", () => {
         { ...BOB_MEMBER, user_id: OWNER_USER_ID },
       ],
     });
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     expect(screen.queryByTestId("create-team-button")).toBeNull();
@@ -376,7 +387,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: OWNER_USER_ID, name: "Jane", is_admin: true }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -397,7 +408,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: OWNER_USER_ID, name: "Jane", is_admin: true }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -416,7 +427,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: "user-carl", name: "Carl", is_admin: true }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -444,7 +455,7 @@ describe("TeamsSection", () => {
         return { ...OPEN_TEAM, name: "Growth" };
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -474,7 +485,7 @@ describe("TeamsSection", () => {
         return teamMember({ user_id: "user-bob", name: "Bob" });
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -503,7 +514,7 @@ describe("TeamsSection", () => {
         removeSpy();
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -536,7 +547,7 @@ describe("TeamsSection", () => {
         leaveSpy();
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const panel = await openManagePanel("Marketing");
@@ -566,7 +577,7 @@ describe("TeamsSection", () => {
         }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     const section = await showTeamsTab();
     await within(section).findByText("Marketing");
@@ -595,7 +606,7 @@ describe("TeamsSection", () => {
         }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -614,7 +625,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: "user-carl", name: "Carl", is_admin: false }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -637,7 +648,7 @@ describe("TeamsSection", () => {
         HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
       ),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Skunkworks");
@@ -663,7 +674,7 @@ describe("TeamsSection", () => {
         leaveSpy();
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -690,7 +701,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: OWNER_USER_ID, name: "Jane" }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("General");
@@ -718,7 +729,7 @@ describe("TeamsSection", () => {
         return teamMember({ user_id: "user-bob", name: "Bob", is_admin: true });
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -754,7 +765,7 @@ describe("TeamsSection", () => {
         removeSpy();
       }),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");
@@ -796,7 +807,7 @@ describe("TeamsSection", () => {
         teamMember({ user_id: "user-carl", name: "Carl", is_admin: false }),
       ]),
     );
-    render(<OrganizationSettingsPage />);
+    render(<TeamsSectionHarness />);
 
     await showTeamsTab();
     const row = await expandTeamMembers("Marketing");

@@ -88,6 +88,16 @@ export class LogoutInterruptError extends Error {
   }
 }
 
+// ApiError lives in ./helpers, which this module may only import lazily, so
+// read the status the request layer put on the thrown error instead.
+function isApiErrorWithStatus(error: unknown, status: number): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "ApiError" &&
+    (error as Error & { status?: unknown }).status === status
+  );
+}
+
 /**
  * Build the query object for `oAuthLogin`.  Kept as a named helper so the
  * shape — scopes-only vs credential_id-only vs both vs neither — can be
@@ -171,11 +181,23 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  async getUserCredit(): Promise<{ credits: number | null }> {
+  async getUserCredit(): Promise<{
+    credits: number | null;
+    forbidden?: boolean;
+  }> {
     try {
       const response = await this._get("/credits");
       return response ?? { credits: 0 };
     } catch (error) {
+      // A team organization's wallet is closed to members without billing
+      // rights; that is an answer, not a failure worth reporting. Unpinned
+      // (personal) requests keep reporting every failure as before.
+      if (
+        this.tenantScope?.organizationId &&
+        isApiErrorWithStatus(error, 403)
+      ) {
+        return { credits: null, forbidden: true };
+      }
       if (!(error instanceof LogoutInterruptError)) {
         Sentry.captureException(error);
       }

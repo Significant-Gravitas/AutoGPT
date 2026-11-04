@@ -34,7 +34,8 @@ export function ActiveMemoryList({ orgId }: Props) {
       >
         <Text variant="body-medium">Active shared memory</Text>
         <Text variant="small" className="mt-1 block text-zinc-500">
-          Facts currently available to the organization’s agents and teams.
+          Facts currently available to Otto, the organization’s experts and its
+          teams.
         </Text>
 
         <div className="mt-3">
