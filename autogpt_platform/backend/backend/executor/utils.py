@@ -409,11 +409,13 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
+    placeholders: set[str] = set()
     if dry_run:
         cred_field_names = set(schema.get_credentials_fields().keys())
         for field_name in cred_field_names:
             if field_name not in data:
                 data = {**data, field_name: None}
+                placeholders.add(field_name)
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
     input_default = schema.get_input_defaults(node.input_default)
@@ -440,9 +442,12 @@ def validate_exec(
             return None, f"{error_prefix} missing input {missing_input}"
 
     # A required input that arrived as None is skipped, as before, not failed:
-    # None is sometimes sent on purpose.
+    # None is sometimes sent on purpose. A dry run's credential placeholders
+    # didn't arrive, so they don't count.
     raise_on_mismatch = raise_on_mismatch and not any(
-        data.get(name, "") is None for name in schema.get_required_fields()
+        data.get(name, "") is None
+        for name in schema.get_required_fields()
+        if name not in placeholders
     )
 
     # A value that can't be converted fails dry runs too, so the builder learns

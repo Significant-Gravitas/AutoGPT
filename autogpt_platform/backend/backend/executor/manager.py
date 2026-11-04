@@ -377,6 +377,9 @@ def _validate_queued_input(
     present = set(data)
     dropped = _drop_unused_credentials(node, data)
     added = set(data) - present
+    # A linked pin that hasn't arrived yet stays absent, so the node waits.
+    for name in added & {link.sink_name for link in node.input_links}:
+        del data[name]
     input_error = None
     try:
         valid, msg = validate_exec(

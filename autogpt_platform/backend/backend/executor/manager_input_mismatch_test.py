@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.anysearch.search import AnySearchBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -176,6 +177,23 @@ def test_a_dry_run_fails_on_a_value_it_cannot_convert():
         )
 
 
+def test_a_dry_run_fails_on_a_bad_value_for_a_block_that_needs_credentials():
+    """A dry run fills in missing credentials with None; that placeholder isn't
+    a None that arrived on purpose, so it doesn't turn the failure into a skip."""
+    block = AIImageGeneratorBlock()
+    node = Node(
+        id="image-node",
+        block_id=block.id,
+        input_default={
+            "credentials": {"id": "c", "provider": "replicate", "type": "api_key"},
+            "prompt": "a cat",
+        },
+    )
+
+    with pytest.raises(InputMismatchError, match="`model`"):
+        validate_exec(node, {"model": _BAD_MODEL}, dry_run=True, raise_on_mismatch=True)
+
+
 def test_a_dry_run_still_tolerates_a_schema_mismatch():
     data, _ = validate_exec(
         _llm_node("prompt", "credentials"),
@@ -332,6 +350,31 @@ async def test_unused_credentials_stay_in_the_queued_input():
     assert len(queued) == 1
     assert queued[0].input_error is None
     assert queued[0].inputs["credentials"] == _CREDENTIALS
+
+
+@pytest.mark.asyncio
+async def test_a_node_waits_for_a_linked_credentials_pin_it_does_not_use():
+    """Credential clean-up doesn't fill in a linked pin that hasn't arrived, so
+    the node waits for it and its later value pairs with this execution."""
+    block = AnySearchBlock()
+    target = Node(
+        id="llm-node",
+        block_id=block.id,
+        input_default={"auth": "anonymous"},
+        input_links=[
+            Link(
+                source_id="source-node",
+                sink_id="llm-node",
+                source_name=f"{pin}_out",
+                sink_name=pin,
+            )
+            for pin in ("query", "credentials")
+        ],
+    )
+
+    queued = await _route(target, [("query_out", "news")], _db_client(target))
+
+    assert queued == []
 
 
 @pytest.mark.asyncio
