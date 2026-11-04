@@ -35,6 +35,7 @@ from ..errors import (
 from ..window_registry import WindowFingerprint
 from ._common import (
     capture_fields,
+    chord_keys,
     ensure_typeable,
     image_to_base64,
     in_any_rect,
@@ -43,6 +44,14 @@ from ._common import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The documented modifier names, in pyautogui's: super (and its alias meta)
+# is the Windows logo key.
+_KEY_ALIASES = {"super": "win", "meta": "win"}
+# mouse_event's wheel flags, and one notch of the wheel in its units.
+_MOUSEEVENTF_WHEEL = 0x0800
+_MOUSEEVENTF_HWHEEL = 0x1000
+_WHEEL_DELTA = 120
 
 # CF_PRIVATEFIRST..CF_PRIVATELAST — apps that hold "do not paste this" data
 # set a format in this range alongside CF_TEXT/CF_UNICODETEXT.
@@ -388,12 +397,11 @@ class WindowsBackend(ComputerUseBackend):
             d = scroll_direction or direction or "down"
             sign = 1 if d in ("up", "right") else -1
             if coordinate:
-                if d in ("left", "right"):
-                    pyautogui.hscroll(sign * amount, x=coordinate[0], y=coordinate[1])
-                else:
-                    pyautogui.scroll(sign * amount, x=coordinate[0], y=coordinate[1])
+                # The wheel turns the window under the cursor.
+                pyautogui.moveTo(coordinate[0], coordinate[1])
             else:
-                pyautogui.scroll(sign * amount)
+                pyautogui.failSafeCheck()
+            self._turn_wheel(sign * amount, horizontal=d in ("left", "right"))
             return
         raise FeatureNotSupportedError(action, reason=f"unknown action {action!r}")
 
@@ -427,12 +435,23 @@ class WindowsBackend(ComputerUseBackend):
 
     @staticmethod
     def _modifier(name: str) -> str:
-        # On Windows, "super" is the Windows logo key.
-        return {"super": "win", "ctrl": "ctrl", "alt": "alt", "shift": "shift"}.get(name, name)
+        return _KEY_ALIASES.get(name.lower(), name)
 
     @staticmethod
     def _chord(key: str) -> list[str]:
-        return [k.strip().lower() for k in key.split("+") if k.strip()]
+        return chord_keys(key, _KEY_ALIASES)
+
+    @staticmethod
+    def _turn_wheel(notches: int, *, horizontal: bool) -> None:
+        """Turn the wheel at the cursor. pyautogui sends its amount as the raw
+        wheel delta, a 120th of a notch here, and its hscroll turns the
+        vertical wheel on Windows, so the event goes out directly."""
+        import ctypes
+
+        flag = _MOUSEEVENTF_HWHEEL if horizontal else _MOUSEEVENTF_WHEEL
+        ctypes.windll.user32.mouse_event(  # type: ignore[attr-defined]
+            flag, 0, 0, notches * _WHEEL_DELTA, 0
+        )
 
     def _check_bounds(self, coordinate: tuple[int, int]) -> None:
         displays = self.display_info()
@@ -484,11 +503,16 @@ class WindowsBackend(ComputerUseBackend):
 
         def _enum(hwnd: int, _: Any) -> None:
             try:
-                if not win32gui.IsWindowVisible(hwnd) and not include_minimized:
+                # A minimized window keeps WS_VISIBLE, so this leaves out only
+                # hidden ones; IsIconic tells minimized ones apart.
+                if not win32gui.IsWindowVisible(hwnd):
                     return
                 title = win32gui.GetWindowText(hwnd)
                 cls = win32gui.GetClassName(hwnd)
-                if not title and not include_minimized:
+                if not title:
+                    return
+                minimized = bool(win32gui.IsIconic(hwnd))
+                if minimized and not include_minimized:
                     return
                 _, pid = win32process.GetWindowThreadProcessId(hwnd)
                 if pid == 0:
@@ -509,7 +533,7 @@ class WindowsBackend(ComputerUseBackend):
                         bounds=(left, top, right, bot),
                         monitor=0,
                         is_focused=(hwnd == focus_hwnd),
-                        is_minimized=bool(win32gui.IsIconic(hwnd)),
+                        is_minimized=minimized,
                         is_fullscreen=False,
                     )
                 )
