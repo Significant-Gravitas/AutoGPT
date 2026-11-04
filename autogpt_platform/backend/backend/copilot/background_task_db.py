@@ -138,10 +138,19 @@ async def claim_background_turn(
 
 
 async def finish_background_turn(
-    user_id: str, session_id: str, turn_id: str, error: str | None
+    user_id: str,
+    session_id: str,
+    turn_id: str,
+    error: str | None,
+    *,
+    turn_held: bool = False,
 ) -> None:
-    """Record how a child or continuation turn ended. What a child produced
-    stays in its chat; the continuation reads it there."""
+    """Record how a child or continuation turn ended, and for a child which
+    row holds its answer; the answer itself stays in the child's chat. A
+    worker that still holds the child's turn passes ``turn_held``: every row
+    after the launch is then this execution's, a clarification it drained
+    mid-turn included. Recovery, which may run after the chat moved on, stops
+    at the next user row."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$1 AND "childSessionId"=$2 AND "childTurnId"=$3""",
@@ -176,15 +185,43 @@ async def finish_background_turn(
             else "cancelled" if error == CANCELLED_MESSAGE else "failed"
         )
     )
-    await complete_background_task(task.id, user_id, outcome)
+    await complete_background_task(
+        task.id,
+        user_id,
+        outcome,
+        result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
+    )
+
+
+async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
+    """The last assistant row of the child's turn, which begins at its launch
+    row. Held by the worker, the turn owns every later row; otherwise it ends
+    at the next user row."""
+    rows = await db.query_raw_with_schema(
+        """SELECT message.sequence FROM {schema_prefix}"ChatMessage" message
+        JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$1
+            AND message."sessionId"=launch."sessionId"
+        WHERE message.role='assistant' AND message.sequence>launch.sequence
+          AND ($2::boolean OR NOT EXISTS (
+            SELECT 1 FROM {schema_prefix}"ChatMessage" next
+            WHERE next."sessionId"=launch."sessionId" AND next.role='user'
+              AND next.sequence>launch.sequence AND next.sequence<message.sequence
+          )) ORDER BY message.sequence DESC LIMIT 1""",
+        child_turn_id,
+        turn_held,
+    )
+    return int(rows[0]["sequence"]) if rows else None
 
 
 async def complete_background_task(
-    task_id: str, user_id: str, outcome: BackgroundOutcome
+    task_id: str,
+    user_id: str,
+    outcome: BackgroundOutcome,
+    result_sequence: int | None = None,
 ) -> None:
     await db.execute_raw_with_schema(
         '''WITH finished AS (UPDATE {schema_prefix}"ChatBackgroundTask"
-        SET outcome=$3, "updatedAt"=CURRENT_TIMESTAMP
+        SET outcome=$3, "resultSequence"=$4::int, "updatedAt"=CURRENT_TIMESTAMP
         WHERE id=$1 AND "userId"=$2 AND outcome IS NULL RETURNING "childTurnId", outcome)
         UPDATE {schema_prefix}"ChatMessage" message SET metadata=
             COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('background_task_outcome',finished.outcome)
@@ -192,6 +229,7 @@ async def complete_background_task(
         task_id,
         user_id,
         outcome,
+        result_sequence,
     )
 
 
@@ -320,8 +358,8 @@ async def release_abandoned_background_turn(
 async def background_child_result(
     session_id: str, user_id: str
 ) -> BackgroundChildResult | None:
-    """What a finished background child answered in its own turn, read from
-    the rows of that turn so a later turn in its chat is never mistaken for
+    """What a finished background child answered, read from the row recorded
+    when its turn ended, so a later turn in its chat is never mistaken for
     it. None while it runs, or for a chat that is not a background child."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
@@ -330,24 +368,20 @@ async def background_child_result(
         session_id,
         model=BackgroundTask,
     )
-    if not tasks or tasks[0].outcome is None:
+    task = tasks[0] if tasks else None
+    if task is None or task.outcome is None:
         return None
-    messages = await db.query_raw_with_schema(
-        """SELECT message.* FROM {schema_prefix}"ChatMessage" message
-        JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$1
-            AND message."sessionId"=launch."sessionId"
-        WHERE message.role='assistant' AND message.sequence>launch.sequence
-          AND NOT EXISTS (
-            SELECT 1 FROM {schema_prefix}"ChatMessage" next
-            WHERE next."sessionId"=launch."sessionId" AND next.role='user'
-              AND next.sequence>launch.sequence AND next.sequence<message.sequence
-          ) ORDER BY message.sequence DESC LIMIT 1""",
-        tasks[0].child_turn_id,
-        model=ChatMessage,
+    if task.result_sequence is None:
+        return BackgroundChildResult(outcome=task.outcome, response_text="")
+    rows = await db.query_raw_with_schema(
+        """SELECT content FROM {schema_prefix}"ChatMessage"
+        WHERE "sessionId"=$1 AND sequence=$2 AND role='assistant'""",
+        session_id,
+        task.result_sequence,
     )
     return BackgroundChildResult(
-        outcome=tasks[0].outcome,
-        response_text=(messages[0].content or "") if messages else "",
+        outcome=task.outcome,
+        response_text=(rows[0]["content"] or "") if rows else "",
     )
 
 

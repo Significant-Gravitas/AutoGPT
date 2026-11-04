@@ -988,6 +988,8 @@ model ChatBackgroundTask {
   context           Json
   deadline          DateTime?
   outcome           String?
+  // The child's answer row, recorded when its turn ends; the continuation reads it there.
+  resultSequence    Int?
   startedAt         DateTime?
   followupStartedAt DateTime?
   followupState     String      @default("waiting")

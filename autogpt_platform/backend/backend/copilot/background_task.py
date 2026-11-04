@@ -48,6 +48,8 @@ class BackgroundTask(BaseModel):
     # Only a deadline the launching turn already had; the work has no clock of its own.
     deadline: datetime | None = None
     outcome: BackgroundOutcome | None = None
+    # The sequence of the child's answer row, recorded when its turn ends.
+    result_sequence: int | None = None
     started_at: datetime | None = None
     followup_started_at: datetime | None = None
     followup_state: Literal["waiting", "queued", "finished", "suppressed"] = "waiting"

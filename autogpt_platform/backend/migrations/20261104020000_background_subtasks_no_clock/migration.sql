@@ -3,3 +3,4 @@
 -- summary is kept on the record.
 ALTER TABLE "ChatBackgroundTask" ALTER COLUMN "deadline" DROP NOT NULL;
 ALTER TABLE "ChatBackgroundTask" DROP COLUMN "result";
+ALTER TABLE "ChatBackgroundTask" ADD COLUMN "resultSequence" INTEGER;

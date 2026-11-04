@@ -27,10 +27,13 @@ spend ledger, so the chat can read the result, keep working, or start more
 subtasks. The wake message names the subtask and its outcome and points at
 `get_sub_session_result`; what the subtask produced stays in its own chat and
 reaches the model as a tool result, the way a foreground subtask's does, rather
-than as text in a user message. For a finished background child the tool reads
-the rows of the child's own turn, so a later turn in that chat is never handed
-back as its result. The UI renders the wake as a short labeled notice, not the
-internal prompt.
+than as text in a user message. When the child's turn ends, the record notes
+which row holds its answer (`resultSequence`): the worker that held the turn
+counts every row after the launch as the turn's, a clarification it drained
+mid-turn included, while recovery stops at the next user row. The tool reads
+that row, so a later turn in the child's chat is never handed back as its
+result. The UI renders the wake as a short labeled notice, not the internal
+prompt.
 
 Subtask Stop cancels that child. Parent Stop cancels background work launched
 by that turn and suppresses its wake. Ordinary completion of the parent does not

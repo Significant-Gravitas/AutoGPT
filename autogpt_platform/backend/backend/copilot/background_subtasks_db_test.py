@@ -1632,3 +1632,39 @@ async def test_queued_child_past_an_inherited_deadline_is_closed_as_timed_out(
     await background_delivery.reconcile_background_subtasks()
     await background_delivery.reconcile_background_subtasks()
     assert "timed out" in world.entry(task.parent_session_id).message
+
+
+@pytest.mark.parametrize("turn_held", [True, False])
+async def test_answer_is_bounded_by_the_turn_the_worker_still_holds(
+    world: World, turn_held: bool
+):
+    """A clarification the child drained mid-turn is a user row. The worker
+    that still holds the turn keeps the answer after it; recovery, which may
+    run after the chat moved on, stops at that row."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    for role, content in (
+        ("assistant", "Working on it."),
+        ("user", "Use metric units."),
+        ("assistant", "The answer is 42 km."),
+    ):
+        await append_and_save_message(
+            task.child_session_id, ChatMessage(role=role, content=content)
+        )
+
+    if turn_held:
+        await finish_background_execution(entry, None)
+    else:
+        await background_task_db.finish_background_turn(
+            world.user_id, task.child_session_id, task.child_turn_id, None
+        )
+
+    recorded = await background_task_db.background_child_result(
+        task.child_session_id, world.user_id
+    )
+    assert recorded and recorded.outcome == "completed"
+    assert recorded.response_text == (
+        "The answer is 42 km." if turn_held else "Working on it."
+    )
