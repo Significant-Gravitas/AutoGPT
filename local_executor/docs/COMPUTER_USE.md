@@ -168,7 +168,10 @@ region-local or window-local coordinate mode.
 On a HiDPI display these are the OS's logical units (points on macOS),
 the space `DISPLAY_INFO` origins and `logical_size` use. A screenshot can
 be larger than that by its `display_scale`, so divide a point in the
-image by `display_scale` before sending it as a `coordinate`.
+image by `display_scale` before sending it as a `coordinate`. The shim
+measures `display_scale` from the image it returns rather than copying
+the display's scale, because whether a Retina capture comes back at the
+backing resolution depends on the capture library's version.
 
 - `region` on a screenshot request only crops the **image returned**;
   it does not shift any subsequent `INPUT_ACTION.coordinate`. The shim

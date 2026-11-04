@@ -152,7 +152,8 @@ async def test_recording_preview_fails_startup_closed(
     )
 
     assert await cli._cmd_start(config) == 78
-    output = capsys.readouterr().out
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
     assert "design preview" in output
     assert "capture and interpretation are incomplete" in output
 
@@ -180,7 +181,7 @@ async def test_audit_initialization_failure_returns_ex_config(
     )
 
     assert await cli._cmd_start(config) == 78
-    assert "Preflight failed: audit unavailable" in capsys.readouterr().out
+    assert "Preflight failed: audit unavailable" in capsys.readouterr().err
 
 
 @pytest.mark.asyncio
@@ -206,7 +207,7 @@ async def test_terminal_authentication_failure_returns_ex_noperm(
     )
 
     assert await cli._cmd_start(config) == 77
-    assert "Authentication failed: session denied" in capsys.readouterr().out
+    assert "Authentication failed: session denied" in capsys.readouterr().err
 
 
 @pytest.mark.asyncio
@@ -264,7 +265,8 @@ async def test_legacy_credentials_have_actionable_start_failure_without_secret_l
     monkeypatch.setattr(ShimDaemon, "run", ShimDaemon._session)
 
     assert await cli._cmd_start(config) == 77
-    output = capsys.readouterr().out
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
     assert "legacy" in output
     assert "autogpt-shim auth" in output
     assert "left untouched" in output

@@ -338,8 +338,10 @@ async def test_close_code_constants_match_spec() -> None:
 async def test_session_revoked_blocks_further_sends(
     daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A request still in flight when SESSION_REVOKED closes the connection
-    finishes without emitting its response or anything else."""
+    """A request still in flight when SESSION_REVOKED arrives finishes without
+    emitting its response or anything else, even when it finishes while the
+    revocation is still being audited and the socket is still open (the real
+    audit writer hands the write to a thread, so other tasks run meanwhile)."""
     ws = _FakeWebSocket([])
     daemon._semaphore = asyncio.Semaphore(4)
     handling = asyncio.Event()
@@ -350,15 +352,27 @@ async def test_session_revoked_blocks_further_sends(
         await release.wait()
         return make_ack(msg.id)
 
+    record = audit.write
+
+    async def write_while_the_request_finishes(op: str, **kwargs: Any) -> None:
+        if op == "SESSION_REVOKED":
+            release.set()
+            in_flight = set(daemon._dispatch_tasks)
+            if in_flight:
+                await asyncio.wait(in_flight, timeout=30)
+        await record(op, **kwargs)
+
     monkeypatch.setattr(daemon, "_handle", slow_handle)
+    monkeypatch.setattr(audit, "write", write_while_the_request_finishes)
     request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
     await daemon._on_frame(ws, dump_message(request))
     await asyncio.wait_for(handling.wait(), timeout=30)
 
+    sent_before_revocation = list(ws.sent)
     await daemon._on_frame(ws, _session_revoked_frame())
-    sent_at_close = list(ws.sent)
-    release.set()
     await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
 
+    assert release.is_set()
+    assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
     assert ws.close_calls
-    assert ws.sent == sent_at_close
+    assert ws.sent == sent_before_revocation

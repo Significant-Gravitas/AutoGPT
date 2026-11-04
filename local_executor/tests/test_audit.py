@@ -599,3 +599,27 @@ def test_the_windows_lock_raises_an_error_that_is_not_contention(
             pass
 
     assert modes == [2]
+
+
+@pytest.mark.asyncio
+async def test_a_rotation_whose_new_log_cannot_be_created_starts_a_fresh_chain(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The old log is already moved aside when the empty one can't be created;
+    the same write then makes the file, and it must start at seq 1."""
+    monkeypatch.setattr("autogpt_local_executor.audit.ROTATE_MAX_BYTES", 1)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    real_touch = Path.touch
+
+    def touch(self: Path, *args, **kwargs) -> None:
+        if self == writer.path:
+            raise OSError("disk full")
+        real_touch(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "touch", touch)
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    first = json.loads(writer.path.read_text().splitlines()[0])
+    assert (first["request_id"], first["seq"], first["prev_hmac"]) == ("b", 1, None)
+    assert AuditWriter.verify(writer.path, KEY) == []

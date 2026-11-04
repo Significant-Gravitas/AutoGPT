@@ -321,10 +321,12 @@ class AuditWriter:
             target = self.path.with_name(f"{self.path.name}.{stamp}-{counter}")
             counter += 1
         os.replace(self.path, target)
-        self.path.touch()
-        _chmod_owner_only(self.path)
+        # The old chain now lives in `target`; whatever is written next starts
+        # a new one, even if creating the empty file below fails.
         self._seq = 1
         self._prev_hmac = None
+        self.path.touch()
+        _chmod_owner_only(self.path)
         self._file_state = _file_identity(self.path)
         logger.info("Rotated audit log (%s) → %s", reason, target.name)
         return target

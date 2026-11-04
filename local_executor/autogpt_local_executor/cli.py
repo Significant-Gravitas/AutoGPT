@@ -294,10 +294,10 @@ async def _cmd_start(config) -> int:
     except DaemonPreflightError as exc:
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
         # re-launches us on the next TCC change. See COMPUTER_USE.md Q5.
-        print(f"Preflight failed: {exc}", flush=True)
+        print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
         return 78
     except DaemonAuthenticationError as exc:
-        print(f"Authentication failed: {exc}", flush=True)
+        print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)
         return 77
     except (KeyboardInterrupt, asyncio.CancelledError):
         # On Ctrl+C, asyncio.run cancels this task; KeyboardInterrupt only

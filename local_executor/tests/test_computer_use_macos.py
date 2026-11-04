@@ -804,13 +804,138 @@ def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeyp
     assert result.display_scale == 2.0
 
 
+_SIDE_BY_SIDE_RETINA = [
+    DisplayMonitor(
+        index=0,
+        primary=True,
+        physical_size=(2880, 1800),
+        logical_size=(1440, 900),
+        scale=2.0,
+        origin=(0, 0),
+    ),
+    DisplayMonitor(
+        index=1,
+        physical_size=(2880, 1800),
+        logical_size=(1440, 900),
+        scale=2.0,
+        origin=(1440, 0),
+    ),
+]
+
+
+class _ScaledScreenCapture:
+    """mss.mss() over the two displays above, in points, returning images
+    `factor` times larger: mss versions differ on whether a Retina capture
+    comes back at the backing resolution."""
+
+    monitors = [
+        {"left": 0, "top": 0, "width": 2880, "height": 900},
+        {"left": 0, "top": 0, "width": 1440, "height": 900},
+        {"left": 1440, "top": 0, "width": 1440, "height": 900},
+    ]
+
+    def __init__(self, factor: int) -> None:
+        self.factor = factor
+
+    def __enter__(self) -> _ScaledScreenCapture:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def grab(self, rect: dict[str, int]) -> SimpleNamespace:
+        size = (rect["width"] * self.factor, rect["height"] * self.factor)
+        return SimpleNamespace(size=size, bgra=b"")
+
+
+class _RecordingDraw:
+    def __init__(self) -> None:
+        self.polygons: list[list[tuple[float, float]]] = []
+
+    def polygon(self, points, fill=None) -> None:
+        self.polygons.append(list(points))
+
+
+def _scaled_capture_backend(
+    tmp_path, monkeypatch, factor: int
+) -> tuple[MacOSBackend, _RecordingDraw]:
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    draw = _RecordingDraw()
+    pil = SimpleNamespace(
+        Image=SimpleNamespace(
+            frombytes=lambda _mode, size, *_a: SimpleNamespace(width=size[0], height=size[1])
+        ),
+        ImageDraw=SimpleNamespace(Draw=lambda _img: draw),
+    )
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setitem(
+        sys.modules, "mss", SimpleNamespace(mss=lambda: _ScaledScreenCapture(factor))
+    )
+    monkeypatch.setattr(macos_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE_RETINA)
+    monkeypatch.setattr(b, "_primary_display_size", lambda: (1440, 900))
+    return b, draw
+
+
+def _cursor_at(monkeypatch, x: float, y_from_top: float) -> None:
+    """NSEvent.mouseLocation is in points with a bottom-left origin."""
+    location = SimpleNamespace(x=x, y=900 - y_from_top)
+    quartz = SimpleNamespace(NSEvent=SimpleNamespace(mouseLocation=lambda: location))
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
+
+
+@pytest.mark.parametrize("factor", [1, 2])
+@pytest.mark.parametrize(
+    "region",
+    [None, (1500, 100, 1900, 400)],
+    ids=["display", "region"],
+)
+def test_a_display_capture_reports_the_scale_its_image_came_back_at(
+    tmp_path, monkeypatch, factor, region
+) -> None:
+    """Quartz says 2.0 either way; only the image says which one mss produced,
+    and agents divide image points by display_scale before clicking."""
+    b, _draw = _scaled_capture_backend(tmp_path, monkeypatch, factor)
+
+    result = b.screenshot(monitor=1, region=region, include_cursor=False)
+
+    assert result.display_scale == float(factor)
+
+
+@pytest.mark.parametrize("factor", [1, 2])
+def test_the_cursor_is_drawn_where_it_is_in_the_image(tmp_path, monkeypatch, factor) -> None:
+    """The cursor's location is in points, the image may be in backing pixels."""
+    b, draw = _scaled_capture_backend(tmp_path, monkeypatch, factor)
+    _cursor_at(monkeypatch, 1600, 150)
+
+    b.screenshot(monitor=1, region=(1500, 100, 1900, 400), include_cursor=True)
+
+    [arrow] = draw.polygons
+    assert arrow[0] == (100 * factor, 50 * factor)
+    assert arrow[3] == (100 * factor + 4 * factor, 50 * factor + 12 * factor)
+
+
+def test_cursor_position_finds_the_display_in_points_on_retina(tmp_path, monkeypatch) -> None:
+    """In backing pixels display 0 would reach x=2880 and swallow display 1."""
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE_RETINA)
+    monkeypatch.setattr(b, "_primary_display_size", lambda: (1440, 900))
+    _cursor_at(monkeypatch, 2000, 100)
+
+    assert b.cursor_position() == (2000, 100, 1)
+
+
 def test_the_quartz_display_mode_names_exist() -> None:
-    """display_info's Retina path only runs on a Mac; check its names there."""
+    """display_info's Retina path and the cursor lookups only run on a Mac;
+    check the names they import there."""
     quartz = pytest.importorskip("Quartz")
     for name in (
         "CGDisplayCopyDisplayMode",
         "CGDisplayModeGetPixelHeight",
         "CGDisplayModeGetPixelWidth",
+        "NSEvent",
     ):
         assert hasattr(quartz, name), name
 

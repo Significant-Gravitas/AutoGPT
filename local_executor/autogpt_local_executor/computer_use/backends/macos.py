@@ -177,12 +177,6 @@ class MacOSBackend(ComputerUseBackend):
         except Exception as exc:
             raise self._screen_recording_or_other(exc)
 
-        if include_cursor:
-            try:
-                self._composite_cursor(img, origin)
-            except Exception:
-                logger.debug("cursor composite failed", exc_info=True)
-
         index, scale, logical_size = capture_fields(
             displays,
             monitor,
@@ -191,6 +185,12 @@ class MacOSBackend(ComputerUseBackend):
             grabbed_width=grabbed_width,
             image_width=img.width,
         )
+        if include_cursor:
+            try:
+                self._composite_cursor(img, origin, scale)
+            except Exception:
+                logger.debug("cursor composite failed", exc_info=True)
+
         img_bytes, mime = image_to_base64(img, format=format, quality=quality)
         # NB: image_to_base64 returns bytes; the dispatcher b64-encodes.
         return ScreenshotResult(
@@ -206,13 +206,14 @@ class MacOSBackend(ComputerUseBackend):
             display_id=index,
         )
 
-    def _composite_cursor(self, img: Any, origin: tuple[int, int]) -> None:
+    def _composite_cursor(self, img: Any, origin: tuple[int, int], scale: float) -> None:
         """Overlay the system cursor at its current location.
 
         mss doesn't draw the cursor for us on macOS. We get the
         location from Quartz NSEvent and stamp a tiny black arrow —
         good enough for the model to see "there's the cursor" without
-        the per-OS cursor-image fetch dance.
+        the per-OS cursor-image fetch dance. The location is in points
+        and `scale` is image pixels per point.
         """
         try:
             from PIL import ImageDraw  # type: ignore[import-untyped]
@@ -226,12 +227,13 @@ class MacOSBackend(ComputerUseBackend):
             primary = self._primary_display_size()
             if primary is None:
                 return
-            x = int(loc.x) - origin[0]
-            y = int(primary[1] - loc.y) - origin[1]
+            x = round((loc.x - origin[0]) * scale)
+            y = round((primary[1] - loc.y - origin[1]) * scale)
             if 0 <= x < img.width and 0 <= y < img.height:
                 d = ImageDraw.Draw(img)
+                arrow = [(0, 0), (12, 4), (5, 5), (4, 12)]
                 d.polygon(
-                    [(x, y), (x + 12, y + 4), (x + 5, y + 5), (x + 4, y + 12)],
+                    [(x + round(dx * scale), y + round(dy * scale)) for dx, dy in arrow],
                     fill=(0, 0, 0),
                 )
         except Exception:
@@ -491,7 +493,8 @@ class MacOSBackend(ComputerUseBackend):
         idx = 0
         for d in displays:
             ox, oy = d.origin
-            w, h = d.physical_size
+            # The cursor and origins are in points; physical_size is pixels.
+            w, h = d.logical_size
             if ox <= x < ox + w and oy <= y < oy + h:
                 idx = d.index
                 break
