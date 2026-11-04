@@ -13,10 +13,12 @@ from .local_pc_relay_protocol import RelayPresence
 from .local_pc_shim import (
     _IDEMPOTENT_OPS,
     COMMAND_TIMEOUT_SECONDS,
+    MAX_FILE_SIZE_BYTES,
     LocalPCShim,
     OpUnconfirmedError,
     ShimComputerUseError,
     ShimConnectionManager,
+    ShimFileTooLargeError,
     ShimHello,
     ShimOverloadedError,
     ShimProtocolError,
@@ -599,6 +601,95 @@ class TestFilesReadFormatBytes:
         shim = _make_shim_with_rpc({"type": "ERROR", "payload": {"message": "denied"}})
         with pytest.raises(OSError, match="denied"):
             await shim.files.read("/etc/passwd")
+
+
+def _contents(data: bytes) -> dict:
+    return {
+        "type": "FILE_CONTENTS",
+        "payload": {"content": base64.b64encode(data).decode("ascii")},
+    }
+
+
+_TOO_LARGE = {
+    "type": "ERROR",
+    "payload": {"code": "FILE_TOO_LARGE", "message": "over the limit"},
+}
+
+
+class TestFilesReadCapped:
+    """``read_capped`` reads no more than the caller's limit plus one byte,
+    the way ``read_sandbox_file`` reads an E2B file."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_cap_under_the_file_limit_is_asked_for_as_a_range(self):
+        shim = _make_shim_with_rpc(_contents(b"x" * 11))
+
+        data = await shim.files.read_capped("/Users/test/workspace/big.png", 10)
+
+        assert data == b"x" * 11
+        shim._rpc.assert_awaited_once_with(
+            "FILE_READ",
+            {
+                "path": "/Users/test/workspace/big.png",
+                "encoding": "base64",
+                "offset": 0,
+                "length": 11,
+            },
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_cap_over_the_file_limit_reads_whole_under_the_companions_limit(
+        self,
+    ):
+        shim = _make_shim_with_rpc(_contents(b"abc"))
+
+        data = await shim.files.read_capped(
+            "/Users/test/workspace/f.txt", MAX_FILE_SIZE_BYTES
+        )
+
+        assert data == b"abc"
+        shim._rpc.assert_awaited_once_with(
+            "FILE_READ", {"path": "/Users/test/workspace/f.txt", "encoding": "base64"}
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_companion_with_a_lower_limit_still_reads_a_small_file(self):
+        shim = _make_shim_with_rpc({})
+        shim._rpc = AsyncMock(side_effect=[_TOO_LARGE, _contents(b"small")])
+
+        data = await shim.files.read_capped("/Users/test/workspace/f.png", 1000)
+
+        assert data == b"small"
+        assert [call.args[1] for call in shim._rpc.await_args_list] == [
+            {
+                "path": "/Users/test/workspace/f.png",
+                "encoding": "base64",
+                "offset": 0,
+                "length": 1001,
+            },
+            {"path": "/Users/test/workspace/f.png", "encoding": "base64"},
+        ]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_file_over_the_companions_limit_is_refused(self):
+        shim = _make_shim_with_rpc(_TOO_LARGE)
+
+        with pytest.raises(ShimFileTooLargeError):
+            await shim.files.read_capped(
+                "/Users/test/workspace/huge.bin", MAX_FILE_SIZE_BYTES
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_other_errors_are_not_retried(self):
+        shim = _make_shim_with_rpc(
+            {"type": "ERROR", "payload": {"code": "PATH_NOT_FOUND", "message": "gone"}}
+        )
+
+        with pytest.raises(OSError) as raised:
+            await shim.files.read_capped("/Users/test/workspace/gone.txt", 10)
+
+        assert not isinstance(raised.value, ShimFileTooLargeError)
+        shim._rpc.assert_awaited_once()
 
 
 class TestFilesWriteBytes:

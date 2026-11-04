@@ -48,6 +48,9 @@ _LLM_STREAM_MAX_CONCURRENT = 4
 # The longest the companion runs one command. HELLO_ACK sends it, and the
 # companion keeps the smaller of this and its own setting.
 COMMAND_TIMEOUT_SECONDS = 30
+# The most the companion reads or writes in one file message. HELLO_ACK sends
+# it, and the companion keeps the smaller of this and its own setting.
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 # Time the companion needs to stop a command that ran out of time and send back
 # what it printed.
 _COMMAND_RESULT_GRACE_SECONDS = 10.0
@@ -154,6 +157,10 @@ class ShimOverloadedError(RuntimeError):
 
 class ShimProtocolError(RuntimeError):
     """Raised when a correlated shim response violates the wire contract."""
+
+
+class ShimFileTooLargeError(OSError):
+    """The companion refused a FILE_READ over its file size limit."""
 
 
 def _friendly(payload: dict, shim: "LocalPCShim | None", fallback: str) -> str:
@@ -888,17 +895,41 @@ class _FilesProxy:
 
     async def read(self, path: str, *, format: str = "text") -> str | bytes:
         wire_encoding = "base64" if format == "bytes" else "utf-8"
-        resp = await self._shim._rpc(
-            "FILE_READ", {"path": path, "encoding": wire_encoding}
-        )
-        if resp.get("type") == "ERROR":
-            raise OSError(
-                _friendly(resp.get("payload", {}), self._shim, "FILE_READ failed")
-            )
-        content = resp["payload"]["content"]
+        content = await self._file_read({"path": path, "encoding": wire_encoding})
         if format == "bytes":
             return base64.b64decode(content)
         return content
+
+    async def read_capped(self, path: str, max_bytes: int) -> bytes:
+        """At most ``max_bytes + 1`` bytes of *path*, as ``read_sandbox_file``
+        reads an E2B file: a longer result means the file is over the limit.
+
+        The companion refuses any read over its own limit, which is at most
+        ``MAX_FILE_SIZE_BYTES``. A cap under that is asked for as a range, so
+        the companion stops reading there. Above it, or when this companion's
+        own limit is under the range, a whole read is refused past that lower
+        limit, so it still ends under the cap.
+        """
+        whole = {"path": path, "encoding": "base64"}
+        length = max_bytes + 1
+        if length <= MAX_FILE_SIZE_BYTES:
+            try:
+                return base64.b64decode(
+                    await self._file_read({**whole, "offset": 0, "length": length})
+                )
+            except ShimFileTooLargeError:
+                pass
+        return base64.b64decode(await self._file_read(whole))
+
+    async def _file_read(self, request: dict[str, Any]) -> str:
+        resp = await self._shim._rpc("FILE_READ", request)
+        if resp.get("type") == "ERROR":
+            error = resp.get("payload", {})
+            message = _friendly(error, self._shim, "FILE_READ failed")
+            if isinstance(error, dict) and error.get("code") == "FILE_TOO_LARGE":
+                raise ShimFileTooLargeError(message)
+            raise OSError(message)
+        return resp["payload"]["content"]
 
     async def write(self, path: str, content: str | bytes) -> None:
         if isinstance(content, (bytes, bytearray, memoryview)):

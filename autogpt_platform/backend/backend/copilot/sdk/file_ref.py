@@ -42,6 +42,7 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
+    is_local_pc_executor,
     resolve_allowed_local_path,
     resolve_sandbox_path,
 )
@@ -55,6 +56,7 @@ from backend.util.file_content_parser import (
     infer_format_from_uri,
     parse_file_content,
 )
+from backend.util.sandbox_output import read_sandbox_file
 from backend.util.type import MediaFileType
 
 
@@ -197,8 +199,11 @@ async def read_file_bytes(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
             ) from exc
         try:
-            raw_data = await sandbox.files.read(remote, format="bytes")
-            data = raw_data.encode() if isinstance(raw_data, str) else bytes(raw_data)
+            data = (
+                await sandbox.files.read_capped(remote, _MAX_BARE_REF_BYTES)
+                if is_local_pc_executor(sandbox)
+                else await read_sandbox_file(sandbox, remote, _MAX_BARE_REF_BYTES)
+            )
         except (FileNotFoundError, OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
         except Exception as exc:
@@ -218,12 +223,8 @@ async def read_file_bytes(
             # Re-raise unexpected exceptions (TypeError, AttributeError, etc.)
             # so they surface as real bugs rather than being silently masked.
             raise
-        # NOTE: E2B sandbox API does not support pre-read size checks;
-        # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
-            raise ValueError(
-                f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
-            )
+            raise ValueError(f"File too large (limit {_MAX_BARE_REF_BYTES} bytes)")
         return data
 
     raise ValueError(

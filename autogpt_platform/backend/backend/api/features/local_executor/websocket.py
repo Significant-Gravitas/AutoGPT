@@ -29,6 +29,7 @@ from backend.copilot.tools.local_pc_relay import get_local_pc_relay
 from backend.copilot.tools.local_pc_relay_protocol import machine_scope_id
 from backend.copilot.tools.local_pc_shim import (
     COMMAND_TIMEOUT_SECONDS,
+    MAX_FILE_SIZE_BYTES,
     ShimHello,
     get_shim_manager,
 )
@@ -44,7 +45,6 @@ HELLO_TIMEOUT_SECONDS = 10.0
 _TOKEN_RECHECK_SECONDS = 60.0
 # The OAuth scope a Local PC connection needs, and the only one it needs.
 LOCAL_EXECUTOR_SCOPE = "CONNECT_LOCAL_EXECUTOR"
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 4
 SERVER_SUPPORTED_CAPABILITIES = frozenset(
     {

@@ -948,6 +948,43 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 
 
 # ---------------------------------------------------------------------------
+# Rule: what an E2B sandbox sends back is read through a limit
+# ---------------------------------------------------------------------------
+#
+# Motivation: a sandbox's output and files are read into this process, and a
+# limit applied after reading bounds nothing. `files.read` is called with
+# format="stream" and stopped at the caller's limit (`read_sandbox_file`);
+# `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
+# follows a background handle with callbacks that stop at a limit; a code
+# interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
+# A Local PC's files are read with `files.read_capped`, which asks its
+# companion for no more than the limit. Its commands run in one request whose
+# reply the companion cuts to a bounded prefix and the relay refuses past its
+# envelope limit; local_pc_file_tools.py holds only such commands.
+
+_SANDBOX_COMMAND_RUNNERS = frozenset(
+    {
+        "util/sandbox_output.py",
+        "copilot/tools/bash_exec.py",
+        "copilot/sdk/local_pc_file_tools.py",
+    }
+)
+
+
+def test_sandbox_output_is_read_through_a_limit():
+    offenders = [
+        f"backend/{rel}:{lineno} {what}"
+        for rel, lineno, what in _unbounded_sandbox_reads()
+    ]
+    assert not offenders, (
+        "Read sandbox files with backend.util.sandbox_output.read_sandbox_file, "
+        "run sandbox commands with run_sandbox_command, and create code "
+        "interpreter sandboxes as OutputLimitedCodeSandbox:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Rule: zip members and workbooks are read through the capped readers
 # ---------------------------------------------------------------------------
 #
@@ -986,6 +1023,100 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
         "Fix: read the member with zip_member.read_member / iter_member, or call "
         "check_xlsx_unpacked_size first and add the module to _READ_EXCEL_MODULES."
     )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("await sandbox.files.read(p)", ["files.read without format='stream'"]),
+        (
+            "await s.files.read(p, format='bytes')",
+            ["files.read without format='stream'"],
+        ),
+        ("await s.files.read(p, format='stream')", []),
+        ("await sandbox.commands.run('ls')", ["commands.run"]),
+        ("await run_sandbox_command(sandbox, 'ls')", []),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(AsyncSandbox, owner)"
+            ),
+            ["create_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox as S\n"
+                "await connect_sandbox(S, sid, owner)"
+            ),
+            ["connect_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(OutputLimitedCodeSandbox, owner)"
+            ),
+            [],
+        ),
+    ],
+)
+def test_sandbox_read_scan_reads_each_form(source: str, expected: list[str]):
+    assert [what for _, what in _sandbox_reads_in(ast.parse(source))] == expected
+
+
+def _unbounded_sandbox_reads() -> list[tuple[str, int, str]]:
+    found = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if py.name.endswith("_test.py"):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for lineno, what in _sandbox_reads_in(tree):
+            if what == "commands.run" and rel in _SANDBOX_COMMAND_RUNNERS:
+                continue
+            found.append((rel, lineno, what))
+    return found
+
+
+def _sandbox_reads_in(tree: ast.Module) -> list[tuple[int, str]]:
+    found = []
+    # `run_code` is bounded only on OutputLimitedCodeSandbox.
+    code_sandboxes = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").split(".")[0] == "e2b_code_interpreter"
+        for alias in node.names
+        if alias.name == "AsyncSandbox"
+    }
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("create_sandbox", "connect_sandbox")
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in code_sandboxes
+        ):
+            found.append(
+                (
+                    node.lineno,
+                    f"{node.func.id} with the code interpreter's AsyncSandbox",
+                )
+            )
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        owner = node.func.value
+        if not (
+            isinstance(owner, ast.Attribute) and owner.attr in ("files", "commands")
+        ):
+            continue
+        if owner.attr == "files" and node.func.attr == "read":
+            fmt = next((k.value for k in node.keywords if k.arg == "format"), None)
+            if not (isinstance(fmt, ast.Constant) and fmt.value == "stream"):
+                found.append((node.lineno, "files.read without format='stream'"))
+        elif owner.attr == "commands" and node.func.attr == "run":
+            found.append((node.lineno, "commands.run"))
+    return found
 
 
 @pytest.mark.parametrize(

@@ -17,6 +17,7 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
@@ -42,6 +43,7 @@ from backend.copilot.tools.workdir import (
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
+from backend.util.sandbox_output import read_sandbox_file
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -122,16 +124,18 @@ async def _resolve_write_content(
 
 
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
-    """Read *source_path* from E2B sandbox or local ephemeral directory."""
-
+    """Read *source_path* from E2B sandbox or local ephemeral directory, up to
+    one byte past the size limit, which the caller then refuses."""
+    max_size = _MAX_FILE_SIZE_MB * 1024 * 1024
     sandbox = get_current_sandbox()
     if sandbox is not None:
         remote = resolve_sandbox_path_or_error(source_path, session_id, "source_path")
         if isinstance(remote, ErrorResponse):
             return remote
         try:
-            data = await sandbox.files.read(remote, format="bytes")
-            return data.encode() if isinstance(data, str) else bytes(data)
+            if is_local_pc_executor(sandbox):
+                return await sandbox.files.read_capped(remote, max_size)
+            return await read_sandbox_file(sandbox, remote, max_size)
         except Exception as exc:
             return ErrorResponse(
                 message=f"Source file not found on sandbox: {source_path} ({exc})",
@@ -146,7 +150,7 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
         return validated
     try:
         with open(validated, "rb", opener=open_no_follow) as f:
-            return f.read()
+            return f.read(max_size + 1)
     except FileNotFoundError:
         return ErrorResponse(
             message=f"Source file not found: {source_path}",

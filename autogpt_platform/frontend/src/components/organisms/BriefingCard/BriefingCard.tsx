@@ -58,8 +58,7 @@ export function BriefingCard({ briefing, className }: Props) {
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          // oxlint-disable-next-line design-system/no-raw-colors -- purple gradient text, no from- role holds purple-800
-          className="bg-gradient-to-r from-purple-800 to-brand-hover bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-accent-strong to-brand-hover bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>

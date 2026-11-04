@@ -527,6 +527,28 @@ async def test_deny_authorization_uses_only_registered_redirect(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "field, length", [("client_id", 101), ("redirect_uri", 2049), ("state", 2049)]
+)
+async def test_deny_authorization_refuses_oversized_fields(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+    field: str,
+    length: int,
+):
+    body = {
+        "client_id": test_oauth_app["client_id"],
+        "redirect_uri": test_oauth_app["redirect_uri"],
+        "state": "deny-state",
+        field: "x" * length,
+    }
+
+    response = await client.post("/api/oauth/authorize/deny", json=body)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_app_info_rejects_an_unregistered_redirect_uri(
     client: httpx.AsyncClient,
     test_oauth_app: dict,

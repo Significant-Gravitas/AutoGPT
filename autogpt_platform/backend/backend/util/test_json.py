@@ -1249,3 +1249,28 @@ class TestNestingDepth:
         for _ in range(5000):
             value = [value]
         assert json_util.nesting_depth({"shift_tags": value}) == 5001
+
+
+class TestSameJson:
+    @pytest.mark.parametrize(
+        "left,right",
+        [
+            ({"id": 1}, {"id": True}),
+            ({"id": 0}, {"id": False}),
+            ({"n": 1}, {"n": 1.0}),
+            ({"ids": [1]}, {"ids": [True]}),
+        ],
+    )
+    def test_a_change_of_type_is_a_change(self, left: Any, right: Any):
+        assert left == right  # what plain equality would let through
+        assert not json_util.same_json(left, right)
+
+    def test_key_order_is_not_a_change(self):
+        assert json_util.same_json({"a": 1, "b": {"c": 2}}, {"b": {"c": 2}, "a": 1})
+
+    def test_values_json_cannot_hold_directly_still_compare(self):
+        when = datetime.datetime(2026, 11, 3, 12, 0)
+        assert json_util.same_json({"at": when}, {"at": when})
+        assert not json_util.same_json(
+            {"at": when}, {"at": when + datetime.timedelta(seconds=1)}
+        )

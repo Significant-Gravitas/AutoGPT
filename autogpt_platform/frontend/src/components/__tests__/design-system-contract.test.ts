@@ -13,12 +13,16 @@ const globalsCss = readFileSync(
   path.join(FRONTEND_ROOT, "src/app/globals.css"),
   "utf8",
 );
+const themeCss = readFileSync(
+  path.join(FRONTEND_ROOT, "src/app/tokens/theme.css"),
+  "utf8",
+);
 
-// Colours declared in every top-level rule whose selector list includes
-// `selector`; empty when there is none.
+// Colours declared in every top-level rule of tokens/theme.css whose
+// selector list includes `selector`; empty when there is none.
 function declaredColors(selector: string) {
   const names = new Set<string>();
-  for (const [, selectors, block] of globalsCss.matchAll(
+  for (const [, selectors, block] of themeCss.matchAll(
     /^([^\s{}@/*][^{}]*)\{([^{}]*)\}/gm,
   )) {
     if (!selectors.split(",").some((s) => s.trim() === selector)) continue;
@@ -27,8 +31,9 @@ function declaredColors(selector: string) {
   return names;
 }
 
-// Colours the `@theme` blocks register, each as `rgb(var(--color-<name>) / 1)`
-// so the class reads the triplet of the same name on `:root`.
+// Colours globals.css's `@theme` registers, each as
+// `rgb(var(--color-<name>) / 1)` so the class reads the triplet of the same
+// name on `:root`.
 function registeredColors() {
   const names = new Set<string>();
   for (const [, block] of globalsCss.matchAll(/^@theme[^{]*\{([^}]*)\}/gm)) {
@@ -46,17 +51,34 @@ describe("colour tokens", () => {
   const root = declaredColors(":root");
   const registered = registeredColors();
 
-  it("registers every colour globals.css declares, and nothing it does not", () => {
+  it("registers every colour theme.css declares, and nothing it does not", () => {
     expect([...root].filter((name) => !registered.has(name))).toEqual([]);
     expect([...registered].filter((name) => !root.has(name))).toEqual([]);
   });
 
   it("lists every role in color-roles.ts, the Tokens/Colors story's source", () => {
-    const shadcnAlias = (name: string) =>
-      new RegExp(`^  --color-${name}: var\\(--color-`, "m").test(globalsCss);
-    expect([...root].filter((name) => !shadcnAlias(name)).sort()).toEqual(
-      [...COLOR_ROLES].sort(),
+    expect([...root].sort()).toEqual([...COLOR_ROLES].sort());
+  });
+
+  it("aliases no shadcn name on :root; streamdown's alias a role in theme.css", () => {
+    expect(globalsCss).not.toMatch(/--color-[a-z-]+:\s*var\(--color-/);
+    const vendor = [
+      ...themeCss.matchAll(
+        /^\s*--color-([a-z-]+):\s*rgb\(var\(--color-([a-z-]+)\) \/ 1\);/gm,
+      ),
+    ];
+    expect(vendor.map(([, name]) => name).sort()).toEqual(
+      [
+        "background",
+        "border",
+        "foreground",
+        "muted",
+        "muted-foreground",
+        "primary",
+        "primary-foreground",
+      ].sort(),
     );
+    for (const [, , role] of vendor) expect(COLOR_ROLES).toContain(role);
   });
 
   it("only overrides names :root declares in .dark", () => {
@@ -70,7 +92,7 @@ describe("colour tokens", () => {
     expect(globalsCss).not.toMatch(/\.dark-mode|data-theme=["']?dark/);
   });
 
-  it("keeps the raw palette frozen; new colours are roles in globals.css", () => {
+  it("keeps the raw palette frozen; new colours are roles in theme.css", () => {
     expect(Object.keys(APP_COLORS).sort()).toEqual(
       [
         "bgLightGrey",
@@ -89,6 +111,7 @@ describe("colour tokens", () => {
         "zinc",
       ].sort(),
     );
+    expect(themeCss).not.toMatch(/^\s*--color-[a-z]+-\d+:/m);
     expect(globalsCss).not.toMatch(/^\s*--color-[a-z]+-\d+:/m);
   });
 });

@@ -114,6 +114,10 @@ class ConcurrentTurnLimitError(Exception):
         super().__init__(message or running_turn_limit_message())
 
 
+class SessionNotIdle(Exception):
+    """The session already has a turn queued or running."""
+
+
 async def count_running_turns(user_id: str) -> int:
     """User's current running-turn count."""
     return await chat_db().count_chat_sessions_by_status(

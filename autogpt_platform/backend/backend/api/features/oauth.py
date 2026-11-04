@@ -66,6 +66,7 @@ from backend.data.auth.oauth import (
     validate_scopes,
 )
 from backend.util.settings import Settings
+from backend.util.text_limits import MAX_ID_LENGTH, MAX_URL_LENGTH
 from backend.util.virus_scanner import scan_content_safe
 
 settings = Settings()
@@ -223,9 +224,12 @@ class AuthorizeResponse(BaseModel):
 class DenyAuthorizeRequest(BaseModel):
     """OAuth 2.0 authorization denial request."""
 
-    client_id: str = Field(description="Client identifier")
-    redirect_uri: str = Field(description="Redirect URI")
-    state: str = Field(description="Anti-CSRF token from client")
+    client_id: str = Field(description="Client identifier", max_length=MAX_ID_LENGTH)
+    redirect_uri: str = Field(description="Redirect URI", max_length=MAX_URL_LENGTH)
+    # It goes back to the client on the redirect URL.
+    state: str = Field(
+        description="Anti-CSRF token from client", max_length=MAX_URL_LENGTH
+    )
 
 
 async def _get_valid_authorization_app(

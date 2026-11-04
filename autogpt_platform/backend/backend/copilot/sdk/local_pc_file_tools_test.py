@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+import base64
+import io
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from PIL import Image
 
 from backend.copilot.context import resolve_executor_path
-from backend.copilot.sdk.e2b_file_tools import _handle_glob, _handle_grep
+from backend.copilot.sdk.e2b_file_tools import (
+    _handle_edit_file,
+    _handle_glob,
+    _handle_grep,
+    _handle_read_file,
+)
+from backend.copilot.sdk.file_ref import _MAX_BARE_REF_BYTES, read_file_bytes
 from backend.copilot.sdk.local_pc_file_tools import (
     describe_workspace,
     is_local_pc,
     list_via_shim,
     move_via_shim,
+    read_file_via_shim,
     stat_via_shim,
 )
+from backend.copilot.tool_image import MAX_IMAGE_BYTES
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimHello,
@@ -332,3 +343,129 @@ class TestLocalPCGlob:
         text = _text(result)
         assert text.startswith('[\n  "/Users/test/ws/a.py"\n]')
         assert ("more matches exist" in text) is truncated
+
+
+def _contents(data: bytes) -> dict:
+    return {
+        "type": "FILE_CONTENTS",
+        "payload": {"content": base64.b64encode(data).decode("ascii")},
+    }
+
+
+def _png() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (1, 1)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+class TestLocalPCReadsThroughALimit:
+    """Read, Edit and ``@@agptfile:`` references read a Local PC file through
+    the caller's limit, as ``read_sandbox_file`` reads an E2B file."""
+
+    @pytest.mark.asyncio
+    async def test_read_returns_the_file(self, monkeypatch: pytest.MonkeyPatch):
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(return_value=_contents(b"one\ntwo\n"))
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_read_file({"file_path": "notes.txt"})
+
+        assert result["isError"] is False
+        assert "     1\tone\n     2\ttwo\n" in _text(result)
+        # The workspace file limit is over the companion's own, which a whole
+        # read stops at.
+        shim._rpc.assert_awaited_once_with(
+            "FILE_READ", {"path": "/Users/test/ws/notes.txt", "encoding": "base64"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_image_is_read_up_to_the_image_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim(allowed_root="/Users/test/ws")
+        png = _png()
+        shim._rpc = AsyncMock(
+            side_effect=[{"payload": {"size_bytes": len(png)}}, _contents(png)]
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_read_file({"file_path": "shot.png"})
+
+        assert result["isError"] is False
+        assert shim._rpc.await_args_list[1].args == (
+            "FILE_READ",
+            {
+                "path": "/Users/test/ws/shot.png",
+                "encoding": "base64",
+                "offset": 0,
+                "length": MAX_IMAGE_BYTES + 1,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_edit_reads_the_file_and_writes_it_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(
+            side_effect=[_contents(b"hello world"), {"type": "ACK", "payload": {}}]
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_edit_file(
+            {"file_path": "a.txt", "old_string": "world", "new_string": "there"}
+        )
+
+        assert result["isError"] is False
+        read, write = shim._rpc.await_args_list
+        assert read.args == (
+            "FILE_READ",
+            {"path": "/Users/test/ws/a.txt", "encoding": "base64"},
+        )
+        assert write.args[0] == "FILE_WRITE"
+        assert write.args[1]["content"] == "hello there"
+
+    @pytest.mark.asyncio
+    async def test_a_file_reference_reads_at_most_its_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim(allowed_root="/home/user/ws", platform="linux")
+        shim._rpc = AsyncMock(return_value=_contents(b"a,b\n1,2\n"))
+        monkeypatch.setattr(
+            "backend.copilot.sdk.file_ref.get_current_sandbox", lambda: shim
+        )
+
+        data = await read_file_bytes("/home/user/ws/data.csv", None, MagicMock())
+
+        assert data == b"a,b\n1,2\n"
+        shim._rpc.assert_awaited_once_with(
+            "FILE_READ",
+            {
+                "path": "/home/user/ws/data.csv",
+                "encoding": "base64",
+                "offset": 0,
+                "length": _MAX_BARE_REF_BYTES + 1,
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_read_file_via_shim_reads_through_the_limit(self):
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(return_value=_contents(b"12345"))
+
+        assert await read_file_via_shim(shim, "f.txt", 4) == b"12345"
+        shim._rpc.assert_awaited_once_with(
+            "FILE_READ",
+            {
+                "path": "/Users/test/ws/f.txt",
+                "encoding": "base64",
+                "offset": 0,
+                "length": 5,
+            },
+        )

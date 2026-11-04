@@ -11,6 +11,8 @@ is a best-effort lexical check, not a security boundary.
 
 from __future__ import annotations
 
+from typing import Any
+
 from typing_extensions import TypeIs
 
 from backend.copilot.context import is_local_pc_executor, resolve_executor_path
@@ -20,16 +22,31 @@ from backend.copilot.tools.local_pc_shim import LocalPCShim
 async def read_file_via_shim(
     sandbox: LocalPCShim,
     file_path: str,
-    *,
-    as_bytes: bool = True,
-) -> bytes | str:
-    """FILE_READ — returns bytes by default to mirror E2B's `format="bytes"`.
+    max_bytes: int,
+) -> bytes:
+    """FILE_READ through a size limit: at most ``max_bytes + 1`` bytes, as
+    ``read_sandbox_file`` reads E2B, so a longer result means the file is over
+    *max_bytes*.
 
     Raises :class:`OSError` on shim ERROR (e.g. PATH_OUTSIDE_ALLOWED_ROOT,
-    PATH_NOT_FOUND).
+    PATH_NOT_FOUND, FILE_TOO_LARGE).
     """
     remote = resolve_executor_path(file_path, sandbox)
-    return await sandbox.files.read(remote, format="bytes" if as_bytes else "text")
+    return await sandbox.files.read_capped(remote, max_bytes)
+
+
+async def run_argv_via_shim(
+    sandbox: LocalPCShim,
+    argv: list[str],
+    *,
+    cwd: str,
+    timeout: int,
+) -> Any:
+    """EXECUTE_COMMAND with *argv* and no shell, its output limited while it
+    is read: the companion keeps a bounded prefix of both streams (and says
+    ``output_truncated``), and the relay refuses a reply over its envelope
+    limit."""
+    return await sandbox.commands.run(argv=argv, cwd=cwd, timeout=timeout)
 
 
 async def write_file_via_shim(

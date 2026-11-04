@@ -1,11 +1,12 @@
 import base64
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from backend.blocks.google.gmail import (
+    Attachment,
     GmailForwardBlock,
     GmailReadBlock,
     HasRecipients,
@@ -86,7 +87,7 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text") as mock_html2text:
+        with patch("backend.blocks.google.gmail.BoundedHTML2Text") as mock_html2text:
             mock_converter = Mock()
             mock_converter.handle.return_value = "Hello World\n\nThis is HTML content."
             mock_html2text.return_value = mock_converter
@@ -108,7 +109,7 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text") as mock_html2text:
+        with patch("backend.blocks.google.gmail.BoundedHTML2Text") as mock_html2text:
             mock_converter = Mock()
             mock_converter.handle.side_effect = ValueError("conversion failed")
             mock_html2text.return_value = mock_converter
@@ -129,9 +130,27 @@ class TestGmailReadBlock:
             },
         }
 
-        with patch("html2text.HTML2Text", side_effect=ImportError):
+        with patch(
+            "backend.blocks.google.gmail.BoundedHTML2Text", side_effect=ImportError
+        ):
             result = await self.gmail_block._get_email_body(msg, self.mock_service)
             assert result == html_text
+
+    @pytest.mark.asyncio
+    async def test_html_that_expands_when_converted_is_bounded(self):
+        html_text = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
+
+        msg = {
+            "id": "test_msg_expanding",
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"data": self._encode_base64(html_text)},
+            },
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result.startswith("first words")
+        assert len(result) <= 10 * len(html_text)
 
     @pytest.mark.asyncio
     async def test_nested_multipart_structure(self):
@@ -388,6 +407,33 @@ class TestCreateMimeMessageValidation:
         result = await create_mime_message(input_data, exec_ctx)
         assert isinstance(result, str)
 
+    @pytest.mark.asyncio
+    async def test_attachments_are_limited_in_total(self, tmp_path):
+        (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+        input_data = SimpleNamespace(
+            to=["user@example.com"],
+            cc=[],
+            bcc=[],
+            subject="Test",
+            body="Hello",
+            attachments=["pad.bin"] * 50,
+        )
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
+        store = AsyncMock(return_value="pad.bin")
+
+        with (
+            patch("backend.blocks.google.gmail.store_media_file", new=store),
+            patch(
+                "backend.blocks.google.gmail.get_exec_file_path",
+                side_effect=lambda _, path: str(tmp_path / path),
+            ),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+            pytest.raises(ValueError, match="Files too large"),
+        ):
+            await create_mime_message(input_data, exec_ctx)
+
+        assert store.await_count == 3
+
 
 class TestBuildReplyMessageValidation:
     """Integration tests verifying validation hooks in _build_reply_message()."""
@@ -422,6 +468,41 @@ class TestBuildReplyMessageValidation:
 
         with pytest.raises(ValueError, match="Invalid email address"):
             await _build_reply_message(mock_service, input_data, exec_ctx)
+
+    @pytest.mark.asyncio
+    async def test_attachments_are_limited_in_total(self, tmp_path):
+        (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+        mock_service = Mock()
+        mock_service.users().messages().get().execute.return_value = {
+            "threadId": "thread-1",
+            "payload": {"headers": [{"name": "From", "value": "a@example.com"}]},
+        }
+        input_data = SimpleNamespace(
+            parentMessageId="msg-1",
+            to=["user@example.com"],
+            cc=[],
+            bcc=[],
+            subject="",
+            body="Reply body",
+            replyAll=False,
+            content_type=None,
+            attachments=["pad.bin"] * 50,
+        )
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
+        store = AsyncMock(return_value="pad.bin")
+
+        with (
+            patch("backend.blocks.google.gmail.store_media_file", new=store),
+            patch(
+                "backend.blocks.google.gmail.get_exec_file_path",
+                side_effect=lambda _, path: str(tmp_path / path),
+            ),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+            pytest.raises(ValueError, match="Files too large"),
+        ):
+            await _build_reply_message(mock_service, input_data, exec_ctx)
+
+        assert store.await_count == 3
 
 
 class TestForwardMessageValidation:
@@ -502,3 +583,53 @@ class TestForwardMessageValidation:
                 self._make_input(to=["valid@example.com"], bcc=["nope"]),
                 self._exec_ctx(),
             )
+
+    @pytest.mark.asyncio
+    async def test_additional_attachments_are_limited_in_total(self, tmp_path):
+        (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+        input_data = self._make_input(to=["valid@example.com"])
+        input_data.additionalAttachments = ["pad.bin"] * 50
+        store = AsyncMock(return_value="pad.bin")
+
+        with (
+            patch("backend.blocks.google.gmail.store_media_file", new=store),
+            patch(
+                "backend.blocks.google.gmail.get_exec_file_path",
+                side_effect=lambda _, path: str(tmp_path / path),
+            ),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+            pytest.raises(ValueError, match="Files too large"),
+        ):
+            await GmailForwardBlock()._forward_message(
+                self._mock_service(), input_data, self._exec_ctx()
+            )
+
+        assert store.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_the_original_attachments_count_toward_the_total(self):
+        block = GmailForwardBlock()
+        input_data = self._make_input(to=["valid@example.com"])
+        input_data.includeAttachments = True
+        originals = [
+            Attachment(
+                filename=f"a{i}.bin",
+                content_type="application/octet-stream",
+                size=60,
+                attachment_id=f"att-{i}",
+            )
+            for i in range(5)
+        ]
+        download = AsyncMock(return_value=b"x" * 60)
+
+        with (
+            patch.object(block, "_get_attachments", AsyncMock(return_value=originals)),
+            patch.object(block, "download_attachment", download),
+            patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+            pytest.raises(ValueError, match="Files too large"),
+        ):
+            await block._forward_message(
+                self._mock_service(), input_data, self._exec_ctx()
+            )
+
+        assert download.await_count == 1

@@ -27,8 +27,6 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
-    from backend.copilot.tools.local_pc_shim import LocalPCShim
-
 from backend.copilot.context import (
     E2B_ALLOWED_DIRS,
     E2B_ALLOWED_DIRS_STR,
@@ -46,6 +44,7 @@ from backend.copilot.host_fs import open_no_follow
 from backend.copilot.sdk.local_pc_file_tools import (
     is_local_pc,
     list_via_shim,
+    run_argv_via_shim,
     stat_via_shim,
 )
 from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
@@ -59,6 +58,8 @@ from backend.copilot.tool_image import (
     prepare_image,
 )
 from backend.util.sandbox_login import run_internal
+from backend.util.sandbox_output import read_sandbox_file
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,47 @@ def _binary_read_guidance(path: str) -> str:
     return (
         "This binary file has not been viewed. "
         "Use bash_exec with 'file' or 'xxd' to inspect it."
+    )
+
+
+# Read and Edit hold a file whole; past this they refuse it.
+_MAX_READ_BYTES = Config().max_file_size_mb * 1024 * 1024
+
+
+def _read_capped_text(path: str) -> str | None:
+    """A host file as text; ``None`` past ``_MAX_READ_BYTES``."""
+    with open(path, encoding="utf-8", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        text = fh.read(_MAX_READ_BYTES + 1)
+    return None if len(text) > _MAX_READ_BYTES else text
+
+
+def _read_capped_lines(path: str, offset: int, limit: int) -> list[str] | None:
+    """Lines ``offset`` to ``offset + limit`` of a host file, reading no further;
+    ``None`` past ``_MAX_READ_BYTES``."""
+    with open(path, encoding="utf-8", errors="replace", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        budget = _MAX_READ_BYTES
+        selected: list[str] = []
+        for index in range(offset + limit):
+            line = fh.readline(budget + 1)
+            if not line:
+                break
+            budget -= len(line)
+            if budget < 0:
+                return None
+            if index >= offset:
+                selected.append(line)
+    return selected
+
+
+def _too_large(path: str, done: str) -> str:
+    return (
+        f"{os.path.basename(path)} is larger than {_MAX_READ_BYTES // 2**20} MB "
+        f"and cannot be {done} whole. Use bash_exec with head, tail, "
+        "sed -n or split to work on parts of it."
     )
 
 
@@ -243,10 +285,13 @@ def _get_sandbox():
     return get_current_sandbox()
 
 
-async def _read_local_pc_bytes(sandbox: "LocalPCShim", remote: str) -> bytes:
-    """*remote*'s bytes, read through the companion's FILE_READ."""
-    data = await sandbox.files.read(remote, format="bytes")
-    return data.encode("utf-8") if isinstance(data, str) else bytes(data)
+async def _read_remote(sandbox: Any, remote: str, max_bytes: int) -> bytes:
+    """At most ``max_bytes + 1`` bytes of *remote*, so a longer result means the
+    file is over the limit: a Local PC's companion is asked for no more, and an
+    E2B file stops streaming one byte past it."""
+    if is_local_pc(sandbox):
+        return await sandbox.files.read_capped(remote, max_bytes)
+    return await read_sandbox_file(sandbox, remote, max_bytes)
 
 
 async def _remote_file_size(sandbox: Any, remote: str) -> int:
@@ -422,17 +467,19 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                 )
             if ext in IMAGE_EXTENSIONS:
                 raw = (
-                    await _read_local_pc_bytes(sandbox, remote)
+                    await sandbox.files.read_capped(remote, MAX_IMAGE_BYTES)
                     if is_local_pc(sandbox)
                     else await read_sandbox_image(sandbox, remote)
                 )
                 return await asyncio.to_thread(
                     _image_result, raw, offset, args.get("limit")
                 )
-            raw = await sandbox.files.read(remote, format="bytes")
+            raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "read"), error=True)
 
         lines = content.splitlines(keepends=True)
         selected = list(itertools.islice(lines, offset, offset + limit))
@@ -464,16 +511,15 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     try:
-        with open(
-            resolved, encoding="utf-8", errors="replace", opener=open_no_follow
-        ) as f:
-            selected = list(itertools.islice(f, offset, offset + limit))
+        selected = _read_capped_lines(resolved, offset, limit)
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
     except PermissionError:
         return _mcp(f"Permission denied: {file_path}", error=True)
     except Exception as exc:
         return _mcp(f"Failed to read {file_path}: {exc}", error=True)
+    if selected is None:
+        return _mcp(_too_large(resolved, "read"), error=True)
 
     numbered = "".join(
         f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
@@ -631,15 +677,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
             remote = os.path.join(canonical_parent, os.path.basename(remote))
 
         try:
-            raw_result = await sandbox.files.read(remote, format="bytes")
-            raw = (
-                raw_result.encode("utf-8")
-                if isinstance(raw_result, str)
-                else bytes(raw_result)
-            )
+            raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "edited"), error=True)
 
         count = content.count(old_string)
         if count == 0:
@@ -690,14 +733,15 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     lock = _edit_locks[resolved]
     async with lock:
         try:
-            with open(resolved, encoding="utf-8", opener=open_no_follow) as f:
-                content = f.read()
+            content = _read_capped_text(resolved)
         except FileNotFoundError:
             return _mcp(f"File not found: {file_path}", error=True)
         except PermissionError:
             return _mcp(f"Permission denied: {file_path}", error=True)
         except Exception as exc:
             return _mcp(f"Failed to read {file_path}: {exc}", error=True)
+        if content is None:
+            return _mcp(_too_large(resolved, "edited"), error=True)
 
         count = content.count(old_string)
         if count == 0:
@@ -832,8 +876,8 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     # Windows-without-Git-Bash; the LLM can retry via bash_exec.
     if is_local_pc(sandbox):
         try:
-            result = await sandbox.commands.run(
-                argv=parts, cwd=sandbox.allowed_root, timeout=_GREP_TIMEOUT_SECONDS
+            result = await run_argv_via_shim(
+                sandbox, parts, cwd=sandbox.allowed_root, timeout=_GREP_TIMEOUT_SECONDS
             )
         except Exception as exc:
             return _mcp(f"Grep failed: {exc}", error=True)
@@ -1030,10 +1074,9 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         )
     try:
         limit = _DEFAULT_READ_LIMIT if limit is None else limit
-        with open(
-            expanded, encoding="utf-8", errors="replace", opener=open_no_follow
-        ) as fh:
-            selected = list(itertools.islice(fh, offset, offset + limit))
+        selected = _read_capped_lines(expanded, offset, limit)
+        if selected is None:
+            return _mcp(_too_large(expanded, "read"), error=True)
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )

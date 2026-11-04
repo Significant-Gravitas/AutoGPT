@@ -24,6 +24,8 @@ from backend.copilot.context import (
 from backend.copilot.host_fs import open_no_follow, unlink_no_follow
 from backend.copilot.tools.sandbox import make_session_path
 from backend.util.sandbox_login import run_internal
+from backend.util.sandbox_output import read_sandbox_file
+from backend.util.settings import Config
 
 from .models import ErrorResponse
 
@@ -83,25 +85,31 @@ async def save_to_workdir(
 
 async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
     """Read *path* back out of the working directory, or ``None`` when it is
-    absent or unreadable — callers use this for bookkeeping files whose
-    absence is the ordinary first-run case."""
+    absent, unreadable or over the workspace file limit — callers use this for
+    bookkeeping files whose absence is the ordinary first-run case."""
+    max_size = Config().max_file_size_mb * 1024 * 1024
     sandbox = get_current_sandbox()
     try:
         if sandbox is not None:
             remote = resolve_sandbox_path_or_error(path, session_id, "path")
             if isinstance(remote, ErrorResponse):
                 return None
-            data = await sandbox.files.read(remote, format="bytes")
-            return data.encode("utf-8") if isinstance(data, str) else bytes(data)
-        validated = validate_ephemeral_path(
-            path, param_name="path", session_id=session_id
-        )
-        if isinstance(validated, ErrorResponse):
-            return None
-        with open(validated, "rb", opener=open_no_follow) as f:
-            return f.read()
+            data = (
+                await sandbox.files.read_capped(remote, max_size)
+                if is_local_pc_executor(sandbox)
+                else await read_sandbox_file(sandbox, remote, max_size)
+            )
+        else:
+            validated = validate_ephemeral_path(
+                path, param_name="path", session_id=session_id
+            )
+            if isinstance(validated, ErrorResponse):
+                return None
+            with open(validated, "rb", opener=open_no_follow) as f:
+                data = f.read(max_size + 1)
     except Exception:
         return None
+    return data if len(data) <= max_size else None
 
 
 async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
