@@ -617,11 +617,17 @@ class WindowsBackend(ComputerUseBackend):
                 "clipboard.read", reason=f"format {format!r} not supported"
             )
 
-        # Concealed check first.
-        if self._has_private_format():
+        snapshot = self._clipboard_snapshot()
+        if snapshot is None:
+            raise ClipboardConcealedError(
+                "concealed_type",
+                marker="unknown",
+                message="clipboard contents not readable: they kept changing while being read",
+            )
+        text, seq, formats = snapshot
+        # Concealed check first; formats that can't be read count as private.
+        if formats is None or any(CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST for fmt in formats):
             raise ClipboardConcealedError("concealed_type", marker="CF_PRIVATE")
-
-        text, seq = self._read_clipboard_text()
         if self._clipboard_read_foreign:
             content = text or ""
             return ClipboardReadResult(
@@ -719,16 +725,6 @@ class WindowsBackend(ComputerUseBackend):
         except Exception:
             return None
 
-    def _has_private_format(self) -> bool:
-        """Whether the clipboard may hold a CF_PRIVATE ("do not paste")
-        format: true when one is there, and when the formats can't be read."""
-        formats = self._clipboard_formats()
-        return formats is None or any(CF_PRIVATEFIRST <= fmt <= CF_PRIVATELAST for fmt in formats)
-
-    def _clipboard_is_plain_text(self) -> bool:
-        formats = self._clipboard_formats()
-        return formats is not None and formats <= _TEXT_CLIPBOARD_FORMATS
-
     def _type(self, text: str, *, paste: bool, preserve_clipboard: bool) -> None:
         import pyautogui  # type: ignore[import-untyped]
 
@@ -741,12 +737,30 @@ class WindowsBackend(ComputerUseBackend):
             # secret), one that can't be read, or an empty one (clearing it
             # after the paste could beat a slow app to the text) is left alone
             # and the text typed.
-            if self._clipboard_is_plain_text():
-                previous, _ = self._read_clipboard_text()
-                if previous is not None:
+            snapshot = self._clipboard_snapshot()
+            if snapshot is not None:
+                previous, _, formats = snapshot
+                if (
+                    formats is not None
+                    and formats <= _TEXT_CLIPBOARD_FORMATS
+                    and previous is not None
+                ):
                     self._do_paste(text, restore=previous)
                     return
         pyautogui.write(text, interval=0.02)
+
+    def _clipboard_snapshot(self) -> tuple[str | None, int | None, set[int] | None] | None:
+        """The text, sequence number and formats as one reading. They come
+        from separate clipboard sessions, so the sequence number and text
+        must read the same after the formats as before them, or a copy
+        landed in between; retried a few times, then None."""
+        for _ in range(3):
+            text, seq = self._read_clipboard_text()
+            formats = self._clipboard_formats()
+            again, seq_again = self._read_clipboard_text()
+            if seq == seq_again and text == again:
+                return text, seq, formats
+        return None
 
     def _do_paste(self, text: str, *, restore: str | None) -> None:
         """Paste `text`, then put `restore` back unless something else has

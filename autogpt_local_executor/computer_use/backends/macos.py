@@ -317,7 +317,15 @@ class MacOSBackend(ComputerUseBackend):
                 "screenshot.window", reason=f"CGImage conversion failed: {exc}"
             ) from exc
 
-        bounds = entry.extra.get("bounds", (0, 0, img.width, img.height))
+        # The window may have moved or been resized since window_list, so use
+        # its frame now; fall back to the one it was listed with.
+        live = self._cg_window_frame(cg_window_id)
+        if live is not None and live[0][2] > 0 and live[0][3] > 0:
+            x, y, w, h = live[0]
+            bounds = (x, y, x + w, y + h)
+        else:
+            bounds = entry.extra.get("bounds", (0, 0, img.width, img.height))
+        monitor = self._display_index_for(bounds)
         origin = (int(bounds[0]), int(bounds[1]))
         # The capture comes back at the display's backing resolution, while
         # the window's bounds are in points.
@@ -337,13 +345,28 @@ class MacOSBackend(ComputerUseBackend):
             mime_type=mime,
             width=img.width,
             height=img.height,
-            monitor=int(entry.extra.get("monitor", 0)),
+            monitor=monitor,
             region=None,
             display_scale=scale,
             logical_size=logical_size,
             origin=origin,
-            display_id=int(entry.extra.get("monitor", 0)),
+            display_id=monitor,
         )
+
+    def _display_index_for(self, bounds: tuple[int, int, int, int]) -> int:
+        """The display holding the centre of `bounds` (points), else 0."""
+        cx = (bounds[0] + bounds[2]) / 2
+        cy = (bounds[1] + bounds[3]) / 2
+        try:
+            displays = self.display_info()
+        except Exception:
+            return 0
+        for d in displays:
+            ox, oy = d.origin
+            w, h = d.logical_size
+            if ox <= cx < ox + w and oy <= cy < oy + h:
+                return d.index
+        return 0
 
     # ── Input ────────────────────────────────────────────────────────
 
@@ -614,12 +637,13 @@ class MacOSBackend(ComputerUseBackend):
                     class_name=owner_name,
                     creation_timestamp=None,
                 )
+                monitor = self._display_index_for((x, y, x + w, y + h))
                 wid = self.window_registry.mint(
                     cg_id,
                     fp,
                     extra={
                         "bounds": (x, y, x + w, y + h),
-                        "monitor": 0,
+                        "monitor": monitor,
                     },
                 )
                 out.append(
@@ -630,7 +654,7 @@ class MacOSBackend(ComputerUseBackend):
                         app_bundle_id=bundle,
                         title=str(title) if title else None,
                         bounds=(x, y, x + w, y + h),
-                        monitor=0,
+                        monitor=monitor,
                         is_focused=(pid == focused_pid),
                         is_minimized=False,
                         is_fullscreen=False,
@@ -916,10 +940,16 @@ class MacOSBackend(ComputerUseBackend):
                 "clipboard.read",
                 reason=f"format {format!r} not supported in v1",
             )
-        text, seq = self._read_pasteboard_text()
+        snapshot = self._pasteboard_snapshot()
+        if snapshot is None:
+            raise ClipboardConcealedError(
+                "concealed_type",
+                marker="unknown",
+                message="clipboard contents not readable: they kept changing while being read",
+            )
+        text, seq, markers = snapshot
         # Concealed-marker check first. Types that can't be read could be
         # hiding a marker, so they refuse the read too.
-        markers = self._read_pasteboard_types()
         if markers is None:
             raise ClipboardConcealedError(
                 "concealed_type",
@@ -1025,16 +1055,30 @@ class MacOSBackend(ComputerUseBackend):
             # text, a concealed password), one that can't be read, or an empty
             # one (clearing it after the paste could beat a slow app to the
             # text) is left alone and the text typed.
-            if self._pasteboard_is_plain_text():
-                previous, _ = self._read_pasteboard_text()
-                if previous is not None:
+            snapshot = self._pasteboard_snapshot()
+            if snapshot is not None:
+                previous, _, types = snapshot
+                if (
+                    types is not None
+                    and set(types) <= _PLAIN_TEXT_PB_TYPES
+                    and previous is not None
+                ):
                     self._do_paste(text, restore=previous)
                     return
         pyautogui.write(text, interval=0.02)
 
-    def _pasteboard_is_plain_text(self) -> bool:
-        types = self._read_pasteboard_types()
-        return types is not None and set(types) <= _PLAIN_TEXT_PB_TYPES
+    def _pasteboard_snapshot(self) -> tuple[str | None, int, list[str] | None] | None:
+        """The text, change count and types as one reading. They come from
+        separate queries, so the change count and text must read the same
+        after the types as before them, or another app wrote in between;
+        retried a few times, then None."""
+        for _ in range(3):
+            text, count = self._read_pasteboard_text()
+            types = self._read_pasteboard_types()
+            again, count_again = self._read_pasteboard_text()
+            if count is not None and count == count_again and text == again:
+                return text, count, types
+        return None
 
     def _do_paste(self, text: str, *, restore: str | None) -> None:
         """Paste `text`, then put `restore` back unless something else has

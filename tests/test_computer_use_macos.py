@@ -336,6 +336,7 @@ def test_preserve_clipboard_skips_restore_when_user_copied_during_paste(
     # it past 11).
     reads: list[tuple[str | None, int]] = [
         ("PREVIOUS", 10),  # initial snapshot
+        ("PREVIOUS", 10),  # the snapshot's check that nothing changed
         ("USER_COPIED", 12),  # second read after paste
     ]
 
@@ -791,6 +792,8 @@ def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeyp
     from autogpt_local_executor.computer_use.backends import macos as macos_backend
 
     quartz = MagicMock()
+    # No live frame: the bounds the window was listed with are used.
+    quartz.CGWindowListCopyWindowInfo.return_value = []
     monkeypatch.setitem(sys.modules, "Quartz", quartz)
     monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
     pil = MagicMock()
@@ -818,6 +821,7 @@ def test_a_window_capture_draws_the_cursor_when_asked(tmp_path, monkeypatch) -> 
 
     quartz = MagicMock()
     quartz.NSEvent.mouseLocation.return_value = SimpleNamespace(x=300, y=900 - 150)
+    quartz.CGWindowListCopyWindowInfo.return_value = []
     monkeypatch.setitem(sys.modules, "Quartz", quartz)
     monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
     pil = MagicMock()
@@ -1042,3 +1046,65 @@ def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkey
         )
 
     assert clipboard["content"] == "user text"
+
+
+def _changing_pasteboard(b, monkeypatch, settles_after: int) -> dict:
+    """A pasteboard another app writes to between the first reads."""
+    state = {"reads": 0, "seq": 1, "content": "first"}
+
+    def read() -> tuple[str, int]:
+        state["reads"] += 1
+        if state["reads"] <= settles_after:
+            state["seq"] += 1
+            state["content"] = f"copy {state['seq']}"
+        return state["content"], state["seq"]
+
+    monkeypatch.setattr(b, "_read_pasteboard_text", read)
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: ["public.utf8-plain-text"])
+    return state
+
+
+def test_a_clipboard_read_refuses_a_pasteboard_that_keeps_changing(tmp_path, monkeypatch) -> None:
+    """The text and the types came from separate queries, so a concealed
+    value swapped in between them passed the marker check."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    _changing_pasteboard(b, monkeypatch, settles_after=100)
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
+
+
+def test_a_clipboard_read_accepts_a_pasteboard_once_it_settles(tmp_path, monkeypatch) -> None:
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    state = _changing_pasteboard(b, monkeypatch, settles_after=1)
+
+    assert b.clipboard_read().content == state["content"]
+
+
+def test_a_window_capture_uses_the_live_window_frame_and_its_display(tmp_path, monkeypatch) -> None:
+    """Bounds saved at window_list time go stale when the window moves, and
+    every window reported display 0."""
+    from autogpt_local_executor.computer_use.backends import macos as macos_backend
+
+    quartz = MagicMock()
+    quartz.CGWindowListCopyWindowInfo.return_value = [
+        {"kCGWindowBounds": {"X": 1600, "Y": 100, "Width": 400, "Height": 300}}
+    ]
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
+    monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
+    pil = MagicMock()
+    pil.Image.open.return_value = SimpleNamespace(width=800, height=600)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
+    monkeypatch.setattr(macos_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: _SIDE_BY_SIDE_RETINA)
+    fp = WindowFingerprint(pid=7, class_name="Notes", creation_timestamp=None)
+    window_id = b.window_registry.mint(42, fp, extra={"bounds": (0, 0, 800, 600), "monitor": 0})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _handle: fp)
+
+    result = b._screenshot_window(window_id, quality=75, format="png", include_cursor=False)
+
+    assert result.origin == (1600, 100)
+    assert result.logical_size == (400, 300)
+    assert result.display_scale == 2.0
+    assert (result.monitor, result.display_id) == (1, 1)
