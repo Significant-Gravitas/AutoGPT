@@ -20635,7 +20635,14 @@
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
-          "url": { "type": "string", "title": "Url" }
+          "url": { "type": "string", "title": "Url" },
+          "new_email": {
+            "anyOf": [
+              { "type": "string", "format": "email" },
+              { "type": "null" }
+            ],
+            "title": "New Email"
+          }
         },
         "type": "object",
         "required": ["type", "to", "url"],
