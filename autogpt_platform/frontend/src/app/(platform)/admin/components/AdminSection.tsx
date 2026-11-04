@@ -23,8 +23,7 @@ export function AdminSection({
     <section
       aria-labelledby={title ? titleId : undefined}
       className={cn(
-        // TODO(tokens): the shadow colour rgba(15,15,20,0.04) has no token yet.
-        "rounded-[18px] border border-border-base bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]",
+        "rounded-2xl border border-border-base bg-surface px-5 py-4 shadow-sm",
         className,
       )}
     >
@@ -34,7 +33,7 @@ export function AdminSection({
             {title}
           </Text>
           {description ? (
-            <Text variant="small" className="text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               {description}
             </Text>
           ) : null}

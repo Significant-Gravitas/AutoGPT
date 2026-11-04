@@ -16,14 +16,16 @@ export const TextRenderer: React.FC<{
       : text;
 
   return (
-    <Text
-      variant="small-tight"
-      tone="inherit"
-      as="div"
-      className="break-words bg-surface-muted p-3"
-    >
-      {truncated}
-    </Text>
+    <div className="bg-surface-muted p-3">
+      <Text
+        variant="small-tight"
+        tone="inherit"
+        as="div"
+        className="break-words"
+      >
+        {truncated}
+      </Text>
+    </div>
   );
 };
 
@@ -50,7 +52,7 @@ export const ContentRenderer: React.FC<{
     !shortContent
   ) {
     return (
-      <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-caption [&>*]:!leading-4 [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
+      <div className="overflow-x-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap [&>*]:rounded-xlarge [&>*]:!text-caption [&>*]:!leading-4">
         {renderer?.render(value, metadata)}
       </div>
     );

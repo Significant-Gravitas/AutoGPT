@@ -119,6 +119,23 @@ def test_execution_credit_balance_uses_organization_aware_lookup():
     db_client.get_credits.assert_not_called()
 
 
+def test_execution_credit_balance_reads_the_wallet_a_run_was_queued_on():
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+        execution_context=ExecutionContext(
+            organization_id="org-1", bills_own_wallet=True
+        ),
+    )
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 250
+
+    assert _get_execution_credit_balance(db_client, execution) == 250
+    db_client.get_org_credits.assert_not_called()
+
+
 def test_execution_credit_balance_uses_user_wallet_without_organization():
     execution = GraphExecutionEntry(
         user_id="user-1",

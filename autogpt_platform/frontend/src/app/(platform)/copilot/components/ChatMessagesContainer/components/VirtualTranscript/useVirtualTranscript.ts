@@ -65,7 +65,6 @@ export function useVirtualTranscript({
   const viewportRechecksRef = useRef(0);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
-  const enteringRef = useRef(false);
   const prependRef = useRef<Prepend | null>(null);
   const hasViewportRef = useRef(false);
   hasViewportRef.current = hasViewport === true;
@@ -114,22 +113,14 @@ export function useVirtualTranscript({
         instance,
         key: item.key,
         delta,
-        isEntering: enteringRef.current,
+        // A row measured for the first time was padding sized from a guess.
+        // The virtualizer measures a row mounted mid-scroll from its
+        // ResizeObserver, not from the ref, so ask its size cache.
+        isEntering: !instance.itemSizeCache.has(item.key),
       });
     }
     return false;
   };
-
-  const [measureRow] = useState(() => (node: HTMLDivElement | null) => {
-    if (!node) {
-      virtualizer.measureElement(null);
-      return;
-    }
-    enteringRef.current =
-      virtualizer.elementsCache.get(node.dataset.key ?? "") !== node;
-    virtualizer.measureElement(node);
-    enteringRef.current = false;
-  });
 
   const firstRowID = rows[0]?.message.id;
   if (firstRowID !== firstRowIDRef.current) {
@@ -191,7 +182,7 @@ export function useVirtualTranscript({
 
   return {
     listRef,
-    measureRow,
+    measureRow: virtualizer.measureElement,
     segments,
     padding,
     isWindowed,

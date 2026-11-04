@@ -35,7 +35,7 @@ pnpm types
 After making **any** code changes in the frontend, you MUST run the following commands **in order** before reporting work as done, creating commits, or opening PRs:
 
 1. `pnpm format` — auto-fix formatting issues
-2. `pnpm lint` — check for lint errors; fix any that appear
+2. `pnpm lint` — check for lint errors; fix any that appear. It includes the `design-system/*` rules (see "Taste" below); never raise `scripts/eslint-rules/design-system-baseline.json` to make new code pass
 3. `pnpm types` — check for type errors; fix any that appear
 
 Do NOT skip these steps. If any command reports errors, fix them and re-run until clean. Only then may you consider the task complete. If typing keeps failing, stop and ask the user.
@@ -46,13 +46,26 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
 - Use function declarations (not arrow functions) for components/handlers
-- No `dark:` Tailwind classes — the design system handles dark mode
+- No `dark:` Tailwind classes — the design system handles dark mode (`design-system/no-dark-variant`)
 - Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
 - No `any` types unless the value genuinely can be anything
 - No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
 - **React Compiler folders** — the compiler builds the folders in `reactCompilerSources` (`next.config.mjs`: the copilot and the chat organisms `Conversation`, `Message` and `PromptInput`). There the `react-hooks` compiler rules and `exhaustive-deps` are errors (warnings everywhere else), oxlint's `autogpt/no-manual-memo` rejects new `useMemo`/`useCallback`, `"use memo"`/`"use no memo"` and any `memo()` without a `// memo-boundary: <why>` comment above it, and `autogpt/no-hookless-use-function` rejects a `use*` function that calls no hook. `src/reactCompilerCoverage.test.ts` fails on any compiler bailout missing from its `KNOWN_BAILOUTS`. Code written before these rules is grandfathered (`.eslintrc.json` overrides, `scripts/eslint-rules/manual-memo-baseline.json`); those lists can only shrink, and the tests fail when an entry is fixed but not removed
 - **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
 - **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
+
+### Taste (design system)
+
+The full rules are in `docs/engineering/design-system.md`; `pnpm lint` enforces them as `design-system/*` rules, and each error names the token or component to use instead.
+
+- **Colour** comes from the role tokens in `src/app/tokens/theme.css` (`bg-surface`, `text-foreground-secondary`, `border-border-base`, `bg-error-surface`, `bg-orange/10`), never shadcn names (`bg-background`, `text-muted-foreground`), raw palette classes (`bg-zinc-200`), hex or `rgb()` values (`bg-[#fff]`); in a string, `rgb(var(--color-<role>))`. `design-system/no-alias-colours`, `no-palette-colours` and `no-hex-colours` fail them; artwork, logos, chart series and user-picked palettes go in `ds-colour-exempt.json` with a reason, never a suppression comment. `scripts/ds/palette-map.json` names the role for each palette class.
+- **No `dark:` or `light:` classes.** They never render; the tokens carry the theme.
+- **Primitives own their look.** Pick a `variant`, `size` or `tone`; `className` is for layout (on `Text` also truncation, line clamping, wrapping, breaking, `text-balance`/`text-pretty` and alignment). Text goes through the `Text` atom, icons through the `Icon` atom with Hugeicons.
+- **No legacy UI:** nothing from `src/components/__legacy__`, `legacy/` paths, `@/components/ui`, `LegacyButton` or `legacy-*` Button variants.
+- **No arbitrary values** except layout and transitions; no inline `style` for static values; no classes Tailwind does not generate.
+- **Suppressions say why:** `// oxlint-disable-next-line design-system/<rule> -- <reason>`, one line, one rule.
+- **Pixels:** a change to `src/components/**`, `globals.css` or `tailwind*.ts` comes with before/after screenshots at 1440 and 390 px in the PR, or "no pixel change" and how you checked.
+- After removing violations, or moving, renaming or splitting a file, run `pnpm lint:ds-baseline` and commit the baseline. Lint fails new violations, counts above the baseline and counts below it (`design-system/baseline-outdated`, until the lower count is committed); only a count equal to the baseline passes.
 
 ## Architecture
 
@@ -63,7 +76,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Workflow Builder**: Visual graph editor using @xyflow/react
 - **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
 - **Icons**: Hugeicons (stroke-rounded) only, rendered through the `Icon` atom
-- **Feature Flags**: read from the backend's `/api/feature-flags` by default, which answers from PostHog
+- **Feature Flags**: read from the backend's `/api/feature-flags`, which answers from PostHog
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
 - **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 
