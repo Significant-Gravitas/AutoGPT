@@ -64,7 +64,7 @@ single JSON object with this shape:
 | `result.ok` | bool | True if the op completed without error |
 | `result.exit_code` | int \| null | For EXECUTE_COMMAND only |
 | `result.duration_ms` | int | Op elapsed time |
-| `result.error_code` | string \| null | ErrorCode enum value on failure (see PROTOCOL.md error codes), or `CANCELLED` for an `EXECUTE_COMMAND` stopped because its session ended or was revoked |
+| `result.error_code` | string \| null | ErrorCode enum value on failure (see PROTOCOL.md error codes), or `CANCELLED` for an `EXECUTE_COMMAND` or `COMPUTER_TOOL_CALL` stopped because its session ended or was revoked |
 | `seq` | int | Monotonic per-log-file sequence number, starts at 1, resets on rotation |
 | `prev_hmac` | string \| null | HMAC of the previous record (null for the first record in a file) |
 | `hmac` | string | HMAC of THIS record (see "Tamper-evidence chain") |
@@ -80,9 +80,7 @@ single JSON object with this shape:
 | `FILE_LIST` | `{path, glob, recursive, include_hidden, max_entries, entries_returned}` |
 | `FILE_DELETE` | `{path, recursive, missing_ok}` |
 | `FILE_MOVE` | `{src, dst, overwrite}` |
-| `SCREENSHOT_REQUEST` | `{monitor, quality, image_bytes_returned, width?, height?}` — no image content; `width`/`height` only present on success |
-| `INPUT_ACTION` | `{action, coordinate, key, direction, clicks, text_length}` — the `text` payload is replaced by its byte length (`text_length`); `null` when the action has no text |
-| `APP_LAUNCH` | `{bundle_id, executable_path, args, activate, pid?}` — `args` in full, as `EXECUTE_COMMAND` keeps `argv`, since they decide what runs; `pid` only on success |
+| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too) and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
 | `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
 | `DIRECTORY_LIST` | `{browse_id, path, entries_returned, truncated}` — logs the canonical directory being viewed, never returned entry-name arrays or opaque references |
 | `SESSION_ALLOWED_ROOT_SET` | `{previous_allowed_root, allowed_root, fingerprint, revision}` |
@@ -110,9 +108,9 @@ didn't trigger:
 ### What's NEVER logged
 
 - Wire payload content for FILE_READ / FILE_WRITE (only sizes).
-- Screenshot image bytes (only dimensions + byte count).
-- `INPUT_ACTION.text` payload (only its length, to avoid leaking what
-  the LLM is typing into password fields).
+- Screenshot image bytes or what a computer tool returned (only counts).
+- Text the agent typed, set or scripted through computer use (only its
+  length, to avoid leaking what the LLM is typing into password fields).
 - Environment variable VALUES (only keys, so the user can see "GH_TOKEN
   was set" without seeing the token itself).
 - Refresh tokens or access tokens.

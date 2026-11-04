@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError,
 #     Both sides MUST tolerate forward-compatible additions within a major.
 #   * Every envelope SHOULD carry `version` matching the negotiated value,
 #     but receivers MUST be lenient — HELLO-time negotiation is the truth.
-VERSION: str = "1.1"
+VERSION: str = "2.0"
 
 # The platform relay and shim both cap decoded WebSocket messages at 16 MiB.
 # JSON can expand a text byte to six bytes (for example NUL -> ``\u0000``),
@@ -143,24 +143,11 @@ class MessageType(StrEnum):
     FILE_LIST_RESPONSE = "FILE_LIST_RESPONSE"
     FILE_DELETE = "FILE_DELETE"
     FILE_MOVE = "FILE_MOVE"
-    SCREENSHOT_REQUEST = "SCREENSHOT_REQUEST"
-    SCREENSHOT_RESPONSE = "SCREENSHOT_RESPONSE"
-    INPUT_ACTION = "INPUT_ACTION"
-    CURSOR_POSITION_REQUEST = "CURSOR_POSITION_REQUEST"
-    CURSOR_POSITION_RESPONSE = "CURSOR_POSITION_RESPONSE"
-    DISPLAY_INFO_REQUEST = "DISPLAY_INFO_REQUEST"
-    DISPLAY_INFO_RESPONSE = "DISPLAY_INFO_RESPONSE"
-    WINDOW_LIST_REQUEST = "WINDOW_LIST_REQUEST"
-    WINDOW_LIST_RESPONSE = "WINDOW_LIST_RESPONSE"
-    WINDOW_FOCUS = "WINDOW_FOCUS"
-    APP_LIST_REQUEST = "APP_LIST_REQUEST"
-    APP_LIST_RESPONSE = "APP_LIST_RESPONSE"
-    APP_LAUNCH = "APP_LAUNCH"
-    CLIPBOARD_READ = "CLIPBOARD_READ"
-    CLIPBOARD_READ_RESPONSE = "CLIPBOARD_READ_RESPONSE"
-    CLIPBOARD_WRITE = "CLIPBOARD_WRITE"
-    PERMISSIONS_CHECK_REQUEST = "PERMISSIONS_CHECK_REQUEST"
-    PERMISSIONS_CHECK_RESPONSE = "PERMISSIONS_CHECK_RESPONSE"
+    # Computer use relays cua-driver's own tools (see docs/CUA_DRIVER.md).
+    COMPUTER_TOOLS_REQUEST = "COMPUTER_TOOLS_REQUEST"
+    COMPUTER_TOOLS_RESPONSE = "COMPUTER_TOOLS_RESPONSE"
+    COMPUTER_TOOL_CALL = "COMPUTER_TOOL_CALL"
+    COMPUTER_TOOL_RESULT = "COMPUTER_TOOL_RESULT"
     ACK = "ACK"
     ERROR = "ERROR"
     PING = "PING"
@@ -211,12 +198,10 @@ class ErrorCode(StrEnum):
     SESSION_NOT_ATTACHED = "SESSION_NOT_ATTACHED"
     SESSION_ALREADY_ACTIVE = "SESSION_ALREADY_ACTIVE"
     SESSION_REVISION_MISMATCH = "SESSION_REVISION_MISMATCH"
-    # Computer-use additions (see docs/COMPUTER_USE.md Q1-Q5).
-    WINDOW_STALE = "WINDOW_STALE"
+    # Computer-use additions (see docs/COMPUTER_USE.md).
     PERMISSION_PENDING = "PERMISSION_PENDING"
     FEATURE_NOT_SUPPORTED = "FEATURE_NOT_SUPPORTED"
     CLIPBOARD_CONCEALED = "CLIPBOARD_CONCEALED"
-    INPUT_OUT_OF_BOUNDS = "INPUT_OUT_OF_BOUNDS"
     # Local LLM additions (see docs/LOCAL_LLM.md).
     MODEL_NOT_AVAILABLE = "MODEL_NOT_AVAILABLE"
     LOCAL_LLM_BUSY = "LOCAL_LLM_BUSY"
@@ -294,6 +279,18 @@ class _Payload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ComputerDriverInfo(BaseModel):
+    """Which GUI driver serves computer use on this machine. `runtime` is
+    `direct` when the driver process the shim started owns the automation
+    runtime, and `service` when it relays to CuaDriver.app on macOS."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
+    runtime: Literal["direct", "service"]
+
+
 class HelloPayload(_Payload):
     shim_version: str
     machine_id: str
@@ -305,9 +302,11 @@ class HelloPayload(_Payload):
     allowed_root: str | None
     local_llm_models: list[str] = Field(default_factory=list)
     hardware_devices: list[dict[str, Any]] = Field(default_factory=list)
-    # Computer-use feature advertisement, per COMPUTER_USE.md.
-    computer_use_features: list[str] = Field(default_factory=list)
-    computer_use_features_coarse: list[str] = Field(default_factory=list)
+    # The driver behind computer use and the names of the tools this machine
+    # offers, when the capability is advertised. Their schemas come from
+    # COMPUTER_TOOLS_REQUEST (see docs/CUA_DRIVER.md).
+    computer_use_driver: ComputerDriverInfo | None = None
+    computer_use_tools: list[str] = Field(default_factory=list)
     # Workflow-recording advertisement (see docs/WORKFLOW_RECORDING.md §6).
     # `recording_channels` are the capture channels this shim can offer (floor
     # is universal; browser/desktop_ax light up as their enrichers land).
@@ -451,13 +450,6 @@ class AckPayload(_Payload):
     ok: bool = True
 
 
-class AppLaunchAckPayload(AckPayload):
-    """APP_LAUNCH's ACK also names the launched process: null when the OS
-    didn't say (a launch through `open -b`, say)."""
-
-    pid: int | None = None
-
-
 class FileStatPayload(_Payload):
     path: str
     follow_symlinks: bool = True
@@ -515,178 +507,66 @@ class FileMovePayload(_Payload):
     overwrite: bool = False
 
 
-class ScreenshotRequestPayload(_Payload):
-    monitor: int = 0
-    quality: int = 75
-    region: tuple[int, int, int, int] | None = None
-    window_id: str | None = None
-    format: Literal["jpeg", "png"] = "jpeg"
-    include_cursor: bool = True
+COMPUTER_TOOL_NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
+# Longest a platform may ask one computer tool call to run.
+MAX_COMPUTER_TOOL_TIMEOUT_SECONDS = 600
 
 
-class ScreenshotResponseMeta(BaseModel):
-    """Echo block for region/window crops, per COMPUTER_USE.md Q1."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    origin: tuple[int, int] = (0, 0)
-    display_id: int = 0
-
-
-class ScreenshotResponsePayload(_Payload):
-    image_base64: str
-    mime_type: str = "image/jpeg"
-    width: int
-    height: int
-    monitor: int = 0
-    region: tuple[int, int, int, int] | None = None
-    display_scale: float = 1.0
-    logical_size: tuple[int, int] | None = None
-    meta: ScreenshotResponseMeta = Field(default_factory=ScreenshotResponseMeta)
-
-
-class InputActionPayload(_Payload):
-    action: Literal[
-        "left_click",
-        "right_click",
-        "double_click",
-        "middle_click",
-        "triple_click",
-        "mouse_move",
-        "mouse_down",
-        "mouse_up",
-        "drag",
-        "type",
-        "key",
-        "hold_key",
-        "scroll",
-        "wait",
-    ]
-    coordinate: tuple[int, int] | None = None
-    text: str | None = None
-    key: str | None = None
-    direction: Literal["up", "down"] | None = None
-    clicks: int | None = None
-    # v1 additions, per COMPUTER_USE.md.
-    button: Literal["left", "middle", "right"] | None = None
-    modifiers: list[Literal["shift", "ctrl", "alt", "super"]] | None = None
-    scroll_amount: int | None = None
-    scroll_direction: Literal["up", "down", "left", "right"] | None = None
-    duration_ms: int | None = None
-    path: list[tuple[int, int]] | None = None
-    paste: bool = False
-    preserve_clipboard: bool = False
-
-
-class CursorPositionRequestPayload(_Payload):
+class ComputerToolsRequestPayload(_Payload):
     pass
 
 
-class CursorPositionResponsePayload(_Payload):
-    x: int
-    y: int
-    monitor: int = 0
+class ComputerToolSpec(BaseModel):
+    """One driver tool the platform may call, as the driver describes it."""
 
-
-class DisplayInfoRequestPayload(_Payload):
-    pass
-
-
-class DisplayMonitor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    index: int
-    primary: bool = False
-    physical_size: tuple[int, int]
-    logical_size: tuple[int, int]
-    scale: float = 1.0
-    origin: tuple[int, int] = (0, 0)
+    name: str = Field(pattern=COMPUTER_TOOL_NAME_PATTERN)
+    description: str
+    input_schema: dict[str, Any]
+    annotations: dict[str, Any] | None = None
 
 
-class DisplayInfoResponsePayload(_Payload):
-    monitors: list[DisplayMonitor]
+class ComputerToolsResponsePayload(_Payload):
+    driver: ComputerDriverInfo
+    # The driver's own operating guidance, with the shim's notes appended.
+    instructions: str
+    tools: list[ComputerToolSpec]
 
 
-class WindowListRequestPayload(_Payload):
-    app_bundle_id: str | None = None
-    include_minimized: bool = False
-    include_offscreen: bool = False
+class ComputerToolCallPayload(_Payload):
+    tool: str = Field(pattern=COMPUTER_TOOL_NAME_PATTERN)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int | None = Field(default=None, gt=0, le=MAX_COMPUTER_TOOL_TIMEOUT_SECONDS)
 
 
-class WindowInfo(BaseModel):
+class ComputerTextContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    window_id: str
-    pid: int
-    app_name: str | None = None
-    app_bundle_id: str | None = None
-    title: str | None = None
-    bounds: tuple[int, int, int, int]  # [x1, y1, x2, y2]
-    monitor: int = 0
-    is_focused: bool = False
-    is_minimized: bool = False
-    is_fullscreen: bool = False
+    type: Literal["text"] = "text"
+    text: str
 
 
-class WindowListResponsePayload(_Payload):
-    windows: list[WindowInfo]
-    truncated: bool = False
-
-
-class WindowFocusPayload(_Payload):
-    window_id: str
-    raise_: bool = Field(default=True, alias="raise")
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class AppListRequestPayload(_Payload):
-    include_background: bool = False
-
-
-class AppInfo(BaseModel):
+class ComputerImageContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    pid: int
-    name: str
-    bundle_id: str | None = None
-    executable_path: str | None = None
-    is_frontmost: bool = False
-    window_count: int = 0
+    type: Literal["image"] = "image"
+    data: str  # base64
+    mime_type: str
 
 
-class AppListResponsePayload(_Payload):
-    apps: list[AppInfo]
+ComputerContent = Annotated[ComputerTextContent | ComputerImageContent, Field(discriminator="type")]
 
 
-class AppLaunchPayload(_Payload):
-    bundle_id: str | None = None
-    executable_path: str | None = None
-    args: list[str] = Field(default_factory=list)
-    activate: bool = True
+class ComputerToolResultPayload(_Payload):
+    """What the driver returned. `is_error` is the driver's own verdict: a
+    refused or failed action the model should read, not a shim failure,
+    which comes back as ERROR instead."""
 
-
-class ClipboardReadPayload(_Payload):
-    format: Literal["text", "image"] = "text"
-
-
-class ClipboardReadResponsePayload(_Payload):
-    format: Literal["text", "image"] = "text"
-    content: str
-    size_bytes: int
-
-
-class ClipboardWritePayload(_Payload):
-    format: Literal["text", "image"] = "text"
-    content: str
-
-
-class PermissionsCheckRequestPayload(_Payload):
-    permissions: list[str]
-
-
-class PermissionsCheckResponsePayload(_Payload):
-    permissions: dict[str, Literal["granted", "denied", "unknown", "not_applicable"]]
+    tool: str = Field(pattern=COMPUTER_TOOL_NAME_PATTERN)
+    is_error: bool = False
+    content: list[ComputerContent] = Field(default_factory=list)
+    structured_content: dict[str, Any] | None = None
 
 
 class ErrorPayload(_Payload):
@@ -1153,14 +1033,6 @@ class AckMessage(_Envelope):
     payload: AckPayload
 
 
-class AppLaunchAckMessage(_Envelope):
-    """The ACK that answers APP_LAUNCH. The shim only sends it, so it isn't in
-    the inbound `Message` union, where it would collide with `AckMessage`."""
-
-    type: Literal[MessageType.ACK] = MessageType.ACK
-    payload: AppLaunchAckPayload
-
-
 class FileStatMessage(_Envelope):
     type: Literal[MessageType.FILE_STAT] = MessageType.FILE_STAT
     payload: FileStatPayload
@@ -1191,94 +1063,24 @@ class FileMoveMessage(_Envelope):
     payload: FileMovePayload
 
 
-class ScreenshotRequestMessage(_Envelope):
-    type: Literal[MessageType.SCREENSHOT_REQUEST] = MessageType.SCREENSHOT_REQUEST
-    payload: ScreenshotRequestPayload
+class ComputerToolsRequestMessage(_Envelope):
+    type: Literal[MessageType.COMPUTER_TOOLS_REQUEST] = MessageType.COMPUTER_TOOLS_REQUEST
+    payload: ComputerToolsRequestPayload = Field(default_factory=ComputerToolsRequestPayload)
 
 
-class ScreenshotResponseMessage(_Envelope):
-    type: Literal[MessageType.SCREENSHOT_RESPONSE] = MessageType.SCREENSHOT_RESPONSE
-    payload: ScreenshotResponsePayload
+class ComputerToolsResponseMessage(_Envelope):
+    type: Literal[MessageType.COMPUTER_TOOLS_RESPONSE] = MessageType.COMPUTER_TOOLS_RESPONSE
+    payload: ComputerToolsResponsePayload
 
 
-class InputActionMessage(_Envelope):
-    type: Literal[MessageType.INPUT_ACTION] = MessageType.INPUT_ACTION
-    payload: InputActionPayload
+class ComputerToolCallMessage(_Envelope):
+    type: Literal[MessageType.COMPUTER_TOOL_CALL] = MessageType.COMPUTER_TOOL_CALL
+    payload: ComputerToolCallPayload
 
 
-class CursorPositionRequestMessage(_Envelope):
-    type: Literal[MessageType.CURSOR_POSITION_REQUEST] = MessageType.CURSOR_POSITION_REQUEST
-    payload: CursorPositionRequestPayload = Field(default_factory=CursorPositionRequestPayload)
-
-
-class CursorPositionResponseMessage(_Envelope):
-    type: Literal[MessageType.CURSOR_POSITION_RESPONSE] = MessageType.CURSOR_POSITION_RESPONSE
-    payload: CursorPositionResponsePayload
-
-
-class DisplayInfoRequestMessage(_Envelope):
-    type: Literal[MessageType.DISPLAY_INFO_REQUEST] = MessageType.DISPLAY_INFO_REQUEST
-    payload: DisplayInfoRequestPayload = Field(default_factory=DisplayInfoRequestPayload)
-
-
-class DisplayInfoResponseMessage(_Envelope):
-    type: Literal[MessageType.DISPLAY_INFO_RESPONSE] = MessageType.DISPLAY_INFO_RESPONSE
-    payload: DisplayInfoResponsePayload
-
-
-class WindowListRequestMessage(_Envelope):
-    type: Literal[MessageType.WINDOW_LIST_REQUEST] = MessageType.WINDOW_LIST_REQUEST
-    payload: WindowListRequestPayload = Field(default_factory=WindowListRequestPayload)
-
-
-class WindowListResponseMessage(_Envelope):
-    type: Literal[MessageType.WINDOW_LIST_RESPONSE] = MessageType.WINDOW_LIST_RESPONSE
-    payload: WindowListResponsePayload
-
-
-class WindowFocusMessage(_Envelope):
-    type: Literal[MessageType.WINDOW_FOCUS] = MessageType.WINDOW_FOCUS
-    payload: WindowFocusPayload
-
-
-class AppListRequestMessage(_Envelope):
-    type: Literal[MessageType.APP_LIST_REQUEST] = MessageType.APP_LIST_REQUEST
-    payload: AppListRequestPayload = Field(default_factory=AppListRequestPayload)
-
-
-class AppListResponseMessage(_Envelope):
-    type: Literal[MessageType.APP_LIST_RESPONSE] = MessageType.APP_LIST_RESPONSE
-    payload: AppListResponsePayload
-
-
-class AppLaunchMessage(_Envelope):
-    type: Literal[MessageType.APP_LAUNCH] = MessageType.APP_LAUNCH
-    payload: AppLaunchPayload
-
-
-class ClipboardReadMessage(_Envelope):
-    type: Literal[MessageType.CLIPBOARD_READ] = MessageType.CLIPBOARD_READ
-    payload: ClipboardReadPayload = Field(default_factory=ClipboardReadPayload)
-
-
-class ClipboardReadResponseMessage(_Envelope):
-    type: Literal[MessageType.CLIPBOARD_READ_RESPONSE] = MessageType.CLIPBOARD_READ_RESPONSE
-    payload: ClipboardReadResponsePayload
-
-
-class ClipboardWriteMessage(_Envelope):
-    type: Literal[MessageType.CLIPBOARD_WRITE] = MessageType.CLIPBOARD_WRITE
-    payload: ClipboardWritePayload
-
-
-class PermissionsCheckRequestMessage(_Envelope):
-    type: Literal[MessageType.PERMISSIONS_CHECK_REQUEST] = MessageType.PERMISSIONS_CHECK_REQUEST
-    payload: PermissionsCheckRequestPayload
-
-
-class PermissionsCheckResponseMessage(_Envelope):
-    type: Literal[MessageType.PERMISSIONS_CHECK_RESPONSE] = MessageType.PERMISSIONS_CHECK_RESPONSE
-    payload: PermissionsCheckResponsePayload
+class ComputerToolResultMessage(_Envelope):
+    type: Literal[MessageType.COMPUTER_TOOL_RESULT] = MessageType.COMPUTER_TOOL_RESULT
+    payload: ComputerToolResultPayload
 
 
 class ErrorMessage(_Envelope):
@@ -1406,24 +1208,10 @@ Message = Annotated[
     | FileListResponseMessage
     | FileDeleteMessage
     | FileMoveMessage
-    | ScreenshotRequestMessage
-    | ScreenshotResponseMessage
-    | InputActionMessage
-    | CursorPositionRequestMessage
-    | CursorPositionResponseMessage
-    | DisplayInfoRequestMessage
-    | DisplayInfoResponseMessage
-    | WindowListRequestMessage
-    | WindowListResponseMessage
-    | WindowFocusMessage
-    | AppListRequestMessage
-    | AppListResponseMessage
-    | AppLaunchMessage
-    | ClipboardReadMessage
-    | ClipboardReadResponseMessage
-    | ClipboardWriteMessage
-    | PermissionsCheckRequestMessage
-    | PermissionsCheckResponseMessage
+    | ComputerToolsRequestMessage
+    | ComputerToolsResponseMessage
+    | ComputerToolCallMessage
+    | ComputerToolResultMessage
     | ErrorMessage
     | PingMessage
     | PongMessage
@@ -1506,34 +1294,30 @@ __all__ = [
     "negotiate_version",
     "Arch",
     "AckMessage",
-    "AppLaunchAckMessage",
-    "AppLaunchAckPayload",
     "AckPayload",
     "ActivateSessionMessage",
     "ActivateSessionPayload",
     "ApplyRecordingReviewMessage",
     "ApplyRecordingReviewPayload",
-    "AppInfo",
-    "AppLaunchMessage",
-    "AppLaunchPayload",
-    "AppListRequestMessage",
-    "AppListRequestPayload",
-    "AppListResponseMessage",
-    "AppListResponsePayload",
     "AttachSessionMessage",
     "AttachSessionPayload",
-    "ClipboardReadMessage",
-    "ClipboardReadPayload",
-    "ClipboardReadResponseMessage",
-    "ClipboardReadResponsePayload",
-    "ClipboardWriteMessage",
-    "ClipboardWritePayload",
     "CommandResultMessage",
     "CommandResultPayload",
-    "CursorPositionRequestMessage",
-    "CursorPositionRequestPayload",
-    "CursorPositionResponseMessage",
-    "CursorPositionResponsePayload",
+    "COMPUTER_TOOL_NAME_PATTERN",
+    "MAX_COMPUTER_TOOL_TIMEOUT_SECONDS",
+    "ComputerContent",
+    "ComputerDriverInfo",
+    "ComputerImageContent",
+    "ComputerTextContent",
+    "ComputerToolCallMessage",
+    "ComputerToolCallPayload",
+    "ComputerToolResultMessage",
+    "ComputerToolResultPayload",
+    "ComputerToolSpec",
+    "ComputerToolsRequestMessage",
+    "ComputerToolsRequestPayload",
+    "ComputerToolsResponseMessage",
+    "ComputerToolsResponsePayload",
     "DetachSessionMessage",
     "DetachSessionPayload",
     "DirectoryListRequestMessage",
@@ -1541,11 +1325,6 @@ __all__ = [
     "DirectoryListResponseMessage",
     "DirectoryListResponsePayload",
     "DirectoryReferencePayload",
-    "DisplayInfoRequestMessage",
-    "DisplayInfoRequestPayload",
-    "DisplayInfoResponseMessage",
-    "DisplayInfoResponsePayload",
-    "DisplayMonitor",
     "Encoding",
     "EnrichmentCoverage",
     "EnrichmentKind",
@@ -1578,8 +1357,6 @@ __all__ = [
     "HelloAckPayload",
     "HelloMessage",
     "HelloPayload",
-    "InputActionMessage",
-    "InputActionPayload",
     "InterpretationRoute",
     "LocalLLMCompletionChunkMessage",
     "LocalLLMCompletionChunkPayload",
@@ -1592,10 +1369,6 @@ __all__ = [
     "LocalLLMTokensUsage",
     "Message",
     "MessageType",
-    "PermissionsCheckRequestMessage",
-    "PermissionsCheckRequestPayload",
-    "PermissionsCheckResponseMessage",
-    "PermissionsCheckResponsePayload",
     "PingMessage",
     "PingPongPayload",
     "Platform",
@@ -1620,11 +1393,6 @@ __all__ = [
     "RecordingStepPayload",
     "RecordingSummaryMessage",
     "RecordingSummaryPayload",
-    "ScreenshotRequestMessage",
-    "ScreenshotRequestPayload",
-    "ScreenshotResponseMessage",
-    "ScreenshotResponseMeta",
-    "ScreenshotResponsePayload",
     "SESSION_REVOKED_REASONS",
     "Selector",
     "SemanticAction",
@@ -1649,13 +1417,6 @@ __all__ = [
     "ValidationError",
     "ValueType",
     "WorkflowRecording",
-    "WindowFocusMessage",
-    "WindowFocusPayload",
-    "WindowInfo",
-    "WindowListRequestMessage",
-    "WindowListRequestPayload",
-    "WindowListResponseMessage",
-    "WindowListResponsePayload",
     "dump_message",
     "make_ack",
     "make_error",

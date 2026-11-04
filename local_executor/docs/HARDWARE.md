@@ -121,9 +121,8 @@ the current `port` at use time via `HARDWARE_LIST_REQUEST`.
 }
 ```
 
-Per the same UUID-handle pattern as `WINDOW_LIST` (locked in Q2), the
-handle is shim-minted, never reused, and wiped on HELLO. A dead/stale
-handle in any op returns `SERIAL_STALE` (modeled on `WINDOW_STALE`).
+The handle is shim-minted, never reused, and wiped on HELLO. A dead or
+stale handle in any op returns `SERIAL_STALE`.
 
 ### `SERIAL_WRITE` (platform → shim)
 

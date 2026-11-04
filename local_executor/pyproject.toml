@@ -25,14 +25,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Computer use runs cua-driver (MIT). The pin is the release whose tools
+# docs/CUA_DRIVER.md reviews; the bridge refuses another minor version.
+# AppKit reads the pasteboard's private-content markers on macOS.
 computer-use = [
-    "pyautogui>=0.9.54",
-    "Pillow>=10.0",
-    "mss>=9.0",
-    "pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'",
+    "cua-driver==0.38.0",
     "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
-    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
-    "pywin32>=306; sys_platform == 'win32'",
 ]
 hardware = [
     "pyserial>=3.5",

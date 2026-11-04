@@ -185,34 +185,12 @@ def get_allowed_dirs(sandbox) -> tuple[str, ...]:
 
 ---
 
-## 7. `copilot/tools/e2b_file_tools.py` — Computer Use Integration
+## 7. Computer Use Integration
 
-When `config.allow_computer_use` and the active sandbox is a `LocalPCShim`:
-
-```python
-# New handler registered alongside existing file tools:
-async def _handle_screenshot(params, ...) -> ToolResult:
-    sandbox = get_current_sandbox()
-    if not isinstance(sandbox, LocalPCShim) or "computer_use" not in sandbox.capabilities:
-        return error("Computer use not available in this session")
-    screenshot_bytes = await sandbox.computer_use.screenshot()
-    return image_result(screenshot_bytes, mime="image/jpeg")
-
-async def _handle_input_action(params, ...) -> ToolResult:
-    sandbox = get_current_sandbox()
-    await sandbox.computer_use.execute_action(
-        action=params["action"],
-        coordinate=params.get("coordinate"),
-        text=params.get("text"),
-        key=params.get("key"),
-    )
-    return ok_result()
-```
-
-Claude's computer use tool calls flow through these handlers. The platform must pass
-`betas=["computer-use-2025-11-24"]` and `tools=[{"type": "computer_20251124", ...}]`
-to the Anthropic API when `allow_computer_use=True` — this happens in
-`stream_chat_completion_sdk()` where the messages array is constructed.
+Superseded by the implementation in [§10.9](#109-computer-use-routing-implemented):
+the shim relays cua-driver's tools ([CUA_DRIVER.md](CUA_DRIVER.md)) and the
+platform exposes them to Otto through two MCP tools, not the native
+`computer_20251124` tool sketched here.
 
 ---
 
@@ -389,8 +367,7 @@ End-to-end computer-use is wired. When all of —
 `config.use_local_pc_executor` AND `config.allow_computer_use` AND
 the per-user `local-pc-executor` PostHog flag AND the connected
 shim advertised `"computer_use"` in its HELLO `capabilities` — are
-true, copilot turns route screenshots / clicks / typing / window
-listing / app launch / clipboard ops to the user's shim.
+true, Otto's computer use runs on the user's shim through cua-driver.
 
 How the four sketched pieces actually landed:
 
@@ -404,45 +381,43 @@ How the four sketched pieces actually landed:
    degradation rather than silent 4xx). `env_test.py` covers each
    branch.
 
-2. **Tool-call surface (chose MCP tools over the Anthropic native
-   `computer_20251124` beta tool).** Native beta covers only
-   screenshot+click+type+key+scroll. We expose the shim's full surface
-   — including window listing, app launch, clipboard, permissions
-   probing — as 13 plain MCP tools in
-   `backend/copilot/sdk/computer_use_tools.py`. Names: `local_pc_screenshot`,
-   `local_pc_click`, `local_pc_type`, `local_pc_key`, `local_pc_scroll`,
-   `local_pc_cursor_position`, `local_pc_list_windows`,
-   `local_pc_focus_window`, `local_pc_list_apps`, `local_pc_launch_app`,
-   `local_pc_clipboard_read`, `local_pc_clipboard_write`,
-   `local_pc_permissions_check`. Each handler validates `isinstance(sandbox,
-   LocalPCShim)` + `"computer_use" in capabilities` and dispatches into
-   the `_ComputerProxy` adapter, returning Anthropic-format image
-   content blocks for screenshots and structured `{code, error,
-   details}` payloads for shim ERRORs (translated by
-   `local_pc_errors`).
+2. **Tool-call surface: cua-driver's tools behind two MCP tools.** The
+   shim relays a reviewed set of cua-driver's tools (protocol 2.0,
+   [CUA_DRIVER.md](CUA_DRIVER.md)). Registering each as an MCP tool would
+   put ~40 large schemas into every turn, so
+   `backend/copilot/sdk/computer_use_tools.py` registers two:
+   `local_pc_computer_tools` returns the driver's operating guidance, the
+   tools this computer offers and the input schemas Otto asks for (cached
+   per connection by `_ComputerProxy.tools()`), and `local_pc_computer`
+   relays one call (`_ComputerProxy.call()`, never retried). Results carry
+   the driver's text and screenshots as MCP content, then its structured
+   content without strings the text already shows; a driver error is an
+   `isError` result Otto reads, a shim ERROR a structured `{code, error,
+   details}` payload translated by `local_pc_errors`. Only
+   `local_pc_computer` carries the mutating annotation, so the CLI
+   serialises actions on one screen.
 
    Registration is gated by `create_copilot_mcp_server(use_local_pc_computer=…)`
    in `tool_adapter.py`. The CLI's `allowed_tools` whitelist
    (`get_copilot_tool_names`) and the permissions-gated path in
-   `service.py` both append the local_pc_* names under the same gate,
-   so a misconfigured caller fails closed.
+   `service.py` both append the two names under the same gate, so a
+   misconfigured caller fails closed.
 
-3. **UI consent gate.**
-   `autogpt_platform/frontend/src/app/(platform)/copilot/components/LocalPCComputerUseConsent.tsx`
-   pops a per-session modal the first time the user enters a copilot
-   session with a shim that advertises `computer_use_features`. The
-   user explicitly approves "Claude can screenshot / move my mouse /
-   type / list+launch apps / read+write clipboard for THIS session";
-   acked sessionIds are stored as a JSON array in localStorage under
-   `Key.COPILOT_LOCAL_PC_COMPUTER_USE_ACKED_SESSIONS`. New sessions
-   ask again. **The backend gate is the security boundary; this modal
-   is the UX layer that makes "the system is allowed to do this"
-   visible to the human.**
+3. **Consent.** `HELLO.computer_use_driver` and `HELLO.computer_use_tools`
+   define what approving grants. Consent is server-side and per chat
+   session (`api/features/local_executor/consent.py`), bound to the
+   machine, the driver release and the exact tool names; a shim that
+   reconnects offering more asks again. Every call re-checks it, and the
+   connection guard catches a reconnect in between. The frontend's
+   `LocalPCComputerUseConsent` dialog describes the offered tools in plain
+   groups and posts the scope it showed (`expected_machine_id`,
+   `expected_driver`, `expected_tools`); the backend refuses a scope that
+   changed. **The backend gate is the security boundary; the dialog makes
+   it visible.**
 
 4. **Tests.** `env_test.py` covers the OpenRouter compatibility
-   regression. `local_pc_shim_test.py::TestComputerProxy` (the prior
-   Q1-Q5 work) covers every wire op via mocked `_rpc`. Loopback-style
-   integration tests for `computer_use_tools` MCP handlers are
-   deferred — the handlers are thin pass-throughs to `_ComputerProxy`
-   which is exhaustively tested, and the registration gate is small
-   enough to read at a glance.
+   regression. `local_pc_shim_test.py::TestComputerProxy` covers the two
+   wire messages, `computer_use_tools_test.py` the MCP handlers and their
+   gate, `consent_test.py` and `routes_api_test.py` the consent scope, and
+   the shim's `tests/test_cua_driver*.py` the relay against a fake and the
+   real driver.

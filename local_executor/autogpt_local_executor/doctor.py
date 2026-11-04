@@ -1,38 +1,45 @@
 """
 `autogpt-shim doctor` — preflight checks for the shim.
 
-Per docs/COMPUTER_USE.md Q5:
-- Probes the keychain, directory browser (or legacy allowed_root), display,
-  and (on macOS) calls
-  AXIsProcessTrustedWithOptions with the prompt option **on first
-  invocation** so the consent dialog appears proactively.
-- Returns exit 0 when everything required is healthy, 78
-  (EX_CONFIG) when computer-use is requested but a prerequisite OS
-  permission is missing.
+Probes the keychain and the directory browser (or a legacy allowed_root).
+With computer use on, it runs cua-driver's own `doctor`, starts the driver
+the way the daemon does, and on macOS reports its Accessibility and Screen
+Recording grants, asking CuaDriver.app to raise the prompts when they are
+missing. See docs/CUA_DRIVER.md.
+
+Returns exit 0 when everything required is healthy, 78 (EX_CONFIG) when
+computer use is requested but a prerequisite is missing.
 
 Output is plain ASCII (no emoji) — the markers are:
   OK    everything good
   WARN  degraded but won't block (e.g. computer-use not requested)
   FAIL  required and missing
   INFO  context-only
-
-Cross-OS: Linux/Windows variants reach the same exit codes; macOS is
-where the heavy lifting (AXIsProcessTrusted + Screen Recording probe)
-lives.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import os
 import secrets
+import shutil
+import subprocess
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import platform_info
+from .computer_use import CuaDriverBridge, DriverUnavailable, find_driver_binary, offered_tools
+from .computer_use.catalog import REVIEWED_DRIVER_VERSION, same_minor
+from .computer_use.driver import driver_environment
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowser
 
 EX_CONFIG = 78
+# How long one probe of the running driver may take.
+PROBE_SECONDS = 30.0
 
 
 @dataclass
@@ -52,41 +59,14 @@ def run_doctor(config: ShimConfig) -> int:
         checks.append(_check_directory_browser())
     checks.append(_check_keychain())
     plat = platform_info.detect_platform()
-    if plat == "darwin":
-        checks.extend(_check_macos(config))
-    elif plat == "windows":
-        checks.extend(_check_windows(config))
-    elif plat in ("linux", "wsl2"):
-        checks.extend(_check_linux(config, is_wsl2=(plat == "wsl2")))
-    else:
-        checks.append(
-            CheckResult("WARN", "platform", f"unknown platform {plat!r}; doctor cannot probe")
-        )
     if config.enable_computer_use:
-        checks.append(_check_computer_use_modules(plat))
-    checks.append(_check_display(config))
+        checks.extend(_check_computer_use(config, plat))
+    else:
+        checks.append(CheckResult("INFO", "computer_use", "not requested in config"))
     _print_checks(checks)
     if any(c.blocking for c in checks):
         return EX_CONFIG
     return 0
-
-
-def _check_computer_use_modules(plat: str) -> CheckResult:
-    """The modules HELLO needs before it advertises computer_use."""
-    missing = [
-        name
-        for name in platform_info.computer_use_modules(plat)
-        if not platform_info._module_available(name)
-    ]
-    if missing:
-        return CheckResult(
-            "WARN",
-            "modules",
-            f"computer_use needs {', '.join(missing)}; install them with "
-            "`pip install 'autogpt-local-executor[computer-use]'`",
-            blocking=True,
-        )
-    return CheckResult("OK", "modules", "computer_use's Python modules are installed")
 
 
 def _print_checks(checks: list[CheckResult]) -> None:
@@ -199,246 +179,217 @@ def _round_trip(keyring, name: str) -> CheckResult:
     return CheckResult("OK", "keychain", name)
 
 
-def _check_display(config: ShimConfig) -> CheckResult:
-    try:
-        from .computer_use import get_backend
+# ── Computer use (cua-driver) ────────────────────────────────────────────
 
-        backend = get_backend(config)
-        displays = backend.display_info()
-        if not displays:
-            return CheckResult("WARN", "display", "no displays detected")
-        desc = " + ".join(f"{d.physical_size[0]}x{d.physical_size[1]}" for d in displays)
-        return CheckResult("OK", "display", f"{len(displays)} display(s): {desc}")
-    except Exception as exc:
-        return CheckResult("WARN", "display", f"could not enumerate: {exc}")
+# How long cua-driver's own `doctor` and `permissions grant` may take.
+DRIVER_COMMAND_SECONDS = 60.0
+# The cua-driver doctor probes that only describe the install.
+_INFO_PROBES = frozenset({"binary", "install dir", "home dir"})
 
 
-# ── macOS ────────────────────────────────────────────────────────────────
-
-
-def _check_macos(config: ShimConfig) -> list[CheckResult]:
-    out: list[CheckResult] = []
-    ax = _ax_trusted_with_prompt()
-    if ax is None:
-        out.append(
-            CheckResult(
-                "WARN",
-                "Accessibility",
-                "pyobjc/ApplicationServices not installed; cannot probe",
-                blocking=config.enable_computer_use,
-            )
-        )
-    elif ax:
-        out.append(CheckResult("OK", "Accessibility", "granted"))
-    else:
-        out.append(
+def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
+    if plat == "wsl2":
+        return [
             CheckResult(
                 "FAIL",
-                "Accessibility",
-                "not granted — System Settings → Privacy & Security → Accessibility, "
-                "enable autogpt-shim",
-                blocking=config.enable_computer_use,
+                "computer_use",
+                "WSL2 has no display server reachable to the Windows host; run the shim "
+                "on Windows itself",
+                blocking=True,
             )
-        )
-
-    sc = _screen_recording_granted()
-    if sc is None:
-        out.append(
-            CheckResult(
-                "WARN",
-                "Screen Recording",
-                "Quartz not installed; cannot probe",
-                blocking=config.enable_computer_use,
-            )
-        )
-    elif sc:
-        out.append(CheckResult("OK", "Screen Recording", "granted"))
-    else:
-        out.append(
+        ]
+    binary = find_driver_binary(config.cua_driver_path)
+    if binary is None:
+        return [
             CheckResult(
                 "FAIL",
-                "Screen Recording",
-                "not granted — System Settings → Privacy & Security → Screen Recording",
-                blocking=config.enable_computer_use,
+                "cua-driver",
+                "not installed — reinstall with "
+                "`pipx install 'autogpt-local-executor[computer-use]'`",
+                blocking=True,
             )
-        )
-
-    if config.enable_computer_use:
-        if ax and sc:
-            out.append(CheckResult("OK", "computer_use", "ready"))
-        else:
-            missing = []
-            if not ax:
-                missing.append("Accessibility")
-            if not sc:
-                missing.append("Screen Recording")
-            out.append(
-                CheckResult(
-                    "WARN",
-                    "computer_use",
-                    f"degraded — missing: {', '.join(missing)}",
-                )
-            )
-    else:
-        out.append(CheckResult("INFO", "computer_use", "not requested in config"))
-    return out
-
-
-def _ax_trusted_with_prompt() -> bool | None:
-    """Call AXIsProcessTrustedWithOptions({"AXTrustedCheckOptionPrompt": True}).
-
-    Proactively surfaces the consent dialog on first invocation. Returns
-    None when pyobjc isn't installed so the caller can produce a WARN.
-    """
-    try:
-        from ApplicationServices import (  # type: ignore[import-not-found]
-            AXIsProcessTrustedWithOptions,
-            kAXTrustedCheckOptionPrompt,
-        )
-        from CoreFoundation import (  # type: ignore[import-not-found]
-            CFDictionaryCreate,
-            kCFBooleanTrue,
-        )
-    except ImportError:
-        # Fallback: the non-prompting variant (no Accessibility install
-        # but pyobjc-core present is unusual; we still want a probe).
-        try:
-            from ApplicationServices import (  # type: ignore[import-not-found]
-                AXIsProcessTrusted,
-            )
-
-            return bool(AXIsProcessTrusted())
-        except ImportError:
-            return None
-    try:
-        # CFDictionary with a single { kAXTrustedCheckOptionPrompt: True }
-        keys = (kAXTrustedCheckOptionPrompt,)
-        vals = (kCFBooleanTrue,)
-        opts = CFDictionaryCreate(None, keys, vals, 1, None, None)
-        return bool(AXIsProcessTrustedWithOptions(opts))
-    except Exception:
-        return None
-
-
-def _screen_recording_granted() -> bool | None:
-    try:
-        from Quartz import (  # type: ignore[import-not-found]
-            CGPreflightScreenCaptureAccess,
-        )
-
-        return bool(CGPreflightScreenCaptureAccess())
-    except ImportError:
-        return None
-
-
-# ── Linux ────────────────────────────────────────────────────────────────
-
-
-def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
-    out: list[CheckResult] = []
-    if is_wsl2:
-        out.append(
-            CheckResult(
-                "WARN",
-                "display_server",
-                "WSL2 has no display server reachable to the Windows host; computer_use disabled",
-                blocking=config.enable_computer_use,
-            )
-        )
+        ]
+    out = _driver_doctor(binary)
+    if any(check.blocking for check in out):
         return out
-    from .computer_use.backends.linux import _is_wayland
+    out.extend(asyncio.run(_probe_driver(config, plat)))
+    if plat == "linux" and config.enable_clipboard and config.enable_clipboard_read_foreign:
+        out.append(_check_linux_clipboard_types())
+    if plat == "windows":
+        out.append(_check_windows_elevation())
+    return out
 
-    # The backend's own rule, so the two agree: it refuses input whenever
-    # WAYLAND_DISPLAY is set, whatever XDG_SESSION_TYPE says.
-    session = "wayland" if _is_wayland() else os.environ.get("XDG_SESSION_TYPE", "").lower()
-    # An unset or unrecognized session type (e.g. "tty" in a shell attached to
-    # a running desktop) says nothing about the display; ask DISPLAY.
-    if session not in ("wayland", "x11") and os.environ.get("DISPLAY"):
-        session = "x11"
-    if session == "wayland":
+
+def _driver_doctor(binary: Path) -> list[CheckResult]:
+    """cua-driver's own probes: version, display server, AT-SPI, telemetry,
+    and on macOS other copies of CuaDriver.app."""
+    try:
+        completed = subprocess.run(
+            [str(binary), "doctor", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=DRIVER_COMMAND_SECONDS,
+            env=driver_environment(None),
+            check=False,
+        )
+        report = json.loads(completed.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return [CheckResult("FAIL", "cua-driver", f"`{binary} doctor` failed: {exc}", True)]
+    version = str((report.get("build") or {}).get("version") or "")
+    if not same_minor(version):
+        return [
+            CheckResult(
+                "FAIL",
+                "cua-driver",
+                f"{binary} is {version or 'an unknown version'}; this shim works with "
+                f"cua-driver {REVIEWED_DRIVER_VERSION}",
+                blocking=True,
+            )
+        ]
+    out = [CheckResult("OK", "cua-driver", f"{version} at {binary}")]
+    for probe in report.get("probes") or []:
+        label = str(probe.get("label") or "probe")
+        if label in _INFO_PROBES:
+            continue
+        status = probe.get("status")
+        message = str(probe.get("message") or "")
+        detail = str(probe.get("detail") or "")
+        text = message + (f" ({detail})" if detail and status != "ok" else "")
+        marker = {"ok": "OK", "warn": "WARN"}.get(str(status), "FAIL")
+        out.append(CheckResult(marker, f"cua-driver {label}", text, blocking=marker == "FAIL"))
+    return out
+
+
+async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
+    """Start the driver as the daemon would and ask it what it can see."""
+    bridge = CuaDriverBridge(
+        tools=offered_tools(enable_clipboard=config.enable_clipboard),
+        binary=config.cua_driver_path,
+    )
+    out: list[CheckResult] = []
+    try:
+        try:
+            snapshot = await bridge.snapshot()
+        except DriverUnavailable as exc:
+            return [CheckResult("FAIL", "cua-driver start", exc.message, blocking=True)]
+        runtime = (
+            "CuaDriver.app service" if snapshot.info.runtime == "service" else "direct runtime"
+        )
         out.append(
             CheckResult(
-                "WARN",
-                "display_server",
-                "Wayland — input injection is blocked; switch to X11 or use a "
-                "portal+pipewire workflow for screenshots",
-                blocking=config.enable_computer_use,
+                "OK",
+                "cua-driver start",
+                f"{runtime}, {len(snapshot.tools)} tools offered",
             )
         )
-    elif session == "x11" and os.environ.get("DISPLAY"):
-        # HELLO's own probe, so doctor never reports what HELLO leaves out.
-        if platform_info._x11_display_opens():
-            out.append(
-                CheckResult(
-                    "OK", "display_server", f"X11 — the display at {os.environ['DISPLAY']} opens"
-                )
+        out.append(await _check_screen(bridge))
+        if plat == "darwin":
+            binary = find_driver_binary(config.cua_driver_path)
+            out.extend(await _check_macos_permissions(bridge, snapshot.info.runtime, binary))
+    finally:
+        await bridge.close()
+    return out
+
+
+async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
+    try:
+        raw = await bridge.call_tool("get_screen_size", {}, timeout=PROBE_SECONDS)
+    except (DriverUnavailable, TimeoutError) as exc:
+        return CheckResult("WARN", "display", f"cua-driver could not read the screen: {exc}")
+    structured = raw.get("structuredContent")
+    if raw.get("isError") or not isinstance(structured, dict) or "width" not in structured:
+        text = " ".join(
+            str(block.get("text") or "")
+            for block in raw.get("content") or []
+            if isinstance(block, dict)
+        )
+        return CheckResult("WARN", "display", f"cua-driver could not read the screen: {text}")
+    return CheckResult(
+        "OK",
+        "display",
+        f"{structured['width']:g}x{structured['height']:g} "
+        f"(scale {structured.get('scale_factor', 1):g})",
+    )
+
+
+async def _check_macos_permissions(
+    bridge: CuaDriverBridge, runtime: str, binary: Path | None
+) -> list[CheckResult]:
+    granted = await _macos_grants(bridge)
+    if granted is None:
+        return [
+            CheckResult(
+                "FAIL",
+                "permissions",
+                "cua-driver could not report its Accessibility and Screen Recording grants",
+                blocking=True,
             )
+        ]
+    missing = [name for name, ok in granted.items() if not ok]
+    if missing and runtime == "service":
+        # The prompts belong to CuaDriver.app, so LaunchServices raises them
+        # on its behalf, as the old in-process probe did for the shim.
+        _raise_permission_prompts(binary)
+    holder = "CuaDriver" if runtime == "service" else "the app that starts the local executor"
+    out = []
+    for name, label in (
+        ("accessibility", "Accessibility"),
+        ("screen_recording", "Screen Recording"),
+    ):
+        if granted.get(name):
+            out.append(CheckResult("OK", label, f"granted to {holder}"))
         else:
             out.append(
                 CheckResult(
-                    "WARN",
-                    "display_server",
-                    f"X11 session, but the X server at DISPLAY={os.environ['DISPLAY']} "
-                    "doesn't accept a connection; computer_use is unavailable",
-                    blocking=config.enable_computer_use,
-                )
-            )
-    elif session == "x11":
-        out.append(
-            CheckResult(
-                "WARN",
-                "display_server",
-                "X11 session, but DISPLAY is unset; computer_use can't open the display",
-                blocking=config.enable_computer_use,
-            )
-        )
-    else:
-        out.append(
-            CheckResult(
-                "WARN",
-                "display_server",
-                "no display found (DISPLAY and WAYLAND_DISPLAY are unset); "
-                "computer_use needs an X11 session",
-                blocking=config.enable_computer_use,
-            )
-        )
-
-    import shutil
-
-    if shutil.which("wmctrl"):
-        out.append(CheckResult("OK", "wmctrl", "installed"))
-    else:
-        out.append(
-            CheckResult(
-                "WARN",
-                "wmctrl",
-                "not installed — WINDOW_LIST / WINDOW_FOCUS will be unavailable",
-            )
-        )
-    if config.enable_clipboard:
-        # The tool the backend uses: wl-copy only in a Wayland session (it
-        # can't reach an X11 clipboard), xclip otherwise.
-        if session == "wayland" and shutil.which("wl-copy"):
-            out.append(CheckResult("OK", "clipboard tools", "wl-copy present"))
-        elif shutil.which("xclip"):
-            out.append(CheckResult("OK", "clipboard tools", "xclip present"))
-        else:
-            needed = "wl-copy or xclip" if session == "wayland" else "xclip"
-            out.append(
-                CheckResult(
-                    "WARN",
-                    "clipboard tools",
-                    f"{needed} not on PATH — clipboard ops will fail",
+                    "FAIL",
+                    label,
+                    f"not granted — System Settings → Privacy & Security → {label}, "
+                    f"enable {holder}",
+                    blocking=True,
                 )
             )
     return out
 
 
-# ── Windows ──────────────────────────────────────────────────────────────
+async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
+    try:
+        raw = await bridge.call_tool("check_permissions", {"prompt": False}, timeout=PROBE_SECONDS)
+    except (DriverUnavailable, TimeoutError):
+        return None
+    structured = raw.get("structuredContent")
+    if raw.get("isError") or not isinstance(structured, dict):
+        return None
+    return {name: structured.get(name) is True for name in ("accessibility", "screen_recording")}
 
 
-def _check_windows(config: ShimConfig) -> list[CheckResult]:
-    out: list[CheckResult] = []
+def _raise_permission_prompts(binary: Path | None) -> None:
+    if binary is None:
+        return
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run(
+            [str(binary), "permissions", "grant"],
+            timeout=DRIVER_COMMAND_SECONDS,
+            env=driver_environment(None),
+            check=False,
+        )
+
+
+def _check_linux_clipboard_types() -> CheckResult:
+    """Reading clipboard content the shim didn't write first checks it for
+    a password manager's marker, with wl-paste or xclip."""
+    wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
+    tool = "wl-paste" if wayland else "xclip"
+    if shutil.which(tool):
+        return CheckResult("OK", "clipboard types", f"{tool} present")
+    return CheckResult(
+        "WARN",
+        "clipboard types",
+        f"{tool} not on PATH — clipboard_read refuses content the shim didn't write, "
+        "since it can't check it for a password manager's marker",
+    )
+
+
+def _check_windows_elevation() -> CheckResult:
     try:
         import ctypes
 
@@ -446,36 +397,12 @@ def _check_windows(config: ShimConfig) -> list[CheckResult]:
     except Exception:
         elevated = False
     if elevated:
-        out.append(
-            CheckResult(
-                "OK",
-                "UAC",
-                "running elevated — can inject into UAC-elevated windows",
-            )
-        )
-    else:
-        out.append(
-            CheckResult(
-                "INFO",
-                "UAC",
-                "not elevated — non-elevated shim cannot inject into elevated "
-                "windows. Re-launch as Administrator for full computer_use.",
-            )
-        )
-    try:
-        import win32clipboard  # type: ignore[import-not-found]  # noqa: F401
-
-        out.append(CheckResult("OK", "pywin32", "installed"))
-    except Exception as exc:
-        out.append(
-            CheckResult(
-                "WARN",
-                "pywin32",
-                f"not importable: {exc} — install with `pip install pywin32`",
-                blocking=config.enable_computer_use,
-            )
-        )
-    return out
+        return CheckResult("OK", "UAC", "running elevated — can drive UAC-elevated windows")
+    return CheckResult(
+        "INFO",
+        "UAC",
+        "not elevated — computer use cannot drive windows of apps running as Administrator",
+    )
 
 
 __all__ = ["EX_CONFIG", "CheckResult", "run_doctor"]

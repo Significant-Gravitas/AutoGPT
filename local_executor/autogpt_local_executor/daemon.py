@@ -42,6 +42,7 @@ from .audit import (
     get_or_create_audit_key,
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
+from .computer_use import DriverUnavailable, find_driver_binary
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
 from .handlers import (
@@ -54,20 +55,16 @@ from .handlers import (
 from .protocol import (
     MAX_WEBSOCKET_MESSAGE_BYTES,
     ActivateSessionMessage,
-    AppLaunchMessage,
-    AppListRequestMessage,
     ApplyRecordingReviewMessage,
     Arch,
     AttachSessionMessage,
-    ClipboardReadMessage,
-    ClipboardWriteMessage,
-    CursorPositionRequestMessage,
+    ComputerToolCallMessage,
+    ComputerToolsRequestMessage,
     DetachSessionMessage,
     DirectoryListRequestMessage,
     DirectoryListResponseMessage,
     DirectoryListResponsePayload,
     DirectoryReferencePayload,
-    DisplayInfoRequestMessage,
     ErrorCode,
     ExecuteCommandMessage,
     FileDeleteMessage,
@@ -79,16 +76,13 @@ from .protocol import (
     HelloAckMessage,
     HelloMessage,
     HelloPayload,
-    InputActionMessage,
     LocalLLMCompletionMessage,
-    PermissionsCheckRequestMessage,
     PingMessage,
     Platform,
     ProtocolVersionMismatch,
     RecordingFetchMessage,
     RequestRecordingConsentMessage,
     RestoreSessionMessage,
-    ScreenshotRequestMessage,
     SessionActivatedMessage,
     SessionActivatedPayload,
     SessionAttachedMessage,
@@ -100,8 +94,6 @@ from .protocol import (
     StatusMessage,
     StatusPayload,
     StopRecordingMessage,
-    WindowFocusMessage,
-    WindowListRequestMessage,
     dump_message,
     make_ack,
     make_error,
@@ -148,12 +140,16 @@ _CLOSE_CODE_LABELS: dict[int, str] = {
 }
 
 
+# How long cua-driver gets to report its macOS permissions at startup.
+PERMISSION_CHECK_SECONDS = 30.0
+
+
 class DaemonPreflightError(RuntimeError):
     """Raised when daemon refuses to bind due to a missing OS permission.
 
-    Per docs/COMPUTER_USE.md Q5: when computer_use is requested but
-    AXIsProcessTrusted() returns false (macOS), the daemon emits a
-    clear audit record and exits with EX_CONFIG (78). launchd's
+    Per docs/COMPUTER_USE.md: when computer_use is requested but its
+    Accessibility or Screen Recording grant is missing (macOS), the daemon
+    emits a clear audit record and exits with EX_CONFIG (78). launchd's
     KeepAlive: SuccessfulExit=false re-launches us on the next TCC
     change.
 
@@ -493,6 +489,7 @@ class ShimDaemon:
         finally:
             if self._control_mode:
                 await self._shutdown_children()
+            await self._computer_handler.close()
             if self._manage_audit_lifecycle:
                 await self._audit_shim_stop("graceful")
 
@@ -850,12 +847,6 @@ class ShimDaemon:
             logger.debug("ws.close after a failed handshake failed", exc_info=True)
 
     async def _handshake(self, ws) -> HelloAckMessage:
-        # Per COMPUTER_USE.md Q2: every HELLO wipes window IDs.
-        if self.config.enable_computer_use:
-            try:
-                self._computer_handler.on_hello()
-            except Exception:
-                logger.debug("computer-use on_hello failed", exc_info=True)
         hello = await self._build_hello()
         raw_hello = dump_message(hello)
         if len(raw_hello.encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
@@ -933,9 +924,9 @@ class ShimDaemon:
             raise RuntimeError("HELLO_ACK contained an invalid protocol version") from exc
         # The model fills in an omitted protocol_version as this shim's own
         # version, so whether the platform named one is asked separately.
+        # Every 2.x platform speaks the machine-control protocol.
         if self._control_mode and (
             "protocol_version" not in payload.model_fields_set
-            or self._negotiated_version != "1.1"
             or "directory_browse" not in payload.granted_capabilities
             or not payload.connection_id
         ):
@@ -943,7 +934,7 @@ class ShimDaemon:
             await self._close_failed_handshake(
                 ws,
                 WS_CLOSE_PROTOCOL_VERSION_MISMATCH,
-                "Machine control requires protocol 1.1 and directory_browse",
+                "Machine control requires a protocol version and directory_browse",
             )
             raise RuntimeError("Platform does not support the persistent machine-control protocol")
         self.config.max_concurrent = min(
@@ -993,18 +984,24 @@ class ShimDaemon:
             enable_local_llm=cfg.enable_local_llm,
             enable_hardware=cfg.enable_hardware,
             enable_recording=cfg.enable_recording,
+            cua_driver_path=cfg.cua_driver_path,
         )
         if self._control_mode:
             caps.append("directory_browse")
-        screen = await asyncio.to_thread(platform_info.detect_screen_resolution)
-        cu_features: list[str] = []
-        cu_features_coarse: list[str] = []
+        computer_use_driver = None
+        computer_use_tools: list[str] = []
+        screen = None
         if "computer_use" in caps:
+            # Advertised only once cua-driver has started and listed its tools.
             try:
-                cu_features = list(self._computer_handler.backend.features())
-                cu_features_coarse = list(self._computer_handler.backend.coarse_features())
-            except Exception:
-                logger.debug("computer-use feature probe failed", exc_info=True)
+                snapshot = await self._computer_handler.driver.snapshot()
+                computer_use_driver = snapshot.info
+                computer_use_tools = sorted(tool["name"] for tool in snapshot.tools)
+            except DriverUnavailable as exc:
+                logger.warning("Not advertising computer_use: %s", exc.message)
+                caps = [cap for cap in caps if cap != "computer_use"]
+            else:
+                screen = await self._computer_handler.screen_size()
         # Local-model routing is not wired into the platform service yet.
         local_llm_models: list[str] = []
         caps = [cap for cap in caps if cap != "local_llm"]
@@ -1038,8 +1035,8 @@ class ShimDaemon:
             allowed_root=None if self._control_mode else str(cfg.allowed_root),
             local_llm_models=local_llm_models,
             hardware_devices=[],
-            computer_use_features=cu_features,
-            computer_use_features_coarse=cu_features_coarse,
+            computer_use_driver=computer_use_driver,
+            computer_use_tools=computer_use_tools,
             recording_channels=recording_channels,  # type: ignore[arg-type]
             recording_routes=recording_routes,  # type: ignore[arg-type]
             protocol_version=PROTOCOL_VERSION,
@@ -1433,17 +1430,8 @@ class ShimDaemon:
         return True
 
     _COMPUTER_USE_MESSAGE_TYPES = (
-        ScreenshotRequestMessage,
-        InputActionMessage,
-        CursorPositionRequestMessage,
-        DisplayInfoRequestMessage,
-        WindowListRequestMessage,
-        WindowFocusMessage,
-        AppListRequestMessage,
-        AppLaunchMessage,
-        ClipboardReadMessage,
-        ClipboardWriteMessage,
-        PermissionsCheckRequestMessage,
+        ComputerToolsRequestMessage,
+        ComputerToolCallMessage,
     )
 
     _FILE_MESSAGE_TYPES = (
@@ -1532,9 +1520,12 @@ class ShimDaemon:
             return await self._file_handler.handle_delete(msg)
         if isinstance(msg, FileMoveMessage):
             return await self._file_handler.handle_move(msg)
-        if isinstance(msg, self._COMPUTER_USE_MESSAGE_TYPES):
+        if isinstance(msg, ComputerToolCallMessage):
+            # One GUI: calls from every session take turns.
             async with self._computer_use_lock:
                 return await self._computer_handler.handle(msg)
+        if isinstance(msg, ComputerToolsRequestMessage):
+            return await self._computer_handler.handle(msg)
         if isinstance(msg, LocalLLMCompletionMessage):
             return await self._local_llm_handler.handle(msg, send=send)
         if isinstance(msg, self._RECORDING_MESSAGE_TYPES):
@@ -1912,7 +1903,7 @@ class ShimDaemon:
             )
             child._command_handler._command_rate = self._command_handler._command_rate
             child._command_handler._concurrency = self._command_handler._concurrency
-            child._computer_handler._screenshot_rate = self._computer_handler._screenshot_rate
+            self._computer_handler.share_with(child._computer_handler)
             child._local_llm_handler._inflight_lock = self._local_llm_handler._inflight_lock
             task = asyncio.create_task(child.run(), name=f"local-executor-{binding.session_id}")
             active = _ActiveChild(daemon=child, task=task)
@@ -2047,45 +2038,60 @@ class ShimDaemon:
             )
         if not self.config.enable_computer_use:
             return
-        plat = platform_info.detect_platform()
-        if plat != "darwin":
-            return
-        # Input injection needs Accessibility. Without Screen Recording a
-        # capture silently shows only the wallpaper and menu bar.
-        try:
-            from ApplicationServices import (  # type: ignore[import-not-found]
-                AXIsProcessTrusted,
-            )
-            from Quartz import (  # type: ignore[import-not-found]
-                CGPreflightScreenCaptureAccess,
-            )
-        except ImportError:
+        await self._preflight_computer_use()
+
+    async def _preflight_computer_use(self) -> None:
+        """Computer use needs cua-driver, and on macOS its Accessibility and
+        Screen Recording grants: without Screen Recording a capture shows
+        only the wallpaper and menu bar."""
+        if find_driver_binary(self.config.cua_driver_path) is None:
             await self._fail_preflight(
-                "Cannot verify Accessibility and Screen Recording permissions because "
-                "pyobjc is unavailable. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe", "screen_recording_probe"],
+                "Computer use is enabled but cua-driver is not installed. Reinstall with "
+                "`pipx install 'autogpt-local-executor[computer-use]'`, then run "
+                "`autogpt-shim doctor`.",
+                missing_permissions=["cua_driver"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,
             )
+        if platform_info.detect_platform() != "darwin":
+            return
+        driver = self._computer_handler.driver
         try:
-            granted = {
-                "accessibility": bool(AXIsProcessTrusted()),
-                "screen_recording": bool(CGPreflightScreenCaptureAccess()),
-            }
-        except Exception as exc:
+            snapshot = await driver.snapshot()
+            result = await driver.call_tool(
+                "check_permissions",
+                {"prompt": False, "session": self._computer_handler.session_label},
+                timeout=PERMISSION_CHECK_SECONDS,
+            )
+        except DriverUnavailable as exc:
             await self._fail_preflight(
-                f"Could not verify Accessibility and Screen Recording permissions: {exc}. "
+                f"Could not check computer-use permissions: {exc.message} "
                 "Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
+                error_code=exc.code,
+                permanent=exc.code == ErrorCode.DEPENDENCY_MISSING,
+            )
+        except TimeoutError:
+            await self._fail_preflight(
+                "cua-driver did not report its permissions in time. Run `autogpt-shim doctor`.",
                 missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.PERMISSION_PENDING,
             )
+        structured = result.get("structuredContent")
+        granted = {
+            name: isinstance(structured, dict) and structured.get(name) is True
+            for name in ("accessibility", "screen_recording")
+        }
         missing = [name for name, ok in granted.items() if not ok]
         if not missing:
             return
         labels = {"accessibility": "Accessibility", "screen_recording": "Screen Recording"}
+        holder = (
+            "CuaDriver" if snapshot.info.runtime == "service" else "the local executor's launcher"
+        )
         await self._fail_preflight(
-            f"{' and '.join(labels[name] for name in missing)} permission not granted; "
-            "computer_use requires it. Run `autogpt-shim doctor` to surface the prompt.",
+            f"{' and '.join(labels[name] for name in missing)} permission not granted to "
+            f"{holder}; computer use requires it. Run `autogpt-shim doctor` to request it.",
             missing_permissions=missing,
             error_code=ErrorCode.PERMISSION_PENDING,
         )

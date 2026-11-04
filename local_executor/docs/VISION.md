@@ -93,6 +93,8 @@ Claude's `computer_20251124` tool (beta) operates a 4-step loop:
 
 The shim executes these using `pyautogui` (cross-platform) or `xdotool` (Linux X11).
 
+> **Superseded.** Computer use now relays [cua-driver](https://github.com/trycua/cua)'s own tools (protocol 2.0): background, window-targeted, accessibility-first actions instead of a screenshot-and-coordinates loop. See [CUA_DRIVER.md](CUA_DRIVER.md).
+
 **Platform changes needed**:
 - `PROTOCOL.md`: Extend `MessageType` enum with `SCREENSHOT_REQUEST`, `SCREENSHOT_RESPONSE`, `INPUT_ACTION`, `INPUT_ACK`
 - `service.py`: When `config.use_local_pc_executor and config.allow_computer_use`, pass `betas=["computer-use-2025-11-24"]` and `tools=[{"type": "computer_20251124"}]` to the Claude API call (currently in `stream_chat_completion_sdk`)

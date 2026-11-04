@@ -213,21 +213,31 @@ class ShimConfig(BaseSettings):
         "Probed at HELLO time to populate HELLO.local_llm_models.",
     )
 
-    # ── Computer use ───────────────────────────────────────────────────────
-    max_screenshots_per_minute: int = Field(default=10, gt=0)
+    # ── Computer use (see docs/CUA_DRIVER.md) ──────────────────────────────
+    cua_driver_path: str | None = Field(
+        default=None,
+        description="The cua-driver executable to run. By default the one installed "
+        "with the computer-use extra, else one on PATH. It must be the cua-driver "
+        "release this shim was reviewed against.",
+    )
+    max_screenshots_per_minute: int = Field(
+        default=10,
+        gt=0,
+        description="The most screenshots computer use sends the platform in a minute; "
+        "results past it come back without their images.",
+    )
     enable_clipboard: bool = Field(
         default=False,
-        description="Allow CLIPBOARD_READ / CLIPBOARD_WRITE. Without this "
-        "flag clipboard sub-ops return FEATURE_NOT_SUPPORTED. See "
-        "docs/COMPUTER_USE.md Q3.",
+        description="Offer cua-driver's clipboard_read and clipboard_write. Without "
+        "this flag they are not offered. See docs/COMPUTER_USE.md.",
     )
     enable_clipboard_read_foreign: bool = Field(
         default=False,
         description="When set together with --enable-clipboard, allow "
-        "CLIPBOARD_READ to return foreign (non-shim-written) contents, "
-        "subject to ConcealedType / CF_PRIVATE checks. Without this, "
-        "CLIPBOARD_READ is writeback-only with a 30s window. See "
-        "docs/COMPUTER_USE.md Q3.",
+        "clipboard_read to return contents the shim didn't write, except "
+        "content a password manager marked private. Without this, "
+        "clipboard_read returns only the shim's own writes from the last 30 s. "
+        "See docs/COMPUTER_USE.md.",
     )
 
     # ── Workflow recording (see docs/WORKFLOW_RECORDING.md) ────────────────

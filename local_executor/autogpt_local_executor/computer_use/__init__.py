@@ -1,38 +1,37 @@
-"""
-Computer-use backend layer.
+"""Computer use through cua-driver.
 
-Per-OS backends live under `computer_use.backends.*`; the dispatch in
-`computer_use.backend.get_backend()` picks the right one at runtime.
+The shim runs `cua-driver mcp` and relays a reviewed subset of its tools
+(see `catalog`); `driver` owns the process and `mcp_client` speaks MCP to
+it. The clipboard writeback registry and the private-content check add
+the shim's clipboard rules on top. See docs/CUA_DRIVER.md.
 """
 
-from .backend import (
-    ClipboardReadResult,
-    ComputerUseBackend,
-    NullBackend,
-    ScreenshotResult,
-    get_backend,
+from .catalog import (
+    REVIEWED_DRIVER_VERSION,
+    ArgumentRefused,
+    check_arguments,
+    offered_tools,
 )
-from .errors import (
-    BackendError,
-    ClipboardConcealedError,
-    ClipboardWriteError,
-    FeatureNotSupportedError,
-    InputOutOfBoundsError,
-    PermissionPendingError,
-    WindowStaleError,
+from .clipboard import WRITEBACK_WINDOW_SECONDS, ClipboardWritebackRegistry
+from .driver import (
+    CuaDriverBridge,
+    DriverSnapshot,
+    DriverUnavailable,
+    find_driver_binary,
 )
+from .errors import ClipboardConcealedError, ComputerUseError
 
 __all__ = [
-    "BackendError",
+    "REVIEWED_DRIVER_VERSION",
+    "WRITEBACK_WINDOW_SECONDS",
+    "ArgumentRefused",
     "ClipboardConcealedError",
-    "ClipboardWriteError",
-    "ClipboardReadResult",
-    "ComputerUseBackend",
-    "FeatureNotSupportedError",
-    "InputOutOfBoundsError",
-    "NullBackend",
-    "PermissionPendingError",
-    "ScreenshotResult",
-    "WindowStaleError",
-    "get_backend",
+    "ClipboardWritebackRegistry",
+    "ComputerUseError",
+    "CuaDriverBridge",
+    "DriverSnapshot",
+    "DriverUnavailable",
+    "check_arguments",
+    "find_driver_binary",
+    "offered_tools",
 ]

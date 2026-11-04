@@ -321,26 +321,26 @@ async def test_env_values_never_leak_into_audit_log(tmp_path: Path) -> None:
     assert "SECRET" in contents
 
 
-@pytest.mark.asyncio
-async def test_input_action_text_redacted_to_length(tmp_path: Path) -> None:
-    audit = AuditWriter(path=tmp_path / "audit.log", audit_key=KEY)
-    # Mimic the ComputerUseHandler details shape (text → text_length only).
-    await audit.write(
-        "INPUT_ACTION",
-        request_id="r",
-        details={
-            "action": "type",
-            "coordinate": None,
-            "key": None,
-            "direction": None,
-            "clicks": None,
-            "text_length": len("my-password"),
-        },
-        result={"ok": True, "exit_code": None, "duration_ms": 0, "error_code": None},
+def test_computer_tool_text_is_redacted_to_its_length() -> None:
+    """What the agent typed, set or scripted is kept out of the audit log,
+    inside run_steps batches too; long strings are cut short."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {
+            "pid": 3,
+            "text": "my-password",
+            "steps": [{"tool": "set_value", "args": {"value": "hunter2", "pid": 3}}],
+            "script": "await cua.call('type_text', {text: 'x'})",
+            "query": "q" * 300,
+        }
     )
-    contents = (tmp_path / "audit.log").read_text()
-    assert "my-password" not in contents
-    assert '"text_length":11' in contents.replace(" ", "")
+
+    assert details["pid"] == 3
+    assert details["text"] == {"redacted_chars": 11}
+    assert details["steps"][0]["args"] == {"value": {"redacted_chars": 7}, "pid": 3}
+    assert details["script"] == {"redacted_chars": 40}
+    assert details["query"].startswith("q" * 200) and details["query"].endswith("(300 chars)")
 
 
 # ── verify-all across multiple rotated files ─────────────────────────────────
