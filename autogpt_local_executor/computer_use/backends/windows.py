@@ -48,6 +48,9 @@ logger = logging.getLogger(__name__)
 # The documented modifier names, in pyautogui's: super (and its alias meta)
 # is the Windows logo key.
 _KEY_ALIASES = {"super": "win", "meta": "win"}
+# OpenProcess access a non-elevated shim gets even to elevated processes.
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_SW_RESTORE = 9
 # Registered formats an app puts beside a copy to keep it out of clipboard
 # monitors and history, as password managers do. Registered formats are
 # numbered from 0xC000. Windows matches their names without regard to case
@@ -574,8 +577,12 @@ class WindowsBackend(ComputerUseBackend):
         except ImportError as exc:
             raise FeatureNotSupportedError("window.focus", reason=str(exc)) from exc
         entry = self.window_registry.verify(window_id, self._live_fingerprint)
+        hwnd = int(entry.native_handle)
         try:
-            win32gui.SetForegroundWindow(int(entry.native_handle))
+            # SetForegroundWindow leaves a minimized window minimized.
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, _SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
         except Exception as exc:
             # SetForegroundWindow honors foreground-lock rules; this is
             # best-effort.
@@ -633,16 +640,25 @@ class WindowsBackend(ComputerUseBackend):
         return out
 
     def _exe_for_pid(self, pid: int) -> str | None:
+        """The process's executable, or None. QueryFullProcessImageNameW needs
+        only PROCESS_QUERY_LIMITED_INFORMATION; GetModuleFileNameEx needs
+        PROCESS_VM_READ as well, which the handle didn't have, so every app
+        was listed without its path."""
         try:
-            import win32api  # type: ignore[import-not-found]
-            import win32con  # type: ignore[import-not-found]
-            import win32process  # type: ignore[import-not-found]
+            import ctypes
 
-            h = win32api.OpenProcess(win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                return None
             try:
-                return win32process.GetModuleFileNameEx(h, 0)
+                size = ctypes.c_ulong(32768)
+                path = ctypes.create_unicode_buffer(size.value)
+                if not kernel32.QueryFullProcessImageNameW(handle, 0, path, ctypes.byref(size)):
+                    return None
+                return path.value or None
             finally:
-                win32api.CloseHandle(h)
+                kernel32.CloseHandle(handle)
         except Exception:
             return None
 
