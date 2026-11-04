@@ -19,6 +19,7 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tool_image import HeldImage, parse_held_image
 from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
@@ -391,6 +392,11 @@ class BaseTool:
     # True where ``gate_subject`` is implemented; ``_execute`` then accepts
     # GATE_APPROVED.
     has_gate_subject: bool = False
+    # True where a call can create, change or delete a file another call in
+    # the same message may read (the sandbox or the workspace).  Both engines
+    # run such a call on its own, in the order the model wrote it, so a copy
+    # made beside the command building the file never stores half of it.
+    writes_files: bool = False
 
     @property
     def name(self) -> str:
@@ -552,6 +558,7 @@ class BaseTool:
         """
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            tool_call_context(tool_call_id),
             trial_reads_fresh(),
             tool_span(
                 self.name,

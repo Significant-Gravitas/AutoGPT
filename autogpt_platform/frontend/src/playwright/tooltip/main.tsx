@@ -39,7 +39,7 @@ function Fixture() {
       <button
         type="button"
         data-testid="underlying"
-        className="fixed left-0 top-0"
+        className="fixed top-0 left-0"
         onClick={() => setClicks(clicks + 1)}
       >
         Underlying control

@@ -52,23 +52,25 @@ export function StepHeader({
         </SwapFade>
       </RevealItem>
       {screen === "rest" && (
-        <RevealItem className="flex flex-col items-center gap-4">
-          <Text variant="large" tone="muted" className="max-w-xl md:text-lead">
-            Tell me what you do and what eats up your week.{" "}
-            <Text variant="body-medium" as="span">
-              Otto uses it to pick your experts and plan your first week.
-            </Text>{" "}
-            A minute is plenty, and you can type instead.
-          </Text>
-          {/* On wide screens the ambient cards carry these questions, and
+        <RevealItem>
+          <div className="flex flex-col items-center gap-4">
+            <p className="max-w-xl font-sans text-body-lg font-normal text-foreground-tertiary md:text-lead">
+              Tell me what you do and what eats up your week.{" "}
+              <Text variant="body-medium" as="span">
+                Otto uses it to pick your experts and plan your first week.
+              </Text>{" "}
+              A minute is plenty, and you can type instead.
+            </p>
+            {/* On wide screens the ambient cards carry these questions, and
               they are hidden from assistive tech, so this one stays in the
               accessibility tree. */}
-          <OttoMightAsk
-            question={question}
-            compact
-            onTogglePause={onTogglePause}
-            className="xl:sr-only"
-          />
+            <OttoMightAsk
+              question={question}
+              compact
+              onTogglePause={onTogglePause}
+              className="xl:sr-only"
+            />
+          </div>
         </RevealItem>
       )}
       {screen === "typing" && (

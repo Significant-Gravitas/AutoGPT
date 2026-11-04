@@ -20,7 +20,6 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     Function,
 )
 from prisma.enums import APIKeyPermission
-from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
@@ -40,6 +39,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -162,12 +162,6 @@ class ChatSessionMetadata(BaseModel):
     # session, latest wins.
     pending_question: PendingQuestion | None = None
 
-    @property
-    def pauses_irreversible_actions(self) -> bool:
-        """Whether a workflow this chat starts pauses before irreversible blocks."""
-        # A legacy row cannot prove nobody is watching, so it pauses too.
-        return self.origin != "automation"
-
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     """Origin for a fresh session a tool opens on *parent*'s behalf.
@@ -180,6 +174,42 @@ def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     cannot prove a human drove it, the child must not claim one did.
     """
     return parent.origin or "automation"
+
+
+# Deeper than any delegation chain a session may build: past it, the chat the
+# work started in is treated as unknown.
+MAX_CHAT_OF_ORIGIN_HOPS = 16
+
+
+async def chat_of_origin(
+    metadata: ChatSessionMetadata,
+) -> ChatSessionMetadata | None:
+    """The chat the work in this session started in, or None when it cannot be
+    found (a parent session is gone).
+
+    A session a tool opened for its parent (``run_sub_session`` opens every
+    sub as an automation) takes its approval rules from the chat that
+    delegated to it, so rules that depend on ``origin`` read it here.
+    """
+    for _ in range(MAX_CHAT_OF_ORIGIN_HOPS):
+        if metadata.origin != "automation" or not metadata.delegated_by_session_id:
+            return metadata
+        parent = await chat_db().get_chat_session_metadata(
+            metadata.delegated_by_session_id
+        )
+        if parent is None:
+            return None
+        metadata = parent.metadata
+    return None
+
+
+async def pauses_irreversible_actions(metadata: ChatSessionMetadata) -> bool:
+    """Whether a workflow started from this session pauses before irreversible
+    blocks, decided by the chat the work started in. One that cannot be found
+    cannot prove nobody is watching, so the workflow pauses."""
+    origin = await chat_of_origin(metadata)
+    # A legacy row cannot prove nobody is watching, so it pauses too.
+    return origin is None or origin.origin != "automation"
 
 
 class ChatMessage(BaseModel):
@@ -210,7 +240,7 @@ class ChatMessage(BaseModel):
     # model. None on user/tool rows.
     #
     # routing_source is excluded from serialized payloads: "ld" vs "env"
-    # would let a client infer LaunchDarkly cohort membership. It still
+    # would let a client infer flag cohort membership. It still
     # persists — the DB save path maps fields explicitly (not via
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
@@ -224,14 +254,10 @@ class ChatMessage(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
 
-    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
-    # row; a rating of the reply is scored against it. Internal, so excluded
-    # from payloads like routing_source, and persisted the same way.
-    langfuse_trace_id: str | None = Field(default=None, exclude=True)
-
     # PostHog trace of the turn that wrote this assistant or reasoning row
     # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
-    # rating of the reply carries. Internal and persisted like the above.
+    # rating of the reply carries. Internal, so excluded from payloads like
+    # routing_source, and persisted the same way.
     trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
@@ -301,7 +327,6 @@ class ChatMessage(BaseModel):
                 "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
             ),
             llm_credential_id=prisma_message.llmCredentialId,
-            langfuse_trace_id=prisma_message.langfuseTraceId,
             trace_id=prisma_message.traceId,
         )
 
@@ -1193,7 +1218,6 @@ async def _save_session_to_db(
                     "routing_source": msg.routing_source,
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
-                    "langfuse_trace_id": msg.langfuse_trace_id,
                     "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
@@ -1248,7 +1272,6 @@ async def _save_session_to_db(
                 routing_source=msg.routing_source,
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
-                langfuse_trace_id=msg.langfuse_trace_id,
                 trace_id=msg.trace_id,
             )
         except Exception as e:
@@ -1374,7 +1397,7 @@ async def append_and_save_message(
             # ``(sessionId, sequence)`` race that exhausted the retry
             # loop in ``add_chat_messages_batch``) and unrelated
             # exceptions surface as ``DatabaseError``.
-            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+            if is_duplicate_chat_message_id_error(e):
                 return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
@@ -1769,17 +1792,19 @@ async def get_user_sessions(
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(
-        user_id,
-        limit,
-        offset,
-        organization_id=organization_id,
-        title_contains=title_contains,
-        expert_id=expert_id,
-        pinned_first=pinned_first,
-    )
-    total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id, expert_id=expert_id
+    sessions, total_count = await asyncio.gather(
+        db.get_user_chat_sessions(
+            user_id,
+            limit,
+            offset,
+            organization_id=organization_id,
+            title_contains=title_contains,
+            expert_id=expert_id,
+            pinned_first=pinned_first,
+        ),
+        db.get_user_session_count(
+            user_id, organization_id=organization_id, expert_id=expert_id
+        ),
     )
 
     return sessions, total_count

@@ -9,6 +9,7 @@ import { mintServiceToken } from "./service-token";
 export type AuthEmailType =
   | "reset_password"
   | "verify_email"
+  | "verify_new_email"
   | "change_email"
   | "set_password";
 

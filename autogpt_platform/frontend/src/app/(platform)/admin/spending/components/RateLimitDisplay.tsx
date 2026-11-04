@@ -1,11 +1,5 @@
 "use client";
 
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-amber-100 #FEF3C7, bg-blue-100 #DBEAFE, bg-gray-100 #F3F4F6,
-// bg-indigo-100 #E0E7FF, bg-purple-100 #EFE8FE, bg-red-100 #FDECEC,
-// text-blue-700 #1D4ED8, text-gray-500 #6B7280, text-gray-700 #374151,
-// text-indigo-700 #4338CA, text-purple-700 #5424AE.
-
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
@@ -22,12 +16,12 @@ const TIERS = [
 type Tier = (typeof TIERS)[number];
 
 const TIER_COLORS: Record<Tier, string> = {
-  NO_TIER: "bg-red-100 text-error-foreground",
-  BASIC: "bg-gray-100 text-gray-700",
-  PRO: "bg-blue-100 text-blue-700",
-  MAX: "bg-indigo-100 text-indigo-700",
-  BUSINESS: "bg-purple-100 text-purple-700",
-  ENTERPRISE: "bg-amber-100 text-warning-foreground",
+  NO_TIER: "bg-error-surface text-error-foreground",
+  BASIC: "bg-surface-hover text-foreground-body",
+  PRO: "bg-info/20 text-info-foreground",
+  MAX: "bg-indigo/15 text-accent-strong",
+  BUSINESS: "bg-accent-surface text-accent-strong",
+  ENTERPRISE: "bg-warning-surface text-warning-foreground",
 };
 
 function tierLabel(tier: Tier): string {
@@ -72,28 +66,30 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
     <div className={className ?? "rounded-md border bg-surface p-6"}>
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h2 className="mb-1 text-lg font-semibold">
+          <h2 className="mb-1 text-lead font-semibold">
             Rate Limits for {data.user_email ?? data.user_id}
           </h2>
           {data.user_email && (
-            <p className="text-xs text-gray-500">User ID: {data.user_id}</p>
+            <p className="text-caption text-foreground-tertiary">
+              User ID: {data.user_id}
+            </p>
           )}
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ${TIER_COLORS[currentTier] ?? "bg-gray-100 text-gray-700"}`}
+          className={`rounded-full px-3 py-1 text-caption font-medium ${TIER_COLORS[currentTier] ?? "bg-surface-hover text-foreground-body"}`}
         >
           {currentTier}
         </span>
       </div>
 
       <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700">
+        <label className="text-body font-medium text-foreground-body">
           Subscription Tier
         </label>
         <select
           aria-label="Subscription tier"
           value={currentTier}
-          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-body"
           disabled
         >
           {TIERS.map((tier) => (
@@ -106,14 +102,18 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Daily Spend</h3>
+          <h3 className="text-body font-medium text-foreground-body">
+            Daily Spend
+          </h3>
           <UsageBar
             used={data.daily_cost_used_microdollars}
             limit={data.daily_cost_limit_microdollars}
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Weekly Spend</h3>
+          <h3 className="text-body font-medium text-foreground-body">
+            Weekly Spend
+          </h3>
           <UsageBar
             used={data.weekly_cost_used_microdollars}
             limit={data.weekly_cost_limit_microdollars}
@@ -126,7 +126,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           aria-label="Reset scope"
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
-          className="rounded-md border bg-surface px-3 py-1.5 text-sm"
+          className="rounded-md border bg-surface px-3 py-1.5 text-body"
           disabled={isResetting}
         >
           <option value="daily">Reset daily only</option>

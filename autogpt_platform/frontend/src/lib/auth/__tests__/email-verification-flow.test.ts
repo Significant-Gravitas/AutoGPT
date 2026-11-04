@@ -1,5 +1,6 @@
 import { Resolver } from "node:dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isWaitlistError } from "@/app/api/auth/utils";
 import { AUTH_EMAILS_PER_IP } from "../auth-email-cooldown";
 import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 
@@ -87,7 +88,7 @@ vi.mock("../service-token", async (importOriginal) => ({
 }));
 
 const baseURL = "http://localhost:3000";
-const password = "a-long-enough-password";
+const password = "a-long-enough-password"; // pragma: allowlist secret
 const callbackURL = "/auth/callback?method=email";
 
 type Handler = (request: Request) => Promise<Response>;
@@ -224,6 +225,13 @@ function lastVerifyLink(to: string) {
   return email.at(-1)?.url;
 }
 
+function lastNewAddressLink(to: string) {
+  const email = sentEmails.filter(
+    (sent) => sent.to === to && sent.type === "verify_new_email",
+  );
+  return email.at(-1)?.url;
+}
+
 beforeEach(() => {
   sentEmails.length = 0;
   refusedAtSend.clear();
@@ -278,7 +286,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const response = await post(handler, "/sign-in/email", {
       email: "existing@example.com",
-      password: "not-the-password",
+      password: "not-the-password", // pragma: allowlist secret
     });
 
     expect(response.status).toBe(401);
@@ -391,7 +399,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com"),
-      newPassword: "the-owners-new-password",
+      newPassword: "the-owners-new-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -431,7 +439,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("unverified@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(updateUser).toHaveBeenCalled();
@@ -629,7 +637,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["set_password"]);
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com"),
-      newPassword: "the-owners-new-password",
+      newPassword: "the-owners-new-password", // pragma: allowlist secret
     });
     expect(reset.status).toBe(200);
     const asFirst = await signIn(
@@ -805,6 +813,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
   });
 
   it("emails an unverified address once per cooldown however often it signs in", async () => {
+    pinRateLimitWindow();
     const { handler, db } = await createAuthHandler(true);
     await signUp(handler, "signs-in@example.com");
     await emailsSent();
@@ -818,6 +827,8 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
     expect(sentEmails.map((sent) => sent.type)).toEqual(["verify_email"]);
 
     expireCooldowns(db);
+    // Past the per-IP sign-in window too (attempt-limits.ts).
+    vi.setSystemTime(Date.now() + 10_000);
     await signIn(handler, "signs-in@example.com");
     await emailsSent();
     expect(sentEmails.map((sent) => sent.type)).toEqual([
@@ -862,7 +873,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION=true", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("verified@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -975,7 +986,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     await emailsSent();
 
     const toB = sentEmails.filter(
-      (sent) => sent.to === "b@example.com" && sent.type === "verify_email",
+      (sent) => sent.to === "b@example.com" && sent.type === "verify_new_email",
     );
     expect(toB).toHaveLength(2);
   });
@@ -1001,7 +1012,7 @@ describe("with AUTH_REQUIRE_EMAIL_VERIFICATION off", () => {
     });
 
     const response = await post(handler, "/reset-password", {
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
       token,
     });
 
@@ -1028,6 +1039,35 @@ describe("team addresses", () => {
       expect(db.UserAuthIdentity).toEqual([]);
     },
   );
+});
+
+describe("the sign-up allowlist", () => {
+  it.each([true, false])(
+    "refuses an address that isn't on it (verification %s)",
+    async (requireVerification) => {
+      vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
+      const { handler, db } = await createAuthHandler(requireVerification);
+
+      const response = await signUp(handler, "uninvited@example.com");
+
+      expect(response.status).toBe(403);
+      expect(isWaitlistError(null, (await response.json()).message)).toBe(true);
+      expect(db.UserAuthIdentity).toEqual([]);
+    },
+  );
+
+  it("answers an address that isn't on it alike with or without an account", async () => {
+    const { handler } = await createAuthHandler(true);
+    await signUp(handler, "early@example.com");
+    vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
+
+    const existing = await signUp(handler, "early@example.com");
+    const fresh = await signUp(handler, "uninvited@example.com");
+
+    expect(existing.status).toBe(403);
+    expect(fresh.status).toBe(403);
+    expect(await existing.json()).toEqual(await fresh.json());
+  });
 });
 
 // Signed up with verification off, so the account has a session.
@@ -1088,7 +1128,7 @@ describe("password reset links", () => {
       });
       await post(handler, "/reset-password", {
         token,
-        newPassword: "the-attackers-new-password",
+        newPassword: "the-attackers-new-password", // pragma: allowlist secret
       });
 
       expect(db.UserAuthIdentity).toEqual([
@@ -1116,7 +1156,7 @@ describe("password reset links", () => {
     });
     const reset = await post(handler, "/reset-password", {
       token,
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(400);
@@ -1147,7 +1187,7 @@ describe("password reset links", () => {
     await handler(new Request(confirm?.url ?? "", { headers: session }));
     await emailsSent();
     await handler(
-      new Request(lastVerifyLink("new@example.com") ?? "", {
+      new Request(lastNewAddressLink("new@example.com") ?? "", {
         headers: session,
       }),
     );
@@ -1157,7 +1197,7 @@ describe("password reset links", () => {
 
     const reset = await post(handler, "/reset-password", {
       token,
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(400);
@@ -1178,7 +1218,7 @@ describe("password reset links", () => {
 
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("first@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1198,7 +1238,7 @@ describe("password reset links", () => {
 
       const reset = await post(handler, "/reset-password", {
         token: lastResetToken("owner@example.com", "reset_password"),
-        newPassword: "a-new-long-enough-password",
+        newPassword: "a-new-long-enough-password", // pragma: allowlist secret
       });
 
       expect(reset.status).toBe(200);
@@ -1227,7 +1267,7 @@ describe("password reset links", () => {
     await api.updateUser({ body: { name: "New name" }, headers: session });
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1248,7 +1288,7 @@ describe("password reset links", () => {
     ]);
     const reset = await post(handler, "/reset-password", {
       token: lastResetToken("owner@example.com", "reset_password"),
-      newPassword: "a-new-long-enough-password",
+      newPassword: "a-new-long-enough-password", // pragma: allowlist secret
     });
 
     expect(reset.status).toBe(200);
@@ -1279,10 +1319,34 @@ describe("change-email verification emails", () => {
         const confirm = sentEmails.find((sent) => sent.type === "change_email");
         await handler(new Request(confirm?.url ?? ""));
         await emailsSent();
-        expect(lastVerifyLink("new@example.com")).toContain("/verify-email");
+        expect(lastNewAddressLink("new@example.com")).toContain(
+          "/verify-email",
+        );
       }
     },
   );
+
+  it("send the new address its own email, not the sign-up one", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    db.UserAuthIdentity[0].emailVerified = true;
+    const { handler, api } = await createAuthHandler(true, db);
+    sentEmails.length = 0;
+
+    await api.changeEmail({
+      body: { newEmail: "new@example.com", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const confirm = sentEmails.find((sent) => sent.type === "change_email");
+    await handler(new Request(confirm?.url ?? ""));
+    await emailsSent();
+
+    expect(sentEmails.map(({ to, type }) => ({ to, type }))).toEqual([
+      { to: "old@example.com", type: "change_email" },
+      { to: "new@example.com", type: "verify_new_email" },
+    ]);
+  });
 
   it("still caps sign-in's own sends", async () => {
     const { handler } = await createAuthHandler(true);

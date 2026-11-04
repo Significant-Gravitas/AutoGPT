@@ -92,6 +92,7 @@ async def create_credential(
             title=request.title,
             username=SecretStr(request.username),
             password=SecretStr(request.password),
+            scope=request.scope,
         )
     else:
         credentials = HostScopedCredentials(

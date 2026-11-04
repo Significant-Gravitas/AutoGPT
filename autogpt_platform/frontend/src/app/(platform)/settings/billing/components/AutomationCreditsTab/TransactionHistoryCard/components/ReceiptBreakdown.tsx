@@ -51,12 +51,12 @@ function BreakdownLine({ label, amount }: { label: string; amount: number }) {
   return (
     <>
       <dt>
-        <Text variant="small" as="span" className="text-foreground-secondary">
+        <Text variant="small" as="span" tone="secondary">
           {label}
         </Text>
       </dt>
       <dd className="text-right">
-        <TransactionAmount amount={amount} className="text-xs font-normal" />
+        <TransactionAmount amount={amount} variant="small" />
       </dd>
     </>
   );

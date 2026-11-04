@@ -52,7 +52,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
   const exceeded = isOverBudget(stage);
 
   return (
-    <div className="flex flex-col gap-2 rounded-large border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 rounded-large border border-border-base px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
           <Text variant="body-medium">{stage.label}</Text>
@@ -64,15 +64,15 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
             <Badge variant="info">unmeasured</Badge>
           )}
         </div>
-        <Text variant="small" className="max-w-prose text-zinc-500">
+        <Text variant="small" tone="muted" className="max-w-prose">
           {stage.source}
         </Text>
       </div>
       <div className="flex shrink-0 flex-col sm:items-end">
-        <Text variant="large-semibold" className="font-mono">
+        <Text variant="large-semibold" mono>
           {formatMs(stage.durationMs)}
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           {stage.budgetMs === null
             ? "no budget"
             : `budget ${formatMs(stage.budgetMs)}`}
