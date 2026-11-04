@@ -3,20 +3,26 @@
 These tests verify that _build_system_prompt:
 - Returns the static _CACHEABLE_SYSTEM_PROMPT when no user_id is given
 - Returns the static prompt + understanding when user_id is given
-- Falls through to _CACHEABLE_SYSTEM_PROMPT when Langfuse is not configured
-- Returns the Langfuse-compiled prompt when Langfuse is configured
-- Handles DB errors and Langfuse errors gracefully
+- Falls through to _CACHEABLE_SYSTEM_PROMPT when PostHog prompts are not configured
+- Returns the PostHog-compiled prompt when PostHog prompts are configured
+- Handles DB errors and PostHog errors gracefully
 """
 
+import asyncio
 import inspect
+import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from posthog.ai.prompts import PromptResult, Prompts
 
 from backend.copilot.graphiti.context import CONTEXT_TAG_NAME
 from backend.copilot.graphiti.context_marker import INJECTED_MEMORY_ATTRIBUTE
-from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
+from backend.copilot.llm_attribution import start_turn_prompt, turn_prompt
+from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT, _ManagedPrompt
+from backend.util import posthog_prompts
+from backend.util.posthog_prompts import PromptRef
 
 _SVC = "backend.copilot.service"
 
@@ -38,7 +44,7 @@ class TestBuildSystemPrompt:
     @pytest.mark.asyncio
     async def test_no_user_id_returns_static_prompt(self):
         """When user_id is None, no DB lookup happens and the static prompt is returned."""
-        with (patch(f"{_SVC}._is_langfuse_configured", return_value=False),):
+        with (patch(f"{_SVC}._is_prompt_management_configured", return_value=False),):
             from backend.copilot.service import (
                 _CACHEABLE_SYSTEM_PROMPT,
                 _build_system_prompt,
@@ -57,7 +63,7 @@ class TestBuildSystemPrompt:
         mock_db.get_business_understanding = AsyncMock(return_value=fake_understanding)
 
         with (
-            patch(f"{_SVC}._is_langfuse_configured", return_value=False),
+            patch(f"{_SVC}._is_prompt_management_configured", return_value=False),
             patch(f"{_SVC}.understanding_db", return_value=mock_db),
         ):
             from backend.copilot.service import (
@@ -80,7 +86,7 @@ class TestBuildSystemPrompt:
         )
 
         with (
-            patch(f"{_SVC}._is_langfuse_configured", return_value=False),
+            patch(f"{_SVC}._is_prompt_management_configured", return_value=False),
             patch(f"{_SVC}.understanding_db", return_value=mock_db),
         ):
             from backend.copilot.service import (
@@ -94,47 +100,44 @@ class TestBuildSystemPrompt:
         assert understanding is None
 
     @pytest.mark.asyncio
-    async def test_langfuse_compiled_prompt_returned(self):
-        """When Langfuse is configured and returns a prompt, the compiled text is returned."""
+    async def test_posthog_compiled_prompt_returned(self):
+        """When PostHog prompts are configured, the compiled template is returned."""
         fake_understanding = MagicMock()
         mock_db = MagicMock()
         mock_db.get_business_understanding = AsyncMock(return_value=fake_understanding)
-
-        langfuse_prompt_text = "You are a Langfuse-sourced assistant."
-        mock_prompt_obj = MagicMock()
-        mock_prompt_obj.compile.return_value = langfuse_prompt_text
-
-        mock_langfuse = MagicMock()
-        mock_langfuse.get_prompt.return_value = mock_prompt_obj
+        result = PromptResult(
+            source="api",
+            prompt="You are a PostHog-sourced assistant.{{users_information}}",
+            name="copilot-prompt",
+            version=1,
+        )
 
         with (
-            patch(f"{_SVC}._is_langfuse_configured", return_value=True),
+            patch(f"{_SVC}._is_prompt_management_configured", return_value=True),
             patch(f"{_SVC}.understanding_db", return_value=mock_db),
-            patch(f"{_SVC}._get_langfuse", return_value=mock_langfuse),
-            patch(
-                f"{_SVC}.asyncio.to_thread", new=AsyncMock(return_value=mock_prompt_obj)
-            ),
+            patch(f"{_SVC}.fetch_prompt", new=AsyncMock(return_value=result)),
         ):
             from backend.copilot.service import _build_system_prompt
 
             prompt, understanding = await _build_system_prompt("user-789")
 
-        assert prompt == langfuse_prompt_text
+        # users_information is compiled to nothing: no per-user text in the
+        # system prompt, so it stays identical across users and sessions.
+        assert prompt == "You are a PostHog-sourced assistant."
         assert understanding is fake_understanding
-        mock_prompt_obj.compile.assert_called_once_with(users_information="")
 
     @pytest.mark.asyncio
-    async def test_langfuse_error_falls_back_to_static_prompt(self):
-        """When Langfuse raises an error, the fallback _CACHEABLE_SYSTEM_PROMPT is used."""
+    async def test_posthog_error_falls_back_to_static_prompt(self):
+        """When PostHog raises an error, the fallback _CACHEABLE_SYSTEM_PROMPT is used."""
         mock_db = MagicMock()
         mock_db.get_business_understanding = AsyncMock(return_value=None)
 
         with (
-            patch(f"{_SVC}._is_langfuse_configured", return_value=True),
+            patch(f"{_SVC}._is_prompt_management_configured", return_value=True),
             patch(f"{_SVC}.understanding_db", return_value=mock_db),
             patch(
-                f"{_SVC}.asyncio.to_thread",
-                new=AsyncMock(side_effect=RuntimeError("langfuse down")),
+                f"{_SVC}.fetch_prompt",
+                new=AsyncMock(side_effect=RuntimeError("posthog down")),
             ),
         ):
             from backend.copilot.service import (
@@ -1037,55 +1040,66 @@ class TestInjectUserContextSessionCtx:
         assert "user query" in stripped
 
 
-class _StuckRefreshLangfuse:
-    """A Langfuse client whose background prompt refresh never runs.
+class _PromptServer:
+    """PostHog's prompt endpoint, behind a real SDK client.
 
-    langfuse 3.14.1 answers an expired cache entry with the stale value and
-    queues a refresh on a background thread (``_client/client.py:3650-3674``).
-    When that thread is not running the queued key is never cleared
-    (``_utils/prompt_cache.py:92-115``), so the cached path keeps returning the
-    same version for the life of the process. Only ``cache_ttl_seconds=0``
-    reaches the server (``_client/client.py:3607``), which is why the service
-    passes nothing else.
+    Stands in for ``Prompts._fetch_prompt_from_api``, so the SDK's own cache,
+    its stale-copy answer to a failed refetch and its signature are the real
+    ones.
     """
 
-    def __init__(self, cached: str, live: str):
-        self._cached = cached
-        self._live = live
-        self.server_fetches = 0
-        self.fetch_error: Exception | None = None
-        self.calls: list[dict] = []
+    def __init__(self, live: str):
+        self.live = live
+        self.fetches = 0
+        self.error: Exception | None = None
+        self.release: threading.Event | None = None
+        self.finished = threading.Event()
+        self.labels: list[str | None] = []
 
-    def get_prompt(self, name, **kwargs):
-        self.calls.append(kwargs)
-        if kwargs.get("cache_ttl_seconds") != 0:
-            return self._as_prompt(self._cached)
-        self.server_fetches += 1
-        if self.fetch_error is not None:
-            raise self.fetch_error
-        return self._as_prompt(self._live)
-
-    @staticmethod
-    def _as_prompt(text: str):
-        prompt = MagicMock()
-        prompt.compile.return_value = text
-        return prompt
+    def __call__(self, name: str, version: int | None = None, label: str | None = None):
+        self.fetches += 1
+        self.labels.append(label)
+        try:
+            if self.release is not None:
+                self.release.wait(timeout=30)
+            if self.error is not None:
+                raise self.error
+            return {"prompt": self.live, "name": name, "version": 36, "label": label}
+        finally:
+            self.finished.set()
 
 
 _TTL = 60
 
 
+async def _served() -> str | None:
+    """The system prompt text the fetch serves, or None for the copy in code."""
+    from backend.copilot.service import _fetch_managed_prompt
+
+    managed = await _fetch_managed_prompt()
+    return managed.text if managed else None
+
+
 @pytest.fixture
-def stuck_langfuse(monkeypatch):
+def prompt_server(monkeypatch):
+    """A process holding v35 that has just revalidated, and a server at v36."""
     from backend.copilot import service
 
-    client = _StuckRefreshLangfuse(cached="v35 prompt", live="v36 prompt")
-    monkeypatch.setattr(service.config, "langfuse_prompt_cache_ttl", _TTL)
-    monkeypatch.setattr(service, "_is_langfuse_configured", lambda: True)
-    monkeypatch.setattr(service, "_get_langfuse", lambda: client)
-    monkeypatch.setattr(service, "_cached_prompt", "v35 prompt")
+    client = Prompts(
+        personal_api_key="phx_test",
+        project_api_key="phc_test",
+        host="http://127.0.0.1:9",
+    )
+    server = _PromptServer(live="v36 prompt")
+    monkeypatch.setattr(client, "_fetch_prompt_from_api", server)
+    monkeypatch.setattr(posthog_prompts, "get_posthog_prompts_client", lambda: client)
+    monkeypatch.setattr(service.config, "system_prompt_cache_ttl", _TTL)
+    monkeypatch.setattr(service, "_is_prompt_management_configured", lambda: True)
+    monkeypatch.setattr(
+        service, "_cached_prompt", _ManagedPrompt(text="v35 prompt", version=35)
+    )
     monkeypatch.setattr(service, "_last_prompt_revalidation", time.monotonic())
-    return client
+    return server
 
 
 @pytest.fixture
@@ -1102,94 +1116,133 @@ class TestPromptRevalidation:
     """No pod may serve one prompt version for longer than the TTL."""
 
     @pytest.mark.asyncio
-    async def test_serves_the_cached_copy_inside_the_window(self, stuck_langfuse):
-        from backend.copilot.service import _fetch_langfuse_prompt
+    async def test_serves_the_cached_copy_inside_the_window(self, prompt_server):
 
-        assert await _fetch_langfuse_prompt() == "v35 prompt"
-        assert stuck_langfuse.server_fetches == 0
+        assert await _served() == "v35 prompt"
+        assert prompt_server.fetches == 0
 
     @pytest.mark.asyncio
-    async def test_revalidates_past_the_ttl_although_the_refresh_is_stuck(
-        self, stuck_langfuse, open_window
-    ):
-        from backend.copilot.service import _fetch_langfuse_prompt
+    async def test_revalidates_past_the_ttl(self, prompt_server, open_window):
 
-        assert await _fetch_langfuse_prompt() == "v36 prompt"
-        assert stuck_langfuse.server_fetches == 1
+        assert await _served() == "v36 prompt"
+        assert prompt_server.fetches == 1
 
     @pytest.mark.asyncio
     async def test_the_turns_after_a_revalidation_cost_nothing(
-        self, stuck_langfuse, open_window
+        self, prompt_server, open_window
     ):
-        from backend.copilot.service import _fetch_langfuse_prompt
 
-        await _fetch_langfuse_prompt()
+        await _served()
 
         for _ in range(5):
-            assert await _fetch_langfuse_prompt() == "v36 prompt"
-        assert stuck_langfuse.server_fetches == 1
+            assert await _served() == "v36 prompt"
+        assert prompt_server.fetches == 1
 
     @pytest.mark.asyncio
     async def test_a_failed_revalidation_serves_the_cached_copy(
-        self, stuck_langfuse, open_window
+        self, prompt_server, open_window
     ):
-        from backend.copilot.service import _fetch_langfuse_prompt
 
-        stuck_langfuse.fetch_error = RuntimeError("langfuse unreachable")
+        prompt_server.error = RuntimeError("posthog unreachable")
 
         # Not the bundled prompt: a stale copy beats no copy.
-        assert await _fetch_langfuse_prompt() == "v35 prompt"
-        assert stuck_langfuse.server_fetches == 1
+        assert await _served() == "v35 prompt"
+        assert prompt_server.fetches == 1
 
     @pytest.mark.asyncio
     async def test_an_outage_costs_one_fetch_per_window_not_per_turn(
-        self, stuck_langfuse, open_window
+        self, prompt_server, open_window
     ):
-        from backend.copilot.service import _fetch_langfuse_prompt
 
-        stuck_langfuse.fetch_error = RuntimeError("langfuse unreachable")
+        prompt_server.error = RuntimeError("posthog unreachable")
 
         for _ in range(5):
-            assert await _fetch_langfuse_prompt() == "v35 prompt"
-        assert stuck_langfuse.server_fetches == 1
+            assert await _served() == "v35 prompt"
+        assert prompt_server.fetches == 1
 
     @pytest.mark.asyncio
-    async def test_a_zero_ttl_fetches_every_turn(self, stuck_langfuse, monkeypatch):
+    async def test_a_zero_ttl_fetches_every_turn(self, prompt_server, monkeypatch):
         from backend.copilot import service
-        from backend.copilot.service import _fetch_langfuse_prompt
 
-        monkeypatch.setattr(service.config, "langfuse_prompt_cache_ttl", 0)
+        monkeypatch.setattr(service.config, "system_prompt_cache_ttl", 0)
 
         for _ in range(3):
-            await _fetch_langfuse_prompt()
-        assert stuck_langfuse.server_fetches == 3
+            await _served()
+        assert prompt_server.fetches == 3
 
     @pytest.mark.asyncio
-    async def test_the_sdk_cache_is_never_relied_on(self, stuck_langfuse, open_window):
-        """Any call with a non-zero TTL would put us back on the wedged path."""
-        from backend.copilot.service import _fetch_langfuse_prompt
-
-        await _fetch_langfuse_prompt()
-        await _fetch_langfuse_prompt()
-
-        assert stuck_langfuse.calls
-        assert all(c.get("cache_ttl_seconds") == 0 for c in stuck_langfuse.calls)
-
-    @pytest.mark.asyncio
-    async def test_every_call_binds_to_the_sdk_signature(
-        self, stuck_langfuse, open_window
+    async def test_the_sdks_stale_copy_counts_as_a_failure(
+        self, prompt_server, open_window
     ):
-        """A renamed SDK parameter would disable the revalidation silently.
+        """The SDK answers a failed refetch with what it holds, marked stale.
 
-        The fake accepts anything, so without this the fix could stop reaching
-        the server on a Langfuse bump and every test here would still pass.
+        Taking that as a fresh fetch would hide the outage from the log and
+        from the fallback path.
         """
-        from langfuse._client.client import Langfuse
+        from backend.copilot.service import _revalidate_prompt
 
-        from backend.copilot.service import _fetch_langfuse_prompt
+        assert (await _revalidate_prompt()).text == "v36 prompt"
+        prompt_server.error = RuntimeError("posthog unreachable")
 
-        await _fetch_langfuse_prompt()
+        with pytest.raises(RuntimeError, match="stale_cache"):
+            await _revalidate_prompt()
+        assert prompt_server.fetches == 2
 
-        assert stuck_langfuse.calls
-        for call in stuck_langfuse.calls:
-            inspect.signature(Langfuse.get_prompt).bind(None, "CoPilot Prompt", **call)
+    @pytest.mark.asyncio
+    async def test_a_slow_revalidation_serves_the_cached_copy(
+        self, prompt_server, open_window, monkeypatch
+    ):
+        """A turn waits for PostHog no longer than the revalidation timeout."""
+        from backend.copilot import service
+
+        monkeypatch.setattr(service, "_PROMPT_REVALIDATION_TIMEOUT_SECONDS", 0.05)
+        prompt_server.release = threading.Event()
+        try:
+            assert await _served() == "v35 prompt"
+        finally:
+            prompt_server.release.set()
+            # The abandoned SDK request must not outlive the test.
+            await asyncio.to_thread(prompt_server.finished.wait, 30)
+
+    @pytest.mark.asyncio
+    async def test_the_cached_copy_keeps_its_version(self, prompt_server):
+        from backend.copilot.service import _fetch_managed_prompt
+
+        assert await _fetch_managed_prompt() == _ManagedPrompt(
+            text="v35 prompt", version=35
+        )
+
+    @pytest.mark.asyncio
+    async def test_reads_the_newest_version_outside_production(
+        self, prompt_server, open_window
+    ):
+        """PostHog refuses ``label=latest``; the newest version takes no label."""
+
+        await _served()
+
+        assert prompt_server.labels == [None]
+
+
+class TestTurnPromptRecord:
+    """The turn's LLM analytics name the prompt version it ran on."""
+
+    @pytest.mark.asyncio
+    async def test_a_turn_records_the_posthog_version(self, prompt_server, open_window):
+        from backend.copilot.service import _build_system_prompt
+
+        start_turn_prompt()
+        prompt, _ = await _build_system_prompt(None)
+
+        assert prompt == "v36 prompt"
+        assert turn_prompt() == PromptRef(name="copilot-prompt", version=36)
+
+    @pytest.mark.asyncio
+    async def test_a_turn_on_the_copy_in_code_records_no_version(self):
+        from backend.copilot.service import _build_system_prompt
+
+        with patch(f"{_SVC}._is_prompt_management_configured", return_value=False):
+            start_turn_prompt()
+            prompt, _ = await _build_system_prompt(None)
+
+        assert prompt == _CACHEABLE_SYSTEM_PROMPT
+        assert turn_prompt() == PromptRef(name="copilot-prompt")

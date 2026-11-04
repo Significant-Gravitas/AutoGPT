@@ -5255,7 +5255,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
-        # Build system prompt (reuses non-SDK path with Langfuse prompt
+        # Build system prompt (reuses non-SDK path with PostHog prompt
         # management).
         # Pre-compute the cwd here so the exact working directory path can be
         # injected into the supplement instead of the generic placeholder.
@@ -5283,7 +5283,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
 
         # --- Run independent async I/O operations in parallel ---
-        # E2B sandbox setup, system prompt build (Langfuse prompt + DB), Graphiti
+        # E2B sandbox setup, system prompt build (PostHog prompt + DB), Graphiti
         # warm-context, and CLI session restore are all independent network
         # calls. Running them concurrently saves ~500-1000ms vs sequential.
 

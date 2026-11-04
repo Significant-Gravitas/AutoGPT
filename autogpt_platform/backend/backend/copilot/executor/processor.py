@@ -46,6 +46,7 @@ from backend.copilot.llm_attribution import (
     set_turn_impersonated,
     set_turn_origin,
     set_turn_trace_id,
+    start_turn_prompt,
 )
 from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
@@ -902,6 +903,7 @@ class CoPilotProcessor:
             # A subtask's calls join the trace of the reply it works for.
             set_turn_trace_id(trace_id_for(entry))
             set_turn_origin(origin)
+            start_turn_prompt()
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)

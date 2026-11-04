@@ -27,7 +27,14 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
     subtask's calls join the reply's trace but carry the subtask's origin,
     as on its ``$ai_span``;
   - ``metadata_revision``: the deployed build's git sha from
-    ``config.sentry_release``, left out when that is blank.
+    ``config.sentry_release``, left out when that is blank;
+  - ``metadata_prompt_name``, ``metadata_prompt_version`` and
+    ``metadata_prompt_source``: the system prompt the turn runs on
+    (``posthog_prompts.PromptRef``), on the engines' own calls only, not the
+    title's. On the SDK engine every call the CLI makes carries it, its
+    sub-agents' and compaction's included. Broadcast maps no request field to
+    ``$ai_prompt_name``, so those properties go on the turn's ``$ai_trace``
+    (``ai_spans.capture_turn``) instead.
 
   Broadcast sends these events itself, not through our PostHog client, so
   they never get a property the client adds to every event it captures.
@@ -42,8 +49,10 @@ from typing import Any, Literal
 
 from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
 from fastapi import Request
+from pydantic import BaseModel
 
 from backend.util import posthog_client
+from backend.util.posthog_prompts import PromptRef
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -53,6 +62,17 @@ settings = Settings()
 _MAX_ID_CHARS = 128
 
 GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
+# The calls made with the turn's system prompt.
+_SYSTEM_PROMPT_GENERATIONS: frozenset[GenerationName] = frozenset(
+    {"copilot-sdk", "copilot-baseline"}
+)
+
+
+class _TurnPrompt(BaseModel):
+    """The running turn's record of the system prompt it runs on."""
+
+    ref: PromptRef | None = None
+
 
 # The running turn's trace, sent as the trace id of every call it makes. The
 # executor sets it for every turn, so a value never carries over; a call made
@@ -62,6 +82,10 @@ _turn_trace_id: ContextVar[str | None] = ContextVar("_turn_trace_id", default=No
 # can tell a person's message from a schedule's. Set for every turn, like the
 # trace id; a call made outside a turn sends none.
 _turn_origin: ContextVar[str | None] = ContextVar("_turn_origin", default=None)
+# The running turn's prompt record. The record itself is shared, not copied,
+# with the tasks the turn starts, so the prompt build fills it for the turn
+# from inside the ``asyncio.gather`` the engines run it under.
+_turn_prompt: ContextVar[_TurnPrompt | None] = ContextVar("_turn_prompt", default=None)
 
 
 def openrouter_attribution(
@@ -87,6 +111,9 @@ def openrouter_attribution(
     origin = current_turn_origin()
     if origin:
         body["trace"]["turn_origin"] = origin
+    prompt = turn_prompt()
+    if prompt is not None and generation_name in _SYSTEM_PROMPT_GENERATIONS:
+        body["trace"].update(prompt.broadcast_trace())
     if user_id:
         body["user"] = user_id[:_MAX_ID_CHARS]
     if session_id:
@@ -124,6 +151,24 @@ def set_turn_origin(origin: str | None) -> None:
 
 def current_turn_origin() -> str | None:
     return _turn_origin.get()
+
+
+def start_turn_prompt() -> None:
+    """Give the running turn an empty record of its system prompt."""
+    _turn_prompt.set(_TurnPrompt())
+
+
+def record_turn_prompt(ref: PromptRef) -> None:
+    """Note the system prompt the running turn runs on; outside a turn,
+    nothing."""
+    record = _turn_prompt.get()
+    if record is not None:
+        record.ref = ref
+
+
+def turn_prompt() -> PromptRef | None:
+    record = _turn_prompt.get()
+    return record.ref if record is not None else None
 
 
 def is_impersonated_request(request: Request) -> bool:

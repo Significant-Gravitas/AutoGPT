@@ -1,8 +1,8 @@
 """Prompt builders for the three-phase dream pipeline.
 
-Slice-1 ships hardcoded prompts. Once Langfuse seeds land, swap the
-body of each ``build_*`` for a Langfuse fetch with these strings as
-the local fallback.
+Slice-1 ships hardcoded prompts. To manage one in PostHog, swap the
+body of its ``build_*`` for a fetch through ``backend.util.posthog_prompts``
+with these strings as the local fallback.
 
 Phase 1 — Consolidation (Sonnet, temp 0.2, structured JSON output)
 Phase 2 — Recombination (Opus, temp 0.9, structured JSON output)

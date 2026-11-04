@@ -389,17 +389,23 @@ class ChatConfig(BaseSettings):
         description="Prefix for turn message stream keys",
     )
 
-    # Langfuse Prompt Management Configuration
-    # Note: Langfuse credentials are in Settings().secrets (settings.py)
-    langfuse_prompt_name: str = Field(
-        default="CoPilot Prompt",
-        description="Name of the prompt in Langfuse to fetch",
+    # System prompt managed in PostHog (backend/util/posthog_prompts.py)
+    system_prompt_name: str = Field(
+        default="copilot-prompt",
+        description="Name of the PostHog prompt the AutoPilot system prompt is "
+        "read from",
     )
-    langfuse_prompt_cache_ttl: int = Field(
+    system_prompt_cache_ttl: int = Field(
         default=300,
         ge=0,
-        description="How long a process may serve a cached Langfuse prompt before "
-        "re-fetching it (0 to disable caching)",
+        validation_alias=AliasChoices(
+            "CHAT_SYSTEM_PROMPT_CACHE_TTL",
+            "CHAT_LANGFUSE_PROMPT_CACHE_TTL",
+        ),
+        description="How long a process may serve a cached system prompt before "
+        "re-fetching it from PostHog (0 to disable caching). Override via "
+        "CHAT_SYSTEM_PROMPT_CACHE_TTL (legacy CHAT_LANGFUSE_PROMPT_CACHE_TTL still "
+        "accepted).",
     )
 
     # PostHog LLM analytics (copilot/ai_spans.py)
