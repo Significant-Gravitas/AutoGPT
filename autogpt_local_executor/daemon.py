@@ -642,14 +642,7 @@ class ShimDaemon:
             except websockets.exceptions.ConnectionClosed as exc:
                 # Translate fatal application close codes into the
                 # _disable_reconnect flag so run() doesn't loop on us.
-                # Prefer the new rcvd.code (websockets >=13.1) and fall
-                # back to the deprecated attribute on older versions.
-                code: int | None
-                rcvd = getattr(exc, "rcvd", None)
-                if rcvd is not None and getattr(rcvd, "code", None) is not None:
-                    code = int(rcvd.code)
-                else:
-                    code = getattr(exc, "code", None)
+                code = exc.rcvd.code if exc.rcvd is not None else None
                 label = _CLOSE_CODE_LABELS.get(code or -1, "unknown")
                 disconnect_reason = f"ws_closed_{code}_{label}"
                 if code in _FATAL_CLOSE_CODES:

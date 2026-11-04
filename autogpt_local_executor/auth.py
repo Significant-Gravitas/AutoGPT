@@ -30,8 +30,6 @@ import keyring
 from .config import ShimConfig, _validate_platform_endpoint
 
 KEYCHAIN_SERVICE = "autogpt-local-executor"
-KEYCHAIN_ACCESS_TOKEN_KEY = "access_token"
-KEYCHAIN_REFRESH_TOKEN_KEY = "refresh_token"
 # How long `autogpt-shim auth` waits for the browser to come back.
 CALLBACK_TIMEOUT_SECONDS = 300.0
 # The last of the redirect ports the OAuth app registers (41899-41910).
@@ -166,7 +164,7 @@ class KeychainTokenStore:
         await asyncio.to_thread(keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record)
 
     def clear_tokens(self) -> None:
-        """Remove only this deployment's record, leaving legacy credentials untouched."""
+        """Remove only this deployment's record."""
         try:
             keyring.delete_password(KEYCHAIN_SERVICE, self._record_key)
         except keyring.errors.PasswordDeleteError:
@@ -179,15 +177,6 @@ class KeychainTokenStore:
     def _read_record(self) -> dict[str, str] | None:
         stored = keyring.get_password(KEYCHAIN_SERVICE, self._record_key)
         if stored is None:
-            if any(
-                keyring.get_password(KEYCHAIN_SERVICE, key)
-                for key in (KEYCHAIN_ACCESS_TOKEN_KEY, KEYCHAIN_REFRESH_TOKEN_KEY)
-            ):
-                raise CredentialScopeError(
-                    "Unscoped legacy credentials cannot be reused. Run `autogpt-shim auth` "
-                    "with the intended deployment configuration. Legacy credentials were "
-                    "left untouched; revoke them at their original deployment."
-                )
             return None
         try:
             record = json.loads(stored)
