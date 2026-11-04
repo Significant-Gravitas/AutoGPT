@@ -79,7 +79,7 @@ function AccountMentionComposer({ expertId }: Props) {
               key={name}
               variant="body-tight"
               as="span"
-              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground"
+              className="rounded-lg bg-surface-hover px-2 py-1 text-foreground-base"
             >
               {name}
             </Text>
