@@ -119,7 +119,10 @@ def _desktop_file_id(path: str) -> str | None:
     outside them."""
     for directory in _application_dirs():
         for base in dict.fromkeys((os.path.abspath(directory), os.path.realpath(directory))):
-            relative = os.path.relpath(os.path.abspath(path), base)
+            try:
+                relative = os.path.relpath(os.path.abspath(path), base)
+            except ValueError:
+                continue  # on another drive (Windows, where the tests run too)
             if relative != os.pardir and not relative.startswith(os.pardir + os.sep):
                 return relative.replace(os.sep, "-")
     return None
