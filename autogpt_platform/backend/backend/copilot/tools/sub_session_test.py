@@ -25,6 +25,7 @@ from backend.copilot.model import ChatMessage
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.data.workspace import WorkspaceFile
 
 from .get_sub_session_result import GetSubSessionResultTool
 from .models import (
@@ -37,6 +38,7 @@ from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
     apply_delegated_expert,
+    list_sub_workspace_files,
     response_from_outcome,
 )
 
@@ -1105,7 +1107,9 @@ class TestGetSubSessionResult:
         # Waiter skipped (terminal short-circuit) — the tool-call log is stale.
         mock_waiter.result_mock.assert_not_awaited()
         # ...but the manifest is still populated, from the workspace listing.
-        stub_workspace_listing.assert_awaited_once_with("alice", "inner-9")
+        stub_workspace_listing.assert_awaited_once_with(
+            "alice", "inner-9", written_from=None, written_until=None
+        )
         assert r.sub_workspace_files is not None
         assert r.sub_workspace_files[0].path == "/sessions/inner-9/AUDIT.md"
         assert "workspace file" in (r.message or "")
@@ -1511,3 +1515,45 @@ class TestAThreadNothingReached:
         assert "Don't send it again" in r.message
         assert "safe to send" not in r.message
         mock_waiter.result_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_sub_manifest_can_be_restricted_to_a_window(monkeypatch):
+    """A recorded background result lists only the files written in its
+    turn's window, so a later turn's files in the child's chat stay out."""
+    launch = datetime(2026, 11, 4, 6, 0, tzinfo=UTC)
+
+    def _file(file_id: str, written_at: datetime) -> WorkspaceFile:
+        return WorkspaceFile(
+            id=file_id,
+            workspace_id="w",
+            created_at=written_at,
+            updated_at=written_at,
+            name=f"{file_id}.png",
+            path=f"/sessions/inner-1/{file_id}.png",
+            storage_path="s",
+            mime_type="image/png",
+            size_bytes=1,
+        )
+
+    manager = MagicMock()
+    manager.list_files = AsyncMock(
+        return_value=[
+            _file("before", launch - timedelta(minutes=1)),
+            _file("during", launch + timedelta(minutes=1)),
+            _file("after", launch + timedelta(minutes=10)),
+        ]
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    )
+
+    files = await list_sub_workspace_files(
+        "alice",
+        "inner-1",
+        written_from=launch,
+        written_until=launch + timedelta(minutes=5),
+    )
+
+    assert [f.file_id for f in files or []] == ["during"]

@@ -4,7 +4,13 @@
 ALTER TABLE "ChatBackgroundTask" ALTER COLUMN "deadline" DROP NOT NULL;
 ALTER TABLE "ChatBackgroundTask" ADD COLUMN "resultSequence" INTEGER;
 -- A task completed before this migration keeps its answer in its child's chat;
--- point at that row the way recovery would, so nothing is lost with the summary.
+-- point at that row before the summary goes. Such a row carries no record of
+-- the turn that was active when it ended, so the rule here is the conservative
+-- one: the last answer before any later user row. It gives up the final answer
+-- of a child that drained a clarification mid-turn (pointing at the reply
+-- before the clarification) rather than ever pointing at a later turn's
+-- answer; recovery at run time reads the chat's active turn and does better.
+-- The feature is unreleased behind an off flag, so no row is expected here.
 UPDATE "ChatBackgroundTask" task SET "resultSequence" = (
     SELECT max(message.sequence)
     FROM "ChatMessage" message

@@ -33,8 +33,12 @@ the turn's, a clarification it drained mid-turn included, when the worker still
 holds the turn or when the chat records no later turn; only once a later turn
 ran does recovery stop at the next user row. The tool asks
 the record for every sub it is given: for a background child it returns that
-turn's answer, tool calls and the files those calls wrote, so a later turn in
-the child's chat is never handed back as its result, and until the outcome is
+turn's answer and tool calls, so a later turn in the child's chat is never
+handed back as its result, with the child's workspace files listed as for a
+foreground subtask but only those written in the turn's window, from its
+launch to the next user message after its answer (a browser screenshot is
+saved for the child by another tool, so the turn's own tool calls would miss
+it, while a later turn's files stay out), and until the outcome is
 recorded it reports the child as still running rather than reading a partial
 transcript as a result. The UI renders the wake as a short labeled notice,
 not the internal prompt.
@@ -94,10 +98,13 @@ depend on the launch or acceptance rows staying within the transcript page.
 Time is not a budget. The child is a node of the launching turn's tree and is
 metered by it like any spawned turn; a cancelled or refused queued child gives
 its node back. The tree's ledger key lives for the turn lifetime, which a
-handoff with no clock can outlive; promotion and pickup of background work
-reopen a closed tree as the first spawn opened it, since that expiry is
-bookkeeping rather than a budget verdict, while a spent tree still refuses a
-nested continuation the way it refuses any spawned turn. The continuation runs under the launching turn's own envelope,
+handoff with no clock can outlive, so every sweep re-arms the key of a tree
+with open background work and the tree's spend and node counts survive the
+wait. Promotion and pickup of background work reopen a tree whose key was lost
+anyway as the first spawn opened it, since that loss is bookkeeping rather
+than a budget verdict; its counts start over then, still bounded by the chat
+and account limits, while a spent tree refuses a nested continuation the way
+it refuses any spawned turn. The continuation runs under the launching turn's own envelope,
 so it is governed by the user's allowance and spend limits the way every turn
 of that chat is, not by the subtask's node. Queue promotion and worker pickup
 recheck those limits.

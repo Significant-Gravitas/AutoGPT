@@ -8,7 +8,7 @@ from backend.copilot.active_turns import ORPHAN_RUNNING_RESET_SECONDS
 from backend.copilot.background_task import BackgroundTask, task_metadata
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import _get_session_lock, invalidate_session_cache
-from backend.copilot.tree import TurnEnvelope
+from backend.copilot.tree import TurnEnvelope, keep_tree_alive
 from backend.copilot.turn_queue import cancel_queued_turn, dispatch_next_for_user
 from backend.data.db_accessors import background_task_db, chat_db
 
@@ -68,58 +68,65 @@ async def _reconcile(task: BackgroundTask) -> None:
                 task.id, task.user_id
             )
         return
+    # Open work keeps its tree, and the counts the tree holds, from expiring.
+    await keep_tree_alive(task.context.child_envelope)
     if task.outcome is None:
-        completion = (
-            await stream_registry.get_session(task.child_session_id)
-            if status == "idle" and task.started_at is not None
-            else None
-        )
-        if completion and (
-            completion.user_id,
-            completion.turn_id,
-            completion.status,
-        ) == (task.user_id, task.child_turn_id, "completed"):
-            await background_task_db().finish_background_turn(
-                task.user_id, task.child_session_id, task.child_turn_id, None
-            )
-        elif status == "idle":
-            # The chat went idle without the worker recording an outcome: the
-            # turn was interrupted, so the parent carries on from that.
-            await background_task_db().complete_background_task(
-                task.id, task.user_id, "failed"
-            )
-        elif (
-            status == "queued"
-            and task.deadline is not None
-            and datetime.now(UTC) >= task.deadline
-        ):
-            # Only a deadline the launching turn already had: a child still
-            # queued past it would be refused at pickup, so close it here
-            # instead of nudging the queue forever. Once promoted, the
-            # worker's own clock bounds it.
-            await background_task_db().complete_background_task(
-                task.id, task.user_id, "timed_out"
-            )
-            await _stop_child(task)
-        else:
-            if status == "running" and task.started_at is not None:
-                await _release_if_abandoned(
-                    task, task.child_session_id, task.child_turn_id
-                )
-            await dispatch_next_for_user(task.user_id)
+        settled = await _settle_child(task, status)
+        if settled is None:
             return
-        refreshed = await background_task_db().get_background_task(
-            task.id, task.user_id
-        )
-        if refreshed is None:
-            return
-        task = refreshed
+        task = settled
     if task.outcome in ("cancelled", "timed_out"):
         await _stop_child(task)
     if task.followup_state == "queued":
         await _recover_followup(task)
     elif task.followup_state == "waiting":
         await _deliver(task)
+
+
+async def _settle_child(
+    task: BackgroundTask, status: str | None
+) -> BackgroundTask | None:
+    """Record how a child without a recorded outcome ended, from what its
+    chat and stream show, and return the refreshed record; None while the
+    child is still queued or running, or once its record is gone."""
+    completion = (
+        await stream_registry.get_session(task.child_session_id)
+        if status == "idle" and task.started_at is not None
+        else None
+    )
+    if completion and (
+        completion.user_id,
+        completion.turn_id,
+        completion.status,
+    ) == (task.user_id, task.child_turn_id, "completed"):
+        await background_task_db().finish_background_turn(
+            task.user_id, task.child_session_id, task.child_turn_id, None
+        )
+    elif status == "idle":
+        # The chat went idle without the worker recording an outcome: the
+        # turn was interrupted, so the parent carries on from that.
+        await background_task_db().complete_background_task(
+            task.id, task.user_id, "failed"
+        )
+    elif (
+        status == "queued"
+        and task.deadline is not None
+        and datetime.now(UTC) >= task.deadline
+    ):
+        # Only a deadline the launching turn already had: a child still
+        # queued past it would be refused at pickup, so close it here
+        # instead of nudging the queue forever. Once promoted, the
+        # worker's own clock bounds it.
+        await background_task_db().complete_background_task(
+            task.id, task.user_id, "timed_out"
+        )
+        await _stop_child(task)
+    else:
+        if status == "running" and task.started_at is not None:
+            await _release_if_abandoned(task, task.child_session_id, task.child_turn_id)
+        await dispatch_next_for_user(task.user_id)
+        return None
+    return await background_task_db().get_background_task(task.id, task.user_id)
 
 
 async def _deliver(task: BackgroundTask) -> None:

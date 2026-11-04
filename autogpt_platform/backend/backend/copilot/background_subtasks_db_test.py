@@ -55,6 +55,7 @@ from backend.copilot.response_model import StreamError, StreamTextDelta
 from backend.copilot.tool_call_context import tool_call_context
 from backend.copilot.tools.get_sub_session_result import GetSubSessionResultTool
 from backend.copilot.tools.helpers import _permission_denied
+from backend.copilot.tools.models import WorkspaceFileInfoData
 from backend.copilot.tree import (
     TreeRefusal,
     TurnEnvelope,
@@ -1811,3 +1812,112 @@ async def test_result_tool_names_how_a_background_child_ended(
     assert response.status == "error"
     assert label in response.message
     assert "result" in response.message
+
+
+async def test_result_tool_lists_a_background_childs_workspace_files(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """A recorded result's files are the child's workspace manifest, as for a
+    foreground sub, since a tool such as the browser's screenshot saves a file
+    for the child with no ``write_workspace_file`` call in the turn's log;
+    the manifest is restricted to the turn's window, from its launch to the
+    next user message after its answer, so a later turn's files stay out."""
+    screenshot = WorkspaceFileInfoData(
+        file_id="file-1",
+        name="screenshot.png",
+        path="/sessions/child/screenshot.png",
+        mime_type="image/png",
+        size_bytes=1024,
+    )
+    listing = AsyncMock(return_value=[screenshot])
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
+        listing,
+    )
+    task = await world.launch()
+    await world.finish_parent()
+    await world.finish_child(task)
+    await append_and_save_message(
+        task.child_session_id, ChatMessage(role="user", content="One more thing")
+    )
+    launch = await DbMessage.prisma().find_unique(where={"id": task.child_turn_id})
+    later = await DbMessage.prisma().find_first(
+        where={
+            "sessionId": task.child_session_id,
+            "role": "user",
+            "id": {"not": task.child_turn_id},
+        }
+    )
+    assert launch and later
+
+    response = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+
+    assert response.status == "completed"
+    listing.assert_awaited_once_with(
+        world.user_id,
+        task.child_session_id,
+        written_from=launch.createdAt,
+        written_until=later.createdAt,
+    )
+    assert response.sub_workspace_files == [screenshot]
+
+
+async def test_sweep_keeps_an_open_handoffs_tree_alive(world: World):
+    """The tree's ledger key lives for the turn lifetime and only a charge
+    re-arms it, which open background work can outlast. Every sweep re-arms
+    it, so the tree's spend and node counts survive the wait; reopening at
+    promotion and pickup is the fallback for a key lost anyway."""
+    await world.launch()
+    ledger = await get_tree_ledger()
+    redis = await get_redis_async()
+    key = ledger.key(world.envelope.tree_id)
+    await ledger.charge(world.envelope.tree_id, 250_000)
+    await redis.expire(key, 60)
+    assert 0 < await redis.ttl(key) <= 60
+
+    await background_delivery.reconcile_background_subtasks()
+
+    assert await redis.ttl(key) > 60
+    assert int(await redis.hget(key, "spent") or 0) == 250_000
+
+
+@pytest.mark.parametrize("worker", ["dead", "alive"])
+async def test_sweep_recovers_a_continuation_whose_worker_died(
+    world: World, worker: str
+):
+    """The wake is a turn of the launching chat; the sweep releases it the way
+    it releases a child's turn, fenced to the wake, so a chat whose worker
+    died mid-continuation is not stuck running, while a live worker is left
+    alone however old the row is."""
+    task = await world.launch()
+    await world.finish_child(task)
+    await world.finish_parent()
+    await background_delivery.reconcile_background_subtasks()
+    entry = world.entry(task.parent_session_id)
+    assert await claim_background_execution(entry)
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "updatedAt"=$2::timestamptz WHERE id=$1',
+        task.parent_session_id,
+        datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS + 1),
+    )
+    if worker == "dead":
+        await (await get_redis_async()).delete(
+            stream_registry._get_session_meta_key(task.parent_session_id)
+        )
+
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    stored = await background_task_db.get_background_task(task.id, world.user_id)
+    assert stored
+    status = await chat_db().get_chat_session_status(task.parent_session_id)
+    if worker == "alive":
+        assert stored.followup_state == "queued" and status == "running"
+        return
+    assert stored.followup_state == "finished" and status == "idle"
+    notices = await DbMessage.prisma().find_many(
+        where={"sessionId": task.parent_session_id, "id": task.wake_id + "-notice"}
+    )
+    assert len(notices) == 1

@@ -190,42 +190,31 @@ async def finish_background_turn(
         task.id,
         user_id,
         outcome,
-        result_sequence=await _answer_sequence(
-            task.child_turn_id, turn_held or await _no_later_turn(task)
-        ),
+        result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
     )
 
 
-async def _no_later_turn(task: BackgroundTask) -> bool:
-    """Whether the child's chat still records the child's turn as its last:
-    admission clears that identity and dispatch records the next one, so a
-    later turn, started or finished, always shows."""
-    session = await ChatSession.prisma().find_unique(
-        where={"id": task.child_session_id}
-    )
-    return (
-        session is not None
-        and _parse_json_field(session.metadata, default={}).get("_active_turn_id")
-        == task.child_turn_id
-    )
-
-
-async def _answer_sequence(child_turn_id: str, owns_rows: bool) -> int | None:
+async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
     """The last assistant row of the child's turn, which begins at its launch
-    row. Owning its rows, the turn takes every later one; otherwise it ends
-    at the next user row."""
+    row. The turn owns every later row while the worker holds it, and while
+    the chat still records it as the active turn (admission clears that
+    identity and dispatch records the next one, so a later turn, started or
+    finished, always shows); otherwise it ends at the next user row. One
+    statement reads the chat and its rows in one snapshot, so a turn admitted
+    between two reads cannot slip its answer past the check."""
     rows = await db.query_raw_with_schema(
         """SELECT message.sequence FROM {schema_prefix}"ChatMessage" message
         JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$1
             AND message."sessionId"=launch."sessionId"
+        JOIN {schema_prefix}"ChatSession" chat ON chat.id=launch."sessionId"
         WHERE message.role='assistant' AND message.sequence>launch.sequence
-          AND ($2::boolean OR NOT EXISTS (
+          AND ($2::boolean OR chat.metadata->>'_active_turn_id'=$1 OR NOT EXISTS (
             SELECT 1 FROM {schema_prefix}"ChatMessage" next
             WHERE next."sessionId"=launch."sessionId" AND next.role='user'
               AND next.sequence>launch.sequence AND next.sequence<message.sequence
           )) ORDER BY message.sequence DESC LIMIT 1""",
         child_turn_id,
-        owns_rows,
+        turn_held,
     )
     return int(rows[0]["sequence"]) if rows else None
 
@@ -378,7 +367,7 @@ async def background_child_result(
     background child; an outcome of None while the child's turn has not been
     recorded; otherwise the answer and tool calls of that turn, read up to the
     row recorded when it ended, so a later turn in the chat is never mistaken
-    for it."""
+    for it, and the window the turn's files were written in."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$1 AND "childSessionId"=$2""",
@@ -392,7 +381,11 @@ async def background_child_result(
     if task.outcome is None or task.result_sequence is None:
         return BackgroundChildResult(outcome=task.outcome)
     rows = await db.query_raw_with_schema(
-        """SELECT message.content, message."toolCalls"
+        """SELECT message.content, message."toolCalls",
+          launch."createdAt" AS "writtenFrom", (
+            SELECT min(next."createdAt") FROM {schema_prefix}"ChatMessage" next
+            WHERE next."sessionId"=$1 AND next.role='user' AND next.sequence>$3
+          ) AS "writtenUntil"
         FROM {schema_prefix}"ChatMessage" message
         JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$2
         WHERE message."sessionId"=$1 AND message.role='assistant'
@@ -401,12 +394,26 @@ async def background_child_result(
         session_id,
         task.child_turn_id,
         task.result_sequence,
+        model=_RecordedRow,
     )
     return BackgroundChildResult(
         outcome=task.outcome,
-        response_text=(rows[-1]["content"] or "") if rows else "",
-        tool_calls=[call for row in rows for call in _tool_calls_of(row["toolCalls"])],
+        response_text=(rows[-1].content or "") if rows else "",
+        tool_calls=[call for row in rows for call in _tool_calls_of(row.tool_calls)],
+        written_from=rows[0].written_from if rows else None,
+        written_until=rows[0].written_until if rows else None,
     )
+
+
+class _RecordedRow(BaseModel):
+    """An assistant row of the recorded turn, with the turn's window: from
+    its launch row to the next user row after its answer, if any."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    content: str | None = None
+    tool_calls: Any = None
+    written_from: datetime
+    written_until: datetime | None = None
 
 
 def _tool_calls_of(raw: Any) -> list[dict[str, Any]]:

@@ -288,12 +288,19 @@ class GetSubSessionResultTool(BaseTool):
         # On completion, read the authoritative workspace-file manifest from the
         # sub's session. This covers the cold-poll / already-terminal path where
         # ``result.tool_calls`` reflects only the last persisted message and so
-        # would miss files the sub wrote in earlier turns (SECRT-2377). A
-        # recorded background result is scoped to its turn instead: its files
-        # are mined from that turn's tool calls, so a later turn's never join.
+        # would miss files the sub wrote in earlier turns (SECRT-2377), and a
+        # recorded background result as well, within its turn's window: the
+        # turn's tool calls name only what ``write_workspace_file`` wrote, not
+        # a file another tool saved for the sub, such as a browser screenshot,
+        # while a later turn's files stay out of its result.
         workspace_files = (
-            await list_sub_workspace_files(user_id, inner_session_id)
-            if outcome == "completed" and recorded is None
+            await list_sub_workspace_files(
+                user_id,
+                inner_session_id,
+                written_from=recorded.written_from if recorded else None,
+                written_until=recorded.written_until if recorded else None,
+            )
+            if outcome == "completed"
             else None
         )
         return apply_delegated_expert(

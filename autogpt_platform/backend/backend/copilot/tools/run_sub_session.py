@@ -26,6 +26,7 @@ other turn.
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.copilot.active_turns import spawn_limit_message
@@ -385,9 +386,14 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
 async def list_sub_workspace_files(
     user_id: str,
     inner_session_id: str,
+    *,
+    written_from: datetime | None = None,
+    written_until: datetime | None = None,
 ) -> list[WorkspaceFileInfoData] | None:
     """Authoritative manifest of the persistent files a sub wrote, read from
-    the sub's session workspace.
+    the sub's session workspace. ``written_from`` and ``written_until`` keep
+    only the files written in that window: a recorded background result lists
+    the files of its own turn, so a later turn's never join it.
 
     A sub may deliver its real output by writing workspace files and only
     summarising in its final message (SECRT-2377). This queries the sub's
@@ -428,7 +434,22 @@ async def list_sub_workspace_files(
             size_bytes=f.size_bytes,
         )
         for f in files
+        if _written_within(f.created_at, written_from, written_until)
     ]
+
+
+def _written_within(
+    written_at: datetime, written_from: datetime | None, written_until: datetime | None
+) -> bool:
+    """Whether a write falls in the window, a naive stamp read as UTC."""
+    at = _as_utc(written_at)
+    return (written_from is None or at >= _as_utc(written_from)) and (
+        written_until is None or at < _as_utc(written_until)
+    )
+
+
+def _as_utc(stamp: datetime) -> datetime:
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
 
 
 def _workspace_files_from_tool_calls(

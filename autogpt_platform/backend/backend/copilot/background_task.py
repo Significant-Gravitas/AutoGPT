@@ -67,6 +67,10 @@ class BackgroundChildResult(BaseModel):
     outcome: BackgroundOutcome | None = None
     response_text: str = ""
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    # The turn's window: from its launch row to the next user row after its
+    # answer, if any. The files the sub wrote in it are the result's.
+    written_from: datetime | None = None
+    written_until: datetime | None = None
 
 
 class BackgroundSessionState(BaseModel):
