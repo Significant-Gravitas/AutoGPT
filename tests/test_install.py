@@ -517,3 +517,17 @@ def test_a_failed_autostart_write_leaves_the_old_file(
 
     assert target.read_text() == "the working unit"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["autogpt-shim.service"]
+
+
+def test_a_write_leaves_another_installs_temporary_file_alone(tmp_path: Path) -> None:
+    """Two installs at once shared one temporary name, so one could write into
+    the other's file, or rename it away before the other had finished."""
+    target = tmp_path / "autogpt-shim.service"
+    theirs = tmp_path / f".{target.name}.tmp"
+    theirs.write_text("another install, part way through")
+
+    install_mod._write_atomic(target, "mine")
+
+    assert target.read_text() == "mine"
+    assert theirs.read_text() == "another install, part way through"
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([theirs.name, target.name])

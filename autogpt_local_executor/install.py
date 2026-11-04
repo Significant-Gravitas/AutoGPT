@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import platform as _platform
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -212,9 +213,11 @@ def _write_atomic(target: Path, content: str, *, encoding: str = "utf-8") -> Pat
     """Write `content` beside `target` and rename it over, so a write that
     fails part way leaves the old file whole."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_name(f".{target.name}.tmp")
+    # A name of its own, created exclusively, so two installs at once can't
+    # write into each other's file.
+    temp = target.with_name(f".{target.name}.{secrets.token_hex(6)}.tmp")
     try:
-        with open(temp, "w", encoding=encoding) as file:
+        with open(temp, "x", encoding=encoding) as file:
             file.write(content)
             file.flush()
             os.fsync(file.fileno())
