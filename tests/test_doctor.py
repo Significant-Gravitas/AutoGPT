@@ -482,3 +482,45 @@ def test_doctor_warns_when_a_computer_use_module_is_missing(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert "mss" in out
     assert "full computer_use available" not in out
+
+
+@pytest.mark.parametrize(
+    ("session", "tools", "ok"),
+    [
+        ("x11", {"wl-copy"}, False),
+        ("x11", {"xclip"}, True),
+        ("wayland", {"wl-copy"}, True),
+        ("wayland", {"xclip"}, True),
+        ("wayland", set(), False),
+    ],
+    ids=["x11-wl-copy-only", "x11-xclip", "wayland-wl-copy", "wayland-xclip", "wayland-none"],
+)
+def test_doctor_checks_the_clipboard_tool_the_session_uses(
+    tmp_path, monkeypatch, session: str, tools: set[str], ok: bool
+) -> None:
+    """On X11, doctor passed the clipboard check with only wl-copy, which
+    can't reach an X11 clipboard; the backend then offered no clipboard."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", session)
+    monkeypatch.setenv("DISPLAY", ":0")
+    if session == "wayland":
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    else:
+        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(doctor.platform_info, "_x11_display_opens", lambda: True)
+    import shutil
+
+    # doctor imports shutil inside the check, so the module's own is patched.
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}" if name in tools else None)
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    result = next(
+        r
+        for r in doctor._check_linux(_config(tmp_path, enable_clipboard=True), is_wsl2=False)
+        if r.label == "clipboard tools"
+    )
+
+    assert (result.marker == "OK") is ok, result
