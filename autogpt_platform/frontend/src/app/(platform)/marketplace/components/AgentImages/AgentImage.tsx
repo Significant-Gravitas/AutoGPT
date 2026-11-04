@@ -91,7 +91,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     <span className="sr-only">{thumbnail.label}</span>
                   </div>
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-surface-active text-xs text-foreground-tertiary">
+                  <div className="flex h-full w-full items-center justify-center bg-surface-active text-caption text-foreground-tertiary">
                     Video
                   </div>
                 )}

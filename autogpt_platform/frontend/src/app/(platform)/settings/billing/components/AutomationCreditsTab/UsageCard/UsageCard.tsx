@@ -59,7 +59,7 @@ export function UsageCard({ index = 0 }: Props) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
             {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
-            <Text variant="large-medium" as="span" className="tabular-nums">
+            <Text variant="large-medium" as="span" tabular>
               ${totalSpent.toFixed(2)}
             </Text>
             <Text variant="body" as="span" tone="muted">
@@ -171,10 +171,10 @@ function UsageBar({
           <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-subtle uppercase">
             {day.date}
           </span>
-          <span className="text-sm font-medium text-action-foreground tabular-nums">
+          <span className="text-body font-medium text-action-foreground tabular-nums">
             ${day.amount.toFixed(2)}
           </span>
-          <span className="text-xs text-foreground-subtle tabular-nums">
+          <span className="text-caption text-foreground-subtle tabular-nums">
             {day.runs} runs
           </span>
         </div>

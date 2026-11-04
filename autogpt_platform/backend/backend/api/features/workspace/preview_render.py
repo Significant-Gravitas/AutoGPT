@@ -29,6 +29,8 @@ from typing import Optional, cast
 import pypdfium2
 from PIL import Image
 
+from backend.util.zip_member import ZipMemberTooLarge, read_member
+
 if sys.platform != "win32":
     import resource
 
@@ -39,6 +41,8 @@ RENDER_MAX_MEMORY_BYTES = 768 * 1024 * 1024
 # A thumbnail is at most 1024 px wide; anything bigger did not come from a
 # renderer here.
 MAX_THUMBNAIL_BYTES = 16 * 1024 * 1024
+# The embedded thumbnail of an Office file: the same cap as an image preview.
+MAX_EMBEDDED_THUMBNAIL_BYTES = 10_000_000
 WEBP_QUALITY = 80
 # A preview is a small thumbnail, so rasterising a source larger than this spends
 # memory and CPU for no visible gain. Every renderer stays within this budget:
@@ -344,7 +348,13 @@ def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
         names = {name.lower(): name for name in archive.namelist()}
         for candidate in _EMBEDDED_THUMBNAILS:
             if candidate in names:
-                return archive.read(names[candidate])
+                info = archive.getinfo(names[candidate])
+                try:
+                    return read_member(
+                        archive, info, max_bytes=MAX_EMBEDDED_THUMBNAIL_BYTES
+                    )
+                except ZipMemberTooLarge as e:
+                    raise PreviewTooLarge() from e
     return None
 
 

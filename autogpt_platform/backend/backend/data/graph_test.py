@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
 
 import fastapi.exceptions
@@ -47,6 +47,7 @@ from backend.data.graph import (
     fork_graph,
     get_graph,
     get_graph_all_versions,
+    get_graph_at_version,
     get_graph_settings,
     get_store_listed_graphs,
     graph_in_library_filter,
@@ -56,7 +57,7 @@ from backend.data.graph import (
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import (
@@ -1169,6 +1170,36 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
     assert [version.version for version in versions] == [created.version]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_at_version_reads_the_version_asked_for(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "first"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    edited = _value_to_output_graph({"name": "second"}, value_node.id, output_node.id)
+    edited.id = created.id
+    await graphs_routes.update_graph(
+        created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    versions = sorted(
+        v.version
+        for v in await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    )
+    assert len(versions) == 2
+
+    read = [await get_graph_at_version(created.id, v, client=None) for v in versions]
+
+    assert [(g.version, list(g.output_schema["properties"])) for g in read if g] == [
+        (versions[0], ["first"]),
+        (versions[1], ["second"]),
+    ]
+
+
 def _owner_context(user_id: str) -> RequestContext:
     return RequestContext(
         user_id=user_id,
@@ -1297,6 +1328,63 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+class _CountedProviders(frozenset):
+    """A provider set that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__ne__(self, other)
+
+    __hash__ = frozenset.__hash__
+
+
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
+    count = 300
+    inputs = {
+        f"provider_{i}_credentials": (
+            CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": [f"provider_{i}"],
+                    "credentials_types": ["api_key"],
+                },
+                by_alias=True,
+            ).model_copy(update={"provider": _CountedProviders({f"provider_{i}"})}),
+            {(f"node-{i}", "credentials")},
+            True,
+        )
+        for i in range(count)
+    }
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[],
+        links=[],
+    )
+    _CountedProviders.comparisons = 0
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=inputs,
+    ):
+        schema = graph.credentials_input_schema
+
+    assert len(schema["properties"]) == count
+    assert _CountedProviders.comparisons <= count
 
 
 # ============================================================================
@@ -3118,6 +3206,44 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
         f"rewritten to {expected_replacement!r} — prefixed forms must hit the "
         "family-aware pass, not the global fallback."
     )
+
+
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4.1", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-opus-4-0", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-sonnet-4-0", LLMModel.CLAUDE_4_6_SONNET),
+        ("anthropic/claude-sonnet-4", LLMModel.CLAUDE_4_6_SONNET),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
+    stored_value: str, replacement: LLMModel
+):
+    """Anthropic retired these aliases with their snapshots. A stored one
+    lands on its family's successor in nodes and presets, and the enum keeps
+    refusing it, which is what keeps the copilot's registry gate from sending it."""
+    with pytest.raises(ValueError):
+        LLMModel(stored_value)
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
 
 
 @pytest.mark.asyncio

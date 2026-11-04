@@ -83,14 +83,16 @@ def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str
     }
 
 
-def _loopback_no_proxy_value() -> str:
+def _no_proxy_value(*hosts: str) -> str:
+    """The backend's NO_PROXY with *hosts* added, for a model endpoint the
+    CLI must reach directly rather than through a configured proxy."""
     entries: list[str] = []
     for value in (os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", "")):
         for entry in value.split(","):
             entry = entry.strip()
             if entry and entry.lower() not in {item.lower() for item in entries}:
                 entries.append(entry)
-    for host in _LOOPBACK_NO_PROXY_HOSTS:
+    for host in hosts:
         if host.lower() not in {item.lower() for item in entries}:
             entries.append(host)
     return ",".join(entries)
@@ -103,6 +105,7 @@ def build_sdk_env(
     model: str | None = None,
     codex_gateway_url: str | None = None,
     codex_gateway_token: str | None = None,
+    stand_in_model_url: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -110,18 +113,22 @@ def build_sdk_env(
     and the network need, proxy settings as configured, credentials included
     (``launch_env.py``), so each mode states every credential it uses.
 
-    Four modes (checked in order):
+    Five modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
-    2. **Subscription** — clears all keys; CLI uses ``claude login`` auth,
+    2. **Stand-in model** — a load-test account's turn
+       (``backend/copilot/load_test.py``): the CLI talks to the scripted model
+       at *stand_in_model_url*, an OpenAI-style base URL ending in ``/v1``,
+       with a placeholder token, so the deployment's key never goes to it.
+    3. **Subscription** — clears all keys; CLI uses ``claude login`` auth,
        or the login the host holds in ``CLAUDE_CODE_OAUTH_TOKEN``.
-    3. **Direct Anthropic** — carries the deployment's ``ANTHROPIC_API_KEY``,
+    4. **Direct Anthropic** — carries the deployment's ``ANTHROPIC_API_KEY``,
        and any auth token or base URL set beside it, over from the backend's
        environment.
-    4. **OpenRouter** (default) — overrides base URL and auth token to
+    5. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with the headers and body fields OpenRouter
        Broadcast attributes generations by (user, chat session,
        environment). Only this mode reaches Broadcast, so only its
-       generations show in PostHog LLM analytics and Langfuse broadcast.
+       generations show in PostHog LLM analytics.
 
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
@@ -138,6 +145,10 @@ def build_sdk_env(
         )
     if codex_gateway_token is not None and not codex_gateway_token:
         raise ValueError("Codex gateway token must not be empty")
+    if codex_gateway_url is not None and stand_in_model_url is not None:
+        raise ValueError(
+            "A turn has one model endpoint: a Codex gateway or a stand-in model"
+        )
     if codex_gateway_url is not None:
         parsed_gateway = urlparse(codex_gateway_url)
         if parsed_gateway.scheme != "http" or parsed_gateway.hostname not in {
@@ -152,10 +163,31 @@ def build_sdk_env(
     # gateway speaks the Anthropic wire protocol expected by Claude Code even
     # when the configured baseline provider does not.
     if codex_gateway_url is not None and codex_gateway_token is not None:
-        no_proxy = _loopback_no_proxy_value()
+        no_proxy = _no_proxy_value(*_LOOPBACK_NO_PROXY_HOSTS)
         env: dict[str, str] = {
             "ANTHROPIC_BASE_URL": codex_gateway_url.rstrip("/"),
             "ANTHROPIC_AUTH_TOKEN": codex_gateway_token,
+            "ANTHROPIC_API_KEY": "",
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+            "NO_PROXY": no_proxy,
+            "no_proxy": no_proxy,
+        }
+
+    elif stand_in_model_url is not None:
+        base = stand_in_model_url.rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        parsed_stand_in = urlparse(base)
+        if parsed_stand_in.scheme not in {"http", "https"} or not (
+            parsed_stand_in.hostname
+        ):
+            raise ValueError("The stand-in model URL must be an http(s) URL")
+        no_proxy = _no_proxy_value(parsed_stand_in.hostname)
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            # The scripted model accepts any token; the CLI needs one to send.
+            "ANTHROPIC_AUTH_TOKEN": "load-test",
             "ANTHROPIC_API_KEY": "",
             "CLAUDE_CODE_OAUTH_TOKEN": "",
             "CLAUDE_CODE_REFRESH_TOKEN": "",

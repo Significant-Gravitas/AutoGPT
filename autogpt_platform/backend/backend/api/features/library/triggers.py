@@ -96,6 +96,16 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    # What create_preset stores — this config merged with EVERY credential, not
+    # only the trigger node's — plus the `payload` webhook ingress adds to the
+    # trigger node, so a preset saved at the bound can still start a run.
+    # Refused here, before anything is registered with the provider; the
+    # rollback below covers a write that fails for another reason.
+    db.check_preset_text(name, description)
+    db.check_preset_inputs(
+        {"payload": None, **trigger_config_with_credentials, **agent_credentials}
+    )
+    await db.check_preset_count(user_id)
 
     if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy(
@@ -120,20 +130,25 @@ async def setup_triggered_preset(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=trigger_config_with_credentials,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(
@@ -165,6 +180,8 @@ async def update_triggered_preset(
 
     new_webhook = None
     if inputs is not None and credentials is not None:
+        # Refused before anything is registered with the provider.
+        db.check_preset_text(name, description)
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
         )
@@ -192,6 +209,10 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+            # What update_preset stores — inputs plus EVERY credential, not
+            # only the trigger node's — plus webhook ingress's `payload`, so a
+            # preset saved at the bound can still start a run.
+            db.check_preset_inputs({"payload": None, **inputs, **credentials})
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,

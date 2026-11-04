@@ -1385,7 +1385,7 @@ async def test_validate_node_input_credentials_auto_creds_valid(
     mock_store = mocker.MagicMock()
     mock_creds = mocker.MagicMock()
     mock_creds.id = "valid-cred-id"
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[mock_creds])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1440,7 +1440,7 @@ async def test_validate_node_input_credentials_auto_creds_missing(
 
     # Mock the credentials store to return None (cred not found for this user)
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1520,14 +1520,9 @@ async def test_validate_node_input_credentials_both_regular_and_auto(
     mock_auto_creds = mocker.MagicMock()
     mock_auto_creds.id = "auto-cred-id"
 
-    def get_creds_side_effect(user_id, cred_id):
-        if cred_id == "regular-cred-id":
-            return mock_regular_creds
-        elif cred_id == "auto-cred-id":
-            return mock_auto_creds
-        return None
-
-    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mock_store.get_all_creds = mocker.AsyncMock(
+        return_value=[mock_regular_creds, mock_auto_creds]
+    )
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1579,7 +1574,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_missing(
     mock_graph.nodes = [mock_node]
 
     mock_store = mocker.MagicMock()
-    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mock_store.get_all_creds = mocker.AsyncMock(return_value=[])
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=mock_store,
@@ -1945,6 +1940,46 @@ async def test_validate_node_input_credentials_linked_picker_is_not_checked(
 
     assert mock_node.id not in errors
     assert mock_node.id not in nodes_to_skip
+
+
+class _CountedLinks(list):
+    """A graph's links that count how many are read."""
+
+    reads = 0
+
+    def __iter__(self):
+        for link in super().__iter__():
+            _CountedLinks.reads += 1
+            yield link
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_reads_each_link_once(
+    mocker: MockerFixture,
+):
+    """Whether a picker is fed by a link is looked up in an index built
+    from the graph's links once."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    count = 300
+    nodes = []
+    for i in range(count):
+        node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+        node.id = f"node-{i}"
+        nodes.append(node)
+    links = _CountedLinks(
+        mocker.MagicMock(sink_id=node.id, sink_name="spreadsheet") for node in nodes
+    )
+    mock_graph = mocker.MagicMock(nodes=nodes, links=links)
+    _CountedLinks.reads = 0
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert not errors
+    assert not nodes_to_skip
+    assert _CountedLinks.reads <= count
 
 
 @pytest.mark.asyncio

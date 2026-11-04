@@ -5,6 +5,7 @@ All context variables and their accessors live here so that
 without creating circular dependencies.
 """
 
+import asyncio
 import os
 import re
 from collections.abc import Iterator
@@ -42,6 +43,7 @@ _UUID_RE = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$", re.IGNOR
 _current_project_dir: ContextVar[str] = ContextVar("_current_project_dir", default="")
 
 _current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=None)
+_current_turn_id: ContextVar[str | None] = ContextVar("current_turn_id", default=None)
 _current_session: ContextVar[ChatSession | None] = ContextVar(
     "current_session", default=None
 )
@@ -203,6 +205,15 @@ def set_execution_context(
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
+
+
+def set_current_turn_id(turn_id: str | None) -> None:
+    """Record the executor turn ID, independently of any shared analytics trace."""
+    _current_turn_id.set(turn_id)
+
+
+def get_current_turn_id() -> str | None:
+    return _current_turn_id.get()
 
 
 def get_current_permissions() -> "CopilotPermissions | None":
@@ -481,8 +492,10 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain. Expert turns get a manager confined to
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id, session_id)
+    workspace, scope = await asyncio.gather(
+        workspace_db().get_or_create_workspace(user_id),
+        current_workspace_scope(user_id, session_id),
+    )
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 

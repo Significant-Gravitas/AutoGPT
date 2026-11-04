@@ -1,6 +1,5 @@
 import logging
 import urllib.parse
-from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security, status
@@ -13,6 +12,8 @@ import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
 from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
+from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
@@ -22,6 +23,14 @@ from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext, ExecutionTrigger
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
+    DirectBlockExecutionLimitError,
+    DirectBlockExecutionSlot,
+    DirectBlockExecutionTimeoutError,
+    claim_direct_block_execution_slot,
+    run_block_off_loop,
+)
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -39,6 +48,11 @@ logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
 
+# Each integrations route declares its own tier in ``integrations.py``: the
+# reads take READ_LIMIT, while credential writes and the two OAuth hops (which
+# call out to a provider) take EXECUTION_LIMIT. A router-level dependency
+# cannot express that split — FastAPI would AND it with every route's own
+# dependency, so a write would be counted against both budgets.
 v1_router.include_router(integrations_router)
 v1_router.include_router(tools_router)
 
@@ -56,6 +70,9 @@ class UserInfoResponse(BaseModel):
 @v1_router.get(
     path="/me",
     tags=["user", "meta"],
+    dependencies=[
+        READ_LIMIT,
+    ],
 )
 async def get_user_info(
     auth: APIAuthorizationInfo = Security(
@@ -75,7 +92,10 @@ async def get_user_info(
 @v1_router.get(
     path="/blocks",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
+    dependencies=[
+        Security(require_permission(APIKeyPermission.READ_BLOCK)),
+        READ_LIMIT,
+    ],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.blocks.get_blocks().values()]
@@ -85,7 +105,10 @@ async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 @v1_router.post(
     path="/blocks/{block_id}/execute",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
+    dependencies=[
+        Security(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
+        EXECUTION_LIMIT,
+    ],
 )
 async def execute_graph_block(
     block_id: str,
@@ -119,6 +142,28 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail="User not found.")
 
     try:
+        slot = claim_direct_block_execution_slot(auth.user_id)
+    except DirectBlockExecutionBusyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
+    except DirectBlockExecutionLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+        ) from e
+
+    with slot:
+        return await _run_direct_block(obj, data, auth, user.timezone, slot)
+
+
+async def _run_direct_block(
+    obj: AnyBlockSchema,
+    data: BlockInput,
+    auth: APIAuthorizationInfo,
+    user_timezone: str,
+    slot: DirectBlockExecutionSlot,
+) -> CompletedBlockOutput:
+    try:
         await charge_for_direct_block_execution(
             user_id=auth.user_id, block=obj, input_data=data, source="external"
         )
@@ -132,15 +177,19 @@ async def execute_graph_block(
     # timezone, so blocks that depend on those get correct data.
     execution_context = ExecutionContext(
         user_id=auth.user_id,
-        user_timezone=get_user_timezone_or_utc(user.timezone),
+        user_timezone=get_user_timezone_or_utc(user_timezone),
         organization_id=auth.organization_id,
         team_id=auth.team_id_restriction,
     )
 
-    output = defaultdict(list)
-    async for name, data in obj.execute(data, execution_context=execution_context):
-        output[name].append(data)
-    return output
+    try:
+        return await run_block_off_loop(
+            obj.execute(data, execution_context=execution_context), slot
+        )
+    except DirectBlockExecutionTimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e)
+        ) from e
 
 
 @v1_router.post(
@@ -152,7 +201,8 @@ async def execute_graph_block(
             require_permission(
                 APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
             )
-        )
+        ),
+        EXECUTION_LIMIT,
     ],
 )
 async def create_graph(
@@ -199,6 +249,9 @@ async def create_graph(
 @v1_router.post(
     path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
+    dependencies=[
+        EXECUTION_LIMIT,
+    ],
 )
 async def execute_graph(
     graph_id: str,
@@ -275,6 +328,9 @@ class GraphExecutionResult(TypedDict):
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}/results",
     tags=["graphs"],
+    dependencies=[
+        READ_LIMIT,
+    ],
 )
 async def get_graph_execution_results(
     graph_id: str,
@@ -331,7 +387,10 @@ async def get_graph_execution_results(
 @v1_router.get(
     path="/store/agents",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.StoreAgentsResponse,
 )
 async def get_store_agents(
@@ -379,7 +438,10 @@ async def get_store_agents(
 @v1_router.get(
     path="/store/agents/{username}/{agent_name}",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.StoreAgentDetails,
 )
 async def get_store_agent(
@@ -407,7 +469,10 @@ async def get_store_agent(
 @v1_router.get(
     path="/store/creators",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.CreatorsResponse,
 )
 async def get_store_creators(
@@ -449,7 +514,10 @@ async def get_store_creators(
 @v1_router.get(
     path="/store/creators/{username}",
     tags=["store"],
-    dependencies=[Security(require_auth)],  # data is public; auth required as anti-DDoS
+    dependencies=[
+        Security(require_auth),  # data is public; auth required as anti-DDoS
+        READ_LIMIT,
+    ],
     response_model=store_model.CreatorDetails,
 )
 async def get_store_creator(

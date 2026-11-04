@@ -1,4 +1,5 @@
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import cast
@@ -25,6 +26,12 @@ from . import db
 from . import model as library_model
 from ._add_to_library import restore_existing_library_agent
 from .exceptions import LibraryAgentInAnotherOrganizationError
+
+
+@pytest.fixture(autouse=True)
+def _under_the_preset_cap(mocker):
+    # The cap's query is proven against a real database in preset_count_test.py.
+    mocker.patch.object(db, "check_preset_count", new=AsyncMock())
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
@@ -477,7 +484,11 @@ async def test_system_install_of_a_listing_sends_nothing(add_to_library_steps):
 async def test_transactional_marketplace_add_sends_nothing(add_to_library_steps):
     # The caller's transaction may still roll back; its own event covers it.
     await db.add_store_agent_to_library_in_transaction(
-        "version123", "test-user", tx=MagicMock()
+        "version123",
+        "test-user",
+        tx=MagicMock(),
+        organization_id=None,
+        team_id=None,
     )
 
     add_to_library_steps["track"].assert_not_called()
@@ -1798,12 +1809,14 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
 
     @asynccontextmanager
     async def fake_tx():
-        yield None
+        yield AsyncMock()
 
     preset_client = AsyncMock()
     mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    row_client = AsyncMock()
+    row_client.count.return_value = 0
     mocker.patch.object(
-        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=row_client
     )
     mocker.patch.object(db, "transaction", fake_tx)
     mocker.patch.object(
@@ -2679,3 +2692,115 @@ async def test_an_external_save_cannot_version_a_graph_outside_its_organization(
         )
 
     create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_lists_the_library_once_however_many_folders(
+    mocker,
+):
+    def agent(agent_id: str, folder_id: str | None) -> MagicMock:
+        listed = MagicMock(id=agent_id, description=None, folder_id=folder_id)
+        listed.name = f"Agent {agent_id}"
+        return listed
+
+    def page(*agents: MagicMock) -> MagicMock:
+        return MagicMock(agents=list(agents), pagination=MagicMock(total_pages=2))
+
+    list_agents = mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            side_effect=[
+                page(agent("a1", "folder-0"), agent("root", None)),
+                page(agent("a2", "folder-0"), agent("other", "not-asked")),
+            ]
+        ),
+    )
+    folder_ids = [f"folder-{i}" for i in range(1000)]
+
+    result = await db.get_folder_agents_map("test-user", folder_ids, "org-a")
+
+    assert list(result) == folder_ids
+    assert result["folder-0"] == [
+        {"id": "a1", "name": "Agent a1", "description": None},
+        {"id": "a2", "name": "Agent a2", "description": None},
+    ]
+    assert not any(result[folder_id] for folder_id in folder_ids[1:])
+    assert [call.kwargs["page"] for call in list_agents.await_args_list] == [1, 2]
+    assert {
+        (c.kwargs["user_id"], c.kwargs["organization_id"], c.kwargs["sort_by"])
+        for c in list_agents.await_args_list
+    } == {("test-user", "org-a", library_model.LibraryAgentSort.CREATED_AT)}
+    assert all("folder_id" not in c.kwargs for c in list_agents.await_args_list)
+    assert all(
+        c.kwargs["folder_ids"] == folder_ids for c in list_agents.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_stops_at_its_page_cap(mocker):
+    list_agents = mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=100))
+        ),
+    )
+
+    await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert list_agents.await_count == db._FOLDER_AGENTS_MAX_PAGES
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_warns_when_the_page_cap_truncates(mocker, caplog):
+    mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=100))
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
+        await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert len(caplog.records) == 1
+    assert "cap" in caplog.records[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_get_folder_agents_map_does_not_warn_when_it_finishes_within_the_cap(
+    mocker, caplog
+):
+    mocker.patch.object(
+        db,
+        "list_library_agents",
+        AsyncMock(
+            return_value=MagicMock(agents=[], pagination=MagicMock(total_pages=1))
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.features.library.db"):
+        await db.get_folder_agents_map("test-user", ["folder-0"], "org-a")
+
+    assert caplog.records == []
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_filters_on_folder_ids(mocker):
+    mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = (
+        mocker.AsyncMock(return_value=[])
+    )
+    find_many = mocker.AsyncMock(return_value=[])
+    library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_agent.return_value.find_many = find_many
+    library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", folder_ids=["f1", "f2"])
+
+    assert find_many.call_args.kwargs["where"]["folderId"] == {"in": ["f1", "f2"]}
