@@ -96,18 +96,23 @@ class KeenableFetchBlock(Block):
     ) -> BlockOutput:
         if input_data.auth == KeenableAuth.ANONYMOUS:
             credentials = None
-        elif credentials is None:
+        elif credentials is None or not credentials.api_key.get_secret_value().strip():
+            # A blank key would silently fall back to the public endpoint.
             raise ValueError(
                 "Keenable API key credentials are required when auth is api_key."
             )
 
         try:
             data = await self._fetch(credentials, input_data.url, input_data.max_chars)
-            url = data.get("url") or input_data.url
-            title = data.get("title") or ""
+            raw_url = data.get("url")
+            raw_title = data.get("title")
             content = data.get("content")
-            if not all(isinstance(v, str) for v in (url, title, content)):
+            if not isinstance(content, str) or not all(
+                v is None or isinstance(v, str) for v in (raw_url, raw_title)
+            ):
                 raise ValueError("malformed fetch response fields")
+            url = raw_url or input_data.url
+            title = raw_title or ""
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Fetch failed: {e}",
