@@ -1616,6 +1616,21 @@ class TestListIndexLinks:
 
         assert v.validate_sink_input_existence(agent, [block]) is valid
 
+    def test_an_optional_untyped_field_takes_a_list_item_link(self):
+        """Pydantic writes Optional[Any] as anyOf [{}, null]; its {} branch is untyped."""
+        v = AgentValidator()
+        optional_any = {"anyOf": [{}, {"type": "null"}]}
+        block = _make_block(
+            block_id="b1", input_schema={"properties": {"anything": optional_any}}
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="anything_$_0"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
     @pytest.mark.parametrize(
         "source_name, valid", [("config_#_name", True), ("config_@_name", False)]
     )

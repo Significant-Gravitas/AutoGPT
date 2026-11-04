@@ -1235,7 +1235,9 @@ def _list_item_schema(
     (None, None) when only the run can tell."""
     if not (index.isascii() and index.isdigit()):
         return None, f"List index '{index}' after '{path}' is not a whole number"
-    schema = _resolve_optional_union(schema) or schema
+    # Optional[Any] resolves to an untyped {}, which is falsy but not "no branch".
+    resolved = _resolve_optional_union(schema)
+    schema = schema if resolved is None else resolved
     if schema.get("type") == "array":
         return schema.get("items", {}), None
     types = _schema_types(schema)
