@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowExpandIcon,
   ArrowUpRight01Icon,
@@ -72,9 +72,20 @@ export function DesktopStreamPreview({
 }: PreviewProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const ownerOnly = value.requires_auth === true && !ownerView;
+  const [canFullscreen, setCanFullscreen] = useState(false);
 
-  function handleFullscreen() {
-    frameRef.current?.requestFullscreen();
+  useEffect(() => {
+    setCanFullscreen(!!document.fullscreenEnabled);
+  }, []);
+
+  async function handleFullscreen() {
+    const frame = frameRef.current;
+    if (!frame || typeof frame.requestFullscreen !== "function") return;
+    try {
+      await frame.requestFullscreen();
+    } catch {
+      // A denied request leaves the frame inline; nothing else to do.
+    }
   }
 
   return (
@@ -100,17 +111,19 @@ export function DesktopStreamPreview({
         </div>
         {!ownerOnly && (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleFullscreen}
-              className="flex items-center gap-1 rounded px-2 py-1 text-foreground-secondary hover:bg-surface-active"
-              aria-label="Fullscreen"
-            >
-              <Icon icon={ArrowExpandIcon} size={14} />
-              <Text variant="small-tight" as="span" tone="secondary">
-                Fullscreen
-              </Text>
-            </button>
+            {canFullscreen && (
+              <button
+                type="button"
+                onClick={handleFullscreen}
+                className="flex items-center gap-1 rounded px-2 py-1 text-foreground-secondary hover:bg-surface-active"
+                aria-label="Fullscreen"
+              >
+                <Icon icon={ArrowExpandIcon} size={14} />
+                <Text variant="small-tight" as="span" tone="secondary">
+                  Fullscreen
+                </Text>
+              </button>
+            )}
             <a
               href={value.url}
               target="_blank"

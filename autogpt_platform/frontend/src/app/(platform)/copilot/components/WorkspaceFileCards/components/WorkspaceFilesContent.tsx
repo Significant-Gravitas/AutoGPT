@@ -48,12 +48,13 @@ export function WorkspaceFilesContent({
           </span>
           {files.length > 0 && (
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost-muted"
+              size="icon-xs"
+              shape="soft"
+              withTooltip={false}
               onClick={onDownloadAll}
               loading={isZipping}
               aria-label="Download all"
-              className="size-7 rounded-lg !p-0 text-foreground-tertiary"
             >
               <Icon icon={Download01Icon} size={15} />
             </Button>

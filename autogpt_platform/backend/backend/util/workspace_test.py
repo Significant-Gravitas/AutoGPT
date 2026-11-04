@@ -107,12 +107,16 @@ async def test_write_file_no_overwrite_unique_violation_raises_and_cleans_up(
 async def test_write_file_overwrite_conflict_then_retry_succeeds(
     manager, mock_storage, mock_db
 ):
-    """overwrite=True + conflict → delete existing → retry succeeds."""
+    """overwrite=True + conflict → the retry replaces the file now at the path
+    in its own insert, and that file's blob goes only after the commit."""
     created_file = _make_workspace_file()
-    existing_file = _make_workspace_file(id="old-id")
+    existing_file = _make_workspace_file(
+        id="old-id", storage_path="ws-123/old/test.txt"
+    )
 
     mock_db.get_workspace_file_by_path.return_value = existing_file
     mock_db.create_workspace_file.side_effect = [_unique_violation(), created_file]
+    mock_db.get_workspace_file.return_value = None  # the insert retired it
 
     with (
         patch(
@@ -126,14 +130,23 @@ async def test_write_file_overwrite_conflict_then_retry_succeeds(
             return_value=250 * 1024 * 1024,
         ),
         patch.object(manager, "delete_file", new_callable=AsyncMock) as mock_delete,
+        patch(
+            "backend.api.features.workspace.embeddings.delete_workspace_file_embedding",
+            new_callable=AsyncMock,
+        ) as mock_unindex,
     ):
         result = await manager.write_file(
             filename="test.txt", content=b"hello", overwrite=True
         )
 
     assert result == created_file
-    mock_delete.assert_called_once_with("old-id")
-    mock_storage.delete.assert_not_called()
+    mock_delete.assert_not_called()
+    assert [
+        c.kwargs["replacing_file_id"]
+        for c in mock_db.create_workspace_file.call_args_list
+    ] == ["old-id", "old-id"]
+    mock_storage.delete.assert_awaited_once_with("ws-123/old/test.txt")
+    mock_unindex.assert_awaited_once_with(file_id="old-id", user_id=manager.user_id)
 
 
 @pytest.mark.asyncio
@@ -170,6 +183,79 @@ async def test_write_file_overwrite_exhausted_retries_raises_and_cleans_up(
             )
 
     mock_storage.delete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_write_file_rename_takes_the_next_name_when_a_racer_took_the_free_one(
+    manager, mock_storage, mock_db
+):
+    """A write that takes ``test (1).txt`` between our look and our insert
+    pushes us to ``test (2).txt``; nothing is deleted."""
+    mock_db.get_workspace_file_by_path.return_value = _make_workspace_file()
+    mock_db.list_workspace_files = AsyncMock(
+        side_effect=[[], [_make_workspace_file(path="/test (1).txt")]]
+    )
+    created = _make_workspace_file(id="new-id", name="test (2).txt")
+    mock_db.create_workspace_file.side_effect = [_unique_violation(), created]
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+        patch.object(manager, "delete_file", new_callable=AsyncMock) as mock_delete,
+    ):
+        result = await manager.write_file(
+            filename="test.txt", content=b"hello", rename_on_conflict=True
+        )
+
+    assert result == created
+    assert [
+        (c.kwargs["path"], c.kwargs["name"])
+        for c in mock_db.create_workspace_file.call_args_list
+    ] == [("/test (1).txt", "test (1).txt"), ("/test (2).txt", "test (2).txt")]
+    mock_delete.assert_not_called()
+    mock_storage.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_write_file_rename_keeps_the_callers_name_when_the_path_is_free(
+    manager, mock_storage, mock_db
+):
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+    ):
+        await manager.write_file(
+            filename="report.txt",
+            content=b"hello",
+            path="/out.bin",
+            rename_on_conflict=True,
+        )
+
+    call = mock_db.create_workspace_file.call_args
+    assert (call.kwargs["path"], call.kwargs["name"], call.kwargs["mime_type"]) == (
+        "/out.bin",
+        "report.txt",
+        "text/plain",
+    )
 
 
 @pytest.mark.asyncio
@@ -452,3 +538,17 @@ async def test_write_file_keeps_deliverables_visible(
     assert file.is_internal is False
     assert mock_db.create_workspace_file.await_args.kwargs["is_internal"] is False
     schedule_embedding.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_list_files_passes_the_written_window_to_the_query(manager, mock_db):
+    """A window on when files were written reaches the query itself, ahead of
+    the limit, rather than trimming the rows the query returned."""
+    mock_db.list_workspace_files = AsyncMock(return_value=[])
+    since, until = _NOW.replace(minute=0), _NOW.replace(minute=5)
+
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        await manager.list_files(created_after=since, created_before=until)
+
+    kwargs = mock_db.list_workspace_files.await_args.kwargs
+    assert (kwargs["created_after"], kwargs["created_before"]) == (since, until)

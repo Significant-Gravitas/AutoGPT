@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.sdk.file_ref import (
+    _MAX_BARE_REF_BYTES,
     FileRef,
     expand_file_refs_in_args,
     expand_file_refs_in_string,
@@ -496,12 +497,13 @@ async def test_read_file_bytes_e2b_sandbox_branch():
     """read_file_bytes reads from the E2B sandbox when a sandbox is active."""
     session = _make_session()
     mock_sandbox = AsyncMock()
-    mock_sandbox.files.read.return_value = bytearray(b"sandbox content")
+    read = AsyncMock(return_value=b"sandbox content")
 
     with (
         patch("backend.copilot.context._current_sdk_cwd") as mock_cwd,
         patch("backend.copilot.context._current_sandbox") as mock_sandbox_var,
         patch("backend.copilot.context._current_project_dir") as mock_proj,
+        patch("backend.copilot.sdk.file_ref.read_sandbox_file", read),
     ):
         mock_cwd.get.return_value = ""
         mock_sandbox_var.get.return_value = mock_sandbox
@@ -510,8 +512,8 @@ async def test_read_file_bytes_e2b_sandbox_branch():
         result = await read_file_bytes("/home/user/script.sh", None, session)
 
     assert result == b"sandbox content"
-    mock_sandbox.files.read.assert_awaited_once_with(
-        "/home/user/script.sh", format="bytes"
+    read.assert_awaited_once_with(
+        mock_sandbox, "/home/user/script.sh", _MAX_BARE_REF_BYTES
     )
 
 

@@ -1,4 +1,5 @@
 import ast
+import asyncio
 import inspect
 import logging
 import re
@@ -99,6 +100,9 @@ _DATA_MIGRATIONS = {
         "backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs"
     ),
     "org bootstrap": "backend.data.org_migration.run_migration",
+    "triggered-preset inputs": (
+        "backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs"
+    ),
     "Otto transport": "backend.data.autopilot_migrate.migrate_autopilot_transport",
 }
 
@@ -139,3 +143,24 @@ async def test_a_failed_data_migration_is_logged_and_the_rest_still_run(
     assert [
         r.getMessage() for r in caplog.records if r.name == rest_api.logger.name
     ] == ["Start-up data migration 'org bootstrap' failed"]
+
+
+async def test_a_bounded_data_migration_that_times_out_is_a_warning(
+    mocker, caplog
+) -> None:
+    """A bounded migration resumes on the next boot, so its timeout is no alert."""
+    migrations = {
+        name: mocker.patch(target, new_callable=AsyncMock)
+        for name, target in _DATA_MIGRATIONS.items()
+    }
+    migrations["triggered-preset inputs"].side_effect = asyncio.TimeoutError
+
+    with caplog.at_level(logging.WARNING, logger=rest_api.logger.name):
+        await rest_api._run_data_migrations()
+
+    for migrate in migrations.values():
+        migrate.assert_awaited_once()
+    records = [r for r in caplog.records if r.name == rest_api.logger.name]
+    assert [(r.levelno, r.getMessage()) for r in records] == [
+        (logging.WARNING, "Start-up data migration 'triggered-preset inputs' timed out")
+    ]

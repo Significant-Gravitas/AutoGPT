@@ -4982,6 +4982,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     message_metadata: dict[str, Any] | None = None,
     turn_start: int | None = None,
     continued_pending: list[PendingMessage] | None = None,
+    stand_in_model_url: str | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -5002,6 +5003,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         model: Per-request model preference from the frontend toggle.
             'advanced' → Claude Opus; 'standard' → global config default.
             Takes priority over per-user PostHog targeting.
+        stand_in_model_url: For a load-test account's turn, the scripted
+            model the CLI talks to instead of the deployment's provider
+            (``backend/copilot/load_test.py``).
     """
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -5471,6 +5475,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         if (
             not is_codex_transport
+            and stand_in_model_url is None
             and not config.api_key
             and not config.use_claude_code_subscription
         ):
@@ -5571,6 +5576,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=_resolve_env_model(sdk_model, fallback_model),
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
+            stand_in_model_url=stand_in_model_url,
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -7184,6 +7190,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     credential_lease=credential_lease,
                     turn_start=turn_start,
                     continued_pending=_auto_pending_messages,
+                    # A load-test account's continuation stays on the
+                    # scripted model; dropping this would hand it to the
+                    # deployment's provider.
+                    stand_in_model_url=stand_in_model_url,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False

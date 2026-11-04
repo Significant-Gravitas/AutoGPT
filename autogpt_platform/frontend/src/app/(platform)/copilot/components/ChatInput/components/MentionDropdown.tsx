@@ -86,7 +86,7 @@ export function MentionDropdown({
         }}
         onMouseEnter={() => onHighlight(index)}
         className={cn(
-          "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm",
+          "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-body",
           isHighlighted
             ? "bg-surface-hover text-foreground-strong"
             : "text-foreground-body",
@@ -174,21 +174,18 @@ export function MentionDropdown({
           return null;
         })}
         {isError ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-error-foreground">
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-error-foreground">
             <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
             Couldn&apos;t load files. Try again.
           </p>
         ) : isLoading ? (
-          <p className="flex items-center gap-2 px-3 py-2 text-sm text-foreground-tertiary">
-            <Icon
-              icon={Loading03Icon}
-              className="h-4 w-4 shrink-0 animate-spin"
-            />
+          <p className="flex items-center gap-2 px-3 py-2 text-body text-foreground-tertiary">
+            <Icon icon={Loading03Icon} spin className="h-4 w-4 shrink-0" />
             Searching files…
           </p>
         ) : null}
         {showEmpty && (
-          <p className="px-3 py-2 text-sm text-foreground-tertiary">
+          <p className="px-3 py-2 text-body text-foreground-tertiary">
             {emptyMessage(showFiles, hasIntegrations)}
           </p>
         )}
@@ -214,16 +211,13 @@ function ConnectOption({ query }: { query: string }) {
   const search = query.trim();
   return (
     <>
-      <Icon
-        icon={PlugSocketIcon}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
-      />
+      <Icon icon={PlugSocketIcon} tone="primary" className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">
           Connect an integration
         </span>
         {search && (
-          <span className="block truncate text-xs text-foreground-tertiary">
+          <span className="block truncate text-caption text-foreground-tertiary">
             Search services for “{search}”
           </span>
         )}
@@ -295,10 +289,7 @@ function FolderOption({
 }) {
   return (
     <>
-      <Icon
-        icon={Folder01Icon}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
-      />
+      <Icon icon={Folder01Icon} tone="primary" className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{folder.name}</span>
       <Text variant="small-tight" as="span" tone="muted" className="shrink-0">
         {count}
@@ -312,7 +303,8 @@ function FileOption({ file }: { file: WorkspaceFileItem }) {
     <>
       <Icon
         icon={getFileTypeIcon(file.mime_type)}
-        className="h-4 w-4 shrink-0 text-foreground-strong"
+        tone="primary"
+        className="h-4 w-4 shrink-0"
       />
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
     </>
@@ -323,7 +315,7 @@ function SectionHeading({ label }: { label: string }) {
   return (
     <p
       role="presentation"
-      className="px-3 pt-2 pb-1 text-left text-xs font-medium tracking-wide text-foreground-subtle uppercase"
+      className="px-3 pt-2 pb-1 text-left text-caption font-medium tracking-wide text-foreground-subtle uppercase"
     >
       {label}
     </p>
