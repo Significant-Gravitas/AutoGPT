@@ -552,6 +552,7 @@ class _BaselineStreamState:
     turn_completion_tokens: int = 0
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
+    provider_request_count: int = 0
     cost_usd: float | None = None
     # Tracks whether we've already warned about a missing `cost` field in
     # the usage chunk this stream, so non-OpenRouter providers don't
@@ -1031,6 +1032,7 @@ async def _baseline_llm_caller(
             tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
             max_tokens=max_tokens_arg,
         )
+        state.provider_request_count += 1
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
@@ -3033,21 +3035,26 @@ async def stream_chat_completion_baseline(
         # local transport so the intent is clear.
         baseline_provider = config.baseline_provider
         if state.cost_usd is None and baseline_provider == "anthropic":
-            # No usage arrived: the prompt estimate is for one request, while
-            # the output estimate spans the turn and cannot share its tier.
+            # With no usage, output spans the turn. Only one-request turns can
+            # safely attribute all estimated output to the final prompt's tier.
+            single_request = state.provider_request_count == 1
             prompt_cost = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
-                completion_tokens=0,
+                completion_tokens=state.turn_completion_tokens if single_request else 0,
                 cache_read_tokens=state.turn_cache_read_tokens,
                 cache_creation_tokens=state.turn_cache_creation_tokens,
                 cache_ttl=config.baseline_prompt_cache_ttl,
             )
-            output_cost = compute_anthropic_cost_usd(
-                model=active_model,
-                prompt_tokens=0,
-                completion_tokens=state.turn_completion_tokens,
-                cache_ttl=config.baseline_prompt_cache_ttl,
+            output_cost = (
+                0.0
+                if single_request
+                else compute_anthropic_cost_usd(
+                    model=active_model,
+                    prompt_tokens=0,
+                    completion_tokens=state.turn_completion_tokens,
+                    cache_ttl=config.baseline_prompt_cache_ttl,
+                )
             )
             if prompt_cost is not None and output_cost is not None:
                 state.cost_usd = prompt_cost + output_cost

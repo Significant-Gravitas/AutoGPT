@@ -19,6 +19,7 @@ from .replies import TOOL_MARKER
     "prompt_tokens,expected", [(100_000, 20_000), (150_000, 85_000)]
 )
 @pytest.mark.parametrize("report_usage", [False, True])
+@pytest.mark.parametrize("requests", [1, 2])
 async def test_missing_usage_does_not_tier_the_whole_turn_output(
     provider: FakeProvider,
     ledger: PlatformLedger,
@@ -26,6 +27,7 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
     prompt_tokens: int,
     expected: int,
     report_usage: bool,
+    requests: int,
 ):
     original_stream = provider_module._stream
     monkeypatch.setitem(
@@ -73,7 +75,7 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
     )
     session = ChatSession.new("haiku-recovery-test", dry_run=False)
     session.title = "Recovery regression"
-    prompt = f"Look this up {TOOL_MARKER}"
+    prompt = f"Look this up {TOOL_MARKER}" if requests == 2 else "Hello"
     session.messages.append(ChatMessage(role="user", content=prompt))
     try:
         await run_turn(session, prompt, new_pod=False)
@@ -82,8 +84,10 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
         await run_turn.aclose()
     assert run_turn.client.is_closed
     assert not provider.unexpected
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == requests
     if report_usage:
         expected = round(sum(call.invoice_usd for call in provider.calls) * 1_000_000)
+    elif requests == 1 and prompt_tokens == 150_000:
+        expected = 125_000
     assert [charge.microdollars for charge in ledger.spend] == [expected]
     assert [charge.microdollars for charge in ledger.tree] == [expected]
