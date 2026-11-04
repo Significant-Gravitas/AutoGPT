@@ -55,8 +55,19 @@ sides compute the **effective negotiated version** as:
 | Case | Result |
 |---|---|
 | Same major, same minor | That version. |
-| Same major, different minor | Same major, `min(shim_minor, platform_minor)`. Both sides MUST tolerate forward-compatible additions within a major. |
+| Same major, different minor | Same major, `min(shim_minor, platform_minor)`. Each side sends only what the negotiated version defines (see below). |
 | Different majors | **Hard error.** The side that notices closes the WebSocket with close code **4426**. A close reason holds at most 123 bytes (RFC 6455 §5.5), so it is short: the shim sends compact JSON, `{"error":"PROTOCOL_VERSION_MISMATCH","shim_max":"...","platform_max":"..."}` (just the `error` field if the versions don't fit), and logs the upgrade hint; the platform sends a short text reason. The shim MUST log the mismatch and MUST NOT auto-reconnect until restarted — this avoids hot-reconnect storms against an incompatible peer. |
+
+### Unknown fields
+
+Within a major, new message types and new values of an open set (a
+`reason`, say) are forward-compatible: a receiver drops or tolerates what it
+doesn't know, as their sections say. A payload field is not. The shim's
+payloads forbid fields they don't define, so a frame carrying one fails
+validation and is logged and dropped, never acted on: an older shim that
+ignored a newer field could act without a constraint the platform meant it
+to apply. The platform learns the shim's maximum from HELLO before it
+answers, so it must not send a newer minor's fields to an older shim.
 
 ### Frame-level `version`
 
