@@ -1,5 +1,6 @@
 """Durable enrollment and usage state, scoped to the authenticated user."""
 
+import logging
 from datetime import datetime
 
 from prisma.models import CreditTransaction, SubscriptionTrial
@@ -16,6 +17,8 @@ from backend.data.subscription_trial_capacity import (
 from backend.data.subscription_trial_config import AcceptedTrialOffer, trial_is_active
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 from backend.util.json import SafeJson
+
+logger = logging.getLogger(__name__)
 
 
 class TrialState(BaseModel):
@@ -90,7 +93,10 @@ async def get_subscription_trial(user_id: str) -> TrialState | None:
 async def list_trials_ending_unrenewed(
     after: datetime, until: datetime
 ) -> list[TrialState]:
-    """Running trials set not to renew whose end falls in (after, until]."""
+    """Running trials set not to renew whose end falls in (after, until].
+
+    A row that no longer validates is logged and left out, so it cannot hold
+    back everyone else's notice."""
     rows = await SubscriptionTrial.prisma().find_many(
         where={
             "status": "trialing",
@@ -99,7 +105,13 @@ async def list_trials_ending_unrenewed(
             "endsAt": {"gt": after, "lte": until},
         }
     )
-    return [TrialState.from_db(row) for row in rows]
+    trials = []
+    for row in rows:
+        try:
+            trials.append(TrialState.from_db(row))
+        except Exception:
+            logger.exception(f"Trial {row.id} for user {row.userId} is unreadable")
+    return trials
 
 
 async def has_received_onboarding_credit(user_id: str) -> bool:

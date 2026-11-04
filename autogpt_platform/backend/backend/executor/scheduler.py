@@ -193,6 +193,9 @@ SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
+# The trial last-call pass makes one Stripe round trip per due trial; give it
+# the same ceiling so a slow pass cannot overlap the next hourly one.
+TRIAL_LAST_CALL_TIMEOUT_SECONDS = 1800
 
 # The memory cron reconcile reads every registry row; it must finish well
 # inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
@@ -2292,7 +2295,7 @@ def send_trial_last_calls():
         db = get_database_manager_async_client()
         return await db.send_trial_last_calls()
 
-    run_async(_send())
+    run_async(_send(), timeout=TRIAL_LAST_CALL_TIMEOUT_SECONDS)
 
 
 def sync_posthog_lifecycles():

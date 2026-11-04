@@ -166,7 +166,9 @@ The scheduler's hourly `send_trial_last_calls` pass queues the one-day one
 (`trial_last_call`, subject `Your AutoGPT access ends tomorrow`)
 while 18 to 25 hours of the trial are left. Neither goes to someone who
 canceled in the last day, since the cancellation notice they just received
-gives the same date and way back. Each is claimed once per trial end date, and
+gives the same date and way back. Neither goes while another plan is live, since
+that plan keeps their access, and a three-day reminder handled with under two
+and a half days left is dropped rather than miscounting. Each is claimed once per trial end date, and
 a resume before delivery suppresses it.
 
 Stripe's [trial-ending webhook setting](https://docs.stripe.com/billing/subscriptions/trials)

@@ -239,6 +239,7 @@ from backend.data.workspace_skill import (
     publish_workspace_skill_file,
     skill_root_has_room,
 )
+from backend.notifications.trial import send_trial_last_calls
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -315,14 +316,6 @@ async def _spend_org_credits(
         metadata=metadata.model_dump(),
         fail_insufficient_credits=fail_insufficient_credits,
     )
-
-
-async def send_trial_last_calls() -> int:
-    # Imported on call so loading the data layer never loads the notifications
-    # package.
-    from backend.notifications.trial import send_trial_last_calls as send
-
-    return await send()
 
 
 async def _get_org_credits(org_id: str) -> int:

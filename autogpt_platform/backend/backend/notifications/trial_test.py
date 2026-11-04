@@ -544,3 +544,15 @@ async def test_last_call_pass_notifies_each_due_trial_despite_one_failure(trial)
         ({"id": "sub_1", "metadata": {"trial_enrollment_id": "trial-1"}}, "last_call"),
         ({"id": "sub_2", "metadata": {"trial_enrollment_id": "trial-2"}}, "last_call"),
     ]
+
+
+def test_late_three_day_reminder_is_dropped_rather_than_miscounting(trial):
+    """The subject says "ends in 3 days"; a trial_will_end handled after an
+    outage leaves the trial to the last call instead."""
+    assert notices._notice_applies(
+        trial, "expiring", _pending(trial, timedelta(days=3))
+    )
+    late = _pending(trial, timedelta(days=2))
+    assert notices._notice_skip_reason(trial, "expiring", late) == (
+        "too little of the trial is left for a three-day reminder"
+    )

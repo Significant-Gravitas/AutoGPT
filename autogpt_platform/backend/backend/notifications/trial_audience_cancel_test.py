@@ -102,6 +102,24 @@ async def test_ending_event_while_cancellation_pending_sends_not_renewing_notice
     assert key.startswith("trial:trial-1:expiring:")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,left", [("ending", 3), ("last_call", 1)])
+async def test_no_not_renewing_notice_while_another_plan_is_live(trial, kind, left):
+    """A newer plan keeps access past the trial's end, so "your access ends"
+    would be wrong."""
+    pending, raw = _state(
+        trial.model_copy(update={"cancel_at_period_end": True}), "canceled"
+    )
+    raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=left)).timestamp())
+    claim = AsyncMock(return_value=True)
+    got, notice, _ = await _notify(
+        pending, raw, kind, others=("sub_max",), claim_once=claim
+    )
+    assert got == []
+    notice.assert_not_awaited()
+    claim.assert_not_awaited()
+
+
 async def _end_under_another_plan(trial, pending: bool, **kwargs):
     ended, raw = _state(
         trial.model_copy(update={"cancel_at_period_end": pending}), "ended"

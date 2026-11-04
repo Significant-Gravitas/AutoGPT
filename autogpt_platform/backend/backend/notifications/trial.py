@@ -42,6 +42,10 @@ TRIAL_REMINDER_WINDOW = timedelta(days=4)
 # the trial has between these two lead times left. The hourly pass opens the
 # window; a notice still unsent at the near edge is dropped, not sent late.
 LAST_CALL_WINDOW = timedelta(hours=25)
+# The not-renewing three-day reminder says "ends in 3 days"; a trial_will_end
+# handled this late (after an outage, say) is dropped and the last call covers
+# the trial instead.
+EXPIRING_MIN_LEAD = timedelta(days=2, hours=12)
 LAST_CALL_MIN_LEAD = timedelta(hours=18)
 # Someone who canceled this recently has just had the cancellation notice,
 # which gives the same end date and the same way back.
@@ -115,6 +119,13 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         return False
     if skip := _notice_skip_reason(trial, kind, current):
         logger.info(f"Dropped trial {kind} notice for user {user_id}: {skip}")
+        return True
+    if kind in ("expiring", "last_call") and await _another_plan_is_live(
+        trial, current
+    ):
+        # A newer plan keeps their access past the trial's end, so the notice
+        # would be wrong.
+        logger.info(f"Dropped trial {kind} notice for user {user_id}: another plan")
         return True
     user = await user_db().get_user_by_id(user_id)
     if kind == "ended" and await _another_plan_is_live(trial, current):
@@ -211,6 +222,10 @@ async def trial_notice_disposition(
     ):
         return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
+        return "obsolete"
+    if data.kind in ("expiring", "last_call") and await _another_plan_is_live(
+        trial, current
+    ):
         return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name, current)
     if not _notice_matches_current_terms(data, expected, trial, current):
@@ -375,6 +390,8 @@ def _running_trial_skip_reason(
         and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds()
     ):
         return "trial ends after the reminder window"
+    if kind == "expiring" and trial_end < now + EXPIRING_MIN_LEAD.total_seconds():
+        return "too little of the trial is left for a three-day reminder"
     if kind == "last_call":
         if trial_end > now + LAST_CALL_WINDOW.total_seconds():
             return "trial ends after the last-call window"
