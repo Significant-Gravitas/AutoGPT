@@ -10,28 +10,45 @@ from backend.data.graph import Link, Node
 from backend.executor.manager import execute_node
 from backend.executor.utils import validate_exec
 
+_NESTED = {"type": "object"}
+
 
 @pytest.mark.parametrize(
-    "sink_name,saved,expected",
+    "sink_name,linked,saved,expected,extra_props",
     [
-        ("query", {}, {"query": "linked"}),
-        ("tool_arguments_#_query", {}, {"query": "linked"}),
+        ("query", "linked", {}, {"query": "linked"}, {}),
+        ("tool_arguments_#_query", "linked", {}, {"query": "linked"}, {}),
         (
             "tool_arguments_#_query",
+            "linked",
             {"query": "saved", "limit": 3},
             {"query": "linked", "limit": 3},
+            {},
+        ),
+        ("tool_arguments", {"query": "linked"}, {}, {"query": "linked"}, {}),
+        (
+            "limit",
+            4,
+            {"query": "saved", "tool_arguments": {"query": "nested"}},
+            {"query": "saved", "limit": 4, "tool_arguments": {"query": "nested"}},
+            {"tool_arguments": _NESTED},
         ),
     ],
 )
 async def test_a_value_linked_into_an_mcp_tool_argument_reaches_the_tool(
-    sink_name: str, saved: dict[str, Any], expected: dict[str, Any]
+    sink_name: str,
+    linked: Any,
+    saved: dict[str, Any],
+    expected: dict[str, Any],
+    extra_props: dict[str, Any],
 ):
     """The value goes through `validate_exec`, as when the upstream node
     enqueues this one, then `execute_node`. A `tool_arguments_#_query` link's
     value arrived nested and was dropped: the tool failed for a missing
-    argument, or ran with the saved one."""
-    node = _mcp_tool_node(sink_name, saved)
-    inputs, error = validate_exec(node, {sink_name: "linked"})
+    argument, or ran with the saved one. A tool's own `tool_arguments`
+    parameter stays one argument."""
+    node = _mcp_tool_node(sink_name, saved, extra_props)
+    inputs, error = validate_exec(node, {sink_name: linked})
     assert inputs is not None, error
     call_tool = AsyncMock(return_value="ok")
 
@@ -47,7 +64,9 @@ async def test_a_value_linked_into_an_mcp_tool_argument_reaches_the_tool(
     assert call_tool.await_args.kwargs["arguments"] == expected
 
 
-def _mcp_tool_node(sink_name: str, saved: dict[str, Any]) -> Node:
+def _mcp_tool_node(
+    sink_name: str, saved: dict[str, Any], extra_props: dict[str, Any]
+) -> Node:
     return Node(
         id="tool",
         block_id=MCPToolBlock().id,
@@ -59,6 +78,7 @@ def _mcp_tool_node(sink_name: str, saved: dict[str, Any]) -> Node:
                 "properties": {
                     "query": {"type": "string"},
                     "limit": {"type": "integer"},
+                    **extra_props,
                 },
                 "required": ["query"],
             },

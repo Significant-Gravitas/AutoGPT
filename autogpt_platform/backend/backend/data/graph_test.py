@@ -3903,6 +3903,18 @@ def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str
     assert graph.validate_graph_get_errors(for_run=True) == {}
 
 
+@pytest.mark.parametrize("tool_input_schema", [None, "not a schema"])
+def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
+    tool_input_schema: Any,
+):
+    """A malformed schema is a 400 (`ValueError`), not an `AttributeError` 500."""
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"] = tool_input_schema
+
+    with pytest.raises(ValueError):
+        make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
 def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
     return Graph(
         name="Value to MCP tool",

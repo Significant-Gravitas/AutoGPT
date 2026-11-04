@@ -1278,10 +1278,12 @@ class GraphModel(Graph, GraphMeta):
                     )
                     if block.block_type == BlockType.MCP_TOOL:
                         # Tool arguments: the executor folds them into tool_arguments.
-                        fields = {
-                            *fields,
-                            *vals.get("tool_input_schema", {}).get("properties", {}),
-                        }
+                        tool_schema = vals.get("tool_input_schema") or {}
+                        if not isinstance(tool_schema, dict):
+                            raise ValueError(
+                                f"{prefix}, tool_input_schema is not an object"
+                            )
+                        fields = {*fields, *(tool_schema.get("properties") or {})}
                 if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
