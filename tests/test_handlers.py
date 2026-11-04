@@ -1086,6 +1086,44 @@ async def test_cancelling_command_handler_terminates_spawned_process(tmp_path: P
 
 
 @pytest.mark.asyncio
+async def test_a_cancelled_command_is_still_audited(tmp_path: Path) -> None:
+    """A command stopped because its session ended or was revoked ran, but
+    the cancel went straight past the audit write, so it left no
+    EXECUTE_COMMAND record."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    fake = _FakeProc(stdout=b"", stderr=b"", returncode=None)
+    entered = asyncio.Event()
+
+    async def collect(_proc, *, timeout: float):
+        entered.set()
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+    async def terminate(_proc):
+        pass
+
+    with patch("asyncio.create_subprocess_exec", return_value=fake):
+        with patch.object(handler, "_collect_process_output", side_effect=collect):
+            with patch.object(handler, "_terminate_tree", side_effect=terminate):
+                task = asyncio.create_task(
+                    handler.handle(_cmd_msg(argv=["long-running"], cwd=str(tmp_path)))
+                )
+                await entered.wait()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+    [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+    assert result["ok"] is False and result["error_code"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
 async def test_command_shell_form_picks_shell(tmp_path: Path) -> None:
     h = CommandHandler(make_config(tmp_path))
     fake = _FakeProc(stdout=b"out\n", stderr=b"", returncode=0)
