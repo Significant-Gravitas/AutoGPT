@@ -735,6 +735,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.1-flash-lite",
+                display_name="Gemini 3.1 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=37.5,
+                    output_credits_per_1m=225.0,
+                    cache_read_credits_per_1m=3.75,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-3.1-flash-lite-preview",
                 display_name="Gemini 3.1 Flash Lite Preview",
                 provider="open_router",
@@ -760,6 +778,42 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash",
+                display_name="Gemini 3.5 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1350.0,
+                    cache_read_credits_per_1m=22.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash-lite",
+                display_name="Gemini 3.5 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=45.0,
+                    output_credits_per_1m=375.0,
+                    cache_read_credits_per_1m=4.5,
                 ),
             ),
             CatalogModel(
@@ -1050,13 +1104,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=524288,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-21: $1.36/$4.18 per 1M
-                # on every route (up from $0.68/$2.09); cache read left at
-                # $0.07; 150 credits per USD.
+                # Live OpenRouter rate as of 2026-10-29: $0.70/$2.10 per 1M
+                # on every Mistral route (down from the $1.36/$4.18 seen on
+                # 2026-10-21); cache read $0.07; 150 credits per USD.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=204.0,
-                    output_credits_per_1m=627.0,
+                    input_credits_per_1m=105.0,
+                    output_credits_per_1m=315.0,
                     cache_read_credits_per_1m=10.5,
                 ),
             ),

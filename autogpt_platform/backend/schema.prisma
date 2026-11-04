@@ -93,6 +93,8 @@ model AuthJwks {
   privateKey String
   createdAt  DateTime  @default(now())
   expiresAt  DateTime?
+  alg        String?
+  crv        String?
 
   @@map("UserAuthJwks")
 }
@@ -295,16 +297,16 @@ model ExperimentAssignment {
 
 // Where a user came from, captured once around signup. Holds the identities
 // the analytics tools know the user by before they had a user id, so the
-// database can join marketing attribution (DataFast), product analytics
-// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
-// anonymous id) to activation and revenue. Fields are filled at most once.
+// database can join marketing attribution (DataFast) and product analytics
+// and feature-flag bucketing (PostHog) to activation and revenue. Fields are
+// filled at most once.
 model UserAttribution {
   userId    String   @id
   User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  // First-party anonymous id shared with PostHog pre-login.
   anonymousId       String?
   // PostHog $device_id at the time of reporting, when it differs.
   posthogDistinctId String?
@@ -437,9 +439,10 @@ model UserOnboarding {
   consecutiveRunDays            Int       @default(0)
 
   // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
-  // with the typed text in roleOther. Written only by POST /onboarding/profile:
-  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
-  // of the pick (backend/data/onboarding_role.py).
+  // with the typed text in roleOther. Written once the role step is answered
+  // (PATCH /onboarding) and by POST /onboarding/profile: AutoPilot rewrites the
+  // copy in CoPilotUnderstanding, so that is no record of the pick
+  // (backend/data/onboarding_role.py).
   role      String?
   roleOther String?
 
@@ -888,7 +891,9 @@ model ChatSession {
   // timestamp (every transition touches the row).
   chatStatus ChatSessionStatus @default(idle)
 
-  Messages ChatMessage[]
+  Messages           ChatMessage[]
+  BackgroundChildren ChatBackgroundTask[] @relation("BackgroundParent")
+  BackgroundTask     ChatBackgroundTask?  @relation("BackgroundChild")
 
   // Expert this session is scoped to; null = plain Autopilot session.
   // Sessions keep expertId for history when the expert is archived (soft delete).
@@ -971,6 +976,30 @@ model ChatLinkedShare {
   @@index([executionId])
 }
 
+model ChatBackgroundTask {
+  id                String      @id
+  userId            String
+  parentSessionId   String
+  Parent            ChatSession @relation("BackgroundParent", fields: [parentSessionId], references: [id], onDelete: Cascade)
+  childSessionId    String      @unique
+  Child             ChatSession @relation("BackgroundChild", fields: [childSessionId], references: [id], onDelete: Cascade)
+  launchTurnId      String
+  childTurnId       String      @unique
+  context           Json
+  deadline          DateTime
+  outcome           String?
+  result            String?
+  startedAt         DateTime?
+  followupStartedAt DateTime?
+  followupState     String      @default("waiting")
+  wakeSuppressed    Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+
+  @@index([followupState, updatedAt])
+  @@index([userId, parentSessionId, launchTurnId])
+}
+
 model ChatMessage {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -1008,10 +1037,9 @@ model ChatMessage {
   llmAuthProvider String?
   llmCredentialId String?
 
-  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
-  // row, so a rating of the reply can be scored against that trace. Null on
-  // user/tool rows, on baseline turns (no turn-level trace) and on rows
-  // predating this column.
+  // Legacy: the Langfuse trace of the SDK turn that wrote this assistant or
+  // reasoning row. Nothing writes it (SECRT-2711); it is dropped with the
+  // rest of Langfuse (SECRT-3022).
   langfuseTraceId String?
 
   // PostHog trace of the turn that wrote this assistant or reasoning row:
@@ -1034,8 +1062,7 @@ model ChatMessage {
 
 // A user's rating of an AutoPilot reply: thumbs up/down from the message
 // actions, or a copy of the reply. One row per user, message and score name,
-// so voting again updates the rating in place. The row id is also the id of
-// the matching Langfuse score, which makes re-sending a rating idempotent.
+// so voting again updates the rating in place.
 model ChatMessageFeedback {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -1054,8 +1081,9 @@ model ChatMessageFeedback {
   scoreValue Int
   comment    String?
 
-  // The trace the Langfuse score was attached to. Null when the reply had
-  // none and the score went on the chat's Langfuse session instead.
+  // Legacy: the trace the rating's Langfuse score was attached to. Nothing
+  // writes it (SECRT-2711); it is dropped with the rest of Langfuse
+  // (SECRT-3022).
   langfuseTraceId String?
 
   @@unique([messageId, userId, scoreName])

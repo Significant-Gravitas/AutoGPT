@@ -10,7 +10,8 @@ import {
 } from "./components/Command";
 import { cn } from "@/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
-import { X as RemoveIcon, Check } from "lucide-react";
+import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import React, {
   KeyboardEvent,
   createContext,
@@ -178,7 +179,7 @@ const MultiSelectorTrigger = forwardRef<
       ref={ref}
       data-slot="multi-select-trigger"
       className={cn(
-        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-background px-3 py-2 pl-1 text-body leading-5",
+        "agpt-border-input agpt-shadow-input flex flex-wrap gap-1 rounded-lg bg-canvas px-3 py-2 pl-1 text-body leading-5",
         className,
       )}
       {...props}
@@ -188,7 +189,7 @@ const MultiSelectorTrigger = forwardRef<
           key={item}
           className={cn(
             "flex items-center gap-1 rounded-xl px-1 pl-2",
-            activeIndex === index && "ring-2 ring-muted-foreground",
+            activeIndex === index && "ring-2 ring-foreground-tertiary",
           )}
           variant="secondary"
         >
@@ -211,9 +212,11 @@ const MultiSelectorTrigger = forwardRef<
             <span data-slot="multi-select-remove-label" className="sr-only">
               Remove {item} option
             </span>
-            <RemoveIcon
+            <Icon
+              aria-hidden
+              icon={Cancel01Icon}
               data-slot="multi-select-remove-icon"
-              className="h-4 w-4 hover:stroke-destructive"
+              className="h-4 w-4 hover:text-error"
             />
           </button>
         </Badge>
@@ -242,7 +245,7 @@ const MultiSelectorInput = forwardRef<
       onFocus={() => setOpen(true)}
       onClick={() => setActiveIndex(-1)}
       className={cn(
-        "ml-2 flex-1 bg-transparent outline-none placeholder:text-muted-foreground",
+        "ml-2 flex-1 bg-transparent outline-none placeholder:text-foreground-tertiary",
         className,
         activeIndex !== -1 && "caret-transparent",
       )}
@@ -279,7 +282,7 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 flex w-full flex-col gap-2 rounded-md border border-muted bg-background p-2 shadow-md transition-colors scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground scrollbar-thumb-rounded-lg dark:scrollbar-thumb-muted",
+        "absolute top-0 z-10 scrollbar-thin flex w-full scrollbar-thumb-muted-foreground scrollbar-track-transparent flex-col gap-2 rounded-md border border-surface-hover bg-canvas p-2 shadow-md transition-colors scrollbar-thumb-rounded-lg",
         className,
       )}
     >
@@ -289,7 +292,8 @@ const MultiSelectorList = forwardRef<
           variant="body-tight"
           as="span"
           data-slot="multi-select-empty-text"
-          className="block text-muted-foreground"
+          tone="muted"
+          className="block"
         >
           No results found
         </Text>
@@ -340,7 +344,12 @@ const MultiSelectorItem = forwardRef<
         {children}
       </Text>
       {isIncluded && (
-        <Check data-slot="multi-select-item-check" className="h-4 w-4" />
+        <Icon
+          aria-hidden
+          icon={Tick02Icon}
+          data-slot="multi-select-item-check"
+          className="h-4 w-4"
+        />
       )}
     </CommandItem>
   );

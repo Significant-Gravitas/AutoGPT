@@ -21,6 +21,7 @@ const FailedIcon = createIconComponent(CancelCircleIcon);
 
 const ERROR_PREVIEW_LIMIT = 300;
 const ERROR_CLASS_NAME =
+  // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
   "whitespace-pre-wrap break-words !text-foreground-emphasis";
 
 interface Props {
@@ -47,42 +48,44 @@ export function RunFailures({ run }: Props) {
             ? describeFailedSteps(failedStepCount)
             : "This run failed"}
         </AlertTitle>
-        <AlertDescription className="flex flex-col gap-3">
-          {run.status === AgentExecutionStatus.COMPLETED ? (
-            <Text variant="small" className="!text-foreground-secondary">
-              The run still finished, so its output may be incomplete.
-            </Text>
-          ) : null}
-          {runError ? (
-            <ShowMoreText
-              variant="small"
-              previewLimit={ERROR_PREVIEW_LIMIT}
-              className={ERROR_CLASS_NAME}
-            >
-              {runError}
-            </ShowMoreText>
-          ) : steps.length > 0 ? (
-            <ul className="flex flex-col gap-3">
-              {steps.map((step) => (
-                <li key={step.id} className="flex flex-col gap-1">
-                  {step.name ? (
-                    <Text variant="body-medium">{step.name}</Text>
-                  ) : isLoadingNames ? (
-                    <Skeleton className="h-5 w-32" />
-                  ) : (
-                    <Text variant="body-medium">Unknown step</Text>
-                  )}
-                  <ShowMoreText
-                    variant="small"
-                    previewLimit={ERROR_PREVIEW_LIMIT}
-                    className={ERROR_CLASS_NAME}
-                  >
-                    {step.error}
-                  </ShowMoreText>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+        <AlertDescription>
+          <div className="flex flex-col gap-3">
+            {run.status === AgentExecutionStatus.COMPLETED ? (
+              <Text variant="small" tone="secondary">
+                The run still finished, so its output may be incomplete.
+              </Text>
+            ) : null}
+            {runError ? (
+              <ShowMoreText
+                variant="small"
+                previewLimit={ERROR_PREVIEW_LIMIT}
+                className={ERROR_CLASS_NAME}
+              >
+                {runError}
+              </ShowMoreText>
+            ) : steps.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {steps.map((step) => (
+                  <li key={step.id} className="flex flex-col gap-1">
+                    {step.name ? (
+                      <Text variant="body-medium">{step.name}</Text>
+                    ) : isLoadingNames ? (
+                      <Skeleton className="h-5 w-32" />
+                    ) : (
+                      <Text variant="body-medium">Unknown step</Text>
+                    )}
+                    <ShowMoreText
+                      variant="small"
+                      previewLimit={ERROR_PREVIEW_LIMIT}
+                      className={ERROR_CLASS_NAME}
+                    >
+                      {step.error}
+                    </ShowMoreText>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         </AlertDescription>
       </Alert>
     </div>

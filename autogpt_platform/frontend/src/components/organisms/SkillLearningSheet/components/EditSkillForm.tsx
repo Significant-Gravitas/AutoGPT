@@ -58,7 +58,7 @@ export function EditSkillForm({
           >
             <summary
               data-slot="edit-skill-form-conflict-summary"
-              className="cursor-pointer text-sm font-medium"
+              className="cursor-pointer text-body font-medium"
             >
               Review changes against v{currentVersion.version}
             </summary>
@@ -69,9 +69,7 @@ export function EditSkillForm({
             ) : null}
             <pre
               data-slot="edit-skill-form-conflict-diff"
-              // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
-              // dark code surface.
-              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-xs text-zinc-100"
+              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-caption text-action-foreground"
             >
               {lineDiff(currentVersion.body ?? "", draft.body) ||
                 "Your procedure matches the current version."}

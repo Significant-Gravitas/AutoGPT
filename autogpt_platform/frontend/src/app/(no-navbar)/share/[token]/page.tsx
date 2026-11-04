@@ -11,7 +11,8 @@ import {
 } from "@/components/atoms/Card/Card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
-import { InfoIcon } from "lucide-react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
@@ -27,7 +28,7 @@ function ExecutionShareChrome({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-background">
+    <div className="flex h-screen w-full flex-col bg-canvas">
       <ShareHeader title={title} actions={<ShareActions />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 py-8">{children}</div>
@@ -54,8 +55,10 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading shared execution...</p>
+            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-action"></div>
+            <p className="text-foreground-tertiary">
+              Loading shared execution...
+            </p>
           </div>
         </div>
       </ExecutionShareChrome>
@@ -67,17 +70,21 @@ export default function SharePage() {
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
           <div className="mx-auto w-full max-w-md p-6">
-            <Card variant="outlined" className="border-dashed">
-              <CardContent className="pt-6">
+            <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-px text-foreground-base">
+              <div className="p-6">
                 <div className="space-y-4 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <InfoIcon className="h-6 w-6 text-muted-foreground" />
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover text-foreground-tertiary">
+                    <Icon
+                      aria-hidden
+                      icon={InformationCircleIcon}
+                      className="h-6 w-6"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-lg font-semibold">
+                    <h3 className="text-lead font-semibold">
                       {is404 ? "Share Link Not Found" : "Unable to Load"}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-body text-foreground-tertiary">
                       {is404
                         ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
                         : "There was an error loading this shared execution. Please try refreshing the page."}
@@ -86,15 +93,15 @@ export default function SharePage() {
                   <div className="pt-2">
                     <button
                       onClick={() => window.location.reload()}
-                      className="text-sm text-primary hover:underline"
+                      className="text-body text-action hover:underline"
                     >
                       Try again
                     </button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            <div className="mt-8 text-center text-xs text-muted-foreground">
+              </div>
+            </div>
+            <div className="mt-8 text-center text-caption text-foreground-tertiary">
               <p>Powered by AutoGPT Platform</p>
             </div>
           </div>
@@ -108,7 +115,11 @@ export default function SharePage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Alert>
-            <InfoIcon className="h-4 w-4" />
+            <Icon
+              aria-hidden
+              icon={InformationCircleIcon}
+              className="h-4 w-4"
+            />
             <AlertDescription>
               This is a publicly shared workflow run result. The person who
               shared this link can disable access at any time.
@@ -118,17 +129,17 @@ export default function SharePage() {
 
         <Card variant="outlined" className="mb-6">
           <CardHeader>
-            <CardTitle className="text-2xl">
+            <h3 className="text-heading-md font-semibold tracking-tight">
               {executionData.graph_name}
-            </CardTitle>
+            </h3>
             {executionData.graph_description && (
-              <p className="mt-2 text-muted-foreground">
+              <p className="mt-2 text-foreground-tertiary">
                 {executionData.graph_description}
               </p>
             )}
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-body">
               <div>
                 <span className="font-medium">Status:</span>
                 <span className="ml-2 capitalize">
@@ -154,7 +165,7 @@ export default function SharePage() {
           </CardContent>
         </Card>
 
-        <div className="mt-8 text-center text-sm text-muted-foreground">
+        <div className="mt-8 text-center text-body text-foreground-tertiary">
           <p>Powered by AutoGPT Platform</p>
         </div>
       </div>

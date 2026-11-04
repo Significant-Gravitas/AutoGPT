@@ -8,18 +8,19 @@ caller holding a few large requests open could exhaust a server's memory.
 
 A body declared longer than its endpoint's cap is refused before anything
 reads it. One sent in chunks is counted as the app reads it, and refused as
-soon as it crosses the cap. This middleware sends that 413 itself and drops
-whatever the app sends after it: FastAPI turns a failed body read into a 400,
-and FastMCP into a 500.
+soon as it crosses the cap.
 """
 
-from typing import Optional
-
 from starlette import status
-from starlette.datastructures import Headers
 from starlette.responses import Response
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
+from backend.api.middleware.body_limit import (
+    BodyGuard,
+    RequestBodyTooLarge,
+    declared_length,
+    mark_bounded_inside,
+)
 from backend.util.settings import Settings
 
 from .errors import error_response
@@ -53,67 +54,20 @@ class BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        mark_bounded_inside(scope)
         limit = max_body_bytes(app_path(scope))
-        declared = _declared_length(scope)
+        declared = declared_length(scope)
         if declared is not None and declared > limit:
             await _too_large(limit)(scope, receive, send)
             return
 
-        guard = _BodyGuard(scope, receive, send, limit)
+        guard = BodyGuard(scope, receive, send, lambda _: limit, _too_large)
         try:
             await self.app(scope, guard.receive, guard.send)
         except RequestBodyTooLarge:
             # Nothing caught the failed read on the way out. The 413 has gone
             # out already, unless the app had started its own response.
             pass
-
-
-class RequestBodyTooLarge(Exception):
-    """Raised into the app when the body it is reading crosses the cap."""
-
-
-class _BodyGuard:
-    """Counts the body as the app reads it, and answers 413 when it crosses
-    the cap."""
-
-    def __init__(self, scope: Scope, receive: Receive, send: Send, limit: int):
-        self._scope = scope
-        self._receive = receive
-        self._send = send
-        self._limit = limit
-        self._received = 0
-        self._response_started = False
-        self._answered = False
-
-    async def receive(self) -> Message:
-        message = await self._receive()
-        if message["type"] != "http.request":
-            return message
-        self._received += len(message.get("body", b""))
-        if self._received <= self._limit:
-            return message
-        if not (self._response_started or self._answered):
-            self._answered = True
-            await _too_large(self._limit)(self._scope, self._receive, self._send)
-        raise RequestBodyTooLarge()
-
-    async def send(self, message: Message) -> None:
-        if self._answered:
-            # The app's own answer to the failed read; the 413 went out first.
-            return
-        if message["type"] == "http.response.start":
-            self._response_started = True
-        await self._send(message)
-
-
-def _declared_length(scope: Scope) -> Optional[int]:
-    value = Headers(scope=scope).get("content-length")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
 
 
 def _too_large(limit: int) -> Response:

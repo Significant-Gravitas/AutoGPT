@@ -185,17 +185,17 @@ export function LibraryAgentList({
             <button
               type="button"
               onClick={() => onFolderSelect(null)}
-              className="inline-flex items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-strong"
+              className="inline-flex items-center gap-1 text-body text-foreground-tertiary hover:text-foreground-strong"
             >
               <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
               My Library
             </button>
             {currentFolder && (
               <>
-                <Text variant="body" className="text-foreground-subtle">
+                <Text variant="body" tone="subtle">
                   /
                 </Text>
-                <Text variant="large" className="text-foreground-body">
+                <Text variant="large" tone="body">
                   {currentFolder.name}
                 </Text>
               </>
