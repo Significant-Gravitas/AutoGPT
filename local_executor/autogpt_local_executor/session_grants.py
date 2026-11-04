@@ -100,11 +100,10 @@ class RootGrantSigner:
             root = canonical_directory(Path(allowed_root))
             if directory_fingerprint(root) != fingerprint:
                 raise RootGrantError("The selected directory changed after the grant was issued")
-            # Grants issued before the claim existed carry none and keep the
-            # device/inode check alone. A filesystem that reuses a freed inode
-            # (ext4, tmpfs) gives a recreated directory the old identity; its
-            # creation time still differs.
-            birth = claims.get("birth")
+            # A filesystem that reuses a freed inode (ext4, tmpfs) gives a
+            # recreated directory the old identity; its creation time still
+            # differs. None where the platform keeps no creation time.
+            birth = claims["birth"]
             if birth is not None and birth != directory_birth(root):
                 raise RootGrantError("The selected directory changed after the grant was issued")
         except RootGrantError:

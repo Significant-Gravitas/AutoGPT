@@ -59,8 +59,9 @@ def test_root_grant_detects_directory_replacement(tmp_path: Path) -> None:
         signer.verify(grant, "session-1")
 
 
-def test_root_grant_without_birth_claim_still_verifies(tmp_path: Path) -> None:
-    """Grants issued before the creation-time claim keep working."""
+def test_root_grant_without_birth_claim_is_malformed(tmp_path: Path) -> None:
+    """Every grant carries the creation-time claim, None where the platform
+    keeps no creation time; one without it was never issued here."""
     root = tmp_path / "workspace"
     root.mkdir()
     key = b"a" * 32
@@ -85,9 +86,8 @@ def test_root_grant_without_birth_claim_still_verifies(tmp_path: Path) -> None:
         .decode()
     )
 
-    binding = signer.verify(f"v1.{encoded}.{signature}", "session-1")
-
-    assert binding.allowed_root == root.resolve()
+    with pytest.raises(RootGrantError, match="malformed"):
+        signer.verify(f"v1.{encoded}.{signature}", "session-1")
 
 
 def test_root_grant_rejects_symlink_root(tmp_path: Path) -> None:
