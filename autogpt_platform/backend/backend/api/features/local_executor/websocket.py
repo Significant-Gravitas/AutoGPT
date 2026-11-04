@@ -241,8 +241,8 @@ async def _authenticate_connection(
             await _deny(websocket, 401, "Invalid or expired token", close_code=4401)
             return None
         if LOCAL_EXECUTOR_SCOPE not in (token_info.scopes or []):
-            # A valid token from before the scope existed: refreshing it keeps
-            # its scopes, so 403, which the companion does not retry.
+            # A valid token without the scope: refreshing it keeps its scopes,
+            # so 403, which the companion does not retry.
             record_handshake_failure("missing_scope")
             await _deny(
                 websocket,

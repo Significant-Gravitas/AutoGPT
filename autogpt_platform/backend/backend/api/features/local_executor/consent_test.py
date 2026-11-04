@@ -135,36 +135,6 @@ async def test_approval_is_invalidated_by_a_scope_change(current: dict) -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_approval_from_the_feature_era_asks_again() -> None:
-    """Before cua-driver, consent covered feature lists; those records no
-    longer describe what the user approved."""
-    redis = AsyncMock()
-    redis.get.return_value = json.dumps(
-        {
-            "state": "approved",
-            "machine_id": "machine-a",
-            "features_coarse": ["screenshot", "input"],
-            "features": [],
-        }
-    )
-
-    with patch(
-        "backend.api.features.local_executor.consent.get_redis_async",
-        return_value=redis,
-    ):
-        assert (
-            await get_computer_use_consent(
-                "session-1",
-                "user-1",
-                machine_id="machine-a",
-                driver=_DRIVER,
-                tools=_TOOLS,
-            )
-            == "pending"
-        )
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scope",
     [

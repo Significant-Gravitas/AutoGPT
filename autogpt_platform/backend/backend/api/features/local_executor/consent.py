@@ -33,12 +33,7 @@ async def get_computer_use_consent(
         value = await (await get_redis_async()).get(_consent_key(session_id, user_id))
         if isinstance(value, bytes):
             value = value.decode("utf-8")
-        if value == "denied":
-            record = {"state": "denied"}
-        elif value == "approved":
-            record = None
-        else:
-            record = json.loads(value) if isinstance(value, str) else None
+        record = json.loads(value) if isinstance(value, str) else None
     except Exception:
         logger.exception(
             "Failed to read Local PC computer-use consent for session %s",
