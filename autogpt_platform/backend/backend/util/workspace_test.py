@@ -538,3 +538,17 @@ async def test_write_file_keeps_deliverables_visible(
     assert file.is_internal is False
     assert mock_db.create_workspace_file.await_args.kwargs["is_internal"] is False
     schedule_embedding.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_list_files_passes_the_written_window_to_the_query(manager, mock_db):
+    """A window on when files were written reaches the query itself, ahead of
+    the limit, rather than trimming the rows the query returned."""
+    mock_db.list_workspace_files = AsyncMock(return_value=[])
+    since, until = _NOW.replace(minute=0), _NOW.replace(minute=5)
+
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        await manager.list_files(created_after=since, created_before=until)
+
+    kwargs = mock_db.list_workspace_files.await_args.kwargs
+    assert (kwargs["created_after"], kwargs["created_before"]) == (since, until)
