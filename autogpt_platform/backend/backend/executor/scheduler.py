@@ -34,7 +34,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine, or_
+from sqlalchemy import MetaData, create_engine, inspect, or_
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.retention import (
@@ -2415,11 +2415,21 @@ class _KeptScheduleJobs:
         try:
             return store.lookup_job(job_id)
         except Exception as e:
-            # A first start finds no table yet; scheduling afresh is no worse.
-            logger.debug(
-                "Stored job %s unreadable, scheduling it afresh: %s", job_id, e
-            )
+            # The store creates its table at start, so a first start has none yet.
+            if not _has_table(store):
+                return None
+            logger.warning(f"Stored job {job_id} unreadable, scheduling it afresh: {e}")
             return None
+
+
+def _has_table(store: ResilientSQLAlchemyJobStore) -> bool:
+    try:
+        return inspect(store.engine).has_table(
+            store.jobs_t.name, schema=store.jobs_t.schema
+        )
+    except Exception:
+        # Can't tell: report the lookup failure rather than hide it.
+        return True
 
 
 def _same_interval(trigger: object, options: dict[str, Any]) -> bool:

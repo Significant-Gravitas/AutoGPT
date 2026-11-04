@@ -2,6 +2,8 @@
 unless its interval changed. Two real starts of ``Scheduler.run_service`` share
 one SQLite jobstore; APScheduler starts paused, so no job runs."""
 
+import logging
+import sqlite3
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -44,6 +46,27 @@ def test_a_changed_interval_takes_effect_on_restart(monkeypatch, tmp_path):
     assert second_run < first_run
 
 
+def test_an_unreadable_stored_job_is_reported_but_a_first_start_is_not(
+    caplog, tmp_path
+):
+    jobstore = f"sqlite:///{tmp_path}/jobs.sqlite"
+    caplog.set_level(logging.WARNING)
+    _interval_jobs_after_a_start(jobstore)
+    assert _unreadable_warnings(caplog) == []
+
+    db = sqlite3.connect(tmp_path / "jobs.sqlite")
+    db.execute(
+        "UPDATE apscheduler_jobs SET job_state = ? WHERE id = ?",
+        (b"not a pickle", "report_block_error_rates"),
+    )
+    db.commit()
+    db.close()
+    _interval_jobs_after_a_start(jobstore)
+
+    warnings = _unreadable_warnings(caplog)
+    assert len(warnings) == 1 and "report_block_error_rates" in warnings[0]
+
+
 def _interval_jobs_after_a_start(
     jobstore: str,
 ) -> dict[str, tuple[datetime | None, timedelta]]:
@@ -71,3 +94,11 @@ def _interval_jobs_after_a_start(
         }
     finally:
         service.cleanup()
+
+
+def _unreadable_warnings(caplog) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "unreadable" in r.getMessage()
+    ]
