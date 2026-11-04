@@ -77,6 +77,21 @@ def test_websocket_server_limits_incoming_message_size(mocker) -> None:
     assert serve_websockets.call_args.kwargs["ws_max_size"] <= 4096
 
 
+def test_websocket_server_trusts_x_forwarded_for_from_trusted_proxies(
+    mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "false")
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+
+    with (
+        override_config(settings, "app_env", AppEnvironment.LOCAL),
+        override_config(settings, "trusted_proxies", "172.18.0.0/16"),
+    ):
+        WebsocketServer().run()
+
+    assert serve_websockets.call_args.kwargs["forwarded_allow_ips"] == "172.18.0.0/16"
+
+
 def test_every_websocket_request_string_is_length_bounded() -> None:
     """Client-supplied ids become Redis channel names, so each is bounded."""
     requests = [

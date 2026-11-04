@@ -10,6 +10,7 @@ from starlette.routing import BaseRoute, Match, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
 from backend.api.external.v2.app import v2_app
+from backend.api.test_helpers import override_config
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -33,6 +34,19 @@ def test_metrics_get_a_listener_of_their_own_only_when_enabled(
         config.agent_api_metrics_port, addr=config.pyro_host
     )
     assert config.agent_api_metrics_port != config.agent_api_port
+
+
+def test_uvicorn_trusts_x_forwarded_for_from_trusted_proxies(
+    mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "false")
+    monkeypatch.setenv("PYTHONASYNCIODEBUG", "")
+    serve_api = mocker.patch("backend.api.rest_api.uvicorn.run")
+
+    with override_config(rest_api.settings, "trusted_proxies", "172.18.0.0/16"):
+        rest_api.AgentServer().run()
+
+    assert serve_api.call_args.kwargs["forwarded_allow_ips"] == "172.18.0.0/16"
 
 
 def test_no_internal_route_takes_a_versioned_api_path() -> None:

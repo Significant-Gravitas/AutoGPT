@@ -42,7 +42,10 @@ def client_address(peer: str, forwarded_for: Iterable[str], proxies: str) -> str
 
 @functools.cache
 def parse_trusted_proxies(value: str) -> tuple[IPNetwork, ...]:
-    """`value`'s comma-separated addresses and CIDR ranges, refusing any other entry."""
+    """`value`'s comma-separated addresses and CIDR ranges, refusing any other entry.
+
+    single-container/runtime_config.py's validate_trusted_proxies keeps the same
+    contract and message by hand, since the entrypoint cannot import the backend."""
     entries = [entry.strip() for entry in value.split(",") if entry.strip()]
     networks: list[IPNetwork] = []
     invalid: list[str] = []
@@ -88,16 +91,14 @@ def _is_listed(address: IPAddress, networks: tuple[IPNetwork, ...]) -> bool:
 
 
 def _address(entry: str) -> IPAddress | None:
-    """The address in a forwarded entry, without a port; IPv4-mapped IPv6 as IPv4."""
+    """The address in a forwarded entry, without a port."""
     host = entry.strip()
     if host.startswith("["):
         host = host[1:].partition("]")[0]
     elif host.count(":") == 1:
         host = host.partition(":")[0]
+    # No IPv4-mapped unwrap: uvicorn matches ::ffff:a.b.c.d only against IPv6 ranges.
     try:
-        if ":" in host:
-            v6 = ipaddress.IPv6Address(host)
-            return v6.ipv4_mapped or v6
-        return ipaddress.IPv4Address(host)
+        return ipaddress.ip_address(host)
     except ValueError:
         return None

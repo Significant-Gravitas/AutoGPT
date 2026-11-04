@@ -677,7 +677,10 @@ def validate_public_url(value: str) -> str:
 
 def validate_trusted_proxies(value: str) -> str:
     """The comma-separated proxies in front of the container, as space-separated
-    networks; only these normalized forms reach nginx's config."""
+    networks; only these normalized forms reach nginx's config.
+
+    Kept in step by hand with the backend's parse_trusted_proxies
+    (backend/util/trusted_proxies.py), which this image cannot import."""
     networks = []
     for entry in (part.strip() for part in value.split(",")):
         if not entry:

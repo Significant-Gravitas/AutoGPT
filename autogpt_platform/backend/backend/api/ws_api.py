@@ -391,5 +391,7 @@ class WebsocketServer(AppProcess):
             ws="websockets-sansio",
             ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
-            forwarded_allow_ips=uvicorn_forwarded_allow_ips(Config().trusted_proxies),
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )

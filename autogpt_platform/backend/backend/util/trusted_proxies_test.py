@@ -75,8 +75,10 @@ def test_a_header_with_no_unlisted_address_leaves_the_nearest_listed_hop(
             "2001:db9::7",
         ),
         ("2001:db8::1", "2001:db8::1", f"[2001:db9::7]:4711, {CLIENT}", CLIENT),
-        # IPv4-mapped addresses match IPv4 ranges, and a port is not the address.
-        ("172.18.0.0/16", "::ffff:172.18.0.2", f"{CLIENT}:51000", CLIENT),
+        # As in uvicorn, an IPv4-mapped peer matches only a ::ffff: range.
+        ("172.18.0.0/16", "::ffff:172.18.0.2", CLIENT, "::ffff:172.18.0.2"),
+        # A port is not the address.
+        ("::ffff:172.18.0.0/112", "::ffff:172.18.0.2", f"{CLIENT}:51000", CLIENT),
         # A host-bits CIDR means its network, as Better Auth reads it.
         ("172.18.0.9/16", NGINX, CLIENT, CLIENT),
     ],
@@ -104,6 +106,9 @@ def test_an_entry_that_is_not_an_address_or_range_refuses_to_start(
         ("10.0.0.1", f"{CLIENT}, {HOST_PROXY}, {NGINX}"),
         (NGINX, f"{HOST_PROXY}, 172.18.9.9"),
         ("2001:db8::1", "2001:db9::7"),
+        # A dual-stack socket's IPv4 peers, listed by an IPv4 range and a ::ffff: one.
+        (f"::ffff:{NGINX}", CLIENT),
+        ("::ffff:10.9.0.1", CLIENT),
     ],
 )
 async def test_uvicorn_names_the_same_client_and_a_second_walk_keeps_it(
@@ -111,7 +116,7 @@ async def test_uvicorn_names_the_same_client_and_a_second_walk_keeps_it(
 ) -> None:
     """uvicorn rewrites `request.client` before the External API reads it, so
     the limiter re-walks from uvicorn's answer and must land on the same one."""
-    proxies = f"{PROXIES}, 2001:db8::1"
+    proxies = f"{PROXIES}, 2001:db8::1, ::ffff:10.9.0.0/112"
     seen: list[str] = []
 
     async def app(scope, receive, send) -> None:
