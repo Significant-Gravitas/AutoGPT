@@ -61,6 +61,7 @@ from backend.copilot.response_model import (
 from backend.copilot.tree import TurnEnvelope
 from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
+from backend.copilot.turn_tracing import TurnTrace
 from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data.model import OAuth2Credentials
 from backend.data.pro_activation import UsageActivationState
@@ -2101,3 +2102,119 @@ def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
 
     # No envelope (a legacy queue entry) stays None rather than inventing one.
     assert taint_for_source_platform(None, slack) is None
+
+
+class TestExecuteAsyncLoadTestAccounts:
+    """A load-test account's turn runs on the engine its address names
+    (``backend/copilot/load_test.py``); every other account's turn keeps its
+    usual engine, on the same preview at the same time."""
+
+    @staticmethod
+    async def _engines_run(
+        load_test: str | None,
+        model_url: str = "http://scripted-model:4010/api/v1",
+    ) -> dict:
+        calls: dict = {}
+
+        def engine(name: str):
+            def stream(**kwargs):
+                calls[name] = kwargs
+                return MagicMock()
+
+            return stream
+
+        config = MagicMock(
+            test_mode=False,
+            load_test_email_domain="previews.agpt.co",
+            load_test_model_url=model_url,
+        )
+        with (
+            patch("backend.copilot.executor.processor.ChatConfig", return_value=config),
+            patch(
+                "backend.copilot.executor.processor.load_test_engine",
+                AsyncMock(return_value=load_test),
+            ),
+            patch(
+                "backend.copilot.executor.processor.resolve_use_sdk",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                side_effect=engine("dummy"),
+            ),
+            patch(
+                "backend.copilot.executor.processor.sdk_service.stream_chat_completion_sdk",
+                side_effect=engine("sdk"),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_baseline",
+                side_effect=engine("baseline"),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                return_value=_TrackedStream(events=[]),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+            ),
+        ):
+            await asyncio.create_task(
+                CoPilotProcessor()._execute_async(
+                    _make_entry(), threading.Event(), MagicMock(), _make_log()
+                )
+            )
+        return calls
+
+    @pytest.mark.asyncio
+    async def test_a_dummy_account_runs_on_the_dummy_engine(self) -> None:
+        calls = await self._engines_run("dummy")
+
+        assert list(calls) == ["dummy"]
+
+    @pytest.mark.asyncio
+    async def test_a_scripted_account_runs_the_sdk_engine_on_the_scripted_model(
+        self,
+    ) -> None:
+        calls = await self._engines_run("scripted")
+
+        assert list(calls) == ["sdk"]
+        assert calls["sdk"]["stand_in_model_url"] == "http://scripted-model:4010/api/v1"
+
+    @pytest.mark.asyncio
+    async def test_any_other_account_keeps_its_usual_engine(self) -> None:
+        calls = await self._engines_run(None)
+
+        assert list(calls) == ["sdk"]
+        assert "stand_in_model_url" not in calls["sdk"]
+
+    @pytest.mark.asyncio
+    async def test_a_scripted_account_never_falls_through_to_a_real_model(
+        self,
+    ) -> None:
+        with (
+            patch.object(TurnTrace, "load_test_account", autospec=True) as tagged,
+            pytest.raises(RuntimeError, match="load_test_model_url_unset"),
+        ):
+            await self._engines_run("scripted", model_url="")
+
+        # Tagged before the check fails it.
+        assert [call.args[1] for call in tagged.call_args_list] == ["scripted"]
+
+    @pytest.mark.asyncio
+    async def test_a_banned_load_test_accounts_turn_is_still_tagged(self) -> None:
+        with (
+            patch(
+                "backend.copilot.executor.processor.is_user_banned",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(TurnTrace, "load_test_account", autospec=True) as tagged,
+        ):
+            calls = await self._engines_run("dummy")
+
+        assert calls == {}
+        assert [call.args[1] for call in tagged.call_args_list] == ["dummy"]

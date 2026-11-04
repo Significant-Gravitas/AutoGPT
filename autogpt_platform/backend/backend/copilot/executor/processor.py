@@ -6,6 +6,7 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import concurrent.futures
+import functools
 import logging
 import os
 import threading
@@ -40,6 +41,7 @@ from backend.copilot.llm_attribution import (
     set_turn_origin,
     set_turn_trace_id,
 )
+from backend.copilot.load_test import LoadTestEngine, load_test_engine
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -620,6 +622,15 @@ class CoPilotProcessor:
         try:
             from backend.copilot.model import get_chat_session
 
+            # Known before anything can end the turn, so a load-test
+            # account's turn is told apart from people's however it ends.
+            config = ChatConfig()
+            load_test: LoadTestEngine | None = None
+            if not config.test_mode:
+                load_test = await load_test_engine(entry.user_id, config)
+                if load_test is not None:
+                    turn.load_test_account(load_test)
+
             # Every copilot turn starts here, whatever queued it.
             if entry.user_id and await is_user_banned(entry.user_id):
                 log.info("Turn not started: the account is banned")
@@ -799,12 +810,30 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_session_route_mismatch")
                 # Choose service based on PostHog flag.
                 # Claude Code subscription forces SDK mode (CLI subprocess auth).
-                config = ChatConfig()
-
                 if config.test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                elif load_test == "dummy":
+                    stream_fn = stream_chat_completion_dummy
+                    engine = "dummy"
+                    log.info("Using DUMMY service: load-test account")
+                elif load_test == "scripted":
+                    if not config.load_test_model_url:
+                        # The account's turns exist to reach no real model,
+                        # so without the scripted model they fail instead.
+                        raise RuntimeError("load_test_model_url_unset")
+                    stream_fn = cast(
+                        Callable,
+                        functools.partial(
+                            sdk_service.stream_chat_completion_sdk,
+                            stand_in_model_url=config.load_test_model_url,
+                        ),
+                    )
+                    engine = "sdk"
+                    log.info(
+                        "Using SDK service on the scripted model: load-test account"
+                    )
                 else:
                     use_sdk = await resolve_use_sdk(
                         entry.user_id,
