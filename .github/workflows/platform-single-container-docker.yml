@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - ".dockerignore"
+      - ".github/scripts/install-trivy.sh"
       - ".github/scripts/platform-single-container-publish.sh"
       - ".github/scripts/run_command_junit.py"
       - ".github/scripts/run_unittest_junit.py"
@@ -229,11 +230,17 @@ jobs:
           --output "$REPORT_DIR/smoke.xml"
           -- bash .github/scripts/platform-single-container-smoke.sh
 
+      - name: Install Trivy
+        continue-on-error: true
+        shell: bash
+        run: bash .github/scripts/install-trivy.sh
+
       - name: Scan for fixable critical vulnerabilities
         id: vulnerability_scan
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: true
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: vuln
           format: json
@@ -249,6 +256,7 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: true
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: secret
           format: json
@@ -411,11 +419,16 @@ jobs:
           SMOKE_PLATFORM: ${{ matrix.platform }}
         run: bash .github/scripts/platform-single-container-smoke.sh
 
+      - name: Install Trivy
+        shell: bash
+        run: bash .github/scripts/install-trivy.sh
+
       - name: Scan the exact pushed digest for fixable critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
+          skip-setup-trivy: true
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           format: table
           ignore-unfixed: true
@@ -429,6 +442,7 @@ jobs:
         env:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
+          skip-setup-trivy: true
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           scanners: secret
           format: table

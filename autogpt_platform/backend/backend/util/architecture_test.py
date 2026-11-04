@@ -882,6 +882,156 @@ def test_no_process_cached_loop_bound_clients():
 
 
 # ---------------------------------------------------------------------------
+# Rule: a pattern that isn't a literal is compiled through compile_user_regex
+# ---------------------------------------------------------------------------
+#
+# Motivation: compile_user_regex bounds what a pattern compiles to and skips the
+# module cache, and a block never hands `re` its input as a pattern (re.escape of
+# an input is fine). Input copied to a local first is followed within one module.
+
+_REGEX_FUNCTIONS = frozenset(
+    {
+        "compile",
+        "search",
+        "match",
+        "fullmatch",
+        "finditer",
+        "findall",
+        "sub",
+        "subn",
+        "split",
+        "splititer",
+    }
+)
+_USER_REGEX_MODULE = "util/user_regex.py"
+
+
+def test_patterns_from_input_go_through_compile_user_regex():
+    offenders: list[str] = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT)
+        if _is_test_file(rel) or rel.as_posix() == _USER_REGEX_MODULE:
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for lineno, reason in _unchecked_pattern_calls(tree, rel.parts[0] == "blocks"):
+            offenders.append(f"  backend/{rel}:{lineno} {reason}")
+
+    assert not offenders, (
+        "Compile a pattern that isn't a string literal with "
+        "`backend.util.user_regex.compile_user_regex`:\n" + "\n".join(sorted(offenders))
+    )
+
+
+@pytest.mark.parametrize(
+    "source, in_block, flagged",
+    [
+        ("import regex\nregex.search(pattern, text)", False, True),
+        ("import regex as rx\nrx.compile(pattern)", False, True),
+        ("from regex import finditer\nfinditer(pattern, text)", False, True),
+        ("import regex\nregex.search(r'\\d+', text)", False, False),
+        ("import re\nre.search(input_data.pattern, text)", True, True),
+        ("import re\nre.compile(rf'{input_data.prefix}\\d')", True, True),
+        ("import re\nre.search(re.escape(input_data.word), text)", True, False),
+        ("import re\nre.search(input_data.pattern, text)", False, False),
+        ("import re\np = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\np: str = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\nif x:\n    q = input_data.p\np = q\nre.search(p, t)", True, True),
+        ("import re, html\nre.search(html.escape(input_data.p), t)", True, True),
+        ("import re\nre.search(pattern=input_data.pattern, string=t)", True, True),
+        ("import regex\nregex.compile(pattern=pattern)", False, True),
+        ("from regex import compile as c\nc(pattern)", False, True),
+    ],
+)
+def test_unchecked_pattern_calls_reads_each_form(
+    source: str, in_block: bool, flagged: bool
+):
+    assert bool(_unchecked_pattern_calls(ast.parse(source), in_block)) is flagged
+
+
+def _is_test_file(rel: pathlib.PurePath) -> bool:
+    return (
+        "test" in rel.parts[:-1]
+        or rel.name.endswith("_test.py")
+        or rel.name.startswith("test_")
+        or rel.name == "conftest.py"
+    )
+
+
+def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int, str]]:
+    modules: dict[str, str] = {}
+    functions: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in ("re", "regex"):
+                    modules[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in ("re", "regex"):
+            for alias in node.names:
+                if alias.name in _REGEX_FUNCTIONS:
+                    functions[alias.asname or alias.name] = (node.module, alias.name)
+    inputs = _names_holding_input(tree)
+
+    offenses: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            module, name = modules.get(func.value.id), func.attr
+        elif isinstance(func, ast.Name) and func.id in functions:
+            module, name = functions[func.id]
+        else:
+            continue
+        pattern = _argument(node, 0, "pattern")
+        if module is None or name not in _REGEX_FUNCTIONS or pattern is None:
+            continue
+        if module == "regex" and not (
+            isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)
+        ):
+            offenses.append((node.lineno, f"passes `regex.{name}` a non-literal"))
+        elif module == "re" and in_block and _reads_input_unescaped(pattern, inputs):
+            offenses.append((node.lineno, f"passes `re.{name}` the block's input"))
+    return offenses
+
+
+def _names_holding_input(tree: ast.Module) -> set[str]:
+    names = {"input_data"}
+    assigns = [
+        (node.targets if isinstance(node, ast.Assign) else [node.target], node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+    ]
+    # ast.walk reaches a nested assignment after the shallower ones that read it.
+    while True:
+        added = {
+            target.id
+            for targets, value in assigns
+            if _reads_input_unescaped(value, names)
+            for target in targets
+            if isinstance(target, ast.Name)
+        } - names
+        if not added:
+            return names
+        names |= added
+
+
+def _reads_input_unescaped(node: ast.AST, inputs: set[str]) -> bool:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "escape"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+    ):
+        return False
+    if isinstance(node, ast.Name) and node.id in inputs:
+        return True
+    return any(
+        _reads_input_unescaped(child, inputs) for child in ast.iter_child_nodes(node)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Rule: only cli_io.py puts a line on the Claude Code CLI's stdin
 # ---------------------------------------------------------------------------
 #
@@ -964,6 +1114,35 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 
 
 # ---------------------------------------------------------------------------
+# Rule: what an E2B sandbox sends back is read through a limit
+# ---------------------------------------------------------------------------
+#
+# Motivation: a sandbox's output and files are read into this process, and a
+# limit applied after reading bounds nothing. `files.read` is called with
+# format="stream" and stopped at the caller's limit (`read_sandbox_file`);
+# `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
+# follows a background handle with callbacks that stop at a limit; a code
+# interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
+
+_SANDBOX_COMMAND_RUNNERS = frozenset(
+    {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
+)
+
+
+def test_sandbox_output_is_read_through_a_limit():
+    offenders = [
+        f"backend/{rel}:{lineno} {what}"
+        for rel, lineno, what in _unbounded_sandbox_reads()
+    ]
+    assert not offenders, (
+        "Read sandbox files with backend.util.sandbox_output.read_sandbox_file, "
+        "run sandbox commands with run_sandbox_command, and create code "
+        "interpreter sandboxes as OutputLimitedCodeSandbox:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Rule: zip members and workbooks are read through the capped readers
 # ---------------------------------------------------------------------------
 #
@@ -1002,6 +1181,100 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
         "Fix: read the member with zip_member.read_member / iter_member, or call "
         "check_xlsx_unpacked_size first and add the module to _READ_EXCEL_MODULES."
     )
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("await sandbox.files.read(p)", ["files.read without format='stream'"]),
+        (
+            "await s.files.read(p, format='bytes')",
+            ["files.read without format='stream'"],
+        ),
+        ("await s.files.read(p, format='stream')", []),
+        ("await sandbox.commands.run('ls')", ["commands.run"]),
+        ("await run_sandbox_command(sandbox, 'ls')", []),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(AsyncSandbox, owner)"
+            ),
+            ["create_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox as S\n"
+                "await connect_sandbox(S, sid, owner)"
+            ),
+            ["connect_sandbox with the code interpreter's AsyncSandbox"],
+        ),
+        (
+            (
+                "from e2b_code_interpreter import AsyncSandbox\n"
+                "await create_sandbox(OutputLimitedCodeSandbox, owner)"
+            ),
+            [],
+        ),
+    ],
+)
+def test_sandbox_read_scan_reads_each_form(source: str, expected: list[str]):
+    assert [what for _, what in _sandbox_reads_in(ast.parse(source))] == expected
+
+
+def _unbounded_sandbox_reads() -> list[tuple[str, int, str]]:
+    found = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT).as_posix()
+        if py.name.endswith("_test.py"):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for lineno, what in _sandbox_reads_in(tree):
+            if what == "commands.run" and rel in _SANDBOX_COMMAND_RUNNERS:
+                continue
+            found.append((rel, lineno, what))
+    return found
+
+
+def _sandbox_reads_in(tree: ast.Module) -> list[tuple[int, str]]:
+    found = []
+    # `run_code` is bounded only on OutputLimitedCodeSandbox.
+    code_sandboxes = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").split(".")[0] == "e2b_code_interpreter"
+        for alias in node.names
+        if alias.name == "AsyncSandbox"
+    }
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("create_sandbox", "connect_sandbox")
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in code_sandboxes
+        ):
+            found.append(
+                (
+                    node.lineno,
+                    f"{node.func.id} with the code interpreter's AsyncSandbox",
+                )
+            )
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        owner = node.func.value
+        if not (
+            isinstance(owner, ast.Attribute) and owner.attr in ("files", "commands")
+        ):
+            continue
+        if owner.attr == "files" and node.func.attr == "read":
+            fmt = next((k.value for k in node.keywords if k.arg == "format"), None)
+            if not (isinstance(fmt, ast.Constant) and fmt.value == "stream"):
+                found.append((node.lineno, "files.read without format='stream'"))
+        elif owner.attr == "commands" and node.func.attr == "run":
+            found.append((node.lineno, "commands.run"))
+    return found
 
 
 @pytest.mark.parametrize(

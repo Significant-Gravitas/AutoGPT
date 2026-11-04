@@ -38,6 +38,7 @@ from backend.util.sandbox_files import (
     extract_and_store_sandbox_files,
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import OutputLimitedCodeSandbox, run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -181,9 +182,10 @@ class BaseE2BExecutorMixin:
                 # without waking it.
                 info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
                 user_id = execution_context.user_id if execution_context else None
-                if not owned_by_user(info.metadata, user_id):
+                if not owned_by_user(info.metadata, user_id, kind="code"):
                     raise PermissionError(
-                        f"Sandbox {sandbox_id} does not belong to this user"
+                        f"Sandbox {sandbox_id} does not belong to this user, "
+                        "or is not a code sandbox"
                     )
                 if pause_when_kept and not dispose_sandbox:
                     # Counted before the connect: a run on this box returning
@@ -191,7 +193,7 @@ class BaseE2BExecutorMixin:
                     held = sandbox_id
                     await hold_sandbox(held)
                 sandbox = await connect_sandbox(
-                    AsyncSandbox,
+                    OutputLimitedCodeSandbox,
                     sandbox_id,
                     egress_owner,
                     api_key=api_key,
@@ -200,7 +202,7 @@ class BaseE2BExecutorMixin:
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await create_sandbox(
-                    AsyncSandbox,
+                    OutputLimitedCodeSandbox,
                     egress_owner,
                     api_key=api_key,
                     template=template_id,
@@ -212,7 +214,7 @@ class BaseE2BExecutorMixin:
                     await hold_sandbox(held)
                 if setup_commands:
                     for cmd in setup_commands:
-                        await sandbox.commands.run(cmd)
+                        await run_sandbox_command(sandbox, cmd)
 
             for path, data in (input_files or {}).items():
                 await sandbox.files.write(path, data)
@@ -220,7 +222,9 @@ class BaseE2BExecutorMixin:
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
             if extract_files:
-                ts_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+                ts_result = await run_sandbox_command(
+                    sandbox, "date -u +%Y-%m-%dT%H:%M:%S"
+                )
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code

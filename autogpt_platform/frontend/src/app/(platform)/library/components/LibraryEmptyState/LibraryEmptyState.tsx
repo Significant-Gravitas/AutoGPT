@@ -142,14 +142,14 @@ function Card({ x, y, width }: CardProps) {
         height={height}
         rx={radius}
         ry={radius}
-        className="fill-card stroke-border"
+        className="fill-surface stroke-border-base"
         strokeWidth={1}
       />
       <circle
         cx={x + padding + dotRadius}
         cy={y + height / 2}
         r={dotRadius}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + padding + dotRadius * 2 + 12}
@@ -158,7 +158,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 80}
@@ -167,7 +167,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 60}
@@ -176,7 +176,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={3}
         ry={3}
-        className="fill-border"
+        className="fill-border-base"
       />
       <rect
         x={x + width - padding - 40}
@@ -185,7 +185,7 @@ function Card({ x, y, width }: CardProps) {
         height={12}
         rx={6}
         ry={6}
-        className="fill-border"
+        className="fill-border-base"
       />
     </g>
   );

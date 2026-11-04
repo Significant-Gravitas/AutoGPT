@@ -21,7 +21,9 @@ on:
       - ".github/scripts/test_frontend_ci_env.py"
       - ".github/scripts/verify_smoke_shards.py"
       - ".github/scripts/test_verify_smoke_shards.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
@@ -111,8 +113,7 @@ jobs:
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
-        working-directory: autogpt_platform/backend
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Set up Frontend - Export OpenAPI schema from Backend
         working-directory: autogpt_platform/backend
