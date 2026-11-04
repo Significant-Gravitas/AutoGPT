@@ -94,7 +94,10 @@ def _address(entry: str) -> IPAddress | None:
     """The address in a forwarded entry, without a port."""
     host = entry.strip()
     if host.startswith("["):
-        host = host[1:].partition("]")[0]
+        host, bracket, rest = host[1:].partition("]")
+        # As in uvicorn, only a port may follow the bracket.
+        if not bracket or (rest and not rest.startswith(":")):
+            return None
     elif host.count(":") == 1:
         host = host.partition(":")[0]
     # No IPv4-mapped unwrap: uvicorn matches ::ffff:a.b.c.d only against IPv6 ranges.

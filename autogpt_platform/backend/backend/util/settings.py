@@ -1194,9 +1194,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     @classmethod
     def validate_trusted_proxies(cls, v: str) -> str:
         """Refuse to start on an entry no reader could match, rather than walk
-        past nothing and put every caller behind the proxy in one bucket."""
-        parse_trusted_proxies(v)
-        return v
+        past nothing and put every caller behind the proxy in one bucket.
+        A value listing no proxy (only commas or spaces) is unset, as the
+        frontend and the container read it."""
+        return v if parse_trusted_proxies(v) else ""
 
     @field_validator("trusted_frontend_origins")
     @classmethod

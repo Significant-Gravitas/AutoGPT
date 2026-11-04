@@ -55,6 +55,9 @@ def test_the_client_is_the_first_unlisted_hop_from_the_right(
         # What no listed proxy vouched for ends the walk at the nearest one.
         ("not-an-ip", NGINX),
         (f"{CLIENT}, garbage, {HOST_PROXY}", HOST_PROXY),
+        # A bracket closed by anything but a port, or never closed, is not an address.
+        (f"{CLIENT}, [{HOST_PROXY}]junk", NGINX),
+        (f"{CLIENT}, [{HOST_PROXY}", NGINX),
         # Only listed hops: the request started at the leftmost of them.
         (f"{HOST_PROXY}, 172.18.9.9", HOST_PROXY),
     ],
@@ -95,6 +98,12 @@ def test_an_entry_that_is_not_an_address_or_range_refuses_to_start(
 ) -> None:
     with pytest.raises(ValidationError, match="TRUSTED_PROXIES takes IP addresses"):
         Config(trusted_proxies=value)
+
+
+@pytest.mark.parametrize("value", [",", " , ", " ,, "])
+def test_a_value_that_lists_no_proxy_is_unset(value: str) -> None:
+    """Every reader then keeps its fallback, as the frontend and container do."""
+    assert Config(trusted_proxies=value).trusted_proxies == ""
 
 
 @pytest.mark.parametrize(
