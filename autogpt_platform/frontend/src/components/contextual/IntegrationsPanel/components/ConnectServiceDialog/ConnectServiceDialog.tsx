@@ -23,6 +23,8 @@ interface Props {
   description?: string;
   onConnected?: (credential: CredentialsMetaResponse) => void;
   initialProviderId?: string | null;
+  /** Opens with the service search already filled in. */
+  initialQuery?: string;
   preferMcp?: boolean;
 }
 
@@ -55,6 +57,7 @@ export function ConnectServiceDialog({
   description = DEFAULT_DESCRIPTION,
   onConnected,
   initialProviderId,
+  initialQuery,
   preferMcp,
 }: Props) {
   const {
@@ -77,6 +80,7 @@ export function ConnectServiceDialog({
     onOpenChange,
     onConnected,
     initialProviderId,
+    initialQuery,
   });
 
   const reduceMotion = useReducedMotion();

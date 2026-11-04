@@ -228,7 +228,8 @@ services:
         && exec /var/lib/falkordb/bin/run.sh "$$@"
       - --
     volumes:
-      - falkordb_data:/data
+      # The image's data dir (FALKORDB_DATA_PATH); its /data holds only a symlink to it.
+      - falkordb_data:/var/lib/falkordb/data
     networks:
       - app-network
     healthcheck:

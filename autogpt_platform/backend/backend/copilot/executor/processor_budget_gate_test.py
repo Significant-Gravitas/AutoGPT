@@ -243,6 +243,7 @@ def credits(mocker) -> MagicMock:
     db.spend_credits = AsyncMock(return_value=0)
     db.get_org_credits = AsyncMock(return_value=0)
     db.spend_org_credits = AsyncMock(return_value=0)
+    db.get_personal_org_owner = AsyncMock(return_value=None)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
     # A deployment that bills credits, on a route the SDK engine can take.
     mocker.patch(_CREDITS_ON, True)

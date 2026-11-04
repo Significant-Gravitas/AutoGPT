@@ -30,8 +30,8 @@ export function PausedCardActions({ card, onStop }: Props) {
     <div className="flex flex-wrap items-center gap-2 border-t border-separator px-5 py-3">
       {resume.resumesAt && (
         <div className="flex items-center gap-1.5 pr-1">
-          <Icon icon={Clock01Icon} size={14} className="text-brand" />
-          <Text variant="small-medium" className="!text-foreground-body">
+          <Icon icon={Clock01Icon} size={14} tone="brand" />
+          <Text tone="body" variant="small-medium">
             Resumes {resetAt(resume.resumesAt, card.now)}
           </Text>
           <Button
@@ -39,7 +39,7 @@ export function PausedCardActions({ card, onStop }: Props) {
             onClick={() => void resume.cancelResume()}
             loading={resume.isCancelling}
             disabled={isBusy}
-            className="ml-1 text-sm"
+            className="ml-1"
           >
             Cancel
           </Button>

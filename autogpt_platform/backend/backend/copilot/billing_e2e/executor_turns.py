@@ -134,7 +134,6 @@ class SdkTurnsViaExecutor(SdkTurns):
 
     def _stubs(self, session: ChatSession) -> dict[str, Any]:
         stubs = super()._stubs(session)
-        del stubs["get_user_tier"]
         del stubs["resolve_turn_budget"]
         if self._tools:
             del stubs["create_copilot_mcp_server"]

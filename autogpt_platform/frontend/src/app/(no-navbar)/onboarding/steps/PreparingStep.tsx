@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
+import { cn } from "@/lib/utils";
 import {
   ChecklistMark,
   type ChecklistState,
@@ -34,8 +35,8 @@ export function PreparingStep({ onComplete }: Props) {
 
       <div className="h-0.5 w-full overflow-hidden bg-surface-hover">
         <div
-          className="h-full bg-action-hover transition-all duration-100 ease-linear"
-          style={{ width: `${progress}%` }}
+          className="h-full w-[var(--progress)] bg-action-hover transition-all duration-100 ease-linear"
+          style={{ "--progress": `${progress}%` } as React.CSSProperties}
         />
       </div>
 
@@ -45,14 +46,17 @@ export function PreparingStep({ onComplete }: Props) {
           return (
             <li key={item} className="flex items-center gap-3">
               <ChecklistMark key={state} state={state} />
-              <Text
-                variant={state === "active" ? "large-medium" : "large"}
-                as="span"
-                tone={state === "pending" ? "muted" : "primary"}
-                className="transition-colors"
+              <span
+                className={cn(
+                  "font-sans text-body-lg transition-colors",
+                  state === "active" ? "font-medium" : "font-normal",
+                  state === "pending"
+                    ? "text-foreground-tertiary"
+                    : "text-foreground-strong",
+                )}
               >
                 {item}
-              </Text>
+              </span>
             </li>
           );
         })}
