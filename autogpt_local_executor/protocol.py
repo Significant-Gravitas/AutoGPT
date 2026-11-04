@@ -51,6 +51,9 @@ def _split_version(v: str) -> tuple[int, int]:
     parts = v.split(".")
     if len(parts) != 2:
         raise ValueError(f"protocol version must be 'major.minor', got {v!r}")
+    # int() would also take signs, spaces, underscores and non-ASCII digits.
+    if not all(part.isascii() and part.isdigit() for part in parts):
+        raise ValueError(f"protocol version components must be ASCII digits, got {v!r}")
     try:
         return int(parts[0]), int(parts[1])
     except (TypeError, ValueError) as exc:
