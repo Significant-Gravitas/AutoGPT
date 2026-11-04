@@ -113,24 +113,34 @@ describe("sanitizeAuthNext", () => {
   });
 });
 
-// SECRT-3384: `/login?next=/home` is where every signed-out visit to the app
-// root lands. Such a `next` names no page the user chose, so it must not send
-// someone who hasn't finished onboarding to Home.
+// `/login?next=/home` is where every signed-out visit to the app root lands.
+// Such a `next` names no page the user chose, so it must not send someone who
+// hasn't finished onboarding to Home.
 describe("isDefaultLanding", () => {
-  test.each(["/", "/home", "/home/", "/home?", "/home#"])(
-    "%s is a default landing",
-    (value) => {
-      expect(isDefaultLanding(value)).toBe(true);
-    },
-  );
+  test.each([
+    "/",
+    "/home",
+    "/home/",
+    "/home?",
+    "/home#",
+    "/?ref=newsletter",
+    "/#top",
+    "/home?utm_source=newsletter&utm_campaign=launch",
+    "/home?gclid=abc",
+    "/home?fbclid=abc&ref=x",
+  ])("%s is a default landing", (value) => {
+    expect(isDefaultLanding(value)).toBe(true);
+  });
 
   test.each([
     "/home?sessionId=abc",
+    "/home?sessionId=abc&utm_source=newsletter",
+    "/home?autosubmit=true",
     "/home#chat",
-    "/?ref=newsletter",
     "/homework",
     "/home/settings",
     "/library",
+    "/library?utm_source=newsletter",
     "/marketplace/agent/autogpt/some-workflow",
     "/onboarding",
   ])("%s is not", (value) => {
@@ -139,12 +149,17 @@ describe("isDefaultLanding", () => {
 });
 
 describe("getAuthDeepLink", () => {
-  test.each(["/", "/home", "/home/", "/copilot", "/copilot/"])(
-    "drops the default landing %s so onboarding decides",
-    (value) => {
-      expect(getAuthDeepLink(value)).toBeNull();
-    },
-  );
+  test.each([
+    "/",
+    "/home",
+    "/home/",
+    "/copilot",
+    "/copilot/",
+    "/copilot?utm_source=newsletter",
+    "/home?utm_campaign=launch",
+  ])("drops the default landing %s so onboarding decides", (value) => {
+    expect(getAuthDeepLink(value)).toBeNull();
+  });
 
   test("drops what sanitizeAuthNext drops", () => {
     expect(getAuthDeepLink(null)).toBeNull();

@@ -36,9 +36,7 @@ export function useLoginPage() {
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/login?next=https://phishing.site` cannot redirect users elsewhere. A
-  // default landing (`next=/home`) is dropped too, so a user who has not
-  // finished onboarding goes there instead of Home (SECRT-3384).
+  // `/login?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = getAuthDeepLink(searchParams.get("next"));
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),

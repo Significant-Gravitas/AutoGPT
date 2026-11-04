@@ -1,5 +1,13 @@
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import {
   act,
   render,
@@ -17,6 +25,7 @@ import { Key } from "@/services/storage/local-storage";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useState } from "react";
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
@@ -327,10 +336,26 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
   });
 });
 
-// SECRT-3384: a new account has 0 credits until onboarding sets up its plan.
-// Neither prompt may show on Home before onboarding is known to be done, and
-// the once-a-day auto-open must not be used up on the way to it.
+// A new account has 0 credits until onboarding sets up its plan. Neither
+// prompt may show before onboarding is known to be done, and the once-a-day
+// auto-open must not be used up on the way to it.
 describe("TopUpPromptProvider before onboarding is finished", () => {
+  function OnboardingAnswer() {
+    const { isOnboardingComplete } = useOnboarding();
+    return <span>onboarding {String(isOnboardingComplete)}</span>;
+  }
+
+  function renderWithAnswer() {
+    return render(
+      <>
+        {providerTree()}
+        <OnboardingAnswer />
+      </>,
+    );
+  }
+
+  // Lets the credit responses already received reach the tree; the
+  // assertions after it are absences, which no event can announce.
   function settle() {
     return act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   }
@@ -349,11 +374,12 @@ describe("TopUpPromptProvider before onboarding is finished", () => {
       threshold: 0,
     });
 
-    renderProvider();
+    renderWithAnswer();
 
     await screen.findByText("ready");
     await waitForCreditsFetch();
     await waitFor(() => expect(onboardingChecked).toBe(true));
+    await screen.findByText("onboarding false");
     await settle();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
@@ -366,6 +392,8 @@ describe("TopUpPromptProvider before onboarding is finished", () => {
     const onboardingAnswer = new Promise<void>((resolve) => {
       releaseOnboardingCheck = resolve;
     });
+    // Never leave the request open past the test, whatever fails first.
+    onTestFinished(() => releaseOnboardingCheck());
     let onboardingRequested = false;
     server.use(
       getGetV1CheckIfOnboardingIsCompletedMockHandler(async () => {
@@ -380,12 +408,13 @@ describe("TopUpPromptProvider before onboarding is finished", () => {
       threshold: 0,
     });
 
-    renderProvider();
+    renderWithAnswer();
 
     await screen.findByText("ready");
     await waitForCreditsFetch();
     await waitFor(() => expect(onboardingRequested).toBe(true));
     await settle();
+    expect(screen.getByText("onboarding null")).toBeDefined();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
     expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
@@ -393,6 +422,7 @@ describe("TopUpPromptProvider before onboarding is finished", () => {
 
     releaseOnboardingCheck();
 
+    expect(await screen.findByText("onboarding true")).toBeDefined();
     expect(
       await screen.findByText(/keep your workflows and experts/i),
     ).toBeDefined();

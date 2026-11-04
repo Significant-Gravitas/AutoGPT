@@ -31,33 +31,26 @@ export function sanitizeAuthNext(
   return rawNext.replace(/^\/copilot\/?(?=[?#]|$)/, "/home");
 }
 
-// Where a signed-in user lands when nothing else was asked for. The middleware
-// still sends a signed-out visit to `/` or `/home` through `/login?next=/home`,
-// so such a `next` names no page the user chose (SECRT-3384).
 const DEFAULT_LANDING_PATHS = new Set(["/", "/home", "/home/"]);
+// Keys that only say where a visit came from; Home reads none of them.
+const TRACKING_PARAM =
+  /^(utm_.*|gclid|gbraid|wbraid|fbclid|msclkid|ttclid|twclid|li_fat_id|mc_cid|mc_eid|ref|_gl)$/i;
 
-/**
- * True when `next` (already sanitized) only points at a default landing page:
- * `/` or `/home` (which `/copilot` maps to) with no query or hash. Anything
- * more specific, like `/home?sessionId=…`, is a real deep link.
- */
+// `/` (which drops its query) or `/home` with nothing but tracking params.
 export function isDefaultLanding(next: string): boolean {
   const url = new URL(next, "http://localhost");
-  return (
-    DEFAULT_LANDING_PATHS.has(url.pathname) && url.search === "" && !url.hash
-  );
+  if (!DEFAULT_LANDING_PATHS.has(url.pathname)) return false;
+  if (url.pathname === "/") return true;
+  if (url.hash) return false;
+  return [...url.searchParams.keys()].every((key) => TRACKING_PARAM.test(key));
 }
 
 /**
- * The page an auth flow must send the user to instead of its usual
- * destination, or `null` to route by onboarding state (`/onboarding` for a
- * user who has not finished it, else `/home`). A default landing is `null`
- * too: honouring `next=/home` would put a brand-new user on Home, with its
- * paywall and out-of-credits prompts, before onboarding.
- *
- * Every place that decides whether a deep link is pending (the auth pages,
- * `/auth/callback` and OnboardingProvider) must use this, or one of them
- * waits on a redirect the other never makes.
+ * The page an auth flow must send the user to, or `null` to route by
+ * onboarding state. A default landing is `null` too, so a user who hasn't
+ * finished onboarding is never sent to Home first. Every place that decides
+ * whether a deep link is pending must use this, or one waits on a redirect
+ * the other never makes.
  */
 export function getAuthDeepLink(
   rawNext: string | null | undefined,

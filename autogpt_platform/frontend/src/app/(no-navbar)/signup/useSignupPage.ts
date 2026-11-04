@@ -36,9 +36,7 @@ export function useSignupPage() {
   const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/signup?next=https://phishing.site` cannot redirect users elsewhere. A
-  // default landing (`next=/home`) is dropped too, so a new account goes to
-  // onboarding instead of Home (SECRT-3384).
+  // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = getAuthDeepLink(searchParams.get("next"));
 
   useEffect(() => {

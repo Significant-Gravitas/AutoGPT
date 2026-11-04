@@ -108,8 +108,6 @@ export async function GET(request: Request) {
       // Prefer a sanitized ?next (relative paths only — getAuthDeepLink drops
       // absolute and protocol-relative values, so a crafted ?next can't
       // open-redirect the user off-site); otherwise route by onboarding state.
-      // A default landing (`next=/home`) routes by onboarding state too, so a
-      // new account never lands on Home first (SECRT-3384).
       // Resolve the final target BEFORE revalidating so we revalidate the page
       // the user actually lands on.
       next =

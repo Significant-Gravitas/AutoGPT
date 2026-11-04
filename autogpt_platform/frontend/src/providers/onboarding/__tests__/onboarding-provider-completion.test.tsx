@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api";
 import OnboardingProvider, { useOnboarding } from "../onboarding-provider";
 
-// SECRT-3384: the paywall and the out-of-credits prompt wait for
+// The paywall and the out-of-credits prompt wait for
 // `isOnboardingComplete === true`, so it must be `null` until known, `false`
 // for an unfinished user, and reach `true` once the wizard is done.
 
@@ -149,46 +149,73 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     expect(backend.completionChecks).toBe(0);
   });
 
-  test("a different account in the same tab does not inherit the answer", async () => {
+  test("another account signed in on the same tab gets its own answer, never the last one's", async () => {
+    mockPathname = "/marketplace";
     backend.isCompleted = true;
     const view = render(tree());
     await waitFor(() => expect(completion()).toBe("true"));
 
+    // Signed out and back in as someone else without a reload (e.g. from
+    // another tab while this one sat on a public page).
+    mockUserID = null;
+    view.rerender(tree());
+    expect(completion()).toBe("null");
+    backend.isCompleted = false;
     mockUserID = "user-b";
     view.rerender(tree());
 
-    expect(completion()).toBe("null");
+    await waitFor(() => expect(completion()).toBe("false"));
+    expect(backend.completionChecks).toBe(2);
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
   });
 
-  test("leaving the wizard after finishing it re-reads onboarding, so the prompts can show", async () => {
+  test("finishing the wizard is picked up on the next page even without the websocket notice", async () => {
     mockPathname = "/onboarding";
     const view = render(tree());
     await waitFor(() => expect(completion()).toBe("false"));
-    const readsInWizard = backend.stateReads;
 
-    // The wizard posted ONBOARDING_COMPLETE, but the websocket notice never
-    // arrived; it now sends the user to /home.
+    // The wizard posted ONBOARDING_COMPLETE and sends the user to /home.
+    backend.isCompleted = true;
     backend.completedSteps = ["ONBOARDING_COMPLETE"];
     mockPathname = "/home";
     view.rerender(tree());
 
     await waitFor(() => expect(completion()).toBe("true"));
-    expect(backend.stateReads).toBe(readsInWizard + 1);
+    expect(backend.completionChecks).toBe(2);
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
-  test("leaving the wizard unfinished (e.g. to log out) stays false and does not redirect", async () => {
+  test.each(["/marketplace", "/home", "/library"])(
+    "an unfinished user who leaves the wizard for %s is sent back to it",
+    async (path) => {
+      mockPathname = "/onboarding";
+      const view = render(tree());
+      await waitFor(() => expect(completion()).toBe("false"));
+      expect(routerReplace).not.toHaveBeenCalled();
+
+      mockPathname = path;
+      view.rerender(tree());
+
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+      );
+      expect(completion()).toBe("false");
+    },
+  );
+
+  test("signing out from the wizard is not bounced back into it", async () => {
     mockPathname = "/onboarding";
     const view = render(tree());
     await waitFor(() => expect(completion()).toBe("false"));
-    const readsInWizard = backend.stateReads;
+    const checksInWizard = backend.completionChecks;
 
     mockPathname = "/logout";
     view.rerender(tree());
-
-    await waitFor(() => expect(backend.stateReads).toBe(readsInWizard + 1));
     await act(async () => {});
-    expect(completion()).toBe("false");
+
+    expect(backend.completionChecks).toBe(checksInWizard);
     expect(routerReplace).not.toHaveBeenCalled();
   });
 

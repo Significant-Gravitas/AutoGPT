@@ -42,6 +42,21 @@ export function hasCompletedOnboarding(completedSteps: string[]): boolean {
   return completedSteps.includes(ONBOARDING_COMPLETE);
 }
 
+export interface OnboardingCompletion {
+  userID: string | null;
+  isCompleted: boolean;
+}
+
+// The same object when nothing changed, so consumers don't re-render.
+export function withCompletion(
+  prev: OnboardingCompletion | null,
+  next: OnboardingCompletion,
+): OnboardingCompletion {
+  return prev?.userID === next.userID && prev.isCompleted === next.isCompleted
+    ? prev
+    : next;
+}
+
 export function shouldRedirectFromOnboarding(
   completedSteps: string[],
   pathname: string,

@@ -11,11 +11,10 @@ import {
 // A new account must still go straight to onboarding: Home, the paywall and
 // the out-of-credits prompt are never shown on the way.
 //
-// The journeys open `/home`, the second hop: the middleware turns it into the
-// same `/login?next=/home` on the server. Opening `/` adds a client-side hop
-// whose full-page bounce to /login can cut off the auth store's start-up
-// request ("Get user error: Failed to fetch"), which has nothing to do with
-// where a new account lands.
+// The paywall never gates a LOCAL build (CI's journeys leg), so there only
+// the out-of-credits prompt and the pages visited can fail these; against a
+// CLOUD build (a `!deploy` preview) the paywall check counts too.
+// PaywallGate.test.tsx covers the paywall's own gate.
 
 const PROMPTS = {
   outOfCredits: "out of automation credits",
@@ -28,13 +27,13 @@ const PROMPTS = {
 test.use({ extraHTTPHeaders: authHeaders() });
 
 test.describe("a new account goes to onboarding first", () => {
-  test("signing up from a signed-out visit to Home lands on onboarding without Home, the paywall or the out-of-credits prompt", async ({
+  test("signing up from the app root lands on onboarding without Home, the paywall or the out-of-credits prompt", async ({
     page,
     context,
   }) => {
     const seen = await watchTheWayIn(context, page);
 
-    await page.goto("/home");
+    await page.goto("/");
     await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
     await page.getByRole("link", { name: "Sign up" }).click();
     await expect(page).toHaveURL(/\/signup\?next=%2Fhome$/);
@@ -50,14 +49,14 @@ test.describe("a new account goes to onboarding first", () => {
     seen.expectNothingOnTheWay();
   });
 
-  test("logging in from a signed-out visit to Home before finishing onboarding lands on onboarding", async ({
+  test("logging in from the app root before finishing onboarding lands on onboarding", async ({
     page,
     context,
   }) => {
     const user = await signUpWithoutOnboarding(page);
     const seen = await watchTheWayIn(context, page);
 
-    await page.goto("/home");
+    await page.goto("/");
     await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
     await page.getByLabel("Email").fill(user.email);
     await page.getByLabel("Password", { exact: true }).fill(user.password);
@@ -83,6 +82,7 @@ test.describe("a new account goes to onboarding first", () => {
     expect(setup.ok(), `account setup failed: ${setup.status()}`).toBe(true);
 
     const seen = await watchTheWayIn(context, page);
+    await answerOnboardingCheckLast(page);
     seen.startCounting();
     await page.goto("/home");
 
@@ -91,6 +91,45 @@ test.describe("a new account goes to onboarding first", () => {
     seen.expectNoPrompts();
   });
 });
+
+// Holds the onboarding check until Home has its credit and payment answers,
+// so a prompt that doesn't wait for onboarding opens on every run, not only
+// when the check happens to come back last.
+async function answerOnboardingCheckLast(page: Page) {
+  const inputsLoaded = Promise.all(
+    [
+      "/api/proxy/api/credits",
+      "/api/proxy/api/credits/auto-top-up",
+      "/api/proxy/api/platform-config",
+    ].map((path) =>
+      page
+        .waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+          {
+            timeout: 20_000,
+          },
+        )
+        .then((response) => response.finished())
+        .catch(() => null),
+    ),
+  );
+  await page.route("**/api/proxy/api/onboarding/completed", async (route) => {
+    await inputsLoaded;
+    // Two frames, so React has rendered what those answers trigger.
+    await route
+      .request()
+      .frame()
+      .evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          ),
+      )
+      .catch(() => {});
+    // Not continue(): that skips the shared fixture's routes.
+    await route.fallback();
+  });
+}
 
 async function expectOnboardingStarted(page: Page) {
   await expect(page).toHaveURL(/\/onboarding/);

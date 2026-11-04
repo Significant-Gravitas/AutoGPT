@@ -40,7 +40,9 @@ import {
   LocalOnboardingStateUpdate,
   shouldRedirectFromOnboarding,
   updateOnboardingState,
+  withCompletion,
 } from "./helpers";
+import { useOnboardingCompletion } from "./useOnboardingCompletion";
 import { AuthDeepLinkWatcher } from "./AuthDeepLinkWatcher";
 import isEqual from "lodash/isEqual";
 
@@ -96,11 +98,10 @@ export function useOnboarding(
 // with the same helper the auth pages use — otherwise an unsafe value (e.g.
 // `?next=https://evil.site`) or a default landing (`?next=/home`) would defer
 // us here while the auth page drops it as `null`, deadlocking the user on the
-// auth loader. Read from the location
-// (only ever inside an effect, after Next has committed the URL) instead of
-// useSearchParams, which would re-render this app-root provider on every
-// search-param write anywhere in the app. AuthDeepLinkWatcher re-runs the
-// effect when `next` changes on an auth route.
+// auth loader. Read from the location (only ever inside an effect, after Next
+// has committed the URL) instead of useSearchParams, which would re-render
+// this app-root provider on every search-param write anywhere in the app.
+// AuthDeepLinkWatcher re-runs the effect when `next` changes on an auth route.
 function readPendingAuthDeepLink(isOnAuthRoute: boolean) {
   if (!isOnAuthRoute) return false;
   const next = new URLSearchParams(window.location.search).get("next");
@@ -129,18 +130,16 @@ export default function OnboardingProvider({
   const { isLoggedIn, user } = useAuth();
   const userID = user?.id ?? null;
   const latestUserID = useRef(userID);
-  // Tagged with the account it was read for, so one account's answer never
-  // lets the paywall or top-up prompt open for the next one in this tab.
-  const [completion, setCompletion] = useState<{
-    userID: string | null;
-    isCompleted: boolean;
-  } | null>(null);
-  const isOnboardingComplete =
-    isLoggedIn && completion?.userID === userID ? completion.isCompleted : null;
+  const { isOnboardingComplete, setCompletion } = useOnboardingCompletion({
+    isLoggedIn,
+    userID,
+  });
 
   useOnboardingTimezoneDetection();
 
+  // Another account signed in on this tab needs its own answer.
   useEffect(() => {
+    if (latestUserID.current !== userID) hasInitialized.current = false;
     latestUserID.current = userID;
   }, [userID]);
 
@@ -174,23 +173,13 @@ export default function OnboardingProvider({
   // for un-onboarded users too: the link token expires in 30 minutes and the
   // wizard never returns here. Onboarding runs on the next navigation.
   const isOnPlatformLinkRoute = pathname.startsWith("/link/");
+  // Signing out from the wizard must not bounce the user back into it.
+  const isOnLogoutRoute = pathname.startsWith("/logout");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
   // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
   const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
-
-  const recordCompletion = useCallback(
-    (forUserID: string | null, isCompleted: boolean) => {
-      if (!isMounted.current) return;
-      setCompletion((prev) =>
-        prev?.userID === forUserID && prev.isCompleted === isCompleted
-          ? prev
-          : { userID: forUserID, isCompleted },
-      );
-    },
-    [],
-  );
 
   const fetchOnboarding = useCallback(async () => {
     const requestUserID = latestUserID.current;
@@ -202,14 +191,15 @@ export default function OnboardingProvider({
       setState((prev) =>
         isEqual(prev, processedOnboarding) ? prev : processedOnboarding,
       );
-      // Only ever upgrades: this is how the wizard's finish reaches us. A
-      // "not complete" answer comes from the completion check in the init.
+      // Only ever upgrades; "not complete" comes from the init's check.
       if (hasCompletedOnboarding(processedOnboarding.completedSteps)) {
-        recordCompletion(requestUserID, true);
+        setCompletion((prev) =>
+          withCompletion(prev, { userID: requestUserID, isCompleted: true }),
+        );
       }
     }
     return processedOnboarding;
-  }, [recordCompletion]);
+  }, [setCompletion]);
 
   // If a logged-in user navigates back to /signup or /login after the
   // initialize-once effect already ran (e.g., browser back from /onboarding,
@@ -221,6 +211,13 @@ export default function OnboardingProvider({
       hasInitialized.current = false;
     }
   }, [isLoggedIn, isOnAuthRoute]);
+
+  // An unfinished user who left the wizard (Back, a link) is sent back on
+  // their next page, as a full page load would.
+  const isKnownUnfinished = isOnboardingComplete === false;
+  useEffect(() => {
+    if (isKnownUnfinished) hasInitialized.current = false;
+  }, [isKnownUnfinished, pathname]);
 
   useEffect(() => {
     latestPathname.current = pathname;
@@ -234,7 +231,8 @@ export default function OnboardingProvider({
       !isLoggedIn ||
       isOnPublicTour ||
       isOnPasswordResetRoute ||
-      isOnPlatformLinkRoute
+      isOnPlatformLinkRoute ||
+      isOnLogoutRoute
     ) {
       return;
     }
@@ -255,7 +253,14 @@ export default function OnboardingProvider({
         const { is_completed } = await retryTransient(() =>
           resolveResponse(getV1CheckIfOnboardingIsCompleted()),
         );
-        recordCompletion(requestUserID, is_completed);
+        if (isMounted.current) {
+          setCompletion((prev) =>
+            withCompletion(prev, {
+              userID: requestUserID,
+              isCompleted: is_completed,
+            }),
+          );
+        }
 
         const redirectTarget = decideOnboardingRedirect({
           isCompleted: is_completed,
@@ -319,26 +324,11 @@ export default function OnboardingProvider({
     isOnPublicTour,
     isOnPasswordResetRoute,
     isOnPlatformLinkRoute,
+    isOnLogoutRoute,
     initRetry,
-    recordCompletion,
+    userID,
+    setCompletion,
   ]);
-
-  // The wizard ends by sending the user to /home, and its completion would
-  // otherwise only reach this provider through a websocket notification.
-  // Re-read it on the way out so a dropped socket can't keep the paywall and
-  // top-up prompt hidden for someone who did finish. Read only, no redirect:
-  // leaving for /logout must not bounce back into the wizard.
-  const wasOnOnboardingRoute = useRef(isOnOnboardingRoute);
-  useEffect(() => {
-    const hasLeftOnboarding =
-      wasOnOnboardingRoute.current && !isOnOnboardingRoute;
-    wasOnOnboardingRoute.current = isOnOnboardingRoute;
-    if (!hasLeftOnboarding || !isLoggedIn || isOnboardingComplete === true)
-      return;
-    retryTransient(fetchOnboarding).catch((error) => {
-      console.warn("Couldn't refresh onboarding after the wizard:", error);
-    });
-  }, [isOnOnboardingRoute, isLoggedIn, isOnboardingComplete, fetchOnboarding]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
