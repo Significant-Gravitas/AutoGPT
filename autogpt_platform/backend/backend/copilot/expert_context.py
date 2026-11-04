@@ -92,7 +92,7 @@ async def build_expert_identity_suffix(
     # The turn already checked this expert before it got here.
     check = checked_expert(user_id, expert_id)
     if check is None:
-        expert, personal_scope = await _read_private_expert(user_id, expert_id)
+        expert, personal_scope = await read_private_expert(user_id, expert_id)
     else:
         expert, personal_scope = check.expert, (check.organization_id, check.team_id)
     if (organization_id, team_id) != personal_scope:
@@ -102,10 +102,14 @@ async def build_expert_identity_suffix(
     return render_expert_identity_suffix(expert)
 
 
-async def _read_private_expert(
+async def read_private_expert(
     user_id: str, expert_id: str
 ) -> tuple[Expert, tuple[str, str | None]]:
-    """The expert's identity and its owner's personal scope, read fresh."""
+    """The expert's identity and its owner's personal scope, read fresh with
+    ``get_expert`` and ``resolve_private_expert_tenancy``, the routes every
+    database manager has. Raises ``ExpertSessionUnavailableError`` when the
+    expert isn't the owner's active PRIVATE expert or its scope can't be
+    resolved."""
     expert = await _load_expert_identity(user_id, expert_id)
     if expert is None or expert.is_archived:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)

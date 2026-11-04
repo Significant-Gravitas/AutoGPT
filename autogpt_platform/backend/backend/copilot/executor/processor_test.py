@@ -272,6 +272,17 @@ def _checked_expert(
     )
 
 
+@contextmanager
+def _expert_reads(store: MagicMock) -> Iterator[None]:
+    """Answer the turn's expert reads from *store*: its check's one attempt
+    (``expert_check_db``) and every other read (``experts_db``)."""
+    with (
+        patch("backend.data.db_accessors.experts_db", return_value=store),
+        patch("backend.data.db_accessors.expert_check_db", return_value=store),
+    ):
+        yield
+
+
 def _make_entry() -> CoPilotExecutionEntry:
     return CoPilotExecutionEntry(
         session_id="sess-1",
@@ -578,7 +589,7 @@ async def test_a_turn_held_for_a_hires_setup_is_charged_to_the_plan_after_it() -
             "backend.copilot.model.get_chat_session",
             new=AsyncMock(return_value=session),
         ),
-        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        _expert_reads(expert_store),
         patch(
             "backend.copilot.model.upsert_chat_session",
             new=AsyncMock(side_effect=lambda value, **_kwargs: value),
@@ -859,10 +870,7 @@ class TestExecuteAsyncAclose:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=session),
             ) as get_session_mock,
-            patch(
-                "backend.data.db_accessors.experts_db",
-                return_value=expert_store,
-            ),
+            _expert_reads(expert_store),
             patch("backend.copilot.model.upsert_chat_session", new=upsert),
         ):
             await CoPilotProcessor()._execute_async(
@@ -968,10 +976,7 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
             new=AsyncMock(),
         ),
         patch("backend.copilot.model.get_chat_session", new=get_session),
-        patch(
-            "backend.data.db_accessors.experts_db",
-            return_value=expert_store,
-        ),
+        _expert_reads(expert_store),
         patch("backend.copilot.model.chat_db", return_value=session_db),
         patch("backend.copilot.model._save_session_to_db", new=save_to_db),
         patch("backend.copilot.model._get_session_lock", new=session_lock),
@@ -1023,10 +1028,7 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
     upsert = AsyncMock()
 
     with (
-        patch(
-            "backend.data.db_accessors.experts_db",
-            return_value=expert_store,
-        ),
+        _expert_reads(expert_store),
         patch("backend.copilot.model.upsert_chat_session", new=upsert),
     ):
         result = await _normalize_private_expert_session_tenancy(session)
@@ -1117,10 +1119,7 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
             "backend.copilot.model.get_chat_session",
             new=AsyncMock(return_value=session),
         ),
-        patch(
-            "backend.data.db_accessors.experts_db",
-            return_value=expert_store,
-        ),
+        _expert_reads(expert_store),
         patch("backend.copilot.model.upsert_chat_session", new=upsert),
     ):
         await CoPilotProcessor()._execute_async(
@@ -1206,10 +1205,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
             "backend.copilot.model.get_chat_session",
             new=AsyncMock(return_value=session),
         ),
-        patch(
-            "backend.data.db_accessors.experts_db",
-            return_value=expert_store,
-        ),
+        _expert_reads(expert_store),
         patch("backend.copilot.model.upsert_chat_session", new=upsert),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_dummy",
@@ -1283,10 +1279,7 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
             "backend.copilot.model.get_chat_session",
             new=AsyncMock(return_value=session),
         ),
-        patch(
-            "backend.data.db_accessors.experts_db",
-            return_value=expert_store,
-        ),
+        _expert_reads(expert_store),
         patch(
             "backend.copilot.executor.processor.stream_chat_completion_dummy",
             dummy_engine,
@@ -1396,7 +1389,7 @@ class TestExpertTurnsCheckTheirExpert:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=session),
             ),
-            patch("backend.data.db_accessors.experts_db", return_value=store),
+            _expert_reads(store),
             patch("backend.copilot.expert_context.experts_db", return_value=store),
             patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0),
         ):
@@ -1567,7 +1560,7 @@ class TestExpertTurnsCheckTheirExpert:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=self._session()),
             ),
-            patch("backend.data.db_accessors.experts_db", return_value=store),
+            _expert_reads(store),
             patch("backend.copilot.expert_context.experts_db", return_value=store),
             patch(
                 "backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS",
@@ -1728,7 +1721,7 @@ class TestExpertTurnsCheckTheirExpert:
                 "backend.copilot.model.get_chat_session",
                 new=AsyncMock(return_value=self._session()),
             ),
-            patch("backend.data.db_accessors.experts_db", return_value=store),
+            _expert_reads(store),
             patch("backend.copilot.expert_context.experts_db", return_value=store),
             patch(
                 "backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS",

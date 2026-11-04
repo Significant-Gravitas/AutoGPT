@@ -185,6 +185,7 @@ async def _run_block_turn(
                 {"new": AsyncMock(return_value=session)},
             ),
             ("backend.data.db_accessors.experts_db", {"return_value": store}),
+            ("backend.data.db_accessors.expert_check_db", {"return_value": store}),
             ("backend.copilot.expert_context.experts_db", {"return_value": store}),
             (f"{_PROCESSOR}.EXPERT_SETUP_WAIT_SECONDS", {"new": wait_seconds}),
             (f"{_PROCESSOR}.EXPERT_SETUP_POLL_SECONDS", {"new": 0}),

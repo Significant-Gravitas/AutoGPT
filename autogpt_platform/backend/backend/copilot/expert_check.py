@@ -3,7 +3,9 @@
 Before an expert's turn runs, the executor checks the expert with
 ``check_private_expert``: that it is still the owner's own active PRIVATE
 expert, which personal organization and team its work belongs to, how far a
-fresh hire's setup got, and the columns its identity prompt is built from.
+fresh hire's setup got, and the columns its identity prompt is built from. A
+database manager from before that route, met mid-rollout, is asked the same
+through the separate reads its release makes (``read_private_expert``).
 Inside :func:`sharing_expert_checks` the turn remembers that check, and the
 hire-setup wait and the identity prompt use it instead of reading the expert
 again. Each turn opens its own share, so no turn sees another's check, and a

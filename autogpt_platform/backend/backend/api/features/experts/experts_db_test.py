@@ -2511,16 +2511,20 @@ async def test_check_private_expert_reads_the_hire_and_its_owners_scope(
         check.organization_id,
         check.team_id,
     ) == await experts_db.resolve_private_expert_tenancy(test_user.id, hired.expert.id)
-    for user_id, expert_id in (
-        (other_user.id, hired.expert.id),
-        (test_user.id, template.id),
-    ):
+    refused = [(other_user.id, hired.expert.id), (test_user.id, template.id)]
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    refused.append((test_user.id, hired.expert.id))
+    for user_id, expert_id in refused:
         with pytest.raises(experts_db.ExpertNotFoundError):
             await experts_db.check_private_expert(user_id, expert_id)
-
-    await experts_db.archive_expert(test_user.id, hired.expert.id)
-    with pytest.raises(experts_db.ExpertNotFoundError):
-        await experts_db.check_private_expert(test_user.id, hired.expert.id)
+        # A database manager from before check_private_expert is asked with
+        # these two reads instead, and they refuse the same experts.
+        assert (
+            await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+            is None
+        )
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")

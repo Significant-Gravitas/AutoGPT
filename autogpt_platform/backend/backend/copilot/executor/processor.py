@@ -48,6 +48,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
+    read_private_expert,
 )
 from backend.copilot.llm_attribution import (
     set_turn_impersonated,
@@ -95,6 +96,7 @@ from backend.util.exceptions import (
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
+from backend.util.service import RETRYABLE_SERVICE_ERRORS
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .scheduled_turn_alert import ScheduledTurnWatch
@@ -311,14 +313,25 @@ async def _reauthorize_private_expert_after_setup_wait(
 
 
 async def _read_private_expert_check(user_id: str, expert_id: str) -> CheckedExpert:
-    from backend.data.db_accessors import experts_db
+    from backend.data.db_accessors import expert_check_db
 
     try:
-        return await experts_db().check_private_expert(user_id, expert_id)
+        return await expert_check_db().check_private_expert(user_id, expert_id)
     except ExpertNotFoundError as error:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from error
     except ExpertPrivateTenancyNotFoundError as error:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from error
+    except RETRYABLE_SERVICE_ERRORS as error:
+        # A database manager still on the release before check_private_expert
+        # has no such route, or the one attempt failed in transit: read the
+        # expert the way that release does, through routes every manager has.
+        logger.warning(
+            f"Expert #{expert_id} check read separately: {type(error).__name__}"
+        )
+    expert, (organization_id, team_id) = await read_private_expert(user_id, expert_id)
+    return CheckedExpert(
+        expert=expert, organization_id=organization_id, team_id=team_id
+    )
 
 
 async def _closing_at_model_output(
