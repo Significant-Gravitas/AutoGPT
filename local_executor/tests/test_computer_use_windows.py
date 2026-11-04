@@ -618,3 +618,98 @@ def test_a_clipboard_whose_reads_keep_failing_is_refused(tmp_path, monkeypatch) 
 
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+# ── Scrolling, key names and the window list ───────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("direction", "flag", "delta"),
+    [("down", 0x0800, -360), ("up", 0x0800, 360), ("left", 0x1000, -360), ("right", 0x1000, 360)],
+)
+def test_a_scroll_turns_the_wheel_whole_notches_at_the_point(
+    tmp_path, displays_1080p, monkeypatch, direction: str, flag: int, delta: int
+) -> None:
+    """pyautogui sends its amount as the raw wheel delta, where a notch is
+    120, so 3 scrolled 3/120 of a notch. Its hscroll turns the vertical wheel
+    on Windows, and it sends the event wherever the cursor already is."""
+    import ctypes
+
+    b = WindowsBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "display_info", lambda: displays_1080p)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    windll = MagicMock()
+    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+    events = MagicMock()
+    events.attach_mock(pyautogui.moveTo, "move")
+    events.attach_mock(windll.user32.mouse_event, "wheel")
+
+    b.input_action("scroll", coordinate=(100, 200), scroll_direction=direction, scroll_amount=3)
+
+    assert events.mock_calls == [call.move(100, 200), call.wheel(flag, 0, 0, delta, 0)]
+    pyautogui.scroll.assert_not_called()
+    pyautogui.hscroll.assert_not_called()
+
+
+def test_a_scroll_without_a_point_turns_the_wheel_where_the_cursor_is(
+    tmp_path, monkeypatch
+) -> None:
+    """Without a point, a left or right scroll turned the vertical wheel."""
+    import ctypes
+
+    b = WindowsBackend(_config(tmp_path))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    windll = MagicMock()
+    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+
+    b.input_action("scroll", scroll_direction="left", scroll_amount=2)
+
+    pyautogui.moveTo.assert_not_called()
+    windll.user32.mouse_event.assert_called_once_with(0x1000, 0, 0, -240, 0)
+
+
+@pytest.mark.parametrize("name", ["super", "meta", "Meta"])
+def test_super_and_meta_press_the_windows_key(tmp_path, monkeypatch, name: str) -> None:
+    """COMPUTER_USE.md makes meta an alias for super, the Windows key here.
+    Chords passed both names through, and pyautogui has no `meta`: it skips a
+    name it doesn't know without a word."""
+    b = WindowsBackend(_config(tmp_path))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    b.input_action("key", key=f"{name}+r")
+    b.input_action("hold_key", key=f"{name}+r", duration_ms=0)
+
+    pyautogui.hotkey.assert_called_once_with("win", "r")
+    assert pyautogui.keyDown.call_args_list == [call("win"), call("r")]
+
+
+def test_window_list_leaves_out_minimized_windows_unless_asked_and_never_hidden_ones(
+    tmp_path, monkeypatch
+) -> None:
+    """A minimized window keeps WS_VISIBLE, so it was listed by default, and
+    include_minimized=True let hidden and untitled helper windows in."""
+    windows = {
+        1: {"visible": True, "title": "Editor", "iconic": False},
+        2: {"visible": True, "title": "Minimized", "iconic": True},
+        3: {"visible": False, "title": "Hidden", "iconic": False},
+        4: {"visible": True, "title": "", "iconic": False},
+    }
+    win32gui = MagicMock()
+    win32gui.EnumWindows.side_effect = lambda enum, extra: [enum(h, extra) for h in windows]
+    win32gui.IsWindowVisible.side_effect = lambda h: windows[h]["visible"]
+    win32gui.GetWindowText.side_effect = lambda h: windows[h]["title"]
+    win32gui.IsIconic.side_effect = lambda h: windows[h]["iconic"]
+    win32gui.GetClassName.return_value = "Window"
+    win32gui.GetWindowRect.return_value = (0, 0, 100, 100)
+    win32gui.GetForegroundWindow.return_value = 1
+    win32process = MagicMock()
+    win32process.GetWindowThreadProcessId.return_value = (1, 4242)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    monkeypatch.setitem(sys.modules, "win32process", win32process)
+    b = WindowsBackend(_config(tmp_path))
+
+    assert [w.title for w in b.window_list()] == ["Editor"]
+    assert [w.title for w in b.window_list(include_minimized=True)] == ["Editor", "Minimized"]

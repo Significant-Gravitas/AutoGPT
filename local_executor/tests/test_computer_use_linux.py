@@ -555,3 +555,17 @@ def test_x11_without_xclip_types_rather_than_pasting_through_wl_copy(tmp_path, m
     pyautogui.hotkey.assert_not_called()
     assert "clipboard" not in b.coarse_features()
     assert "clipboard.write" not in b.features()
+
+
+@pytest.mark.parametrize("name", ["super", "meta"])
+def test_super_and_meta_press_the_super_key_on_x11(tmp_path, monkeypatch, name: str) -> None:
+    """pyautogui's X11 keys call the Super key `win`; chords passed `super`
+    and `meta` through, and it skips a name it doesn't know without a word."""
+    b = LinuxBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    b.input_action("key", key=f"{name}+l")
+
+    pyautogui.hotkey.assert_called_once_with("win", "l")

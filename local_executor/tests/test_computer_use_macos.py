@@ -1241,3 +1241,17 @@ def test_raising_a_window_fails_when_it_cannot_be_made_main(tmp_path, monkeypatc
     monkeypatch.setitem(sys.modules, "ApplicationServices", services)
 
     assert MacOSBackend(_config(tmp_path))._ax_raise(object()) is False
+
+
+@pytest.mark.parametrize("name", ["super", "meta"])
+def test_super_and_meta_press_command(tmp_path, monkeypatch, name: str) -> None:
+    """pyautogui's macOS keys have no `super` or `meta` and skip a name they
+    don't know, so `super+c` typed a plain c instead of copying."""
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    b.input_action("key", key=f"{name}+c")
+
+    pyautogui.hotkey.assert_called_once_with("command", "c")

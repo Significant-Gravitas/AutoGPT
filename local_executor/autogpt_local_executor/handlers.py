@@ -23,6 +23,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable, Iterator
@@ -282,6 +283,10 @@ def _is_link(path: Path) -> bool:
 _T = TypeVar("_T")
 
 
+class _NeverStarted(Exception):
+    """The job was cancelled while it still waited for a worker thread."""
+
+
 async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
     """Run a side effect in a worker thread, and finish it even if the task
     awaiting it is cancelled (SESSION_REVOKED, session teardown).
@@ -291,19 +296,32 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
     would never be written. The cancellation is held until the thread is
     done, then dropped, so the handler records what happened. Its reply
     goes nowhere: a revoked session refuses sends and a closed one fails
-    them. Requests still queued for a slot never get here and stay
-    cancelled.
+    them. A job still waiting for a thread when the cancel lands never
+    starts, and the task stays cancelled: nothing ran, so there is nothing
+    to record. Requests still queued for a slot never get here either.
     """
-    work = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
+    cancelled = threading.Event()
+
+    def run() -> _T:
+        if cancelled.is_set():
+            raise _NeverStarted
+        return func(*args, **kwargs)
+
+    work = asyncio.ensure_future(asyncio.to_thread(run))
     held = 0
     while True:
         try:
             result = await asyncio.shield(work)
             break
         except asyncio.CancelledError:
-            if work.done():
+            # Only `work` itself being cancelled (the loop shutting down) ends
+            # the wait; a change that finished as the cancel landed is returned.
+            if work.cancelled():
                 raise
+            cancelled.set()
             held += 1
+        except _NeverStarted:
+            raise asyncio.CancelledError from None
     task = asyncio.current_task()
     if task is not None:
         for _ in range(held):

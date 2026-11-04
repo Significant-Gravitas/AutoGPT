@@ -240,7 +240,7 @@ the platform to chunk a single agent intent across multiple wire ops:
     // New: modifiers held during click/scroll (mirrors Anthropic's "text" field)
     "modifiers": ["shift"],  // subset of: "shift" | "ctrl" | "alt" | "super"
 
-    // New: scroll amount instead of clicks (matches model semantics)
+    // New: scroll amount, in wheel notches, instead of clicks (matches model semantics)
     "scroll_amount": 3,
     "scroll_direction": "down",
 
@@ -447,7 +447,8 @@ the others — same posture for us.
 }
 ```
 
-On macOS, `include_minimized` also lists windows on other Spaces, and
+Hidden and untitled windows are never listed. On macOS,
+`include_minimized` also lists windows on other Spaces, and
 `is_minimized` is always false: telling the two apart needs each
 window's Accessibility state, which v1 does not read.
 

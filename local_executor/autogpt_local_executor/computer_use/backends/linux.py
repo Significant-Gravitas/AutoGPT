@@ -39,6 +39,7 @@ from ..errors import (
 from ..window_registry import WindowFingerprint
 from ._common import (
     capture_fields,
+    chord_keys,
     ensure_typeable,
     image_to_base64,
     in_any_rect,
@@ -47,6 +48,10 @@ from ._common import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The documented modifier names, in pyautogui's: its X11 keys call Super
+# (and its alias meta) `win`.
+_KEY_ALIASES = {"super": "win", "meta": "win"}
 
 # Clipboard targets holding plain text, which is all a text-only restore
 # rebuilds. GTK and Qt list COMPOUND_TEXT with the others for any text copy.
@@ -352,11 +357,11 @@ class LinuxBackend(ComputerUseBackend):
 
     @staticmethod
     def _modifier(name: str) -> str:
-        return {"super": "win", "ctrl": "ctrl", "alt": "alt", "shift": "shift"}.get(name, name)
+        return _KEY_ALIASES.get(name.lower(), name)
 
     @staticmethod
     def _chord(key: str) -> list[str]:
-        return [k.strip().lower() for k in key.split("+") if k.strip()]
+        return chord_keys(key, _KEY_ALIASES)
 
     def _check_bounds(self, coordinate: tuple[int, int]) -> None:
         displays = self.display_info()

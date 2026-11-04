@@ -66,3 +66,62 @@ async def test_a_write_cancelled_mid_flight_finishes_and_is_audited(
     assert isinstance(response, AckMessage)
     assert target.read_text() == "written"
     assert [op for op, result in audit.ops if result["ok"]] == ["FILE_WRITE"]
+
+
+@pytest.mark.asyncio
+async def test_a_change_that_finishes_as_the_cancel_lands_is_still_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the thread finished just as the cancel landed, the task re-raised
+    the cancel, so its handler never audited a change that had happened."""
+    loop = asyncio.get_running_loop()
+    finished: asyncio.Future[str] = loop.create_future()
+    thread: dict[str, asyncio.Task[Any] | None] = {}
+
+    async def fake_thread(func, /, *args, **kwargs):
+        thread["task"] = asyncio.current_task()
+        return await finished
+
+    monkeypatch.setattr(handlers_module.asyncio, "to_thread", fake_thread)
+    task = asyncio.create_task(handlers_module._run_to_completion(lambda: None))
+    for _ in range(2):
+        await asyncio.sleep(0)
+    finished.set_result("written")
+    await asyncio.sleep(0)
+    # The work is done, but the task hasn't resumed yet.
+    assert thread["task"] is not None and thread["task"].done() and not task.done()
+
+    task.cancel()
+
+    assert await task == "written"
+
+
+@pytest.mark.asyncio
+async def test_a_change_still_waiting_for_a_thread_when_cancelled_never_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shield kept the cancel from reaching a job still queued for a
+    thread, so it ran after SESSION_REVOKED: a write on a revoked session."""
+    loop = asyncio.get_running_loop()
+    ran: list[str] = []
+    a_thread_frees_up: asyncio.Future[None] = loop.create_future()
+    queued: list[Any] = []
+
+    async def busy_pool(func, /, *args, **kwargs):
+        queued.append(func)
+        await a_thread_frees_up
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(handlers_module.asyncio, "to_thread", busy_pool)
+    task = asyncio.create_task(handlers_module._run_to_completion(lambda: ran.append("write")))
+    for _ in range(2):
+        await asyncio.sleep(0)
+    assert queued
+
+    task.cancel()
+    await asyncio.sleep(0)
+    a_thread_frees_up.set_result(None)
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert ran == []
