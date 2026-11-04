@@ -473,7 +473,10 @@ class UserCreditBase(ABC):
             # Transaction doesn't exist or is already active, return early
             return None
 
-        # Atomic operation to enable transaction and update user balance using UserBalance
+        # Atomic operation to enable transaction and update user balance using
+        # UserBalance. Both rows are locked: the balance so the add is serial,
+        # and the transaction so a second fulfilment of the same payment, which
+        # passed the check above before the first committed, adds nothing.
         result = await query_raw_with_schema(
             """
             WITH user_balance_lock AS (
@@ -493,8 +496,13 @@ class UserCreditBase(ABC):
                     ) as balance
             ),
             transaction_check AS (
+                -- Locked, so of several fulfilments racing for one payment only
+                -- the first sees the row inactive: the others wait, re-check the
+                -- row as the first left it (active, re-keyed) and select nothing,
+                -- which makes the rest of this statement a no-op for them.
                 SELECT * FROM {schema_prefix}"CreditTransaction" 
                 WHERE "transactionKey" = $1 AND "userId" = $2 AND "isActive" = false
+                FOR UPDATE
             ),
             balance_update AS (
                 INSERT INTO {schema_prefix}"UserBalance" ("userId", "balance", "updatedAt")
@@ -2056,7 +2064,7 @@ class CardDeclinedError(Exception):
 
 
 class PendingChangeUnknown(Exception):
-    """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
+    """Raised when pending-change state cannot be determined (e.g. PostHog
     price-id lookup failed). Propagates past the pending-change cache so the next
     request retries instead of serving a stale `None` for the TTL window."""
 
@@ -2102,7 +2110,7 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
     Resolves cycle by matching the active subscription's price ID against the
-    LaunchDarkly-configured monthly/yearly price IDs for the user's current
+    PostHog-configured monthly/yearly price IDs for the user's current
     tier, falling back to scanning every priceable tier (handles the brief
     window during a tier change where DB tier and Stripe price disagree).
     Returns None when there's no Stripe customer, no active sub, or the price
@@ -2681,7 +2689,7 @@ async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange 
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " BASIC/PRO/MAX/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " BASIC/PRO/MAX/BUSINESS (PostHog fetch failed?); raising to bypass"
             " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
@@ -2793,7 +2801,7 @@ async def _resolve_cycle_for_price_id(price_id: str | None) -> BillingCycle | No
 
 
 def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
-    """Compose the LaunchDarkly key for a tier+cycle.
+    """Compose the feature flag key for a tier+cycle.
 
     Monthly keeps the legacy ``<TIER>`` key (so a flag value flipped from
     monthly-only to also-yearly never breaks an older deploy that still reads
@@ -2808,7 +2816,7 @@ def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
 async def get_subscription_price_id(
     tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
 ) -> str | None:
-    """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
+    """Return Stripe Price ID for a tier+cycle from PostHog, cached 60s.
 
     Reads the ``copilot-tier-stripe-prices`` JSON flag and looks up:
 

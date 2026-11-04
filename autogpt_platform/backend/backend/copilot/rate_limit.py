@@ -84,7 +84,8 @@ from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.exceptions import UserPaywalledError
-from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.util.platform_payment import is_platform_payment_enabled
 
 if TYPE_CHECKING:
     import stripe
@@ -157,7 +158,7 @@ DEFAULT_TIER = SubscriptionTier.NO_TIER
 
 # Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
 # BASIC so users who cancel retain a small quota and see a real overage cap,
-# while LaunchDarkly can still tune tiers without a deploy.
+# while PostHog can still tune tiers without a deploy.
 _DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 250,  # 250 MB
     SubscriptionTier.TRIAL: 250,
@@ -1464,9 +1465,9 @@ async def get_global_rate_limits(
     config_daily: int,
     config_weekly: int,
 ) -> tuple[int, int, SubscriptionTier]:
-    """Resolve global rate limits from LaunchDarkly, falling back to config.
+    """Resolve global rate limits from PostHog, falling back to config.
 
-    Values are microdollars. The base limits (from LD or config) are
+    Values are microdollars. The base limits (from the flag or config) are
     multiplied by the user's tier multiplier so that higher tiers receive
     proportionally larger allowances.
 
@@ -1491,8 +1492,8 @@ async def get_global_rate_limits(
     # so multipliers can be tuned without a deploy. Falls back to the defaults
     # when LD is unavailable. NO_TIER+paywall is gated upstream by
     # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
-    # only NO_TIER path that gets here is the beta cohort (flag off), which
-    # falls back to BASIC limits so testers retain access.
+    # only NO_TIER path that gets here is a deployment with payment off, which
+    # falls back to BASIC limits.
     tier = await get_user_tier(user_id)
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
@@ -1501,9 +1502,7 @@ async def get_global_rate_limits(
         return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
-    if tier == SubscriptionTier.NO_TIER and not await is_feature_enabled(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id
-    ):
+    if tier == SubscriptionTier.NO_TIER and not is_platform_payment_enabled():
         multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
@@ -1612,7 +1611,7 @@ async def is_user_paywalled(user_id: str) -> bool:
         return trial is None or not trial.active
     if tier != SubscriptionTier.NO_TIER:
         return False
-    return await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id)
+    return is_platform_payment_enabled()
 
 
 async def enforce_payment_paywall(

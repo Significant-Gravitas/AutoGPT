@@ -1518,19 +1518,18 @@ async def list_graphs_paginated(
     if filter_by == "active":
         where_clause["isActive"] = True
 
-    # Get total count
-    total_count = await AgentGraph.prisma().count(where=where_clause)
-    total_pages = (total_count + page_size - 1) // page_size
-
-    # Get paginated results
     offset = (page - 1) * page_size
-    graphs = await AgentGraph.prisma().find_many(
-        where=where_clause,
-        distinct=["id"],
-        order={"version": "desc"},
-        skip=offset,
-        take=page_size,
+    total_count, graphs = await asyncio.gather(
+        AgentGraph.prisma().count(where=where_clause),
+        AgentGraph.prisma().find_many(
+            where=where_clause,
+            distinct=["id"],
+            order={"version": "desc"},
+            skip=offset,
+            take=page_size,
+        ),
     )
+    total_pages = (total_count + page_size - 1) // page_size
 
     graph_models = [GraphMeta.from_db(graph) for graph in graphs]
 

@@ -34,7 +34,7 @@ export function ExpertProtectedRules({ rules }: Props) {
               <p className="text-body-md leading-6 text-foreground-emphasis">
                 {rule}
               </p>
-              <span className="mt-1 inline-flex items-center gap-1 text-xs text-foreground-tertiary">
+              <span className="mt-1 inline-flex items-center gap-1 text-caption text-foreground-tertiary">
                 <Icon icon={LockIcon} size={12} aria-hidden="true" />
                 Locked
               </span>

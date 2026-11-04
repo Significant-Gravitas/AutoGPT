@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import queue
 from collections import defaultdict
@@ -862,16 +863,17 @@ async def get_graph_executions_paginated(
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
-    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
-    total_pages = (total_count + page_size - 1) // page_size
-
     offset = (page - 1) * page_size
-    executions = await AgentGraphExecution.prisma().find_many(
-        where=where_filter,
-        order={"createdAt": "desc"},
-        take=page_size,
-        skip=offset,
+    total_count, executions = await asyncio.gather(
+        AgentGraphExecution.prisma().count(where=where_filter),
+        AgentGraphExecution.prisma().find_many(
+            where=where_filter,
+            order={"createdAt": "desc"},
+            take=page_size,
+            skip=offset,
+        ),
     )
+    total_pages = (total_count + page_size - 1) // page_size
 
     return GraphExecutionsPaginated(
         executions=[GraphExecutionMeta.from_db(execution) for execution in executions],

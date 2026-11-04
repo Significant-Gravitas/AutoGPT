@@ -38,13 +38,13 @@ export function ExpertOnboardingCard({ part }: Props) {
       part.state === "output-error" || part.state === "output-available";
     if (isSettled) {
       return (
-        <div className="py-2 text-sm text-foreground-tertiary">
+        <div className="py-2 text-body text-foreground-tertiary">
           Couldn&apos;t open the setup questions.
         </div>
       );
     }
     return (
-      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-body text-muted-foreground">
         <MorphingTextAnimation text="Getting set up…" />
       </div>
     );
@@ -110,11 +110,12 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     });
     return (
       <div className="flex flex-col gap-1 py-2">
-        <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="shrink-0"
           />
           Setup questions from {name}
         </div>
@@ -164,10 +165,10 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           {currentStep ? (
             <>
               <span className="flex flex-col gap-1">
-                <span className="flex gap-2 text-base leading-snug font-medium text-foreground-strong sm:text-lg">
+                <span className="flex gap-2 text-body-lg leading-snug font-medium text-foreground-strong sm:text-lead">
                   <span
                     aria-hidden="true"
-                    className="flex shrink-0 items-center gap-0.5 text-sm text-foreground-subtle"
+                    className="flex shrink-0 items-center gap-0.5 text-body text-foreground-subtle"
                   >
                     {current + 1}
                     <Icon icon={ArrowRight01Icon} size={12} />
@@ -175,7 +176,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
                   <span id={labelId}>{currentStep.question}</span>
                 </span>
                 {currentStep.allow_multiple && (
-                  <span className="text-sm text-foreground-tertiary">
+                  <span className="text-body text-foreground-tertiary">
                     Choose as many as you like
                   </span>
                 )}

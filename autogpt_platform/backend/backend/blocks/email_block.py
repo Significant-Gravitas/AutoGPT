@@ -3,7 +3,7 @@ import socket
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Literal
+from typing import BinaryIO, Literal
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
@@ -126,7 +126,7 @@ class SendEmailBlock(Block):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
+        with _BoundedSMTP(smtp_server, smtp_port, timeout=30) as server:
             server.starttls()
             server.login(smtp_username, smtp_password)
             server.sendmail(smtp_username, to_email, msg.as_string())
@@ -253,3 +253,38 @@ def _refusal(credentials: SMTPCredentials, server: str) -> str:
         "login is only sent to the server it was saved for; check which server "
         "your saved SMTP logins are for."
     )
+
+
+class _BoundedSMTP(smtplib.SMTP):
+    """``smtplib.SMTP`` that caps the size of one server reply."""
+
+    MAX_REPLY_BYTES = 1024 * 1024  # a real reply is a few KB
+
+    def getreply(self):
+        # smtplib opens the reply stream lazily, and again after STARTTLS.
+        if self.file is None and self.sock is not None:
+            self.file = _BoundedReplyStream(
+                self.sock.makefile("rb"), self.MAX_REPLY_BYTES
+            )
+        if isinstance(self.file, _BoundedReplyStream):
+            self.file.reply_bytes = 0
+        return super().getreply()
+
+
+class _BoundedReplyStream:
+    def __init__(self, file: BinaryIO, max_reply_bytes: int):
+        self._file = file
+        self._max_reply_bytes = max_reply_bytes
+        self.reply_bytes = 0
+
+    def readline(self, size: int = -1) -> bytes:
+        line = self._file.readline(size)
+        self.reply_bytes += len(line)
+        if self.reply_bytes > self._max_reply_bytes:
+            # An OSError makes getreply() close the connection and raise
+            # SMTPServerDisconnected, which run() reports.
+            raise OSError("SMTP reply too long")
+        return line
+
+    def close(self) -> None:
+        self._file.close()

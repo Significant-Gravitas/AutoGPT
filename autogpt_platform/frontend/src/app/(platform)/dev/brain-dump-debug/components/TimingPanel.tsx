@@ -69,7 +69,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
         </Text>
       </div>
       <div className="flex shrink-0 flex-col sm:items-end">
-        <Text variant="large-semibold" className="font-mono">
+        <Text variant="large-semibold" mono>
           {formatMs(stage.durationMs)}
         </Text>
         <Text variant="small" tone="muted">

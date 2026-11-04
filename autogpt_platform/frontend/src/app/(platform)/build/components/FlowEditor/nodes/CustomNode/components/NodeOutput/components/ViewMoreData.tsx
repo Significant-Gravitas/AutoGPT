@@ -1,7 +1,7 @@
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { beautifyString, cn } from "@/lib/utils";
+import { beautifyString } from "@/lib/utils";
 import { ContentRenderer } from "./ContentRenderer";
 import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
 import { useState } from "react";
@@ -84,18 +84,16 @@ export const ViewMoreData = ({
                     <Text variant="body" tone="secondary">
                       Execution ID:
                     </Text>
-                    <Text
-                      variant="small-medium-mono-tight"
-                      as="p"
-                      className="rounded-full border border-border-strong bg-surface-muted px-2 py-1"
-                    >
-                      {result.node_exec_id}
-                    </Text>
+                    <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                      <Text variant="small-medium-mono-tight" as="p">
+                        {result.node_exec_id}
+                      </Text>
+                    </div>
                     <Button
                       variant="ghost"
-                      size="small"
+                      size="icon-2xs"
+                      shape="pill"
                       onClick={() => copyExecutionId(result.node_exec_id)}
-                      className="h-6 w-6 min-w-0 p-0"
                     >
                       <Icon icon={Copy01Icon} size={14} />
                     </Button>
@@ -138,27 +136,28 @@ export const ViewMoreData = ({
                                     dataType={dataType}
                                   />
                                   <Button
-                                    variant="secondary"
-                                    size="small"
+                                    variant={
+                                      copiedKey ===
+                                      `${result.node_exec_id}-${key}`
+                                        ? "success"
+                                        : "secondary"
+                                    }
+                                    size="icon-sm"
+                                    shape="pill"
+                                    tone="base"
                                     onClick={() =>
                                       handleCopy(
                                         `${result.node_exec_id}-${key}`,
                                         normalizedValue,
                                       )
                                     }
-                                    className={cn(
-                                      "h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-foreground-strong",
-                                      copiedKey ===
-                                        `${result.node_exec_id}-${key}` &&
-                                        "border-success bg-success/30 hover:border-success hover:bg-success/40",
-                                    )}
                                   >
                                     {copiedKey ===
                                     `${result.node_exec_id}-${key}` ? (
                                       <Icon
                                         icon={Tick02Icon}
                                         size={16}
-                                        className="text-success"
+                                        tone="success"
                                       />
                                     ) : (
                                       <Icon icon={Copy01Icon} size={16} />

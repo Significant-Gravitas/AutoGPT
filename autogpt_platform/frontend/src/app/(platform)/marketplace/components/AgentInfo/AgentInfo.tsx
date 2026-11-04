@@ -107,7 +107,7 @@ export const AgentInfo = ({
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
-              <span className="rounded bg-info/20 px-1.5 py-0.5 text-xs font-medium text-info-foreground">
+              <span className="rounded bg-info/20 px-1.5 py-0.5 text-caption font-medium text-info-foreground">
                 Current
               </span>
             )}
@@ -168,7 +168,7 @@ export const AgentInfo = ({
           </div>
 
           {/* Short Description */}
-          <div className="mb-4 line-clamp-2 w-full text-base leading-normal font-normal text-foreground-secondary sm:text-lg lg:mb-5 lg:text-xl lg:leading-7">
+          <div className="mb-4 line-clamp-2 w-full text-body-lg leading-normal font-normal text-foreground-secondary sm:text-lead lg:mb-5 lg:text-lead lg:leading-7">
             {shortDescription}
           </div>
 
@@ -190,8 +190,8 @@ export const AgentInfo = ({
                     <Icon
                       icon={PlusSignIcon}
                       size={16}
-                      // oxlint-disable-next-line design-system/no-restyle -- the plus spins on hover; Icon has no motion prop
-                      className="transition-transform duration-300 group-hover/add:scale-125 group-hover/add:rotate-90"
+                      motion="transform"
+                      className="group-hover/add:scale-125 group-hover/add:rotate-90"
                     />
                   ) : undefined
                 }
@@ -225,10 +225,15 @@ export const AgentInfo = ({
                 loading={isDownloadingAgent}
                 onClick={() => handleDownload(name)}
                 data-testid="agent-download-button"
-                // oxlint-disable-next-line design-system/no-restyle -- an underlined ghost button; the link variant changes its colour and padding
-                className="underline"
               >
-                {isDownloadingAgent ? "Downloading..." : "Download here"}
+                <Text
+                  variant="body-medium-tight"
+                  as="span"
+                  tone="inherit"
+                  decoration="underline"
+                >
+                  {isDownloadingAgent ? "Downloading..." : "Download here"}
+                </Text>
               </Button>
             </div>
             <Text variant="body" className="shrink-0 whitespace-nowrap">
@@ -301,8 +306,9 @@ export const AgentInfo = ({
                     <Button
                       variant="ghost"
                       size="small"
-                      // oxlint-disable-next-line design-system/no-restyle -- a purple ghost link; no Button variant is brand
-                      className="text-brand hover:text-brand-hover"
+                      tone="brand"
+                      // oxlint-disable-next-line design-system/no-restyle -- a purple ghost link's hover; no Button variant is brand
+                      className="hover:text-brand-hover"
                     >
                       (Changelog)
                     </Button>
