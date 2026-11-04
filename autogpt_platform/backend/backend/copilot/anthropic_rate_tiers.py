@@ -37,6 +37,11 @@ def apply_prompt_tier(info: dict[str, object], prompt_tokens: int) -> dict[str, 
         return info
     for threshold, key in tiers:
         tier_input = _read_rate(info, key)
+        if tier_input == 0:
+            logger.error(
+                "Invalid zero Anthropic input rate %s; using rate fallback", key
+            )
+            continue
         if tier_input is not None:
             return {
                 **info,

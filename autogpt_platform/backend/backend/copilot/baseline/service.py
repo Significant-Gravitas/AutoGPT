@@ -3033,16 +3033,24 @@ async def stream_chat_completion_baseline(
         # local transport so the intent is clear.
         baseline_provider = config.baseline_provider
         if state.cost_usd is None and baseline_provider == "anthropic":
-            recovered = compute_anthropic_cost_usd(
+            # No usage arrived: the prompt estimate is for one request, while
+            # the output estimate spans the turn and cannot share its tier.
+            prompt_cost = compute_anthropic_cost_usd(
                 model=active_model,
                 prompt_tokens=state.turn_prompt_tokens,
-                completion_tokens=state.turn_completion_tokens,
+                completion_tokens=0,
                 cache_read_tokens=state.turn_cache_read_tokens,
                 cache_creation_tokens=state.turn_cache_creation_tokens,
                 cache_ttl=config.baseline_prompt_cache_ttl,
             )
-            if recovered is not None:
-                state.cost_usd = recovered
+            output_cost = compute_anthropic_cost_usd(
+                model=active_model,
+                prompt_tokens=0,
+                completion_tokens=state.turn_completion_tokens,
+                cache_ttl=config.baseline_prompt_cache_ttl,
+            )
+            if prompt_cost is not None and output_cost is not None:
+                state.cost_usd = prompt_cost + output_cost
 
         # OAI-compat prompt_tokens includes cache buckets; subtract to keep the three buckets disjoint.
         uncached_prompt = max(

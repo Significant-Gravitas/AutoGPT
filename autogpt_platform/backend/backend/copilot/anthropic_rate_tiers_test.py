@@ -101,7 +101,7 @@ def test_missing_or_invalid_tier_bucket_uses_scaled_base(rate_file, caplog, fiel
         assert key in caplog.text
 
 
-@pytest.mark.parametrize("bad", ["0.1", True, float("nan"), float("inf"), -1])
+@pytest.mark.parametrize("bad", ["0.1", True, float("nan"), float("inf"), -1, 0])
 def test_invalid_input_tier_is_ignored(rate_file, caplog, bad):
     rates, write = rate_file
     key = "input_cost_per_token_above_100k_tokens"
@@ -113,6 +113,15 @@ def test_invalid_input_tier_is_ignored(rate_file, caplog, bad):
         )
     assert cost == pytest.approx(0.02)
     assert key in caplog.text
+
+
+def test_zero_highest_input_tier_falls_back_to_valid_lower_tier(rate_file):
+    rates, write = rate_file
+    rates["input_cost_per_token_above_200k_tokens"] = 0
+    write(rates)
+    assert card.compute_anthropic_cost_usd(
+        model=MODEL, prompt_tokens=300_000, completion_tokens=1_000
+    ) == pytest.approx(0.1525)
 
 
 def test_highest_crossed_tier_wins_without_mutating_cached_rates(rate_file):
