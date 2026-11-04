@@ -51,10 +51,10 @@ def main() -> None:
         for error in exc.errors(include_input=False, include_context=False, include_url=False):
             field = ".".join(str(part) for part in error["loc"])
             print(f"Configuration error ({field}): {error['msg']}", file=sys.stderr)
-        sys.exit(78)
+        sys.exit(_config_error_exit_code())
     except ConfigFileError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
-        sys.exit(78)
+        sys.exit(_config_error_exit_code())
 
     if args.command == "auth":
         exit_code = _cmd_auth(config)
@@ -236,6 +236,25 @@ def _installed_version() -> str:
         return __version__
 
 
+def _config_error_exit_code() -> int:
+    """78 (EX_CONFIG), except under the LaunchAgent. launchd restarts any
+    non-zero exit and a bad config fails the same way every time, so there
+    the shim stops instead of looping."""
+    if os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
+        _print_launchagent_stopped("Fix the configuration")
+        return 0
+    return 78
+
+
+def _print_launchagent_stopped(fix: str) -> None:
+    print(
+        f"The LaunchAgent will not restart on its own. {fix}, then run "
+        "`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _build_config(args):
     from .config import load_config
 
@@ -300,20 +319,11 @@ async def _cmd_start(config) -> int:
         await daemon.run()
     except DaemonPreflightError as exc:
         print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
-        supervisor = os.environ.get("AUTOGPT_SHIM_SUPERVISOR")
-        if exc.permanent and supervisor in ("launchd", "systemd"):
+        if exc.permanent and os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
             # A setting or a missing package fails the same way on every
-            # restart, so stop until the user has fixed it.
-            restart = (
-                "launchctl kickstart -k gui/$(id -u)/net.autogpt.shim"
-                if supervisor == "launchd"
-                else "systemctl --user restart autogpt-shim"
-            )
-            print(
-                f"The service will not restart on its own. Fix the above, then run `{restart}`.",
-                file=sys.stderr,
-                flush=True,
-            )
+            # restart, and launchd restarts any non-zero exit, so stop until
+            # the user has fixed it. (The systemd unit won't restart on 78.)
+            _print_launchagent_stopped("Fix the above")
             return 0
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
         # re-launches us on the next TCC change. See COMPUTER_USE.md Q5.

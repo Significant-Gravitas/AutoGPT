@@ -9,8 +9,27 @@ import io
 from typing import Any
 
 from ...protocol import DisplayMonitor
+from ..errors import FeatureNotSupportedError
 
 PASTE_THRESHOLD_CHARS = 200  # Q4 — paste:true only honored when text >= 200 chars.
+
+
+def paste_is_worth_it(text: str) -> bool:
+    """Q4: paste only text long enough to need it, or text with characters
+    that can't be typed key by key (pyautogui types ASCII only)."""
+    return len(text) >= PASTE_THRESHOLD_CHARS or not text.isascii()
+
+
+def ensure_typeable(text: str) -> None:
+    """pyautogui types only ASCII and skips anything else without a word, so
+    refuse rather than type part of the text."""
+    if not text.isascii():
+        raise FeatureNotSupportedError(
+            "type",
+            reason="this text has characters that can't be typed key by key; send it "
+            "with paste: true, which needs --enable-clipboard (and without "
+            "preserve_clipboard if the clipboard can't be restored)",
+        )
 
 
 def capture_fields(
@@ -93,6 +112,8 @@ def normalize_displays_for_error(displays: list[dict[str, Any]]) -> list[dict[st
 
 __all__ = [
     "PASTE_THRESHOLD_CHARS",
+    "ensure_typeable",
+    "paste_is_worth_it",
     "encode_b64",
     "image_to_base64",
     "in_any_rect",

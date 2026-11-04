@@ -292,10 +292,12 @@ trips IME/autocomplete on web forms.
 
 **Behavior — locked:**
 
-1. **Threshold.** `paste: true` is **only honored when `len(text) >= 200`.**
-   Under that threshold the shim falls through to per-key typing, which
-   avoids the clipboard race for short strings that don't actually need
-   it.
+1. **Threshold.** `paste: true` is **only honored when `len(text) >= 200`**,
+   or when the text has characters that can't be typed key by key
+   (pyautogui types ASCII only). Otherwise the shim falls through to
+   per-key typing, which avoids the clipboard race for short strings that
+   don't actually need it. Typing such text is refused
+   (`FEATURE_NOT_SUPPORTED`) rather than done in part.
 2. **Default = clobber-and-document.** `paste: true` overwrites the
    clipboard, sends the OS paste hotkey, and **does not restore.** This
    is the safe-by-default for password-manager + paste interactions: if

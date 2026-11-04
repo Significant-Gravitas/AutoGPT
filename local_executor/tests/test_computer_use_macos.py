@@ -1108,3 +1108,32 @@ def test_a_window_capture_uses_the_live_window_frame_and_its_display(tmp_path, m
     assert result.logical_size == (400, 300)
     assert result.display_scale == 2.0
     assert (result.monitor, result.display_id) == (1, 1)
+
+
+def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, monkeypatch) -> None:
+    """pyautogui types only ASCII; anything else was skipped without a word."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True, raising=False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="paste"):
+        b.input_action("type", text="Grüße, 世界")
+
+    pyautogui.write.assert_not_called()
+
+
+def test_short_text_that_cannot_be_typed_is_pasted_when_asked(tmp_path, monkeypatch) -> None:
+    """Under the 200-character threshold the text was always typed, so
+    "café" could be neither typed nor pasted."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user text")
+
+    b.input_action("type", text="café", paste=True)
+
+    assert clipboard["writes"] == ["café"]
+    pyautogui.hotkey.assert_called_once_with("command", "v")
+    pyautogui.write.assert_not_called()

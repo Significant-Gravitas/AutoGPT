@@ -548,3 +548,30 @@ async def test_work_queued_by_a_revoked_session_never_starts(
     assert started == ["/tmp/first"]
     assert not daemon._dispatch_tasks
     assert ws.sent == []
+
+
+async def test_an_unsupported_architecture_stops_at_preflight(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Building HELLO raised ValueError on every attempt (armv7l, i686,
+    FreeBSD), so the reconnect loop retried forever."""
+    from autogpt_local_executor import platform_info
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    def unsupported() -> str:
+        raise ValueError("Unsupported architecture: 'armv7l'")
+
+    monkeypatch.setattr(platform_info, "detect_arch", unsupported)
+    sessions = 0
+
+    async def session() -> None:
+        nonlocal sessions
+        sessions += 1
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    with pytest.raises(DaemonPreflightError, match="armv7l") as stopped:
+        await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert stopped.value.permanent is True
+    assert sessions == 0

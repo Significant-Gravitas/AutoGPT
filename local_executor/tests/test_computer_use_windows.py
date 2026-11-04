@@ -489,3 +489,16 @@ def test_a_clipboard_read_refuses_a_private_format_that_lands_between_reads(
 
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, monkeypatch) -> None:
+    """pyautogui types only ASCII; anything else was skipped without a word."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True, raising=False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="paste"):
+        b.input_action("type", text="Grüße, 世界")
+
+    pyautogui.write.assert_not_called()

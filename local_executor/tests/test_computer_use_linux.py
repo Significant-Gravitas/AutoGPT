@@ -319,3 +319,17 @@ def test_the_linux_restore_leaves_a_copy_made_during_the_paste(tmp_path, monkeyp
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
     assert state["content"] == "copied during the paste"
+
+
+def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, monkeypatch) -> None:
+    """pyautogui types only ASCII; anything else was skipped without a word."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="paste"):
+        b.input_action("type", text="Grüße, 世界")
+
+    pyautogui.write.assert_not_called()
