@@ -466,12 +466,12 @@ def _cmd_audit(config, args) -> int:
     sub = args.audit_command
     if sub == "tail":
         return _audit_tail(config.audit_log_path)
-    if sub == "show":
-        return _audit_show(config.audit_log_path, args.seq)
-    if sub in ("verify", "verify-all", "export", "prune"):
+    if sub in ("show", "verify", "verify-all", "export", "prune"):
         from .audit import AuditLockError
 
         try:
+            if sub == "show":
+                return _audit_show(config.audit_log_path, args.seq)
             if sub == "verify":
                 return _audit_verify(config.audit_log_path)
             if sub == "verify-all":
@@ -596,26 +596,29 @@ def _audit_show(current: Path, seq: int) -> int:
     without leaving the terminal."""
     import json
 
-    from .audit import list_rotated_files
+    from .audit import holding_log_lock, list_rotated_files
 
-    candidates: list[Path] = []
-    if current.is_file():
-        candidates.append(current)
-    candidates.extend(list_rotated_files(current))
     found = False
-    for path in candidates:
-        with open(path, "rb") as f:
-            for raw in f:
-                if not raw.strip():
-                    continue
-                try:
-                    rec = json.loads(raw.decode("utf-8"))
-                except ValueError:  # an integer past Python's limit raises a plain one
-                    continue
-                if isinstance(rec, dict) and rec.get("seq") == seq:
-                    print(f"# from {path.name}")
-                    print(json.dumps(rec, indent=2, ensure_ascii=False))
-                    found = True
+    # Listed and read under the writers' lock: a rotation in between would
+    # move records to a file that was never listed.
+    with holding_log_lock(current):
+        candidates: list[Path] = []
+        if current.is_file():
+            candidates.append(current)
+        candidates.extend(list_rotated_files(current))
+        for path in candidates:
+            with open(path, "rb") as f:
+                for raw in f:
+                    if not raw.strip():
+                        continue
+                    try:
+                        rec = json.loads(raw.decode("utf-8"))
+                    except ValueError:  # an integer past Python's limit raises a plain one
+                        continue
+                    if isinstance(rec, dict) and rec.get("seq") == seq:
+                        print(f"# from {path.name}")
+                        print(json.dumps(rec, indent=2, ensure_ascii=False))
+                        found = True
     if not found:
         print(f"No record with seq={seq} in {current} or rotated files.")
         return 1
