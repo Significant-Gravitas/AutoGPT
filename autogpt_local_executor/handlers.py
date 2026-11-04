@@ -37,12 +37,14 @@ from .computer_use import (
     get_backend,
 )
 from .config import ShimConfig
+from .fsops import rename_no_replace
 from .local_llm_limits import bounded_chunks, read_json_lines
 from .path_jail import (
     PathJailError,
     assert_entry_inside_jail,
     assert_inside_jail,
     open_jail_file,
+    write_jail_file,
 )
 from .protocol import (
     MAX_WIRE_BASE64_CONTENT_BYTES,
@@ -225,6 +227,8 @@ def _elapsed_ms(start: float) -> int:
 
 # How long a command's process group has to exit after SIGTERM before SIGKILL.
 _TERMINATE_GRACE_SECONDS = 2.0
+# The most entries one FILE_LIST returns, whatever max_entries asks for.
+MAX_FILE_LIST_ENTRIES = 10_000
 
 
 async def _terminate_process_group(pgid: int) -> None:
@@ -837,9 +841,7 @@ class FileHandler:
         def write_content() -> None:
             if payload.create_parents:
                 path.parent.mkdir(parents=True, exist_ok=True)
-            with open_jail_file(path, self.config.allowed_root, write=True) as file:
-                file.truncate(0)
-                file.write(raw)
+            write_jail_file(path, self.config.allowed_root, raw)
 
         try:
             await asyncio.to_thread(write_content)
@@ -990,6 +992,10 @@ class FileHandler:
             )
             return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"{base} is not a directory")
 
+        # max_entries has no bound on the wire; cap it so a huge value can't
+        # walk a whole tree only to have the reply refused as too large.
+        limit = max(1, min(payload.max_entries, MAX_FILE_LIST_ENTRIES))
+
         def _walk() -> tuple[list[FileEntry], bool]:
             entries: list[FileEntry] = []
             truncated = False
@@ -1040,7 +1046,7 @@ class FileHandler:
                         mtime=st.st_mtime,
                     )
                 )
-                if len(entries) >= payload.max_entries:
+                if len(entries) >= limit:
                     truncated = True
                     break
             return entries, truncated
@@ -1157,8 +1163,18 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
 
         try:
-            move = os.replace if payload.overwrite else os.rename
+            # Without overwrite, a destination created after the check above
+            # must not be replaced, so the rename itself refuses one.
+            move = os.replace if payload.overwrite else rename_no_replace
             await asyncio.to_thread(move, str(src), str(dst))
+        except FileExistsError:
+            await self._emit(
+                "FILE_MOVE",
+                msg.id,
+                details,
+                _err_result(_elapsed_ms(start), ErrorCode.PATH_EXISTS.value),
+            )
+            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
         except OSError as exc:
             await self._emit(
                 "FILE_MOVE",

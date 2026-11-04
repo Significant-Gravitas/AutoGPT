@@ -472,6 +472,15 @@ existing ancestor** plus the lexical parent. Both must be inside
 
 The shim creates parents only after both checks pass.
 
+**Replacing, not truncating**: the content goes to a new file beside the
+target, which is then renamed over it, so a write that fails part way (a
+full disk, say) leaves the old contents whole. An existing file keeps its
+mode; a new one gets the usual default (0o666 less the umask). Because the
+target gets a new inode, a hard link made to it from elsewhere keeps the
+old contents, and extended attributes and ACLs on the old file don't carry
+over. Where the directory takes no new entries, or (on Windows) another
+program has the file open, the shim overwrites the file in place instead.
+
 #### `ACK` (shim → platform, for writes and fire-and-forget ops)
 ```json
 {
@@ -549,7 +558,7 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
     "glob": "*.csv",               // null = list everything
     "recursive": false,
     "include_hidden": false,
-    "max_entries": 1000            // shim caps at this; truncated flag in response
+    "max_entries": 1000            // at most 10,000; truncated flag in response
   }
 }
 ```
@@ -628,7 +637,12 @@ Used in place of shell `mv` / `move`. Also covers renames.
 or replacement only. Cross-device moves return an error without copying file
 contents or pre-deleting the destination. Successful moves respond with `ACK`.
 A symlink `src` is moved itself, and with `overwrite` a symlink `dst` is
-replaced itself; neither target changes.
+replaced itself; neither target changes. Without `overwrite`, the rename
+itself refuses an existing `dst` (`renameat2` with `RENAME_NOREPLACE` on
+Linux, `renamex_np` with `RENAME_EXCL` on macOS, a plain rename on
+Windows), so a file created there after the shim's check is never
+replaced; a filesystem without that flag gets a check followed by the
+rename.
 
 ---
 
