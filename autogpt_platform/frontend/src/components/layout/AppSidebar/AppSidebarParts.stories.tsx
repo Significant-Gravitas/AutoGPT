@@ -149,7 +149,7 @@ function PartFrame({ label, collapsed = false, testID, children }: FrameProps) {
         data-collapsible={collapsed ? "icon" : ""}
         data-side="left"
         className={cn(
-          "group relative flex flex-col rounded-medium border border-separator bg-sidebar text-sidebar-foreground",
+          "group relative flex flex-col rounded-medium border border-separator bg-surface-muted text-foreground-emphasis",
           collapsed ? "w-[--sidebar-width-icon]" : "w-72",
         )}
       >

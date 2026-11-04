@@ -18,7 +18,7 @@ from backend.api.features.search.rate_limit import enforce_public_search_rate_li
 from backend.api.utils.client_ip import ClientIP
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE, Pagination
 from backend.util.product_analytics import track_listing_downloaded
 
 from . import cache as store_cache
@@ -95,8 +95,8 @@ async def unified_search(
         default=None,
         description="Content types to search. If not specified, searches all.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -175,8 +175,8 @@ async def get_agents(
         default=None,
         description="Property to sort results by. Ignored if search_query is provided.",
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     user_id: str | None = Security(
         autogpt_libs.auth.get_optional_user_id, use_cache=False
     ),
@@ -346,7 +346,7 @@ async def get_creators(
         default=None, description="Literal + semantic search on names and descriptions"
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = Query(ge=1, default=1),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
     page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
@@ -385,8 +385,8 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
 )
 async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     sort_by: store_model.MyAgentsSortBy = Query(
         default=store_model.MyAgentsSortBy.MOST_RECENT
     ),
@@ -436,8 +436,8 @@ async def get_submissions(
     ctx: autogpt_libs.auth.RequestContext = Security(
         autogpt_libs.auth.get_request_context
     ),
-    page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page: int = Query(ge=1, le=MAX_PAGE, default=1),
+    page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     search_query: str | None = Query(default=None, max_length=100),
     statuses: str | None = Query(default=None),
     sort_key: SubmissionSortKey | None = Query(default=None),

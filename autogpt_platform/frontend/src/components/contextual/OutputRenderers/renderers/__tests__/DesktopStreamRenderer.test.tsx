@@ -1,5 +1,3 @@
-// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
-
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

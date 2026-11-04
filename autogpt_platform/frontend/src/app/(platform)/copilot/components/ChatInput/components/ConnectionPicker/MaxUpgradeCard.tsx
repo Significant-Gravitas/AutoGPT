@@ -55,7 +55,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
           MAX
         </span>
       </div>
-      <p className="mt-5 mb-2 text-lg leading-snug font-medium tracking-tight text-foreground-strong">
+      <p className="mt-5 mb-2 text-lead leading-snug font-medium tracking-tight text-foreground-strong">
         Unlock {name} with Max.
       </p>
       <Text variant="small-relaxed" tone="secondary">

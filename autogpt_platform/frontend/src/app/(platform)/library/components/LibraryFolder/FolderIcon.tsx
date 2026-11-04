@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-raw-colors -- folder colours are user-picked data, not UI colour */
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 
@@ -54,39 +53,39 @@ const colorMap: Record<
   }
 > = {
   blue: {
-    bg: "bg-blue-300",
-    border: "border-blue-300",
-    borderLight: "border-blue-200",
-    fill: "fill-blue-300",
-    stroke: "stroke-blue-400",
+    bg: "bg-[#93c5fd]",
+    border: "border-[#93c5fd]",
+    borderLight: "border-[#bfdbfe]",
+    fill: "fill-[#93c5fd]",
+    stroke: "stroke-[#60a5fa]",
   },
   purple: {
-    bg: "bg-purple-200",
-    border: "border-purple-200",
-    borderLight: "border-purple-200",
-    fill: "fill-purple-200",
-    stroke: "stroke-purple-400",
+    bg: "bg-[#c0a1fa]",
+    border: "border-[#c0a1fa]",
+    borderLight: "border-[#c0a1fa]",
+    fill: "fill-[#c0a1fa]",
+    stroke: "stroke-[#925cf7]",
   },
   emerald: {
-    bg: "bg-emerald-300",
-    border: "border-emerald-300",
-    borderLight: "border-emerald-200",
-    fill: "fill-emerald-300",
-    stroke: "stroke-emerald-400",
+    bg: "bg-[#6ee7b7]",
+    border: "border-[#6ee7b7]",
+    borderLight: "border-[#a7f3d0]",
+    fill: "fill-[#6ee7b7]",
+    stroke: "stroke-[#34d399]",
   },
   orange: {
-    bg: "bg-orange-200",
-    border: "border-orange-200",
-    borderLight: "border-orange-200",
-    fill: "fill-orange-200",
-    stroke: "stroke-orange-400",
+    bg: "bg-[#ffc88a]",
+    border: "border-[#ffc88a]",
+    borderLight: "border-[#ffc88a]",
+    fill: "fill-[#ffc88a]",
+    stroke: "stroke-[#fe9f33]",
   },
   pink: {
-    bg: "bg-pink-300",
-    border: "border-pink-300",
-    borderLight: "border-pink-200",
-    fill: "fill-pink-300",
-    stroke: "stroke-pink-400",
+    bg: "bg-[#f284bb]",
+    border: "border-[#f284bb]",
+    borderLight: "border-[#f6abd0]",
+    fill: "fill-[#f284bb]",
+    stroke: "stroke-[#f06dad]",
   },
 };
 
@@ -96,33 +95,33 @@ export const folderCardStyles: Record<
 > = {
   blue: {
     bg: "bg-info-surface",
-    border: "border-blue-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-blue-200",
+    border: "border-[#bfdbfe]",
+    buttonBase: "border-[#68686f] text-foreground-base",
+    buttonHover: "hover:bg-[#bfdbfe]",
   },
   purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-200",
-    buttonBase: "border-zinc-600 text-foreground-base ",
-    buttonHover: "hover:bg-purple-200",
+    bg: "bg-[#f1ebfe]",
+    border: "border-[#c0a1fa]",
+    buttonBase: "border-[#68686f] text-foreground-base ",
+    buttonHover: "hover:bg-[#c0a1fa]",
   },
   emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-emerald-200",
+    bg: "bg-[#ecfdf5]",
+    border: "border-[#a7f3d0]",
+    buttonBase: "border-[#68686f] text-foreground-base",
+    buttonHover: "hover:bg-[#a7f3d0]",
   },
   orange: {
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-orange-200",
+    bg: "bg-[#fff3e6]",
+    border: "border-[#ffc88a]",
+    buttonBase: "border-[#68686f] text-foreground-base",
+    buttonHover: "hover:bg-[#ffc88a]",
   },
   pink: {
-    bg: "bg-pink-50",
-    border: "border-pink-200",
-    buttonBase: "border-zinc-600 text-foreground-base",
-    buttonHover: "hover:bg-pink-200",
+    bg: "bg-[#fdedf5]",
+    border: "border-[#f6abd0]",
+    buttonBase: "border-[#68686f] text-foreground-base",
+    buttonHover: "hover:bg-[#f6abd0]",
   },
 };
 
@@ -214,7 +213,7 @@ export function FolderIcon({
               d="M15.0423 0.500003C0.5 0.500009 0.5 14.2547 0.5 14.2547V92.5C0.5 101.337 7.66344 108.5 16.5 108.5H156.5C165.337 108.5 172.5 101.337 172.5 92.5V34.3302C172.5 25.4936 165.355 18.3302 156.519 18.3302H108.211C98.1341 18.3302 91.2921 5.57144 82.0156 1.63525C80.3338 0.921645 78.2634 0.500002 75.7187 0.500003H15.0423Z"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-7xl">
+          <div className="absolute inset-0 flex items-center justify-center text-hero">
             {icon}
           </div>
         </motion.div>

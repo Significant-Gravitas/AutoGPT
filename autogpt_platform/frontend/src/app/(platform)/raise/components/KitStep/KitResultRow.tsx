@@ -31,22 +31,24 @@ export function KitResultRow({
       // oxlint-disable-next-line design-system/no-inline-styles -- per-row stagger computed at runtime
       style={{ animationDelay: `${index * 60}ms` }}
       className={cn(
-        "flex items-center gap-3 border-b border-border px-3.5 py-3 transition-colors duration-200 last:border-b-0 hover:bg-surface-muted",
+        "flex items-center gap-3 border-b border-border-base px-3.5 py-3 transition-colors duration-200 last:border-b-0 hover:bg-surface-muted",
         "duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-1 motion-reduce:animate-none",
       )}
     >
       <span
         aria-hidden
-        className="grid size-9 shrink-0 place-items-center rounded-xl border border-border bg-surface-muted text-muted-foreground"
+        className="grid size-9 shrink-0 place-items-center rounded-xl border border-border-base bg-surface-muted text-foreground-tertiary"
       >
         <Icon icon={hit.kind === "skill" ? SparklesIcon : FlowIcon} size={16} />
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <p className="truncate text-body font-medium text-foreground-base">
           {hit.name}
         </p>
-        <p className="truncate text-xs text-muted-foreground">{hit.subtitle}</p>
+        <p className="truncate text-caption text-foreground-tertiary">
+          {hit.subtitle}
+        </p>
       </div>
 
       <Button

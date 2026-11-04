@@ -28,8 +28,7 @@ const STATUS = {
     label: "Triggered",
     className: "bg-surface text-foreground-body",
     icon: FlashIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-    iconClassName: "bg-sky-50 text-sky-600",
+    iconClassName: "bg-info-surface text-sky-foreground",
   },
   manual: {
     label: "Manual",

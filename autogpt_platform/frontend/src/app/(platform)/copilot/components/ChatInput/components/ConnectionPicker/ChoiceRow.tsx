@@ -64,7 +64,7 @@ export function ChoiceRow({
     <div
       className={cn(
         "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
-        "hover:bg-background has-[button:focus-visible]:bg-background",
+        "hover:bg-canvas has-[button:focus-visible]:bg-canvas",
       )}
     >
       <button
@@ -94,7 +94,7 @@ export function ChoiceRow({
             )}
           </span>
           {subtitle && (
-            <span className="text-sm leading-snug break-words text-foreground-tertiary">
+            <span className="text-body leading-snug break-words text-foreground-tertiary">
               {subtitle}
             </span>
           )}
@@ -115,7 +115,7 @@ export function ChoiceRow({
         aria-hidden
         motion="opacity"
         className={cn(
-          "flex-none text-primary",
+          "flex-none text-action",
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
@@ -150,7 +150,7 @@ function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
           {title}
         </Text>
         {subtitle && (
-          <span className="text-sm leading-snug break-words text-foreground-subtle">
+          <span className="text-body leading-snug break-words text-foreground-subtle">
             {subtitle}
           </span>
         )}

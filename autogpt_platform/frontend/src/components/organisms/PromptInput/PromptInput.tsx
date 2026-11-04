@@ -324,7 +324,7 @@ export function PromptInputButton({
         <TooltipContent side={side}>
           {tooltipContent}
           {shortcut && (
-            <span className="ml-2 text-muted-foreground">{shortcut}</span>
+            <span className="ml-2 text-foreground-tertiary">{shortcut}</span>
           )}
         </TooltipContent>
       </TooltipPortal>
