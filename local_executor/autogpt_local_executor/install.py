@@ -131,7 +131,9 @@ def resolve_shim_command() -> tuple[str, ...]:
         "autogpt-shim", path=str(Path(sys.executable).parent)
     )
     if found:
-        return (found,)
+        # A relative PATH entry gives a relative path, which a service
+        # started from another working directory couldn't run.
+        return (os.path.abspath(found),)
     return (sys.executable, "-m", "autogpt_local_executor")
 
 
@@ -207,8 +209,19 @@ def windows_task_xml_path(home: Path | None = None) -> Path:
 
 
 def _write_atomic(target: Path, content: str, *, encoding: str = "utf-8") -> Path:
+    """Write `content` beside `target` and rename it over, so a write that
+    fails part way leaves the old file whole."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding=encoding)
+    temp = target.with_name(f".{target.name}.tmp")
+    try:
+        with open(temp, "w", encoding=encoding) as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp, target)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
     return target
 
 

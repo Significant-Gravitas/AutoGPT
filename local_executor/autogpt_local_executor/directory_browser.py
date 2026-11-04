@@ -452,14 +452,21 @@ def _is_reparse_point(path: Path) -> bool:
     if os.name != "nt":
         return False
     try:
-        import ctypes
-
-        attributes = int(ctypes.windll.kernel32.GetFileAttributesW(str(path)))  # type: ignore[attr-defined]
-    except (AttributeError, OSError, TypeError, ValueError):
+        info = os.lstat(path)
+    except OSError:
         return True
-    invalid_attributes = 0xFFFFFFFF
     file_attribute_reparse_point = 0x0400
-    return attributes == invalid_attributes or bool(attributes & file_attribute_reparse_point)
+    if not getattr(info, "st_file_attributes", 0) & file_attribute_reparse_point:
+        return False
+    return _reparse_tag_redirects(getattr(info, "st_reparse_tag", 0))
+
+
+def _reparse_tag_redirects(tag: int) -> bool:
+    """Whether a reparse point sends the path somewhere else. Symlinks and
+    junctions carry the name-surrogate bit; OneDrive's cloud placeholders and
+    other storage tags don't, and stay browsable."""
+    name_surrogate = 0x20000000
+    return bool(tag & name_surrogate)
 
 
 def _windows_drive_roots() -> list[Path]:

@@ -162,3 +162,21 @@ def test_windows_roots_include_fixed_or_removable_drives(
     listing = browser.list_directories(None, None)
 
     assert str(drive.resolve()) in {entry.path for entry in listing.entries}
+
+
+@pytest.mark.parametrize(
+    ("tag", "redirects"),
+    [
+        (0xA000000C, True),  # IO_REPARSE_TAG_SYMLINK
+        (0xA0000003, True),  # IO_REPARSE_TAG_MOUNT_POINT (junction)
+        (0x9000001A, False),  # IO_REPARSE_TAG_CLOUD (OneDrive placeholder)
+        (0x9000601A, False),  # IO_REPARSE_TAG_CLOUD_6
+        (0x80000017, False),  # IO_REPARSE_TAG_WOF (compressed file)
+    ],
+)
+def test_only_reparse_points_that_redirect_are_refused(tag: int, redirects: bool) -> None:
+    """Refusing every reparse point dropped OneDrive folders, whose cloud
+    placeholders are reparse points that redirect nowhere."""
+    from autogpt_local_executor.directory_browser import _reparse_tag_redirects
+
+    assert _reparse_tag_redirects(tag) is redirects

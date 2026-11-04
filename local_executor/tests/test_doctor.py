@@ -307,3 +307,86 @@ def test_doctor_linux_warns_when_an_x11_session_has_no_display(tmp_path, monkeyp
     )
 
     assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
+
+
+class _MemoryKeyring:
+    def __init__(self, *, keeps: bool = True) -> None:
+        self.keeps = keeps
+        self.stored: dict[tuple[str, str], str] = {}
+
+    def set_password(self, service: str, name: str, value: str) -> None:
+        if self.keeps:
+            self.stored[(service, name)] = value
+
+    def get_password(self, service: str, name: str) -> str | None:
+        return self.stored.get((service, name))
+
+    def delete_password(self, service: str, name: str) -> None:
+        self.stored.pop((service, name), None)
+
+
+def _keyring_module(backend: object) -> MagicMock:
+    module = MagicMock()
+    module.get_keyring.return_value = backend
+    module.set_password.side_effect = backend.set_password
+    module.get_password.side_effect = backend.get_password
+    module.delete_password.side_effect = backend.delete_password
+    return module
+
+
+@pytest.mark.parametrize(
+    ("keeps", "marker"), [(True, "OK"), (False, "WARN")], ids=["works", "forgets"]
+)
+def test_doctor_round_trips_a_probe_through_the_keychain(monkeypatch, keeps, marker) -> None:
+    """Naming the backend said nothing about whether it stores anything."""
+    import sys
+
+    backend = _MemoryKeyring(keeps=keeps)
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(backend))
+
+    result = doctor._check_keychain()
+
+    assert result.marker == marker
+    assert backend.stored == {}
+
+
+def test_doctor_warns_on_a_keyring_backend_that_can_store_nothing(monkeypatch) -> None:
+    import sys
+
+    fail_keyring = type("Keyring", (_MemoryKeyring,), {"__module__": "keyring.backends.fail"})
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(fail_keyring()))
+
+    result = doctor._check_keychain()
+
+    assert result.marker == "WARN"
+    assert "keyring.backends.fail" in result.detail
+
+
+@pytest.fixture(autouse=True)
+def _a_keychain_that_works(monkeypatch):
+    """doctor round-trips a probe through the keychain; keep the real one,
+    which may block on an unlock prompt, out of these tests."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(_MemoryKeyring()))
+
+
+def test_doctor_does_not_hang_on_a_keychain_that_never_answers(monkeypatch) -> None:
+    import sys
+    import threading
+
+    answer = threading.Event()
+
+    class Blocking(_MemoryKeyring):
+        def set_password(self, service: str, name: str, value: str) -> None:
+            answer.wait(30)
+
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(Blocking()))
+    monkeypatch.setattr(doctor, "KEYCHAIN_PROBE_SECONDS", 0.2)
+    try:
+        result = doctor._check_keychain()
+    finally:
+        answer.set()
+
+    assert result.marker == "WARN"
+    assert "did not answer" in result.detail

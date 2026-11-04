@@ -198,10 +198,11 @@ class ShimConfig(BaseSettings):
 
     # ── Reconnect ──────────────────────────────────────────────────────────
     # Positive: a zero or negative delay turns the reconnect backoff into a
-    # tight loop against the platform.
-    reconnect_base_delay: float = Field(default=1.0, gt=0)
-    reconnect_max_delay: float = Field(default=60.0, gt=0)
-    reconnect_jitter_seconds: float = Field(default=5.0, ge=0)
+    # tight loop against the platform. Finite: asyncio.sleep(inf) never
+    # returns, so the shim would stop reconnecting.
+    reconnect_base_delay: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    reconnect_max_delay: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+    reconnect_jitter_seconds: float = Field(default=5.0, ge=0, allow_inf_nan=False)
 
     # ── Local LLM (see docs/LOCAL_LLM.md) ──────────────────────────────────
     ollama_url: str = Field(

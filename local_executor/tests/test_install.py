@@ -480,3 +480,36 @@ def test_a_relative_config_path_is_made_absolute(
     ctx = install_mod.build_context(Path("conf") / "shim.toml")
 
     assert ctx.config_path == str(tmp_path.resolve() / "conf" / "shim.toml")
+
+
+def test_a_relative_path_entry_still_gives_an_absolute_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A relative PATH entry made `which` return a relative path, which a
+    service started from another directory can't run."""
+    monkeypatch.setattr(install_mod.shutil, "which", _which_without_path("bin/autogpt-shim"))
+
+    [command] = install_mod.resolve_shim_command()
+
+    assert Path(command).is_absolute()
+    assert command.endswith(str(Path("bin") / "autogpt-shim"))
+
+
+def test_a_failed_autostart_write_leaves_the_old_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_write_atomic truncated the file in place, so a failed write left it
+    half written."""
+    target = tmp_path / "autogpt-shim.service"
+    target.write_text("the working unit")
+
+    def refuse(*_args) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(install_mod.os, "replace", refuse)
+    with pytest.raises(OSError, match="disk full"):
+        install_mod._write_atomic(target, "a new unit")
+    monkeypatch.undo()
+
+    assert target.read_text() == "the working unit"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["autogpt-shim.service"]

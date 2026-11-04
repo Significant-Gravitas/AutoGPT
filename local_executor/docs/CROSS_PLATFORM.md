@@ -74,7 +74,7 @@ accepting a path from the platform.
 | macOS | Canonical home plus accessible real local data volumes immediately under `/Volumes`; system/startup volumes are excluded. |
 | Linux | Canonical home plus accessible user mounts immediately under `/media/$USER` and `/run/media/$USER`; `/`, `/proc`, `/sys`, `/dev`, and general `/run` are never roots. |
 | WSL2 | Linux home/user mounts plus accessible one-letter fixed-drive mounts immediately under `/mnt`. |
-| Windows | Canonical `%USERPROFILE%` plus accessible fixed/removable drive roots; remote, optical, recovery/system, and reparse roots are excluded. |
+| Windows | Canonical `%USERPROFILE%` plus accessible fixed/removable drive roots; remote, optical, recovery/system, and redirecting reparse roots are excluded. A reparse point counts as redirecting when its tag has the name-surrogate bit (symlinks, junctions); OneDrive's cloud placeholders don't, and stay browsable. |
 
 Each request lists one immediate level with fixed host-side scan/response caps.
 Symlinks, junctions, inaccessible entries, files, and invalid wire names are

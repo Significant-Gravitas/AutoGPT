@@ -229,3 +229,25 @@ def test_the_cli_exits_78_on_a_malformed_config_file(tmp_path: Path, monkeypatch
 
     assert exited.value.code == 78
     assert "config.toml" in capsys.readouterr().err
+
+
+def test_a_boolean_variable_outranks_the_config_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Strings and integers were covered; a false from the environment must
+    also beat a true in the file."""
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text("enable_shell = true\n")
+    monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "false")
+
+    assert load_config(config_path=toml_file).enable_shell is False
+
+
+@pytest.mark.parametrize(
+    "field", ["reconnect_base_delay", "reconnect_max_delay", "reconnect_jitter_seconds"]
+)
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_reconnect_delays_must_be_finite(tmp_path: Path, field: str, value: float) -> None:
+    """An infinite delay passes gt=0, and asyncio.sleep(inf) never returns."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, **{field: value})

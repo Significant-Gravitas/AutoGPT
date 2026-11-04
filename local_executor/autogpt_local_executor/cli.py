@@ -706,7 +706,14 @@ def _audit_export(current: Path, output: Path | None) -> int:
         if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
             print(f"Refusing to name the export like a rotated audit log: {output}")
             return 2
-        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Owner-only, like the logs it holds, whatever the umask.
+        descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+        with (
+            os.fdopen(descriptor, "wb") as archive,
+            zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf,
+        ):
             for path in files:
                 data = path.read_bytes()
                 digest = hashlib.sha256(data).hexdigest()

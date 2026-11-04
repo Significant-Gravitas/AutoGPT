@@ -24,6 +24,8 @@ lives.
 from __future__ import annotations
 
 import os
+import secrets
+import threading
 from dataclasses import dataclass
 
 from . import platform_info
@@ -110,12 +112,15 @@ def _check_directory_browser() -> CheckResult:
         return CheckResult("FAIL", "folder_browser", str(exc), blocking=True)
 
 
+# A locked keychain can block on an unlock prompt; doctor must not hang on it.
+KEYCHAIN_PROBE_SECONDS = 10.0
+
+
 def _check_keychain() -> CheckResult:
     try:
         import keyring  # type: ignore[import-not-found]
 
         backend = keyring.get_keyring()
-        return CheckResult("OK", "keychain", f"{backend.__class__.__name__}")
     except Exception as exc:
         return CheckResult(
             "WARN",
@@ -124,6 +129,48 @@ def _check_keychain() -> CheckResult:
             "sign-in tokens; only the audit key can fall back to a file, and only "
             "when AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE is set",
         )
+    name = f"{type(backend).__module__}.{type(backend).__name__}"
+    # keyring falls back to these when it finds no real keychain; they store
+    # nothing.
+    if name.startswith(("keyring.backends.fail.", "keyring.backends.null.")):
+        return CheckResult(
+            "WARN",
+            "keychain",
+            f"no usable keychain ({name}). `autogpt-shim auth` needs one to store sign-in tokens",
+        )
+    # Naming a backend says nothing about whether it stores anything, so store,
+    # read and delete a probe, with a time limit.
+    outcome: list[CheckResult] = []
+    probe = threading.Thread(target=lambda: outcome.append(_round_trip(keyring, name)), daemon=True)
+    probe.start()
+    probe.join(KEYCHAIN_PROBE_SECONDS)
+    if not outcome:
+        return CheckResult(
+            "WARN",
+            "keychain",
+            f"{name} did not answer within {KEYCHAIN_PROBE_SECONDS:.0f} s; it may be locked",
+        )
+    return outcome[0]
+
+
+def _round_trip(keyring, name: str) -> CheckResult:
+    from .auth import KEYCHAIN_SERVICE
+
+    key = f"doctor-probe-{secrets.token_hex(4)}"
+    try:
+        keyring.set_password(KEYCHAIN_SERVICE, key, "ok")
+        try:
+            stored = keyring.get_password(KEYCHAIN_SERVICE, key)
+        finally:
+            try:
+                keyring.delete_password(KEYCHAIN_SERVICE, key)
+            except Exception:
+                pass
+    except Exception as exc:
+        return CheckResult("WARN", "keychain", f"{name} could not store a value: {exc}")
+    if stored != "ok":
+        return CheckResult("WARN", "keychain", f"{name} did not return a value just stored in it")
+    return CheckResult("OK", "keychain", name)
 
 
 def _check_display(config: ShimConfig) -> CheckResult:

@@ -30,6 +30,10 @@ KEYCHAIN_ACCESS_TOKEN_KEY = "access_token"
 KEYCHAIN_REFRESH_TOKEN_KEY = "refresh_token"
 # How long `autogpt-shim auth` waits for the browser to come back.
 CALLBACK_TIMEOUT_SECONDS = 300.0
+# How long the callback server waits for one connection's request. It takes
+# one connection at a time, so without this a connection that never sends
+# (a browser preconnect, say) would hold off the real redirect.
+CALLBACK_READ_TIMEOUT_SECONDS = 10.0
 
 
 class CredentialScopeError(ValueError):
@@ -296,6 +300,8 @@ class OAuthFlow:
         oauth_error: list[str] = []
 
         class CallbackHandler(BaseHTTPRequestHandler):
+            timeout = CALLBACK_READ_TIMEOUT_SECONDS
+
             def do_GET(self):
                 parsed = urllib.parse.urlparse(self.path)
                 params = urllib.parse.parse_qs(parsed.query)

@@ -203,6 +203,8 @@ class WindowsBackend(ComputerUseBackend):
         format: str,
         include_cursor: bool = False,
     ) -> ScreenshotResult:
+        import ctypes
+
         try:
             import win32gui  # type: ignore[import-not-found]
             import win32ui  # type: ignore[import-not-found]
@@ -219,6 +221,18 @@ class WindowsBackend(ComputerUseBackend):
         w, h = right - left, bot - top
         if w <= 0 or h <= 0:
             raise FeatureNotSupportedError("screenshot.window", reason="zero-size window")
+        # PrintWindow asks the window to paint itself and waits for it, so on
+        # a window that has stopped responding it would never return.
+        try:
+            hung = ctypes.windll.user32.IsHungAppWindow(hwnd)  # type: ignore[attr-defined]
+        except Exception as exc:
+            raise FeatureNotSupportedError(
+                "screenshot.window", reason=f"IsHungAppWindow failed: {exc}"
+            ) from exc
+        if hung:
+            raise FeatureNotSupportedError(
+                "screenshot.window", reason="the window is not responding"
+            )
         # Acquired inside the try, so whatever was acquired is released even
         # when a later step (the bitmap, say) fails.
         hwnd_dc = mfc_dc = save_dc = bmp = None
@@ -234,8 +248,6 @@ class WindowsBackend(ComputerUseBackend):
             # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
             # It returns 0 when the window did not render into the bitmap.
             try:
-                import ctypes
-
                 printed = ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
                     hwnd, save_dc.GetSafeHdc(), 0x02
                 )
@@ -259,12 +271,14 @@ class WindowsBackend(ComputerUseBackend):
                 1,
             )
         finally:
-            if bitmap_made and bmp is not None:
-                win32gui.DeleteObject(bmp.GetHandle())
+            # GDI does not delete a bitmap still selected into a DC, so the
+            # DCs go before the bitmap.
             if save_dc is not None:
                 save_dc.DeleteDC()
             if mfc_dc is not None:
                 mfc_dc.DeleteDC()
+            if bitmap_made and bmp is not None:
+                win32gui.DeleteObject(bmp.GetHandle())
             if hwnd_dc is not None:
                 win32gui.ReleaseDC(hwnd, hwnd_dc)
 
@@ -623,7 +637,7 @@ class WindowsBackend(ComputerUseBackend):
             raise ClipboardConcealedError(
                 "concealed_type",
                 marker="unknown",
-                message="clipboard contents not readable: they kept changing while being read",
+                message="the clipboard could not be read consistently",
             )
         text, seq, formats = snapshot
         # Concealed check first; formats that can't be read count as private.
@@ -760,7 +774,9 @@ class WindowsBackend(ComputerUseBackend):
             text, seq = self._read_clipboard_text()
             formats = self._clipboard_formats()
             again, seq_again = self._read_clipboard_text()
-            if seq == seq_again and text == again:
+            # A sequence number that couldn't be read proves nothing, and two
+            # failed reads would otherwise look alike.
+            if seq is not None and seq == seq_again and text == again:
                 return text, seq, formats
         return None
 
@@ -769,7 +785,19 @@ class WindowsBackend(ComputerUseBackend):
         written the clipboard since. With `restore=None` the text stays."""
         import pyautogui  # type: ignore[import-untyped]
 
-        written_seq = self._write_clipboard_text(text)
+        try:
+            written_seq = self._write_clipboard_text(text)
+        except ClipboardWriteError:
+            # EmptyClipboard may have gone through before the write failed,
+            # taking the user's text with it.
+            if restore is not None:
+                try:
+                    self._write_clipboard_text(restore)
+                except ClipboardWriteError:
+                    logger.warning(
+                        "Could not restore the clipboard after a failed write", exc_info=True
+                    )
+            raise
         self.clipboard_writeback.record_write(text, sequence=written_seq)
         try:
             pyautogui.hotkey("ctrl", "v")

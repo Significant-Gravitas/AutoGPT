@@ -157,7 +157,9 @@ Semantics:
 - If a window is occluded or off-screen, the shim returns the image of the
   window's bounds anyway (the OS reports cached bitmap on macOS/Windows;
   on Linux X11 we surface `WINDOW_NOT_VISIBLE` because XComposite isn't
-  guaranteed).
+  guaranteed). On Windows a window that has stopped responding answers
+  `FEATURE_NOT_SUPPORTED` instead, since the capture would wait on it to
+  paint forever.
 
 #### Q1 — Coordinate space (locked)
 
@@ -678,7 +680,9 @@ multi-app workflow is half-blind without clipboard access.
 Responds with `ACK`, or `INTERNAL_ERROR` when the text did not land on
 the clipboard (for example, another app holds it open). A paste with
 `paste: true` stops before the paste keystroke in that case, so it never
-pastes what was already there.
+pastes what was already there. With `preserve_clipboard: true`, the user's
+text is put back first, since clearing the clipboard may have gone through
+before the write failed; a restore that fails too is logged.
 
 Both clipboard directions are bounded by
 `HELLO_ACK.max_file_size_bytes`. `CLIPBOARD_READ` rejects an oversized backend
