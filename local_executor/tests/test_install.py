@@ -531,3 +531,24 @@ def test_a_write_leaves_another_installs_temporary_file_alone(tmp_path: Path) ->
     assert target.read_text() == "mine"
     assert theirs.read_text() == "another install, part way through"
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([theirs.name, target.name])
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_the_default_config_is_pinned_only_when_it_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exists: bool
+) -> None:
+    """A missing --config file is an error now, so a service pinned to a
+    default config that doesn't exist would never start; without the flag
+    the shim finds the default itself."""
+    default = tmp_path / "config.toml"
+    if exists:
+        default.write_text("")
+    monkeypatch.setattr(install_mod, "default_config_path", lambda: default)
+    monkeypatch.setattr(install_mod, "resolve_shim_command", lambda: ("/usr/bin/autogpt-shim",))
+
+    ctx = install_mod.build_context(None)
+
+    if exists:
+        assert ctx.start_argv == ("/usr/bin/autogpt-shim", "--config", str(default), "start")
+    else:
+        assert ctx.start_argv == ("/usr/bin/autogpt-shim", "start")

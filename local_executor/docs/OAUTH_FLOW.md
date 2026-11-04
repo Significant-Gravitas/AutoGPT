@@ -189,7 +189,8 @@ HTTP redirects; WebSocket redirects, including same-origin path changes, are
 rejected. A destination change while the daemon or OAuth flow is running is a
 terminal authentication error, not a refresh attempt against the new endpoint.
 
-Use the same persistent configuration for every command:
+Use the same persistent configuration for every command. A `--config` that
+names no file is an error rather than a quiet fallback to the defaults:
 
 ```bash
 autogpt-shim --config /path/to/config.toml auth

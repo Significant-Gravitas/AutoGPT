@@ -20,11 +20,18 @@ from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.daemon import ShimDaemon
 
 
+def _empty_config(tmp_path: Path) -> Path:
+    """A config file with nothing in it, so the user's own stays out."""
+    path = tmp_path / "config.toml"
+    path.write_text("")
+    return path
+
+
 def test_platform_oauth_url_cli_override(tmp_path: Path) -> None:
     args = cli._build_parser().parse_args(
         [
             "--config",
-            str(tmp_path / "missing.toml"),
+            str(_empty_config(tmp_path)),
             "--platform-url",
             "https://api.example.com",
             "--platform-oauth-url",
@@ -59,7 +66,7 @@ def test_invalid_endpoint_exits_cleanly_without_echoing_credentials(
         [
             "autogpt-shim",
             "--config",
-            str(tmp_path / "missing.toml"),
+            str(_empty_config(tmp_path)),
             "--platform-url",
             url,
             "start",
@@ -83,7 +90,7 @@ def test_start_session_id_is_accepted_before_or_after_subcommand_without_overwri
     parser = cli._build_parser()
     argv = [
         "--config",
-        str(tmp_path / "missing.toml"),
+        str(_empty_config(tmp_path)),
         "--allowed-root",
         str(tmp_path),
     ]

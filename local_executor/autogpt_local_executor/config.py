@@ -310,6 +310,10 @@ def load_config(
     overrides = dict(overrides or {})
     file_overrides: dict[str, Any] = {}
     path = config_path or _default_config_path()
+    if config_path is not None and not path.is_file():
+        # A --config that names nothing ran the shim on the defaults without
+        # a word. (Without --config, a missing default file means defaults.)
+        raise ConfigFileError(f"{path}: no such config file")
     if path.is_file():
         try:
             with open(path, "rb") as f:

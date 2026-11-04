@@ -955,8 +955,9 @@ def _print_record_line(raw: bytes) -> None:
     if not isinstance(rec, dict):
         print(f"[unparseable] {s}")
         return
-    seq = rec.get("seq", "?")
-    op = rec.get("op", "?")
+    # As text: a null, list or object seq or op can't take a width.
+    seq = str(rec.get("seq", "?"))
+    op = str(rec.get("op", "?"))
     result = rec.get("result")
     if not isinstance(result, dict):
         result = {}

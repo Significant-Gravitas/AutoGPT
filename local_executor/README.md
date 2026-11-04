@@ -62,6 +62,11 @@ autogpt-shim \
 For autostart, run `autogpt-shim install`, enable the generated per-user service,
 and omit `session_id` from the TOML configuration. The service maintains the
 persistent paired-machine connection; selected roots are isolated per chat.
+The service names a config file with `--config` when you passed one or a file
+exists at the default location; otherwise the shim looks at the default
+location itself. A `--config` that names no file is an error, so create the
+file before you install, or run `autogpt-shim install` again afterwards if it
+lives somewhere other than the default.
 
 The platform never sends an arbitrary host path to the shim. Folder navigation
 uses short-lived opaque references issued by the host, and selecting a folder

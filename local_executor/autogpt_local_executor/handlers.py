@@ -1104,15 +1104,33 @@ class FileHandler:
                 return fnmatchcase(name, glob)
 
             def _candidates() -> Iterator[Path]:
-                if not payload.recursive:
-                    yield from base.iterdir()
-                    return
-                for dirpath, dirnames, filenames in os.walk(base):
-                    if not payload.include_hidden:
-                        # Prune hidden folders so the walk never enters them.
-                        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-                    for name in (*dirnames, *filenames):
-                        yield Path(dirpath) / name
+                # os.scandir yields entries as the directory is read, so the
+                # scan budget stops a huge directory part way; os.walk and
+                # iterdir read each directory whole before yielding any of it.
+                # Depth first, a directory's entries before its subfolders',
+                # and like os.walk it never follows a symlink into a folder.
+                pending = [base]
+                while pending:
+                    folder = pending.pop()
+                    subfolders: list[Path] = []
+                    try:
+                        with os.scandir(folder) as entries:
+                            for entry in entries:
+                                path = Path(entry.path)
+                                yield path
+                                if not payload.recursive:
+                                    continue
+                                # Hidden folders are pruned, never entered.
+                                if not payload.include_hidden and entry.name.startswith("."):
+                                    continue
+                                try:
+                                    if entry.is_dir(follow_symlinks=False):
+                                        subfolders.append(path)
+                                except OSError:
+                                    pass
+                    except OSError:
+                        continue
+                    pending.extend(reversed(subfolders))
 
             # `truncated` is set only once something is known to be left out:
             # an entry not looked at, or a match that didn't fit.

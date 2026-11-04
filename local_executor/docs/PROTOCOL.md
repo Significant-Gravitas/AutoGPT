@@ -592,7 +592,9 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
 entries past the reply's size budget (16 MiB less 64 KiB, so the reply
 stays under the frame limit), or a directory entry past the walk's scan
 budget of 100,000 entries. Exactly `max_entries` matches come back with
-`truncated: false`. To see the rest, list a narrower path or glob.
+`truncated: false`. To see the rest, list a narrower path or glob. The scan
+budget counts entries as each directory is read, so a directory with
+millions of entries is never read whole.
 
 Glob is matched with `fnmatch.fnmatchcase`. On case-insensitive
 filesystems (macOS APFS default, Windows NTFS default), matching is
