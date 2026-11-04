@@ -278,6 +278,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    held_call_handlers,
     reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
@@ -6075,7 +6076,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Answered cards first: their results ride the same fold as pending.
         async for held_status in resolve_answered(
-            user_id, session, unsaved_held.append, cap=cap_late_tool_result
+            user_id,
+            session,
+            unsaved_held.append,
+            cap=cap_late_tool_result,
+            mcp_handlers=held_call_handlers(),
         ):
             yield held_status
         pending_messages: list[PendingMessage] = [*unsaved_held]

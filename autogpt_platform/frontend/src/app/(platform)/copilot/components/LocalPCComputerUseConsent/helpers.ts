@@ -60,10 +60,17 @@ const TOOL_GROUPS: ToolGroup[] = [
     line: "Control web pages in a browser it opens with its own profile",
   },
   {
+    tools: ["browser_set_input_files"],
+    line: "Give web pages files from your computer to upload, once you approve each one",
+  },
+  {
     tools: ["clipboard_read"],
     line: "Read your clipboard, within the limits set on that computer",
   },
-  { tools: ["clipboard_write"], line: "Put text on your clipboard" },
+  {
+    tools: ["clipboard_write"],
+    line: "Put text on your clipboard, or a file from your computer once you approve it",
+  },
 ];
 
 // Tools that only report on the driver itself.

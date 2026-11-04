@@ -10,6 +10,10 @@ from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.gate import Decision
+from backend.copilot.gate.mcp_seam import Verdict, approved_for
+from backend.copilot.gate.policy import PARKABLE, Effect, effect_for
+from backend.copilot.gate.subject import Subject
 from backend.copilot.google_data_redaction import (
     REDACTED,
     redact_google_data,
@@ -25,6 +29,8 @@ from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
 from backend.copilot.tools.local_pc_shim import ComputerUseDriver, ShimHello
 from backend.util.truncate import truncate
 
+from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+from .recording_tools import RECORDING_TOOLS
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
@@ -39,6 +45,7 @@ from .tool_adapter import (
     create_tool_handler,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    held_call_handlers,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -1681,7 +1688,7 @@ class TestNonRegistryGateSeam:
         _init_ctx(_make_test_session())
         with patch(
             "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
-            new=AsyncMock(return_value=refusal),
+            new=AsyncMock(return_value=(refusal, None)),
         ) as gate:
             wrapper = _make_truncating_wrapper(
                 handler, "write_file", required_args=["path"]
@@ -1691,6 +1698,63 @@ class TestNonRegistryGateSeam:
         gate.assert_awaited_once()
         assert called is False
         assert result.get("isError") is True
+
+    @pytest.mark.asyncio
+    async def test_the_handler_runs_under_the_verdict_on_its_own_subject(self):
+        disk = Subject(key="disk:a", name="Disk", effect=Effect.EXTERNAL)
+        seen: list[bool] = []
+        subjects: list[dict] = []
+
+        async def subject_of(args):
+            subjects.append(args)
+            return disk
+
+        async def handler(_args):
+            seen.append(approved_for("disk:a"))
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+        async def gate(_name, _args, _user, _session, subject_of=None):
+            assert subject_of is not None
+            return None, Verdict(
+                decision=Decision(allowed=True, decided=True),
+                subject=await subject_of(),
+            )
+
+        _init_ctx(_make_test_session())
+        with (
+            patch("backend.copilot.sdk.tool_adapter.gate_non_registry_tool", gate),
+            patch(
+                "backend.copilot.sdk.tool_adapter.release_non_registry_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.sdk.tool_adapter.screen_non_registry_read",
+                new=AsyncMock(side_effect=lambda *a, **_k: a[4]),
+            ),
+        ):
+            wrapper = _make_truncating_wrapper(
+                handler, "local_pc_computer", gate_subject=subject_of
+            )
+            await wrapper({"tool": "clipboard_write", "arguments": {}})
+
+        assert subjects == [{"tool": "clipboard_write", "arguments": {}}]
+        assert seen == [True]
+        # Nothing outlives the call.
+        assert approved_for("disk:a") is False
+
+    def test_every_tool_the_gate_can_hold_outside_the_registry_can_replay(self):
+        """A held call the gate can't run after its approval would tell the
+        model the tool no longer exists."""
+        parkable = {
+            name
+            for name in (
+                *LOCAL_PC_COMPUTER_TOOL_NAMES,
+                *(t[0] for t in RECORDING_TOOLS),
+            )
+            if name not in TOOL_REGISTRY and effect_for(name) in PARKABLE
+        }
+        assert parkable
+        assert parkable <= set(held_call_handlers())
 
 
 def test_set_execution_context_carries_hidden_tools():

@@ -13,7 +13,7 @@ import time
 import unicodedata
 import uuid
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -1069,7 +1069,8 @@ class _ComputerProxy:
 
     async def tools(self, *, _guard: ShimConnectionGuard | None = None) -> dict:
         """``{driver, instructions, tools: [{name, description, input_schema,
-        annotations}]}`` as the shim sent it, cached per connection."""
+        annotations, approval_arguments}]}`` as the shim sent it, cached per
+        connection."""
         generation = self._shim._connection_generation
         if self._catalog is not None and self._catalog[0] == generation:
             return self._catalog[1]
@@ -1087,13 +1088,18 @@ class _ComputerProxy:
         arguments: dict[str, Any],
         *,
         timeout_seconds: int | None = None,
+        approved_arguments: Sequence[str] = (),
         _guard: ShimConnectionGuard | None = None,
     ) -> dict:
         """``{tool, is_error, content, structured_content}``. Never retried:
-        most tools act, and the model decides what to do after a failure."""
+        most tools act, and the model decides what to do after a failure.
+        ``approved_arguments``: the tool's approval arguments (disk paths) the
+        user approved for this call; the shim refuses one that isn't named."""
         payload: dict[str, Any] = {"tool": tool, "arguments": arguments}
         if timeout_seconds is not None:
             payload["timeout_seconds"] = timeout_seconds
+        if approved_arguments:
+            payload["approved_arguments"] = sorted(approved_arguments)
         deadline = timeout_seconds or _DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS
         try:
             resp = await self._shim._rpc(

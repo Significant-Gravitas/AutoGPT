@@ -46,6 +46,7 @@ _EXPECTED_SUBSTRINGS: dict[str, list[str]] = {
     "PERMISSION_PENDING": ["macOS", "System Settings", "autogpt-shim doctor"],
     "CLIPBOARD_CONCEALED": ["password manager", "private"],
     "FEATURE_NOT_SUPPORTED": ["isn't available", "local_pc_computer_tools"],
+    "APPROVAL_REQUIRED": ["reaches the computer's disk", "approves that call"],
     "CAPABILITY_NOT_GRANTED": ["didn't grant", "autogpt-shim auth"],
     "SHIM_OVERLOADED": ["concurrency cap", "Retry"],
     "AUTH_FAILED": ["OAuth", "autogpt-shim auth"],
@@ -202,6 +203,16 @@ class TestPlaceholderSubstitution:
         assert "`kill_app`" in out
         assert "linux" in out
         assert "kill_app is not available on this machine." in out
+
+    def test_approval_required_names_the_tool_and_argument(self):
+        out = translate_shim_error(
+            "APPROVAL_REQUIRED",
+            "needs approval",
+            {"tool": "clipboard_write", "argument": "file_path"},
+            _make_shim(),
+        )
+        assert "`clipboard_write` with `file_path`" in out
+        assert "Nothing ran" in out
 
     def test_a_computer_tool_timeout_names_the_tool(self):
         out = translate_shim_error(

@@ -10,8 +10,9 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextvars import ContextVar
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -36,9 +37,11 @@ from backend.copilot.context import (
 from backend.copilot.gate.mcp_seam import (
     gate_non_registry_tool,
     release_non_registry_read,
+    running_under,
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.gate.subject import Subject
 from backend.copilot.google_data_redaction import remember_cut_google_output
 from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
@@ -751,12 +754,19 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
     return {**result, "content": new_content}
 
 
+# What a call of an MCP tool outside ``TOOL_REGISTRY`` acts on, where its name
+# alone does not say: the ``gate_subject`` of a registry tool.
+GateSubject = Callable[[dict[str, Any]], Awaitable[Subject | None]]
+McpHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
 def _make_truncating_wrapper(
     fn,
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    gate_subject: GateSubject | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -845,9 +855,21 @@ def _make_truncating_wrapper(
 
         # Second gate seam. The file handlers from ``e2b_file_tools`` are
         # registered straight onto the MCP server, so they are not BaseTool
-        # subclasses and never reach the seam in ``BaseTool.execute``.
+        # subclasses and never reach the seam in ``BaseTool.execute``. The
+        # handler runs under the gate's verdict on its call.
+        verdict = None
         if session is not None and name not in TOOL_REGISTRY:
-            refusal = await gate_non_registry_tool(name, args, user_id, session)
+            refusal, verdict = await gate_non_registry_tool(
+                name,
+                args,
+                user_id,
+                session,
+                subject_of=(
+                    partial(gate_subject, args)
+                    if gate_subject is not None and name == tool_name
+                    else None
+                ),
+            )
             if refusal is not None:
                 return refusal
             released = await release_non_registry_read(
@@ -863,7 +885,7 @@ def _make_truncating_wrapper(
         as_written = (
             text_outside_file_refs(command) if isinstance(command, str) else None
         )
-        with bash_command_as_written(as_written):
+        with bash_command_as_written(as_written), running_under(verdict):
             result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
@@ -920,6 +942,26 @@ def _make_truncating_wrapper(
             return await execute(clean_args)
 
     return wrapper
+
+
+def held_call_handlers() -> dict[str, McpHandler]:
+    """The MCP tools outside ``TOOL_REGISTRY`` that the gate can hold, wrapped
+    as :func:`create_copilot_mcp_server` registers them, so an approved held
+    call replays through the same seam, which spends its approval. Each
+    handler re-checks its own Local PC executor, capability and consent, so
+    one that has gone since says so instead of running."""
+    from .computer_use_tools import LOCAL_PC_COMPUTER_SUBJECTS, LOCAL_PC_COMPUTER_TOOLS
+    from .recording_tools import RECORDING_TOOLS
+
+    return {
+        name: _make_truncating_wrapper(
+            handler, name, gate_subject=LOCAL_PC_COMPUTER_SUBJECTS.get(name)
+        )
+        for name, _desc, _schema, handler in (
+            *LOCAL_PC_COMPUTER_TOOLS,
+            *RECORDING_TOOLS,
+        )
+    }
 
 
 _SDK_FILE_TOOL_ALIASES = ("Read", "Write", "Edit", "Glob", "Grep")
@@ -1056,7 +1098,10 @@ def create_copilot_mcp_server(
     # CLI serialises it: two actions on one screen must not race. Reading the
     # tool list stays parallel.
     if use_local_pc_computer:
-        from .computer_use_tools import LOCAL_PC_COMPUTER_TOOLS
+        from .computer_use_tools import (
+            LOCAL_PC_COMPUTER_SUBJECTS,
+            LOCAL_PC_COMPUTER_TOOLS,
+        )
 
         advertised_computer_tools = (
             frozenset(local_pc_computer_tool_names)
@@ -1077,7 +1122,9 @@ def create_copilot_mcp_server(
                 else _PARALLEL_ANNOTATION
             )
             decorated = tool(name, desc, schema, annotations=ann)(
-                _make_truncating_wrapper(handler, name)
+                _make_truncating_wrapper(
+                    handler, name, gate_subject=LOCAL_PC_COMPUTER_SUBJECTS.get(name)
+                )
             )
             sdk_tools.append(decorated)
 

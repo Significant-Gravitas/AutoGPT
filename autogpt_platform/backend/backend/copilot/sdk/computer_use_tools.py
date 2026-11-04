@@ -9,12 +9,13 @@ tool would put ~40 large schemas in every turn; Otto reads the ones it needs.
 
 Every call re-checks that a shim is connected and offers computer use, and
 that the user approved computer use in this session for this machine, driver
-release and tool set. A reconnect in between fails closed.
+release and tool set. A reconnect in between fails closed. A call that reaches
+the disk also waits for the user's approval of that call
+(``computer_use_approval``).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections.abc import Callable
@@ -26,11 +27,21 @@ from backend.copilot.context import (
     get_execution_context,
     is_local_pc_executor,
 )
+from backend.copilot.gate.mcp_seam import approved_for
+from backend.copilot.gate.subject import Subject
+from backend.copilot.sdk.computer_use_approval import (
+    UNREADABLE,
+    computer_subject,
+    disk_subject_key,
+    tool_spec,
+    used_approval_arguments,
+)
 from backend.copilot.sdk.computer_use_policy import (
     LOCAL_PC_COMPUTER_TOOL,
     LOCAL_PC_COMPUTER_TOOLS_TOOL,
     guard_scope,
 )
+from backend.copilot.sdk.computer_use_results import catalog_view, err, mcp_result, ok
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimComputerUseError,
@@ -40,10 +51,6 @@ from backend.copilot.tools.local_pc_shim import (
 logger = logging.getLogger(__name__)
 
 _TOOL_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
-_SUMMARY_CHARS = 280
-# A structured-content string this long that a text block already shows is
-# sent once, not twice.
-_DUPLICATE_STRING_CHARS = 200
 _MAX_TIMEOUT_SECONDS = 600
 
 Gate = tuple[LocalPCShim, ShimConnectionGuard]
@@ -57,13 +64,13 @@ async def _h_computer_tools(args: dict[str, Any]) -> dict[str, Any]:
     try:
         catalog = await shim.computer.tools(_guard=guard)
     except ShimComputerUseError as exc:
-        return _err(exc.code, str(exc), exc.details)
+        return err(exc.code, str(exc), exc.details)
     requested = args.get("tools") or []
     if not isinstance(requested, list) or not all(
         isinstance(t, str) for t in requested
     ):
-        return _err("INVALID_ARGUMENT", "tools must be a list of tool names")
-    return _ok(_catalog_view(catalog, requested))
+        return err("INVALID_ARGUMENT", "tools must be a list of tool names")
+    return ok(catalog_view(catalog, requested))
 
 
 async def _h_computer(args: dict[str, Any]) -> dict[str, Any]:
@@ -73,35 +80,68 @@ async def _h_computer(args: dict[str, Any]) -> dict[str, Any]:
         args.get("timeout_seconds"),
     )
     if not isinstance(tool, str) or _TOOL_NAME.fullmatch(tool) is None:
-        return _err(
+        return err(
             "INVALID_ARGUMENT", "tool must be a tool name from local_pc_computer_tools"
         )
     if arguments is None:
         arguments = {}
     if not isinstance(arguments, dict):
-        return _err("INVALID_ARGUMENT", "arguments must be an object")
+        return err("INVALID_ARGUMENT", "arguments must be an object")
     if timeout is not None and (
         not isinstance(timeout, int) or not 1 <= timeout <= _MAX_TIMEOUT_SECONDS
     ):
-        return _err("INVALID_ARGUMENT", "timeout_seconds must be 1-600")
+        return err("INVALID_ARGUMENT", "timeout_seconds must be 1-600")
     gate = await _require_computer_use()
     if isinstance(gate, dict):
         return gate
     shim, guard = gate
     if tool not in guard.computer_use_tools:
-        return _err(
+        return err(
             "FEATURE_NOT_SUPPORTED",
             f"`{tool}` isn't offered on this computer. Call "
             f"`{LOCAL_PC_COMPUTER_TOOLS_TOOL}` to see the tools it offers.",
             {"tool": tool},
         )
     try:
+        catalog = await shim.computer.tools(_guard=guard)
+        used = used_approval_arguments(tool_spec(catalog, tool), arguments)
+        if used and not approved_for(disk_subject_key(tool, used)):
+            return err(
+                "APPROVAL_REQUIRED",
+                f"`{tool}` with `{used[0]}` reaches the user's disk, so it runs "
+                "only once the user approves that call, and nobody approved this "
+                "one: this chat may not be able to ask. Nothing ran. Tell the "
+                "user what you wanted to do, or do the task without it.",
+                {"tool": tool, "arguments": used},
+            )
         result = await shim.computer.call(
-            tool, arguments, timeout_seconds=timeout, _guard=guard
+            tool,
+            arguments,
+            timeout_seconds=timeout,
+            approved_arguments=used,
+            _guard=guard,
         )
     except ShimComputerUseError as exc:
-        return _err(exc.code, str(exc), exc.details)
-    return _mcp_result(result)
+        return err(exc.code, str(exc), exc.details)
+    return mcp_result(result)
+
+
+async def computer_use_subject(args: dict[str, Any]) -> Subject | None:
+    """What a ``local_pc_computer`` call acts on, for the gate: a call that
+    reaches the disk asks on its own card. None where the handler refuses the
+    call anyway, which leaves the tool's own effect."""
+    tool, arguments = args.get("tool"), args.get("arguments") or {}
+    if not isinstance(tool, str) or not isinstance(arguments, dict):
+        return None
+    gate = await _require_computer_use()
+    if isinstance(gate, dict):
+        return None
+    shim, guard = gate
+    try:
+        catalog = await shim.computer.tools(_guard=guard)
+    except ShimComputerUseError:
+        return UNREADABLE
+    return computer_subject(tool, arguments, tool_spec(catalog, tool))
 
 
 async def _require_computer_use() -> Gate | dict[str, Any]:
@@ -109,7 +149,7 @@ async def _require_computer_use() -> Gate | dict[str, Any]:
     sandbox = get_current_sandbox()
     shim = sandbox if is_local_pc_executor(sandbox) else None
     if not isinstance(shim, LocalPCShim):
-        return _err(
+        return err(
             "NO_LOCAL_PC_EXECUTOR",
             "No Local PC executor is connected for this session. Computer use "
             "needs the autogpt-local-executor daemon running on the user's computer.",
@@ -117,7 +157,7 @@ async def _require_computer_use() -> Gate | dict[str, Any]:
     guard = shim.capture_connection_guard()
     scope = guard_scope(guard, shim.capability_set)
     if scope is None:
-        return _err(
+        return err(
             "CAPABILITY_NOT_GRANTED",
             "The connected Local PC executor doesn't offer computer use: it wasn't "
             "turned on there, or cua-driver couldn't start. Skip computer use for "
@@ -136,113 +176,18 @@ async def _require_computer_use() -> Gate | dict[str, Any]:
             tools=scope.tools,
         )
     ):
-        return _err(
+        return err(
             "COMPUTER_USE_CONSENT_REQUIRED",
             "Computer control is not approved for this chat session. Stop and "
             "ask the user to approve Local PC computer use in the AutoGPT UI.",
         )
     if not shim.connection_guard_matches(guard):
-        return _err(
+        return err(
             "COMPUTER_USE_CONNECTION_CHANGED",
             "The Local PC executor reconnected while computer access was being "
             "checked. Retry after the user reviews the reconnected computer.",
         )
     return shim, guard
-
-
-def _catalog_view(catalog: dict[str, Any], requested: list[str]) -> dict[str, Any]:
-    tools = [tool for tool in catalog.get("tools") or [] if isinstance(tool, dict)]
-    by_name = {tool.get("name"): tool for tool in tools}
-    view: dict[str, Any] = {
-        "driver": catalog.get("driver"),
-        "instructions": catalog.get("instructions") or "",
-        "tools": [
-            {"name": tool.get("name"), "summary": _summary(tool.get("description"))}
-            for tool in tools
-        ],
-        "how_to_call": (
-            f"Call `{LOCAL_PC_COMPUTER_TOOL}` with `tool` and `arguments`. Pass "
-            "`tools` here to get the input schemas of the tools you will use."
-        ),
-    }
-    if requested:
-        view["schemas"] = {
-            name: {
-                "description": by_name[name].get("description"),
-                "input_schema": by_name[name].get("input_schema"),
-            }
-            for name in requested
-            if name in by_name
-        }
-        unknown = [name for name in requested if name not in by_name]
-        if unknown:
-            view["unknown_tools"] = unknown
-    return view
-
-
-def _summary(description: Any) -> str:
-    text = str(description or "").strip()
-    first = text.split("\n\n", 1)[0].replace("\n", " ")
-    return first if len(first) <= _SUMMARY_CHARS else first[: _SUMMARY_CHARS - 1] + "…"
-
-
-def _mcp_result(result: dict[str, Any]) -> dict[str, Any]:
-    """The driver's answer as MCP content: its text and images as they came,
-    then its structured content without strings the text already shows."""
-    content: list[dict[str, Any]] = []
-    texts: list[str] = []
-    for block in result.get("content") or []:
-        if not isinstance(block, dict):
-            continue
-        if block.get("type") == "text" and isinstance(block.get("text"), str):
-            texts.append(block["text"])
-            content.append({"type": "text", "text": block["text"]})
-        elif block.get("type") == "image" and isinstance(block.get("data"), str):
-            content.append(
-                {
-                    "type": "image",
-                    "data": block["data"],
-                    "mimeType": str(block.get("mime_type") or "image/png"),
-                }
-            )
-    structured = result.get("structured_content")
-    if isinstance(structured, dict) and structured:
-        shown = _without_duplicates(structured, texts)
-        content.append({"type": "text", "text": json.dumps(shown, default=str)})
-    if not content:
-        content.append({"type": "text", "text": "(no output)"})
-    return {"content": content, "isError": bool(result.get("is_error"))}
-
-
-def _without_duplicates(structured: dict[str, Any], texts: list[str]) -> dict[str, Any]:
-    return {
-        key: (
-            "(shown in the text above)"
-            if isinstance(value, str)
-            and len(value) >= _DUPLICATE_STRING_CHARS
-            and any(value.strip() in text for text in texts)
-            else value
-        )
-        for key, value in structured.items()
-    }
-
-
-def _ok(payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
-        "isError": False,
-    }
-
-
-def _err(code: str, message: str, details: dict | None = None) -> dict[str, Any]:
-    """A structured error: the LLM-friendly message and the code to branch on."""
-    body: dict[str, Any] = {"code": code, "error": message}
-    if details:
-        body["details"] = details
-    return {
-        "content": [{"type": "text", "text": json.dumps(body, default=str)}],
-        "isError": True,
-    }
 
 
 LOCAL_PC_COMPUTER_TOOLS: list[
@@ -297,3 +242,6 @@ LOCAL_PC_COMPUTER_TOOLS: list[
 
 
 LOCAL_PC_COMPUTER_TOOL_NAMES: list[str] = [name for name, *_ in LOCAL_PC_COMPUTER_TOOLS]
+
+# What a call acts on, for the gate's seam in ``tool_adapter``.
+LOCAL_PC_COMPUTER_SUBJECTS = {LOCAL_PC_COMPUTER_TOOL: computer_use_subject}

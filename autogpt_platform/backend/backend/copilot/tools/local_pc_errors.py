@@ -197,6 +197,18 @@ def _feature_not_supported(
     )
 
 
+def _approval_required(
+    code: str, message: str, details: dict, shim: "LocalPCShim | None"
+) -> str:
+    tool = details.get("tool") or "that tool"
+    argument = details.get("argument") or "an argument"
+    return (
+        f"`{tool}` with `{argument}` reaches the computer's disk, so it runs only "
+        "after the user approves that call, and this one wasn't approved. Nothing "
+        "ran. Don't reach the file another way."
+    )
+
+
 def _capability_not_granted(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
@@ -384,6 +396,7 @@ _TRANSLATIONS: dict[str, _Translator] = {
     "PERMISSION_PENDING": _permission_pending,
     "CLIPBOARD_CONCEALED": _clipboard_concealed,
     "FEATURE_NOT_SUPPORTED": _feature_not_supported,
+    "APPROVAL_REQUIRED": _approval_required,
     "CAPABILITY_NOT_GRANTED": _capability_not_granted,
     "SHIM_OVERLOADED": _shim_overloaded,
     "AUTH_FAILED": _auth_failed,
