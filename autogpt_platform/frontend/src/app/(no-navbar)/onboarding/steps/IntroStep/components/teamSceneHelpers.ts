@@ -5,8 +5,8 @@
 export const STAGE_WIDTH = 600;
 
 // A name over a role, from the top of the label to its last line.
-const LABEL_GAP = 6;
-const LABEL_HEIGHT = 40;
+export const LABEL_GAP = 6;
+export const LABEL_HEIGHT = 40;
 // Space between a connector and the label above it.
 const CONNECTOR_GAP = 8;
 
@@ -109,18 +109,16 @@ function connectorStart(parent: TeamMember) {
   return bottom + LABEL_GAP + LABEL_HEIGHT + CONNECTOR_GAP;
 }
 
-/** One parent's branch: a stem down from the parent to a bar, and the bar's
- *  drops into each child. Horizontal positions are stage units, vertical
- *  ones pixels. */
+/** One parent's branch: a stem down from the parent to a bar halfway to
+ *  the children, and the bar's drops into each child. Horizontal positions
+ *  are stage units, vertical ones pixels at full picture size. */
 export function teamBranch(parent: TeamMember) {
   const children = TEAM.filter((member) => member.parent === parent.asset);
   const start = connectorStart(parent);
   const end = Math.min(...children.map((child) => child.top));
-  const middle = Math.round((start + end) / 2);
   return {
     x: parent.x,
     start,
-    middle,
     end,
     left: children[0].x,
     right: children[children.length - 1].x,
@@ -130,6 +128,12 @@ export function teamBranch(parent: TeamMember) {
 
 export function stagePercent(x: number) {
   return `${(x / STAGE_WIDTH) * 100}%`;
+}
+
+/** A picture's rendered size: full size down to a 360px-wide stage, then
+ *  shrinking with it so neighbours never touch on the narrowest phones. */
+export function fluidSize(size: number) {
+  return `min(${size}px, ${size / 3.6}cqw)`;
 }
 
 // The order the team arrives in, in seconds: Otto, his branch, the heads of

@@ -43,6 +43,8 @@ describe("IntroStep", () => {
     expect(within(members[0]).getByText("Otto")).toBeDefined();
     expect(within(members[0]).getByText("Head of AI")).toBeDefined();
     expect(within(team).getByText("Maria")).toBeDefined();
+    expect(within(team).getByText("Max")).toBeDefined();
+    expect(within(team).getByText("Sales")).toBeDefined();
     expect(within(team).getByText("Marketing")).toBeDefined();
     expect(within(team).getByText("Devon")).toBeDefined();
     expect(within(team).getByText("Security")).toBeDefined();

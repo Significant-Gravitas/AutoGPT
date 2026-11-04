@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import type { CSSProperties } from "react";
 import {
+  fluidSize,
   isLead,
   revealDelay,
   stagePercent,
@@ -21,10 +22,7 @@ export function TeamNode({ member, animate }: Props) {
   const position = {
     "--x": stagePercent(member.x),
     "--top": `${member.top}px`,
-    "--size": `${member.size}px`,
-    // Pictures keep their size down to a 360px-wide stage, then shrink with
-    // it so neighbours never touch on the narrowest phones.
-    "--fluid-size": `${member.size / 3.6}cqw`,
+    "--size": fluidSize(member.size),
   } as CSSProperties;
 
   // The list item is placed and centred on its point; the motion inside it
@@ -40,7 +38,7 @@ export function TeamNode({ member, animate }: Props) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ delay: revealDelay(member), duration: 0.55, ease: EASE }}
       >
-        <div className="relative flex h-(--size) w-[min(var(--size),var(--fluid-size))] items-end justify-center">
+        <div className="relative size-(--size)">
           {lead && (
             <div
               aria-hidden="true"
@@ -58,7 +56,7 @@ export function TeamNode({ member, animate }: Props) {
             height={member.size}
             sizes={`${member.size}px`}
             priority
-            className="relative size-[min(var(--size),var(--fluid-size))] object-contain"
+            className="relative size-full object-contain"
           />
         </div>
         <span

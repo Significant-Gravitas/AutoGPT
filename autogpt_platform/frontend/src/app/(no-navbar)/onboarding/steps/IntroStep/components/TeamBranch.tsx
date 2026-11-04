@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import type { CSSProperties } from "react";
 import {
   branchDelay,
+  fluidSize,
   stagePercent,
   teamBranch,
   type TeamMember,
@@ -22,9 +23,11 @@ export function TeamBranch({ parent, animate }: Props) {
   const delay = branchDelay(parent);
   const lines = {
     "--x": stagePercent(branch.x),
-    "--start": `${branch.start}px`,
-    "--middle": `${branch.middle}px`,
+    // The stem starts a fixed distance below the parent's picture, which
+    // shrinks on narrow phones, and the bar sits halfway down to the children.
+    "--start": `calc(${branch.start - parent.size}px + ${fluidSize(parent.size)})`,
     "--end": `${branch.end}px`,
+    "--middle": "calc((var(--start) + var(--end)) / 2)",
     "--left": stagePercent(branch.left),
     "--right": stagePercent(branch.right),
   } as CSSProperties;
