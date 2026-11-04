@@ -21,10 +21,14 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from .config import ShimConfig
 
 
 def main() -> None:
@@ -46,18 +50,7 @@ def main() -> None:
         _cmd_uninstall(args)
         return
 
-    from .config import ConfigFileError
-
-    try:
-        config = _build_config(args)
-    except ValidationError as exc:
-        for error in exc.errors(include_input=False, include_context=False, include_url=False):
-            field = ".".join(str(part) for part in error["loc"])
-            print(f"Configuration error ({field}): {error['msg']}", file=sys.stderr)
-        sys.exit(_config_error_exit_code())
-    except ConfigFileError as exc:
-        print(f"Configuration error: {exc}", file=sys.stderr)
-        sys.exit(_config_error_exit_code())
+    config = _config_or_exit(lambda: _build_config(args))
 
     if args.command == "auth":
         exit_code = _cmd_auth(config)
@@ -409,9 +402,30 @@ async def _cmd_revoke(config) -> int:
     return 0
 
 
+def _config_or_exit(load: Callable[[], ShimConfig]) -> ShimConfig:
+    """The config `load` returns, or, when it can't be loaded, a message
+    saying why and an exit with the config error's status."""
+    from .config import ConfigFileError
+
+    try:
+        return load()
+    except ValidationError as exc:
+        for error in exc.errors(include_input=False, include_context=False, include_url=False):
+            field = ".".join(str(part) for part in error["loc"])
+            print(f"Configuration error ({field}): {error['msg']}", file=sys.stderr)
+    except ConfigFileError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+    sys.exit(_config_error_exit_code())
+
+
 def _cmd_install(args) -> None:
     from . import install as _install
+    from .config import load_config
 
+    if args.config is not None:
+        # The service starts with this file; one it can't load would stop it
+        # at every start, where nobody sees the error.
+        _config_or_exit(lambda: load_config(config_path=args.config))
     status = _install.install_autostart(
         at_login=args.at_login,
         config_path=args.config,
