@@ -670,6 +670,52 @@ def test_install_takes_a_config_the_service_can_load(
     assert install_autostart.call_args.kwargs["config_path"] == config
 
 
+def test_install_carries_the_deployment_flags_into_the_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """install dropped --platform-url and --platform-oauth-url, so the
+    service talked to the default platform with credentials scoped to
+    another one, and failed at every start."""
+    from autogpt_local_executor import install
+
+    root = tmp_path / "files"
+    install_autostart = MagicMock()
+    install_autostart.return_value = SimpleNamespace(
+        target_path=tmp_path / "unit",
+        platform="linux",
+        enable_command=None,
+        disable_command=None,
+        notes=[],
+    )
+    monkeypatch.setattr(install, "install_autostart", install_autostart)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "autogpt-shim",
+            "--platform-url",
+            "https://platform.example.com",
+            "--platform-oauth-url",
+            "https://login.example.com/auth",
+            "--allowed-root",
+            "files",
+            "install",
+        ],
+    )
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--platform-url",
+        "https://platform.example.com",
+        "--platform-oauth-url",
+        "https://login.example.com/auth",
+        "--allowed-root",
+        str(root),
+    )
+
+
 def test_a_bad_config_stops_the_launchagent_instead_of_looping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -52,11 +52,14 @@ class AutostartContext:
     config_path: str | None
     stdout_log: str
     stderr_log: str
+    # Other global options `install` was given (--platform-url, say), which
+    # `start` needs as well.
+    global_args: tuple[str, ...] = ()
 
     @property
     def start_argv(self) -> tuple[str, ...]:
         config = ("--config", self.config_path) if self.config_path is not None else ()
-        return (*self.shim_command, *config, "start")
+        return (*self.shim_command, *config, *self.global_args, "start")
 
 
 def _read_template(name: str) -> str:
@@ -176,7 +179,9 @@ def default_config_path() -> Path:
     return base / "autogpt-local-executor" / "config.toml"
 
 
-def build_context(config_path: Path | None) -> AutostartContext:
+def build_context(
+    config_path: Path | None, *, global_args: tuple[str, ...] = ()
+) -> AutostartContext:
     # A --config that names no file is an error at start, so the default
     # location is named only when a config file is there. The CLI has already
     # checked that an explicit one exists.
@@ -189,6 +194,7 @@ def build_context(config_path: Path | None) -> AutostartContext:
         config_path=os.path.abspath(cfg.expanduser()) if named else None,
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
+        global_args=global_args,
     )
 
 
@@ -386,6 +392,7 @@ def install_autostart(
     config_path: Path | None = None,
     home: Path | None = None,
     platform_name: str | None = None,
+    global_args: tuple[str, ...] = (),
 ) -> AutostartStatus:
     """Write the autostart file for this OS.
 
@@ -401,7 +408,7 @@ def install_autostart(
     writer = _WRITERS.get(plat)
     if writer is None:
         raise ValueError(f"Unsupported platform for autostart install: {plat!r}")
-    ctx = build_context(config_path)
+    ctx = build_context(config_path, global_args=global_args)
     target = target_path_for(plat, home)
     # Ensure parent log dirs exist; templates reference them.
     Path(ctx.stdout_log).parent.mkdir(parents=True, exist_ok=True)

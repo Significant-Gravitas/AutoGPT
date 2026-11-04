@@ -420,15 +420,14 @@ def _config_or_exit(load: Callable[[], ShimConfig]) -> ShimConfig:
 
 def _cmd_install(args) -> None:
     from . import install as _install
-    from .config import load_config
 
-    if args.config is not None:
-        # The service starts with this file; one it can't load would stop it
-        # at every start, where nobody sees the error.
-        _config_or_exit(lambda: load_config(config_path=args.config))
+    # The service starts with the same config file and options; a set it
+    # can't load would stop it at every start, where nobody sees the error.
+    _config_or_exit(lambda: _build_config(args))
     status = _install.install_autostart(
         at_login=args.at_login,
         config_path=args.config,
+        global_args=_service_global_args(args),
     )
     print(f"Wrote autostart entry: {status.target_path}")
     print(f"Platform: {status.platform}")
@@ -440,6 +439,23 @@ def _cmd_install(args) -> None:
         print(f"  {status.disable_command}")
     for note in status.notes:
         print(f"\nNote: {note}")
+
+
+def _service_global_args(args) -> tuple[str, ...]:
+    """The global options `install` was given that `start` needs too. Without
+    the platform URLs the service would talk to the default platform, with
+    credentials scoped to another one, and fail at every start."""
+    out: list[str] = []
+    for flag, value in (
+        ("--platform-url", args.platform_url),
+        ("--platform-oauth-url", args.platform_oauth_url),
+        # The service runs in another working directory.
+        ("--allowed-root", os.path.abspath(args.allowed_root) if args.allowed_root else None),
+        ("--session-id", args.session_id),
+    ):
+        if value is not None:
+            out += [flag, str(value)]
+    return tuple(out)
 
 
 def _cmd_uninstall(args) -> None:

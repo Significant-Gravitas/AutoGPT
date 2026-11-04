@@ -552,3 +552,19 @@ def test_the_default_config_is_pinned_only_when_it_exists(
         assert ctx.start_argv == ("/usr/bin/autogpt-shim", "--config", str(default), "start")
     else:
         assert ctx.start_argv == ("/usr/bin/autogpt-shim", "start")
+
+
+def test_the_service_starts_with_the_options_install_was_given(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(install_mod, "resolve_shim_command", lambda: ("/usr/bin/autogpt-shim",))
+    monkeypatch.setattr(install_mod, "default_config_path", lambda: tmp_path / "none.toml")
+
+    ctx = install_mod.build_context(
+        None, global_args=("--platform-url", "https://platform.example.com")
+    )
+
+    assert ctx.start_argv == (
+        "/usr/bin/autogpt-shim",
+        "--platform-url",
+        "https://platform.example.com",
+        "start",
+    )
