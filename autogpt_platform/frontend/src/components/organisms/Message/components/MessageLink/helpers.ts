@@ -6,8 +6,8 @@ export const INCOMPLETE_LINK_HREF = "streamdown:incomplete-link";
 type LinkClick = "plain" | "modified" | "middle" | "other";
 
 // The clicks on a link to another site that ask first. Middle-clicks and
-// Ctrl/Cmd/Shift/Alt-clicks open it at once, as the browser's "Open in new
-// tab" menu does (SECRT-2096).
+// Ctrl/Cmd/Shift/Alt-clicks are left to the browser, which opens the link
+// without asking, as its "Open in new tab" menu does (SECRT-2096).
 const ASKS_BEFORE_LEAVING: Record<LinkClick, boolean> = {
   plain: true,
   modified: false,

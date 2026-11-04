@@ -4,7 +4,9 @@ import { ExternalLinkModal } from "./components/ExternalLinkModal";
 import { INCOMPLETE_LINK_HREF } from "./helpers";
 import { useMessageLink } from "./useMessageLink";
 
-type Props = ComponentProps<"a"> & { node?: unknown };
+interface Props extends ComponentProps<"a"> {
+  node?: unknown;
+}
 
 // Streamdown's own link turns into a button without an href while link safety
 // is on, so middle-click, Ctrl/Cmd-click and "Open in new tab" had nothing to
@@ -27,7 +29,7 @@ export function MessageLink({
         {...props}
         href={url}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         onClick={handleClick}
         onAuxClick={handleClick}
         data-incomplete={isIncomplete}
