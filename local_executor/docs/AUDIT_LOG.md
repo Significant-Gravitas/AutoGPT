@@ -261,7 +261,8 @@ require shipping a CA flow we don't need for v0.
 
 ## What this catches
 
-- **Log truncation** — chain breaks at the first record after the cut.
+- **A record cut off part way** — a partial final line is reported as
+  `truncated`.
 - **Record deletion** — `seq` jumps, prev_hmac mismatches.
 - **Field tampering** — HMAC mismatch on the tampered record.
 - **Wholesale log replacement** — verifier needs the audit key; an
@@ -272,6 +273,8 @@ require shipping a CA flow we don't need for v0.
 
 ## What this does NOT catch
 
+- Removing the newest complete records, a whole rotated file or the whole
+  log. What is left still verifies; see "Tamper-evidence chain" above.
 - Real-time tampering by a process running AS the shim user with
   keychain access. (Mitigation: keychain prompts are user-visible on
   macOS/Windows; an attacker writing to the audit key triggers a TCC

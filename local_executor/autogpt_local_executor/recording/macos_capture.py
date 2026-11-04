@@ -50,9 +50,12 @@ class MacInputCaptureSource(CaptureSource):
     generator stops the runloop and joins the thread.
     """
 
-    def __init__(self, *, poll_interval: float = 0.2) -> None:
+    def __init__(self, *, poll_interval: float = 0.2, max_queued_events: int = 10_000) -> None:
         self._poll = poll_interval
-        self._q: queue.Queue[dict] = queue.Queue()
+        # Bounded, so a stalled consumer can't grow it without limit; events
+        # it can't take are counted, and steps() then fails the recording.
+        self._q: queue.Queue[dict] = queue.Queue(maxsize=max_queued_events)
+        self.dropped_events = 0
         self._thread: threading.Thread | None = None
         self._runloop = None  # CFRunLoopRef captured on the tap thread
         self._tap = None
@@ -149,7 +152,10 @@ class MacInputCaptureSource(CaptureSource):
                 record["keycode"] = Quartz.CGEventGetIntegerValueField(
                     event, Quartz.kCGKeyboardEventKeycode
                 )
-            self._q.put_nowait(record)
+            try:
+                self._q.put_nowait(record)
+            except queue.Full:
+                self.dropped_events += 1
         except Exception:
             logger.debug("macOS capture: event marshal failed", exc_info=True)
         return event
@@ -223,8 +229,15 @@ class MacInputCaptureSource(CaptureSource):
         if not self.tap_created and self._tap is None:
             # Caller didn't start(), or TCC blocked it. Yield nothing.
             return
+        from .session import RecordingError
+
         try:
             while not self._stop.is_set():
+                if self.dropped_events:
+                    raise RecordingError(
+                        f"The input capture fell behind and dropped {self.dropped_events} "
+                        "events, so the recording is incomplete"
+                    )
                 try:
                     rec = await asyncio.to_thread(self._q.get, True, self._poll)
                 except queue.Empty:

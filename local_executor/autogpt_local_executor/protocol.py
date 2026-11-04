@@ -51,6 +51,9 @@ def _split_version(v: str) -> tuple[int, int]:
     parts = v.split(".")
     if len(parts) != 2:
         raise ValueError(f"protocol version must be 'major.minor', got {v!r}")
+    # int() would also take signs, spaces, underscores and non-ASCII digits.
+    if not all(part.isascii() and part.isdigit() for part in parts):
+        raise ValueError(f"protocol version components must be ASCII digits, got {v!r}")
     try:
         return int(parts[0]), int(parts[1])
     except (TypeError, ValueError) as exc:
@@ -77,6 +80,15 @@ def negotiate_version(shim_max: str, platform_max: str) -> str:
             ),
         )
     return f"{shim_major}.{min(shim_minor, plat_minor)}"
+
+
+def same_major(version: str, negotiated: str) -> bool:
+    """Whether a frame's `version` shares the negotiated major. A version
+    that doesn't parse never does."""
+    try:
+        return _split_version(version)[0] == _split_version(negotiated)[0]
+    except ValueError:
+        return False
 
 
 class ProtocolVersionMismatch(Exception):
@@ -437,6 +449,13 @@ class FileWritePayload(_Payload):
 
 class AckPayload(_Payload):
     ok: bool = True
+
+
+class AppLaunchAckPayload(AckPayload):
+    """APP_LAUNCH's ACK also names the launched process: null when the OS
+    didn't say (a launch through `open -b`, say)."""
+
+    pid: int | None = None
 
 
 class FileStatPayload(_Payload):
@@ -1134,6 +1153,14 @@ class AckMessage(_Envelope):
     payload: AckPayload
 
 
+class AppLaunchAckMessage(_Envelope):
+    """The ACK that answers APP_LAUNCH. The shim only sends it, so it isn't in
+    the inbound `Message` union, where it would collide with `AckMessage`."""
+
+    type: Literal[MessageType.ACK] = MessageType.ACK
+    payload: AppLaunchAckPayload
+
+
 class FileStatMessage(_Envelope):
     type: Literal[MessageType.FILE_STAT] = MessageType.FILE_STAT
     payload: FileStatPayload
@@ -1479,6 +1506,8 @@ __all__ = [
     "negotiate_version",
     "Arch",
     "AckMessage",
+    "AppLaunchAckMessage",
+    "AppLaunchAckPayload",
     "AckPayload",
     "ActivateSessionMessage",
     "ActivateSessionPayload",

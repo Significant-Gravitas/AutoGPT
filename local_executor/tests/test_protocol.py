@@ -451,3 +451,11 @@ def test_parse_hello_ack_defaults_protocol_version() -> None:
     msg = parse_message(raw)
     assert isinstance(msg, HelloAckMessage)
     assert msg.payload.protocol_version == VERSION
+
+
+@pytest.mark.parametrize("version", ["1.-1", "1.+2", "1.\u0661", " 1.1", "1.1 ", "1_0.1"])
+def test_a_version_component_must_be_ascii_digits(version: str) -> None:
+    """int() accepts signs, spaces, underscores and non-ASCII digits, so
+    `1.-1` used to negotiate a negative minor."""
+    with pytest.raises(ValueError):
+        negotiate_version("1.1", version)

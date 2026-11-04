@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -42,12 +43,17 @@ def main() -> None:
         _cmd_uninstall(args)
         return
 
+    from .config import ConfigFileError
+
     try:
         config = _build_config(args)
     except ValidationError as exc:
         for error in exc.errors(include_input=False, include_context=False, include_url=False):
             field = ".".join(str(part) for part in error["loc"])
             print(f"Configuration error ({field}): {error['msg']}", file=sys.stderr)
+        sys.exit(78)
+    except ConfigFileError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
         sys.exit(78)
 
     if args.command == "auth":
@@ -444,16 +450,52 @@ def _audit_tail(path: Path) -> int:
     if not path.is_file():
         print(f"Audit log not found: {path}")
         return 1
-    with open(path, "rb") as f:
-        # Print everything that already exists, then poll for appends.
-        for line in f:
-            _print_record_line(line)
+    for line in _follow(path, wait=lambda: time.sleep(0.5)):
+        _print_record_line(line)
+    return 0
+
+
+def _follow(path: Path, wait) -> Iterator[bytes]:
+    """Every complete line of `path`, then each one appended, like `tail -F`.
+    A line still being written is held until its newline arrives. When a
+    rotation moves the log away, the old file is read to its end and the new
+    one at `path` is followed from its start."""
+    f = open(path, "rb")
+    try:
+        pending = b""
         while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.5)
+            chunk = f.readline()
+            if chunk:
+                pending += chunk
+                if pending.endswith(b"\n"):
+                    yield pending
+                    pending = b""
                 continue
-            _print_record_line(line)
+            if _moved_away(path, f):
+                try:
+                    reopened = open(path, "rb")
+                except FileNotFoundError:
+                    wait()
+                    continue
+                if pending:
+                    yield pending
+                    pending = b""
+                f.close()
+                f = reopened
+                continue
+            wait()
+    finally:
+        f.close()
+
+
+def _moved_away(path: Path, f) -> bool:
+    """Whether `path` now names another file than the one `f` has open."""
+    try:
+        now = os.stat(path)
+    except FileNotFoundError:
+        return False
+    opened = os.fstat(f.fileno())
+    return (now.st_dev, now.st_ino) != (opened.st_dev, opened.st_ino)
 
 
 def _audit_show(current: Path, seq: int) -> int:
@@ -479,7 +521,7 @@ def _audit_show(current: Path, seq: int) -> int:
                     rec = json.loads(raw.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
                     continue
-                if rec.get("seq") == seq:
+                if isinstance(rec, dict) and rec.get("seq") == seq:
                     print(f"# from {path.name}")
                     print(json.dumps(rec, indent=2, ensure_ascii=False))
                     found = True
@@ -504,6 +546,17 @@ def _audit_verify(current: Path) -> int:
     with holding_log_lock(current):
         violations = AuditWriter.verify(current, key)
     return _print_violations(current, violations)
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    """Whether two paths name one file: the same spelling once resolved, or,
+    when both exist, the same file under another name (a hard link, say)."""
+    try:
+        if a.resolve() == b.resolve():
+            return True
+        return a.exists() and b.exists() and os.path.samefile(a, b)
+    except OSError:
+        return False
 
 
 def _audit_files(current: Path) -> list[Path]:
@@ -584,6 +637,10 @@ def _audit_export(current: Path, output: Path | None) -> int:
         if not files:
             print("Nothing to export — no audit logs present.")
             return 1
+        # Opening the zip truncates `output`, so it must not be a log being exported.
+        if any(_same_file(output, path) for path in (current, *files)):
+            print(f"Refusing to write the export over an audit log: {output}")
+            return 2
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in files:
                 data = path.read_bytes()
@@ -666,7 +723,8 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
             lines = [ln for ln in tail.split(b"\n") if ln.strip()]
             if not lines:
                 continue
-            newest_ts = json.loads(lines[-1]).get("ts")
+            newest = json.loads(lines[-1])
+            newest_ts = newest.get("ts") if isinstance(newest, dict) else None
             if newest_ts is None:
                 print(f"Kept {path.name}: its newest record has no timestamp.")
                 continue
@@ -692,11 +750,12 @@ def _parse_duration(s: str) -> float | None:
     suffix = s[-1].lower()
     if suffix not in units:
         return None
-    try:
-        n = int(s[:-1])
-    except ValueError:
+    number = s[:-1]
+    # A positive whole number only: `-1d` would put the cutoff a day ahead,
+    # and prune would delete every rotated file.
+    if not (number.isascii() and number.isdigit()) or int(number) == 0:
         return None
-    return n * units[suffix]
+    return int(number) * units[suffix]
 
 
 def _print_record_line(raw: bytes) -> None:
@@ -708,12 +767,17 @@ def _print_record_line(raw: bytes) -> None:
     try:
         rec = json.loads(s)
     except json.JSONDecodeError:
+        rec = None
+    if not isinstance(rec, dict):
         print(f"[unparseable] {s}")
         return
     seq = rec.get("seq", "?")
     op = rec.get("op", "?")
-    ok = rec.get("result", {}).get("ok")
-    marker = "ok" if ok else f"err:{rec.get('result', {}).get('error_code')}"
+    result = rec.get("result")
+    if not isinstance(result, dict):
+        result = {}
+    ok = result.get("ok")
+    marker = "ok" if ok else f"err:{result.get('error_code')}"
     print(f"seq={seq:>5}  {op:<22}  {marker}")
 
 

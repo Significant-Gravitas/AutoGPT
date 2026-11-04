@@ -148,10 +148,7 @@ async def test_file_content_rejects_existing_hard_link(tmp_path: Path, operation
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", ["read", "write"])
-async def test_file_content_checks_opened_descriptor_before_access(
-    tmp_path: Path, operation: str
-) -> None:
+async def test_file_content_checks_opened_descriptor_before_access(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     root.mkdir()
     target = root / "single.txt"
@@ -166,16 +163,38 @@ async def test_file_content_checks_opened_descriptor_before_access(
 
     handler = FileHandler(make_config(root))
     with patch("autogpt_local_executor.path_jail.os.open", side_effect=link_before_open):
-        response = (
-            await handler.handle_read(_read_msg(target))
-            if operation == "read"
-            else await handler.handle_write(_write_msg(target, "overwrite"))
-        )
+        response = await handler.handle_read(_read_msg(target))
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
     assert target.read_text() == "must remain intact"
     assert outside.read_text() == "must remain intact"
+
+
+@pytest.mark.asyncio
+async def test_a_write_never_reaches_a_hard_link_made_after_the_check(tmp_path: Path) -> None:
+    """A write puts a new file at the jail path rather than writing into the
+    old one, so a hard link made from outside after the check keeps the old
+    contents: nothing outside the jail is written."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "single.txt"
+    target.write_text("must remain intact")
+    outside = tmp_path / "outside.txt"
+    original_replace = os.replace
+
+    def link_before_replace(src, dst):
+        if Path(dst) == target:
+            os.link(target, outside)
+        return original_replace(src, dst)
+
+    handler = FileHandler(make_config(root))
+    with patch("autogpt_local_executor.path_jail.os.replace", side_effect=link_before_replace):
+        response = await handler.handle_write(_write_msg(target, "overwrite"))
+
+    assert isinstance(response, AckMessage)
+    assert outside.read_text() == "must remain intact"
+    assert target.read_text() == "overwrite"
 
 
 @pytest.mark.asyncio
@@ -1265,3 +1284,158 @@ async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
 
     assert isinstance(response, FileListResponseMessage)
     assert sorted(entry.name for entry in response.payload.entries) == ["app.py", "src"]
+
+
+# ── Writes that fail, moves that race, listings that ask for too much ───────
+
+
+class _FullDisk:
+    """A file object whose writes fail the way a full disk does."""
+
+    def __init__(self, file) -> None:
+        self._file = file
+
+    def write(self, _data: bytes) -> int:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    def __getattr__(self, name: str):
+        return getattr(self._file, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        self._file.close()
+        return False
+
+
+@pytest.mark.asyncio
+async def test_a_write_that_fails_part_way_leaves_the_old_contents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Truncating first meant a full disk destroyed the file being rewritten."""
+    target = tmp_path / "notes.txt"
+    target.write_text("the user's notes")
+    real_fdopen = os.fdopen
+    monkeypatch.setattr(os, "fdopen", lambda fd, *a, **k: _FullDisk(real_fdopen(fd, *a, **k)))
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+    monkeypatch.undo()
+
+    assert isinstance(response, ErrorMessage)
+    assert target.read_text() == "the user's notes"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.asyncio
+async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path: Path) -> None:
+    existing = tmp_path / "private.txt"
+    existing.write_text("old")
+    existing.chmod(0o640)
+    created = tmp_path / "created.txt"
+    umask = os.umask(0o022)
+    try:
+        handler = FileHandler(make_config(tmp_path))
+        await handler.handle_write(_write_msg(existing, "new"))
+        await handler.handle_write(_write_msg(created, "new"))
+    finally:
+        os.umask(umask)
+
+    assert existing.read_text() == "new"
+    assert existing.stat().st_mode & 0o777 == 0o640
+    assert created.stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.asyncio
+async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows refuses to replace a file another program has open, and a
+    directory may take no new entries; the old in-place write still works."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    target = tmp_path / "open-elsewhere.txt"
+    target.write_text("old")
+
+    def refuse(*_args) -> None:
+        raise PermissionError(errno.EACCES, "The process cannot access the file")
+
+    monkeypatch.setattr(path_jail.os, "replace", refuse)
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+    monkeypatch.undo()
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["open-elsewhere.txt"]
+
+
+@pytest.mark.asyncio
+async def test_a_move_never_replaces_a_destination_that_appears_after_the_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without overwrite, a file created between the existence check and the
+    rename used to be replaced on POSIX, where rename overwrites silently."""
+    src = tmp_path / "draft.txt"
+    src.write_text("draft")
+    dst = tmp_path / "final.txt"
+    dst.write_text("someone else's file")
+    real_lexists = os.path.lexists
+    monkeypatch.setattr(
+        handlers_module.os.path,
+        "lexists",
+        lambda p: False if str(p) == str(dst) else real_lexists(p),
+    )
+
+    response = await FileHandler(make_config(tmp_path)).handle_move(_move_msg(src, dst))
+    monkeypatch.undo()
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_EXISTS
+    assert dst.read_text() == "someone else's file"
+    assert src.read_text() == "draft"
+
+
+@pytest.mark.parametrize("native", [True, False], ids=["native", "fallback"])
+def test_rename_no_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native: bool) -> None:
+    from autogpt_local_executor import fsops
+
+    if not native:
+        monkeypatch.setattr(fsops, "_native_no_replace_rename", lambda _src, _dst: False)
+    src = tmp_path / "a"
+    src.write_text("a")
+    taken = tmp_path / "b"
+    taken.write_text("b")
+
+    with pytest.raises(FileExistsError):
+        fsops.rename_no_replace(src, taken)
+    if native and sys.platform in ("linux", "darwin"):
+        # The atomic call itself must work here, not just the fallback.
+        assert fsops._native_no_replace_rename(src, tmp_path / "c") is True
+    else:
+        fsops.rename_no_replace(src, tmp_path / "c")
+
+    assert taken.read_text() == "b"
+    assert (tmp_path / "c").read_text() == "a"
+    assert not src.exists()
+
+
+@pytest.mark.asyncio
+async def test_a_listing_is_capped_whatever_max_entries_asks_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """max_entries had no bound, so a huge value walked the whole tree first."""
+    for index in range(30):
+        (tmp_path / f"f{index:02d}").write_text("")
+    monkeypatch.setattr(handlers_module, "MAX_FILE_LIST_ENTRIES", 10)
+    msg = FileListMessage(
+        id=new_id(),
+        ts=now_ts(),
+        payload=FileListPayload(path=str(tmp_path), max_entries=10**9),
+    )
+
+    response = await FileHandler(make_config(tmp_path)).handle_list(msg)
+
+    assert isinstance(response, FileListResponseMessage)
+    assert len(response.payload.entries) == 10
+    assert response.payload.truncated is True

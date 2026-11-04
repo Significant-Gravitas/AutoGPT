@@ -100,6 +100,7 @@ from .protocol import (
     new_id,
     now_ts,
     parse_message,
+    same_major,
 )
 from .protocol import (
     VERSION as PROTOCOL_VERSION,
@@ -561,13 +562,7 @@ class ShimDaemon:
             await self._cancel_dispatch_tasks()
             # Cancel the periodic STATUS ticker first so it doesn't fight
             # us for the dying WS.
-            if self._status_task is not None:
-                self._status_task.cancel()
-                try:
-                    await self._status_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                self._status_task = None
+            await self._stop_status_ticker()
             if self._child_reaper_task is not None:
                 self._child_reaper_task.cancel()
                 try:
@@ -582,6 +577,15 @@ class ShimDaemon:
                     await self.audit.ws_disconnected(disconnect_reason)
                 except Exception:
                     logger.debug("WS_DISCONNECTED audit emit failed", exc_info=True)
+
+    async def _stop_status_ticker(self) -> None:
+        if self._status_task is not None:
+            self._status_task.cancel()
+            try:
+                await self._status_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._status_task = None
 
     async def _cancel_dispatch_tasks(self) -> None:
         tasks = tuple(self._dispatch_tasks)
@@ -895,6 +899,17 @@ class ShimDaemon:
         except (ValidationError, ValueError) as exc:
             logger.warning("Failed to parse inbound frame: %s", exc)
             return
+        if self._negotiated_version is not None and not same_major(
+            msg.version, self._negotiated_version
+        ):
+            # PROTOCOL.md: a frame from another major is dropped and logged loudly.
+            logger.error(
+                "Dropped a %s frame for protocol %r; this session negotiated %s",
+                type(msg).__name__,
+                msg.version,
+                self._negotiated_version,
+            )
+            return
 
         # PING is handled inline so a saturated semaphore can't starve keepalive.
         if isinstance(msg, PingMessage):
@@ -940,6 +955,10 @@ class ShimDaemon:
         # while the audit write below runs in a thread, and their responses
         # must not go out.
         self._revoked_ws = ws
+        # Nor may the revoked session's work go on: stop what is running and
+        # what is queued behind it, and the STATUS ticker.
+        await self._cancel_dispatch_tasks()
+        await self._stop_status_ticker()
         reason = msg.payload.reason
         new_machine = msg.payload.new_shim_machine_id
         logger.warning(

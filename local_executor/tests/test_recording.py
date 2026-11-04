@@ -1258,3 +1258,45 @@ async def test_start_refuses_a_route_other_than_the_consented_one(tmp_path: Path
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.CONSENT_REQUIRED
+
+
+async def test_an_accessibility_result_with_no_fields_leaves_the_step_unenriched() -> None:
+    """Any non-empty dict used to tag the step `ax`, so coverage counted
+    steps the accessibility tree said nothing about."""
+    from autogpt_local_executor.recording import A11yEnricher
+    from autogpt_local_executor.recording.capture import MockCaptureSource
+
+    def resolver(**_where):
+        return {"role": None, "label": "", "unrelated": "value"}
+
+    enricher = A11yEnricher(floor=MockCaptureSource([_step(1)]), resolver=resolver)
+
+    [step] = [step async for step in enricher.steps()]
+
+    assert step.enrichment.kind == "none"
+
+
+async def test_the_macos_capture_fails_a_recording_that_dropped_events(monkeypatch) -> None:
+    """An unbounded queue grew without limit behind a stalled consumer; a
+    bounded one must not then lose events silently."""
+    import sys
+    from types import SimpleNamespace
+
+    from autogpt_local_executor.recording import macos_capture
+    from autogpt_local_executor.recording.session import RecordingError
+
+    quartz = SimpleNamespace(
+        CGEventGetLocation=lambda _event: SimpleNamespace(x=1, y=2),
+        CGEventGetIntegerValueField=lambda *_args: 0,
+        kCGKeyboardEventKeycode=9,
+    )
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
+    source = macos_capture.MacInputCaptureSource(max_queued_events=2)
+    for _ in range(5):
+        source._on_event(None, 1, object(), None)
+    source._tap = object()
+    monkeypatch.setattr(source, "stop", lambda: None)
+
+    with pytest.raises(RecordingError, match="dropped 3"):
+        async for _step_ in source.steps():
+            pass

@@ -9,8 +9,10 @@ here, update the doc first.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import secrets
 import stat
 import sys
 from collections.abc import Iterator
@@ -300,10 +302,62 @@ def open_jail_file(
         os.close(descriptor)
 
 
+def write_jail_file(
+    requested_path: str | os.PathLike[str],
+    allowed_root: str | os.PathLike[str],
+    data: bytes,
+) -> None:
+    """Write `data` to a single-linked regular file inside the jail, or create it.
+
+    The data goes to a new file beside the target, which is then renamed over
+    it, so a write that fails part way (a full disk, say) leaves the old
+    contents whole. An existing file keeps its mode; a new one gets 0o666 less
+    the umask. Where the directory takes no new entries, or (on Windows)
+    another program has the file open, the file is overwritten in place.
+    """
+    path = assert_inside_jail(requested_path, allowed_root)
+    try:
+        existing = path.stat()
+    except FileNotFoundError:
+        mode = None
+    else:
+        _assert_safe_content_stat(existing)
+        mode = stat.S_IMODE(existing.st_mode)
+    try:
+        _replace_with(path, data, mode)
+    except PermissionError:
+        with open_jail_file(path, allowed_root, write=True) as file:
+            file.truncate(0)
+            file.write(data)
+
+
+def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    # Opened with 0o666 so the umask applies, as it does to a plain create.
+    temp = path.with_name(f".{path.name[:100]}.{secrets.token_hex(6)}.tmp")
+    descriptor = os.open(temp, flags, 0o666)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            if mode is not None and hasattr(os, "fchmod"):
+                os.fchmod(file.fileno(), mode)
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        if mode is not None and not hasattr(os, "fchmod"):
+            os.chmod(temp, mode)
+        os.replace(temp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
+
+
 __all__ = [
     "PathJailError",
     "assert_entry_inside_jail",
     "assert_inside_jail",
     "is_inside_jail",
     "open_jail_file",
+    "write_jail_file",
 ]

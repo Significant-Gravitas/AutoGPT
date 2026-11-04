@@ -439,3 +439,30 @@ def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkey
         )
 
     assert clipboard["content"] == "user text"
+
+
+def test_a_window_capture_releases_what_it_acquired_when_a_step_fails(
+    tmp_path, monkeypatch
+) -> None:
+    """The DCs were acquired outside the try, so a failing bitmap leaked them."""
+    b = WindowsBackend(_config(tmp_path))
+    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
+    window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
+    monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
+    win32gui = MagicMock()
+    win32gui.IsWindow.return_value = True
+    win32gui.GetWindowRect.return_value = (0, 0, 100, 50)
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+    win32ui = MagicMock()
+    win32ui.CreateBitmap.return_value.CreateCompatibleBitmap.side_effect = RuntimeError("no GDI")
+    monkeypatch.setitem(sys.modules, "win32ui", win32ui)
+    monkeypatch.setitem(sys.modules, "PIL", MagicMock())
+
+    with pytest.raises(RuntimeError, match="no GDI"):
+        b._screenshot_window(window_id, quality=75, format="jpeg")
+
+    mfc_dc = win32ui.CreateDCFromHandle.return_value
+    mfc_dc.CreateCompatibleDC.return_value.DeleteDC.assert_called_once()
+    mfc_dc.DeleteDC.assert_called_once()
+    win32gui.ReleaseDC.assert_called_once()
+    win32gui.DeleteObject.assert_not_called()

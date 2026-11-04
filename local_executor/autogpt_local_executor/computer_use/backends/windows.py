@@ -218,13 +218,18 @@ class WindowsBackend(ComputerUseBackend):
         w, h = right - left, bot - top
         if w <= 0 or h <= 0:
             raise FeatureNotSupportedError("screenshot.window", reason="zero-size window")
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
-        bmp = win32ui.CreateBitmap()
-        bmp.CreateCompatibleBitmap(mfc_dc, w, h)
-        save_dc.SelectObject(bmp)
+        # Acquired inside the try, so whatever was acquired is released even
+        # when a later step (the bitmap, say) fails.
+        hwnd_dc = mfc_dc = save_dc = bmp = None
+        bitmap_made = False
         try:
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
+            bmp = win32ui.CreateBitmap()
+            bmp.CreateCompatibleBitmap(mfc_dc, w, h)
+            bitmap_made = True
+            save_dc.SelectObject(bmp)
             # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
             # It returns 0 when the window did not render into the bitmap.
             try:
@@ -253,10 +258,14 @@ class WindowsBackend(ComputerUseBackend):
                 1,
             )
         finally:
-            win32gui.DeleteObject(bmp.GetHandle())
-            save_dc.DeleteDC()
-            mfc_dc.DeleteDC()
-            win32gui.ReleaseDC(hwnd, hwnd_dc)
+            if bitmap_made and bmp is not None:
+                win32gui.DeleteObject(bmp.GetHandle())
+            if save_dc is not None:
+                save_dc.DeleteDC()
+            if mfc_dc is not None:
+                mfc_dc.DeleteDC()
+            if hwnd_dc is not None:
+                win32gui.ReleaseDC(hwnd, hwnd_dc)
 
         if include_cursor:
             try:
