@@ -3230,7 +3230,7 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            self.scheduler.add_job(
+            system_jobs.add_job(
                 deliver_background_subtasks,
                 id="deliver_background_subtasks",
                 trigger="interval",
