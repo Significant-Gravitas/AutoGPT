@@ -173,12 +173,14 @@ async def test_a_failed_send_is_not_recorded_and_fails_the_step(email):
 
 
 @pytest.mark.asyncio
-async def test_without_an_address_the_confirmation_is_skipped(email):
+async def test_without_an_address_there_is_no_one_to_send_it_to(email):
+    """Not a skip: a skip means a service this stack does not run."""
     no_address = PENDING.model_copy(update={"email": None})
 
     report = await request.send_confirmation(no_address, dry_run=False)
 
-    assert report.status == StepStatus.SKIPPED
+    assert report.status == StepStatus.DONE
+    assert report.counts == {"emails": 0}
     email.send.assert_not_awaited()
 
 

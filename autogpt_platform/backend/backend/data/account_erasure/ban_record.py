@@ -9,9 +9,9 @@ dates. Sign-up asks `is_banned_address` (through
 
 A record lasts as long as the ban would have, and 3 years at most; the sweep
 purges the ones past their date (`purge_expired_ban_records`). The hash is
-keyed with a key derived from the backend's `ENCRYPTION_KEY`, which never
-reaches the database, so the table alone does not tell whose addresses it
-holds.
+keyed with `BAN_RECORD_HASH_KEY`, a key of its own that never reaches the
+database, so the table alone does not tell whose addresses it holds. It is
+never rotated: the records kept under the old key would stop matching.
 """
 
 import hashlib
@@ -26,7 +26,6 @@ from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.util.settings import Settings
 
 BAN_RECORD_RETENTION = timedelta(days=3 * 365)
-_KEY_LABEL = b"account-ban-record/v1"
 
 settings = Settings()
 
@@ -48,8 +47,8 @@ async def keep_ban_record(subject: Subject, *, dry_run: bool) -> StepReport:
         return StepReport(
             name="ban_record",
             status=StepStatus.FAILED,
-            note="no ENCRYPTION_KEY on this service to key the hash with; set "
-            "it and run again",
+            note="no BAN_RECORD_HASH_KEY on this service to key the hash with; "
+            "set it and run again",
         )
     if not dry_run:
         await _create_once(digest, now, _delete_after(subject, now))
@@ -118,12 +117,11 @@ async def _kept(digest: str, now: datetime) -> bool:
 def email_hash(email: str) -> str | None:
     """The keyed hash of an address, alike in any case and without the
     surrounding spaces; None without a key."""
-    secret = settings.secrets.encryption_key
-    if not secret:
+    key = settings.secrets.ban_record_hash_key
+    if not key:
         return None
-    key = hmac.new(secret.encode(), _KEY_LABEL, hashlib.sha256).digest()
     address = email.strip().lower().encode()
-    return hmac.new(key, address, hashlib.sha256).hexdigest()
+    return hmac.new(key.encode(), address, hashlib.sha256).hexdigest()
 
 
 def _ban_in_force(subject: Subject, now: datetime) -> bool:

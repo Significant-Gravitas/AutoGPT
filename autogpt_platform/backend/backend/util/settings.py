@@ -1325,6 +1325,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    ban_record_hash_key: str = Field(
+        default="",
+        description="Key of the hash that ban records (account erasure) keep "
+        "of a banned address. Never rotate it: the records kept under the old "
+        "one stop matching. Blank keeps no ban record, so erasing a banned "
+        "account fails, and sign-up matches none.",
+    )
+
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
     )

@@ -102,10 +102,13 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
             ),
         )
     if not subject.email or subject.erase_after is None:
+        # Not a skip: the address goes only with the rows, which an earlier
+        # run deleted, so there is no one left to send it to.
         return StepReport(
             name="confirmation",
-            status=StepStatus.SKIPPED,
-            note="no address or erase date left to send it with",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note="no address left to send it to; the account's rows are gone",
         )
     if not dry_run:
         await asyncio.wait_for(

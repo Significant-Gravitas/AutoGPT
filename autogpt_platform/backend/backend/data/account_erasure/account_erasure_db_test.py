@@ -740,7 +740,7 @@ async def test_the_claim_and_keep_never_both_win(server: SpinTestServer):
 async def test_a_banned_account_erased_leaves_a_ban_record(
     server: SpinTestServer, outside_services: AsyncMock, monkeypatch
 ):
-    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "test-key")
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "test-key")
     banned = await _account()
     not_banned = await _account()
     banned_email = f"deletion-{banned[:8]}@example.com"

@@ -50,11 +50,14 @@ async def forget_mailerlite_subscriber(
             note="MAILERLITE_API_TOKEN is not set",
         )
     if not subject.email:
+        # The email goes only with the rows, which a run deletes after this
+        # step succeeded: an earlier run forgot the subscriber already.
         return StepReport(
             name="mailerlite",
-            status=StepStatus.SKIPPED,
-            note="no email on record for this account; look the subscriber up "
-            "by hand",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"subscribers": 0},
+            note="no email left; the account's rows went after an earlier run "
+            "of this step",
         )
     if dry_run:
         found = await mailerlite.find_subscriber_id(subject.email) is not None

@@ -26,7 +26,7 @@ BANNED = Subject(
 @pytest.fixture
 def records(monkeypatch):
     monkeypatch.setattr(
-        ban_record.settings.secrets, "encryption_key", "test-encryption-key"
+        ban_record.settings.secrets, "ban_record_hash_key", "test-ban-record-key"
     )
     table = MagicMock()
     table.prisma.return_value.create = AsyncMock()
@@ -38,16 +38,26 @@ def records(monkeypatch):
 
 
 def test_the_hash_is_keyed_and_alike_in_any_case(monkeypatch):
-    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "key-one")
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "key-one")
     first = ban_record.email_hash(" Sam@Example.com ")
     assert first == ban_record.email_hash(EMAIL)
     assert first is not None and EMAIL not in first
-    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "key-two")
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "key-two")
     assert ban_record.email_hash(EMAIL) != first
 
 
+def test_the_hash_does_not_follow_the_encryption_key(monkeypatch):
+    """Rotating ENCRYPTION_KEY must not make the records stop matching."""
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "key")
+    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "old")
+    first = ban_record.email_hash(EMAIL)
+    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "new")
+
+    assert ban_record.email_hash(EMAIL) == first
+
+
 def test_without_a_key_there_is_no_hash(monkeypatch):
-    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "")
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "")
 
     assert ban_record.email_hash(EMAIL) is None
 
@@ -110,12 +120,12 @@ async def test_without_a_key_the_step_fails_so_the_ban_is_not_lost(
     records, monkeypatch
 ):
     """Skipping would let the identity, and the ban with it, go for good."""
-    monkeypatch.setattr(ban_record.settings.secrets, "encryption_key", "")
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "")
 
     report = await ban_record.keep_ban_record(BANNED, dry_run=False)
 
     assert report.status == StepStatus.FAILED
-    assert "ENCRYPTION_KEY" in report.note
+    assert "BAN_RECORD_HASH_KEY" in report.note
     records.create.assert_not_awaited()
 
 

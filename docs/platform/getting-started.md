@@ -173,8 +173,9 @@ To run the platform, follow these steps:
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
   leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`,
-  `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the passwords of the database,
-  RabbitMQ, Redis and FalkorDB — with values generated for your machine. Those
+  `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET`, and the
+  passwords of the database, RabbitMQ, Redis and FalkorDB — with values
+  generated for your machine. Those
   files are public, so shipping working values in them would mean every install
   in the world shared one publicly-readable key. It never overwrites an
   existing `.env` or a value you set yourself, and you can then edit the `.env`
@@ -358,10 +359,6 @@ move them to the new key instead of losing them. Run everything from
 
    It is safe to run more than once: values already under the new key are left
    alone, and a value that neither key can read is listed and not touched.
-   One thing it does not carry over: the sign-up blocks that account erasure
-   keeps for banned accounts (`AccountBanRecord`) are derived from the key, so
-   after a rotation they no longer match and those addresses can sign up
-   again.
    Running the backend outside Docker, the same command is
    `poetry run cli rotate-encryption-key` in `autogpt_platform/backend`.
 

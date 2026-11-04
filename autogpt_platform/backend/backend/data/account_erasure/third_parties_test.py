@@ -111,12 +111,15 @@ async def test_mailerlite_is_skipped_without_a_token(mailerlite):
 
 
 @pytest.mark.asyncio
-async def test_mailerlite_without_an_email_is_skipped_not_guessed(mailerlite):
+async def test_mailerlite_without_an_email_is_done_not_guessed(mailerlite):
+    """No email means the rows are gone, which a run does only after this
+    step succeeded; a skip would mean MailerLite is not configured."""
     report = await third_parties.forget_mailerlite_subscriber(
         Subject(user_id=USER_ID), dry_run=False
     )
 
-    assert report.status == StepStatus.SKIPPED
+    assert report.status == StepStatus.DONE
+    assert report.counts == {"subscribers": 0}
     mailerlite.find_subscriber_id.assert_not_awaited()
 
 
