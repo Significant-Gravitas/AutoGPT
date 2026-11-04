@@ -578,6 +578,9 @@ class NotificationManager(AppService):
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("Service shutdown requested")
+            # gather raises once the first consumer finishes; cancelling the rest
+            # in the `finally` would cut short the grace they give their handlers.
+            await asyncio.wait(tasks)
             raise
         finally:
             # The four consumers share one channel, so they live and die

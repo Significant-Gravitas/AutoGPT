@@ -25,6 +25,13 @@ def server() -> None:
     return None
 
 
+@pytest.fixture
+def no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Zeroed rather than stubbing `asyncio.sleep`, which every other coroutine
+    # on the session's event loop would then sleep through as well.
+    monkeypatch.setattr(delivery, "CONSUMER_RETRY_BACKOFF_SECONDS", 0)
+
+
 def _manager() -> NotificationManager:
     manager = NotificationManager.__new__(NotificationManager)
     manager.running = True
@@ -154,6 +161,7 @@ async def test_in_flight_work_finishes_before_the_consumer_returns():
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("no_backoff")
 async def test_a_lost_channel_on_ack_does_not_rerun_the_handler():
     """The work is done; the broker requeues the unacked delivery itself.
     Re-running the handler to 'retry' the ack was three more chances to send
@@ -163,24 +171,22 @@ async def test_a_lost_channel_on_ack_does_not_rerun_the_handler():
     message = _message()
     message.ack.side_effect = ChannelInvalidStateError()
 
-    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
-        await manager._process_message_with_retry(message, handler, "q")
+    await manager._process_message_with_retry(message, handler, "q")
 
     assert handler.await_count == 1
     message.reject.assert_not_awaited()
-    sleep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("no_backoff")
 async def test_a_lost_channel_on_reject_is_not_fatal():
     manager = _manager()
     message = _message()
     message.reject.side_effect = ChannelInvalidStateError()
 
-    with patch.object(delivery.asyncio, "sleep", AsyncMock()):
-        await manager._process_message_with_retry(
-            message, AsyncMock(return_value=False), "q"
-        )
+    await manager._process_message_with_retry(
+        message, AsyncMock(return_value=False), "q"
+    )
 
 
 @pytest.mark.asyncio
@@ -260,6 +266,7 @@ async def test_one_failed_consumer_takes_its_siblings_with_it():
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("no_backoff")
 async def test_a_hung_handler_is_a_transient_failure_not_a_channel_loss(monkeypatch):
     """RabbitMQ closes the channel when a delivery goes unacked for its
     consumer timeout, failing every other in-flight ack with it. A bounded
@@ -267,15 +274,20 @@ async def test_a_hung_handler_is_a_transient_failure_not_a_channel_loss(monkeypa
     monkeypatch.setattr(delivery, "MESSAGE_PROCESSING_TIMEOUT_SECONDS", 0.01)
     manager = _manager()
     message = _message()
+    attempts = 0
 
     async def hang(_: str) -> bool:
+        nonlocal attempts
+        attempts += 1
         await asyncio.Event().wait()
         return True
 
-    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
-        await manager._process_message_with_retry(message, hang, "q")
+    # A hang guard only: without the processing timeout this never returns.
+    await asyncio.wait_for(
+        manager._process_message_with_retry(message, hang, "q"), timeout=30
+    )
 
-    assert sleep.await_count == delivery.MAX_CONSUMER_RETRY_ATTEMPTS - 1
+    assert attempts == delivery.MAX_CONSUMER_RETRY_ATTEMPTS
     message.reject.assert_awaited_once_with(requeue=False)
     message.ack.assert_not_awaited()
 
@@ -284,6 +296,7 @@ async def test_a_hung_handler_is_a_transient_failure_not_a_channel_loss(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("no_backoff")
 async def test_a_settle_failure_is_not_mistaken_for_a_handler_failure():
     """The work succeeded; only the ack failed. Retrying the handler would
     repeat the work, and the retry loop's own DLQ reject would then hide the
@@ -293,12 +306,10 @@ async def test_a_settle_failure_is_not_mistaken_for_a_handler_failure():
     message = _message()
     message.ack.side_effect = RuntimeError("channel is in a bad way")
 
-    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
-        with pytest.raises(RuntimeError, match="bad way"):
-            await manager._process_message_with_retry(message, handler, "q")
+    with pytest.raises(RuntimeError, match="bad way"):
+        await manager._process_message_with_retry(message, handler, "q")
 
     assert handler.await_count == 1
-    sleep.assert_not_awaited()
     message.reject.assert_not_awaited()
 
 
@@ -376,8 +387,9 @@ async def test_shutdown_does_not_wait_past_the_grace_for_a_handler(monkeypatch):
     )
     await asyncio.sleep(0.01)
     consumer.cancel()
+    # A hang guard only: a runner can stall for longer than the 0.05 s grace.
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(consumer, timeout=1)
+        await asyncio.wait_for(consumer, timeout=30)
 
     assert cancelled.is_set()
     # The honest half of the trade: this message is never settled, so the
@@ -476,20 +488,29 @@ async def test_no_handler_starts_while_a_settle_failure_waits_on_its_siblings(
 async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
     """The grace is only worth having if it survives the real shutdown path.
     `_shutdown_service` cancels the service task, not the consumers, and the
-    cancel reaches them through `asyncio.gather`, which cancels its children
-    and then waits for them before it raises — so `_run_service`'s own
-    `finally` cannot land a second cancel on a consumer mid-grace and cut it
-    short. Pinned here because none of that is visible from `_consume_queue`
-    alone, where the other shutdown tests cancel the consumer directly."""
+    cancel reaches them through `asyncio.gather`, which raises as soon as the
+    first of them finishes. A consumer with nothing in flight finishes at
+    once, so `_run_service` must wait for the others before its `finally`
+    cancels them a second time and cuts their grace short. Pinned here
+    because none of that is visible from `_consume_queue` alone, where the
+    other shutdown tests cancel the consumer directly."""
     manager = _manager()
     manager.rabbitmq_config = MagicMock()
     messages: list[MagicMock] = []
+    started: list[str] = []
+    all_started = asyncio.Event()
+    release = asyncio.Event()
 
-    async def slow(_: str) -> bool:
-        await asyncio.sleep(0.05)
+    async def held(body: str) -> bool:
+        started.append(body)
+        if len(started) == len(messages):
+            all_started.set()
+        await release.wait()
         return True
 
-    def next_queue(_name: str) -> MagicMock:
+    def next_queue(name: str) -> MagicMock:
+        if name == delivery.AUDIENCE_QUEUE:
+            return _queue([], then_wait=True)
         message = _message()
         messages.append(message)
         return _queue([message], then_wait=True)
@@ -501,19 +522,24 @@ async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
 
     with (
         patch.object(delivery.rabbitmq, "AsyncRabbitMQ", return_value=rabbit),
-        patch.object(manager, "_process_user_notification", slow),
-        patch.object(manager, "_process_ops_notification", slow),
-        patch.object(manager, "_process_audience_change", slow),
-        patch.object(manager, "_process_pass_work", slow),
+        patch.object(manager, "_process_user_notification", held),
+        patch.object(manager, "_process_ops_notification", held),
+        patch.object(manager, "_process_audience_change", held),
+        patch.object(manager, "_process_pass_work", held),
     ):
         undecorated = inspect.unwrap(NotificationManager._run_service)
         run = asyncio.create_task(undecorated(manager))
-        await asyncio.sleep(0.01)
+        await asyncio.wait_for(all_started.wait(), timeout=30)
         run.cancel()
+        # Turns of the loop, not time: enough for the idle consumer's exit to
+        # reach `_run_service`, so a second cancel would land before the release.
+        for _ in range(50):
+            await asyncio.sleep(0)
+        release.set()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(run, timeout=1)
+            await asyncio.wait_for(run, timeout=30)
 
-    assert len(messages) == 4
+    assert len(messages) == 3
     for message in messages:
         message.ack.assert_awaited_once()
 
@@ -527,6 +553,7 @@ async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
     ids=["inactive-recipient", "invalid-request", "bad-token-is-transient"],
 )
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("no_backoff")
 async def test_postmark_rejections_that_cannot_succeed_go_straight_to_the_dlq(
     code: int, attempts: int
 ):
@@ -536,11 +563,9 @@ async def test_postmark_rejections_that_cannot_succeed_go_straight_to_the_dlq(
     handler = AsyncMock(side_effect=ClientError("no", error_code=code))
     message = _message()
 
-    with patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep:
-        await manager._process_message_with_retry(message, handler, "q")
+    await manager._process_message_with_retry(message, handler, "q")
 
     assert handler.await_count == attempts
-    assert sleep.await_count == attempts - 1
     message.reject.assert_awaited_once_with(requeue=False)
     message.ack.assert_not_awaited()
 
