@@ -362,6 +362,9 @@ class ShimDaemon:
         self._child_sessions: OrderedDict[str, _ActiveChild] = OrderedDict()
         self._children_lock = asyncio.Lock()
         self._last_request_at = now_ts()
+        # Set on a child session once the reaper has decided to detach it for
+        # idleness; from then on it refuses requests (_reap_idle_children).
+        self._detaching = False
         audit_key = getattr(self.audit, "audit_key", None)
         if not isinstance(audit_key, bytes):
             audit_key = secrets.token_bytes(32)
@@ -1109,6 +1112,19 @@ class ShimDaemon:
             # We somehow got a request before HELLO_ACK; be defensive.
             self._semaphore = asyncio.Semaphore(self.config.max_concurrent)
 
+        if self._detaching:
+            # Being detached for idleness: a request started now would be cut
+            # off by the stop. The platform retries once it attaches again.
+            response = make_error(
+                msg.id,
+                ErrorCode.SHIM_OVERLOADED,
+                "The session is being detached after being idle; retry in a moment.",
+                details={"reason": "detaching"},
+            )
+            response.pending_capacity = 0
+            await self._send_frame(ws, response)
+            return
+
         if self._pending_requests >= self.config.max_concurrent:
             response = make_error(
                 msg.id,
@@ -1247,39 +1263,51 @@ class ShimDaemon:
         try:
             while self._running and self._ws is ws:
                 await asyncio.sleep(CHILD_REAPER_INTERVAL_SECONDS)
-                cutoff = now_ts() - CHILD_IDLE_TTL_SECONDS
-                for session_id, active in tuple(self._child_sessions.items()):
-                    child = active.daemon
-                    if (
-                        active.task.done()
-                        or child._last_request_at > cutoff
-                        or child._recording_handler._active_recording_id is not None
-                    ):
-                        continue
-                    async with self._session_lock(session_id):
-                        current = self._child_sessions.get(session_id)
-                        if (
-                            current is not active
-                            or child._last_request_at > cutoff
-                            or child._recording_handler._active_recording_id is not None
-                        ):
-                            continue
-                        try:
-                            await self._write_control_audit(
-                                "IDLE_SESSION_DETACH",
-                                request_id=None,
-                                session_id=session_id,
-                                details={"idle_seconds": now_ts() - child._last_request_at},
-                            )
-                        except Exception:
-                            logger.exception(
-                                "Could not audit idle detach for session %s",
-                                session_id,
-                            )
-                            continue
-                        await self._stop_child_session(session_id)
+                await self._reap_idle_children()
         except asyncio.CancelledError:
             raise
+
+    async def _reap_idle_children(self) -> None:
+        """Detach each child session idle for CHILD_IDLE_TTL_SECONDS."""
+        cutoff = now_ts() - CHILD_IDLE_TTL_SECONDS
+        for session_id, active in tuple(self._child_sessions.items()):
+            child = active.daemon
+            if active.task.done() or not child._idle_since(cutoff):
+                continue
+            async with self._session_lock(session_id):
+                current = self._child_sessions.get(session_id)
+                if current is not active or not child._idle_since(cutoff):
+                    continue
+                # Decided, with nothing awaited since the check: the child now
+                # refuses requests, so none starts while the detach is audited
+                # (in a thread) only to be cut off by the stop.
+                child._detaching = True
+                try:
+                    await self._write_control_audit(
+                        "IDLE_SESSION_DETACH",
+                        request_id=None,
+                        session_id=session_id,
+                        details={"idle_seconds": now_ts() - child._last_request_at},
+                    )
+                except Exception:
+                    child._detaching = False
+                    logger.exception(
+                        "Could not audit idle detach for session %s",
+                        session_id,
+                    )
+                    continue
+                await self._stop_child_session(session_id)
+
+    def _idle_since(self, cutoff: float) -> bool:
+        """Whether this child session has had no request since `cutoff`, has
+        none queued or running (a command may outlast the idle limit), and
+        isn't recording."""
+        return (
+            self._last_request_at <= cutoff
+            and self._pending_requests == 0
+            and not self._dispatch_tasks
+            and self._recording_handler._active_recording_id is None
+        )
 
     async def _dispatch(self, ws, msg: Any, *, prequeued: bool = False) -> None:
         assert self._semaphore is not None

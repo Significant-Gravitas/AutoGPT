@@ -11,7 +11,7 @@ import pytest
 
 from autogpt_local_executor.audit import AuditWriter, SessionAuditWriter
 from autogpt_local_executor.config import ShimConfig
-from autogpt_local_executor.daemon import ShimDaemon
+from autogpt_local_executor.daemon import ShimDaemon, _ActiveChild
 from autogpt_local_executor.directory_browser import DirectoryBrowser
 from autogpt_local_executor.protocol import (
     ActivateSessionMessage,
@@ -35,6 +35,7 @@ from autogpt_local_executor.protocol import (
     SessionAttachedMessage,
     SessionRestoredMessage,
     dump_message,
+    make_ack,
     now_ts,
 )
 
@@ -479,6 +480,123 @@ async def test_a_complete_control_hello_ack_connects(tmp_path: Path) -> None:
     assert websocket.closed is None
     assert daemon._disable_reconnect is False
     assert daemon._connection_id == "connection-1"
+
+
+def _idle_child(tmp_path: Path) -> tuple[ShimDaemon, list[str], list[str]]:
+    """A child session idle past the reaper's limit, with its sends and the
+    paths of the requests it starts recorded."""
+    config = ShimConfig(
+        session_id="session-1",
+        machine_id="machine-1",
+        allowed_root=tmp_path / "child-root",
+        audit_log_path=tmp_path / "child-audit.log",
+    )
+    audit = AuditWriter(config.audit_log_path, b"a" * 32, machine_id=config.machine_id)
+    child = ShimDaemon(config, token_store=object(), audit=audit)
+    child._semaphore = asyncio.Semaphore(4)
+    child._last_request_at = 1000.0
+    started: list[str] = []
+    sent: list[str] = []
+
+    async def handle(msg, *, send):
+        started.append(msg.payload.path)
+        return make_ack(msg.id)
+
+    child._handle = handle  # type: ignore[method-assign]
+    return child, started, sent
+
+
+class _ChildSocket:
+    def __init__(self, sent: list[str]) -> None:
+        self._sent = sent
+
+    async def send(self, raw: str) -> None:
+        self._sent.append(raw)
+
+
+def _stat_request(path: str) -> str:
+    return dump_message(
+        FileStatMessage(id=f"stat-{path}", ts=now_ts(), payload=FileStatPayload(path=path))
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_child_with_a_request_still_running_is_not_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reaper looked only at when the last request arrived, so a command
+    running longer than the idle limit was stopped part-way, and its reply
+    never went out."""
+    daemon = _control_daemon(tmp_path)
+    child, _started, _sent = _idle_child(tmp_path)
+    still_running = asyncio.create_task(asyncio.sleep(60))
+    child._dispatch_tasks.add(still_running)
+    child._pending_requests = 1
+    session = asyncio.create_task(asyncio.sleep(60))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=session)
+    stop = AsyncMock()
+    monkeypatch.setattr(daemon, "_stop_child_session", stop)
+    try:
+        await daemon._reap_idle_children()
+    finally:
+        still_running.cancel()
+        session.cancel()
+
+    stop.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_request_while_an_idle_detach_is_audited_is_refused_not_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The audit write runs in a thread, and a request that reached the child
+    meanwhile started, then the stop that followed cut it off. Once the
+    reaper decides, the child refuses requests as busy, and the platform
+    retries once the session is attached again."""
+    daemon = _control_daemon(tmp_path)
+    child, started, sent = _idle_child(tmp_path)
+    session = asyncio.create_task(asyncio.sleep(60))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=session)
+    stop = AsyncMock()
+    monkeypatch.setattr(daemon, "_stop_child_session", stop)
+
+    async def audit_while_a_request_arrives(op: str, **kwargs: Any) -> None:
+        await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/late"))
+
+    monkeypatch.setattr(daemon, "_write_control_audit", audit_while_a_request_arrives)
+    try:
+        await daemon._reap_idle_children()
+        for _ in range(10):
+            await asyncio.sleep(0)
+    finally:
+        session.cancel()
+
+    stop.assert_awaited_once_with("session-1")
+    assert started == []
+    (refusal,) = [json.loads(raw) for raw in sent]
+    assert refusal["type"] == "ERROR" and refusal["payload"]["code"] == "SHIM_OVERLOADED"
+
+
+@pytest.mark.asyncio
+async def test_a_child_whose_detach_cannot_be_audited_keeps_serving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    daemon = _control_daemon(tmp_path)
+    child, started, sent = _idle_child(tmp_path)
+    session = asyncio.create_task(asyncio.sleep(60))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=session)
+    stop = AsyncMock()
+    monkeypatch.setattr(daemon, "_stop_child_session", stop)
+    monkeypatch.setattr(daemon, "_write_control_audit", AsyncMock(side_effect=OSError("full")))
+    try:
+        await daemon._reap_idle_children()
+        await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/next"))
+        await asyncio.wait_for(asyncio.gather(*child._dispatch_tasks), timeout=30)
+    finally:
+        session.cancel()
+
+    stop.assert_not_awaited()
+    assert started == ["/tmp/next"]
 
 
 @pytest.mark.asyncio

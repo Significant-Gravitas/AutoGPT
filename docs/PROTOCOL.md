@@ -280,7 +280,13 @@ detach before attaching a different folder.
 The control daemon also stops a non-recording child after ten minutes without
 a data request, while retaining its signed binding for `RESTORE_SESSION`. This
 prevents abandoned chats from consuming the eight-child safety cap; the
-platform transparently restores the child when the next turn begins.
+platform transparently restores the child when the next turn begins. A child
+with a request still queued or running is not idle, however long that request
+takes. The stop is audited (`IDLE_SESSION_DETACH`) before it happens, and from
+the moment the daemon decides on it the child refuses requests with
+`SHIM_OVERLOADED` (`details.reason: "detaching"`), so none starts only to be cut
+off; the platform retries once the child is restored. If the audit record
+can't be written, the child keeps running.
 
 #### `HELLO.platform` enum
 
