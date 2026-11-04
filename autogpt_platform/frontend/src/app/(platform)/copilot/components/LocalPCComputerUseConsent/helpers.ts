@@ -1,73 +1,86 @@
 interface ToolGroup {
   tools: string[];
-  whole: string;
-  each: Record<string, string>;
+  line: string;
 }
 
+// cua-driver's tools, as the Local PC offers them, in the words a person
+// approving computer use reads. A group is described when any of its tools
+// is offered.
 const TOOL_GROUPS: ToolGroup[] = [
   {
-    tools: ["local_pc_screenshot"],
-    whole: "Capture screenshots of your screen",
-    each: {},
+    tools: [
+      "list_apps",
+      "list_windows",
+      "get_window_state",
+      "get_desktop_state",
+      "zoom",
+      "verify_state",
+      "get_screen_size",
+      "get_cursor_position",
+    ],
+    line: "See your open apps and windows, read what they show, and take screenshots of them",
   },
   {
     tools: [
-      "local_pc_click",
-      "local_pc_type",
-      "local_pc_key",
-      "local_pc_scroll",
-      "local_pc_cursor_position",
+      "click",
+      "double_click",
+      "right_click",
+      "type_text",
+      "press_key",
+      "hotkey",
+      "scroll",
+      "drag",
+      "set_value",
+      "move_cursor",
+      "mouse_button_down",
+      "mouse_button_up",
+      "mouse_drag",
+      "invoke_menu",
+      "run_steps",
+      "run_script",
     ],
-    whole: "Move the pointer, click, type, scroll, and send keys",
-    each: {
-      local_pc_click: "Move the pointer and click",
-      local_pc_type: "Type text",
-      local_pc_key: "Send keys and shortcuts",
-      local_pc_scroll: "Scroll",
-      local_pc_cursor_position: "See where the pointer is",
-    },
+    line: "Click, type, scroll, and use menus in your apps",
   },
   {
-    tools: ["local_pc_list_windows", "local_pc_focus_window"],
-    whole: "List and focus open windows",
-    each: {
-      local_pc_list_windows: "List open windows",
-      local_pc_focus_window: "Focus an open window",
-    },
+    tools: ["set_window_frame", "bring_to_front"],
+    line: "Move, resize, and bring forward your windows",
+  },
+  { tools: ["launch_app"], line: "Open apps and links" },
+  {
+    tools: [
+      "get_browser_state",
+      "browser_prepare",
+      "browser_navigate",
+      "browser_click",
+      "browser_type",
+      "browser_select",
+      "browser_pointer",
+      "browser_dialog",
+    ],
+    line: "Control web pages in a browser it opens with its own profile",
   },
   {
-    tools: ["local_pc_list_apps", "local_pc_launch_app"],
-    whole: "List and launch apps",
-    each: {
-      local_pc_list_apps: "List your apps",
-      local_pc_launch_app: "Launch apps",
-    },
+    tools: ["clipboard_read"],
+    line: "Read your clipboard, within the limits set on that computer",
   },
-  {
-    tools: ["local_pc_clipboard_read", "local_pc_clipboard_write"],
-    whole: "Read and write your clipboard",
-    each: {
-      local_pc_clipboard_read: "Read your clipboard",
-      local_pc_clipboard_write: "Write to your clipboard",
-    },
-  },
-  {
-    tools: ["local_pc_permissions_check"],
-    whole: "Check operating-system permission status",
-    each: {},
-  },
+  { tools: ["clipboard_write"], line: "Put text on your clipboard" },
 ];
+
+// Tools that only report on the driver itself.
+const UNDESCRIBED_TOOLS = new Set(["check_permissions", "get_guide"]);
 
 const DESCRIBED_TOOLS = new Set(TOOL_GROUPS.flatMap((group) => group.tools));
 
 export function describeComputerUseTools(tools: readonly string[]) {
-  const granted = new Set(tools);
-  const lines = TOOL_GROUPS.flatMap((group) => {
-    const present = group.tools.filter((tool) => granted.has(tool));
-    if (present.length === group.tools.length) return [group.whole];
-    return present.map((tool) => group.each[tool]);
-  });
-  if (tools.some((tool) => !DESCRIBED_TOOLS.has(tool))) {
+  const offered = new Set(tools);
+  const lines = TOOL_GROUPS.filter((group) =>
+    group.tools.some((tool) => offered.has(tool)),
+  ).map((group) => group.line);
+  if (
+    tools.some(
+      (tool) => !DESCRIBED_TOOLS.has(tool) && !UNDESCRIBED_TOOLS.has(tool),
+    )
+  ) {
     lines.push("Use other computer controls your Local PC offers");
   }
   return lines;

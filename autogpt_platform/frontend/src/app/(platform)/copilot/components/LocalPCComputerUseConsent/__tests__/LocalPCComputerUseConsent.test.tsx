@@ -12,20 +12,21 @@ import { LocalPCComputerUseConsent } from "../LocalPCComputerUseConsent";
 const EXECUTOR_URL =
   "http://localhost:3000/api/proxy/api/copilot/sessions/:sessionId/executor";
 const CONSENT_URL = `${EXECUTOR_URL}/consent`;
+const DRIVER = "cua-driver 0.38.0";
+const READ_TOOLS = ["get_window_state", "list_windows"];
+const INPUT_TOOLS = ["click", "type_text"];
 
-const COARSE_TOOLS: Record<string, string[]> = {
-  screenshot: ["local_pc_screenshot"],
-  input: [
-    "local_pc_click",
-    "local_pc_type",
-    "local_pc_key",
-    "local_pc_scroll",
-    "local_pc_cursor_position",
-  ],
-};
-
-function toolsFor(coarse: string[]) {
-  return coarse.flatMap((feature) => COARSE_TOOLS[feature] ?? []);
+function executorStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "shim",
+    machine_id: "machine-1",
+    platform: "darwin",
+    capabilities: ["computer_use"],
+    computer_use_driver: DRIVER,
+    computer_use_tools: [...READ_TOOLS, ...INPUT_TOOLS],
+    computer_use_consent: "pending",
+    ...overrides,
+  };
 }
 
 function useExecutorHandler(
@@ -35,16 +36,9 @@ function useExecutorHandler(
   server.use(
     http.get(EXECUTOR_URL, () => {
       requested();
-      return HttpResponse.json({
-        kind: "shim",
-        machine_id: "machine-1",
-        platform: "darwin",
-        capabilities: ["computer_use"],
-        computer_use_features_coarse: ["screenshot", "input"],
-        computer_use_features: [],
-        computer_use_tools: toolsFor(["screenshot", "input"]),
-        computer_use_consent: consent,
-      });
+      return HttpResponse.json(
+        executorStatus({ computer_use_consent: consent }),
+      );
     }),
   );
   return requested;
@@ -61,26 +55,17 @@ describe("LocalPCComputerUseConsent", () => {
       const received = vi.fn();
       server.use(
         http.get(EXECUTOR_URL, () =>
-          HttpResponse.json({
-            kind: "shim",
-            machine_id: "machine-1",
-            platform: "darwin",
-            capabilities: ["computer_use"],
-            computer_use_features_coarse: ["screenshot", "input"],
-            computer_use_features: [],
-            computer_use_tools: toolsFor(["screenshot", "input"]),
-            computer_use_consent: consentState,
-          }),
+          HttpResponse.json(
+            executorStatus({
+              computer_use_tools: ["type_text", "click", "list_windows"],
+              computer_use_consent: consentState,
+            }),
+          ),
         ),
         http.post(CONSENT_URL, async ({ request }) => {
-          const body = (await request.json()) as {
-            approved: boolean;
-            expected_machine_id?: string;
-            expected_features_coarse?: string[];
-            expected_features?: string[];
-          };
+          const body = await request.json();
           received(body);
-          consentState = body.approved ? "approved" : "denied";
+          consentState = approved ? "approved" : "denied";
           return HttpResponse.json({ computer_use_consent: consentState });
         }),
       );
@@ -94,8 +79,8 @@ describe("LocalPCComputerUseConsent", () => {
             ? {
                 approved: true,
                 expected_machine_id: "machine-1",
-                expected_features_coarse: ["input", "screenshot"],
-                expected_features: [],
+                expected_driver: DRIVER,
+                expected_tools: ["click", "list_windows", "type_text"],
               }
             : { approved: false },
         ),
@@ -118,6 +103,14 @@ describe("LocalPCComputerUseConsent", () => {
       ).toBeNull();
     },
   );
+
+  test("names the driver doing the work", async () => {
+    useExecutorHandler();
+
+    render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
+
+    expect(await screen.findByText(DRIVER)).toBeDefined();
+  });
 
   test("keeps the decision dialog open when the backend rejects the update", async () => {
     useExecutorHandler();
@@ -146,18 +139,15 @@ describe("LocalPCComputerUseConsent", () => {
     server.use(
       http.get(EXECUTOR_URL, () => {
         statusRequests += 1;
-        return HttpResponse.json({
-          kind: "shim",
-          machine_id: statusRequests === 1 ? "machine-a" : "machine-b",
-          capabilities: ["computer_use"],
-          computer_use_features_coarse:
-            statusRequests === 1 ? ["screenshot"] : ["screenshot", "input"],
-          computer_use_features: [],
-          computer_use_tools: toolsFor(
-            statusRequests === 1 ? ["screenshot"] : ["screenshot", "input"],
-          ),
-          computer_use_consent: "pending",
-        });
+        return HttpResponse.json(
+          executorStatus({
+            machine_id: statusRequests === 1 ? "machine-a" : "machine-b",
+            computer_use_tools:
+              statusRequests === 1
+                ? READ_TOOLS
+                : [...READ_TOOLS, ...INPUT_TOOLS],
+          }),
+        );
       }),
       http.post(CONSENT_URL, () =>
         HttpResponse.json({ computer_use_consent: "approved" }),
@@ -165,16 +155,14 @@ describe("LocalPCComputerUseConsent", () => {
     );
 
     render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
-    expect(
-      await screen.findByText(/capture screenshots of your screen/i),
-    ).toBeDefined();
-    expect(screen.queryByText(/move the pointer/i)).toBeNull();
+    expect(await screen.findByText(/see your open apps/i)).toBeDefined();
+    expect(screen.queryByText(/click, type/i)).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Allow for this session" }),
     );
 
-    expect(await screen.findByText(/move the pointer/i)).toBeDefined();
+    expect(await screen.findByText(/click, type/i)).toBeDefined();
     expect(screen.getByRole("dialog")).toBeDefined();
   });
 
@@ -184,7 +172,6 @@ describe("LocalPCComputerUseConsent", () => {
         HttpResponse.json({
           kind: "shim",
           capabilities: ["files", "shell"],
-          computer_use_features: [],
           computer_use_consent: "pending",
         }),
       ),
@@ -198,38 +185,39 @@ describe("LocalPCComputerUseConsent", () => {
   test("describes only the actions approving would grant", async () => {
     server.use(
       http.get(EXECUTOR_URL, () =>
-        HttpResponse.json({
-          kind: "shim",
-          capabilities: ["computer_use"],
-          computer_use_features_coarse: ["screenshot", "apps"],
-          computer_use_features: ["input.click", "clipboard.read"],
-          computer_use_tools: [
-            "local_pc_click",
-            "local_pc_clipboard_read",
-            "local_pc_launch_app",
-            "local_pc_list_apps",
-            "local_pc_screenshot",
-          ],
-          computer_use_consent: "pending",
-        }),
+        HttpResponse.json(
+          executorStatus({
+            computer_use_tools: [
+              "check_permissions",
+              "clipboard_read",
+              "get_guide",
+              "get_window_state",
+              "launch_app",
+            ],
+          }),
+        ),
       ),
     );
 
     render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
 
     expect(
-      await screen.findByText("Capture screenshots of your screen"),
+      await screen.findByText(
+        "See your open apps and windows, read what they show, and take screenshots of them",
+      ),
     ).toBeDefined();
-    expect(screen.getByText("Move the pointer and click")).toBeDefined();
-    expect(screen.getByText("List and launch apps")).toBeDefined();
-    expect(screen.getByText("Read your clipboard")).toBeDefined();
+    expect(screen.getByText("Open apps and links")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Read your clipboard, within the limits set on that computer",
+      ),
+    ).toBeDefined();
     for (const notGranted of [
-      "Move the pointer, click, type, scroll, and send keys",
-      "Type text",
-      "Send keys and shortcuts",
-      "Read and write your clipboard",
-      "Write to your clipboard",
-      "List and focus open windows",
+      "Click, type, scroll, and use menus in your apps",
+      "Put text on your clipboard",
+      "Move, resize, and bring forward your windows",
+      "Control web pages in a browser it opens with its own profile",
+      "Use other computer controls your Local PC offers",
     ]) {
       expect(screen.queryByText(notGranted)).toBeNull();
     }
@@ -238,12 +226,9 @@ describe("LocalPCComputerUseConsent", () => {
   test("still discloses a granted tool it has no wording for", async () => {
     server.use(
       http.get(EXECUTOR_URL, () =>
-        HttpResponse.json({
-          kind: "shim",
-          capabilities: ["computer_use"],
-          computer_use_tools: ["local_pc_screenshot", "local_pc_future_tool"],
-          computer_use_consent: "pending",
-        }),
+        HttpResponse.json(
+          executorStatus({ computer_use_tools: ["click", "future_tool"] }),
+        ),
       ),
     );
 
@@ -258,28 +243,22 @@ describe("LocalPCComputerUseConsent", () => {
 
   test("refetches and re-prompts when approval scope changes before submission", async () => {
     let machineID = "machine-a";
-    let features = ["screenshot"];
+    let tools = READ_TOOLS;
     server.use(
       http.get(EXECUTOR_URL, () =>
-        HttpResponse.json({
-          kind: "shim",
-          machine_id: machineID,
-          capabilities: ["computer_use"],
-          computer_use_features_coarse: features,
-          computer_use_features: [],
-          computer_use_tools: toolsFor(features),
-          computer_use_consent: "pending",
-        }),
+        HttpResponse.json(
+          executorStatus({ machine_id: machineID, computer_use_tools: tools }),
+        ),
       ),
       http.post(CONSENT_URL, async ({ request }) => {
         expect(await request.json()).toEqual({
           approved: true,
           expected_machine_id: "machine-a",
-          expected_features_coarse: ["screenshot"],
-          expected_features: [],
+          expected_driver: DRIVER,
+          expected_tools: READ_TOOLS,
         });
         machineID = "machine-b";
-        features = ["screenshot", "input"];
+        tools = [...READ_TOOLS, ...INPUT_TOOLS];
         return HttpResponse.json(
           { detail: "Local PC executor scope changed" },
           { status: 409 },
@@ -293,43 +272,18 @@ describe("LocalPCComputerUseConsent", () => {
     );
 
     expect(await screen.findByRole("alert")).toBeDefined();
-    expect(await screen.findByText(/move the pointer/i)).toBeDefined();
-  });
-
-  test("describes a fully granted area in one line", async () => {
-    server.use(
-      http.get(EXECUTOR_URL, () =>
-        HttpResponse.json({
-          kind: "shim",
-          capabilities: ["computer_use"],
-          computer_use_features: ["clipboard.read", "clipboard.write"],
-          computer_use_tools: [
-            "local_pc_clipboard_read",
-            "local_pc_clipboard_write",
-          ],
-          computer_use_consent: "pending",
-        }),
-      ),
-    );
-
-    render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
-
-    expect(
-      await screen.findByText(/read and write your clipboard/i),
-    ).toBeDefined();
+    expect(await screen.findByText(/click, type/i)).toBeDefined();
   });
 
   test("does not prompt when nothing would be granted", async () => {
     server.use(
       http.get(EXECUTOR_URL, () =>
-        HttpResponse.json({
-          kind: "shim",
-          capabilities: ["computer_use"],
-          computer_use_features_coarse: ["future-unknown-capability"],
-          computer_use_features: [],
-          computer_use_tools: null,
-          computer_use_consent: "pending",
-        }),
+        HttpResponse.json(
+          executorStatus({
+            computer_use_driver: null,
+            computer_use_tools: null,
+          }),
+        ),
       ),
     );
 

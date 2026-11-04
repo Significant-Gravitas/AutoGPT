@@ -102,14 +102,10 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
                   machine {executor.machine_id.slice(0, 12)}
                 </div>
               ) : null}
-              {(executor?.computer_use_features_coarse ?? []).length > 0 ? (
+              {executor?.computer_use_driver ? (
                 <div className="text-caption break-words text-foreground-secondary">
-                  computer-use:{" "}
-                  {executor?.computer_use_features_coarse?.join(", ")}
-                </div>
-              ) : (executor?.computer_use_features ?? []).length > 0 ? (
-                <div className="text-caption break-words text-foreground-secondary">
-                  computer-use: {executor?.computer_use_features?.join(", ")}
+                  computer use: {executor.computer_use_driver},{" "}
+                  {executor.computer_use_tools?.length ?? 0} tools
                 </div>
               ) : null}
               {consentLabel ? (

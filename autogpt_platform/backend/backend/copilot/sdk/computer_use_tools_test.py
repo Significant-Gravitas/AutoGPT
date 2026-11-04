@@ -1,4 +1,4 @@
-"""Handler-level coverage for Local PC computer-use MCP tools."""
+"""Handler-level coverage for Otto's Local PC computer-use MCP tools."""
 
 from __future__ import annotations
 
@@ -10,44 +10,56 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import backend.copilot.sdk.computer_use_tools as tools
-from backend.copilot.tools.local_pc_shim import LocalPCShim, ShimComputerUseError
+from backend.copilot.tools.local_pc_shim import (
+    ComputerUseDriver,
+    LocalPCShim,
+    ShimComputerUseError,
+)
+
+_TOOLS = ("click", "get_window_state", "list_windows", "type_text")
+_CATALOG = {
+    "driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
+    "instructions": "cua-driver: background GUI automation.",
+    "tools": [
+        {
+            "name": "get_window_state",
+            "description": "Read a window.\n\nLong details the summary leaves out.",
+            "input_schema": {"type": "object", "properties": {"pid": {}}},
+            "annotations": {"readOnlyHint": True},
+        },
+        {
+            "name": "click",
+            "description": "Click an element. " + "x" * 400,
+            "input_schema": {"type": "object", "properties": {"element_token": {}}},
+            "annotations": None,
+        },
+    ],
+}
 
 
 def _shim(*, capabilities: tuple[str, ...] = ("computer_use",)) -> LocalPCShim:
     shim = LocalPCShim.__new__(LocalPCShim)
     shim.sandbox_id = "session-1"
-    shim.platform = "darwin"
+    shim.platform = "linux"
     shim.machine_id = "machine-1"
-    shim.allowed_root = "/Users/test/workspace"
+    shim.allowed_root = "/home/test/workspace"
     shim.capabilities = list(capabilities)
     shim.capability_set = frozenset(capabilities)
-    shim.computer_use_features_coarse = [
-        "screenshot",
-        "input",
-        "windows",
-        "apps",
-        "clipboard",
-        "permissions",
-    ]
-    shim.computer_use_features = ["screenshot.capture", "input.click"]
+    shim.computer_use_driver = ComputerUseDriver(
+        name="cua-driver", version="0.38.0", runtime="direct"
+    )
+    shim.computer_use_tools = list(_TOOLS)
     shim._connection_generation = 1
     shim.computer = MagicMock()
-    for method in (
-        "screenshot",
-        "click",
-        "type",
-        "key",
-        "scroll",
-        "cursor_position",
-        "list_windows",
-        "focus_window",
-        "list_apps",
-        "launch_app",
-        "clipboard_read",
-        "clipboard_write",
-        "permissions_check",
-    ):
-        setattr(shim.computer, method, AsyncMock())
+    shim.computer.tools = AsyncMock(return_value=_CATALOG)
+    shim.computer.call = AsyncMock(
+        return_value={
+            "tool": "click",
+            "is_error": False,
+            "content": [{"type": "text", "text": "Clicked."}],
+            "structured_content": {"effect": "confirmed"},
+        }
+    )
     return shim
 
 
@@ -67,53 +79,10 @@ def _payload(result: dict) -> dict:
 
 class TestGating:
     @pytest.mark.asyncio
-    async def test_fine_scroll_grant_allows_scroll_but_blocks_typing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        shim.computer_use_features_coarse = []
-        shim.computer_use_features = ["input.scroll.amount"]
-        _install(monkeypatch, shim)
-
-        scroll = await tools._h_scroll({"coordinate": [1, 2]})
-        typed = await tools._h_type({"text": "injected"})
-
-        assert scroll["isError"] is False
-        assert typed["isError"] is True
-        assert _payload(typed)["code"] == "CAPABILITY_NOT_GRANTED"
-        shim.computer.scroll.assert_awaited_once()
-        shim.computer.type.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("handler", "args"),
-        [
-            (tools._h_click, {"coordinate": [1, 2]}),
-            (tools._h_type, {"text": "injected"}),
-            (tools._h_key, {"key": "enter"}),
-            (tools._h_scroll, {"coordinate": [1, 2]}),
-            (tools._h_clipboard_write, {"text": "injected"}),
-        ],
-    )
-    async def test_screenshot_only_grant_blocks_direct_input_handler(
-        self, monkeypatch: pytest.MonkeyPatch, handler, args: dict
-    ):
-        shim = _shim()
-        shim.computer_use_features_coarse = ["screenshot"]
-        shim.computer_use_features = ["screenshot.capture"]
-        _install(monkeypatch, shim)
-
-        result = await handler(args)
-
-        assert result["isError"] is True
-        assert _payload(result)["code"] == "CAPABILITY_NOT_GRANTED"
-        assert shim.computer.method_calls == []
-
-    @pytest.mark.asyncio
     async def test_no_executor_fails_closed(self, monkeypatch: pytest.MonkeyPatch):
         _install(monkeypatch, None)
 
-        result = await tools._h_click({"coordinate": [1, 2]})
+        result = await tools._h_computer({"tool": "click"})
 
         assert result["isError"] is True
         assert _payload(result)["code"] == "NO_LOCAL_PC_EXECUTOR"
@@ -124,13 +93,26 @@ class TestGating:
     ):
         _install(monkeypatch, _shim(capabilities=("files",)))
 
-        result = await tools._h_screenshot({})
+        result = await tools._h_computer_tools({})
 
         assert result["isError"] is True
         assert _payload(result)["code"] == "CAPABILITY_NOT_GRANTED"
 
     @pytest.mark.asyncio
-    async def test_revoked_session_consent_blocks_each_operation(
+    async def test_a_shim_without_a_driver_offers_no_computer_use(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim()
+        shim.computer_use_driver = None
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer({"tool": "click"})
+
+        assert _payload(result)["code"] == "CAPABILITY_NOT_GRANTED"
+        shim.computer.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_consent_is_checked_against_the_machine_driver_and_tools(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         shim = _shim()
@@ -138,7 +120,7 @@ class TestGating:
         consent = AsyncMock(return_value=False)
         monkeypatch.setattr(tools, "is_computer_use_approved", consent)
 
-        result = await tools._h_click({"coordinate": [1, 2]})
+        result = await tools._h_computer({"tool": "click", "arguments": {}})
 
         assert result["isError"] is True
         assert _payload(result)["code"] == "COMPUTER_USE_CONSENT_REQUIRED"
@@ -146,10 +128,10 @@ class TestGating:
             "session-1",
             "user-1",
             machine_id="machine-1",
-            features_coarse=tuple(shim.computer_use_features_coarse),
-            features=("screenshot.capture", "input.click"),
+            driver="cua-driver 0.38.0",
+            tools=_TOOLS,
         )
-        shim.computer.click.assert_not_awaited()
+        shim.computer.call.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_reconnect_during_consent_check_blocks_dispatch(
@@ -166,228 +148,200 @@ class TestGating:
             return True
 
         monkeypatch.setattr(tools, "is_computer_use_approved", delayed_approval)
-        task = asyncio.create_task(tools._h_click({"coordinate": [1, 2]}))
+        task = asyncio.create_task(tools._h_computer({"tool": "click"}))
         await consent_started.wait()
         shim._connection_generation += 1
-        shim.machine_id = "machine-2"
+        shim.computer_use_tools = [*_TOOLS, "launch_app"]
         release_consent.set()
 
         result = await task
 
         assert result["isError"] is True
         assert _payload(result)["code"] == "COMPUTER_USE_CONNECTION_CHANGED"
-        shim.computer.click.assert_not_awaited()
-
-
-class TestObservationHandlers:
-    @pytest.mark.asyncio
-    async def test_a_screenshot_without_image_data_is_an_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        """Metadata alone would read to the model as a successful capture."""
-        shim = _shim()
-        shim.computer.screenshot.return_value = {"width": 800, "height": 600}
-        _install(monkeypatch, shim)
-
-        result = await tools._h_screenshot({})
-
-        assert result["isError"] is True
-        assert _payload(result)["code"] == "INTERNAL_ERROR"
+        shim.computer.call.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_screenshot_returns_image_and_metadata(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        shim.computer.screenshot.return_value = {
-            "image_base64": "aW1hZ2U=",
-            "mime_type": "image/png",
-            "width": 800,
-            "height": 600,
-        }
-        _install(monkeypatch, shim)
-
-        result = await tools._h_screenshot({"monitor": 1, "include_cursor": True})
-
-        assert result["isError"] is False
-        assert json.loads(result["content"][0]["text"])["width"] == 800
-        assert result["content"][1] == {
-            "type": "image",
-            "data": "aW1hZ2U=",
-            "mimeType": "image/png",
-        }
-        shim.computer.screenshot.assert_awaited_once_with(
-            monitor=1,
-            region=None,
-            window_id=None,
-            format="jpeg",
-            include_cursor=True,
-            quality=75,
-            _guard=shim.capture_connection_guard(),
-        )
-
-    @pytest.mark.asyncio
-    async def test_cursor_windows_and_apps_are_serialized(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        shim.computer.cursor_position.return_value = {"coordinate": [10, 20]}
-        shim.computer.list_windows.return_value = [{"window_id": "win-1"}]
-        shim.computer.list_apps.return_value = [{"pid": 7, "name": "Editor"}]
-        _install(monkeypatch, shim)
-
-        cursor = _payload(await tools._h_cursor_position({}))
-        windows = _payload(await tools._h_list_windows({"include_minimized": True}))
-        apps = _payload(await tools._h_list_apps({"include_background": True}))
-
-        assert cursor["coordinate"] == [10, 20]
-        assert windows["windows"][0]["window_id"] == "win-1"
-        assert apps["apps"][0]["pid"] == 7
-        shim.computer.list_windows.assert_awaited_once_with(
-            app_bundle_id=None,
-            include_minimized=True,
-            include_offscreen=False,
-            _guard=shim.capture_connection_guard(),
-        )
-
-    @pytest.mark.asyncio
-    async def test_permissions_check_forwards_requested_subset(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        shim.computer.permissions_check.return_value = {"accessibility": "granted"}
-        _install(monkeypatch, shim)
-
-        result = await tools._h_permissions_check({"permissions": ["accessibility"]})
-
-        assert _payload(result) == {"accessibility": "granted"}
-        shim.computer.permissions_check.assert_awaited_once_with(
-            ["accessibility"], _guard=shim.capture_connection_guard()
-        )
-
-
-class TestInputHandlers:
-    @pytest.mark.asyncio
-    async def test_click_rejects_malformed_coordinate(
+    async def test_a_tool_the_shim_does_not_offer_never_reaches_it(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         shim = _shim()
         _install(monkeypatch, shim)
 
-        result = await tools._h_click({"coordinate": [1]})
+        result = await tools._h_computer({"tool": "kill_app", "arguments": {"pid": 1}})
+
+        assert _payload(result)["code"] == "FEATURE_NOT_SUPPORTED"
+        assert _payload(result)["details"] == {"tool": "kill_app"}
+        shim.computer.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {},
+            {"tool": "Click"},
+            {"tool": "click", "arguments": [1, 2]},
+            {"tool": "click", "timeout_seconds": 0},
+            {"tool": "click", "timeout_seconds": 601},
+            {"tool": "click", "timeout_seconds": "10"},
+        ],
+    )
+    async def test_malformed_calls_are_refused(
+        self, monkeypatch: pytest.MonkeyPatch, args: dict
+    ):
+        shim = _shim()
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer(args)
 
         assert _payload(result)["code"] == "INVALID_ARGUMENT"
-        shim.computer.click.assert_not_awaited()
+        shim.computer.call.assert_not_awaited()
+
+
+class TestToolList:
+    @pytest.mark.asyncio
+    async def test_lists_guidance_and_summaries(self, monkeypatch: pytest.MonkeyPatch):
+        shim = _shim()
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer_tools({})
+
+        view = _payload(result)
+        assert view["instructions"] == "cua-driver: background GUI automation."
+        assert view["driver"]["name"] == "cua-driver"
+        assert view["tools"][0] == {
+            "name": "get_window_state",
+            "summary": "Read a window.",
+        }
+        assert len(view["tools"][1]["summary"]) == 280
+        assert "schemas" not in view
 
     @pytest.mark.asyncio
-    async def test_click_surfaces_structured_shim_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    async def test_returns_the_schemas_asked_for(self, monkeypatch: pytest.MonkeyPatch):
         shim = _shim()
-        shim.computer.click.side_effect = ShimComputerUseError(
-            "INPUT_OUT_OF_BOUNDS", "outside display", {"coordinate": [9, 9]}
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer_tools({"tools": ["click", "page"]})
+
+        view = _payload(result)
+        assert view["schemas"]["click"]["input_schema"] == {
+            "type": "object",
+            "properties": {"element_token": {}},
+        }
+        assert view["unknown_tools"] == ["page"]
+
+    @pytest.mark.asyncio
+    async def test_a_shim_error_is_structured(self, monkeypatch: pytest.MonkeyPatch):
+        shim = _shim()
+        shim.computer.tools = AsyncMock(
+            side_effect=ShimComputerUseError(
+                "DEPENDENCY_MISSING", "cua-driver is not installed", {"x": 1}
+            )
         )
         _install(monkeypatch, shim)
 
-        result = await tools._h_click({"coordinate": [9, 9]})
+        result = await tools._h_computer_tools({})
+
+        assert _payload(result) == {
+            "code": "DEPENDENCY_MISSING",
+            "error": "cua-driver is not installed",
+            "details": {"x": 1},
+        }
+
+
+class TestCall:
+    @pytest.mark.asyncio
+    async def test_relays_the_call_and_the_drivers_answer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim()
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer(
+            {
+                "tool": "click",
+                "arguments": {"element_token": "s1:4"},
+                "timeout_seconds": 30,
+            }
+        )
+
+        call = shim.computer.call.await_args
+        assert call.args == ("click", {"element_token": "s1:4"})
+        assert call.kwargs["timeout_seconds"] == 30
+        assert result == {
+            "content": [
+                {"type": "text", "text": "Clicked."},
+                {"type": "text", "text": json.dumps({"effect": "confirmed"})},
+            ],
+            "isError": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_images_reach_the_model(self, monkeypatch: pytest.MonkeyPatch):
+        shim = _shim()
+        tree = "- frame\n" + '  - [1] button "Save"\n' * 20
+        shim.computer.call = AsyncMock(
+            return_value={
+                "tool": "get_window_state",
+                "is_error": False,
+                "content": [
+                    {"type": "text", "text": tree},
+                    {"type": "image", "data": "aW1n", "mime_type": "image/png"},
+                ],
+                "structured_content": {"tree_markdown": tree, "snapshot_id": "s1"},
+            }
+        )
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer({"tool": "get_window_state"})
+
+        content = result["content"]
+        assert content[1] == {"type": "image", "data": "aW1n", "mimeType": "image/png"}
+        # The tree is in the text already; it isn't sent twice.
+        assert json.loads(content[2]["text"]) == {
+            "tree_markdown": "(shown in the text above)",
+            "snapshot_id": "s1",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_drivers_error_is_an_error_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim()
+        shim.computer.call = AsyncMock(
+            return_value={
+                "tool": "click",
+                "is_error": True,
+                "content": [{"type": "text", "text": "The element token is stale."}],
+                "structured_content": None,
+            }
+        )
+        _install(monkeypatch, shim)
+
+        result = await tools._h_computer({"tool": "click"})
 
         assert result["isError"] is True
-        assert _payload(result)["code"] == "INPUT_OUT_OF_BOUNDS"
+        assert result["content"] == [
+            {"type": "text", "text": "The element token is stale."}
+        ]
 
     @pytest.mark.asyncio
-    async def test_type_key_scroll_and_focus_forward_arguments(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    async def test_a_shim_refusal_is_structured(self, monkeypatch: pytest.MonkeyPatch):
         shim = _shim()
+        shim.computer.call = AsyncMock(
+            side_effect=ShimComputerUseError(
+                "CLIPBOARD_CONCEALED",
+                "A password manager marked the clipboard private.",
+                {"reason": "concealed_type"},
+            )
+        )
         _install(monkeypatch, shim)
 
-        await tools._h_type(
-            {"text": "hello", "paste": True, "preserve_clipboard": True}
-        )
-        await tools._h_key({"key": "ctrl+s"})
-        await tools._h_scroll(
-            {"coordinate": [4, 5], "direction": "up", "scroll_amount": 3}
-        )
-        await tools._h_focus_window({"window_id": "win-1", "raise": False})
+        result = await tools._h_computer({"tool": "click"})
 
-        shim.computer.type.assert_awaited_once_with(
-            "hello",
-            paste=True,
-            preserve_clipboard=True,
-            _guard=shim.capture_connection_guard(),
-        )
-        shim.computer.key.assert_awaited_once_with(
-            "ctrl+s", _guard=shim.capture_connection_guard()
-        )
-        shim.computer.scroll.assert_awaited_once_with(
-            [4, 5],
-            direction="up",
-            scroll_amount=3,
-            modifiers=None,
-            _guard=shim.capture_connection_guard(),
-        )
-        shim.computer.focus_window.assert_awaited_once_with(
-            "win-1", raise_=False, _guard=shim.capture_connection_guard()
-        )
+        assert _payload(result)["code"] == "CLIPBOARD_CONCEALED"
 
-    @pytest.mark.asyncio
-    async def test_key_requires_nonempty_value(self, monkeypatch: pytest.MonkeyPatch):
-        shim = _shim()
-        _install(monkeypatch, shim)
-
-        result = await tools._h_key({})
-
-        assert _payload(result)["code"] == "INVALID_ARGUMENT"
-        shim.computer.key.assert_not_awaited()
-
-
-class TestLaunchAndClipboard:
-    @pytest.mark.asyncio
-    async def test_launch_rejects_executable_outside_workspace(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        _install(monkeypatch, shim)
-
-        result = await tools._h_launch_app({"executable_path": "/usr/bin/python"})
-
-        assert _payload(result)["code"] == "PATH_OUTSIDE_ALLOWED_ROOT"
-        shim.computer.launch_app.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_launch_resolves_workspace_executable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        shim = _shim()
-        shim.computer.launch_app.return_value = {"pid": 42}
-        _install(monkeypatch, shim)
-
-        result = await tools._h_launch_app(
-            {"executable_path": "bin/tool", "args": ["--safe"]}
-        )
-
-        assert _payload(result)["pid"] == 42
-        shim.computer.launch_app.assert_awaited_once_with(
-            bundle_id=None,
-            executable_path="/Users/test/workspace/bin/tool",
-            args=["--safe"],
-            activate=True,
-            _guard=shim.capture_connection_guard(),
-        )
-
-    @pytest.mark.asyncio
-    async def test_clipboard_read_and_write(self, monkeypatch: pytest.MonkeyPatch):
-        shim = _shim()
-        shim.computer.clipboard_read.return_value = "hello"
-        _install(monkeypatch, shim)
-
-        read_result = await tools._h_clipboard_read({"format": "text"})
-        write_result = await tools._h_clipboard_write(
-            {"content": "world", "format": "text"}
-        )
-
-        assert _payload(read_result)["content"] == "hello"
-        assert _payload(write_result) == {"ok": True}
-        shim.computer.clipboard_write.assert_awaited_once_with(
-            "world", format="text", _guard=shim.capture_connection_guard()
-        )
+    def test_only_the_call_tool_is_registered_as_mutating(self):
+        assert tools.LOCAL_PC_COMPUTER_TOOL_NAMES == [
+            "local_pc_computer_tools",
+            "local_pc_computer",
+        ]

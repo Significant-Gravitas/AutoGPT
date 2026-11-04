@@ -87,10 +87,11 @@ class ExecutorStatus(BaseModel):
     machine_id: str | None = None
     shim_version: str | None = None
     capabilities: list[str] | None = None
-    computer_use_features: list[str] | None = None
-    computer_use_features_coarse: list[str] | None = None
-    # The tools approving computer use would grant: what the consent dialog
-    # describes, so it never claims an action the machine can't take.
+    # The driver serving computer use, as "name version" (e.g. "cua-driver
+    # 0.38.0"), and the driver tools approving computer use would grant:
+    # what the consent dialog describes, so it never claims an action the
+    # machine can't take.
+    computer_use_driver: str | None = None
     computer_use_tools: list[str] | None = None
     recording_channels: list[str] | None = None
     recording_routes: list[str] | None = None
@@ -99,16 +100,14 @@ class ExecutorStatus(BaseModel):
 class ComputerUseConsentRequest(BaseModel):
     approved: bool
     expected_machine_id: str | None = Field(default=None, min_length=1, max_length=128)
-    expected_features_coarse: (
-        list[Annotated[str, Field(min_length=1, max_length=128)]] | None
-    ) = Field(default=None, max_length=128)
-    expected_features: (
-        list[Annotated[str, Field(min_length=1, max_length=128)]] | None
-    ) = Field(default=None, max_length=128)
+    expected_driver: str | None = Field(default=None, min_length=1, max_length=129)
+    expected_tools: list[Annotated[str, Field(min_length=1, max_length=64)]] | None = (
+        Field(default=None, max_length=128)
+    )
 
-    @field_validator("expected_features_coarse", "expected_features")
+    @field_validator("expected_tools")
     @classmethod
-    def normalize_expected_features(cls, values: list[str] | None) -> list[str] | None:
+    def normalize_expected_tools(cls, values: list[str] | None) -> list[str] | None:
         if values is None:
             return None
         return sorted(set(values))
@@ -117,8 +116,8 @@ class ComputerUseConsentRequest(BaseModel):
     def require_approval_scope(self) -> "ComputerUseConsentRequest":
         if self.approved and (
             self.expected_machine_id is None
-            or self.expected_features_coarse is None
-            or self.expected_features is None
+            or self.expected_driver is None
+            or not self.expected_tools
         ):
             raise ValueError("Approval requires the disclosed Local PC executor scope")
         return self

@@ -40,21 +40,17 @@ def _shim(*, capabilities=("recording", "computer_use")):
     shim.machine_id = "machine-1"
     shim.capabilities = list(capabilities)
     shim.capability_set = frozenset(capabilities)
-    shim.computer_use_features_coarse = ["screenshot", "input"]
-    shim.computer_use_features = ["screenshot.capture", "input.click"]
     guard = ShimConnectionGuard(
         generation=1,
         machine_id="machine-1",
-        computer_use_features_coarse=("screenshot", "input"),
-        computer_use_features=("screenshot.capture", "input.click"),
+        computer_use_driver="cua-driver 0.38.0",
+        computer_use_tools=("click", "get_window_state", "type_text"),
     )
     shim.capture_connection_guard.return_value = guard
     shim.connection_guard_matches.return_value = True
     shim.recording = MagicMock()
     shim.computer = MagicMock()
-    shim.computer.type = AsyncMock()
-    shim.computer.click = AsyncMock()
-    shim.computer.clipboard_read = AsyncMock(return_value=None)
+    shim.computer.call = AsyncMock(return_value={"is_error": False, "content": []})
     shim.close_recording = MagicMock()
     return shim
 
@@ -343,8 +339,7 @@ class TestDryRunSkill:
 
         assert out["isError"] is True
         assert _parse(out)["code"] == "COMPUTER_USE_CONNECTION_CHANGED"
-        shim.computer.type.assert_not_awaited()
-        shim.computer.click.assert_not_awaited()
+        shim.computer.call.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_dry_run_rechecks_revoked_computer_use_consent(self, monkeypatch):
@@ -396,14 +391,14 @@ class TestDryRunSkill:
 
     @pytest.mark.asyncio
     async def test_dry_run_refuses_without_the_input_it_replays(self, monkeypatch):
-        """The input tools check their grant themselves; replay calls the
-        shim directly, so a session granted only screenshots could type."""
+        """Otto's computer-use calls check the tools the shim offers; replay
+        calls the shim directly, so it checks for the ones it replays."""
         shim = _shim()
         shim.capture_connection_guard.return_value = ShimConnectionGuard(
             generation=1,
             machine_id="machine-1",
-            computer_use_features_coarse=("screenshot",),
-            computer_use_features=("screenshot.capture",),
+            computer_use_driver="cua-driver 0.38.0",
+            computer_use_tools=("get_window_state",),
         )
         _install(monkeypatch, shim)
 
@@ -413,7 +408,7 @@ class TestDryRunSkill:
 
         body = _parse(out)
         assert body["code"] == "CAPABILITY_NOT_GRANTED"
-        assert body["details"]["missing"] == ["local_pc_click", "local_pc_type"]
+        assert body["details"]["missing"] == ["click", "type_text"]
 
     @pytest.mark.asyncio
     async def test_dry_run_requires_generated_skill(self, monkeypatch):
@@ -467,8 +462,14 @@ class TestDryRunSkill:
         assert body["rows_attempted"] == 2
         assert body["destructive_blocked"] is True  # submit skipped by default
         guard = shim.capture_connection_guard.return_value
-        assert shim.computer.type.await_args_list
+        typed = [
+            call
+            for call in shim.computer.call.await_args_list
+            if call.args[0] == "type_text"
+        ]
+        assert typed
+        assert all(call.kwargs["_guard"] == guard for call in typed)
         assert all(
-            call.kwargs["_guard"] == guard
-            for call in shim.computer.type.await_args_list
+            call.args[1]["target"] == {"kind": "desktop", "display_id": "primary"}
+            for call in typed
         )

@@ -237,16 +237,20 @@ class TestProposeClarifications:
         assert "parameter" in kinds
 
 
-def _mock_shim(clipboard_value=None):
+def _mock_shim(*, is_error: bool = False):
     shim = MagicMock()
     shim.computer = MagicMock()
-    shim.computer.type = AsyncMock()
-    shim.computer.click = AsyncMock()
-    if clipboard_value is not None:
-        shim.computer.clipboard_read = AsyncMock(return_value=clipboard_value)
-    else:
-        shim.computer.clipboard_read = AsyncMock(return_value=None)
+    shim.computer.call = AsyncMock(
+        return_value={
+            "is_error": is_error,
+            "content": [{"type": "text", "text": "refused" if is_error else "ok"}],
+        }
+    )
     return shim
+
+
+def _calls(shim, tool: str) -> list:
+    return [c for c in shim.computer.call.await_args_list if c.args[0] == tool]
 
 
 class TestDryRun:
@@ -262,8 +266,10 @@ class TestDryRun:
         ]
         result = await dry_run(skill, rows, shim=shim)
         assert result.rows_attempted == 2
-        # type() was called for the parameter fills of both rows.
-        assert shim.computer.type.await_count >= 2
+        # type_text was called for the parameter fills of both rows.
+        typed = _calls(shim, "type_text")
+        assert len(typed) >= 2
+        assert {c.args[1]["text"] for c in typed} >= {"Alice", "Bob"}
 
     @pytest.mark.asyncio
     async def test_destructive_submit_gated_by_default(self):
@@ -292,8 +298,13 @@ class TestDryRun:
             allow_destructive=True,
         )
         assert result.destructive_blocked is False
-        # click() was used for the submit.
-        assert shim.computer.click.await_count >= 1
+        # click was used for the submit, at the recorded screen point.
+        clicks = _calls(shim, "click")
+        assert clicks
+        assert clicks[0].args[1]["target"] == {
+            "kind": "desktop",
+            "display_id": "primary",
+        }
 
     @pytest.mark.asyncio
     async def test_a_step_the_dry_run_cannot_replay_fails_its_row(self):
@@ -346,12 +357,23 @@ class TestDryRun:
         assert "missing parameter" in (result.per_row[0].error or "")
 
     @pytest.mark.asyncio
-    async def test_readback_assert_passes_when_value_matches(self):
+    async def test_a_fill_is_reported_unasserted_until_there_is_a_readback(self):
         skill = generate_skill_from_recording(_two_row_recording())
-        shim = _mock_shim(clipboard_value="Alice")
+        shim = _mock_shim()
         result = await dry_run(
             skill, [{"first_name": "Alice", "email": "alice@x.com"}], shim=shim
         )
-        # First-name fill asserted; clipboard returned "Alice" so it matches.
         fn_steps = [s for r in result.per_row for s in r.steps if s.seq == 1]
-        assert fn_steps and fn_steps[0].asserted is True and fn_steps[0].ok is True
+        assert fn_steps and fn_steps[0].asserted is False and fn_steps[0].ok is True
+
+    @pytest.mark.asyncio
+    async def test_input_the_driver_refuses_fails_the_step(self):
+        skill = generate_skill_from_recording(_two_row_recording())
+        result = await dry_run(
+            skill,
+            [{"first_name": "Alice", "email": "alice@x.com"}],
+            shim=_mock_shim(is_error=True),
+        )
+        fn_steps = [s for r in result.per_row for s in r.steps if s.seq == 1]
+        assert fn_steps and fn_steps[0].ok is False
+        assert "refused" in (fn_steps[0].detail or "")

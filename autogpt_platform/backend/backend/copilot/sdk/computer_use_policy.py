@@ -1,51 +1,68 @@
-from collections.abc import Iterable
+"""What a connected Local PC executor offers for computer use, and what
+approving it grants.
 
-_COARSE_TOOL_GRANTS: dict[str, frozenset[str]] = {
-    "screenshot": frozenset({"local_pc_screenshot"}),
-    "input": frozenset(
-        {
-            "local_pc_click",
-            "local_pc_type",
-            "local_pc_key",
-            "local_pc_scroll",
-            "local_pc_cursor_position",
-        }
-    ),
-    "windows": frozenset({"local_pc_list_windows", "local_pc_focus_window"}),
-    "apps": frozenset({"local_pc_list_apps", "local_pc_launch_app"}),
-    "clipboard": frozenset({"local_pc_clipboard_read", "local_pc_clipboard_write"}),
-    "permissions": frozenset({"local_pc_permissions_check"}),
-}
-_FINE_TOOL_GRANTS: dict[str, str] = {
-    "screenshot.capture": "local_pc_screenshot",
-    "screenshot.region": "local_pc_screenshot",
-    "screenshot.window": "local_pc_screenshot",
-    "input.click": "local_pc_click",
-    "input.click.modifiers": "local_pc_click",
-    "input.click.button": "local_pc_click",
-    "input.scroll.amount": "local_pc_scroll",
-    "cursor.position": "local_pc_cursor_position",
-    "window.list": "local_pc_list_windows",
-    "window.focus": "local_pc_focus_window",
-    "app.list": "local_pc_list_apps",
-    "app.launch": "local_pc_launch_app",
-    "clipboard.read": "local_pc_clipboard_read",
-    "clipboard.write": "local_pc_clipboard_write",
-    "permissions.check": "local_pc_permissions_check",
-}
+The shim relays cua-driver's tools (autogpt-local-executor
+``docs/CUA_DRIVER.md``). Otto reaches them through two MCP tools:
+``local_pc_computer_tools`` reads the driver's guidance and the tools'
+schemas, and ``local_pc_computer`` calls one. Consent covers the machine,
+the driver release and the exact tool names its HELLO listed, so a shim
+that comes back offering more asks again.
+"""
+
+from pydantic import BaseModel, ConfigDict
+
+from backend.copilot.tools.local_pc_shim import ShimConnectionGuard, ShimHello
+
+LOCAL_PC_COMPUTER_TOOLS_TOOL = "local_pc_computer_tools"
+LOCAL_PC_COMPUTER_TOOL = "local_pc_computer"
+LOCAL_PC_COMPUTER_TOOL_NAMES: frozenset[str] = frozenset(
+    {LOCAL_PC_COMPUTER_TOOLS_TOOL, LOCAL_PC_COMPUTER_TOOL}
+)
 
 
-def local_pc_tool_names_for_features(
-    coarse_features: Iterable[str], fine_features: Iterable[str]
-) -> frozenset[str]:
-    coarse_tools = {
-        name
-        for feature in coarse_features
-        for name in _COARSE_TOOL_GRANTS.get(feature, ())
-    }
-    fine_tools = {
-        name
-        for feature in fine_features
-        if (name := _FINE_TOOL_GRANTS.get(feature)) is not None
-    }
-    return frozenset(coarse_tools | fine_tools)
+class ComputerUseScope(BaseModel):
+    """What approving computer use on one connection covers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    machine_id: str
+    driver: str
+    tools: tuple[str, ...]
+
+
+def computer_use_scope(hello: ShimHello) -> ComputerUseScope | None:
+    """The scope a HELLO offers, or None when it offers no computer use."""
+    driver = hello.computer_use_driver
+    if (
+        "computer_use" not in hello.capabilities
+        or driver is None
+        or not hello.computer_use_tools
+    ):
+        return None
+    return ComputerUseScope(
+        machine_id=hello.machine_id,
+        driver=driver.label,
+        tools=tuple(hello.computer_use_tools),
+    )
+
+
+def guard_scope(
+    guard: ShimConnectionGuard, capabilities: frozenset[str]
+) -> ComputerUseScope | None:
+    """The same scope, read from a live connection's guard."""
+    if (
+        "computer_use" not in capabilities
+        or not guard.computer_use_driver
+        or not guard.computer_use_tools
+    ):
+        return None
+    return ComputerUseScope(
+        machine_id=guard.machine_id,
+        driver=guard.computer_use_driver,
+        tools=guard.computer_use_tools,
+    )
+
+
+def local_pc_tool_names(scope: ComputerUseScope | None) -> frozenset[str]:
+    """The MCP tools to register for a scope: both, or none."""
+    return LOCAL_PC_COMPUTER_TOOL_NAMES if scope is not None else frozenset()

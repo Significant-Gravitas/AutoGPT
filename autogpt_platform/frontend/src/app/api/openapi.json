@@ -22887,27 +22887,23 @@
             ],
             "title": "Expected Machine Id"
           },
-          "expected_features_coarse": {
+          "expected_driver": {
             "anyOf": [
-              {
-                "items": { "type": "string", "maxLength": 128, "minLength": 1 },
-                "type": "array",
-                "maxItems": 128
-              },
+              { "type": "string", "maxLength": 129, "minLength": 1 },
               { "type": "null" }
             ],
-            "title": "Expected Features Coarse"
+            "title": "Expected Driver"
           },
-          "expected_features": {
+          "expected_tools": {
             "anyOf": [
               {
-                "items": { "type": "string", "maxLength": 128, "minLength": 1 },
+                "items": { "type": "string", "maxLength": 64, "minLength": 1 },
                 "type": "array",
                 "maxItems": 128
               },
               { "type": "null" }
             ],
-            "title": "Expected Features"
+            "title": "Expected Tools"
           }
         },
         "type": "object",
@@ -26035,19 +26031,9 @@
             ],
             "title": "Capabilities"
           },
-          "computer_use_features": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "Computer Use Features"
-          },
-          "computer_use_features_coarse": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "Computer Use Features Coarse"
+          "computer_use_driver": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Computer Use Driver"
           },
           "computer_use_tools": {
             "anyOf": [

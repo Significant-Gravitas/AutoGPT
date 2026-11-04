@@ -57,8 +57,8 @@ describe("LocalPCBadge", () => {
           machine_id: "abcdef1234567890",
           shim_version: "0.1.0",
           capabilities: ["shell", "files", "computer_use"],
-          computer_use_features: [],
-          computer_use_features_coarse: ["screenshot", "input"],
+          computer_use_driver: "cua-driver 0.38.0",
+          computer_use_tools: ["click", "get_window_state", "type_text"],
         }),
       ),
     );
@@ -77,7 +77,9 @@ describe("LocalPCBadge", () => {
       ),
     ).toBeDefined();
     expect(screen.getByText(/FILE_\*/)).toBeDefined();
-    expect(screen.getByText(/computer-use: screenshot, input/i)).toBeDefined();
+    expect(
+      screen.getByText(/computer use: cua-driver 0\.38\.0, 3 tools/i),
+    ).toBeDefined();
   });
 
   test("shows a distinct loading status", () => {

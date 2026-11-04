@@ -24,7 +24,7 @@ function useRecordingExecutor(overrides: Partial<LocalPCExecutorStatus> = {}) {
         kind: "shim",
         platform: "darwin",
         capabilities: ["files", "shell", "recording"],
-        computer_use_features: [],
+        computer_use_tools: [],
         recording_routes: [
           "extract_then_cloud",
           "local_vlm",

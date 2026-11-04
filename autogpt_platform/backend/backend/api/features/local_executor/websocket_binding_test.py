@@ -118,7 +118,7 @@ def test_child_hello_cannot_replace_selected_binding(
                         "platform": "linux",
                         "arch": "x86_64",
                         "capabilities": ["shell", "files"],
-                        "protocol_version": "1.1",
+                        "protocol_version": "2.0",
                     },
                 )
             )

@@ -45,7 +45,7 @@ from pydantic import BaseModel
 
 from backend.api.features.local_executor.consent import is_computer_use_approved
 from backend.copilot.local_executor import build_local_pc_env_context
-from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
+from backend.copilot.sdk.computer_use_policy import guard_scope, local_pc_tool_names
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
@@ -4964,12 +4964,15 @@ async def _is_local_pc_computer_approved(
     ):
         return False
     guard = sandbox.capture_connection_guard()
+    scope = guard_scope(guard, sandbox.capability_set)
+    if scope is None:
+        return False
     approved = await is_computer_use_approved(
         session_id,
         user_id,
-        machine_id=guard.machine_id,
-        features_coarse=guard.computer_use_features_coarse,
-        features=guard.computer_use_features,
+        machine_id=scope.machine_id,
+        driver=scope.driver,
+        tools=scope.tools,
     )
     return approved and sandbox.connection_guard_matches(guard)
 
@@ -5702,9 +5705,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         local_pc_computer_tool_names: frozenset[str] | None = None
         if use_local_pc_computer and isinstance(e2b_sandbox, LocalPCShim):
-            local_pc_computer_tool_names = local_pc_tool_names_for_features(
-                e2b_sandbox.computer_use_features_coarse,
-                e2b_sandbox.computer_use_features,
+            local_pc_computer_tool_names = local_pc_tool_names(
+                guard_scope(
+                    e2b_sandbox.capture_connection_guard(),
+                    e2b_sandbox.capability_set,
+                )
             )
 
         # Workflow-recording gate — same shape as the computer-use gate, but

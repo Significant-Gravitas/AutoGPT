@@ -38,7 +38,7 @@ from backend.copilot.context import (
     get_execution_context,
     is_local_pc_executor,
 )
-from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
+from backend.copilot.sdk.computer_use_policy import guard_scope
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimConnectionGuard,
@@ -59,9 +59,10 @@ logger = logging.getLogger(__name__)
 
 _chat_config = ChatConfig()
 
-# The input tools a dry run replays through. It calls the shim directly, so
-# it must hold every grant those tools would check for themselves.
-_REPLAY_TOOLS = frozenset({"local_pc_type", "local_pc_click"})
+# The cua-driver tools a dry run replays through. It calls the shim
+# directly, so the shim must offer them and the session must have approved
+# computer use, as Otto's own computer-use calls require.
+_REPLAY_TOOLS = frozenset({"type_text", "click"})
 
 
 # ---------------------------------------------------------------------------
@@ -212,15 +213,17 @@ async def _require_computer_use_consent(
     """Revalidate revocable consent before replay drives local input."""
     user_id, session = get_execution_context()
     guard = shim.capture_connection_guard()
+    scope = guard_scope(guard, shim.capability_set)
     if (
         not user_id
         or session is None
+        or scope is None
         or not await is_computer_use_approved(
             session.session_id,
             user_id,
-            machine_id=guard.machine_id,
-            features_coarse=guard.computer_use_features_coarse,
-            features=guard.computer_use_features,
+            machine_id=scope.machine_id,
+            driver=scope.driver,
+            tools=scope.tools,
         )
     ):
         return None, _err(
@@ -240,9 +243,9 @@ async def _require_computer_use_consent(
 async def _require_replay_input(
     shim: LocalPCShim,
 ) -> tuple[ShimConnectionGuard | None, dict[str, Any] | None]:
-    """What the input tools need before replay drives the mouse and keyboard:
-    the deployment allowing computer use, the `computer_use` capability, the
-    replayed tools among the granted features, and the session's consent."""
+    """What computer use needs before replay drives the mouse and keyboard:
+    the deployment allowing it, the `computer_use` capability, the replayed
+    tools among those the shim offers, and the session's consent."""
     if not _chat_config.allow_computer_use:
         return None, _err(
             "COMPUTER_USE_DISABLED",
@@ -260,10 +263,7 @@ async def _require_replay_input(
     if consent_error:
         return None, consent_error
     assert guard is not None
-    granted = local_pc_tool_names_for_features(
-        guard.computer_use_features_coarse, guard.computer_use_features
-    )
-    missing = sorted(_REPLAY_TOOLS - granted)
+    missing = sorted(_REPLAY_TOOLS - set(guard.computer_use_tools))
     if missing:
         return None, _err(
             "CAPABILITY_NOT_GRANTED",

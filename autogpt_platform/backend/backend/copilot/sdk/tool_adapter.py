@@ -965,9 +965,8 @@ def create_copilot_mcp_server(
     that route directly to the E2B sandbox filesystem; the SDK built-ins they
     stand in for are disabled in both modes by :func:`get_sdk_disallowed_tools`.
 
-    When *use_local_pc_computer* is True, the ``local_pc_*`` MCP tools
-    (screenshot, click, type, list_windows, launch_app, clipboard,
-    permissions, etc.) are registered. The caller should set this only
+    When *use_local_pc_computer* is True, the two ``local_pc_computer*`` MCP
+    tools over the shim's cua-driver are registered. The caller should set this only
     when the active executor is a connected ``LocalPCShim`` AND that
     shim advertised the ``computer_use`` capability in HELLO — gating
     happens at the handler level too so a misconfigured caller still
@@ -1052,12 +1051,10 @@ def create_copilot_mcp_server(
             sdk_tools.append(decorated)
 
     # LocalPC computer-use tools — only when the connected shim advertised
-    # the ``computer_use`` capability. Mutating-input ops (click/type/key/
-    # scroll/drag/focus/launch/clipboard_write) carry the
-    # ``readOnlyHint=False`` annotation so the CLI serialises them — back-
-    # to-back clicks to the same coordinate must NOT race. Read-only
-    # observability ops (screenshot, cursor_position, list_*, permissions,
-    # clipboard_read) keep the parallel annotation.
+    # the ``computer_use`` capability. ``local_pc_computer`` usually acts
+    # (clicks, types, launches), so it carries ``readOnlyHint=False`` and the
+    # CLI serialises it: two actions on one screen must not race. Reading the
+    # tool list stays parallel.
     if use_local_pc_computer:
         from .computer_use_tools import LOCAL_PC_COMPUTER_TOOLS
 
@@ -1067,15 +1064,7 @@ def create_copilot_mcp_server(
             else None
         )
 
-        _LOCAL_PC_MUTATING_TOOLS = {
-            "local_pc_click",
-            "local_pc_type",
-            "local_pc_key",
-            "local_pc_scroll",
-            "local_pc_focus_window",
-            "local_pc_launch_app",
-            "local_pc_clipboard_write",
-        }
+        _LOCAL_PC_MUTATING_TOOLS = {"local_pc_computer"}
         for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS:
             if name in hidden or (
                 advertised_computer_tools is not None

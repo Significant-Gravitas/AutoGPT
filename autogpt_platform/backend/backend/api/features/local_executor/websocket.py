@@ -39,7 +39,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-LOCAL_EXECUTOR_PROTOCOL_VERSION = "1.1"
+# 2.0: computer use relays the shim's cua-driver tools
+# (autogpt-local-executor docs/PROTOCOL.md, Versioning).
+LOCAL_EXECUTOR_PROTOCOL_VERSION = "2.0"
 MAX_HELLO_BYTES = 64 * 1024
 HELLO_TIMEOUT_SECONDS = 10.0
 _TOKEN_RECHECK_SECONDS = 60.0
@@ -437,13 +439,12 @@ async def _receive_hello(
                 if capability in SERVER_SUPPORTED_CAPABILITIES
             )
         )
-        if allow_null_root and (
-            shim_minor < 1 or "directory_browse" not in granted_capabilities
-        ):
+        # Every 2.x shim speaks the machine-control protocol.
+        if allow_null_root and "directory_browse" not in granted_capabilities:
             record_handshake_failure("machine_control_unsupported")
             await websocket.close(
                 code=4426,
-                reason="Machine control requires protocol 1.1 and directory_browse",
+                reason="Machine control requires directory_browse",
             )
             return None
         hello = hello.model_copy(update={"capabilities": granted_capabilities})

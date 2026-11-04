@@ -22,10 +22,11 @@ async def get_computer_use_consent(
     user_id: str | None,
     *,
     machine_id: str | None = None,
-    features_coarse: Iterable[str] | None = None,
-    features: Iterable[str] | None = None,
+    driver: str | None = None,
+    tools: Iterable[str] | None = None,
 ) -> ComputerUseConsent:
-    """Return consent only when approval matches this machine and feature set."""
+    """Return consent only when the approval matches this machine, its
+    computer-use driver release, and the tools it offers."""
     if not user_id:
         return "pending"
     try:
@@ -53,18 +54,14 @@ async def get_computer_use_consent(
     if state != "approved":
         return "pending"
 
-    scoped_machine_id, scoped_features_coarse, scoped_features = _normalize_scope(
-        machine_id, features_coarse, features
+    scoped_machine_id, scoped_driver, scoped_tools = _normalize_scope(
+        machine_id, driver, tools
     )
-    stored_features_coarse = record.get("features_coarse")
-    stored_features = record.get("features")
     if (
         not scoped_machine_id
         or record.get("machine_id") != scoped_machine_id
-        or not isinstance(stored_features_coarse, list)
-        or stored_features_coarse != scoped_features_coarse
-        or not isinstance(stored_features, list)
-        or stored_features != scoped_features
+        or record.get("driver") != scoped_driver
+        or record.get("tools") != scoped_tools
     ):
         return "pending"
     return "approved"
@@ -75,17 +72,13 @@ async def is_computer_use_approved(
     user_id: str | None,
     *,
     machine_id: str | None = None,
-    features_coarse: Iterable[str] | None = None,
-    features: Iterable[str] | None = None,
+    driver: str | None = None,
+    tools: Iterable[str] | None = None,
 ) -> bool:
     """Return whether this session may expose Local PC computer-use tools."""
     return (
         await get_computer_use_consent(
-            session_id,
-            user_id,
-            machine_id=machine_id,
-            features_coarse=features_coarse,
-            features=features,
+            session_id, user_id, machine_id=machine_id, driver=driver, tools=tools
         )
         == "approved"
     )
@@ -97,22 +90,24 @@ async def set_computer_use_consent(
     *,
     approved: bool,
     machine_id: str | None = None,
-    features_coarse: Iterable[str] | None = None,
-    features: Iterable[str] | None = None,
+    driver: str | None = None,
+    tools: Iterable[str] | None = None,
 ) -> ComputerUseConsent:
     """Persist a decision bound to the connected machine's advertised scope."""
     state: ComputerUseConsent = "approved" if approved else "denied"
-    scoped_machine_id, scoped_features_coarse, scoped_features = _normalize_scope(
-        machine_id, features_coarse, features
+    scoped_machine_id, scoped_driver, scoped_tools = _normalize_scope(
+        machine_id, driver, tools
     )
-    if approved and not scoped_machine_id:
-        raise ValueError("Computer-use approval requires a connected machine")
+    if approved and not (scoped_machine_id and scoped_driver and scoped_tools):
+        raise ValueError(
+            "Computer-use approval requires a connected machine and its tools"
+        )
     record = json.dumps(
         {
             "state": state,
             "machine_id": scoped_machine_id or None,
-            "features_coarse": scoped_features_coarse,
-            "features": scoped_features,
+            "driver": scoped_driver,
+            "tools": scoped_tools,
         },
         separators=(",", ":"),
     )
@@ -127,17 +122,11 @@ def _consent_key(session_id: str, user_id: str) -> str:
 
 def _normalize_scope(
     machine_id: str | None,
-    features_coarse: Iterable[str] | None,
-    features: Iterable[str] | None,
-) -> tuple[str, list[str], list[str]]:
-    return (
-        machine_id or "",
-        _normalize_features(features_coarse),
-        _normalize_features(features),
-    )
+    driver: str | None,
+    tools: Iterable[str] | None,
+) -> tuple[str, str, list[str]]:
+    return machine_id or "", driver or "", normalize_tool_names(tools)
 
 
-def _normalize_features(features: Iterable[str] | None) -> list[str]:
-    return sorted(
-        {feature for feature in features or () if isinstance(feature, str) and feature}
-    )
+def normalize_tool_names(tools: Iterable[str] | None) -> list[str]:
+    return sorted({tool for tool in tools or () if isinstance(tool, str) and tool})

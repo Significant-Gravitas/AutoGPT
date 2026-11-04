@@ -14,7 +14,7 @@ import unicodedata
 import uuid
 import weakref
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -66,13 +66,7 @@ _IDEMPOTENT_OPS: frozenset[str] = frozenset(
         "FILE_READ",
         "FILE_STAT",
         "FILE_LIST",
-        "CURSOR_POSITION_REQUEST",
-        "DISPLAY_INFO_REQUEST",
-        "WINDOW_LIST_REQUEST",
-        "APP_LIST_REQUEST",
-        "CLIPBOARD_READ",
-        "PERMISSIONS_CHECK_REQUEST",
-        "SCREENSHOT_REQUEST",
+        "COMPUTER_TOOLS_REQUEST",
         "RECORDING_FETCH",
     }
 )
@@ -246,49 +240,49 @@ def _validate_safe_hello_text(value: str, field_name: str) -> str:
     return value
 
 
-_COMPUTER_USE_FEATURES_COARSE = frozenset(
-    {"screenshot", "input", "windows", "apps", "clipboard", "permissions"}
-)
-_COMPUTER_USE_FEATURES = frozenset(
-    {
-        "screenshot.capture",
-        "screenshot.region",
-        "screenshot.window",
-        "input.click",
-        "input.click.modifiers",
-        "input.click.button",
-        "input.drag.path",
-        "input.key.hold",
-        "input.mouse.down_up",
-        "input.scroll.amount",
-        "input.wait",
-        "cursor.position",
-        "display.info",
-        "window.list",
-        "window.focus",
-        "app.list",
-        "app.launch",
-        "clipboard.read",
-        "clipboard.write",
-        "permissions.check",
-    }
-)
+# cua-driver tool names, as the shim relays them (PROTOCOL.md, 2.0).
+_COMPUTER_TOOL_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
+_MAX_COMPUTER_USE_TOOLS = 128
+# How long the platform waits past a computer tool call's own deadline, so
+# the shim's COMMAND_TIMEOUT arrives before the request is abandoned.
+_COMPUTER_TOOL_CALL_MARGIN_SECONDS = 15.0
+_DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS = 120
 
 
-def _canonical_computer_use_features(
-    values: list[str], *, supported: frozenset[str], field_name: str
-) -> list[str]:
-    if len(values) > 128:
-        raise ValueError(f"{field_name} contains too many entries")
-    for value in values:
-        if len(value) > 128:
-            raise ValueError(f"{field_name} contains an oversized entry")
-        _validate_safe_hello_text(value, field_name)
-        if value != value.strip():
-            raise ValueError(
-                f"{field_name} entries cannot contain surrounding whitespace"
-            )
-    return list(dict.fromkeys(value for value in values if value in supported))
+class ComputerUseDriver(BaseModel):
+    """The GUI driver behind a shim's computer use (HELLO.computer_use_driver)."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    name: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=64)
+    runtime: Literal["direct", "service"]
+
+    @field_validator("name", "version")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        return _validate_safe_hello_text(value, "computer_use_driver")
+
+    @property
+    def label(self) -> str:
+        return f"{self.name} {self.version}"
+
+
+def _canonical_computer_use_tools(values: list[str]) -> list[str]:
+    if len(values) > _MAX_COMPUTER_USE_TOOLS:
+        raise ValueError("computer_use_tools contains too many entries")
+    if any(_COMPUTER_TOOL_NAME.fullmatch(value) is None for value in values):
+        raise ValueError("computer_use_tools contains an invalid tool name")
+    return sorted(set(values))
+
+
+def _hello_driver(payload: dict) -> ComputerUseDriver | None:
+    raw = payload.get("computer_use_driver")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("computer_use_driver must be an object")
+    return ComputerUseDriver.model_validate(raw)
 
 
 class ShimHello(BaseModel):
@@ -304,8 +298,8 @@ class ShimHello(BaseModel):
     screen_resolution: tuple[int, int] | None = None
     local_llm_models: list[str] = Field(default_factory=list)
     hardware_devices: list[dict] = Field(default_factory=list)
-    computer_use_features: list[str] = Field(default_factory=list)
-    computer_use_features_coarse: list[str] = Field(default_factory=list)
+    computer_use_driver: ComputerUseDriver | None = None
+    computer_use_tools: list[str] = Field(default_factory=list)
     recording_channels: list[str] = Field(default_factory=list)
     recording_routes: list[str] = Field(default_factory=list)
     protocol_version: str = Field(default="1.0", max_length=16)
@@ -370,23 +364,10 @@ class ShimHello(BaseModel):
             raise ValueError("recording_channels contains an unsupported channel")
         return list(dict.fromkeys(values))
 
-    @field_validator("computer_use_features_coarse")
+    @field_validator("computer_use_tools")
     @classmethod
-    def validate_computer_use_features_coarse(cls, values: list[str]) -> list[str]:
-        return _canonical_computer_use_features(
-            values,
-            supported=_COMPUTER_USE_FEATURES_COARSE,
-            field_name="computer_use_features_coarse",
-        )
-
-    @field_validator("computer_use_features")
-    @classmethod
-    def validate_computer_use_features(cls, values: list[str]) -> list[str]:
-        return _canonical_computer_use_features(
-            values,
-            supported=_COMPUTER_USE_FEATURES,
-            field_name="computer_use_features",
-        )
+    def validate_computer_use_tools(cls, values: list[str]) -> list[str]:
+        return _canonical_computer_use_tools(values)
 
     @field_validator("recording_routes")
     @classmethod
@@ -420,10 +401,8 @@ class ShimHello(BaseModel):
                 for device in payload.get("hardware_devices") or []
                 if isinstance(device, dict)
             ],
-            computer_use_features=_hello_string_list(payload, "computer_use_features"),
-            computer_use_features_coarse=_hello_string_list(
-                payload, "computer_use_features_coarse"
-            ),
+            computer_use_driver=_hello_driver(payload),
+            computer_use_tools=_hello_string_list(payload, "computer_use_tools"),
             recording_channels=_hello_string_list(payload, "recording_channels"),
             recording_routes=_hello_string_list(payload, "recording_routes"),
             protocol_version=_optional_hello_string(
@@ -437,8 +416,8 @@ class ShimConnectionGuard(BaseModel):
 
     generation: int
     machine_id: str
-    computer_use_features_coarse: tuple[str, ...]
-    computer_use_features: tuple[str, ...]
+    computer_use_driver: str
+    computer_use_tools: tuple[str, ...]
 
 
 class ShimConnectionManager:
@@ -1052,12 +1031,10 @@ class _FilesProxy:
 class ShimComputerUseError(RuntimeError):
     """Raised when a computer-use wire op returns a structured ERROR.
 
-    ``code`` mirrors the wire ``payload.code`` so MCP-tool handlers can
-    branch on the structured surface defined in COMPUTER_USE.md
-    (PERMISSION_PENDING, FEATURE_NOT_SUPPORTED, WINDOW_STALE,
-    INPUT_OUT_OF_BOUNDS, CLIPBOARD_CONCEALED, ...) without parsing the
-    human ``message`` string. ``message`` is the already-LLM-friendly text
-    produced by :mod:`local_pc_errors`.
+    ``code`` mirrors the wire ``payload.code`` (PERMISSION_PENDING,
+    FEATURE_NOT_SUPPORTED, CLIPBOARD_CONCEALED, DEPENDENCY_MISSING,
+    COMMAND_TIMEOUT, ...) so the MCP-tool handlers can branch without
+    parsing ``message``, the LLM-friendly text from :mod:`local_pc_errors`.
     """
 
     def __init__(self, code: str, message: str, details: dict | None = None) -> None:
@@ -1081,293 +1058,48 @@ def _raise_computer_use(resp: dict, shim: "LocalPCShim | None", fallback: str) -
 
 
 class _ComputerProxy:
-    """Wire-op wrapper for the shim's computer-use surface.
-
-    Mirrors the spec in
-    ``autogpt-local-executor/docs/COMPUTER_USE.md``. Each method
-    sends one wire op and returns the parsed payload (or raises
-    :class:`ShimComputerUseError` on a structured ERROR response). The
-    MCP-tool layer in ``tool_adapter.py`` translates the typed error to a
-    text block Claude can read.
-    """
+    """The shim's cua-driver tools: COMPUTER_TOOLS_REQUEST lists them with
+    the driver's guidance, COMPUTER_TOOL_CALL runs one. See
+    ``autogpt-local-executor/docs/CUA_DRIVER.md``."""
 
     def __init__(self, shim: "LocalPCShim") -> None:
         self._shim = shim
+        # The list for one connection; a reconnect may bring another driver.
+        self._catalog: tuple[int, dict] | None = None
 
-    # --- Screenshot --------------------------------------------------------
-
-    async def screenshot(
-        self,
-        *,
-        monitor: int = 0,
-        region: list[int] | tuple[int, int, int, int] | None = None,
-        window_id: str | None = None,
-        format: str = "png",
-        include_cursor: bool = False,
-        quality: int = 75,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> dict:
-        if region is not None and window_id is not None:
-            raise ValueError(
-                "LocalPCShim.computer.screenshot: region and window_id are mutually exclusive"
-            )
-        payload: dict[str, Any] = {
-            "monitor": monitor,
-            "quality": quality,
-            "format": format,
-            "include_cursor": include_cursor,
-        }
-        if region is not None:
-            payload["region"] = list(region)
-        if window_id is not None:
-            payload["window_id"] = window_id
+    async def tools(self, *, _guard: ShimConnectionGuard | None = None) -> dict:
+        """``{driver, instructions, tools: [{name, description, input_schema,
+        annotations}]}`` as the shim sent it, cached per connection."""
+        generation = self._shim._connection_generation
+        if self._catalog is not None and self._catalog[0] == generation:
+            return self._catalog[1]
         resp = await self._shim._rpc(
-            "SCREENSHOT_REQUEST", payload, connection_guard=_guard
+            "COMPUTER_TOOLS_REQUEST", {}, connection_guard=_guard
         )
-        _raise_computer_use(resp, self._shim, "SCREENSHOT_REQUEST failed")
-        return resp.get("payload") or {}
+        _raise_computer_use(resp, self._shim, "COMPUTER_TOOLS_REQUEST failed")
+        payload = resp.get("payload") or {}
+        self._catalog = (generation, payload)
+        return payload
 
-    # --- INPUT_ACTION verbs ------------------------------------------------
-
-    async def _input(
+    async def call(
         self,
-        action: str,
+        tool: str,
+        arguments: dict[str, Any],
         *,
+        timeout_seconds: int | None = None,
         _guard: ShimConnectionGuard | None = None,
-        **fields: Any,
     ) -> dict:
-        payload: dict[str, Any] = {"action": action}
-        for k, v in fields.items():
-            if v is not None:
-                payload[k] = v
+        """``{tool, is_error, content, structured_content}``. Never retried:
+        most tools act, and the model decides what to do after a failure."""
+        payload: dict[str, Any] = {"tool": tool, "arguments": arguments}
+        if timeout_seconds is not None:
+            payload["timeout_seconds"] = timeout_seconds
+        deadline = timeout_seconds or _DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS
         try:
             resp = await self._shim._rpc(
-                "INPUT_ACTION", payload, connection_guard=_guard
-            )
-        except OpUnconfirmedError as exc:
-            # INPUT_ACTION is non-idempotent (clicks at the same coord
-            # are NOT the same op — the OS might have a different element
-            # under the cursor on retry). Translate to the structured
-            # OP_UNCONFIRMED shape so Claude knows to take a screenshot
-            # and re-evaluate rather than blindly re-clicking.
-            raise ShimComputerUseError(
-                code=exc.code,
-                message=_translate_unconfirmed(
-                    exc,
-                    self._shim,
-                    fallback=f"INPUT_ACTION {action} unconfirmed",
-                    extra_details={"action": action},
-                ),
-                details={"action": action, "op": exc.op},
-            ) from exc
-        _raise_computer_use(resp, self._shim, f"INPUT_ACTION {action} failed")
-        return resp.get("payload") or {}
-
-    async def click(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        button: str = "left",
-        modifiers: list[str] | None = None,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        action = {
-            "left": "left_click",
-            "right": "right_click",
-            "middle": "middle_click",
-        }.get(button, "left_click")
-        await self._input(
-            action,
-            coordinate=list(coordinate),
-            button=button,
-            modifiers=modifiers,
-            _guard=_guard,
-        )
-
-    async def double_click(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        modifiers: list[str] | None = None,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "double_click",
-            coordinate=list(coordinate),
-            modifiers=modifiers,
-            _guard=_guard,
-        )
-
-    async def triple_click(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        modifiers: list[str] | None = None,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "triple_click",
-            coordinate=list(coordinate),
-            modifiers=modifiers,
-            _guard=_guard,
-        )
-
-    async def middle_click(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input("middle_click", coordinate=list(coordinate), _guard=_guard)
-
-    async def mouse_move(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input("mouse_move", coordinate=list(coordinate), _guard=_guard)
-
-    async def mouse_down(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        button: str = "left",
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "mouse_down", coordinate=list(coordinate), button=button, _guard=_guard
-        )
-
-    async def mouse_up(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        button: str = "left",
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "mouse_up", coordinate=list(coordinate), button=button, _guard=_guard
-        )
-
-    async def drag(
-        self,
-        path: list[list[int]] | list[tuple[int, int]],
-        *,
-        button: str = "left",
-        duration_ms: int | None = None,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "drag",
-            path=[list(pt) for pt in path],
-            button=button,
-            duration_ms=duration_ms,
-            _guard=_guard,
-        )
-
-    async def scroll(
-        self,
-        coordinate: list[int] | tuple[int, int],
-        *,
-        direction: str = "down",
-        scroll_amount: int = 1,
-        modifiers: list[str] | None = None,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "scroll",
-            coordinate=list(coordinate),
-            scroll_direction=direction,
-            scroll_amount=scroll_amount,
-            modifiers=modifiers,
-            _guard=_guard,
-        )
-
-    async def type(
-        self,
-        text: str,
-        *,
-        paste: bool = False,
-        preserve_clipboard: bool = False,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input(
-            "type",
-            text=text,
-            paste=paste,
-            preserve_clipboard=preserve_clipboard,
-            _guard=_guard,
-        )
-
-    async def key(self, key: str, *, _guard: ShimConnectionGuard | None = None) -> None:
-        await self._input("key", key=key, _guard=_guard)
-
-    async def hold_key(
-        self,
-        key: str,
-        duration_ms: int,
-        *,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        await self._input("hold_key", key=key, duration_ms=duration_ms, _guard=_guard)
-
-    async def wait(
-        self, duration_ms: int, *, _guard: ShimConnectionGuard | None = None
-    ) -> None:
-        await self._input("wait", duration_ms=duration_ms, _guard=_guard)
-
-    # --- Cursor / display --------------------------------------------------
-
-    async def cursor_position(
-        self, *, _guard: ShimConnectionGuard | None = None
-    ) -> dict:
-        resp = await self._shim._rpc(
-            "CURSOR_POSITION_REQUEST", {}, connection_guard=_guard
-        )
-        _raise_computer_use(resp, self._shim, "CURSOR_POSITION_REQUEST failed")
-        return resp.get("payload") or {}
-
-    async def display_info(self, *, _guard: ShimConnectionGuard | None = None) -> dict:
-        resp = await self._shim._rpc(
-            "DISPLAY_INFO_REQUEST", {}, connection_guard=_guard
-        )
-        _raise_computer_use(resp, self._shim, "DISPLAY_INFO_REQUEST failed")
-        return resp.get("payload") or {}
-
-    # --- Windows -----------------------------------------------------------
-
-    async def list_windows(
-        self,
-        *,
-        app_bundle_id: str | None = None,
-        include_minimized: bool = False,
-        include_offscreen: bool = False,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> list[dict]:
-        resp = await self._shim._rpc(
-            "WINDOW_LIST_REQUEST",
-            {
-                "app_bundle_id": app_bundle_id,
-                "include_minimized": include_minimized,
-                "include_offscreen": include_offscreen,
-            },
-            connection_guard=_guard,
-        )
-        _raise_computer_use(resp, self._shim, "WINDOW_LIST_REQUEST failed")
-        return list((resp.get("payload") or {}).get("windows") or [])
-
-    async def focus_window(
-        self,
-        window_id: str,
-        *,
-        raise_: bool = True,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        try:
-            resp = await self._shim._rpc(
-                "WINDOW_FOCUS",
-                {"window_id": window_id, "raise": raise_},
+                "COMPUTER_TOOL_CALL",
+                payload,
+                timeout=deadline + _COMPUTER_TOOL_CALL_MARGIN_SECONDS,
                 connection_guard=_guard,
             )
         except OpUnconfirmedError as exc:
@@ -1376,128 +1108,13 @@ class _ComputerProxy:
                 message=_translate_unconfirmed(
                     exc,
                     self._shim,
-                    fallback="WINDOW_FOCUS unconfirmed",
-                    extra_details={"window_id": window_id},
+                    fallback=f"{tool} unconfirmed",
+                    extra_details={"tool": tool},
                 ),
-                details={"window_id": window_id, "op": exc.op},
+                details={"tool": tool, "op": exc.op},
             ) from exc
-        _raise_computer_use(resp, self._shim, "WINDOW_FOCUS failed")
-
-    # --- Apps --------------------------------------------------------------
-
-    async def list_apps(
-        self,
-        *,
-        include_background: bool = False,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> list[dict]:
-        resp = await self._shim._rpc(
-            "APP_LIST_REQUEST",
-            {"include_background": include_background},
-            connection_guard=_guard,
-        )
-        _raise_computer_use(resp, self._shim, "APP_LIST_REQUEST failed")
-        return list((resp.get("payload") or {}).get("apps") or [])
-
-    async def launch_app(
-        self,
-        *,
-        bundle_id: str | None = None,
-        executable_path: str | None = None,
-        args: list[str] | None = None,
-        activate: bool = True,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> dict:
-        if not bundle_id and not executable_path:
-            raise ValueError(
-                "LocalPCShim.computer.launch_app: bundle_id or executable_path is required"
-            )
-        try:
-            resp = await self._shim._rpc(
-                "APP_LAUNCH",
-                {
-                    "bundle_id": bundle_id,
-                    "executable_path": executable_path,
-                    "args": list(args or []),
-                    "activate": activate,
-                },
-                connection_guard=_guard,
-            )
-        except OpUnconfirmedError as exc:
-            raise ShimComputerUseError(
-                code=exc.code,
-                message=_translate_unconfirmed(
-                    exc,
-                    self._shim,
-                    fallback="APP_LAUNCH unconfirmed",
-                    extra_details={
-                        "bundle_id": bundle_id,
-                        "executable_path": executable_path,
-                    },
-                ),
-                details={"op": exc.op},
-            ) from exc
-        _raise_computer_use(resp, self._shim, "APP_LAUNCH failed")
+        _raise_computer_use(resp, self._shim, f"{tool} failed")
         return resp.get("payload") or {}
-
-    # --- Clipboard ---------------------------------------------------------
-
-    async def clipboard_read(
-        self,
-        *,
-        format: str = "text",
-        _guard: ShimConnectionGuard | None = None,
-    ) -> str | None:
-        resp = await self._shim._rpc(
-            "CLIPBOARD_READ", {"format": format}, connection_guard=_guard
-        )
-        _raise_computer_use(resp, self._shim, "CLIPBOARD_READ failed")
-        return (resp.get("payload") or {}).get("content")
-
-    async def clipboard_write(
-        self,
-        content: str,
-        *,
-        format: str = "text",
-        _guard: ShimConnectionGuard | None = None,
-    ) -> None:
-        try:
-            resp = await self._shim._rpc(
-                "CLIPBOARD_WRITE",
-                {"format": format, "content": content},
-                connection_guard=_guard,
-            )
-        except OpUnconfirmedError as exc:
-            raise ShimComputerUseError(
-                code=exc.code,
-                message=_translate_unconfirmed(
-                    exc,
-                    self._shim,
-                    fallback="CLIPBOARD_WRITE unconfirmed",
-                    extra_details={"content_length": len(content)},
-                ),
-                details={"op": exc.op},
-            ) from exc
-        _raise_computer_use(resp, self._shim, "CLIPBOARD_WRITE failed")
-
-    # --- Permissions -------------------------------------------------------
-
-    async def permissions_check(
-        self,
-        permissions: list[str] | None = None,
-        *,
-        _guard: ShimConnectionGuard | None = None,
-    ) -> dict:
-        resp = await self._shim._rpc(
-            "PERMISSIONS_CHECK_REQUEST",
-            {
-                "permissions": permissions
-                or ["screen_recording", "accessibility", "input_monitoring"]
-            },
-            connection_guard=_guard,
-        )
-        _raise_computer_use(resp, self._shim, "PERMISSIONS_CHECK_REQUEST failed")
-        return (resp.get("payload") or {}).get("permissions") or {}
 
 
 class _CommandsProxy:
@@ -1867,12 +1484,12 @@ class LocalPCShim(LocalPCExecutorMarker):
     Extended attributes (LocalPC-only; safe to read via isinstance check):
         .allowed_root, .machine_id, .platform, .arch, .capabilities,
         .shim_version, .screen_resolution, .local_llm_models, .hardware_devices,
-        .computer_use_features
+        .computer_use_driver, .computer_use_tools
 
     Computer-use surface:
-        .computer.screenshot(...), .computer.click(...), .computer.type(...),
-        and friends — see ``_ComputerProxy`` and
-        ``autogpt-local-executor/docs/COMPUTER_USE.md``.
+        .computer.tools() and .computer.call(tool, arguments): the shim's
+        cua-driver tools — see ``_ComputerProxy`` and
+        ``autogpt-local-executor/docs/CUA_DRIVER.md``.
 
     Dormant local-model surface (not connected to the chat service):
         .local_llm.complete(...) (async iterator of deltas) and
@@ -1964,8 +1581,8 @@ class LocalPCShim(LocalPCExecutorMarker):
         self.screen_resolution = hello.screen_resolution
         self.local_llm_models = list(hello.local_llm_models)
         self.hardware_devices = list(hello.hardware_devices)
-        self.computer_use_features = list(hello.computer_use_features)
-        self.computer_use_features_coarse = list(hello.computer_use_features_coarse)
+        self.computer_use_driver = hello.computer_use_driver
+        self.computer_use_tools = list(hello.computer_use_tools)
         self.recording_channels = list(hello.recording_channels)
         self.recording_routes = list(hello.recording_routes)
         self.protocol_version = hello.protocol_version
@@ -1974,8 +1591,10 @@ class LocalPCShim(LocalPCExecutorMarker):
         return ShimConnectionGuard(
             generation=getattr(self, "_connection_generation", 0),
             machine_id=self.machine_id,
-            computer_use_features_coarse=tuple(self.computer_use_features_coarse),
-            computer_use_features=tuple(self.computer_use_features),
+            computer_use_driver=(
+                self.computer_use_driver.label if self.computer_use_driver else ""
+            ),
+            computer_use_tools=tuple(self.computer_use_tools),
         )
 
     def connection_guard_matches(self, guard: ShimConnectionGuard) -> bool:

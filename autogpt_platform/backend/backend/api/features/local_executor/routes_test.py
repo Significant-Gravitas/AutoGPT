@@ -155,16 +155,15 @@ class TestHandshake:
                 "arch": "arm64",
                 "allowed_root": "/Users/test/ws",
                 "capabilities": ["shell", "unrecognized", "files"],
-                "computer_use_features_coarse": [
-                    "screenshot",
-                    "apps",
-                    "input.click",
-                    "future-feature",
-                ],
-                "computer_use_features": ["input.click", "future-feature"],
+                "computer_use_driver": {
+                    "name": "cua-driver",
+                    "version": "0.38.0",
+                    "runtime": "service",
+                },
+                "computer_use_tools": ["type_text", "click"],
                 "recording_channels": ["floor", "browser"],
                 "recording_routes": ["extract_then_cloud"],
-                "protocol_version": "1.7",
+                "protocol_version": "2.7",
             },
         )
         with client.websocket_connect(
@@ -176,7 +175,7 @@ class TestHandshake:
             assert ack["type"] == "HELLO_ACK"
             assert ack["payload"]["session_id"] == "sess-1"
             assert ack["payload"]["granted_capabilities"] == ["shell", "files"]
-            assert ack["payload"]["protocol_version"] == "1.1"
+            assert ack["payload"]["protocol_version"] == "2.0"
             assert ack["payload"]["max_file_size_bytes"] == 10 * 1024 * 1024
             assert ack["payload"]["command_timeout_seconds"] == 30
             assert ack["payload"]["max_concurrent"] == 4
@@ -184,9 +183,10 @@ class TestHandshake:
             stored = _fresh_manager.get_hello("sess-1")
             assert stored is not None
             assert stored.capabilities == ["shell", "files"]
-            assert stored.protocol_version == "1.7"
-            assert stored.computer_use_features_coarse == ["screenshot", "apps"]
-            assert stored.computer_use_features == ["input.click"]
+            assert stored.protocol_version == "2.7"
+            assert stored.computer_use_driver is not None
+            assert stored.computer_use_driver.runtime == "service"
+            assert stored.computer_use_tools == ["click", "type_text"]
             assert stored.recording_channels == ["floor", "browser"]
             assert stored.recording_routes == ["extract_then_cloud"]
 
@@ -204,7 +204,7 @@ class TestHandshake:
                 "arch": "x86_64",
                 "allowed_root": None,
                 "capabilities": ["files", "directory_browse"],
-                "protocol_version": "1.1",
+                "protocol_version": "2.0",
             },
         )
 
@@ -235,7 +235,7 @@ class TestHandshake:
                 "arch": "x86_64",
                 "allowed_root": None,
                 "capabilities": ["files"],
-                "protocol_version": "1.0",
+                "protocol_version": "2.0",
             },
         )
 
@@ -249,7 +249,7 @@ class TestHandshake:
         assert hello is None
         websocket.close.assert_awaited_once_with(
             code=4426,
-            reason="Machine control requires protocol 1.1 and directory_browse",
+            reason="Machine control requires directory_browse",
         )
 
     def test_machine_control_hello_does_not_weaken_session_root_validation(
@@ -276,9 +276,11 @@ class TestHandshake:
                 ws.receive_text()
         assert exc_info.value.code == 4400
 
+    @pytest.mark.parametrize("version", ["1.1", "3.0"], ids=["pre-cua-driver", "newer"])
     def test_protocol_major_mismatch_closes_4426(
-        self, _patched_introspect, _fresh_manager
+        self, _patched_introspect, _fresh_manager, version: str
     ):
+        """A 1.x shim speaks the old computer-use operations; it must update."""
         app = _make_app()
         client = TestClient(app)
         with pytest.raises(WebSocketDisconnect) as exc_info:
@@ -294,7 +296,7 @@ class TestHandshake:
                             "arch": "x86_64",
                             "allowed_root": "/workspace",
                             "capabilities": ["files"],
-                            "protocol_version": "2.0",
+                            "protocol_version": version,
                         },
                     )
                 )
@@ -341,7 +343,7 @@ class TestHandshake:
                             "arch": "x86_64",
                             "allowed_root": "/workspace",
                             "capabilities": ["computer_use"],
-                            "computer_use_features_coarse": [" input"],
+                            "computer_use_tools": [" click"],
                         },
                     )
                 )
@@ -371,7 +373,7 @@ class TestHandshake:
                                 "arch": "x86_64",
                                 "allowed_root": "/workspace",
                                 "capabilities": ["files"],
-                                "protocol_version": "1.0",
+                                "protocol_version": "2.0",
                             },
                         )
                     )
@@ -641,6 +643,7 @@ class TestManagerCarriesHelloMetadata:
                 "allowed_root": "C:\\workspace",
                 "capabilities": ["shell", "files"],
                 "shim_version": "0.1.0",
+                "protocol_version": "2.0",
             },
         )
         with client.websocket_connect(
@@ -690,6 +693,7 @@ class TestLoopbackExecuteCommand:
                             "allowed_root": "/Users/test/ws",
                             "capabilities": ["shell", "files"],
                             "shim_version": "0.1.0",
+                            "protocol_version": "2.0",
                         },
                     )
                 )

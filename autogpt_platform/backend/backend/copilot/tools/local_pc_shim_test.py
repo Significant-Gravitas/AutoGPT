@@ -14,6 +14,7 @@ from .local_pc_shim import (
     _IDEMPOTENT_OPS,
     COMMAND_TIMEOUT_SECONDS,
     MAX_FILE_SIZE_BYTES,
+    ComputerUseDriver,
     LocalPCShim,
     OpUnconfirmedError,
     ShimComputerUseError,
@@ -116,7 +117,9 @@ def _make_shim_with_rpc(rpc_return: dict) -> LocalPCShim:
     shim.files = _FilesProxy(shim)
     shim.commands = _CommandsProxy(shim)
     shim.computer = _ComputerProxy(shim)
-    shim.computer_use_features = []
+    shim.computer_use_driver = None
+    shim.computer_use_tools = []
+    shim._connection_generation = 1
     return shim
 
 
@@ -158,26 +161,47 @@ class TestShimHello:
         )
         assert hello.screen_resolution is None
 
-    def test_from_payload_filters_features_by_granularity(self):
+    def test_from_payload_reads_the_driver_and_sorts_its_tools(self):
         hello = ShimHello.from_payload(
             {
                 "machine_id": "abc-123",
                 "platform": "linux",
                 "arch": "x86_64",
                 "allowed_root": "/workspace",
-                "computer_use_features_coarse": [
-                    "screenshot",
-                    "input.click",
-                    "future-feature",
-                ],
-                "computer_use_features": ["input.click", "future-feature"],
+                "capabilities": ["files", "computer_use"],
+                "computer_use_driver": {
+                    "name": "cua-driver",
+                    "version": "0.38.0",
+                    "runtime": "direct",
+                },
+                "computer_use_tools": ["type_text", "click", "click"],
             }
         )
 
-        assert hello.computer_use_features_coarse == ["screenshot"]
-        assert hello.computer_use_features == ["input.click"]
+        assert hello.computer_use_driver == ComputerUseDriver(
+            name="cua-driver", version="0.38.0", runtime="direct"
+        )
+        assert hello.computer_use_driver.label == "cua-driver 0.38.0"
+        assert hello.computer_use_tools == ["click", "type_text"]
 
-    def test_from_payload_rejects_feature_whitespace(self):
+    @pytest.mark.parametrize(
+        "field",
+        [
+            {"computer_use_tools": ["Click"]},
+            {"computer_use_tools": ["click; rm"]},
+            {"computer_use_tools": ["x"] * 129},
+            {"computer_use_driver": "cua-driver"},
+            {"computer_use_driver": {"name": "cua-driver", "version": "0.38.0"}},
+            {
+                "computer_use_driver": {
+                    "name": "cua\ndriver",
+                    "version": "0.38.0",
+                    "runtime": "direct",
+                }
+            },
+        ],
+    )
+    def test_from_payload_rejects_a_malformed_computer_use_scope(self, field):
         with pytest.raises(ValueError):
             ShimHello.from_payload(
                 {
@@ -185,7 +209,7 @@ class TestShimHello:
                     "platform": "linux",
                     "arch": "x86_64",
                     "allowed_root": "/workspace",
-                    "computer_use_features_coarse": [" input"],
+                    **field,
                 }
             )
 
@@ -864,317 +888,85 @@ class TestFilesStat:
 # ---------------------------------------------------------------------------
 
 
-class TestComputerScreenshot:
+class TestComputerProxy:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_screenshot_default_payload(self):
+    async def test_tools_are_listed_once_per_connection(self):
+        catalog = {"driver": {"name": "cua-driver"}, "instructions": "x", "tools": []}
         shim = _make_shim_with_rpc(
-            {"payload": {"image_base64": "abc", "width": 800, "height": 600}}
+            {"type": "COMPUTER_TOOLS_RESPONSE", "payload": catalog}
         )
-        result = await shim.computer.screenshot()
+
+        assert await shim.computer.tools() == catalog
+        assert await shim.computer.tools() == catalog
+        assert shim._rpc.await_count == 1
+        assert shim._rpc.await_args.args == ("COMPUTER_TOOLS_REQUEST", {})
+
+        # A reconnect may bring another driver.
+        shim._connection_generation += 1
+        await shim.computer.tools()
+        assert shim._rpc.await_count == 2
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_call_carries_the_tool_arguments_and_deadline(self):
+        result = {"tool": "click", "is_error": False, "content": []}
+        shim = _make_shim_with_rpc({"type": "COMPUTER_TOOL_RESULT", "payload": result})
+
+        assert (
+            await shim.computer.call(
+                "click", {"element_token": "s1:2"}, timeout_seconds=30
+            )
+            == result
+        )
         op, payload = shim._rpc.await_args.args
-        assert op == "SCREENSHOT_REQUEST"
-        assert payload["monitor"] == 0
-        assert payload["format"] == "png"
-        assert payload["include_cursor"] is False
-        assert payload["quality"] == 75
-        assert "region" not in payload
-        assert "window_id" not in payload
-        assert result["width"] == 800
+        assert op == "COMPUTER_TOOL_CALL"
+        assert payload == {
+            "tool": "click",
+            "arguments": {"element_token": "s1:2"},
+            "timeout_seconds": 30,
+        }
+        # The shim's own deadline fires first.
+        assert shim._rpc.await_args.kwargs["timeout"] == 45
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_screenshot_region_forwards_as_list(self):
-        shim = _make_shim_with_rpc({"payload": {"image_base64": "x"}})
-        await shim.computer.screenshot(region=(10, 20, 100, 200), include_cursor=True)
-        payload = shim._rpc.await_args.args[1]
-        assert payload["region"] == [10, 20, 100, 200]
-        assert payload["include_cursor"] is True
+    async def test_a_call_without_a_deadline_waits_for_the_shims_default(self):
+        shim = _make_shim_with_rpc({"type": "COMPUTER_TOOL_RESULT", "payload": {}})
+
+        await shim.computer.call("list_windows", {})
+
+        assert "timeout_seconds" not in shim._rpc.await_args.args[1]
+        assert shim._rpc.await_args.kwargs["timeout"] == 135
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_screenshot_window_id_forwards(self):
-        shim = _make_shim_with_rpc({"payload": {"image_base64": "x"}})
-        await shim.computer.screenshot(window_id="win_abc")
-        payload = shim._rpc.await_args.args[1]
-        assert payload["window_id"] == "win_abc"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_screenshot_region_and_window_id_mutually_exclusive(self):
-        shim = _make_shim_with_rpc({"payload": {}})
-        with pytest.raises(ValueError):
-            await shim.computer.screenshot(region=(0, 0, 1, 1), window_id="win_x")
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_screenshot_error_raises_typed_error(self):
+    async def test_a_shim_error_raises_with_its_code_and_details(self):
         shim = _make_shim_with_rpc(
             {
                 "type": "ERROR",
                 "payload": {
-                    "code": "PERMISSION_PENDING",
-                    "message": "screen recording denied",
-                    "details": {"permission": "screen_recording"},
+                    "code": "FEATURE_NOT_SUPPORTED",
+                    "message": "kill_app is not available on this machine.",
+                    "details": {"tool": "kill_app"},
                 },
             }
         )
+
         with pytest.raises(ShimComputerUseError) as exc_info:
-            await shim.computer.screenshot()
-        assert exc_info.value.code == "PERMISSION_PENDING"
-        assert exc_info.value.details.get("permission") == "screen_recording"
+            await shim.computer.call("kill_app", {"pid": 1})
 
-
-class TestComputerInputActions:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_left_click_uses_left_click_action(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.click([100, 200])
-        op, payload = shim._rpc.await_args.args
-        assert op == "INPUT_ACTION"
-        assert payload["action"] == "left_click"
-        assert payload["coordinate"] == [100, 200]
-        assert payload["button"] == "left"
-        assert "modifiers" not in payload
+        assert exc_info.value.code == "FEATURE_NOT_SUPPORTED"
+        assert exc_info.value.details == {"tool": "kill_app"}
+        assert "local_pc_computer_tools" in str(exc_info.value)
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_right_click_maps_to_right_click_action(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.click([5, 6], button="right")
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "right_click"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_modifiers_forwarded(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.click([10, 10], modifiers=["shift", "ctrl"])
-        payload = shim._rpc.await_args.args[1]
-        assert payload["modifiers"] == ["shift", "ctrl"]
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_scroll_uses_scroll_direction_field(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.scroll([500, 500], direction="up", scroll_amount=4)
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "scroll"
-        assert payload["scroll_direction"] == "up"
-        assert payload["scroll_amount"] == 4
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_type_default_explicit_paste_and_preserve(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.type("hello world")
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "type"
-        assert payload["text"] == "hello world"
-        # The wire schema treats absent and false the same; the proxy
-        # always forwards the explicit value so the shim's per-OS default
-        # never silently overrides what the platform asked for.
-        assert payload["paste"] is False
-        assert payload["preserve_clipboard"] is False
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_type_paste_true_forwards(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.type("x" * 500, paste=True, preserve_clipboard=True)
-        payload = shim._rpc.await_args.args[1]
-        assert payload["paste"] is True
-        assert payload["preserve_clipboard"] is True
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_key_forwards_key_field(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.key("ctrl+s")
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "key"
-        assert payload["key"] == "ctrl+s"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_drag_serialises_path_as_list_of_lists(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.drag([(0, 0), (50, 50), (100, 100)], duration_ms=500)
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "drag"
-        assert payload["path"] == [[0, 0], [50, 50], [100, 100]]
-        assert payload["duration_ms"] == 500
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_wait_forwards_duration_ms(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.wait(1200)
-        payload = shim._rpc.await_args.args[1]
-        assert payload["action"] == "wait"
-        assert payload["duration_ms"] == 1200
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_input_out_of_bounds_carries_details(self):
-        shim = _make_shim_with_rpc(
-            {
-                "type": "ERROR",
-                "payload": {
-                    "code": "INPUT_OUT_OF_BOUNDS",
-                    "message": "outside displays",
-                    "details": {
-                        "requested_coordinate": [99999, 99999],
-                        "displays": [
-                            {"index": 0, "origin": [0, 0], "size": [1920, 1080]}
-                        ],
-                    },
-                },
-            }
+    async def test_an_unconfirmed_call_is_never_retried(self):
+        shim = _make_shim_with_send_and_wait(
+            [_RpcAttemptFailed("id-call-1", "COMPUTER_TOOL_CALL", timed_out=True)]
         )
+
         with pytest.raises(ShimComputerUseError) as exc_info:
-            await shim.computer.click([99999, 99999])
-        assert exc_info.value.code == "INPUT_OUT_OF_BOUNDS"
-        assert exc_info.value.details["requested_coordinate"] == [99999, 99999]
+            await shim.computer.call("click", {"element_token": "s1:2"})
 
-
-class TestComputerCursorAndDisplay:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_cursor_position_returns_payload(self):
-        shim = _make_shim_with_rpc({"payload": {"x": 12, "y": 34, "monitor": 0}})
-        result = await shim.computer.cursor_position()
-        op, _ = shim._rpc.await_args.args
-        assert op == "CURSOR_POSITION_REQUEST"
-        assert result == {"x": 12, "y": 34, "monitor": 0}
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_display_info_returns_payload(self):
-        shim = _make_shim_with_rpc(
-            {"payload": {"monitors": [{"index": 0, "logical_size": [1920, 1080]}]}}
-        )
-        result = await shim.computer.display_info()
-        assert len(result["monitors"]) == 1
-
-
-class TestComputerWindowsAndApps:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_list_windows_returns_array(self):
-        shim = _make_shim_with_rpc(
-            {
-                "payload": {
-                    "windows": [
-                        {"window_id": "win_1", "title": "Safari"},
-                        {"window_id": "win_2", "title": "Mail"},
-                    ],
-                    "truncated": False,
-                }
-            }
-        )
-        result = await shim.computer.list_windows()
-        assert len(result) == 2
-        assert result[0]["window_id"] == "win_1"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_focus_window_sends_raise_field(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.focus_window("win_1", raise_=False)
-        op, payload = shim._rpc.await_args.args
-        assert op == "WINDOW_FOCUS"
-        assert payload["window_id"] == "win_1"
-        assert payload["raise"] is False
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_window_stale_raises_typed_error(self):
-        shim = _make_shim_with_rpc(
-            {
-                "type": "ERROR",
-                "payload": {
-                    "code": "WINDOW_STALE",
-                    "message": "stale",
-                    "details": {"window_id": "win_x"},
-                },
-            }
-        )
-        with pytest.raises(ShimComputerUseError) as exc_info:
-            await shim.computer.focus_window("win_x")
-        assert exc_info.value.code == "WINDOW_STALE"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_list_apps_returns_array(self):
-        shim = _make_shim_with_rpc(
-            {"payload": {"apps": [{"pid": 1, "name": "Safari"}]}}
-        )
-        result = await shim.computer.list_apps()
-        assert result[0]["pid"] == 1
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_launch_app_requires_bundle_or_path(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True, "pid": 99}})
-        with pytest.raises(ValueError):
-            await shim.computer.launch_app()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_launch_app_with_bundle_id(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True, "pid": 99}})
-        result = await shim.computer.launch_app(bundle_id="com.apple.Safari")
-        payload = shim._rpc.await_args.args[1]
-        assert payload["bundle_id"] == "com.apple.Safari"
-        assert payload["activate"] is True
-        assert result["pid"] == 99
-
-
-class TestComputerClipboard:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_clipboard_read_returns_content(self):
-        shim = _make_shim_with_rpc(
-            {"payload": {"format": "text", "content": "hello", "size_bytes": 5}}
-        )
-        result = await shim.computer.clipboard_read()
-        op, payload = shim._rpc.await_args.args
-        assert op == "CLIPBOARD_READ"
-        assert payload["format"] == "text"
-        assert result == "hello"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_clipboard_write_forwards_content(self):
-        shim = _make_shim_with_rpc({"payload": {"ok": True}})
-        await shim.computer.clipboard_write("secret")
-        op, payload = shim._rpc.await_args.args
-        assert op == "CLIPBOARD_WRITE"
-        assert payload["content"] == "secret"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_clipboard_concealed_raises_typed_error(self):
-        shim = _make_shim_with_rpc(
-            {
-                "type": "ERROR",
-                "payload": {
-                    "code": "CLIPBOARD_CONCEALED",
-                    "message": "concealed",
-                    "details": {"reason": "writeback_only"},
-                },
-            }
-        )
-        with pytest.raises(ShimComputerUseError) as exc_info:
-            await shim.computer.clipboard_read()
-        assert exc_info.value.code == "CLIPBOARD_CONCEALED"
-
-
-class TestComputerPermissions:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_permissions_check_default_set(self):
-        shim = _make_shim_with_rpc(
-            {
-                "payload": {
-                    "permissions": {
-                        "screen_recording": "granted",
-                        "accessibility": "denied",
-                        "input_monitoring": "unknown",
-                    }
-                }
-            }
-        )
-        result = await shim.computer.permissions_check()
-        payload = shim._rpc.await_args.args[1]
-        assert payload["permissions"] == [
-            "screen_recording",
-            "accessibility",
-            "input_monitoring",
-        ]
-        assert result["accessibility"] == "denied"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_permissions_check_custom_set(self):
-        shim = _make_shim_with_rpc({"payload": {"permissions": {}}})
-        await shim.computer.permissions_check(["accessibility"])
-        payload = shim._rpc.await_args.args[1]
-        assert payload["permissions"] == ["accessibility"]
+        assert exc_info.value.details == {"tool": "click", "op": "COMPUTER_TOOL_CALL"}
+        assert shim._send_and_wait.await_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1194,8 +986,8 @@ def _make_shim_with_send_and_wait(side_effect) -> LocalPCShim:
     shim.platform = "darwin"
     shim.arch = "arm64"
     shim.capabilities = ["shell", "files"]
-    shim.computer_use_features_coarse = []
-    shim.computer_use_features = []
+    shim.computer_use_driver = None
+    shim.computer_use_tools = []
     shim._connection_generation = 1
     shim._manager = None
     shim._send_and_wait = AsyncMock(side_effect=side_effect)
@@ -1211,18 +1003,7 @@ class TestIdempotencyTable:
     spec and the platform adapter have parted ways — explicit guard."""
 
     def test_read_ops_are_idempotent(self):
-        for op in (
-            "FILE_READ",
-            "FILE_STAT",
-            "FILE_LIST",
-            "CURSOR_POSITION_REQUEST",
-            "DISPLAY_INFO_REQUEST",
-            "WINDOW_LIST_REQUEST",
-            "APP_LIST_REQUEST",
-            "CLIPBOARD_READ",
-            "PERMISSIONS_CHECK_REQUEST",
-            "SCREENSHOT_REQUEST",
-        ):
+        for op in ("FILE_READ", "FILE_STAT", "FILE_LIST", "COMPUTER_TOOLS_REQUEST"):
             assert op in _IDEMPOTENT_OPS, f"{op} should be idempotent"
 
     def test_side_effecting_ops_are_not_idempotent(self):
@@ -1231,23 +1012,20 @@ class TestIdempotencyTable:
             "FILE_WRITE",
             "FILE_DELETE",
             "FILE_MOVE",
-            "WINDOW_FOCUS",
-            "APP_LAUNCH",
-            "CLIPBOARD_WRITE",
-            "INPUT_ACTION",
+            "COMPUTER_TOOL_CALL",
         ):
             assert op not in _IDEMPOTENT_OPS, f"{op} must not be idempotent"
 
 
 class TestRpcAutoRetryForIdempotentOps:
     @pytest.mark.asyncio(loop_scope="session")
-    @pytest.mark.parametrize("op", ["SCREENSHOT_REQUEST", "CLIPBOARD_READ"])
-    async def test_computer_read_retry_does_not_cross_reconnect(self, op: str):
+    async def test_computer_read_retry_does_not_cross_reconnect(self):
+        op = "COMPUTER_TOOLS_REQUEST"
         shim = _make_shim_with_send_and_wait(
             [_RpcAttemptFailed("id-1", op, timed_out=False)]
         )
         shim.capabilities = ["computer_use"]
-        shim.computer_use_features_coarse = ["screenshot"]
+        shim.computer_use_tools = ["click"]
         guard = shim.capture_connection_guard()
 
         async def reconnect():
@@ -1317,14 +1095,14 @@ class TestRpcAutoRetryForIdempotentOps:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_retry_hidden_from_caller_on_success(self):
         """The caller sees one return value, not the intermediate failure."""
-        ok = {"type": "SCREENSHOT_RESPONSE", "payload": {"image_base64": "x"}}
+        ok = {"type": "COMPUTER_TOOLS_RESPONSE", "payload": {"tools": []}}
         shim = _make_shim_with_send_and_wait(
             [
-                _RpcAttemptFailed("id-1", "SCREENSHOT_REQUEST", timed_out=False),
+                _RpcAttemptFailed("id-1", "COMPUTER_TOOLS_REQUEST", timed_out=False),
                 ok,
             ]
         )
-        result = await shim._rpc("SCREENSHOT_REQUEST", {})
+        result = await shim._rpc("COMPUTER_TOOLS_REQUEST", {})
         assert result is ok
 
 
@@ -1375,13 +1153,13 @@ class TestRpcNoRetryForNonIdempotentOps:
         assert shim._send_and_wait.await_count == 1
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_input_action_timeout_does_not_retry(self):
+    async def test_computer_tool_call_timeout_does_not_retry(self):
         shim = _make_shim_with_send_and_wait(
-            [_RpcAttemptFailed("id-input-1", "INPUT_ACTION", timed_out=True)]
+            [_RpcAttemptFailed("id-call-1", "COMPUTER_TOOL_CALL", timed_out=True)]
         )
         with pytest.raises(OpUnconfirmedError) as exc_info:
-            await shim._rpc("INPUT_ACTION", {"action": "left_click"})
-        assert exc_info.value.op == "INPUT_ACTION"
+            await shim._rpc("COMPUTER_TOOL_CALL", {"tool": "click", "arguments": {}})
+        assert exc_info.value.op == "COMPUTER_TOOL_CALL"
         assert shim._send_and_wait.await_count == 1
 
 
@@ -1444,7 +1222,8 @@ def _make_backpressure_shim() -> LocalPCShim:
     shim.platform = "darwin"
     shim.arch = "arm64"
     shim.capabilities = ["files"]
-    shim.computer_use_features = []
+    shim.computer_use_driver = None
+    shim.computer_use_tools = []
     shim._manager = None
     shim._pending = {}
     shim._pending_capacity = None

@@ -685,7 +685,9 @@ class TestApplyToolPermissions:
         assert "mcp__copilot__read_tool_result" in allowed
 
     def test_local_pc_tools_honor_permission_whitelist(self):
-        perms = CopilotPermissions(tools=["local_pc_screenshot"], tools_exclude=False)
+        perms = CopilotPermissions(
+            tools=["local_pc_computer_tools"], tools_exclude=False
+        )
 
         allowed, _ = apply_tool_permissions(
             perms,
@@ -693,8 +695,8 @@ class TestApplyToolPermissions:
             use_recording=True,
         )
 
-        assert "mcp__copilot__local_pc_screenshot" in allowed
-        assert "mcp__copilot__local_pc_click" not in allowed
+        assert "mcp__copilot__local_pc_computer_tools" in allowed
+        assert "mcp__copilot__local_pc_computer" not in allowed
         assert "mcp__copilot__list_recordings" not in allowed
 
     def test_recording_tools_honor_permission_blacklist(self):

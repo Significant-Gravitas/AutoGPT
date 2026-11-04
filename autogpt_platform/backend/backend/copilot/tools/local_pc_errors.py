@@ -59,31 +59,6 @@ def _details_path(details: dict, message: str) -> str:
     return message or "<unknown path>"
 
 
-def _details_coordinate(details: dict) -> str:
-    coord = details.get("requested_coordinate") or details.get("coordinate")
-    if isinstance(coord, (list, tuple)) and len(coord) == 2:
-        return f"({coord[0]}, {coord[1]})"
-    return str(coord) if coord is not None else "<unknown coordinate>"
-
-
-def _details_display_rects(details: dict) -> str:
-    displays = details.get("displays") or details.get("display_rects") or []
-    if not displays:
-        return "<no displays reported>"
-    parts: list[str] = []
-    for d in displays:
-        if not isinstance(d, dict):
-            continue
-        origin = d.get("origin") or [0, 0]
-        size = d.get("size") or [0, 0]
-        idx = d.get("index")
-        prefix = f"#{idx} " if idx is not None else ""
-        parts.append(
-            f"{prefix}origin=({origin[0]}, {origin[1]}) size=({size[0]}x{size[1]})"
-        )
-    return "; ".join(parts) if parts else "<malformed display rects>"
-
-
 def _path_outside_allowed_root(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
@@ -119,9 +94,8 @@ def _path_not_found(
 ) -> str:
     path = _details_path(details, message)
     return (
-        f"Path `{path}` doesn't exist. Use `local_pc_list_windows` or list "
-        "the directory first (FILE_LIST, or `ls`/`dir` in a shell) to find "
-        "the right path."
+        f"Path `{path}` doesn't exist. Read the directory's listing first "
+        "(FILE_LIST, or `ls`/`dir` in a shell) to find the right path."
     )
 
 
@@ -147,6 +121,13 @@ def _command_timeout(
 ) -> str:
     timeout = details.get("timeout_seconds")
     timeout_str = f"{timeout}s" if timeout is not None else "configured"
+    tool = details.get("tool")
+    if tool:
+        return (
+            f"`{tool}` didn't finish within its {timeout_str} limit. cua-driver was "
+            "told to stop it, but anything it already did stays done: read the "
+            "window's state before trying again."
+        )
     return (
         f"The command exceeded its {timeout_str} timeout. Either increase the "
         "timeout or break the work into smaller commands. The shim killed "
@@ -165,25 +146,15 @@ def _shell_not_available(
     )
 
 
-def _window_stale(
-    code: str, message: str, details: dict, shim: "LocalPCShim | None"
-) -> str:
-    window_id = details.get("window_id") or "<unknown>"
-    return (
-        f"Window id `{window_id}` no longer exists or has been recycled. "
-        "Call `local_pc_list_windows` again to get fresh ids and retry."
-    )
-
-
 def _permission_pending(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
     permission = details.get("permission") or "Accessibility / Screen Recording"
     return (
         f"macOS {permission} permission is not granted (or was revoked). "
-        "The shim daemon will re-launch shortly to pick up the new consent. "
-        "Ask the user to open System Settings → Privacy & Security → "
-        f"{permission} and enable autogpt-shim, then retry on the next turn."
+        "Ask the user to run `autogpt-shim doctor` on that computer, which "
+        "requests it, or to enable it for CuaDriver in System Settings → "
+        "Privacy & Security, then retry on the next turn."
     )
 
 
@@ -191,35 +162,38 @@ def _clipboard_concealed(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
     reason = details.get("reason")
-    reason_str = f" (reason: {reason})" if reason else ""
+    if reason in ("writeback_only", "writeback_overwritten"):
+        return (
+            "On this computer `clipboard_read` returns only text you put on the "
+            "clipboard with `clipboard_write` in the last 30 seconds"
+            + (
+                ", and something replaced it since"
+                if reason == "writeback_overwritten"
+                else ""
+            )
+            + ". Read the value from the app's window instead, or ask the user to "
+            "paste it into the chat."
+        )
+    if reason == "changed":
+        return "The clipboard changed while it was being read. Read it again."
+    marker = details.get("marker")
+    marker_str = f" ({marker})" if marker else ""
     return (
-        f"The current clipboard contents are marked confidential{reason_str} "
-        "(likely from a password manager, or the writeback window expired). "
-        "The shim refuses to read concealed clipboard data. Skip this read "
-        "or ask the user to copy the value again from a different source."
-    )
-
-
-def _input_out_of_bounds(
-    code: str, message: str, details: dict, shim: "LocalPCShim | None"
-) -> str:
-    return (
-        f"Coordinate `{_details_coordinate(details)}` is outside the "
-        f"connected display bounds [{_details_display_rects(details)}]. "
-        "Re-screenshot to get fresh display dimensions and clamp "
-        "coordinates to inside one of the listed rectangles."
+        f"A password manager marked the clipboard's contents private{marker_str}, "
+        "so the local executor won't read them. Skip this read, or ask the user "
+        "to paste the value if it's meant to be shared."
     )
 
 
 def _feature_not_supported(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
-    op = details.get("op") or details.get("feature") or "<requested op>"
-    reason = message or "feature not advertised in HELLO.computer_use_features"
+    tool = details.get("tool") or details.get("op") or details.get("feature")
+    subject = f"`{tool}`" if tool else "That operation"
+    reason = message or "not offered on this computer"
     return (
-        f"Operation `{op}` is not available on this shim's platform "
-        f"({_shim_platform(shim)}). Reason: {reason}. The shim's "
-        "`computer_use_features` in HELLO lists what IS available."
+        f"{subject} isn't available on this computer ({_shim_platform(shim)}): "
+        f"{reason}. Call `local_pc_computer_tools` to see the tools it offers."
     )
 
 
@@ -294,6 +268,13 @@ def _file_too_large(
 def _dependency_missing(
     code: str, message: str, details: dict, shim: "LocalPCShim | None"
 ) -> str:
+    if details.get("dependency") == "cua-driver":
+        return (
+            f"The local executor can't run cua-driver: {message or 'not installed'}. "
+            "Ask the user to reinstall it with "
+            "`pipx install 'autogpt-local-executor[computer-use]'` and run "
+            "`autogpt-shim doctor`."
+        )
     dep = details.get("dep")
     extra = details.get("extra")
     op = details.get("op")
@@ -310,8 +291,8 @@ def _dependency_missing(
     return (
         f"The shim host needs the '{dep}' Python package installed{op_clause}. "
         f"Ask the user to run `pipx install autogpt-local-executor{extra_clause}` "
-        "to add it. Common deps: pyautogui (input), Pillow (screenshot), "
-        "pyperclip (clipboard), pyserial (hardware)."
+        "to add it. Common extras: computer-use (cua-driver), hardware "
+        "(pyserial)."
     )
 
 
@@ -400,10 +381,8 @@ _TRANSLATIONS: dict[str, _Translator] = {
     "PATH_EXISTS": _path_exists,
     "COMMAND_TIMEOUT": _command_timeout,
     "SHELL_NOT_AVAILABLE": _shell_not_available,
-    "WINDOW_STALE": _window_stale,
     "PERMISSION_PENDING": _permission_pending,
     "CLIPBOARD_CONCEALED": _clipboard_concealed,
-    "INPUT_OUT_OF_BOUNDS": _input_out_of_bounds,
     "FEATURE_NOT_SUPPORTED": _feature_not_supported,
     "CAPABILITY_NOT_GRANTED": _capability_not_granted,
     "SHIM_OVERLOADED": _shim_overloaded,

@@ -46,7 +46,7 @@ from backend.api.features.local_executor.websocket import router as websocket_ro
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
 from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
+from backend.copilot.sdk.computer_use_policy import computer_use_scope
 from backend.copilot.sdk.recording_tools import (
     register_recording_reviewed,
     register_recording_started,
@@ -189,8 +189,8 @@ async def get_session_executor(
         session_id,
         user_id,
         machine_id=hello.machine_id if hello else None,
-        features_coarse=hello.computer_use_features_coarse if hello else None,
-        features=hello.computer_use_features if hello else None,
+        driver=_computer_use_driver_label(hello),
+        tools=_grantable_computer_use_tools(hello),
     )
     if hello is None:
         return ExecutorStatus(kind="none", computer_use_consent=consent)
@@ -203,8 +203,7 @@ async def get_session_executor(
         machine_id=hello.machine_id or None,
         shim_version=hello.shim_version or None,
         capabilities=hello.capabilities or None,
-        computer_use_features=hello.computer_use_features or None,
-        computer_use_features_coarse=hello.computer_use_features_coarse or None,
+        computer_use_driver=_computer_use_driver_label(hello),
         computer_use_tools=_grantable_computer_use_tools(hello),
         recording_channels=hello.recording_channels or None,
         recording_routes=hello.recording_routes or None,
@@ -230,20 +229,15 @@ async def set_session_computer_use_consent(
     await _require_local_executor_enabled(user_id)
     hello = await _get_session_executor_hello(session, user_id)
     if request.approved:
-        if (
-            hello is None
-            or not hello.machine_id
-            or "computer_use" not in hello.capabilities
-        ):
+        if hello is None or not hello.machine_id or computer_use_scope(hello) is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="No computer-use capable Local PC executor is connected",
             )
         if (
             request.expected_machine_id != hello.machine_id
-            or request.expected_features_coarse
-            != _normalized_computer_use_features_coarse(hello)
-            or request.expected_features != _normalized_computer_use_features(hello)
+            or request.expected_driver != _computer_use_driver_label(hello)
+            or request.expected_tools != _grantable_computer_use_tools(hello)
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -254,8 +248,8 @@ async def set_session_computer_use_consent(
         user_id,
         approved=request.approved,
         machine_id=hello.machine_id if hello else None,
-        features_coarse=hello.computer_use_features_coarse if hello else None,
-        features=hello.computer_use_features if hello else None,
+        driver=_computer_use_driver_label(hello),
+        tools=_grantable_computer_use_tools(hello),
     )
     return ComputerUseConsentResponse(computer_use_consent=consent)
 
@@ -542,22 +536,16 @@ def _require_recording_capability(shim: LocalPCShim) -> None:
         )
 
 
-def _grantable_computer_use_tools(hello: ShimHello) -> list[str] | None:
-    """The same grant the computer-use tools enforce at each call."""
-    if "computer_use" not in hello.capabilities:
-        return None
-    tools = local_pc_tool_names_for_features(
-        hello.computer_use_features_coarse, hello.computer_use_features
-    )
-    return sorted(tools) or None
+def _grantable_computer_use_tools(hello: ShimHello | None) -> list[str] | None:
+    """The driver tools approving computer use would grant: the same scope
+    the computer-use tools check at each call."""
+    scope = computer_use_scope(hello) if hello is not None else None
+    return list(scope.tools) if scope is not None else None
 
 
-def _normalized_computer_use_features_coarse(hello: ShimHello) -> list[str]:
-    return sorted(set(hello.computer_use_features_coarse))
-
-
-def _normalized_computer_use_features(hello: ShimHello) -> list[str]:
-    return sorted(set(hello.computer_use_features))
+def _computer_use_driver_label(hello: ShimHello | None) -> str | None:
+    scope = computer_use_scope(hello) if hello is not None else None
+    return scope.driver if scope is not None else None
 
 
 async def _get_stopped_recording_summary(

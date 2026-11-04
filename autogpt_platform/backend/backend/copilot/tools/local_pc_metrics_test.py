@@ -201,15 +201,15 @@ class TestRpcMetrics:
     def test_record_rpc_error_per_code(self):
         before = _counter_value(
             LOCAL_PC_SHIM_RPC_ERRORS,
-            op="INPUT_ACTION",
-            code="INPUT_OUT_OF_BOUNDS",
+            op="COMPUTER_TOOL_CALL",
+            code="CLIPBOARD_CONCEALED",
         )
-        record_rpc_error("INPUT_ACTION", "INPUT_OUT_OF_BOUNDS")
+        record_rpc_error("COMPUTER_TOOL_CALL", "CLIPBOARD_CONCEALED")
         assert (
             _counter_value(
                 LOCAL_PC_SHIM_RPC_ERRORS,
-                op="INPUT_ACTION",
-                code="INPUT_OUT_OF_BOUNDS",
+                op="COMPUTER_TOOL_CALL",
+                code="CLIPBOARD_CONCEALED",
             )
             == before + 1
         )

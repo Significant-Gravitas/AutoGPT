@@ -29,7 +29,7 @@ from backend.copilot.local_executor import build_local_pc_env_context
 from backend.copilot.model import ChatSession, LocalExecutionTargetMetadata
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
-from backend.copilot.tools.local_pc_shim import LocalPCShim
+from backend.copilot.tools.local_pc_shim import ComputerUseDriver, LocalPCShim
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
@@ -417,8 +417,10 @@ class TestExecutorSetup:
         shim.machine_id = "machine-1"
         shim.capabilities = ["computer_use"]
         shim.capability_set = frozenset({"computer_use"})
-        shim.computer_use_features_coarse = ["screenshot", "input"]
-        shim.computer_use_features = ["screenshot.capture", "input.click"]
+        shim.computer_use_driver = ComputerUseDriver(
+            name="cua-driver", version="0.38.0", runtime="direct"
+        )
+        shim.computer_use_tools = ["click", "type_text"]
         chat_config = MagicMock(
             use_local_pc_executor=True,
             allow_computer_use=True,
@@ -441,8 +443,8 @@ class TestExecutorSetup:
             "session-1",
             "user-1",
             machine_id="machine-1",
-            features_coarse=("screenshot", "input"),
-            features=("screenshot.capture", "input.click"),
+            driver="cua-driver 0.38.0",
+            tools=("click", "type_text"),
         )
 
     def test_local_pc_env_context_escapes_untrusted_hello_metadata(self):

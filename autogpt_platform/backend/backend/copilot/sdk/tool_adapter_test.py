@@ -17,8 +17,12 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
+from backend.copilot.sdk.computer_use_policy import (
+    computer_use_scope,
+    local_pc_tool_names,
+)
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
+from backend.copilot.tools.local_pc_shim import ComputerUseDriver, ShimHello
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -44,52 +48,64 @@ from .tool_adapter import (
 )
 
 
-def test_local_pc_tool_names_follow_advertised_feature_groups() -> None:
-    names = local_pc_tool_names_for_features(
-        ["screenshot", "apps", "permissions"],
-        ["cursor.position"],
-    )
-    assert names == {
-        "local_pc_screenshot",
-        "local_pc_list_apps",
-        "local_pc_launch_app",
-        "local_pc_permissions_check",
-        "local_pc_cursor_position",
+def _hello(**overrides) -> ShimHello:
+    values = {
+        "machine_id": "machine-1",
+        "capabilities": ["computer_use"],
+        "computer_use_driver": ComputerUseDriver(
+            name="cua-driver", version="0.38.0", runtime="direct"
+        ),
+        "computer_use_tools": ["click", "type_text"],
     }
-    assert "local_pc_clipboard_read" not in names
-    assert "local_pc_list_windows" not in names
+    values.update(overrides)
+    return ShimHello(**values)
+
+
+def test_local_pc_tools_are_both_or_neither() -> None:
+    """Otto reaches every driver tool through the same two MCP tools."""
+    assert local_pc_tool_names(computer_use_scope(_hello())) == {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+    }
 
 
 @pytest.mark.parametrize(
-    ("feature", "expected"),
+    "overrides",
     [
-        ("input.click", {"local_pc_click"}),
-        ("input.click.modifiers", {"local_pc_click"}),
-        ("input.scroll.amount", {"local_pc_scroll"}),
-        ("input.key.hold", set()),
-        ("input.wait", set()),
-        ("screenshot.unknown", set()),
-        ("clipboard.read.extra", set()),
+        {"capabilities": ["files"]},
+        {"computer_use_driver": None},
+        {"computer_use_tools": []},
     ],
+    ids=["no-capability", "no-driver", "no-tools"],
 )
-def test_fine_features_do_not_broaden_action_grants(
-    feature: str, expected: set[str]
-) -> None:
-    assert local_pc_tool_names_for_features([], [feature]) == expected
+def test_no_computer_use_scope_registers_no_local_pc_tools(overrides: dict) -> None:
+    scope = computer_use_scope(_hello(**overrides))
+    assert scope is None
+    assert local_pc_tool_names(scope) == frozenset()
+
+
+def test_the_scope_names_the_driver_release_and_its_tools() -> None:
+    scope = computer_use_scope(_hello())
+    assert scope is not None
+    assert (scope.machine_id, scope.driver, scope.tools) == (
+        "machine-1",
+        "cua-driver 0.38.0",
+        ("click", "type_text"),
+    )
 
 
 @pytest.mark.asyncio
-async def test_mcp_registration_filters_unadvertised_local_pc_features() -> None:
+async def test_mcp_registration_registers_only_the_named_local_pc_tools() -> None:
     server = create_copilot_mcp_server(
         use_local_pc_computer=True,
-        local_pc_computer_tool_names={"local_pc_screenshot"},
+        local_pc_computer_tool_names={"local_pc_computer_tools"},
     )
     instance = server["instance"]
     handler = instance.request_handlers[ListToolsRequest]
     result = await handler(ListToolsRequest(method="tools/list"))
     names = {tool.name for tool in result.root.tools}
-    assert "local_pc_screenshot" in names
-    assert "local_pc_clipboard_read" not in names
+    assert "local_pc_computer_tools" in names
+    assert "local_pc_computer" not in names
 
 
 # ---------------------------------------------------------------------------
@@ -1411,16 +1427,16 @@ class TestCreateCopilotMcpServerHidden:
     @pytest.mark.asyncio
     async def test_hidden_local_pc_and_ui_owned_recording_start_not_registered(self):
         server = create_copilot_mcp_server(
-            hidden_tool_names=["local_pc_click"],
+            hidden_tool_names=["local_pc_computer"],
             use_local_pc_computer=True,
             use_recording=True,
         )
 
         registered = await self._registered_tool_names(server)
 
-        assert "local_pc_click" not in registered
+        assert "local_pc_computer" not in registered
         assert "record_workflow" not in registered
-        assert "local_pc_screenshot" in registered
+        assert "local_pc_computer_tools" in registered
         assert "list_recordings" in registered
 
     @pytest.mark.asyncio

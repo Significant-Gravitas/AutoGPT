@@ -16,11 +16,9 @@ import { describeComputerUseTools } from "./helpers";
 function consentScope(executor: LocalPCExecutorStatus | undefined) {
   return {
     expectedMachineID: executor?.machine_id ?? "",
-    expectedFeaturesCoarse: Array.from(
-      new Set(executor?.computer_use_features_coarse ?? []),
-    ).sort(),
-    expectedFeatures: Array.from(
-      new Set(executor?.computer_use_features ?? []),
+    expectedDriver: executor?.computer_use_driver ?? "",
+    expectedTools: Array.from(
+      new Set(executor?.computer_use_tools ?? []),
     ).sort(),
   };
 }
@@ -36,21 +34,21 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
       approved,
       submittedForSessionID,
       expectedMachineID,
-      expectedFeaturesCoarse,
-      expectedFeatures,
+      expectedDriver,
+      expectedTools,
     }: {
       approved: boolean;
       submittedForSessionID: string;
       expectedMachineID: string;
-      expectedFeaturesCoarse: string[];
-      expectedFeatures: string[];
+      expectedDriver: string;
+      expectedTools: string[];
     }) => {
       const request = approved
         ? {
             approved,
             expected_machine_id: expectedMachineID,
-            expected_features_coarse: expectedFeaturesCoarse,
-            expected_features: expectedFeatures,
+            expected_driver: expectedDriver,
+            expected_tools: expectedTools,
           }
         : { approved };
       return postExperimentalSetSessionComputerUseConsent(
@@ -69,7 +67,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
   const accessLines = describeComputerUseTools(
     executor?.computer_use_tools ?? [],
   );
-  const { expectedMachineID, expectedFeaturesCoarse, expectedFeatures } =
+  const { expectedMachineID, expectedDriver, expectedTools } =
     consentScope(executor);
   const shimHasComputerUse =
     executor?.kind === "shim" && accessLines.length > 0;
@@ -105,6 +103,13 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 ))}
               </ul>
               <Text variant="body-tight" tone="body">
+                Otto works mostly in the background through{" "}
+                <span className="font-mono text-caption">
+                  {executor?.computer_use_driver}
+                </span>
+                , reading your windows and using their controls directly.
+              </Text>
+              <Text variant="body-tight" tone="body">
                 The shim writes operation records to its local audit log. Review
                 them with{" "}
                 <span className="font-mono text-caption">
@@ -139,8 +144,8 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 approved: false,
                 submittedForSessionID: sessionID,
                 expectedMachineID,
-                expectedFeaturesCoarse,
-                expectedFeatures,
+                expectedDriver,
+                expectedTools,
               })
             }
           >
@@ -155,8 +160,8 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 approved: true,
                 submittedForSessionID: sessionID,
                 expectedMachineID,
-                expectedFeaturesCoarse,
-                expectedFeatures,
+                expectedDriver,
+                expectedTools,
               })
             }
           >

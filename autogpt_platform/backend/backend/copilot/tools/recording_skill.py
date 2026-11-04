@@ -809,21 +809,25 @@ async def _replay_step(
     else:
         value = binding.constant_value
 
-    # Apply the action. We route value-bearing actions through type(); the
-    # actual element-grounding (DOM/AX/visual) is the shim/replay engine's
-    # job — here we drive the floor input so the logic is shim-agnostic and
-    # unit-testable.
+    # Apply the action. Value-bearing actions type; clicks land where the
+    # recording saw them. Element grounding (DOM/AX/visual) is the replay
+    # engine's job; here the floor input drives the desktop through
+    # cua-driver, so the logic stays shim-agnostic and unit-testable.
     executed = False
     try:
         if binding.action in ("fill", "select", "paste") and value is not None:
-            await shim.computer.type(str(value), _guard=connection_guard)
+            await _replay_input(
+                shim, "type_text", {"text": str(value)}, connection_guard
+            )
             executed = True
         elif binding.action == "click" or (
             binding.action == "submit" and allow_destructive
         ):
             cursor = _binding_cursor(binding)
             if cursor is not None:
-                await shim.computer.click(cursor, _guard=connection_guard)
+                await _replay_input(
+                    shim, "click", {"x": cursor[0], "y": cursor[1]}, connection_guard
+                )
                 executed = True
         # navigate / wait / launch_app etc. have no floor-level replay yet.
     except Exception as exc:
@@ -878,6 +882,26 @@ def _resolve_strategy(binding: ReplayBinding) -> str | None:
     return None
 
 
+# Replay acts on the desktop at the screen coordinates the recording saw.
+_DESKTOP_TARGET = {"kind": "desktop", "display_id": "primary"}
+
+
+async def _replay_input(
+    shim: Any, tool: str, arguments: dict[str, Any], connection_guard: Any | None
+) -> None:
+    """One cua-driver input call; the driver's own failure raises."""
+    result = await shim.computer.call(
+        tool, {**arguments, "target": _DESKTOP_TARGET}, _guard=connection_guard
+    )
+    if result.get("is_error"):
+        detail = " ".join(
+            str(block.get("text") or "")
+            for block in result.get("content") or []
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        raise RuntimeError(detail or f"{tool} failed")
+
+
 def _binding_cursor(binding: ReplayBinding) -> list[int] | None:
     for entry in binding.selector_fallthrough:
         if entry.get("via") == "visual" and entry.get("cursor"):
@@ -896,18 +920,9 @@ async def _readback_assert(
 ) -> tuple[bool, bool]:
     """Read the value back and compare (§9). Returns (asserted, ok).
 
-    Uses the shim clipboard read as a portable read-back probe when
-    available; if the shim can't read back, the step is reported as
-    not-asserted but not failed (the real engine has richer read-back via
-    DOM/AX). This keeps the dry-run honest without a live machine in tests.
+    The floor has no read-back yet, so the step is reported as not asserted
+    but not failed. The engine's read-back belongs on cua-driver's
+    verify_state, against the element the binding resolved to, once
+    recording leaves its design preview.
     """
-    reader = getattr(getattr(shim, "computer", None), "clipboard_read", None)
-    if reader is None:
-        return False, True
-    try:
-        actual = await reader(_guard=connection_guard)
-    except Exception:
-        return False, True
-    if actual is None:
-        return False, True
-    return True, str(actual) == expected
+    return False, True

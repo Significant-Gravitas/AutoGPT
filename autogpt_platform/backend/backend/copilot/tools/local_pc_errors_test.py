@@ -43,11 +43,9 @@ _EXPECTED_SUBSTRINGS: dict[str, list[str]] = {
     "PATH_EXISTS": ["already exists", "overwrite=true"],
     "COMMAND_TIMEOUT": ["timeout", "killed"],
     "SHELL_NOT_AVAILABLE": ["isn't installed", "auto"],
-    "WINDOW_STALE": ["no longer exists", "local_pc_list_windows"],
-    "PERMISSION_PENDING": ["macOS", "System Settings", "autogpt-shim"],
-    "CLIPBOARD_CONCEALED": ["concealed", "password manager"],
-    "INPUT_OUT_OF_BOUNDS": ["outside", "display", "Re-screenshot"],
-    "FEATURE_NOT_SUPPORTED": ["not available", "computer_use_features"],
+    "PERMISSION_PENDING": ["macOS", "System Settings", "autogpt-shim doctor"],
+    "CLIPBOARD_CONCEALED": ["password manager", "private"],
+    "FEATURE_NOT_SUPPORTED": ["isn't available", "local_pc_computer_tools"],
     "CAPABILITY_NOT_GRANTED": ["didn't grant", "autogpt-shim auth"],
     "SHIM_OVERLOADED": ["concurrency cap", "Retry"],
     "AUTH_FAILED": ["OAuth", "autogpt-shim auth"],
@@ -160,15 +158,6 @@ class TestPlaceholderSubstitution:
         assert "bash" in out
         assert "windows" in out
 
-    def test_window_stale_includes_window_id(self):
-        out = translate_shim_error(
-            "WINDOW_STALE",
-            "stale",
-            {"window_id": "win_3f9a8c12-4b1d"},
-            _make_shim(),
-        )
-        assert "win_3f9a8c12-4b1d" in out
-
     def test_permission_pending_names_permission(self):
         out = translate_shim_error(
             "PERMISSION_PENDING",
@@ -178,40 +167,52 @@ class TestPlaceholderSubstitution:
         )
         assert "Screen Recording" in out
 
-    def test_clipboard_concealed_includes_reason_when_present(self):
+    def test_clipboard_concealed_names_the_marker(self):
         out = translate_shim_error(
             "CLIPBOARD_CONCEALED",
             "concealed",
-            {"reason": "concealed_type"},
+            {"reason": "concealed_type", "marker": "org.nspasteboard.ConcealedType"},
             _make_shim(),
         )
-        assert "concealed_type" in out
+        assert "org.nspasteboard.ConcealedType" in out
 
-    def test_input_out_of_bounds_includes_coord_and_rects(self):
+    @pytest.mark.parametrize(
+        ("reason", "needles"),
+        [
+            ("writeback_only", ["clipboard_write", "30 seconds"]),
+            ("writeback_overwritten", ["replaced it since"]),
+            ("changed", ["Read it again"]),
+        ],
+    )
+    def test_clipboard_concealed_explains_the_reason(self, reason, needles):
         out = translate_shim_error(
-            "INPUT_OUT_OF_BOUNDS",
-            "oob",
-            {
-                "requested_coordinate": [10000, 10000],
-                "displays": [{"index": 0, "origin": [0, 0], "size": [1920, 1080]}],
-            },
-            _make_shim(),
+            "CLIPBOARD_CONCEALED", "concealed", {"reason": reason}, _make_shim()
         )
-        assert "(10000, 10000)" in out
-        assert "1920" in out
-        assert "1080" in out
+        for needle in needles:
+            assert needle in out
 
-    def test_feature_not_supported_includes_op_and_platform(self):
+    def test_feature_not_supported_includes_tool_and_platform(self):
         shim = _make_shim(platform="linux")
         out = translate_shim_error(
             "FEATURE_NOT_SUPPORTED",
-            "Wayland input unsupported",
-            {"op": "INPUT_ACTION"},
+            "kill_app is not available on this machine.",
+            {"tool": "kill_app"},
             shim,
         )
-        assert "INPUT_ACTION" in out
+        assert "`kill_app`" in out
         assert "linux" in out
-        assert "Wayland input unsupported" in out
+        assert "kill_app is not available on this machine." in out
+
+    def test_a_computer_tool_timeout_names_the_tool(self):
+        out = translate_shim_error(
+            "COMMAND_TIMEOUT",
+            "drag did not finish in time",
+            {"tool": "drag", "timeout_seconds": 120},
+            _make_shim(),
+        )
+        assert "`drag`" in out
+        assert "120s" in out
+        assert "stays done" in out
 
     def test_capability_not_granted_includes_capability_name(self):
         out = translate_shim_error(
@@ -274,12 +275,22 @@ class TestPlaceholderSubstitution:
         out = translate_shim_error(
             "DEPENDENCY_MISSING",
             "Pillow not installed",
-            {"dep": "Pillow", "extra": "screenshot", "op": "SCREENSHOT_REQUEST"},
+            {"dep": "pyserial", "extra": "hardware", "op": "SERIAL_OPEN"},
             _make_shim(),
         )
-        assert "Pillow" in out
-        assert "pipx install autogpt-local-executor[screenshot]" in out
-        assert "SCREENSHOT_REQUEST" in out
+        assert "pyserial" in out
+        assert "pipx install autogpt-local-executor[hardware]" in out
+        assert "SERIAL_OPEN" in out
+
+    def test_dependency_missing_for_cua_driver_points_at_the_extra(self):
+        out = translate_shim_error(
+            "DEPENDENCY_MISSING",
+            "cua-driver is not installed.",
+            {"dependency": "cua-driver"},
+            _make_shim(),
+        )
+        assert "autogpt-local-executor[computer-use]" in out
+        assert "autogpt-shim doctor" in out
 
     def test_dependency_missing_falls_back_to_passthrough_without_dep(self):
         out = translate_shim_error(

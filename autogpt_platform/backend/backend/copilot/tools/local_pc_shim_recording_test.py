@@ -28,7 +28,8 @@ def _make_recording_shim(rpc_return: dict | None = None) -> LocalPCShim:
     shim.platform = "darwin"
     shim.arch = "arm64"
     shim.capabilities = ["shell", "files", "recording"]
-    shim.computer_use_features = []
+    shim.computer_use_driver = None
+    shim.computer_use_tools = []
     shim.recording_channels = ["floor", "browser", "desktop_ax"]
     shim.recording_routes = [
         "extract_then_cloud",

@@ -37,7 +37,8 @@ def _make_shim_for_streaming(
     shim.screen_resolution = None
     shim.local_llm_models = local_llm_models or ["llama3.2:3b"]
     shim.hardware_devices = []
-    shim.computer_use_features = []
+    shim.computer_use_driver = None
+    shim.computer_use_tools = []
     shim._pending = {}
     shim._streaming = {}
     shim._recording_steps = {}
@@ -351,7 +352,8 @@ async def test_local_llm_proxy_attached_to_shim() -> None:
     shim.screen_resolution = hello.screen_resolution
     shim.local_llm_models = hello.local_llm_models
     shim.hardware_devices = hello.hardware_devices
-    shim.computer_use_features = hello.computer_use_features
+    shim.computer_use_driver = hello.computer_use_driver
+    shim.computer_use_tools = hello.computer_use_tools
     shim._pending = {}
     shim._streaming = {}
     shim._pending_capacity = None

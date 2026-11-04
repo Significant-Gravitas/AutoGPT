@@ -14,7 +14,13 @@ from backend.copilot.tools.local_pc_machine import (
     MachineNotConnectedError,
 )
 from backend.copilot.tools.local_pc_relay_protocol import RelayPresence
-from backend.copilot.tools.local_pc_shim import ShimHello, ShimRecordingError
+from backend.copilot.tools.local_pc_shim import (
+    ComputerUseDriver,
+    ShimHello,
+    ShimRecordingError,
+)
+
+_DRIVER = ComputerUseDriver(name="cua-driver", version="0.38.0", runtime="direct")
 from backend.copilot.tools.recording_models import (
     RecordingReviewApplied,
     RecordingSummary,
@@ -324,15 +330,16 @@ def test_executor_status_remains_readable_after_feature_is_disabled() -> None:
 
 def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:
     """The consent dialog describes these, so it never claims an action that
-    approving would not grant, such as typing for a click-only machine."""
+    approving would not grant, such as clipboard access on a machine that
+    doesn't offer it."""
     manager = MagicMock()
     manager.get_hello_async = AsyncMock(
         return_value=ShimHello(
             machine_id="machine-1",
             allowed_root="C:\\Users\\Ada\\Projects",
             capabilities=["computer_use"],
-            computer_use_features_coarse=["screenshot"],
-            computer_use_features=["input.click", "clipboard.read", "input.wait"],
+            computer_use_driver=_DRIVER,
+            computer_use_tools=["type_text", "click", "get_window_state"],
         )
     )
     with (
@@ -352,11 +359,42 @@ def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:
         response = _make_client().get("/api/copilot/sessions/session-1/executor")
 
     assert response.status_code == 200
+    assert response.json()["computer_use_driver"] == "cua-driver 0.38.0"
     assert response.json()["computer_use_tools"] == [
-        "local_pc_click",
-        "local_pc_clipboard_read",
-        "local_pc_screenshot",
+        "click",
+        "get_window_state",
+        "type_text",
     ]
+
+
+def test_executor_status_offers_no_tools_without_a_driver() -> None:
+    manager = MagicMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            allowed_root="C:\\Users\\Ada\\Projects",
+            capabilities=["computer_use"],
+            computer_use_tools=["click"],
+        )
+    )
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=_owned_session()),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_computer_use_consent",
+            AsyncMock(return_value="pending"),
+        ),
+    ):
+        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+
+    assert response.json()["computer_use_driver"] is None
+    assert response.json()["computer_use_tools"] is None
 
 
 def test_executor_status_includes_server_side_consent() -> None:
@@ -390,8 +428,7 @@ def test_executor_status_includes_server_side_consent() -> None:
         "machine_id": None,
         "shim_version": None,
         "capabilities": None,
-        "computer_use_features": None,
-        "computer_use_features_coarse": None,
+        "computer_use_driver": None,
         "computer_use_tools": None,
         "recording_channels": None,
         "recording_routes": None,
@@ -414,9 +451,13 @@ def test_executor_status_uses_persistent_machine_when_child_is_detached() -> Non
             "arch": "x86_64",
             "shim_version": "0.2.0",
             "capabilities": ["files", "computer_use", "directory_browse"],
-            "computer_use_features": ["screenshot.capture"],
-            "computer_use_features_coarse": ["screenshot"],
-            "protocol_version": "1.1",
+            "computer_use_driver": {
+                "name": "cua-driver",
+                "version": "0.38.0",
+                "runtime": "direct",
+            },
+            "computer_use_tools": ["click"],
+            "protocol_version": "2.0",
             "allowed_root": None,
         },
         expires_at=9_999_999_999,
@@ -445,7 +486,7 @@ def test_executor_status_uses_persistent_machine_when_child_is_detached() -> Non
     assert response.json()["kind"] == "shim"
     assert response.json()["allowed_root"] == "C:\\Users\\Ada\\Projects"
     assert response.json()["machine_id"] == "machine-1"
-    assert response.json()["computer_use_features_coarse"] == ["screenshot"]
+    assert response.json()["computer_use_tools"] == ["click"]
 
 
 @pytest.mark.parametrize(("approved", "state"), [(True, "approved"), (False, "denied")])
@@ -456,8 +497,8 @@ def test_computer_use_consent_is_owner_scoped(approved: bool, state: str) -> Non
         machine_id="machine-1",
         allowed_root="C:\\Users\\Ada\\Projects",
         capabilities=["computer_use"],
-        computer_use_features=["screenshot.capture"],
-        computer_use_features_coarse=["screenshot"],
+        computer_use_driver=_DRIVER,
+        computer_use_tools=["click", "get_window_state"],
     )
     manager = MagicMock()
     manager.get_hello_async = AsyncMock(return_value=hello)
@@ -481,8 +522,8 @@ def test_computer_use_consent_is_owner_scoped(approved: bool, state: str) -> Non
             request.update(
                 {
                     "expected_machine_id": "machine-1",
-                    "expected_features_coarse": ["screenshot"],
-                    "expected_features": ["screenshot.capture"],
+                    "expected_driver": "cua-driver 0.38.0",
+                    "expected_tools": ["get_window_state", "click"],
                 }
             )
         response = client.post(
@@ -497,8 +538,8 @@ def test_computer_use_consent_is_owner_scoped(approved: bool, state: str) -> Non
         "owner-1",
         approved=approved,
         machine_id="machine-1",
-        features_coarse=["screenshot"],
-        features=["screenshot.capture"],
+        driver="cua-driver 0.38.0",
+        tools=["click", "get_window_state"],
     )
 
 
@@ -522,8 +563,8 @@ def test_computer_use_approval_requires_connected_capable_shim() -> None:
             json={
                 "approved": True,
                 "expected_machine_id": "machine-1",
-                "expected_features_coarse": ["screenshot"],
-                "expected_features": [],
+                "expected_driver": "cua-driver 0.38.0",
+                "expected_tools": ["click"],
             },
         )
 
@@ -531,18 +572,19 @@ def test_computer_use_approval_requires_connected_capable_shim() -> None:
 
 
 @pytest.mark.parametrize(
-    ("expected_machine_id", "expected_features_coarse", "expected_features"),
+    ("expected_machine_id", "expected_driver", "expected_tools"),
     [
-        ("machine-2", ["screenshot"], ["input.click"]),
-        ("machine-1", ["input", "screenshot"], ["input.click"]),
-        ("machine-1", ["input.click", "screenshot"], []),
-        ("machine-1", ["screenshot"], []),
+        ("machine-2", "cua-driver 0.38.0", ["click", "type_text"]),
+        ("machine-1", "cua-driver 0.37.0", ["click", "type_text"]),
+        ("machine-1", "cua-driver 0.38.0", ["click"]),
+        ("machine-1", "cua-driver 0.38.0", ["click", "launch_app", "type_text"]),
     ],
+    ids=["machine", "driver", "fewer-tools", "more-tools"],
 )
 def test_computer_use_approval_rejects_changed_executor_scope(
     expected_machine_id: str,
-    expected_features_coarse: list[str],
-    expected_features: list[str],
+    expected_driver: str,
+    expected_tools: list[str],
 ) -> None:
     client = _make_client()
     set_consent = AsyncMock()
@@ -552,8 +594,8 @@ def test_computer_use_approval_rejects_changed_executor_scope(
             machine_id="machine-1",
             allowed_root="C:\\Users\\Ada\\Projects",
             capabilities=["computer_use"],
-            computer_use_features_coarse=["screenshot"],
-            computer_use_features=["input.click"],
+            computer_use_driver=_DRIVER,
+            computer_use_tools=["click", "type_text"],
         )
     )
 
@@ -576,8 +618,8 @@ def test_computer_use_approval_rejects_changed_executor_scope(
             json={
                 "approved": True,
                 "expected_machine_id": expected_machine_id,
-                "expected_features_coarse": expected_features_coarse,
-                "expected_features": expected_features,
+                "expected_driver": expected_driver,
+                "expected_tools": expected_tools,
             },
         )
 
