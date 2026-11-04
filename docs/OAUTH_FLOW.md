@@ -227,7 +227,7 @@ The public shim client requests `CONNECT_LOCAL_EXECUTOR`, the AutoGPT
 `APIKeyPermission` for exactly this connection. It grants nothing else: no
 External API tools, and API keys cannot carry it. The WebSocket handshake
 requires that scope in addition to an active access token and session
-ownership. A token issued before the scope existed is refused with HTTP 403, and
-the shim asks for `autogpt-shim auth` to be run again. Individual executor capabilities
+ownership. A token without the scope is refused with HTTP 403, and the shim
+asks for `autogpt-shim auth` to be run again. Individual executor capabilities
 remain opt-in through shim configuration, HELLO capability advertisement,
 platform feature flags, and the per-session computer-use consent gate.
