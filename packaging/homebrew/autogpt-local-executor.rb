@@ -48,6 +48,10 @@ class AutogptLocalExecutor < Formula
   # build, so add `depends_on "rust" => :build` along with them.
 
   def install
+    # Without resource blocks the install would "succeed" and leave a shim
+    # that can't import its dependencies, so stop here instead.
+    odie "No resource blocks. Run `brew update-python-resources` on this formula first." if resources.empty?
+
     virtualenv_install_with_resources
   end
 
