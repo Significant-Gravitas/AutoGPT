@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   LIVE_STATUS_POLL_MS,
   nextPollInterval,
+  retryUnlessPermanent,
   shouldWatchRun,
 } from "../helpers";
 
@@ -54,6 +55,19 @@ describe("nextPollInterval", () => {
     expect(
       nextPollInterval(state(undefined, 1, new ApiError("down", 502, null))),
     ).toBe(LIVE_STATUS_POLL_MS);
+  });
+});
+
+describe("retryUnlessPermanent", () => {
+  it("doesn't retry a 404 or 403, but retries a 5xx up to three times", () => {
+    expect(retryUnlessPermanent(0, new ApiError("gone", 404, null))).toBe(
+      false,
+    );
+    expect(retryUnlessPermanent(0, new ApiError("no", 403, null))).toBe(false);
+    expect(retryUnlessPermanent(0, new ApiError("down", 502, null))).toBe(true);
+    expect(retryUnlessPermanent(3, new ApiError("down", 502, null))).toBe(
+      false,
+    );
   });
 });
 

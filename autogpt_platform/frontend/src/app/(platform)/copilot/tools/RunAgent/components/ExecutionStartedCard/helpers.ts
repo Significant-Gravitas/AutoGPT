@@ -14,6 +14,14 @@ export function isFinalStatus(status: string | undefined) {
   return FINAL_STATUSES.has((status ?? "").toUpperCase());
 }
 
+function isPermanentError(error: unknown) {
+  return error instanceof ApiError && PERMANENT_ERRORS.has(error.status);
+}
+
+export function retryUnlessPermanent(failureCount: number, error: unknown) {
+  return failureCount < 3 && !isPermanentError(error);
+}
+
 export function shouldWatchRun(status: string | undefined) {
   // A scheduled run's id belongs to the schedule, not to an execution.
   return !isFinalStatus(status) && (status ?? "").toUpperCase() !== "SCHEDULED";
@@ -37,8 +45,7 @@ export function nextPollInterval(state: PollState) {
   const { data, error } = state;
   // These won't fix themselves (the run is gone or not ours). A 401 during a
   // session refresh, a 5xx or a network error might, so those keep polling.
-  if (error instanceof ApiError && PERMANENT_ERRORS.has(error.status))
-    return false;
+  if (isPermanentError(error)) return false;
   if (!error && data?.status !== 200) return false;
   if (!error && data?.status === 200 && isFinalStatus(data.data.status))
     return false;

@@ -6,6 +6,7 @@ import { CopilotChatActionsContext } from "../../../../components/CopilotChatAct
 import {
   isFinalStatus,
   nextPollInterval,
+  retryUnlessPermanent,
   runErrorFor,
   shouldWatchRun,
 } from "./helpers";
@@ -28,6 +29,7 @@ export function useLiveRunStatus(output: ExecutionStartedResponse | null) {
         enabled,
         select: okData,
         refetchInterval: (query) => nextPollInterval(query.state),
+        retry: retryUnlessPermanent,
         refetchOnWindowFocus: false,
       },
     },
