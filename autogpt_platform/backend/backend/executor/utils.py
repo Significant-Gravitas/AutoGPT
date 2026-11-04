@@ -1162,6 +1162,14 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
 GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
+# Nothing consumes this queue; a message parked here dead-letters onto the run
+# queue once the expiration the publisher gave it runs out.
+GRAPH_EXECUTION_DELAY_QUEUE_NAME = "graph_execution_delay_v1"
+GRAPH_EXECUTION_DELAY_ROUTING_KEY = "graph_execution.delayed"
+# Ceiling of `graph_run_requeue_delay_seconds`, so a message published without
+# an expiration cannot sit in a queue with no consumer for good.
+GRAPH_EXECUTION_DELAY_MAX_MS = 60 * 60 * 1000
+
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     name="graph_execution_cancel",
     type=ExchangeType.FANOUT,
@@ -1205,6 +1213,23 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
+    delay_queue = Queue(
+        name=GRAPH_EXECUTION_DELAY_QUEUE_NAME,
+        exchange=GRAPH_EXECUTION_EXCHANGE,
+        routing_key=GRAPH_EXECUTION_DELAY_ROUTING_KEY,
+        durable=True,
+        auto_delete=False,
+        arguments={
+            "x-queue-type": "quorum",
+            "x-dead-letter-exchange": GRAPH_EXECUTION_EXCHANGE.name,
+            "x-dead-letter-routing-key": GRAPH_EXECUTION_ROUTING_KEY,
+            # A quorum queue may drop a message dead-lettered at-most-once,
+            # its default; at-least-once requires reject-publish overflow.
+            "x-dead-letter-strategy": "at-least-once",
+            "x-overflow": "reject-publish",
+            "x-message-ttl": GRAPH_EXECUTION_DELAY_MAX_MS,
+        },
+    )
     # No cancel queue here: it is per-pod, exclusive to the consuming connection,
     # and declared by the consumer itself through ``declare_broadcast_queue``.
     # A queue in this config is declared by every holder, publishers included,
@@ -1212,7 +1237,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue],
+        queues=[run_queue, delay_queue],
     )
 
 

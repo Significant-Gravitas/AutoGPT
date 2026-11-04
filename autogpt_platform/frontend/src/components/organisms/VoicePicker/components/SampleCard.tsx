@@ -54,7 +54,7 @@ export function SampleCard({
           data-slot="sample-card-label"
           className={cn(
             "text-caption font-semibold tracking-caps uppercase",
-            labelClassName ?? "text-accent",
+            labelClassName ?? "text-brand",
           )}
         >
           {sample.label}
@@ -72,7 +72,7 @@ export function SampleCard({
       <p
         data-slot="sample-card-text"
         className={cn(
-          "whitespace-pre-line text-muted-foreground",
+          "whitespace-pre-line text-foreground-tertiary",
           compact
             ? "line-clamp-3 text-body leading-normal"
             : "text-body-md leading-relaxed",

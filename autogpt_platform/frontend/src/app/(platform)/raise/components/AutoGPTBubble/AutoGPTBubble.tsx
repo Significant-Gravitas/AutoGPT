@@ -26,16 +26,16 @@ export function AutoGPTBubble({
     >
       <div className="flex items-end gap-2">
         <AutopilotAvatar size={20} />
-        <span className="text-body font-medium text-foreground">
+        <span className="text-body font-medium text-foreground-base">
           {AUTOPILOT_NAME}
         </span>
       </div>
-      <p className="text-body-md leading-relaxed text-foreground">
+      <p className="text-body-md leading-relaxed text-foreground-base">
         <span aria-hidden>{typed}</span>
         {isTyping ? (
           <span
             aria-hidden
-            className="ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em] animate-pulse bg-foreground/70"
+            className="ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em] animate-pulse bg-foreground-base/70"
           />
         ) : null}
         {/* The visible text arrives a character at a time; the live region

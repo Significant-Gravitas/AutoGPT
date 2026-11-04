@@ -70,7 +70,7 @@ export function WalletTrigger({
                 <span
                   aria-hidden
                   data-testid="wallet-unseen-dot"
-                  className="absolute top-0.5 right-0.5 size-2 rounded-full bg-brand ring-2 ring-sidebar"
+                  className="absolute top-0.5 right-0.5 size-2 rounded-full bg-brand ring-2 ring-surface-muted"
                 />
               )}
               {!compact && (
