@@ -1480,6 +1480,33 @@ def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
         dst.unlink(missing_ok=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows renames without libc")
+def test_the_c_library_is_looked_up_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every no-replace move looked the C library up again, and on Linux
+    ctypes.util.find_library runs `ldconfig -p` in a subprocess to do it."""
+    import ctypes.util
+
+    from autogpt_local_executor import fsops
+
+    lookups: list[str] = []
+    real_find_library = ctypes.util.find_library
+
+    def find_library(name: str) -> str | None:
+        lookups.append(name)
+        return real_find_library(name)
+
+    monkeypatch.setattr(ctypes.util, "find_library", find_library)
+    fsops._libc.cache_clear()
+    try:
+        for name in ("a", "b", "c"):
+            (tmp_path / name).write_text(name)
+            fsops.rename_no_replace(tmp_path / name, tmp_path / f"{name}-moved")
+    finally:
+        fsops._libc.cache_clear()
+
+    assert len(lookups) <= 1
+
+
 @pytest.mark.parametrize("native", [True, False], ids=["native", "fallback"])
 def test_rename_no_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native: bool) -> None:
     from autogpt_local_executor import fsops

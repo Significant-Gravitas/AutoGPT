@@ -7,6 +7,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import errno
+import functools
 import os
 import sys
 
@@ -35,12 +36,21 @@ def rename_no_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) 
     os.rename(src, dst)
 
 
-def _native_no_replace_rename(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> bool:
-    """Do the rename with the OS's no-replace flag. False when it has none."""
+@functools.cache
+def _libc() -> ctypes.CDLL | None:
+    """The C library, looked up once: on Linux, find_library runs
+    `ldconfig -p` in a subprocess. None when it can't be loaded."""
     try:
         # By name: macOS keeps renamex_np in libSystem, not the main image.
-        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        return ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
     except OSError:
+        return None
+
+
+def _native_no_replace_rename(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> bool:
+    """Do the rename with the OS's no-replace flag. False when it has none."""
+    libc = _libc()
+    if libc is None:
         return False
     old, new = os.fsencode(src), os.fsencode(dst)
     if sys.platform.startswith("linux"):
