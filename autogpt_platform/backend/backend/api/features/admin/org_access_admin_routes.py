@@ -13,6 +13,7 @@ from backend.data.org_access import (
     list_org_access_grants,
     revoke_org_access,
 )
+from backend.util.models import MAX_PAGE
 
 router = APIRouter(
     prefix="/admin/org-access",
@@ -35,7 +36,7 @@ class EnableOrgAccessByEmailRequest(EnableOrgAccessRequest):
 @router.get("", summary="List organization access")
 async def list_org_access(
     search: str | None = Query(default=None, max_length=320),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> OrgAccessGrantPage:
     """Accounts an admin has given organizations, newest first. Admin-only."""

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from prisma import Prisma
 
-from backend.data.org_plan import OrgPlanSnapshot, query_org_plan_snapshot
+from backend.data.org_plan import OrgPlanSnapshot, read_org_plan_snapshot
 from backend.util.platform_payment import is_platform_payment_enabled
 
 from .db import lock_org_membership
@@ -36,7 +36,7 @@ async def assert_free_seat(
     if not is_platform_payment_enabled():
         return
     await lock_org_membership(client, org_id, actor_user_id)
-    snapshot = await query_org_plan_snapshot(org_id)
+    snapshot = await read_org_plan_snapshot(client, org_id)
     in_use = await seats_in_use(client, org_id)
     wanted = in_use if accepting else in_use + 1
     if wanted <= snapshot.seat_limit():

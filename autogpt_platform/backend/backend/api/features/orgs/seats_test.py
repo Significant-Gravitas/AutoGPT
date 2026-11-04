@@ -37,7 +37,7 @@ def org(mocker, set_platform_payment):
     lock = mocker.patch.object(seats, "lock_org_membership", AsyncMock())
     set_platform_payment(True)
     plan = mocker.patch.object(
-        seats, "query_org_plan_snapshot", AsyncMock(return_value=_snapshot(3))
+        seats, "read_org_plan_snapshot", AsyncMock(return_value=_snapshot(3))
     )
     return client, plan, lock
 

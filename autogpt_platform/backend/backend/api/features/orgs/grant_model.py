@@ -4,16 +4,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from backend.util.text_limits import MAX_ID_LENGTH, MAX_NAME_LENGTH
+
 
 class CreateGrantRequest(BaseModel):
     # v1 accepts TEAM only; the field exists so enabling USER/PERSONA later is
     # a validation change, not an API break.
-    principal_type: str = "TEAM"
-    principal_id: str = Field(..., min_length=1)
+    principal_type: str = Field(default="TEAM", max_length=MAX_NAME_LENGTH)
+    principal_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
     # None pins to the graph's current active version.
     graph_version: int | None = None
-    capability: str = "EXECUTE"  # VIEW or EXECUTE
-    credential_mode: str = "CONSUMER"  # CONSUMER or OWNER
+    # VIEW or EXECUTE
+    capability: str = Field(default="EXECUTE", max_length=MAX_NAME_LENGTH)
+    # CONSUMER or OWNER
+    credential_mode: str = Field(default="CONSUMER", max_length=MAX_NAME_LENGTH)
     follow_latest: bool = False
 
 

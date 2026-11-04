@@ -2710,6 +2710,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -24284,11 +24285,13 @@
         "properties": {
           "principal_type": {
             "type": "string",
+            "maxLength": 100,
             "title": "Principal Type",
             "default": "TEAM"
           },
           "principal_id": {
             "type": "string",
+            "maxLength": 100,
             "minLength": 1,
             "title": "Principal Id"
           },
@@ -24298,11 +24301,13 @@
           },
           "capability": {
             "type": "string",
+            "maxLength": 100,
             "title": "Capability",
             "default": "EXECUTE"
           },
           "credential_mode": {
             "type": "string",
+            "maxLength": 100,
             "title": "Credential Mode",
             "default": "CONSUMER"
           },

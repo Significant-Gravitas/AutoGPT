@@ -16,10 +16,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal
 
+from prisma import Prisma
 from prisma.models import Organization, OrganizationSubscription, OrgMember
 from pydantic import BaseModel
 
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.data.db import prisma
 from backend.data.db_accessors import org_plan_db
 from backend.util.cache import cached
 
@@ -91,7 +93,12 @@ def forget_org_plan(org_id: str) -> None:
 
 async def query_org_plan_snapshot(org_id: str) -> OrgPlanSnapshot:
     """The uncached read behind :func:`get_org_plan_snapshot`."""
-    org = await Organization.prisma().find_unique(
+    return await read_org_plan_snapshot(prisma, org_id)
+
+
+async def read_org_plan_snapshot(client: Prisma, org_id: str) -> OrgPlanSnapshot:
+    """The organization's plan read through *client*, e.g. a transaction's."""
+    org = await Organization.prisma(client).find_unique(
         where={"id": org_id}, include={"Subscription": True}
     )
     if org is None:
