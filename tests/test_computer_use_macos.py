@@ -1288,3 +1288,17 @@ def test_a_failed_write_leaves_a_copy_made_since_alone(tmp_path, monkeypatch) ->
 
     assert clipboard["writes"] == [text]
     assert clipboard["content"] == "copied meanwhile"
+
+
+def test_a_sideways_scroll_without_a_point_scrolls_sideways(tmp_path, monkeypatch) -> None:
+    """Only a scroll at a point used hscroll; without one, left and right
+    scrolled up and down."""
+    b = MacOSBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    b.input_action("scroll", scroll_direction="right", scroll_amount=2)
+
+    pyautogui.hscroll.assert_called_once_with(2)
+    pyautogui.scroll.assert_not_called()

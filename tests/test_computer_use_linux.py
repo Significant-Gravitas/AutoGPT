@@ -569,3 +569,23 @@ def test_super_and_meta_press_the_super_key_on_x11(tmp_path, monkeypatch, name: 
     b.input_action("key", key=f"{name}+l")
 
     pyautogui.hotkey.assert_called_once_with("win", "l")
+
+
+@pytest.mark.parametrize("at_point", [False, True], ids=["at-cursor", "at-point"])
+def test_a_left_or_right_scroll_scrolls_sideways_on_x11(
+    tmp_path, displays_1080p, monkeypatch, at_point: bool
+) -> None:
+    """Every scroll went to pyautogui.scroll, so left and right scrolled up
+    and down instead."""
+    b = LinuxBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_wayland", False)
+    monkeypatch.setattr(b, "display_info", lambda: displays_1080p)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    point = {"coordinate": (100, 200)} if at_point else {}
+
+    b.input_action("scroll", scroll_direction="left", scroll_amount=2, **point)
+
+    expected = {"x": 100, "y": 200} if at_point else {}
+    pyautogui.hscroll.assert_called_once_with(-2, **expected)
+    pyautogui.scroll.assert_not_called()
