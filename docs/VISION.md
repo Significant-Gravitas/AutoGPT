@@ -150,7 +150,7 @@ The shim executes these using `pyautogui` (cross-platform) or `xdotool` (Linux X
 **Dream**: Claude reasons about sensitive data (medical records, financial files, private code) without that data ever hitting the cloud. The LLM prompt references file *metadata*, not raw content.
 
 **Platform changes needed**:
-- `e2b_file_tools.py` / `_handle_read_file`: New "privacy mode" path — instead of returning file content, return a `FileStub` with `{path, size, mime_type, hash}` and send the full content *only* to a local LLM running on the shim
+- `e2b_file_tools.py` / `_handle_read_file`: New "privacy mode" path — instead of returning file content, return a `FileStub` with `{path, size, mime_type}` (the content hash stays on the shim) and send the full content *only* to a local LLM running on the shim
 - New `PrivacyRouter` in `service.py`: for privacy-flagged sessions, file tool results are stubs; a second local-LLM turn runs on the shim to process the actual content and returns only the *answer*, not the content
 - `ChatConfig`: `privacy_mode: bool = False` — enables content-blind routing
 - New message type `LOCAL_LLM_TURN`: platform sends a prompt fragment + file stub; shim resolves the file locally, calls local LLM, returns the response

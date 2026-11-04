@@ -29,8 +29,8 @@ list of TODOs / dates come back as the tool result.
 
 **Privacy mode:**
 1. Platform calls `FILE_READ(path, mode="stub")` over the wire.
-2. Shim returns a `FileStub` — `{path, size, mime_type, sha256}`. No
-   content, not even the first bytes.
+2. Shim returns a `FileStub` — `{path, size, mime_type, stub_id}`. No
+   content, not even the first bytes, and no hash of it.
 3. Claude sees the stub and decides what it wants to know about the
    file ("summarize" / "extract dates" / "is this a valid CSV").
 4. Platform sends a `LOCAL_LLM_TURN` wire op carrying the task
@@ -77,7 +77,6 @@ When `mode == "stub"`, the response carries no content:
     "path": "/Users/alice/medical-records.pdf",
     "size_bytes": 482_310,
     "mime_type": "application/pdf",
-    "sha256": "9c81f4a2…",          // content fingerprint
     "stub_id": "stub_<uuid>"        // opaque handle for LOCAL_LLM_TURN reference
   }
 }
@@ -86,13 +85,17 @@ When `mode == "stub"`, the response carries no content:
 The shim works out `mime_type` on the machine, from the file's first
 bytes, and does not send those bytes. The stub has no preview field: any
 raw bytes in it would reach the platform and Claude, which privacy mode
-rules out.
+rules out. It carries no content hash either: an unkeyed SHA-256 of a
+short value, such as a PIN, can be confirmed by hashing guesses. The
+fingerprint stays in the shim's per-process stub registry, where
+`verify_sha256` checks it.
 
 `stub_id` is the same shim-minted-UUID pattern locked in Q2: never
 reused, wiped on HELLO. Subsequent `LOCAL_LLM_TURN` ops reference the
 stub_id rather than re-sending the path (so the file doesn't get
 re-resolved + re-fingerprinted each time, and a TOCTOU change between
-turns surfaces as `STUB_STALE` if the sha256 has drifted).
+turns surfaces as `STUB_STALE` if the fingerprint the shim keeps has
+drifted).
 
 ### `LOCAL_LLM_TURN` (platform → shim) — NEW v2 op
 
@@ -179,8 +182,8 @@ class PrivacyRouter:
 
 The router also strips file-content references from the conversation
 history that flows to Claude. The cloud LLM only ever sees
-`{stub_id, sha256, size, mime_type}` for privacy-mode files — never the
-file body or any part of it.
+`{stub_id, size, mime_type}` for privacy-mode files — never the file
+body, any part of it, or a hash of it.
 
 ---
 
