@@ -2,6 +2,7 @@
 
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { executionSharePath } from "@/lib/share/routes";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +16,7 @@ import { useCopilotChatActions } from "../../../../components/CopilotChatActions
 
 interface Props {
   output: ExecutionStartedResponse;
+  error?: string | null;
 }
 
 export function titleForStatus(status: string | undefined): string {
@@ -34,7 +36,7 @@ export function titleForStatus(status: string | undefined): string {
   return "Execution started";
 }
 
-export function ExecutionStartedCard({ output }: Props) {
+export function ExecutionStartedCard({ output, error }: Props) {
   const router = useRouter();
   // In the builder panel the run_agent effect already drops the exec_id
   // onto the URL so the builder's in-place execution UI opens — the
@@ -60,7 +62,14 @@ export function ExecutionStartedCard({ output }: Props) {
       <ContentCard>
         <ContentCardTitle>{titleForStatus(output.status)}</ContentCardTitle>
         <ContentCardSubtitle>{output.execution_id}</ContentCardSubtitle>
-        <ContentCardDescription>{output.message}</ContentCardDescription>
+        {output.message && (
+          <ContentCardDescription>{output.message}</ContentCardDescription>
+        )}
+        {error && (
+          <Text variant="small" tone="error" className="mt-2 break-words">
+            {error}
+          </Text>
+        )}
         {!hideViewExecution && (
           <Button
             size="small"

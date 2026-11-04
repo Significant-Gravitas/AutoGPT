@@ -18,6 +18,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
+import { useLiveRunStatus } from "./components/ExecutionStartedCard/useLiveRunStatus";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
@@ -69,6 +70,20 @@ export function RunAgentTool({ part }: Props) {
 
   const agentOutputResponse =
     isOutputAvailable && isRunAgentAgentOutputResponse(output) ? output : null;
+
+  const startedOutput =
+    isOutputAvailable && isRunAgentExecutionStartedOutput(output)
+      ? output
+      : null;
+  const liveRun = useLiveRunStatus(startedOutput);
+  const liveStartedOutput = startedOutput
+    ? {
+        ...startedOutput,
+        status: liveRun.status,
+        // "Started successfully" reads wrong once the card says it failed.
+        message: liveRun.endedAfterStart ? "" : startedOutput.message,
+      }
+    : null;
 
   const hasExpandableContent =
     isOutputAvailable &&
@@ -134,9 +149,12 @@ export function RunAgentTool({ part }: Props) {
       )}
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isRunAgentExecutionStartedOutput(output) && (
-            <ExecutionStartedCard output={output} />
+        <ToolAccordion {...getAccordionMeta(liveStartedOutput ?? output)}>
+          {liveStartedOutput && (
+            <ExecutionStartedCard
+              output={liveStartedOutput}
+              error={liveRun.error}
+            />
           )}
 
           {agentOutputResponse && (

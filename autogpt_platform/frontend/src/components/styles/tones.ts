@@ -33,9 +33,9 @@ export const tones = {
   "info-strong": "text-info-foreground", // #2563EB
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
-  // Green on a dark fill: `success` (#149443) would lose its contrast there,
-  // so emerald-300 stays until the dark theme (ds-colour-exempt.json).
-  "success-light": "text-emerald-300",
+  // Green on a dark fill (toast, terminal), where `success` would lose its
+  // contrast.
+  "success-light": "text-success-inverse",
 } as const;
 
 export type Tone = keyof typeof tones;
