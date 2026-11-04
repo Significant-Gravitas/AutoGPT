@@ -104,7 +104,6 @@ def main() -> int:
             unpriced[name] = reason
         else:
             priced[name] = price
-        print(f"{name}: {'priced' if price else reason}", file=sys.stderr)
     out = {
         "read_on": datetime.date.today().isoformat(),
         "collection": sorted([*priced, *unpriced]),
