@@ -394,6 +394,7 @@ def test_configure_auto_top_up_validation_errors(
 
 def test_configure_auto_top_up_at_stripes_ceiling_is_saved(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
     set_auto_top_up = mocker.patch(
         "backend.api.features.billing.credits.routes.set_auto_top_up"
@@ -412,7 +413,10 @@ def test_configure_auto_top_up_at_stripes_ceiling_is_saved(
 
     assert response.status_code == 200
     assert credit_model.top_up_credits.await_args.args[1] == MAX_TOP_UP_AMOUNT
-    set_auto_top_up.assert_called_once()
+    set_auto_top_up.assert_called_once_with(
+        test_user_id,
+        AutoTopUpConfig(threshold=MAX_TOP_UP_AMOUNT, amount=MAX_TOP_UP_AMOUNT),
+    )
 
 
 @pytest.mark.parametrize(
@@ -420,6 +424,7 @@ def test_configure_auto_top_up_at_stripes_ceiling_is_saved(
     [
         {"threshold": 1000, "amount": MAX_TOP_UP_AMOUNT + 100},
         {"threshold": 2_147_483_700, "amount": 0},
+        {"threshold": MAX_TOP_UP_AMOUNT + 1, "amount": 0},
     ],
 )
 def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(

@@ -9,16 +9,21 @@ answered 500. A new paginated route fails
 from collections import defaultdict
 from collections.abc import Iterator
 
-from fastapi import FastAPI
+import pytest
+import pytest_mock
+from fastapi import FastAPI, HTTPException
 from starlette.routing import Mount
 
+from backend.api.external.v1 import routes as v1_routes
 from backend.api.rest_api import app
+from backend.util.models import MAX_PAGE
 
 ALLOWED_UNBOUNDED = {
     # Capping these would change the public v1 contract.
     "GET /external-api/v1/store/agents page_size",
     "GET /external-api/v1/store/creators page_size",
 }
+LARGEST_PAGE_SIZE_AT_MAX_PAGE = 2**63 // MAX_PAGE
 
 
 def test_every_page_parameter_has_an_upper_bound():
@@ -51,6 +56,35 @@ def test_every_bounded_offset_fits_in_64_bits():
         and (b["page"] - 1) * b["page_size"] >= 2**63
     ]
     assert not overflowing, f"(page - 1) * page_size overflows: {overflowing}"
+
+
+@pytest.mark.parametrize(
+    "handler", [v1_routes.get_store_agents, v1_routes.get_store_creators]
+)
+@pytest.mark.parametrize(
+    "page,page_size,refused",
+    [
+        (MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE, False),
+        (MAX_PAGE, LARGEST_PAGE_SIZE_AT_MAX_PAGE + 1, True),
+        (1, 2**63, True),
+    ],
+)
+async def test_an_uncapped_v1_page_size_never_overflows_the_query(
+    handler, page: int, page_size: int, refused: bool, mocker: pytest_mock.MockFixture
+):
+    """The two v1 routes in ALLOWED_UNBOUNDED answer 422, not a database 500,
+    once the offset or the limit would not fit in 64 bits."""
+    cache = mocker.patch.object(v1_routes, "store_cache")
+    for name in ("get_cached_store_agents", "get_cached_store_creators"):
+        setattr(cache, name, mocker.AsyncMock(return_value="page"))
+
+    if refused:
+        with pytest.raises(HTTPException) as error:
+            await handler(page=page, page_size=page_size)
+        assert error.value.status_code == 422
+        assert not cache.mock_calls
+    else:
+        assert await handler(page=page, page_size=page_size) == "page"
 
 
 def _page_parameters() -> Iterator[tuple[str, str, int | None]]:

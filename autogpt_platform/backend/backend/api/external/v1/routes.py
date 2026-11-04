@@ -355,6 +355,10 @@ async def get_store_agents(
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
 
+    # page_size stays uncapped in v1, but the query's offset and limit are 64-bit.
+    if page * page_size >= 2**63:
+        raise HTTPException(status_code=422, detail="Page size is too large")
+
     agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
@@ -426,6 +430,10 @@ async def get_store_creators(
 
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    # page_size stays uncapped in v1, but the query's offset and limit are 64-bit.
+    if page * page_size >= 2**63:
+        raise HTTPException(status_code=422, detail="Page size is too large")
 
     creators = await store_cache.get_cached_store_creators(
         featured=featured,
