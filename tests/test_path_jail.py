@@ -92,10 +92,10 @@ def test_allows_uppercased_on_case_insensitive_fs(tmp_path: Path) -> None:
     nested = tmp_path / "x.txt"
     nested.write_text("hi")
     upper_root = Path(str(tmp_path).upper())
-    if not upper_root.exists():
+    if not upper_root.exists() or not upper_root.samefile(tmp_path):
         # Case sensitivity is per volume (and per directory on NTFS), so the
-        # platform alone doesn't say whether the other spelling exists.
-        pytest.skip("case-sensitive filesystem: the uppercased root does not exist")
+        # platform alone doesn't say whether the other spelling names tmp_path.
+        pytest.skip("case-sensitive filesystem: the uppercased root is not tmp_path")
 
     assert_inside_jail(nested, upper_root)
 
