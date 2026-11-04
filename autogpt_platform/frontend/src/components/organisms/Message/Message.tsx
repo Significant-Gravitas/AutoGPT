@@ -430,8 +430,8 @@ const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 // once here.
 const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
 
-// Server-only blocks CommonMark reads as HTML (the rest carry an underscore,
-// which already keeps them text) stay hidden if one ever reaches a bubble.
+// Server-only tags CommonMark reads as HTML (the rest carry an underscore, which
+// already keeps them text) are dropped by the sanitiser; the text inside them shows.
 const SERVER_ONLY_TAGS = ["routines", "thinking"];
 
 // The user's bubble shows any tag they typed; Otto's keeps every element the
