@@ -236,6 +236,50 @@ def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monke
     pyautogui.hotkey.assert_not_called()
 
 
+@pytest.mark.parametrize("fails", [False, True], ids=["writes", "write-fails"])
+def test_a_clipboard_write_opens_the_clipboard_with_a_window_of_its_own(
+    tmp_path, monkeypatch, fails: bool
+) -> None:
+    """Opened with no window (NULL), EmptyClipboard leaves the clipboard with
+    no owner, and Microsoft documents that SetClipboardData then fails: every
+    write and paste would clear the clipboard and then fail."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    clipboard = MagicMock()
+    if fails:
+        clipboard.SetClipboardData.side_effect = OSError("SetClipboardData failed")
+    win32gui = MagicMock()
+    win32gui.CreateWindowEx.return_value = 0x5150
+    calls = MagicMock()
+    calls.attach_mock(win32gui.CreateWindowEx, "create")
+    calls.attach_mock(clipboard.OpenClipboard, "open")
+    calls.attach_mock(clipboard.EmptyClipboard, "empty")
+    calls.attach_mock(clipboard.SetClipboardData, "set")
+    calls.attach_mock(clipboard.CloseClipboard, "close")
+    calls.attach_mock(win32gui.DestroyWindow, "destroy")
+    monkeypatch.setitem(sys.modules, "win32clipboard", clipboard)
+    monkeypatch.setitem(sys.modules, "win32con", MagicMock(CF_UNICODETEXT=13, HWND_MESSAGE=-3))
+    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
+
+    if fails:
+        with pytest.raises(ClipboardWriteError):
+            b.clipboard_write(content="hello")
+    else:
+        b.clipboard_write(content="hello")
+
+    assert [name for name, _args, _kwargs in calls.mock_calls] == [
+        "create",
+        "open",
+        "empty",
+        "set",
+        "close",
+        "destroy",
+    ]
+    clipboard.OpenClipboard.assert_called_once_with(0x5150)
+    # A message-only window: never shown, and never among the listed windows.
+    assert win32gui.CreateWindowEx.call_args.args[8] == -3
+    win32gui.DestroyWindow.assert_called_once_with(0x5150)
+
+
 def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeypatch) -> None:
     """Another window holding the clipboard makes OpenClipboard fail; pasting
     then would paste whatever the user had copied."""
