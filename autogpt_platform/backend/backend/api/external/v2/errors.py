@@ -27,6 +27,7 @@ from backend.api.features.library.exceptions import (
     LibraryAgentInAnotherOrganizationError,
 )
 from backend.api.features.store.exceptions import UnauthorizedError as StoreForbidden
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import (
@@ -167,23 +168,19 @@ def _handle_http_exception(
 def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.JSONResponse:
-    _log(request, status.HTTP_422_UNPROCESSABLE_CONTENT, exc)
+    # Bounded first: `ctx` can hold a live ValueError, which the dump below
+    # would choke on, and the ValueError -> 400 entry above would then swallow
+    # this handler's own failure.
     errors = (
-        exc.errors()
+        bounded_validation_errors(exc)
         if isinstance(exc, (RequestValidationError, pydantic.ValidationError))
         else []
     )
+    _log(request, status.HTTP_422_UNPROCESSABLE_CONTENT, exc, text=errors)
     return error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         f"Invalid data for {request.method} {request.url.path}",
-        details={
-            # A `@field_validator` leaves its live ValueError in `ctx`; without a
-            # fallback the dump raises, and the ValueError -> 400 entry above
-            # then swallows this handler's own failure.
-            "errors": pydantic.TypeAdapter(JsonValue).dump_python(
-                errors, mode="json", warnings=False, fallback=str
-            )
-        },
+        details={"errors": pydantic.TypeAdapter(JsonValue).dump_python(errors)},
     )
 
 
@@ -197,10 +194,16 @@ _UNLOGGED_STATUSES = (
 )
 
 
-def _log(request: fastapi.Request, status_code: int, exc: Exception) -> None:
+def _log(
+    request: fastapi.Request, status_code: int, exc: Exception, text: object = None
+) -> None:
+    """`text`, when given, is logged in place of the exception's own rendering."""
+    rendered = exc if text is None else text
     if status_code >= 500:
         logger.exception(
-            f"{request.method} {request.url.path} failed: {exc}", exc_info=exc
+            f"{request.method} {request.url.path} failed: {rendered}", exc_info=exc
         )
     elif status_code not in _UNLOGGED_STATUSES:
-        logger.warning(f"{request.method} {request.url.path} -> {status_code}: {exc}")
+        logger.warning(
+            f"{request.method} {request.url.path} -> {status_code}: {rendered}"
+        )

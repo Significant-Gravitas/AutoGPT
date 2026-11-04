@@ -64,10 +64,8 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
           >
             <Icon
               icon={PlugSocketIcon}
-              className={cn(
-                "text-sidebar-foreground/90",
-                isLarge ? "!size-5" : "!size-4",
-              )}
+              tone="emphasis-soft"
+              className={cn(isLarge ? "!size-5" : "!size-4")}
             />
           </button>
         </TooltipTrigger>
@@ -126,7 +124,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
         {hidden.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs font-medium text-sidebar-foreground/90 tabular-nums">
+              <span className="text-caption font-medium text-foreground-emphasis/90 tabular-nums">
                 +{hidden.length}
               </span>
             </TooltipTrigger>

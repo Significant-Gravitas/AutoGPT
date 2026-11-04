@@ -28,6 +28,7 @@ export function BuilderChatPanel({ className }: Props) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling,
     isBootstrapping,
     hasNoModel,
     revertTargetVersion,
@@ -81,37 +82,40 @@ export function BuilderChatPanel({ className }: Props) {
               {hasNoModel ? (
                 <NoModelNotice />
               ) : activeError && activeRetry ? (
-                <Text
-                  variant="body-tight"
-                  tone="secondary"
-                  as="div"
-                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center"
-                >
-                  <Text variant="body-medium-tight" tone="body">
-                    {activeErrorTitle}
-                  </Text>
-                  <Text variant="body-tight" tone="muted">
-                    Something went wrong. Retry to try again.
-                  </Text>
-                  <button
-                    type="button"
-                    onClick={activeRetry}
-                    className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+                <div className="flex flex-1 flex-col px-4 py-6">
+                  <Text
+                    variant="body-tight"
+                    tone="secondary"
+                    as="div"
+                    className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
                   >
-                    <Text variant="body-medium-tight" as="span" tone="inherit">
-                      Retry
+                    <Text variant="body-medium-tight" tone="body">
+                      {activeErrorTitle}
                     </Text>
-                  </button>
-                </Text>
+                    <Text variant="body-tight" tone="muted">
+                      Something went wrong. Retry to try again.
+                    </Text>
+                    <button
+                      type="button"
+                      onClick={activeRetry}
+                      className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-foreground-body shadow-sm hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+                    >
+                      <Text
+                        variant="body-medium-tight"
+                        as="span"
+                        tone="inherit"
+                      >
+                        Retry
+                      </Text>
+                    </button>
+                  </Text>
+                </div>
               ) : isBootstrapping ? (
-                <Text
-                  variant="body-tight"
-                  tone="muted"
-                  as="div"
-                  className="flex flex-1 items-center justify-center px-4 py-6"
-                >
-                  Preparing builder chat…
-                </Text>
+                <div className="flex flex-1 items-center justify-center px-4 py-6">
+                  <Text variant="body-tight" tone="muted" as="div">
+                    Preparing builder chat…
+                  </Text>
+                </div>
               ) : sessionId ? (
                 <>
                   <div className="flex min-h-0 flex-1 flex-col">
@@ -122,6 +126,7 @@ export function BuilderChatPanel({ className }: Props) {
                       isLoading={false}
                       sessionID={sessionId}
                       queuedMessages={queuedMessages}
+                      isTurnSettling={isTurnSettling}
                     />
                   </div>
                   <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">
@@ -139,14 +144,11 @@ export function BuilderChatPanel({ className }: Props) {
                   </div>
                 </>
               ) : (
-                <Text
-                  variant="body-tight"
-                  tone="muted"
-                  as="div"
-                  className="flex flex-1 items-center justify-center px-4 py-6"
-                >
-                  Open a workflow to start chatting with the builder.
-                </Text>
+                <div className="flex flex-1 items-center justify-center px-4 py-6">
+                  <Text variant="body-tight" tone="muted" as="div">
+                    Open a workflow to start chatting with the builder.
+                  </Text>
+                </div>
               )}
             </div>
           </div>

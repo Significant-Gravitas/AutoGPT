@@ -6,6 +6,18 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    // Any test that mounts a real-URL iframe (desktop-stream, YouTube embeds) must not have
+    // happy-dom actually fetch it: vitest teardown cuts the socket mid-connect and the resulting
+    // ECANCELED/AbortError/NetworkError reads as a test failure (#16544).
+    environmentOptions: {
+      happyDOM: {
+        settings: {
+          navigation: {
+            disableChildFrameNavigation: true,
+          },
+        },
+      },
+    },
     include: [
       "src/**/*.test.tsx",
       "src/**/*.test.ts",

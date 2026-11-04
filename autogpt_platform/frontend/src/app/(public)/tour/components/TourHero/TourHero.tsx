@@ -31,12 +31,7 @@ export function TourHero() {
             </span>
           </span>
 
-          <Text
-            as="h1"
-            variant="h1"
-            // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- marketing hero size, awaiting product decision (SECRT-3152)
-            className="text-[4rem] leading-none text-balance"
-          >
+          <Text as="h1" variant="hero" className="text-balance">
             Build AI agents by just chatting
           </Text>
 

@@ -86,6 +86,9 @@ async def list_library_agents(
 )
 async def list_favorite_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    search_term: Optional[str] = Query(
+        None, description="Search term to filter favorite agents"
+    ),
     page: int = Query(
         1,
         ge=1,
@@ -104,6 +107,7 @@ async def list_favorite_library_agents(
     """
     return await library_db.list_favorite_library_agents(
         user_id=user_id,
+        search_term=search_term,
         page=page,
         page_size=page_size,
     )

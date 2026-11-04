@@ -1,6 +1,6 @@
 "use client";
 
-import { ButtonGroup, ButtonGroupText } from "./components/ButtonGroup";
+import { ButtonGroup } from "./components/ButtonGroup";
 import {
   Tooltip,
   TooltipContent,
@@ -29,7 +29,8 @@ import type {
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import type { LinkSafetyModalProps } from "streamdown";
-import { Streamdown } from "streamdown";
+import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import { remarkAppLinks } from "./app-links";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -318,15 +319,11 @@ export const MessageBranchPage = ({
   const { currentBranch, totalBranches } = useMessageBranch();
 
   return (
-    <ButtonGroupText
-      className={cn(
-        "border-none bg-transparent text-foreground-tertiary shadow-none",
-        className,
-      )}
-      {...props}
-    >
-      {currentBranch + 1} of {totalBranches}
-    </ButtonGroupText>
+    <div className={cn("flex items-center px-4", className)} {...props}>
+      <Text variant="body-medium-tight" tone="muted" as="span">
+        {currentBranch + 1} of {totalBranches}
+      </Text>
+    </div>
   );
 };
 
@@ -362,12 +359,11 @@ function ExternalLinkModal({
         <Text variant="body">
           You&apos;re about to visit an external website:
         </Text>
-        <Text
-          variant="small-mono"
-          className="mt-2 rounded-md bg-surface-hover p-3 break-all"
-        >
-          {url}
-        </Text>
+        <div className="mt-2 rounded-md bg-surface-hover p-3">
+          <Text variant="small-mono" className="break-all">
+            {url}
+          </Text>
+        </div>
         <Dialog.Footer>
           <Button variant="secondary" onClick={onClose}>
             Cancel
@@ -391,7 +387,7 @@ const math: MathPlugin = {
   ...createMathPlugin({ singleDollarTextMath: true }),
   rehypePlugin: [
     rehypeKatex,
-    { errorColor: "var(--color-muted-foreground)", strict: "ignore" },
+    { errorColor: "var(--color-foreground-tertiary)", strict: "ignore" },
   ],
 };
 
@@ -414,6 +410,10 @@ function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
 }
 
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
+
+// Streamdown memoises every block on the identity of this list, so it is built
+// once here.
+const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
 
 const LINK_SAFETY = {
   enabled: true,
@@ -475,6 +475,7 @@ export const MessageResponse = memo(function MessageResponse({
       )}
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
+      remarkPlugins={REMARK_PLUGINS}
       linkSafety={LINK_SAFETY}
       {...props}
     >

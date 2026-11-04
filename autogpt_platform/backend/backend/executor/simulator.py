@@ -43,8 +43,10 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.copilot.rate_limit import platform_spend_refusal
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.trial_cost_context import attributed_usage
+from backend.data.model import NodeExecutionStats
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
 
 logger = logging.getLogger(__name__)
@@ -163,9 +165,10 @@ async def _call_llm_for_simulation(
 
     Handles client acquisition, retries on invalid JSON, logging, and platform
     cost tracking.  The dry-run simulator calls OpenRouter on the platform's
-    key rather than a user's own API credentials, so every successful call is
-    recorded against the triggering ``user_id``'s rate-limit counter via
-    ``persist_and_record_usage`` (same rails as every copilot turn).
+    key rather than a user's own API credentials, so the triggering
+    ``user_id``'s allowance is checked first and every response is recorded
+    against its rate-limit counter via ``persist_and_record_usage`` (same rails
+    as every copilot turn).
 
     When *output_validator* is provided, parsed outputs that fail it are fed
     back to the LLM as a correction message and retried within the same
@@ -173,9 +176,12 @@ async def _call_llm_for_simulation(
     anyway (a structurally imperfect simulation beats failing the dry run).
 
     Raises:
-        RuntimeError: If no LLM client is available.
+        RuntimeError: If no LLM client is available, or the user's allowance
+            is used up.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
+    if refusal := await platform_spend_refusal(user_id):
+        raise RuntimeError(f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] {refusal}")
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
         raise RuntimeError(
@@ -223,6 +229,31 @@ async def _call_llm_for_simulation(
                 messages=messages,
                 extra_body=extra_body,
             )
+            # Recorded before parsing: an unusable response was still paid for.
+            usage = response.usage
+            if usage is not None:
+                logger.debug(
+                    "simulate(%s): attempt=%d tokens=%d/%d",
+                    label,
+                    attempt + 1,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                )
+            else:
+                logger.debug(
+                    "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
+                )
+
+            await _track_simulator_cost(
+                usage=usage,
+                user_id=user_id,
+                model=model,
+                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
+                # non-local call physically hits OpenRouter regardless of the chat
+                # transport identity — label it accordingly (not ``cost_log_provider``,
+                # which would mislabel subscription / direct_anthropic as ``anthropic``).
+                provider=openrouter_helper_cost_provider(),
+            )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
             raw = response.choices[0].message.content or ""
@@ -255,30 +286,6 @@ async def _call_llm_for_simulation(
                 ]
                 continue
 
-            usage = response.usage
-            if usage is not None:
-                logger.debug(
-                    "simulate(%s): attempt=%d tokens=%d/%d",
-                    label,
-                    attempt + 1,
-                    usage.prompt_tokens,
-                    usage.completion_tokens,
-                )
-            else:
-                logger.debug(
-                    "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
-                )
-
-            await _track_simulator_cost(
-                usage=usage,
-                user_id=user_id,
-                model=model,
-                # Routes through ``get_openai_client(prefer_openrouter=True)``, so a
-                # non-local call physically hits OpenRouter regardless of the chat
-                # transport identity — label it accordingly (not ``cost_log_provider``,
-                # which would mislabel subscription / direct_anthropic as ``anthropic``).
-                provider=openrouter_helper_cost_provider(),
-            )
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -376,6 +383,32 @@ async def _track_simulator_cost(
         )
     except Exception as exc:
         logger.warning("[simulator] usage tracking failed: %s", exc)
+
+
+async def track_dry_run_block_cost(
+    stats: NodeExecutionStats, *, user_id: str, model: str | None
+) -> None:
+    """Record what a block that ran for real on the platform's key spent.
+
+    The ``prepare_dry_run`` counterpart of ``_track_simulator_cost``: the
+    OrchestratorBlock's usage lands on its execution stats, and a dry run skips
+    the credit reconciliation that would otherwise account for it.
+    """
+    try:
+        await persist_and_record_usage(
+            session=None,
+            user_id=user_id,
+            prompt_tokens=stats.input_token_count,
+            completion_tokens=stats.output_token_count,
+            cache_read_tokens=stats.cache_read_token_count,
+            cache_creation_tokens=stats.cache_creation_token_count,
+            log_prefix="[simulator]",
+            cost_usd=stats.provider_cost,
+            model=model,
+            provider="open_router",
+        )
+    except Exception as exc:
+        logger.warning(f"[simulator] usage tracking failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -518,10 +551,10 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # safety net against runaway simulation cost.  The earlier cap of 1
         # starved multi-role patterns (Advocate/Critic, propose/critique)
         # where the second iteration is what proves the loop actually
-        # closes, and ``original=0`` (unbounded) already passed through
-        # untouched so a tiny bounded cap was asymmetric anyway.
+        # closes. ``0`` (a single call) passes through; a negative value
+        # ("loop until finished") takes the cap too.
         original = input_data.get("agent_mode_max_iterations", 0)
-        max_iters = min(original, 10) if original != 0 else 0
+        max_iters = 10 if original < 0 else min(original, 10)
         # Resolve the configured simulator model (typically an OpenRouter
         # slug like "anthropic/claude-haiku-4-5") to its canonical
         # ``LLMModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
