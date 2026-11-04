@@ -280,12 +280,30 @@ async def test_search_block_rejects_blank_key_in_api_key_mode():
 
 
 def test_platform_cost_only_applies_in_api_key_mode():
-    from backend.blocks.keenable._config import keenable
-    from backend.executor.utils import _is_cost_filter_match
+    from backend.data.block_cost_config import BLOCK_COSTS
+    from backend.executor.utils import block_usage_cost
+    from backend.sdk.cost_integration import register_provider_costs_for_block
 
-    assert keenable.base_costs
-    for cost in keenable.base_costs:
-        assert cost.cost_filter["auth"] == KeenableAuth.API_KEY.value
-        assert _is_cost_filter_match(cost.cost_filter, {"auth": "api_key"})
-        assert not _is_cost_filter_match(cost.cost_filter, {"auth": "anonymous"})
-        assert not _is_cost_filter_match(cost.cost_filter, {})
+    block_class = KeenableSearchBlock
+    saved = BLOCK_COSTS.get(block_class)
+    BLOCK_COSTS.pop(block_class, None)
+    register_provider_costs_for_block(block_class)
+    try:
+        block = block_class()
+        platform_key = {
+            "auth": KeenableAuth.API_KEY.value,
+            "credentials": {"id": "keenable-default", "provider": "keenable"},
+        }
+        assert block_usage_cost(block, platform_key)[0] == 1
+        assert block_usage_cost(block, {"auth": KeenableAuth.ANONYMOUS.value})[0] == 0
+        assert block_usage_cost(block, {})[0] == 0
+        assert all(
+            entry.cost_filter.get("auth") == KeenableAuth.API_KEY.value
+            for entry in BLOCK_COSTS[block_class]
+            if not entry.is_free
+        )
+    finally:
+        if saved is None:
+            BLOCK_COSTS.pop(block_class, None)
+        else:
+            BLOCK_COSTS[block_class] = saved
