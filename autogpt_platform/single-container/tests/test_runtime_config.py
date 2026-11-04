@@ -230,6 +230,35 @@ class RuntimeConfigTest(unittest.TestCase):
                 {"VAPID_PRIVATE_KEY": "p" * 40, "VAPID_PUBLIC_KEY": other_public},
             )
 
+    def test_rejects_a_private_key_outside_the_curve_order(self) -> None:
+        """Thirty-two bytes spelling zero, or the curve order or more, are no
+        private key: no public key derives from them, so the pair check has
+        nothing to say, and validation refuses them. The largest scalar
+        there is, with its own public key, is a pair like any other."""
+        public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        for scalar in (0, runtime_config._P256_N, 2**256 - 1):
+            private = runtime_config._base64url(scalar.to_bytes(32, "big"))
+            with (
+                self.subTest(scalar=hex(scalar)),
+                tempfile.TemporaryDirectory() as directory,
+                self.assertRaisesRegex(ValueError, "P-256 private scalar"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env",
+                    {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+                )
+        largest = runtime_config._P256_N - 1
+        private = runtime_config._base64url(largest.to_bytes(32, "big"))
+        public = runtime_config._base64url(runtime_config._p256_public_point(largest))
+        with tempfile.TemporaryDirectory() as directory:
+            values = runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+            )
+        self.assertEqual(
+            (values["VAPID_PRIVATE_KEY"], values["VAPID_PUBLIC_KEY"]), (private, public)
+        )
+
     def test_a_published_pair_in_the_environment_does_not_stop_the_next_boot(
         self,
     ) -> None:
@@ -701,6 +730,47 @@ class FillEnvSecretsTest(unittest.TestCase):
                 runtime_config.fill_env_blanks(path)
 
             self.assertEqual(_env_values(path)["VAPID_PUBLIC_KEY"], "")
+
+    def test_a_pair_whose_keys_do_not_belong_together_is_refused(self) -> None:
+        """Browsers would subscribe under the public key and the backend sign
+        with a private key it isn't from, which every push service rejects,
+        so the pair is named rather than kept, in any spelling, and the file
+        is left as it was. A private key that isn't a raw scalar is the
+        backend's to load: py-vapid reads a DER key too."""
+        private, public = _matching_vapid_pair()
+        other_public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        zero = runtime_config._base64url(bytes(32))
+        refused = {
+            "another key's public key": (private, other_public, "not the public key"),
+            "the same, padded": (
+                private + "=",
+                other_public + "=",
+                "not the public key",
+            ),
+            "a zero scalar": (zero, public, "not a P-256 private key"),
+        }
+        for label, (private_value, public_value, message) in refused.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    runtime_config.fill_env_blanks(path)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+        kept = {
+            "the pair, padded": (private + "=", public + "="),
+            "a DER-shaped private key": (
+                runtime_config._base64url(b"\x30" + b"d" * 120),
+                public,
+            ),
+        }
+        for label, (private_value, public_value) in kept.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
 
     def test_a_published_vapid_pair_is_replaced(self) -> None:
         """The pair signs nothing that is stored, so like a service password a
@@ -1857,6 +1927,10 @@ def _matching_vapid_pair() -> tuple[str, str]:
     private = b"p" * 32
     public = runtime_config._p256_public_point(int.from_bytes(private, "big"))
     return runtime_config._base64url(private), runtime_config._base64url(public)
+
+
+def _vapid_env(private: str, public: str) -> str:
+    return f"VAPID_PRIVATE_KEY={private}\nVAPID_PUBLIC_KEY={public}\n"
 
 
 def _with_other_unused_bits(key: str) -> str:

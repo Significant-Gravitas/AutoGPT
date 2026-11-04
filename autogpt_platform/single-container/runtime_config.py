@@ -337,6 +337,7 @@ def _vapid_value(
         for setting in (effective.get(key) for key in VAPID_KEY_SETTINGS)
     ]
     if not any(unset):
+        _refuse_a_mismatched_vapid_pair(effective, path)
         return None
     if not all(unset):
         raise ValueError(
@@ -346,6 +347,33 @@ def _vapid_value(
             "both from one pair you generated."
         )
     return vapid_keypair()[VAPID_KEY_SETTINGS.index(name)]
+
+
+def _refuse_a_mismatched_vapid_pair(
+    effective: Mapping[str, Setting], path: Path
+) -> None:
+    """A kept pair has to be one: browsers subscribe under the public key and
+    the backend signs with the private one, and every push service rejects a
+    push whose keys don't belong together, so `make init-env` names that
+    rather than keeping it, as the single container does on boot. A private
+    key that isn't a raw scalar (py-vapid reads a DER key too) is the
+    backend's to load."""
+    scalar = _raw_vapid_scalar(effective["VAPID_PRIVATE_KEY"].value)
+    if scalar is None:
+        return
+    if not 0 < scalar < _P256_N:
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY in {path} is not a P-256 private key. Clear "
+            "both VAPID keys and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    public = effective["VAPID_PUBLIC_KEY"].value
+    if _base64url(_p256_public_point(scalar)) != _canonical_vapid_key(public):
+        raise ValueError(
+            f"VAPID_PUBLIC_KEY in {path} is not the public key of "
+            "VAPID_PRIVATE_KEY. Clear both and run this again to generate a "
+            "pair, or set both from one pair you generated."
+        )
 
 
 def _is_unset_vapid_key(value: str) -> bool:
@@ -858,16 +886,23 @@ def _configured_or_generated_vapid(
 
 
 def _public_key_for(private: str) -> str | None:
-    """The Base64url public key of a Base64url P-256 private key, or None when
-    `private` is not one, which validation reports in its own words."""
-    try:
-        raw = _decode_base64url(private)
-    except ValueError:
-        return None
-    scalar = int.from_bytes(raw, "big")
-    if len(raw) != 32 or not 0 < scalar < _P256_N:
+    """The Base64url public key of a raw P-256 private key, in any spelling
+    py-vapid reads, or None when `private` is not one, which whoever asked
+    reports in its own words."""
+    scalar = _raw_vapid_scalar(private)
+    if scalar is None or not 0 < scalar < _P256_N:
         return None
     return _base64url(_p256_public_point(scalar))
+
+
+def _raw_vapid_scalar(private: str) -> int | None:
+    """The number a raw (32-byte) private key spells, however it is spelled,
+    or None for anything else."""
+    try:
+        raw = _decode_base64url(_canonical_vapid_key(private))
+    except ValueError:
+        return None
+    return int.from_bytes(raw, "big") if len(raw) == 32 else None
 
 
 def _generate_vapid_keypair() -> tuple[str, str]:
@@ -1098,6 +1133,8 @@ def _validate_values(values: dict[str, str]) -> None:
     vapid_public = _decode_base64url(values["VAPID_PUBLIC_KEY"])
     if len(vapid_private) != 32:
         raise ValueError("VAPID_PRIVATE_KEY must decode to exactly 32 bytes")
+    if not 0 < int.from_bytes(vapid_private, "big") < _P256_N:
+        raise ValueError("VAPID_PRIVATE_KEY must be a P-256 private scalar")
     if len(vapid_public) != 65 or vapid_public[0] != 4:
         raise ValueError("VAPID_PUBLIC_KEY must be an uncompressed P-256 public key")
 
