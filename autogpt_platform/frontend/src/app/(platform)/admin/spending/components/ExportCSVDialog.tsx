@@ -134,7 +134,7 @@ export function ExportCSVDialog<
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           {description && (
-            <p className="text-body text-muted-foreground">{description}</p>
+            <p className="text-body text-foreground-tertiary">{description}</p>
           )}
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
@@ -163,7 +163,7 @@ export function ExportCSVDialog<
             </div>
           </div>
           {children}
-          <p className="text-caption text-muted-foreground">
+          <p className="text-caption text-foreground-tertiary">
             {capNoteSuffix ? `${CAP_NOTE} ${capNoteSuffix}` : CAP_NOTE}
           </p>
         </div>

@@ -130,10 +130,9 @@ export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.REJECTED]: {
     label: "Needs changes",
     Icon: UnavailableIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- rose "Needs changes" pill kept until the rose -> error hue change is approved
-    pillClass: "bg-rose-50 text-rose-800 ring-1 ring-inset ring-rose-200",
-    // oxlint-disable-next-line design-system/no-raw-colors -- rose dot matches the pill above
-    dotClass: "bg-rose-500",
+    pillClass:
+      "bg-error-surface text-error-foreground ring-1 ring-inset ring-error/20",
+    dotClass: "bg-error",
   },
 };
 
