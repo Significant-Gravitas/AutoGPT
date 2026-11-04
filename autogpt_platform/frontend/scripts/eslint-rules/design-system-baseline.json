@@ -644,9 +644,6 @@
   "src/components/renderers/InputRenderer/custom/MultiSelectField/MultiSelectField.tsx": {
     "no-restyle": 8
   },
-  "src/components/styles/tones.ts": {
-    "no-raw-colors": 1
-  },
   "src/services/experts/useHireFlow.tsx": {
     "no-restyle": 5
   }

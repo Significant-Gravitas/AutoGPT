@@ -1,6 +1,6 @@
 /**
  * Semantic colours shared by the `Text` and `Icon` atoms (`tone` prop). Each
- * is a colour role from src/app/globals.css, noted at the hex it renders in
+ * is a colour role from src/app/tokens/theme.css, noted at the hex it renders in
  * the light theme. Text without a tone keeps its variant's colour
  * (foreground-base #141414); an Icon without one takes the colour around it.
  */
@@ -33,8 +33,8 @@ export const tones = {
   "info-strong": "text-info-foreground", // #2563EB
   // The parent's colour, for copy inside a control that changes it on hover.
   inherit: "text-inherit",
-  // TODO(tokens): no light-green role for text on a dark fill; `success`
-  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
+  // Green on a dark fill: `success` (#149443) would lose its contrast there,
+  // so emerald-300 stays until the dark theme (ds-colour-exempt.json).
   "success-light": "text-emerald-300",
 } as const;
 
