@@ -790,3 +790,104 @@ async def test_prune_deletes_under_the_lock(tmp_path: Path, monkeypatch) -> None
     assert cli._audit_prune(writer.path, "1d") == 0
     assert held == [True]
     assert not rotated.exists()
+
+
+@pytest.mark.parametrize("duration", ["-1d", "0d", "0h", "1.5d", "+1d", " 1d"])
+def test_prune_refuses_a_duration_that_is_not_a_positive_whole_number(duration: str) -> None:
+    """`-1d` put the cutoff a day in the future, so every rotated file was deleted."""
+    assert cli._parse_duration(duration) is None
+
+
+@pytest.mark.asyncio
+async def test_export_refuses_to_write_over_an_audit_log(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """ZipFile(output, "w") truncates the log before it is read into the zip."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    before = writer.path.read_bytes()
+
+    assert cli._audit_export(writer.path, writer.path) == 2
+    assert writer.path.read_bytes() == before
+    assert "audit log" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("line", [b"[]", b'"text"', b"42", b"null"])
+def test_a_record_that_is_not_an_object_is_a_parse_error(tmp_path: Path, line: bytes) -> None:
+    path = tmp_path / "audit.log"
+    path.write_bytes(line + b"\n")
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+
+
+@pytest.mark.parametrize("line", [b"[]", b'"text"'])
+def test_the_audit_commands_skip_a_record_that_is_not_an_object(
+    tmp_path: Path, line: bytes, capsys
+) -> None:
+    path = tmp_path / "audit.log"
+    path.write_bytes(line + b"\n")
+    rotated = tmp_path / "audit.log.20200101-000000"
+    rotated.write_bytes(line + b"\n")
+
+    cli._print_record_line(line + b"\n")
+    assert "[unparseable]" in capsys.readouterr().out
+    assert cli._audit_show(path, 1) == 1
+    assert cli._audit_prune(path, "1d") == 0
+    assert rotated.exists()
+
+
+def test_a_writer_refuses_a_log_whose_last_record_is_not_an_object(tmp_path: Path) -> None:
+    """It used to stop with an AttributeError from inside the verifier."""
+    (tmp_path / "audit.log").write_bytes(b"[]\n")
+
+    with pytest.raises(RuntimeError, match="failed verification"):
+        _writer(tmp_path)
+
+
+class _StopFollowing(Exception):
+    pass
+
+
+def test_tail_follows_the_new_log_after_a_rotation(tmp_path: Path) -> None:
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1}\n')
+    events = iter(["rotate", "stop"])
+
+    def wait() -> None:
+        event = next(events)
+        if event == "rotate":
+            path.rename(tmp_path / "audit.log.20200101-000000")
+            path.write_bytes(b'{"seq": 1, "new": true}\n')
+        else:
+            raise _StopFollowing
+
+    seen: list[bytes] = []
+    with pytest.raises(_StopFollowing):
+        for line in cli._follow(path, wait):
+            seen.append(line)
+
+    assert seen == [b'{"seq": 1}\n', b'{"seq": 1, "new": true}\n']
+
+
+def test_tail_waits_for_the_rest_of_a_record_being_written(tmp_path: Path) -> None:
+    """A record caught mid-append used to print as two unparseable halves."""
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1, ')
+    events = iter(["finish", "stop"])
+
+    def wait() -> None:
+        if next(events) == "finish":
+            with open(path, "ab") as f:
+                f.write(b'"op": "X"}\n')
+        else:
+            raise _StopFollowing
+
+    seen: list[bytes] = []
+    with pytest.raises(_StopFollowing):
+        for line in cli._follow(path, wait):
+            seen.append(line)
+
+    assert seen == [b'{"seq": 1, "op": "X"}\n']

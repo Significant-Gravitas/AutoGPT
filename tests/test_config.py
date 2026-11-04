@@ -191,3 +191,41 @@ def test_platform_endpoints_are_revalidated_at_use(
 def test_security_limits_must_be_positive(field: str) -> None:
     with pytest.raises(ValidationError):
         ShimConfig.model_validate({field: 0})
+
+
+@pytest.mark.parametrize("field", ["reconnect_base_delay", "reconnect_max_delay"])
+def test_reconnect_delays_must_be_positive(tmp_path: Path, field: str) -> None:
+    """A zero or negative delay turns the reconnect backoff into a tight loop."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, **{field: 0})
+
+
+def test_reconnect_jitter_must_not_be_negative(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, reconnect_jitter_seconds=-1)
+
+
+def test_a_malformed_config_file_names_the_file(tmp_path: Path) -> None:
+    from autogpt_local_executor.config import ConfigFileError
+
+    config = tmp_path / "config.toml"
+    config.write_text("allowed_root = [unclosed\n")
+
+    with pytest.raises(ConfigFileError, match="config.toml"):
+        load_config(config_path=config)
+
+
+def test_the_cli_exits_78_on_a_malformed_config_file(tmp_path: Path, monkeypatch, capsys) -> None:
+    import sys
+
+    from autogpt_local_executor import cli
+
+    config = tmp_path / "config.toml"
+    config.write_text("allowed_root = [unclosed\n")
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "status"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    assert "config.toml" in capsys.readouterr().err

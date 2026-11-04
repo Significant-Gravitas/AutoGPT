@@ -347,6 +347,8 @@ class AuditWriter:
             if not last_line:
                 return 1, None
             last = json.loads(last_line.decode("utf-8"))
+            if not isinstance(last, dict):
+                raise ValueError("the last record is not a JSON object")
             return int(last.get("seq", 0)) + 1, last.get("hmac")
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise RuntimeError("Existing audit log tail cannot be recovered") from exc
@@ -447,6 +449,9 @@ class AuditWriter:
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 violations.append(Violation("parse_error", None, f"unparseable line: {exc}"))
                 # Can't continue the chain past an unparseable record.
+                return violations
+            if not isinstance(rec, dict):
+                violations.append(Violation("parse_error", None, "record is not a JSON object"))
                 return violations
             seq = rec.get("seq")
             if not isinstance(seq, int):
@@ -723,7 +728,7 @@ def _read_first_ts(path: Path) -> float | None:
         if not line.strip():
             return None
         rec = json.loads(line.decode("utf-8"))
-        ts = rec.get("ts")
+        ts = rec.get("ts") if isinstance(rec, dict) else None
         return float(ts) if ts is not None else None
     except (OSError, ValueError, json.JSONDecodeError):
         return None

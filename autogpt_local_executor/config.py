@@ -197,9 +197,11 @@ class ShimConfig(BaseSettings):
     max_commands_per_minute: int = Field(default=60, gt=0)
 
     # ── Reconnect ──────────────────────────────────────────────────────────
-    reconnect_base_delay: float = Field(default=1.0)
-    reconnect_max_delay: float = Field(default=60.0)
-    reconnect_jitter_seconds: float = Field(default=5.0)
+    # Positive: a zero or negative delay turns the reconnect backoff into a
+    # tight loop against the platform.
+    reconnect_base_delay: float = Field(default=1.0, gt=0)
+    reconnect_max_delay: float = Field(default=60.0, gt=0)
+    reconnect_jitter_seconds: float = Field(default=5.0, ge=0)
 
     # ── Local LLM (see docs/LOCAL_LLM.md) ──────────────────────────────────
     ollama_url: str = Field(
@@ -293,6 +295,10 @@ class ShimConfig(BaseSettings):
         return parsed._replace(scheme=scheme).geturl().rstrip("/")
 
 
+class ConfigFileError(ValueError):
+    """The config file exists but can't be read or isn't valid TOML."""
+
+
 def load_config(
     config_path: Path | None = None,
     overrides: dict[str, Any] | None = None,
@@ -304,8 +310,11 @@ def load_config(
     file_overrides: dict[str, Any] = {}
     path = config_path or _default_config_path()
     if path.is_file():
-        with open(path, "rb") as f:
-            file_overrides = tomllib.load(f)
+        try:
+            with open(path, "rb") as f:
+                file_overrides = tomllib.load(f)
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ConfigFileError(f"{path}: {exc}") from exc
         # Coerce string paths into Path objects so pydantic doesn't choke.
         for key in ("allowed_root", "audit_log_path", "recording_buffer_dir"):
             if key in file_overrides and isinstance(file_overrides[key], str):
