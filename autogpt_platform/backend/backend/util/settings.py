@@ -1001,6 +1001,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
+    )
+
     max_request_body_mb: int = Field(
         default=10,
         ge=1,
