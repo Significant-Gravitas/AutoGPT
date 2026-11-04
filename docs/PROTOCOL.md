@@ -493,7 +493,8 @@ The shim creates parents only after both checks pass.
 
 **Replacing, not truncating**: the content goes to a new file beside the
 target, which is then renamed over it, so a write that fails part way (a
-full disk, say) leaves the old contents whole. An existing file keeps its
+full disk, say) leaves the old contents whole (on the in-place fallback
+below, it leaves a partial file instead). An existing file keeps its
 mode, except set-user-ID and set-group-ID, which a write drops so that new
 contents never run with the file owner's privileges (Linux drops them for an
 unprivileged writer; the shim drops them whatever it runs as); a new one gets
@@ -501,7 +502,9 @@ the usual default (0o666 less the umask). Because the
 target gets a new inode, a hard link made to it from elsewhere keeps the
 old contents, and extended attributes and ACLs on the old file don't carry
 over. Where the directory takes no new entries, or (on Windows) another
-program has the file open, the shim overwrites the file in place instead.
+program has the file open, the shim overwrites the file in place instead:
+it truncates the file and writes the content, so a write that fails part way
+there leaves a partial file, and the old contents are gone.
 
 #### `ACK` (shim → platform, for writes and fire-and-forget ops)
 ```json
@@ -1048,7 +1051,7 @@ minor extension); the spec table above is the v1.0 set.
 | Code | Label | Meaning | Sender | Shim auto-reconnect? |
 |---|---|---|---|---|
 | 4426 | `PROTOCOL_VERSION_MISMATCH` | Major-version disagreement in HELLO/HELLO_ACK. | platform | **No** — restart required after upgrade. |
-| 4427 | `SESSION_TAKEN_OVER` | A same-`machine_id` shim connected and took over (this connection is the old one being evicted). | platform | **No** — the takeover is intentional. |
+| 4427 | `SESSION_TAKEN_OVER` | Another shim connected for this session. Sent to the connection it replaces, after `SESSION_REVOKED` (`another_shim_connected`); under the ownership policy above, also to a newcomer from a different `machine_id`, which is rejected. Today's platform replaces the older connection whichever machine the newcomer is on. | platform | **No** — the takeover, or the rejection, is intentional. |
 | 4428 | `SESSION_REVOKED` | User revoked this session in the platform UI (or related admin action). | platform | **No** — auth gone, would just 401. |
 | 4429 | `PLATFORM_SHUTDOWN` | Platform is going down (graceful). | platform | **Yes**, after the reconnect backoff: the platform comes back, and halting would leave the machine offline until someone restarted the shim. The backoff grows while the platform is still down; the shim doesn't probe the platform's health first. |
 
@@ -1058,9 +1061,10 @@ only the application-layer codes in the table above are treated as fatal
 "do not retry without operator action". Unexpected clean closes still wait
 for the base backoff before reconnecting, preventing a hot loop.
 
-> The platform-side `ShimConnectionManager` change that actually emits
-> `SESSION_REVOKED` and close-code 4427 lives in a separate ticket; this
-> section is the contract the shim implements on the receive side.
+> The platform sends `SESSION_REVOKED` and close code 4427 to the connection
+> a newer one replaces. It doesn't yet reject a newcomer from a different
+> `machine_id`; for that part of the policy, this section is the contract
+> the shim implements on the receive side.
 
 ---
 

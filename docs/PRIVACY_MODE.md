@@ -224,8 +224,11 @@ but the local-vision-model maturity isn't there yet (as of 2026-06).
 
 Privacy mode adds two new `op` values to AUDIT_LOG.md:
 
-- `FILE_READ_STUB` — stub mint. `details = {path, sha256, size_bytes,
-  mode: "stub"}`.
+- `FILE_READ_STUB` — stub mint. `details = {path, stub_id, size_bytes,
+  mode: "stub"}`. No content hash: the audit export goes to support or a
+  platform viewer, and an unkeyed SHA-256 of a short file can be confirmed
+  by hashing guesses. `stub_id` ties the record to the stub, whose
+  fingerprint stays in the shim's stub registry.
 - `LOCAL_LLM_TURN` — local-LLM execution. `details = {model,
   stub_ids, task_length, output_length}` — never the task text, never
   the output text. The user reviews the audit log to verify "Claude
