@@ -1282,6 +1282,69 @@ async def test_an_accessibility_result_with_no_fields_leaves_the_step_unenriched
     assert step.enrichment.kind == "none"
 
 
+def _fake_quartz(monkeypatch, *, location_fails: bool = False):
+    import sys
+    from types import SimpleNamespace
+
+    def location(_event):
+        if location_fails:
+            raise ValueError("the event has no location")
+        return SimpleNamespace(x=1, y=2)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "Quartz",
+        SimpleNamespace(
+            CGEventGetLocation=location,
+            CGEventGetIntegerValueField=lambda *_args: 0,
+            kCGKeyboardEventKeycode=9,
+        ),
+    )
+
+
+async def test_an_event_the_capture_could_not_read_counts_as_dropped(monkeypatch) -> None:
+    """A marshal failure was only logged, so the recording went on without
+    the action, as complete."""
+    from autogpt_local_executor.recording import macos_capture
+
+    _fake_quartz(monkeypatch, location_fails=True)
+    source = macos_capture.MacInputCaptureSource()
+
+    source._on_event(None, 1, object(), None)
+
+    assert source.dropped_events == 1
+
+
+async def test_the_macos_capture_reports_events_dropped_or_queued_at_the_stop(
+    monkeypatch,
+) -> None:
+    """steps() checked for dropped events only at the top of each pass while
+    running, so drops after the last check went unreported, and events still
+    queued when the stop came were never yielded."""
+    from autogpt_local_executor.recording import macos_capture
+    from autogpt_local_executor.recording.session import RecordingError
+
+    _fake_quartz(monkeypatch)
+    source = macos_capture.MacInputCaptureSource(max_queued_events=2)
+    source._tap = object()
+    monkeypatch.setattr(source, "stop", lambda: None)
+    source._stop.set()
+    for _ in range(2):
+        source._on_event(None, 1, object(), None)
+
+    steps = [step async for step in source.steps()]
+    assert len(steps) == 2
+
+    source._stop.clear()
+    source._stop.set()
+    source._on_event(None, 1, object(), None)
+    source._on_event(None, 1, object(), None)
+    source._on_event(None, 1, object(), None)
+    with pytest.raises(RecordingError, match="dropped 1"):
+        async for _step_ in source.steps():
+            pass
+
+
 async def test_the_macos_capture_fails_a_recording_that_dropped_events(monkeypatch) -> None:
     """An unbounded queue grew without limit behind a stalled consumer; a
     bounded one must not then lose events silently."""
