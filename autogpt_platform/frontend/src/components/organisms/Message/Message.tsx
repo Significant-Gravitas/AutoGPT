@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
@@ -27,7 +27,11 @@ import type {
 } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
-import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import {
+  defaultRemarkPlugins,
+  parseMarkdownIntoBlocks,
+  Streamdown,
+} from "streamdown";
 import { remarkAppLinks } from "./app-links";
 import { MessageLink } from "./components/MessageLink/MessageLink";
 import {
@@ -329,7 +333,7 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
-// reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
+// reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
 // KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
 // its default strict mode console.warns each time, and console capture filed
 // every warning as a Sentry issue (BUILDER-94S). The plugin has no option for
@@ -341,6 +345,31 @@ const math: MathPlugin = {
     { errorColor: "var(--color-foreground-tertiary)", strict: "ignore" },
   ],
 };
+
+// Streamdown renders each block on its own, so each is escaped on its own, and a
+// streamed reply re-parses only the block still growing.
+const ESCAPED_BLOCKS = new Map<string, string>();
+const ESCAPED_BLOCKS_LIMIT = 500;
+
+function parseEscapedBlocks(markdown: string): string[] {
+  return parseMarkdownIntoBlocks(markdown).map(escapeBlock);
+}
+
+function escapeBlock(block: string): string {
+  const cached = ESCAPED_BLOCKS.get(block);
+  if (cached !== undefined) {
+    // Re-inserting keeps the blocks in use last in line for eviction.
+    ESCAPED_BLOCKS.delete(block);
+    ESCAPED_BLOCKS.set(block, cached);
+    return cached;
+  }
+  const escaped = escapeLiteralDollars(block);
+  if (ESCAPED_BLOCKS.size >= ESCAPED_BLOCKS_LIMIT) {
+    ESCAPED_BLOCKS.delete(ESCAPED_BLOCKS.keys().next().value!);
+  }
+  ESCAPED_BLOCKS.set(block, escaped);
+  return escaped;
+}
 
 // Streamdown re-parses every block of a message when the identity of a
 // component in `components` changes, and React remounts any element whose
@@ -426,11 +455,10 @@ export const MessageResponse = memo(function MessageResponse({
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
       linkSafety={LINK_SAFETY}
+      parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}
     >
-      {typeof children === "string"
-        ? escapeCurrencyAmounts(children)
-        : children}
+      {children}
     </Streamdown>
   );
 }, areSameChildren);
