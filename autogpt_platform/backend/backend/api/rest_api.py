@@ -233,6 +233,17 @@ async def _run_data_migrations() -> None:
         ),
         ("org bootstrap", backend.data.org_migration.run_migration),
         (
+            # Bounded because this one loops: the first boot after the data
+            # migration walks whatever it could not reach, a graph load and a
+            # transaction each. Presets commit individually, so a timeout
+            # defers the rest to the next boot.
+            "triggered-preset inputs",
+            lambda: asyncio.wait_for(
+                backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+                timeout=30,
+            ),
+        ),
+        (
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
@@ -243,6 +254,9 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
+        except asyncio.TimeoutError:
+            # A bounded migration resumes on the next start; not worth an alert.
+            logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
             logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
