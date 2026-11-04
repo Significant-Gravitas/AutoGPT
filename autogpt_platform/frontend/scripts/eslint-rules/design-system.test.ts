@@ -220,9 +220,9 @@ tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
         "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock.tsx",
     },
     {
-      code: `const cover = "bg-[#FDFCF8]";`,
+      code: `const fallback = "bg-[#020617]";`,
       filename:
-        "src/app/(no-navbar)/onboarding/steps/SubscriptionStep/components/OttoCover.tsx",
+        "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx",
     },
   ],
   invalid: [
