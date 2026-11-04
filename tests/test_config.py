@@ -205,23 +205,37 @@ def test_reconnect_jitter_must_not_be_negative(tmp_path: Path) -> None:
         ShimConfig(allowed_root=tmp_path, reconnect_jitter_seconds=-1)
 
 
-def test_a_malformed_config_file_names_the_file(tmp_path: Path) -> None:
+# TOML that doesn't parse, and a file that isn't UTF-8, which TOML must be.
+# The second escaped load_config as a UnicodeDecodeError, so the shim died
+# with a traceback and status 1, which systemd restarts every 5 seconds.
+_MALFORMED_CONFIGS = pytest.mark.parametrize(
+    "content",
+    [b"allowed_root = [unclosed\n", b'allowed_root = "/home/\xff\xfe"\n'],
+    ids=["bad-toml", "not-utf-8"],
+)
+
+
+@_MALFORMED_CONFIGS
+def test_a_malformed_config_file_names_the_file(tmp_path: Path, content: bytes) -> None:
     from autogpt_local_executor.config import ConfigFileError
 
     config = tmp_path / "config.toml"
-    config.write_text("allowed_root = [unclosed\n")
+    config.write_bytes(content)
 
     with pytest.raises(ConfigFileError, match="config.toml"):
         load_config(config_path=config)
 
 
-def test_the_cli_exits_78_on_a_malformed_config_file(tmp_path: Path, monkeypatch, capsys) -> None:
+@_MALFORMED_CONFIGS
+def test_the_cli_exits_78_on_a_malformed_config_file(
+    tmp_path: Path, monkeypatch, capsys, content: bytes
+) -> None:
     import sys
 
     from autogpt_local_executor import cli
 
     config = tmp_path / "config.toml"
-    config.write_text("allowed_root = [unclosed\n")
+    config.write_bytes(content)
     monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "status"])
 
     with pytest.raises(SystemExit) as exited:
