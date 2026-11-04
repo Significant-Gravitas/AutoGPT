@@ -87,5 +87,5 @@ def _read_rate(info: dict[str, object], key: str) -> float | None:
         and value >= 0
     ):
         return float(value)
-    logger.error("Invalid Anthropic rate field %s; using rate fallback", key)
+    logger.error(f"Invalid Anthropic rate field {key}; using rate fallback")
     return None
