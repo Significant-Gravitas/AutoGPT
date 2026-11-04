@@ -159,7 +159,8 @@ Semantics:
   on Linux X11 we surface `WINDOW_NOT_VISIBLE` because XComposite isn't
   guaranteed). On Windows a window that has stopped responding answers
   `FEATURE_NOT_SUPPORTED` instead, since the capture would wait on it to
-  paint forever.
+  paint forever, and so does one that stops responding during the capture,
+  after 10 seconds.
 - On macOS the window's frame is read before and after the capture. A
   window that moved or was resized in between answers
   `FEATURE_NOT_SUPPORTED`, since the image's `origin` and `logical_size`

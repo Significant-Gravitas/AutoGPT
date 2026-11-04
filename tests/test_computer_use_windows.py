@@ -406,6 +406,40 @@ def test_a_release_that_fails_still_frees_the_rest(tmp_path, monkeypatch) -> Non
     )
 
 
+def test_a_window_that_stops_responding_during_the_capture_frees_the_request(
+    tmp_path, monkeypatch
+) -> None:
+    """IsHungAppWindow is checked once, before PrintWindow, which waits for
+    the window to paint itself. A window that stopped responding after the
+    check held the capture, and its request slot, until it answered. The
+    capture is given up on after a deadline; it releases its DCs itself when
+    PrintWindow returns."""
+    import threading
+
+    from autogpt_local_executor.computer_use.backends import windows as windows_backend
+
+    window = _capturable_window(tmp_path, monkeypatch)
+    answer = threading.Event()
+
+    def print_window(*_args) -> int:
+        answer.wait(30)
+        return 1
+
+    window.user32.PrintWindow.side_effect = print_window
+    monkeypatch.setattr(windows_backend, "PRINT_WINDOW_SECONDS", 0.1, raising=False)
+    try:
+        with pytest.raises(FeatureNotSupportedError, match="stopped responding"):
+            window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+        window.win32gui.ReleaseDC.assert_not_called()
+    finally:
+        answer.set()
+        for thread in threading.enumerate():
+            if thread.name == "window-capture":
+                thread.join(30)
+
+    window.win32gui.ReleaseDC.assert_called_once()
+
+
 def test_a_window_that_is_not_responding_is_not_captured(tmp_path, monkeypatch) -> None:
     """PrintWindow asks the window to paint itself and waits for it, so a hung
     window held the capture's thread, and its request slot, for good."""

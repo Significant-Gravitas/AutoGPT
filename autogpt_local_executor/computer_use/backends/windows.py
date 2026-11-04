@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -76,6 +77,34 @@ CF_PRIVATELAST = 0x02FF
 # What a text-only restore rebuilds: CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT and
 # CF_LOCALE (Windows synthesizes the others from any one of them).
 _TEXT_CLIPBOARD_FORMATS = frozenset({1, 7, 13, 16})
+
+
+# How long a window capture waits for PrintWindow, which waits for the window.
+PRINT_WINDOW_SECONDS = 10.0
+
+
+def _within_deadline(capture: Callable[[], Any], seconds: float) -> Any:
+    """What `capture` returns, run in a daemon thread; FEATURE_NOT_SUPPORTED
+    if it hasn't finished after `seconds`. The thread is left to finish."""
+    outcome: list[tuple[bool, Any]] = []
+
+    def run() -> None:
+        try:
+            outcome.append((True, capture()))
+        except BaseException as exc:  # handed to the waiting thread
+            outcome.append((False, exc))
+
+    thread = threading.Thread(target=run, name="window-capture", daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if not outcome:
+        raise FeatureNotSupportedError(
+            "screenshot.window", reason="the window stopped responding during the capture"
+        )
+    finished, value = outcome[0]
+    if not finished:
+        raise value
+    return value
 
 
 def _release_quietly(what: str, release: Callable[..., object], *args: object) -> None:
@@ -267,59 +296,69 @@ class WindowsBackend(ComputerUseBackend):
             raise FeatureNotSupportedError(
                 "screenshot.window", reason="the window is not responding"
             )
-        # Acquired inside the try, so whatever was acquired is released even
-        # when a later step (the bitmap, say) fails.
-        hwnd_dc = save_dc = bmp = previous = None
-        bitmap_made = False
-        try:
-            hwnd_dc = win32gui.GetWindowDC(hwnd)
-            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-            save_dc = mfc_dc.CreateCompatibleDC()
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(mfc_dc, w, h)
-            bitmap_made = True
-            # The DC's own bitmap, which goes back in before the DC is deleted.
-            previous = save_dc.SelectObject(bmp)
-            # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
-            # It returns 0 when the window did not render into the bitmap.
+
+        def capture() -> Any:
+            # Acquired inside the try, so whatever was acquired is released even
+            # when a later step (the bitmap, say) fails.
+            hwnd_dc = save_dc = bmp = previous = None
+            bitmap_made = False
             try:
-                printed = ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
-                    hwnd, save_dc.GetSafeHdc(), 0x02
+                hwnd_dc = win32gui.GetWindowDC(hwnd)
+                mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+                save_dc = mfc_dc.CreateCompatibleDC()
+                bmp = win32ui.CreateBitmap()
+                bmp.CreateCompatibleBitmap(mfc_dc, w, h)
+                bitmap_made = True
+                # The DC's own bitmap, which goes back in before the DC is deleted.
+                previous = save_dc.SelectObject(bmp)
+                # PrintWindow with PW_RENDERFULLCONTENT (0x02) is the modern flag.
+                # It returns 0 when the window did not render into the bitmap.
+                try:
+                    printed = ctypes.windll.user32.PrintWindow(  # type: ignore[attr-defined]
+                        hwnd, save_dc.GetSafeHdc(), 0x02
+                    )
+                except Exception as exc:
+                    raise FeatureNotSupportedError(
+                        "screenshot.window", reason=f"PrintWindow failed: {exc}"
+                    ) from exc
+                if not printed:
+                    raise FeatureNotSupportedError(
+                        "screenshot.window", reason="PrintWindow could not capture the window"
+                    )
+                info = bmp.GetInfo()
+                bits = bmp.GetBitmapBits(True)
+                img = Image.frombuffer(
+                    "RGB",
+                    (info["bmWidth"], info["bmHeight"]),
+                    bits,
+                    "raw",
+                    "BGRX",
+                    0,
+                    1,
                 )
-            except Exception as exc:
-                raise FeatureNotSupportedError(
-                    "screenshot.window", reason=f"PrintWindow failed: {exc}"
-                ) from exc
-            if not printed:
-                raise FeatureNotSupportedError(
-                    "screenshot.window", reason="PrintWindow could not capture the window"
-                )
-            info = bmp.GetInfo()
-            bits = bmp.GetBitmapBits(True)
-            img = Image.frombuffer(
-                "RGB",
-                (info["bmWidth"], info["bmHeight"]),
-                bits,
-                "raw",
-                "BGRX",
-                0,
-                1,
-            )
-        finally:
-            # GDI does not delete a bitmap still selected into a DC, so the
-            # DC gets its own bitmap back, then the DC goes, then the bitmap.
-            # The window's DC came from GetWindowDC, so ReleaseDC alone frees
-            # it (DeleteDC is for DCs from CreateDC or CreateCompatibleDC),
-            # and mfc_dc only wraps it. Each step runs even if one before it
-            # failed.
-            if save_dc is not None and previous is not None:
-                _release_quietly("restore the DC's own bitmap", save_dc.SelectObject, previous)
-            if save_dc is not None:
-                _release_quietly("delete the capture DC", save_dc.DeleteDC)
-            if bitmap_made and bmp is not None:
-                _release_quietly("delete the bitmap", win32gui.DeleteObject, bmp.GetHandle())
-            if hwnd_dc is not None:
-                _release_quietly("release the window's DC", win32gui.ReleaseDC, hwnd, hwnd_dc)
+            finally:
+                # GDI does not delete a bitmap still selected into a DC, so the
+                # DC gets its own bitmap back, then the DC goes, then the bitmap.
+                # The window's DC came from GetWindowDC, so ReleaseDC alone frees
+                # it (DeleteDC is for DCs from CreateDC or CreateCompatibleDC),
+                # and mfc_dc only wraps it. Each step runs even if one before it
+                # failed.
+                if save_dc is not None and previous is not None:
+                    _release_quietly("restore the DC's own bitmap", save_dc.SelectObject, previous)
+                if save_dc is not None:
+                    _release_quietly("delete the capture DC", save_dc.DeleteDC)
+                if bitmap_made and bmp is not None:
+                    _release_quietly("delete the bitmap", win32gui.DeleteObject, bmp.GetHandle())
+                if hwnd_dc is not None:
+                    _release_quietly("release the window's DC", win32gui.ReleaseDC, hwnd, hwnd_dc)
+            return img
+
+        # PrintWindow waits for the window to paint itself, and one that
+        # stops responding after the check above would hold this request's
+        # slot until it answered. The capture runs in its own thread, given
+        # up on after PRINT_WINDOW_SECONDS; it releases its DCs itself, from
+        # the thread that took them, once PrintWindow returns.
+        img = _within_deadline(capture, PRINT_WINDOW_SECONDS)
 
         if include_cursor:
             try:
