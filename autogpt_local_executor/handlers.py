@@ -25,6 +25,7 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict, deque
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -1006,8 +1007,18 @@ class FileHandler:
 
                 return fnmatchcase(name, glob)
 
-            iterator = base.rglob("*") if payload.recursive else base.iterdir()
-            for p in iterator:
+            def _candidates() -> Iterator[Path]:
+                if not payload.recursive:
+                    yield from base.iterdir()
+                    return
+                for dirpath, dirnames, filenames in os.walk(base):
+                    if not payload.include_hidden:
+                        # Prune hidden folders so the walk never enters them.
+                        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+                    for name in (*dirnames, *filenames):
+                        yield Path(dirpath) / name
+
+            for p in _candidates():
                 # A recursive walk reaches the contents of hidden folders too.
                 hidden = any(part.startswith(".") for part in p.relative_to(base).parts)
                 if hidden and not payload.include_hidden:
