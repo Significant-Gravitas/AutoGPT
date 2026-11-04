@@ -1024,6 +1024,11 @@ On receipt the shim MUST:
 4. **NOT auto-reconnect** to the same session_id. Operator restart is
    required to re-establish the session deliberately.
 
+The shim also cancels the session's requests. A side effect already running
+in a thread can't be stopped and may never finish, so the audit record and
+the close come first; the shim then waits up to 10 seconds for such work,
+lets go of any still running, and sends none of its replies.
+
 Receivers MUST tolerate unknown future `reason` values (forward-compatible
 minor extension); the spec table above is the v1.0 set.
 
