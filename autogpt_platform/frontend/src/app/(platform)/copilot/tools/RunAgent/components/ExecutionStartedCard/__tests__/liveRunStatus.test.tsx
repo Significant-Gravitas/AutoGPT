@@ -15,7 +15,8 @@ import type { CopilotChatSurface } from "../../../../../components/CopilotChatAc
 import { RunAgentTool } from "../../../RunAgent";
 import { LIVE_STATUS_POLL_MS } from "../helpers";
 
-const EXECUTION_URL = "/api/proxy/api/graphs/:graphId/executions/:graphExecId";
+const EXECUTION_URL =
+  "/api/proxy/api/internal/graphs/:graphId/executions/:graphExecId";
 
 function makeRun(
   status: AgentExecutionStatus,

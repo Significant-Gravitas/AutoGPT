@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { SubSessionCard } from "../AgentCards";
 
-const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
+const SESSION_ROUTE = "/api/proxy/api/internal/chat/sessions/:sessionId";
 
 function idleSession(outcome?: string) {
   return {

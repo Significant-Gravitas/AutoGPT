@@ -80,7 +80,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost({
         sessionResponse: http.get(
-          `*/api/chat/sessions/${TEST_SESSION_ID}`,
+          `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
           () =>
             HttpResponse.json({
               id: TEST_SESSION_ID,
