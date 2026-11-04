@@ -42,6 +42,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.api.features.oauth_registration import router as registration_router
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
     InvalidClientError,
@@ -403,7 +404,7 @@ async def read_token_request(request: Request) -> TokenRequest:
         return _TOKEN_REQUEST.validate_python(await _token_request_fields(request))
     except ValidationError as e:
         # Without the input, which holds the client secret: the handler logs it.
-        raise RequestValidationError(e.errors(include_input=False)) from None
+        raise RequestValidationError(bounded_validation_errors(e)) from None
 
 
 async def _token_request_fields(request: Request) -> dict[str, Any]:

@@ -30,11 +30,7 @@ export function AgentRow({ agent }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text
-            variant="body-medium"
-            tone="primary"
-            className="truncate leading-5"
-          >
+          <Text variant="body-medium-tight" tone="primary" className="truncate">
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
@@ -50,11 +46,7 @@ export function AgentRow({ agent }: Props) {
                 : "Open Chat to give instructions."}
         </Text>
         {secondLine ? (
-          <Text
-            variant="small"
-            tone="muted"
-            className="truncate tabular-nums leading-4"
-          >
+          <Text variant="small-tight" tone="muted" tabular className="truncate">
             {secondLine}
           </Text>
         ) : null}

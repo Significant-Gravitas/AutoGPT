@@ -122,16 +122,18 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   Run Outputs
                 </Text>
               </SheetTitle>
-              <SheetDescription className="mt-1 text-muted-foreground">
+              <SheetDescription className="mt-1 text-foreground-tertiary">
                 <span className="inline-flex items-center gap-1.5">
-                  <Text
-                    variant="small-medium-tight"
-                    as="span"
-                    // TODO(tokens): no exact role: bg-yellow-100 #FCEBB0, text-yellow-800 #876A00; dark-mode classes kept as written (QUALITY 43): no exact role: dark:bg-yellow-900/30 #675100, dark:text-yellow-400 #F7CD33
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                  >
-                    Beta
-                  </Text>
+                  <span className="rounded-md bg-yellow/30 px-2 py-0.5 text-yellow-foreground">
+                    <Text
+                      variant="small-medium-tight"
+                      as="span"
+                      tone="inherit"
+                      className="block"
+                    >
+                      Beta
+                    </Text>
+                  </span>
                   <Text variant="body-tight" as="span" tone="inherit">
                     This feature is in beta and may contain bugs
                   </Text>
@@ -158,10 +160,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                         </Text>
                       </Label>
                       {group.metadata.description && (
-                        <Label
-                          // TODO(tokens): no exact role: text-gray-600 #4B5563
-                          className="mt-1 block text-gray-600"
-                        >
+                        <Label className="mt-1 block text-foreground-secondary">
                           <Text
                             variant="body-medium-tight"
                             as="span"
@@ -184,10 +183,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   </div>
                 ))
               ) : (
-                <div
-                  // TODO(tokens): no exact role: text-gray-500 #6B7280
-                  className="flex h-full items-center justify-center text-gray-500"
-                >
+                <div className="flex h-full items-center justify-center text-foreground-tertiary">
                   <p>No output blocks available.</p>
                 </div>
               )}

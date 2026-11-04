@@ -195,7 +195,6 @@ async def sdk_service_turn(
         "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
         "AsyncClusterLock": MagicMock(side_effect=lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
-        "propagate_attributes": MagicMock(),
         "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
         "download_transcript": AsyncMock(return_value=None),
         "upload_transcript": AsyncMock(),
@@ -206,7 +205,6 @@ async def sdk_service_turn(
         "build_sdk_env": MagicMock(return_value={}),
         "_resolve_sdk_model": MagicMock(return_value=None),
         "set_execution_context": MagicMock(),
-        "get_user_tier": AsyncMock(return_value=None),
         "resolve_turn_budget": AsyncMock(
             return_value=TurnBudget(usd=100.0, limiting="task")
         ),

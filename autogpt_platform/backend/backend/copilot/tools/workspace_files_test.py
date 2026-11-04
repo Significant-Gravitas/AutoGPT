@@ -17,7 +17,6 @@ from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workdir import validate_ephemeral_path
 from backend.copilot.tools.workspace_files import (
-    _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
@@ -151,6 +150,34 @@ class TestResolveWriteContent:
         target.write_bytes(b"file content")
         result = await _resolve_write_content(None, None, str(target), "s1")
         assert result == b"file content"
+
+    async def test_source_path_is_read_only_past_the_size_limit(self, ephemeral_dir):
+        big = ephemeral_dir / "big.bin"
+        big.touch()
+        os.truncate(big, 3 * 1024 * 1024)
+        with patch("backend.copilot.tools.workspace_files._MAX_FILE_SIZE_MB", 1):
+            result = await _resolve_write_content(None, None, str(big), "s1")
+        assert isinstance(result, bytes)
+        assert len(result) == 1024 * 1024 + 1
+
+    async def test_sandbox_source_path_is_read_only_past_the_size_limit(self):
+        sandbox = MagicMock()
+        read = AsyncMock(return_value=b"x")
+        with (
+            patch("backend.copilot.tools.workspace_files._MAX_FILE_SIZE_MB", 1),
+            patch(
+                "backend.copilot.tools.workspace_files.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.workspace_files.resolve_sandbox_path_or_error",
+                return_value="/home/user/big.bin",
+            ),
+            patch("backend.copilot.tools.workspace_files.read_sandbox_file", read),
+        ):
+            result = await _resolve_write_content(None, None, "big.bin", "s1")
+        assert result == b"x"
+        read.assert_awaited_once_with(sandbox, "/home/user/big.bin", 1024 * 1024)
 
     async def test_source_path_not_found(self, ephemeral_dir):
         from backend.copilot.tools.models import ErrorResponse
@@ -431,11 +458,11 @@ class TestReadLocalToolResult:
     def test_file_too_large(self, monkeypatch):
         """Files exceeding the size limit are rejected."""
         encoded = "-tmp-copilot-local-read-large"
-        # Create a small file but fake os.path.getsize to return a huge value
+        # A small file, with the cap lowered below its size
         path = self._make_tool_result(encoded, "big.txt", b"small")
         token = _current_project_dir.set(encoded)
         monkeypatch.setattr(
-            "os.path.getsize", lambda _: _MAX_LOCAL_TOOL_RESULT_BYTES + 1
+            "backend.copilot.tools.workspace_files._MAX_LOCAL_TOOL_RESULT_BYTES", 4
         )
         try:
             result = _read_local_tool_result(path, 0, None, "s1")
@@ -1035,7 +1062,7 @@ class TestSkillsRegistryACL:
         # Only the bytes the slice can reach: four per character at most.
         (100, 50, 4 * 150),
         # "From here to the end" stops at the per-read cap.
-        (10, None, 4 * (10 + 1_000_000)),
+        (10, None, 4 * (10 + 30_000)),
     ],
 )
 async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
@@ -1065,7 +1092,7 @@ async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
     assert isinstance(resp, WorkspaceFileContentResponse), resp.message
     manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
     sliced = base64.b64decode(resp.content_base64).decode()
-    assert len(sliced) == (length if length is not None else 1_000_000)
+    assert len(sliced) == (length if length is not None else 30_000)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1252,3 +1279,56 @@ class TestReadingASpilledGoogleOutput:
         assert not (
             await self._read({"purpose": "tool-output"}, **read)
         ).holds_google_data
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("character", ["x", "é"])
+@pytest.mark.parametrize("source", ["workspace", "local"])
+async def test_workspace_windows_stay_readable_without_another_saved_preview(
+    character, source, tmp_path
+):
+    content = character * 35_000
+    raw = content.encode()
+    manager = AsyncMock()
+    manager.get_file_info.return_value = _text_file(len(raw))
+    manager.read_file_head_by_id.side_effect = lambda _file_id, max_bytes: raw[
+        :max_bytes
+    ]
+    local = tmp_path / "result.txt"
+    local.write_bytes(raw)
+    manager.get_file_info_by_path.return_value = None
+    reference = {"file_id": "f-1"} if source == "workspace" else {"path": str(local)}
+    session = make_session("user-1")
+    chunks = []
+    offset = 0
+    with (
+        patch(
+            "backend.copilot.tools.workspace_files.get_sdk_cwd",
+            return_value=str(tmp_path),
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=manager),
+        ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize", AsyncMock()
+        ) as persist,
+        patch("backend.copilot.gate.reads.screen_mode", AsyncMock(return_value="off")),
+    ):
+        while offset < len(content):
+            result = await ReadWorkspaceFileTool().execute(
+                "user-1",
+                session,
+                "tc-window",
+                offset=offset,
+                length=50_000,
+                **reference,
+            )
+            persist.assert_not_awaited()
+            payload = json.loads(result.output)
+            chunk = base64.b64decode(payload["content_base64"]).decode()
+            assert chunk
+            assert len(result.output) < 45_000
+            chunks.append(chunk)
+            offset += len(chunk)
+    assert "".join(chunks) == content

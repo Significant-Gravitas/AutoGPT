@@ -21,7 +21,7 @@ export function ReceiptMetadata({ transaction }: Props) {
       <div className="flex flex-wrap gap-x-6 gap-y-3">
         {transaction.execution_status && (
           <div className="flex flex-col items-start gap-1">
-            <Text variant="small" className="text-foreground-secondary">
+            <Text variant="small" tone="secondary">
               Run status
             </Text>
             <Badge
@@ -80,7 +80,7 @@ function MetadataField({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small" className="text-foreground-secondary">
+      <Text variant="small" tone="secondary">
         {label}
       </Text>
       <Text variant="small" title={title}>
@@ -116,14 +116,14 @@ function ReceiptDestination({ transaction }: Props) {
         ? "Not in your library"
         : "Workflow and run unavailable";
     return (
-      <Text variant="small" className="text-foreground-secondary">
+      <Text variant="small" tone="secondary">
         {label}
       </Text>
     );
   }
   if (transaction.activity_type === "copilot_tools")
     return (
-      <Text variant="small" className="text-foreground-secondary">
+      <Text variant="small" tone="secondary">
         Conversation unavailable
       </Text>
     );

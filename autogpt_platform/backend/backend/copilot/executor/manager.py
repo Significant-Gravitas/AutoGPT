@@ -374,6 +374,9 @@ class CoPilotExecutor(AppProcess):
         if session_id not in self.active_tasks:
             logger.debug(f"Cancel received for {session_id} but not active")
             return
+        if request.turn_id and self._active_turn_ids.get(session_id) != request.turn_id:
+            logger.info(f"Cancel for {session_id} names a turn that is not running")
+            return
 
         _, cancel_event = self.active_tasks[session_id]
         logger.info(f"Received cancel for {session_id}")

@@ -31,9 +31,11 @@ export interface MentionInput {
   value: string;
   selectionStart: number | null;
   setSelectionRange: (start: number, end: number) => void;
+  focus?: () => void;
 }
 
-interface ActiveMention {
+/** The `@query` under the caret and where it sits in the message. */
+export interface ActiveMention {
   query: string;
   start: number;
   end: number;
@@ -42,7 +44,8 @@ interface ActiveMention {
 export type MentionOption =
   | { kind: "file"; file: WorkspaceFileItem }
   | { kind: "folder"; folder: WorkspaceFolder; subfolderCount: number }
-  | { kind: "integration"; integration: IntegrationMention };
+  | { kind: "integration"; integration: IntegrationMention }
+  | { kind: "connect"; query: string };
 
 interface Args {
   enabled: boolean;
@@ -66,6 +69,11 @@ interface Args {
  * adds it as an attachment chip; selecting an integration replaces the
  * `@query` with a credential reference rendered as an inline badge. Keyboard nav stays in the textarea (focus never leaves), so
  * this owns the highlight cursor and the key handler.
+ *
+ * The list always ends with "Connect an integration". Choosing it sets
+ * `connectRequest`, which the host turns into the connect dialog; once an
+ * account is connected, `resumeAfterConnect` reopens the same `@query` so
+ * the new account can be picked without retyping it.
  */
 export function useChatMentions({
   enabled,
@@ -81,6 +89,13 @@ export function useChatMentions({
   const isOpen = enabled && active !== null;
   const textareaRef = useRef<MentionInput | null>(null);
   const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+  const [connectRequest, setConnectRequest] = useState<ActiveMention | null>(
+    null,
+  );
+  // The request whose connect finishes last may not be the latest one: in an
+  // expert chat the grant lands after the dialog closed, and by then the user
+  // may have opened Connect again.
+  const latestConnectRef = useRef<ActiveMention | null>(null);
 
   const query = active?.query ?? "";
   const debouncedQuery = useDebouncedValue(query, QUERY_DEBOUNCE_MS);
@@ -122,13 +137,22 @@ export function useChatMentions({
     : [];
   const folders = matchFolders(allFolders, debouncedQuery);
 
-  const matchedIntegrations = filterIntegrationMentions(
-    integrations,
-    query,
+  // The connect dialog's search also matches service descriptions, so the
+  // account just connected may not match the `@query` it was found by
+  // (`@errors` finding Sentry); it is listed first for that mention anyway.
+  const [justConnectedId, setJustConnectedId] = useState<string | null>(null);
+  const justConnected = integrations.find(
+    (integration) => integration.credentialId === justConnectedId,
+  );
+  const matched = filterIntegrationMentions(integrations, query);
+  const matchedIntegrations = (
+    justConnected && !matched.includes(justConnected)
+      ? [justConnected, ...matched]
+      : matched
   ).slice(0, INTEGRATION_RESULT_LIMIT);
 
-  // Integrations, then folders, then files: the keyboard cursor spans all
-  // three groups as one list.
+  // Integrations, then folders, then files, then the way to connect another
+  // integration: the keyboard cursor spans them all as one list.
   const options: MentionOption[] = [
     ...matchedIntegrations.map(
       (integration): MentionOption => ({ kind: "integration", integration }),
@@ -141,14 +165,27 @@ export function useChatMentions({
       }),
     ),
     ...files.map((file): MentionOption => ({ kind: "file", file })),
+    { kind: "connect", query },
   ];
 
   const {
-    highlightedIndex,
+    highlightedIndex: cursorIndex,
     highlightedRef,
     moveHighlight,
     setHighlightedIndex,
   } = useKeyboardNav(options.length, query);
+  // With nothing matched only "Connect an integration" is left, and it waits
+  // to be arrowed or pointed to: pre-selecting it would turn Enter after any
+  // unmatched `@word` into opening the dialog instead of sending.
+  const [pointedAtQuery, setPointedAtQuery] = useState<string | null>(null);
+  const hasResults = options.length > 1;
+  const highlightedIndex =
+    hasResults || pointedAtQuery === query ? cursorIndex : -1;
+
+  function highlight(index: number) {
+    setPointedAtQuery(query);
+    setHighlightedIndex(index);
+  }
 
   // The caret lands wherever the browser puts it after a programmatic value
   // change (usually the end); move it to just after the inserted mention once
@@ -157,22 +194,25 @@ export function useChatMentions({
     if (pendingCaret === null) return;
     const textarea = textareaRef.current;
     if (textarea && textarea.value.length >= pendingCaret) {
+      // A no-op while typing; the connect dialog has no trigger to hand focus
+      // back to, so returning from it relies on this.
+      textarea.focus?.();
       textarea.setSelectionRange(pendingCaret, pendingCaret);
     }
     setPendingCaret(null);
   }, [pendingCaret, value]);
 
-  // With workspace files off and nothing connected there is nothing to pick,
-  // so a typed `@` must not open an empty dropdown.
-  const hasOptions = includeWorkspaceFiles || integrations.length > 0;
+  // Choosing Connect lasts only for the mention it was made in; a later one
+  // with the same text starts with nothing highlighted again.
+  function endMention() {
+    setActive(null);
+    setPointedAtQuery(null);
+    setJustConnectedId(null);
+  }
 
   function detect(textarea: MentionInput) {
     if (!enabled) return;
     textareaRef.current = textarea;
-    if (!hasOptions) {
-      setActive(null);
-      return;
-    }
     const caret = textarea.selectionStart ?? textarea.value.length;
     const beforeCaret = textarea.value.slice(0, caret);
     // A single-word token is always a query; a multi-word one is only kept
@@ -185,7 +225,7 @@ export function useChatMentions({
         ? accountMatch
         : null);
     if (!match) {
-      setActive(null);
+      endMention();
       return;
     }
     const token = match[1];
@@ -193,7 +233,7 @@ export function useChatMentions({
   }
 
   function close() {
-    setActive(null);
+    endMention();
   }
 
   function accept(option: MentionOption | undefined) {
@@ -201,7 +241,10 @@ export function useChatMentions({
     // list can momentarily leave it pointing past the end — guard against the
     // out-of-bounds `undefined` before touching the option.
     if (!active || !option) return;
-    if (option.kind === "integration") {
+    if (option.kind === "connect") {
+      latestConnectRef.current = active;
+      setConnectRequest(active);
+    } else if (option.kind === "integration") {
       const next = insertIntegrationMention(value, active, option.integration);
       setValue(next.value);
       setPendingCaret(next.caret);
@@ -211,7 +254,34 @@ export function useChatMentions({
         addWorkspaceFolder(option.folder, option.subfolderCount);
       else addWorkspaceFile(option.file);
     }
-    setActive(null);
+    endMention();
+  }
+
+  // Puts the caret back after the `@query` the dialog was opened from, but
+  // only while the message is as it was then. In an expert chat the dialog
+  // closes before the grant lands, and anything typed meanwhile (`@sentry`
+  // becoming `@sentry2`) means the saved range no longer fits.
+  function returnToMention(request: ActiveMention): boolean {
+    const text = textareaRef.current?.value ?? value;
+    if (text !== value) return false;
+    if (text.slice(request.start, request.end) !== `@${request.query}`)
+      return false;
+    setPendingCaret(request.end);
+    return true;
+  }
+
+  function cancelConnect() {
+    if (connectRequest) returnToMention(connectRequest);
+    setConnectRequest(null);
+  }
+
+  function resumeAfterConnect(request: ActiveMention, credentialId: string) {
+    if (latestConnectRef.current !== request) return;
+    latestConnectRef.current = null;
+    setConnectRequest(null);
+    if (!returnToMention(request)) return;
+    setActive(request);
+    setJustConnectedId(credentialId);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>): boolean {
@@ -221,17 +291,19 @@ export function useChatMentions({
       close();
       return true;
     }
-    if (options.length === 0) return false;
     if (isKey(e, "ArrowDown")) {
       e.preventDefault();
+      setPointedAtQuery(query);
       moveHighlight(1);
       return true;
     }
     if (isKey(e, "ArrowUp")) {
       e.preventDefault();
+      setPointedAtQuery(query);
       moveHighlight(-1);
       return true;
     }
+    if (highlightedIndex < 0) return false;
     if (isKey(e, "Enter", "Tab")) {
       e.preventDefault();
       accept(options[highlightedIndex]);
@@ -249,7 +321,7 @@ export function useChatMentions({
     isError: includeWorkspaceFiles && search.isError,
     highlightedIndex,
     highlightedRef,
-    setHighlightedIndex,
+    setHighlightedIndex: highlight,
     bindInput: (input: MentionInput) => {
       textareaRef.current = input;
     },
@@ -257,6 +329,9 @@ export function useChatMentions({
     close,
     accept,
     onKeyDown,
+    connectRequest,
+    cancelConnect,
+    resumeAfterConnect,
   };
 }
 

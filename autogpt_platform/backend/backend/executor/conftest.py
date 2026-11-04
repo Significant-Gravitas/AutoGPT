@@ -78,3 +78,15 @@ def _runners_belong_to_their_org(mocker):
             side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _orgs_are_not_personal(mocker):
+    """Treat every org a run is given as a team org, whose balance pays.
+
+    ``add_graph_execution`` reads the org's personal owner to decide which
+    ledger the run bills. Tests of a run in its user's personal org override it.
+    """
+    lookup = mocker.MagicMock()
+    lookup.get_personal_org_owner = mocker.AsyncMock(return_value=None)
+    return mocker.patch("backend.executor.utils.credit_db", return_value=lookup)

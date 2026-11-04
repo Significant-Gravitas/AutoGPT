@@ -1,6 +1,6 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { tones } from "./helpers";
+import { tones } from "@/components/styles/tones";
 import { Text, textTones, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
@@ -53,8 +53,8 @@ export function AllVariants() {
   return (
     <div className="space-y-8">
       {/* Headings */}
-      <div className="mb-19 mb-20 space-y-6">
-        <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <div className="mb-20 space-y-6">
+        <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
           Headings
         </h2>
         <Text variant="h1">Heading 1</Text>
@@ -71,7 +71,7 @@ export function AllVariants() {
         />
       </div>
       {/* Body Text */}
-      <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
         Body Text
       </h2>
       <div className="flex flex-row gap-8">
@@ -307,6 +307,47 @@ export function TextRoles() {
       <Text variant="small" tone="muted">
         Floor is 12px (small). No arbitrary px sizes.
       </Text>
+    </div>
+  );
+}
+
+//=============================================================================
+// Modifier props: adjust a variant without a className
+//=============================================================================
+export function Modifiers() {
+  return (
+    <div className="space-y-3 p-8">
+      <Text variant="body" weight="semibold">
+        weight=&quot;semibold&quot;
+      </Text>
+      <Text variant="body" mono>
+        mono · run_7f3a2c
+      </Text>
+      <Text variant="body" tabular>
+        tabular · 1,204.50 credits
+      </Text>
+      <Text variant="body" italic>
+        italic
+      </Text>
+      <Text variant="body" decoration="line-through" tone="muted">
+        decoration=&quot;line-through&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tone="muted">
+        transform=&quot;uppercase&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tracking="caps">
+        tracking=&quot;caps&quot;
+      </Text>
+      <Text variant="body" align="center">
+        align=&quot;center&quot;
+      </Text>
+      <StoryCode
+        code={`<Text variant="body" weight="semibold">…</Text>
+<Text variant="body" mono>…</Text>
+<Text variant="body" tabular>…</Text>
+<Text variant="body" decoration="line-through" tone="muted">…</Text>
+<Text variant="small" transform="uppercase" tone="muted">…</Text>`}
+      />
     </div>
   );
 }

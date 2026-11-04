@@ -101,8 +101,8 @@ export function ExpertWorkflowCardMenu({
           {libraryHref && expertId ? <DropdownMenuSeparator /> : null}
           {expertId ? (
             <DropdownMenuItem
-              // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a hover fill); no fitting role for focus:text-red-600 #D93636; #D93636 is error-hover (a hover fill)
-              className="flex items-center gap-2 text-red-600 focus:text-red-600"
+              // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant (src/components is P9's)
+              className="flex items-center gap-2 text-error-foreground focus:text-error-foreground"
               onSelect={() => setIsRemoveOpen(true)}
             >
               <Icon icon={Delete02Icon} size={16} />

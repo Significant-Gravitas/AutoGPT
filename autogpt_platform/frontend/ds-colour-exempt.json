@@ -1,0 +1,143 @@
+{
+  "$comment": [
+    "The colours that may stay outside the role tokens (SECRT-3154): artwork, logos, brand marks, chart series, user-picked colour palettes, and markup that never reaches the app's stylesheet.",
+    "files: a glob from autogpt_platform/frontend. allow: only these palette classes (no variant or opacity) and hex values may stay in the file; without it, the whole file may keep its colours.",
+    "design-system/no-palette-colours and no-hex-colours read this list, and scripts/__tests__/colour-exempt.test.ts checks every entry still matches a file and every allowed value is still used. Add an entry only with a reason."
+  ],
+  "exempt": [
+    {
+      "files": "src/app/tokens/theme.css",
+      "reason": "The token file: the one place a colour value is written."
+    },
+    {
+      "files": "src/app/tailwind-v3-preflight.css",
+      "reason": "Tailwind 3's reset, vendored unchanged; its border and placeholder greys are overridden by globals.css."
+    },
+    {
+      "files": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
+      "reason": "The expert colour picker: each option is the Tailwind hue a person picks, saved with the expert, and its dither ramp."
+    },
+    {
+      "files": "src/app/(platform)/library/components/LibraryFolder/FolderIcon.tsx",
+      "reason": "Folder colours are user-picked data (blue, purple, emerald, orange, pink), drawn as folder artwork."
+    },
+    {
+      "files": "src/app/(platform)/library/components/folder-constants.ts",
+      "reason": "The folder colours a person can pick, stored as hex on the folder."
+    },
+    {
+      "files": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock.tsx",
+      "reason": "Sticky-note colours are user-picked data, one pastel per note."
+    },
+    {
+      "files": "src/components/styles/tones.ts",
+      "allow": ["text-emerald-300"],
+      "reason": "The success-light tone (Text and Icon), green text on the always-dark toast and terminal; the success roles have no value that reads on dark until the dark theme (D1)."
+    },
+    {
+      "files": "src/app/(platform)/copilot/components/ToolChain/ToolResultViews.tsx",
+      "allow": ["text-red-400"],
+      "reason": "The exit code on the always-dark terminal; the error role drops it to 3.3:1 there until the dark theme (D1) gives error a dark value."
+    },
+    {
+      "files": "src/app/(platform)/library/components/LibraryAgentCard/LibraryAgentCard.tsx",
+      "allow": ["text-red-300"],
+      "reason": "Error text on the always-dark tooltip; the error role drops its contrast there until the dark theme (D1)."
+    },
+    {
+      "files": "src/components/overview.stories.tsx",
+      "allow": ["text-blue-500", "bg-gray-200", "#1234ff"],
+      "reason": "The overview's \"don't\" examples, shown as code: they name raw colours on purpose."
+    },
+    {
+      "files": "src/app/(platform)/copilot/components/ArtifactPanel/{ArtifactPanel,components/ArtifactContent}.stories.tsx",
+      "reason": "Sample artifacts (HTML with the Tailwind CDN, SVG images) that the artifact iframe renders: content a person's Otto session produced, not the app's UI."
+    },
+    {
+      "files": "src/components/molecules/NotionAvatar/**",
+      "reason": "Notion-style avatar artwork: the generated SVG parts, their palette and the status badge drawn into the avatar."
+    },
+    {
+      "files": "src/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/other/Empty*Illustration.tsx",
+      "reason": "Empty-state illustrations: fixed artwork palettes."
+    },
+    {
+      "files": "src/components/atoms/AutoGPTLogo/AutoGPTLogo.tsx",
+      "reason": "The AutoGPT logo's brand colours."
+    },
+    {
+      "files": "src/components/molecules/GlassOrb/GlassOrb.tsx",
+      "reason": "The glass orb artwork's colour blobs."
+    },
+    {
+      "files": "src/components/molecules/Confetti/Confetti.tsx",
+      "reason": "Confetti particle colours: canvas artwork."
+    },
+    {
+      "files": "src/app/(platform)/raise/components/DitheredWaves/helpers.ts",
+      "reason": "The dither shader's colour ramp, uploaded to WebGL as numbers."
+    },
+    {
+      "files": "src/components/molecules/AutopilotAvatar/helpers.ts",
+      "reason": "Otto's avatar aura artwork."
+    },
+    {
+      "files": "src/app/(platform)/copilot/helpers/greetingOrb.ts",
+      "reason": "The greeting orb artwork's purple, drawn on a canvas."
+    },
+    {
+      "files": "src/app/(platform)/admin/memory/components/GraphCanvas.tsx",
+      "reason": "The memory graph canvas: node and edge series colours drawn by the canvas renderer, where CSS variables do not resolve."
+    },
+    {
+      "files": "src/app/(platform)/admin/bots/components/{ServerGrowthChart,MessageVolumeChart}.tsx",
+      "reason": "Chart series colours, written by recharts as SVG attributes, where CSS variables do not resolve."
+    },
+    {
+      "files": "src/app/(platform)/admin/execution-analytics/components/ExecutionAnalyticsForm.tsx",
+      "allow": ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"],
+      "reason": "Chart series colours, written by recharts as SVG attributes, where CSS variables do not resolve."
+    },
+    {
+      "files": "src/app/(platform)/team/[expertId]/components/ExpertOverview/components/ActivityChart.tsx",
+      "reason": "Chart series colours and the bar separator, written by recharts as SVG attributes, where CSS variables do not resolve."
+    },
+    {
+      "files": "src/app/(platform)/team/[expertId]/components/ExpertOverview/helpers.ts",
+      "allow": ["#2a78d6", "#eb6834"],
+      "reason": "The activity chart's two series colours (see ActivityChart.tsx)."
+    },
+    {
+      "files": "src/components/atoms/Avatar/Avatar.tsx",
+      "allow": ["#92a1c6", "#146a7c", "#f0ab3d", "#c271b4", "#c20d90"],
+      "reason": "The generated fallback avatar's artwork palette (boring-avatars)."
+    },
+    {
+      "files": "src/app/(no-navbar)/onboarding/steps/SubscriptionStep/components/OttoCover.tsx",
+      "allow": ["#fdfcf8"],
+      "reason": "The warm studio colour baked into the cover artwork, so the panel meets the image without a seam."
+    },
+    {
+      "files": "src/app/(platform)/library/components/SitrepItem/SitrepItem.tsx",
+      "allow": ["#0000", "#000"],
+      "reason": "Stops of the spinner's CSS mask: alpha, not colour."
+    },
+    {
+      "files": "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx",
+      "allow": ["#020617", "#e2e8f0"],
+      "reason": "The fallback background and text of the dark syntax-highlighting theme, used until shiki has highlighted the block."
+    },
+    {
+      "files": "src/app/(platform)/copilot/components/ArtifactPanel/components/reactArtifactPreview.ts",
+      "reason": "The HTML document the React artifact iframe loads: it has no access to the app's stylesheet."
+    },
+    {
+      "files": "src/app/(platform)/auth/integrations/mcp_callback/route.ts",
+      "reason": "A standalone HTML page the OAuth popup shows: it has no access to the app's stylesheet."
+    },
+    {
+      "files": "src/app/(public)/tour/chat/script/completionArtifacts.ts",
+      "reason": "The tour's scripted sample documents: their support-ticket numbers (#4821, #4822, ...) read as hex, and none is a colour."
+    }
+  ]
+}

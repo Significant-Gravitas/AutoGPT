@@ -19,6 +19,13 @@ from backend.api.utils.client_ip import ClientIP
 from backend.api.utils.rate_limit import RateLimiter
 from backend.data.auth.oauth import register_public_client
 from backend.util.settings import Settings
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_LIST_ENTRIES,
+    MAX_LONG_NAME_LENGTH,
+    NameText,
+    URLText,
+)
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -42,13 +49,20 @@ class ClientRegistrationRequest(BaseModel):
     Members this server doesn't use, such as `logo_uri`, are ignored.
     """
 
-    redirect_uris: list[str]
-    token_endpoint_auth_method: str = "none"
-    grant_types: list[str] = list(SUPPORTED_GRANT_TYPES)
-    response_types: list[str] = ["code"]
-    client_name: Optional[str] = None
+    redirect_uris: list[URLText] = Field(max_length=MAX_LIST_ENTRIES)
+    token_endpoint_auth_method: NameText = "none"
+    grant_types: list[NameText] = Field(
+        default=list(SUPPORTED_GRANT_TYPES), max_length=MAX_LIST_ENTRIES
+    )
+    response_types: list[NameText] = Field(
+        default=["code"], max_length=MAX_LIST_ENTRIES
+    )
+    # Looser than MAX_CLIENT_NAME_LENGTH, so the policy answers RFC 7591's 400.
+    client_name: Optional[str] = Field(default=None, max_length=MAX_LONG_NAME_LENGTH)
     scope: Optional[str] = Field(
-        default=None, description="Space-separated; every permission if omitted"
+        default=None,
+        max_length=MAX_DESCRIPTION_LENGTH,
+        description="Space-separated; every permission if omitted",
     )
 
 
