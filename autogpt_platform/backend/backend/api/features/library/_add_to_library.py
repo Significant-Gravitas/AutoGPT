@@ -22,6 +22,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
 from ._schedule_info import _fetch_schedule_info
+from .exceptions import LibraryAgentInAnotherOrganizationError
 
 logger = logging.getLogger(__name__)
 
@@ -74,19 +75,28 @@ async def resolve_graph_model_for_library(
     user_id: str,
     *,
     admin: bool,
+    tx: prisma.Prisma | None = None,
 ) -> GraphModel:
-    """Resolve the graph for an already-validated marketplace version."""
+    """Resolve the graph for an already-validated marketplace version.
+
+    `skip_access_check`: the agent isn't in the user's library yet, so
+    `get_graph()` would deny; `resolve_store_version_for_library()` authorized.
+    """
     ag = _require_graph(store_listing_version)
 
-    graph_model = (
-        await graph_db.get_graph_as_admin(
-            graph_id=ag.id, version=ag.version, user_id=user_id
+    if admin:
+        graph_model = await graph_db.get_graph_as_admin(
+            graph_id=ag.id, version=ag.version, user_id=user_id, client=tx
         )
-        if admin
-        else await graph_db.get_graph(
-            graph_id=ag.id, version=ag.version, user_id=user_id
+    elif tx is None:
+        graph_model = await graph_db.get_graph(
+            graph_id=ag.id,
+            version=ag.version,
+            user_id=user_id,
+            skip_access_check=True,
         )
-    )
+    else:
+        graph_model = await graph_db.get_graph_at_version(ag.id, ag.version, client=tx)
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
     return graph_model
@@ -137,8 +147,13 @@ def _marketplace_metadata(
 async def restore_existing_library_agent(
     store_listing_version: prisma.models.StoreListingVersion,
     user_id: str,
+    organization_id: str | None = None,
 ) -> library_model.LibraryAgent | None:
-    """Restore and return an existing library entry without loading its graph."""
+    """Restore and return an existing library entry without loading its graph.
+
+    With ``organization_id``, an entry tagged with another organization is
+    left alone and ``LibraryAgentInAnotherOrganizationError`` raised.
+    """
     ag = _require_graph(store_listing_version)
 
     client = prisma.models.LibraryAgent.prisma()
@@ -152,6 +167,13 @@ async def restore_existing_library_agent(
     existing = await client.find_unique(where=where)
     if existing is None:
         return None
+    if organization_id is not None and existing.organizationId not in (
+        None,
+        organization_id,
+    ):
+        raise LibraryAgentInAnotherOrganizationError(
+            "This agent is already in your library in another organization"
+        )
 
     restored = await client.update(
         where=where,
@@ -180,6 +202,8 @@ async def add_graph_to_library(
     store_listing_version: prisma.models.StoreListingVersion,
     *,
     tx: prisma.Prisma | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
@@ -188,13 +212,16 @@ async def add_graph_to_library(
     atomic with the caller's other writes; catching a uniqueness error inside
     PostgreSQL's transaction would leave that transaction aborted.
     """
-    settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
+    settings_json = SafeJson(GraphSettings().model_dump())
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
     marketplace = _marketplace_metadata(store_listing_version)
+    # A transactional caller resolves the tenancy before its transaction.
+    if tx is None and organization_id is None:
+        organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data, update_data = await _library_agent_payloads(
-        graph_model, user_id, settings_json, marketplace
+        graph_model, user_id, settings_json, marketplace, organization_id, team_id
     )
 
     if tx is not None:
@@ -223,8 +250,9 @@ async def _library_agent_payloads(
     user_id: str,
     settings_json: SafeJson,
     marketplace: dict[str, str | None],
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[dict, dict]:
-    organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {

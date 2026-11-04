@@ -1,8 +1,9 @@
-import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import type { HomeUpcomingTask } from "@/app/api/__generated__/models/homeUpcomingTask";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { WorkflowAvatar } from "@/components/molecules/WorkflowAvatar/WorkflowAvatar";
 import { formatUntil } from "../helpers";
 
 interface Props {
@@ -11,34 +12,24 @@ interface Props {
 
 export function UpcomingRow({ item }: Props) {
   return (
-    <div className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4">
-      {/* The expert who will do the work is the marker; the glyph only
-          stands in when no expert owns the task. */}
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
-        {item.expert ? (
-          <ExpertAvatar
-            name={item.expert.name}
-            avatarUrl={item.expert.avatar_url}
-            size={36}
-          />
-        ) : (
-          <span className="flex size-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
-            <Icon
-              icon={item.kind === "followup" ? Calendar03Icon : Clock01Icon}
-              size={15}
-              aria-hidden="true"
-            />
-          </span>
-        )}
+    <div
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the 60px indent lines the row up with the timeline column; the spacing scale has 14 (56px) and 16 (64px)
+      className="relative flex items-center gap-3 py-2 pr-4 pl-[3.75rem]"
+    >
+      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
+        <TaskMarker item={item} />
       </span>
       <div className="min-w-0 flex-1">
-        <Text
-          variant="body-medium"
-          className="truncate text-[13px] leading-5 text-zinc-900"
-        >
-          {item.title}
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
+          <span>{item.title}</span>
+          {item.kind === "agent" ? (
+            <span className="font-normal text-foreground-tertiary">
+              {" "}
+              workflow
+            </span>
+          ) : null}
         </Text>
-        <Text variant="body" className="truncate text-zinc-500">
+        <Text variant="body" tone="muted" className="truncate">
           {item.expert?.name ??
             (item.kind === "followup" ? "Follow-up" : "Scheduled task")}
           <span aria-hidden="true"> · </span>
@@ -48,5 +39,29 @@ export function UpcomingRow({ item }: Props) {
         </Text>
       </div>
     </div>
+  );
+}
+
+/** The expert who will do the work is the marker; a workflow shows its own
+ *  picture, and the glyph only stands in for a follow-up. */
+function TaskMarker({ item }: Props) {
+  if (item.expert) {
+    return (
+      <ExpertAvatar
+        name={item.expert.name}
+        avatarUrl={item.expert.avatar_url}
+        size={36}
+      />
+    );
+  }
+  if (item.kind === "agent") {
+    return (
+      <WorkflowAvatar name={item.title} imageUrl={item.image_url} size={36} />
+    );
+  }
+  return (
+    <span className="flex size-9 items-center justify-center rounded-full bg-surface-hover text-foreground-tertiary ring-2 ring-surface">
+      <Icon icon={Calendar03Icon} size={15} aria-hidden="true" />
+    </span>
   );
 }

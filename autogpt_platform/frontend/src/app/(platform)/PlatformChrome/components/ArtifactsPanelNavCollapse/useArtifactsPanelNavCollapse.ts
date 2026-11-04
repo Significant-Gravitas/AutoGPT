@@ -1,5 +1,8 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { useSidebar } from "@/components/ui/sidebar";
+import {
+  getPersistedSidebarOpen,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -7,7 +10,8 @@ import { useEffect, useRef } from "react";
 export function useArtifactsPanelNavCollapse() {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
-  const isCopilotRoute = matchesRoute(pathname, "/copilot");
+  const isCopilotRoute =
+    matchesRoute(pathname, "/home") || matchesRoute(pathname, "/copilot");
   // The docked right panel: an open artifact preview or the artifacts tab.
   // The floating files card doesn't count — it overlays the chat column
   // without narrowing it. Leaving /copilot counts as closing, so the nav
@@ -33,14 +37,15 @@ export function useArtifactsPanelNavCollapse() {
 
     if (collapsesNav) {
       openBeforePanelRef.current = openRef.current;
-      setOpen(false);
+      setOpen(false, { persist: false });
       return;
     }
-    // Restore only what this hook collapsed. If the user re-opened the nav
-    // by hand while the panel was up, that is a deliberate choice and closing
-    // it again on panel-close would undo it in front of them.
+    // Restore only what this hook collapsed, and prefer the remembered choice:
+    // a toggle made while the panel was up is the user's, and a reload shows it.
     if (openBeforePanelRef.current !== null && openRef.current === false) {
-      setOpen(openBeforePanelRef.current);
+      setOpen(getPersistedSidebarOpen() ?? openBeforePanelRef.current, {
+        persist: false,
+      });
     }
     openBeforePanelRef.current = null;
   }, [collapsesNav, setOpen]);

@@ -1,17 +1,4 @@
-import { Link } from "@/app/api/__generated__/models/link";
-import { Connection } from "@xyflow/react";
-
-export const convertConnectionsToBackendLinks = (
-  connections: Connection[],
-): Link[] =>
-  connections.map((c) => ({
-    source_id: c.source || "",
-    sink_id: c.target || "",
-    source_name: c.sourceHandle || "",
-    sink_name: c.targetHandle || "",
-  }));
-
-// ------------------- SVG Beads helpers -------------------
+// ------------------- JS Beads helpers -------------------
 
 export const getLengthOfPathInPixels = (path: string) => {
   const pathElement = document.createElementNS(
@@ -20,27 +7,6 @@ export const getLengthOfPathInPixels = (path: string) => {
   );
   pathElement.setAttribute("d", path);
   return pathElement.getTotalLength();
-};
-
-// ------------------- JS Beads helpers -------------------
-
-export const getPointAtT = (
-  t: number,
-  edgePath: string,
-  pathRef: React.MutableRefObject<SVGPathElement | null>,
-) => {
-  if (!pathRef.current) {
-    const tempPath = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "path",
-    );
-    tempPath.setAttribute("d", edgePath);
-    pathRef.current = tempPath;
-  }
-
-  const totalLength = pathRef.current.getTotalLength();
-  const point = pathRef.current.getPointAtLength(t * totalLength);
-  return { x: point.x, y: point.y };
 };
 
 export const getTForDistance = (

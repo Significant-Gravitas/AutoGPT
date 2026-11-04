@@ -24,20 +24,24 @@ export const GraphLoadingBox = ({
   }
 
   return (
-    <div className="absolute left-[50%] top-[50%] z-[99] -translate-x-1/2 -translate-y-1/2">
-      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-gray-200 bg-white p-8 shadow-lg dark:border-gray-700 dark:bg-slate-800">
+    <div className="absolute top-[50%] left-[50%] z-[99] -translate-x-1/2 -translate-y-1/2">
+      <div className="flex flex-col items-center gap-4 rounded-xlarge border border-border-base bg-surface p-8 shadow-lg">
         <div className="relative h-12 w-12">
-          <div className="absolute inset-0 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-400 dark:border-gray-700 dark:border-t-blue-400"></div>
+          <div className="absolute inset-0 animate-spin rounded-full border-4 border-separator border-t-foreground-subtle"></div>
         </div>
         <div className="flex flex-col items-center gap-2">
-          {isSaving && <Text variant="h4">Saving Graph</Text>}
+          {isSaving && <Text variant="h4">Saving Workflow</Text>}
           {flowContentLoading && <Text variant="h4">Loading Flow</Text>}
 
           {isSaving && (
-            <Text variant="small">Please wait while we save your graph...</Text>
+            <Text variant="small">
+              Please wait while we save your workflow...
+            </Text>
           )}
           {flowContentLoading && (
-            <Text variant="small">Please wait while we load your graph...</Text>
+            <Text variant="small">
+              Please wait while we load your workflow...
+            </Text>
           )}
         </div>
       </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { HomeActiveTask } from "@/app/api/__generated__/models/homeActiveTask";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { WorkflowAvatar } from "@/components/molecules/WorkflowAvatar/WorkflowAvatar";
 import { cn } from "@/lib/utils";
 import { formatRunningFor } from "../helpers";
 
@@ -9,12 +10,13 @@ interface Props {
   item: HomeActiveTask;
 }
 
+// oxlint-disable-next-line design-system/no-arbitrary-values -- the 60px indent lines the row up with the timeline column; the spacing scale has 14 (56px) and 16 (64px)
 const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
 
 export function ActiveRow({ item }: Props) {
   const content = (
     <>
-      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+      <span className="absolute top-1/2 left-4 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-surface">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
@@ -22,17 +24,22 @@ export function ActiveRow({ item }: Props) {
             size={36}
           />
         ) : (
-          <span className="size-2.5 rounded-full bg-primary" />
+          <WorkflowAvatar
+            name={item.title}
+            imageUrl={item.image_url}
+            size={36}
+          />
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <Text
-          variant="body-medium"
-          className="truncate text-[13px] leading-5 text-zinc-900"
-        >
-          {item.title}
+        <Text variant="body-medium-tight" tone="primary" className="truncate">
+          <span>{item.title}</span>
+          <span className="font-normal text-foreground-tertiary">
+            {" "}
+            workflow
+          </span>
         </Text>
-        <Text variant="small" className="truncate text-[11px] text-zinc-500">
+        <Text variant="small" tone="muted" className="truncate">
           {item.status === "queued"
             ? "Queued"
             : (formatRunningFor(item.started_at) ?? "Running now")}
@@ -47,7 +54,7 @@ export function ActiveRow({ item }: Props) {
       href={item.link}
       className={cn(
         ROW_CLASS,
-        "outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50",
+        "transition-colors outline-none hover:bg-surface-muted focus-visible:bg-surface-muted",
       )}
     >
       {content}

@@ -1,4 +1,9 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
+import type { ToolUIPart } from "ai";
+import { useContext, useMemo } from "react";
+import { HeldOutcomesContext } from "../HeldOutcomesContext";
+import { withHeldOutcome } from "../heldCallRows";
+import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
 import type {
@@ -13,7 +18,6 @@ interface Props {
   isCurrentlyStreaming: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
@@ -26,13 +30,20 @@ export function ChainMessageParts({
   isCurrentlyStreaming,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
   liveCompactionStats,
 }: Props) {
-  const segments = buildChainSegments(parts, isChainableToolPart);
+  const outcomes = useContext(HeldOutcomesContext);
+  // Kept per `parts` so each ToolChain gets the same `parts` array back and
+  // its own row derivation stays memoised. A manual memo even with the
+  // compiler on, which would rebuild this with the rows below whenever any
+  // prop or the outcomes context changes.
+  const segments = useMemo(
+    () => buildChainSegments(parts, isChainableToolPart),
+    [parts],
+  );
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );
@@ -50,15 +61,30 @@ export function ChainMessageParts({
         />
       );
     }
+    // Outside the chain a part renders from its held call's outcome; chain rows
+    // keep the stub, which applyHeldOutcome words.
+    if (segment.kind === "experts") {
+      return (
+        <ExpertChangeGroup
+          key={`${messageID}-experts-${segment.index}`}
+          parts={
+            segment.parts.map((part) =>
+              withHeldOutcome(part, outcomes),
+            ) as ToolUIPart[]
+          }
+          isCurrentlyStreaming={isCurrentlyStreaming}
+          readOnly={readOnly}
+        />
+      );
+    }
     return (
       <MessagePartRenderer
         key={`${messageID}-${segment.index}`}
-        part={segment.part}
+        part={withHeldOutcome(segment.part, outcomes)}
         messageID={messageID}
         partIndex={segment.index}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}

@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -28,6 +29,14 @@ interface Args {
   /** Existing account to upgrade. The backend unions its scopes with the
    *  requested ones, so a re-auth cannot narrow what the user already had. */
   credentialID?: string;
+  onError?: (error: unknown) => void;
+}
+
+/** Narrows or upgrades a single connect, for callers whose ask depends on
+ *  which button was pressed rather than on the hook's arguments. */
+interface ConnectRequest {
+  scopes?: string[];
+  credentialID?: string;
 }
 
 export function useOAuthConnect({
@@ -35,6 +44,7 @@ export function useOAuthConnect({
   onSuccess,
   scopes,
   credentialID,
+  onError,
 }: Args) {
   const queryClient = useQueryClient();
   const credentialsActions = useContext(CredentialsActionsContext);
@@ -58,7 +68,15 @@ export function useOAuthConnect({
     };
   }, []);
 
-  async function connect() {
+  function connect() {
+    return run();
+  }
+
+  function connectWith(request: ConnectRequest) {
+    return run(request);
+  }
+
+  async function run(request?: ConnectRequest) {
     // Ignore re-entry while a flow is in flight: a rapid double-click fires
     // again before the pending state re-renders the button, and a second
     // concurrent flow would overwrite preOpenedWindowRef/abortRef. State
@@ -80,9 +98,13 @@ export function useOAuthConnect({
     try {
       // Without the scopes the consent screen grants provider defaults, and
       // a credential missing a required scope never satisfies the caller.
-      const initiateResponse = await getV1InitiateOauthFlow(
+      const initiateResponse = await initiateLogin(
         provider,
-        buildLoginParams(scopes, credentialID),
+        request?.scopes ?? scopes,
+        request?.credentialID ?? credentialID,
+        // The list that produced the dead id is stale; refresh it now so a
+        // cancelled popup does not make every later click pay the retry too.
+        () => credentialsActions?.reload(),
       );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
@@ -153,6 +175,14 @@ export function useOAuthConnect({
         }
       }
       if (isUnmountedRef.current) return;
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
+      if (onError) {
+        onError(error);
+        return;
+      }
       toast({
         title: "OAuth connection failed",
         description: getOAuthErrorMessage(error),
@@ -164,7 +194,7 @@ export function useOAuthConnect({
     }
   }
 
-  return { connect, isPending };
+  return { connect, connectWith, isPending };
 }
 
 function buildLoginParams(scopes?: string[], credentialID?: string) {
@@ -172,4 +202,43 @@ function buildLoginParams(scopes?: string[], credentialID?: string) {
   if (scopes?.length) params.scopes = scopes.join(",");
   if (credentialID) params.credential_id = credentialID;
   return Object.keys(params).length > 0 ? params : undefined;
+}
+
+/** The upgrade target comes from an in-memory list that can be stale — the
+ *  very staleness this flow exists to survive — and the backend 404s an id it
+ *  cannot find. Fall back to a fresh grant rather than leaving a dead button.
+ *  Only that 404 retries: the endpoint also 404s a provider without OAuth
+ *  support, before it ever reads the upgrade target, and re-sending that
+ *  fails identically. */
+async function initiateLogin(
+  provider: string,
+  scopes?: string[],
+  credentialID?: string,
+  onStaleCredential?: () => void,
+) {
+  try {
+    return await getV1InitiateOauthFlow(
+      provider,
+      buildLoginParams(scopes, credentialID),
+    );
+  } catch (error) {
+    if (!credentialID || !isMissingUpgradeTarget(error)) throw error;
+    onStaleCredential?.();
+    return getV1InitiateOauthFlow(provider, buildLoginParams(scopes));
+  }
+}
+
+/** Matches only `_prepare_scope_upgrade`'s "Credential to upgrade not found".
+ *  If the backend rewords it the retry stops happening and the original 404
+ *  surfaces — the behaviour before the retry existed. */
+function isMissingUpgradeTarget(error: unknown) {
+  const { status, response } = (error ?? {}) as {
+    status?: number;
+    response?: { detail?: unknown };
+  };
+  return (
+    status === 404 &&
+    typeof response?.detail === "string" &&
+    response.detail.toLowerCase().includes("upgrade")
+  );
 }

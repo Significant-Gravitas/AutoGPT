@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
+from e2b_code_interpreter.constants import DEFAULT_TIMEOUT as RUN_CODE_TIMEOUT
 from pydantic import BaseModel, Field, JsonValue, SecretStr
 
 from backend.blocks._base import (
@@ -23,13 +24,28 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    hold_sandbox,
+    kill_sandbox,
+    release_sandbox,
+    uses_platform_e2b_key,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import OutputLimitedCodeSandbox, run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
+
+# A resumed box outlives ``run_code``'s own limit, so a step that runs to it
+# times out with its box intact rather than losing the box to its lifetime.
+RESUMED_SANDBOX_SECONDS = RUN_CODE_TIMEOUT + 60
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -126,9 +142,12 @@ class BaseE2BExecutorMixin:
         timeout: Optional[int] = None,
         sandbox_id: Optional[str] = None,
         dispose_sandbox: bool = False,
+        pause_when_kept: bool = False,
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
+        input_files: Optional[dict[str, bytes]] = None,
+        metadata: Optional[dict[str, str]] = None,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -137,30 +156,75 @@ class BaseE2BExecutorMixin:
         3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
 
         Args:
+            pause_when_kept: If True, a sandbox that is not disposed is paused
+                             when this returns, unless another run still
+                             holds it; the next connect resumes it.
             extract_files: If True and execution_context provided, extract files
                            created/modified during execution and store to workspace.
+            input_files: Files to write into the sandbox before the code
+                         runs, keyed by absolute path.
         """  # noqa
         sandbox = None
+        # The box this run is counted on (``hold_sandbox``) while it keeps it.
+        held = ""
         files: list[SandboxFileOutput] = []
+        owner_user_id = execution_context.user_id if execution_context else None
+        egress_owner = EgressOwner(
+            kind="block", id=owner_user_id or "anonymous", user_id=owner_user_id
+        )
         try:
             if sandbox_id:
-                # Connect to existing sandbox (ExecuteCodeStepBlock case)
-                sandbox = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
+                # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
+                # id is caller-supplied and any id connects under our key, so
+                # the box must be stamped with this user before it is used.
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
+                user_id = execution_context.user_id if execution_context else None
+                if not owned_by_user(info.metadata, user_id, kind="code"):
+                    raise PermissionError(
+                        f"Sandbox {sandbox_id} does not belong to this user, "
+                        "or is not a code sandbox"
+                    )
+                if pause_when_kept and not dispose_sandbox:
+                    # Counted before the connect: a run on this box returning
+                    # meanwhile must leave it running for this one.
+                    held = sandbox_id
+                    await hold_sandbox(held)
+                sandbox = await connect_sandbox(
+                    OutputLimitedCodeSandbox,
+                    sandbox_id,
+                    egress_owner,
+                    api_key=api_key,
+                    timeout=RESUMED_SANDBOX_SECONDS,
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
-                sandbox = await AsyncSandbox.create(
-                    api_key=api_key, template=template_id, timeout=timeout
+                sandbox = await create_sandbox(
+                    OutputLimitedCodeSandbox,
+                    egress_owner,
+                    api_key=api_key,
+                    template=template_id,
+                    timeout=timeout,
+                    metadata=metadata,
                 )
+                if pause_when_kept and not dispose_sandbox:
+                    held = sandbox.sandbox_id
+                    await hold_sandbox(held)
                 if setup_commands:
                     for cmd in setup_commands:
-                        await sandbox.commands.run(cmd)
+                        await run_sandbox_command(sandbox, cmd)
+
+            for path, data in (input_files or {}).items():
+                await sandbox.files.write(path, data)
 
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
             if extract_files:
-                ts_result = await sandbox.commands.run("date -u +%Y-%m-%dT%H:%M:%S")
+                ts_result = await run_sandbox_command(
+                    sandbox, "date -u +%Y-%m-%dT%H:%M:%S"
+                )
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
@@ -168,7 +232,7 @@ class BaseE2BExecutorMixin:
                 code,
                 language=language.value,
                 envs=envs or {},
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
+                on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
             if execution.error:
@@ -200,7 +264,9 @@ class BaseE2BExecutorMixin:
         finally:
             # Dispose of sandbox if requested to reduce usage costs
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
+            elif held:
+                await release_sandbox(held, sandbox, api_key=api_key)
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
@@ -259,7 +325,13 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 "variable with the same name (`{name}`) in your code. "
                 "Values wired in from other blocks keep their type; default values set "
                 "on this node come in as strings, so parse them in your code "
-                "if you need a number or other type."
+                "if you need a number or other type. "
+                "Values arrive exactly as given (any quotes, backslashes or "
+                "unicode); in JavaScript, NaN and Infinity arrive as null. "
+                "Up to 10 MB of JSON in total. Up to 64 KB it is also in the "
+                "`AGPT_VARIABLES` env var (base64 JSON); above that it is in "
+                "the JSON file named by `AGPT_VARIABLES_FILE`. For more than "
+                "10 MB, put the data at a URL and download it in your code."
             ),
             default_factory=dict,
             advanced=False,
@@ -285,7 +357,9 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         dispose_sandbox: bool = SchemaField(
             description=(
                 "Whether to dispose of the sandbox immediately after execution. "
-                "If disabled, the sandbox will run until its timeout expires."
+                "If disabled, the sandbox will run until its timeout expires. "
+                "On the platform's E2B credits it is always disposed, since "
+                "this block returns no sandbox ID to reuse."
             ),
             default=True,
         )
@@ -326,7 +400,12 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
-            description="Executes code in a sandbox environment with internet access.",
+            capability_kind="primitive",
+            description=(
+                "Executes code in a sandbox environment with internet access. "
+                "Python and JavaScript code can take up to 10 MB of input "
+                "data through `variables`."
+            ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeBlock.Input,
             output_schema=ExecuteCodeBlock.Output,
@@ -357,13 +436,14 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         **kwargs,
     ) -> BlockOutput:
         try:
-            # Expose user-provided variables by passing them as a JSON env var and
-            # prepending a constant snippet that deserializes them into the runtime.
-            # Keeping the data in the env var (not the code string) avoids injection.
-            envs, prefix = build_variable_injection(
+            # Expose user-provided variables through an env var (or, for large
+            # payloads, a file) and prepend a constant snippet that loads them
+            # into the runtime. Keeping the data out of the code string avoids
+            # injection.
+            injection = build_variable_injection(
                 input_data.variables, input_data.language
             )
-            code = prefix + input_data.code
+            code = injection.prefix + input_data.code
 
             results, text_output, stdout, stderr, _, files = await self.execute_code(
                 api_key=credentials.api_key.get_secret_value(),
@@ -372,10 +452,19 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
-                dispose_sandbox=input_data.dispose_sandbox,
+                # No sandbox ID is returned, so a kept box is unreachable:
+                # on the operator's key, dispose it rather than pause it.
+                dispose_sandbox=(
+                    input_data.dispose_sandbox or uses_platform_e2b_key(credentials)
+                ),
+                pause_when_kept=uses_platform_e2b_key(credentials),
                 execution_context=execution_context,
                 extract_files=True,
-                envs=envs,
+                envs=injection.envs,
+                input_files=injection.files,
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
 
             # Determine result object shape & filter out empty formats
@@ -460,6 +549,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
+            capability_kind="primitive",
             description=(
                 "Instantiate a sandbox environment with internet access "
                 "in which you can execute code with the Execute Code Step block."
@@ -485,16 +575,26 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             _, text_output, stdout, stderr, sandbox_id, _ = await self.execute_code(
                 api_key=credentials.api_key.get_secret_value(),
                 code=input_data.setup_code,
                 language=input_data.language,
+                execution_context=execution_context,
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                pause_when_kept=uses_platform_e2b_key(credentials),
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
             if sandbox_id:
                 yield "sandbox_id", sandbox_id
@@ -565,6 +665,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="82b59b8e-ea10-4d57-9161-8b169b0adba6",
+            capability_kind="primitive",
             description="Execute code in a previously instantiated sandbox.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeStepBlock.Input,
@@ -585,7 +686,12 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             results, text_output, stdout, stderr, _, _ = await self.execute_code(
@@ -594,6 +700,9 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
+                pause_when_kept=uses_platform_e2b_key(credentials),
+                # The ownership check on the supplied id needs the caller.
+                execution_context=execution_context,
             )
 
             # Determine result object shape & filter out empty formats

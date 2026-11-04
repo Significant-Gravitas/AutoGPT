@@ -1,7 +1,9 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubSessionCard } from "../AgentCards";
@@ -68,6 +70,180 @@ function subSession(
 
 describe("SubSessionLive", () => {
   afterEach(cleanup);
+
+  it("keeps background live updates going past the foreground poll cap", async () => {
+    server.use(subSession([], { chat_status: "running" }));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(
+        <SubSessionCard
+          output={{
+            status: "running",
+            sub_session_id: "sub-1",
+            background_task_id: "task",
+          }}
+        />,
+      );
+      await vi.advanceTimersByTimeAsync(POLL_CAP_MS + 1);
+      expect(screen.queryByText("Live updates paused")).toBeNull();
+      expect(screen.getByText("running")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a failure notice when Stop is declined by the server", async () => {
+    server.use(
+      subSession([], { chat_status: "running" }),
+      http.post(`${SESSION_ROUTE}/cancel`, () =>
+        HttpResponse.json({ cancelled: false, reason: "not_cancelled" }),
+      ),
+    );
+    render(
+      <>
+        <Toaster />
+        <SubSessionCard
+          output={{
+            status: "running",
+            sub_session_id: "sub-1",
+            background_task_id: "task",
+          }}
+        />
+      </>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop background subtask" }),
+    );
+    expect(await screen.findByText("Could not stop subtask")).toBeDefined();
+  });
+
+  it("labels a background subtask and stops it through the existing endpoint", async () => {
+    let stopped = false;
+    server.use(
+      http.get(SESSION_ROUTE, () =>
+        HttpResponse.json({
+          id: "sub-1",
+          chat_status: stopped ? "idle" : "running",
+          active_stream: null,
+          background_outcome: stopped ? "cancelled" : null,
+          messages: [{ role: "user", content: "Work" }],
+        }),
+      ),
+      http.post(`${SESSION_ROUTE}/cancel`, () => {
+        stopped = true;
+        return HttpResponse.json({ cancelled: true, reason: "cancelled" });
+      }),
+    );
+    render(
+      <SubSessionCard
+        output={{
+          status: "running",
+          sub_session_id: "sub-1",
+          background_task_id: "task",
+        }}
+      />,
+    );
+    expect(screen.getByText("Background subtask")).toBeDefined();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop background subtask" }),
+    );
+    expect(await screen.findByText(/cancelled/i)).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Stop background subtask" }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["run_agent", "Daily briefing", "Running workflow", "Daily briefing"],
+    [
+      "run_block",
+      "FillTextTemplateBlock",
+      "Running block",
+      "Fill Text Template",
+    ],
+    [
+      "continue_run_block",
+      "FillTextTemplateBlock",
+      "Continuing block run",
+      "Fill Text Template",
+    ],
+  ])(
+    "shows persisted names in a delegate's live %s steps",
+    async (tool, displayName, label, name) => {
+      server.use(
+        subSession(
+          [
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                {
+                  id: "run-1",
+                  display_name: displayName,
+                  function: {
+                    name: tool,
+                    arguments: JSON.stringify(
+                      tool === "run_agent"
+                        ? { library_agent_id: "library-id" }
+                        : tool === "run_block"
+                          ? { block_id: "block-id", input_data: {} }
+                          : { review_id: "review-id" },
+                    ),
+                  },
+                },
+              ],
+            },
+          ],
+          { chat_status: "running", active_stream: null },
+        ),
+      );
+      render(
+        <SubSessionCard
+          output={{ status: "running", sub_session_id: "sub-1" }}
+        />,
+      );
+      expect(await screen.findByText(`${label} "${name}"…`)).toBeDefined();
+    },
+  );
+
+  it("matches historical delegate output names by tool call ID", async () => {
+    server.use(
+      subSession(
+        [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              { id: "run-1", function: { name: "run_agent", arguments: "{}" } },
+              { id: "run-2", function: { name: "run_agent", arguments: "{}" } },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-2",
+            content: '{"agent_name":"Second workflow"}',
+            tool_calls: null,
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-1",
+            content: '{"graph_name":"First workflow"}',
+            tool_calls: null,
+          },
+        ],
+        { chat_status: "idle", active_stream: null },
+      ),
+    );
+    render(
+      <SubSessionCard
+        output={{ status: "running", sub_session_id: "sub-1" }}
+      />,
+    );
+    expect(
+      await screen.findByText('Ran workflow "First workflow"'),
+    ).toBeDefined();
+    expect(screen.getByText('Ran workflow "Second workflow"')).toBeDefined();
+  });
 
   it("streams the delegate's recent tools and latest words while running", async () => {
     server.use(
@@ -149,7 +325,7 @@ describe("SubSessionLive", () => {
       />,
     );
 
-    expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
+    expect(screen.getByText("Expert")).toBeDefined();
     expect(screen.getByText("running")).toBeDefined();
     // A teammate's thread is their own workspace: the delegated card is
     // status-only, so the prompt preview stays out of the parent chain.
@@ -337,6 +513,17 @@ describe("SubSessionLive", () => {
 
     expect(screen.getByText("All done")).toBeDefined();
     expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
+  });
+
+  it("shows a queued delegation as running once its session runs", async () => {
+    server.use(subSession([], { chat_status: "running", active_stream: null }));
+
+    render(
+      <SubSessionCard output={{ status: "queued", sub_session_id: "sub-1" }} />,
+    );
+
+    expect(await screen.findByText("running")).toBeDefined();
+    expect(screen.queryByText("queued")).toBeNull();
   });
 
   it("says live updates failed instead of spinning on running forever", async () => {

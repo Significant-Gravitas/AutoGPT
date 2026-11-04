@@ -37,7 +37,7 @@ export function useMemoryScope() {
       setSelectedScope(AUTOPILOT_MEMORY_SCOPE);
       toast({
         title: "Expert no longer available",
-        description: "Showing AutoPilot account memory instead.",
+        description: "Showing Otto account memory instead.",
       });
     }
   }, [

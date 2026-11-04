@@ -84,18 +84,18 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return "Editing agent, this might take a minute";
+      return "Editing workflow, this might take a minute";
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Editing agent, this might take a minute";
+      if (!output) return "Editing workflow, this might take a minute";
       if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
-      return "Error editing agent";
+      return "Error editing workflow";
     }
     case "output-error":
-      return "Error editing agent";
+      return "Error editing workflow";
     default:
-      return "Editing agent, this might take a minute";
+      return "Editing workflow, this might take a minute";
   }
 }
 
@@ -107,14 +107,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <Icon icon={PencilEdit01Icon} size={14} className="text-neutral-400" />
-  );
+  return <Icon icon={PencilEdit01Icon} size={14} tone="subtle" />;
 }
 
 export function AccordionIcon() {

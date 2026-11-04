@@ -1,5 +1,6 @@
 """Tests for charge_reconciled_usage post-flight dynamic-cost charging."""
 
+import math
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -7,11 +8,21 @@ import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.perplexity import PerplexityBlock
+from backend.blocks.typesafe.choice import JevChoiceBlock
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.execution import ExecutionContext, NodeExecutionEntry
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
-from backend.executor.billing import charge_reconciled_usage
+from backend.executor.billing import (
+    bills_stop_estimate,
+    charge_node_usage,
+    charge_reconciled_usage,
+    charge_usage,
+)
+from backend.integrations.credentials_store import open_router_credentials
+from backend.sdk.cost_integration import sync_all_provider_costs
+from backend.util.exceptions import InsufficientBalanceError
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +101,29 @@ def test_dynamic_cost_block_with_zero_balance_raises_ibe_preflight(
     db_client.spend_credits.assert_not_called()
 
 
+def test_dynamic_cost_guard_matches_with_schema_defaults():
+    """The paid-entry check matches cost filters with schema defaults filled in."""
+    exec_entry = _node_exec(PerplexityBlock().id)
+    exec_entry.inputs = {
+        "prompt": "hi",
+        "credentials": {
+            "id": open_router_credentials.id,
+            "provider": open_router_credentials.provider,
+            "type": open_router_credentials.type,
+        },
+    }
+
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=PerplexityBlock()),
+        pytest.raises(InsufficientBalanceError),
+    ):
+        charge_usage(exec_entry, execution_count=0)
+
+
 def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_override):
     """The guard must only fire when balance is non-positive. A user with any
     positive balance may start a dynamic-cost block; reconciliation settles
@@ -117,6 +151,27 @@ def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_overrid
     assert remaining == 50
     # Dynamic-cost block returns 0 pre-flight; reconciliation will settle.
     assert block_pre_flight == 0
+    db_client.spend_credits.assert_not_called()
+
+
+def test_free_sdk_price_runs_with_an_empty_wallet():
+    """Jev's SDK price is 0 (TypeSafe bills the user's own key), and block
+    loading registers it, unfiltered, in the executor too. A free entry never
+    debits, so it must not trip the dynamic-cost balance guard."""
+    exec_entry = _node_exec(JevChoiceBlock().id)
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+
+    with (
+        patch.dict(BLOCK_COSTS),
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=JevChoiceBlock()),
+    ):
+        BLOCK_COSTS.pop(JevChoiceBlock, None)
+        sync_all_provider_costs([JevChoiceBlock])
+        total_cost, _, block_pre_flight = charge_usage(exec_entry, execution_count=0)
+
+    assert (total_cost, block_pre_flight) == (0, 0)
     db_client.spend_credits.assert_not_called()
 
 
@@ -170,6 +225,132 @@ async def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
     assert lb_args[1] == exec_entry.user_id
     assert lb_args[2] == 42
     assert lb_args[3] == 5
+
+
+@pytest.mark.asyncio
+async def test_positive_delta_survives_a_failing_low_balance_alert(
+    tmp_block_costs_override,
+):
+    """The delta has landed by the time the low-balance alert runs. If the
+    alert raises, the delta must still come back and reach the expert's meter:
+    the manager adds the returned delta to the run's cost, and (0, 0) would
+    drop money the wallet already paid."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.expert_id = "expert-1"
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = _async_db_client(spend_credits_return=42)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch(
+            "backend.executor.billing.handle_low_balance",
+            side_effect=RuntimeError("alert store unavailable"),
+        ),
+        patch(
+            "backend.executor.billing.add_weekly_spend", new_callable=AsyncMock
+        ) as add_spend,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    add_spend.assert_awaited_once_with("expert-1", 5)
+
+
+@pytest.mark.asyncio
+async def test_positive_delta_survives_a_failing_personal_org_lookup(
+    tmp_block_costs_override,
+):
+    """In an org run, the personal-org lookup only decides whether the user's
+    low-balance alert fires. It runs after the delta has landed, so a failed
+    lookup skips the alert and must not drop the delta from the run's cost or
+    the expert's meter."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.expert_id = "expert-1"
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = MagicMock()
+    db_client.spend_org_credits = AsyncMock(return_value=42)
+    db_client.get_personal_org_owner = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+        patch(
+            "backend.executor.billing.add_weekly_spend", new_callable=AsyncMock
+        ) as add_spend,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    handle_lb.assert_not_called()
+    add_spend.assert_awaited_once_with("expert-1", 5)
+
+
+def test_a_run_queued_on_the_wallet_takes_its_pre_flight_charge_from_it(
+    tmp_block_costs_override,
+):
+    """The charge goes to the wallet the run was queued on."""
+    tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.bills_own_wallet = True
+
+    db_client = MagicMock()
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=SearchTheWebBlock()),
+    ):
+        charge_usage(exec_entry, execution_count=0)
+
+    db_client.spend_org_credits.assert_not_called()
+    assert db_client.spend_credits.call_args.kwargs["user_id"] == exec_entry.user_id
+    assert db_client.spend_credits.call_args.kwargs["cost"] == 7
+
+
+@pytest.mark.asyncio
+async def test_a_run_queued_on_the_wallet_settles_its_post_flight_charge_on_it(
+    tmp_block_costs_override,
+):
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.execution_context.organization_id = "org-1"
+    exec_entry.execution_context.bills_own_wallet = True
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+
+    db_client = _async_db_client(spend_credits_return=42)
+    db_client.spend_org_credits = AsyncMock()
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+    ):
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
+
+    assert (delta, remaining) == (5, 42)
+    db_client.spend_org_credits.assert_not_awaited()
+    assert db_client.spend_credits.await_args.kwargs["user_id"] == exec_entry.user_id
+    # The wallet paid, so the wallet's low-balance alert applies.
+    handle_lb.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -277,7 +458,7 @@ async def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_over
 
 @pytest.mark.asyncio
 async def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
-    """Exa deep-research: $0.20 provider spend × 100 credits/USD = 20 credits.
+    """A larger spend at a 100 credits/USD rate: $0.20 is 20 credits.
 
     Verifies ceil-semantics on fractional USD amounts and that the full
     post-flight charge lands (no refund / no clamping).
@@ -400,3 +581,266 @@ async def test_pre_flight_charge_override_pins_reconciliation_baseline(
     # right assertion: with stats provided, post-flight goes through the
     # COST_USD post-flight branch which doesn't touch get_preflight_estimate.
     assert get_preflight.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_charge_node_usage_pins_the_amount_actually_charged(
+    tmp_block_costs_override,
+):
+    """Nested tool calls are charged through ``charge_node_usage``; like the
+    main queue, it must record the block cost it spent on the entry so that
+    reconciliation settles against that amount."""
+    from backend.executor.billing import charge_node_usage
+
+    tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    assert exec_entry.pre_flight_charge is None
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 93
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        cost, remaining = await charge_node_usage(exec_entry)
+
+    assert (cost, remaining) == (7, 93)
+    assert exec_entry.pre_flight_charge == 7
+    assert db_client.spend_credits.call_args.kwargs["cost"] == 7
+
+
+@pytest.mark.asyncio
+async def test_charge_node_usage_still_returns_the_charge_when_the_alert_fails(
+    tmp_block_costs_override,
+):
+    """The low-balance alert runs after the spend has landed. If it raises, the
+    charge must still come back: the orchestrator adds the returned amount to
+    the run's cost, and reconciliation settles against the pinned baseline
+    either way."""
+    tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 3
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.handle_low_balance",
+            side_effect=RuntimeError("alert store unavailable"),
+        ),
+    ):
+        cost, remaining = await charge_node_usage(exec_entry)
+
+    assert (cost, remaining) == (7, 3)
+    assert exec_entry.pre_flight_charge == 7
+
+
+@pytest.mark.asyncio
+async def test_charge_node_usage_leaves_the_baseline_alone_when_refused(
+    tmp_block_costs_override,
+):
+    """A refused charge collects nothing, so the baseline the caller set
+    beforehand (0 for a nested tool call) must survive."""
+    from backend.executor.billing import charge_node_usage
+    from backend.util.exceptions import InsufficientBalanceError
+
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry.pre_flight_charge = 0
+
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance"),
+        pytest.raises(InsufficientBalanceError),
+    ):
+        await charge_node_usage(exec_entry)
+
+    assert exec_entry.pre_flight_charge == 0
+    db_client.spend_credits.assert_not_called()
+
+
+TOKENS_MODEL = "claude-haiku-4-5-20251001"
+# OpenRouter models bill the provider's reported cost (COST_USD).
+COST_USD_MODEL = "x-ai/grok-4"
+COST_USD_MODEL_WITHOUT_A_RATE = "z-ai/glm-5"
+ESTIMATED_INPUT = 1_000_000
+
+
+def _llm_priced_node(tmp_block_costs_override, cost_type, model):
+    from backend.blocks.llm import LLMModel
+
+    tmp_block_costs_override(
+        [
+            BlockCost(
+                cost_amount=1 if cost_type == BlockCostType.TOKENS else 150,
+                cost_type=cost_type,
+                cost_filter={"model": LLMModel(model)},
+            )
+        ]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    return exec_entry.model_copy(update={"inputs": {"model": LLMModel(model)}})
+
+
+def _input_rate(model) -> float:
+    from backend.blocks.llm import LLMModel
+    from backend.data.block_cost_config import TOKEN_COST
+
+    return TOKEN_COST[LLMModel(model)].input
+
+
+async def _reconcile(exec_entry, stats, pre_flight_charge, bill_stop_estimate):
+    db_client = _async_db_client(spend_credits_return=0)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        delta, _ = await charge_reconciled_usage(
+            exec_entry,
+            stats,
+            pre_flight_charge=pre_flight_charge,
+            bill_stop_estimate=bill_stop_estimate,
+        )
+    return delta
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cost_type", "model"),
+    [
+        (BlockCostType.TOKENS, TOKENS_MODEL),
+        (BlockCostType.COST_USD, COST_USD_MODEL),
+    ],
+    ids=["tokens", "cost-usd"],
+)
+async def test_a_stopped_llm_call_is_billed_its_estimated_input(
+    tmp_block_costs_override, cost_type, model
+):
+    """A stop request that cut off an LLM request settles on its estimated
+    input tokens at the model's input rate: the delta is their cost less the
+    pre-flight charge."""
+    exec_entry = _llm_priced_node(tmp_block_costs_override, cost_type, model)
+    estimate_cost = math.ceil(_input_rate(model) * ESTIMATED_INPUT / 1_000_000)
+    stats = NodeExecutionStats(abandoned_input_token_count=ESTIMATED_INPUT)
+
+    delta = await _reconcile(exec_entry, stats, 50, bill_stop_estimate=True)
+
+    assert estimate_cost > 50
+    assert delta == estimate_cost - 50
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_call_on_a_model_with_no_input_rate_keeps_its_pre_flight_charge(
+    tmp_block_costs_override,
+):
+    from backend.blocks.llm import LLMModel
+    from backend.data.block_cost_config import TOKEN_COST
+
+    assert LLMModel(COST_USD_MODEL_WITHOUT_A_RATE) not in TOKEN_COST
+    exec_entry = _llm_priced_node(
+        tmp_block_costs_override,
+        BlockCostType.COST_USD,
+        COST_USD_MODEL_WITHOUT_A_RATE,
+    )
+    stats = NodeExecutionStats(abandoned_input_token_count=ESTIMATED_INPUT)
+
+    delta = await _reconcile(exec_entry, stats, 30, bill_stop_estimate=True)
+
+    assert delta == 0
+
+
+@pytest.mark.asyncio
+async def test_the_stop_estimate_is_billed_only_on_a_priced_entry(
+    tmp_block_costs_override,
+):
+    """A node no cost entry matches, e.g. one run on the user's own key, is
+    billed nothing for the estimate either."""
+    exec_entry = _llm_priced_node(
+        tmp_block_costs_override, BlockCostType.TOKENS, TOKENS_MODEL
+    )
+    exec_entry = exec_entry.model_copy(update={"inputs": {"model": COST_USD_MODEL}})
+    stats = NodeExecutionStats(abandoned_input_token_count=ESTIMATED_INPUT)
+
+    delta = await _reconcile(exec_entry, stats, 0, bill_stop_estimate=True)
+
+    assert delta == 0
+
+
+@pytest.mark.parametrize(
+    ("status", "stopped", "billed"),
+    [
+        (ExecutionStatus.TERMINATED, True, True),
+        # The block's own wall-clock cap cancelled the request: a timeout.
+        (ExecutionStatus.FAILED, False, False),
+        (ExecutionStatus.TERMINATED, False, False),
+        (ExecutionStatus.COMPLETED, True, False),
+    ],
+    ids=["stop-request", "timed-out", "run-ended-otherwise", "finished-first"],
+)
+def test_the_stop_estimate_is_billed_on_a_stop_request(status, stopped, billed):
+    assert bills_stop_estimate(status, stopped) is billed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cost_type", "model"),
+    [
+        (BlockCostType.TOKENS, TOKENS_MODEL),
+        (BlockCostType.COST_USD, COST_USD_MODEL),
+    ],
+    ids=["tokens", "cost-usd"],
+)
+async def test_without_a_stop_request_a_cut_off_call_settles_on_reported_usage(
+    tmp_block_costs_override, cost_type, model
+):
+    exec_entry = _llm_priced_node(tmp_block_costs_override, cost_type, model)
+    stats = NodeExecutionStats(abandoned_input_token_count=ESTIMATED_INPUT)
+
+    delta = await _reconcile(exec_entry, stats, 100, bill_stop_estimate=False)
+
+    assert delta == -100
+
+
+@pytest.mark.asyncio
+async def test_a_failed_call_is_billed_the_usage_it_reported(
+    tmp_block_costs_override,
+):
+    """A call whose reply was unusable still reported its usage, and the node
+    pays for it."""
+    exec_entry = _llm_priced_node(
+        tmp_block_costs_override, BlockCostType.TOKENS, TOKENS_MODEL
+    )
+    stats = NodeExecutionStats(input_token_count=ESTIMATED_INPUT)
+
+    delta = await _reconcile(exec_entry, stats, 10, bill_stop_estimate=False)
+
+    assert delta == math.ceil(_input_rate(TOKENS_MODEL) * ESTIMATED_INPUT / 1e6) - 10
+
+
+@pytest.mark.asyncio
+async def test_the_stop_estimate_adds_to_the_reported_usage(
+    tmp_block_costs_override,
+):
+    exec_entry = _llm_priced_node(
+        tmp_block_costs_override, BlockCostType.COST_USD, COST_USD_MODEL
+    )
+    stats = NodeExecutionStats(
+        provider_cost=2.0,
+        provider_cost_type="cost_usd",
+        abandoned_input_token_count=ESTIMATED_INPUT,
+    )
+    estimate_cost = math.ceil(_input_rate(COST_USD_MODEL) * ESTIMATED_INPUT / 1e6)
+
+    delta = await _reconcile(exec_entry, stats, 0, bill_stop_estimate=True)
+
+    assert delta == 300 + estimate_cost
+    # The node's own stats keep the estimate apart from the reported usage.
+    assert stats.provider_cost == 2.0

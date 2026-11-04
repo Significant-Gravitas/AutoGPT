@@ -7,8 +7,11 @@ export function offerToSelection(
   if (offer.auth_method === "deployment") {
     return { authProvider: "platform", credentialId: null };
   }
-  if (!offer.credential_id) return null;
-  return { authProvider: "codex", credentialId: offer.credential_id };
+  if (offer.auth_provider === "platform" || !offer.credential_id) return null;
+  return {
+    authProvider: offer.auth_provider,
+    credentialId: offer.credential_id,
+  };
 }
 
 export function matchesSelection(
@@ -16,10 +19,10 @@ export function matchesSelection(
   selection: CopilotLlmAuthSelection | null,
 ): boolean {
   if (!selection) return false;
-  if (selection.authProvider === "platform") {
-    return offer.auth_method === "deployment";
-  }
-  return offer.credential_id === selection.credentialId;
+  return (
+    offer.auth_provider === selection.authProvider &&
+    offer.credential_id === selection.credentialId
+  );
 }
 
 export function isSelectable(offer: AIConnectionOffer): boolean {
@@ -146,4 +149,23 @@ export function tierLock(
   const match = tierOf(offer, tier);
   if (!match?.lock_reason) return undefined;
   return { reason: match.lock_reason, href: "/settings/billing" };
+}
+
+/**
+ * The connections the sheet lists under "Runs on".
+ *
+ * One runnable row is nothing to choose between, and a session's connection
+ * is fixed once it exists. A locked-only row is the exception: its
+ * explanation and unlock link are the reason the control is shown at all.
+ */
+export function listedConnections(
+  offers: AIConnectionOffer[],
+  connectionLocked: boolean,
+): AIConnectionOffer[] {
+  const onlyOfferIsLocked =
+    offers.length === 1 && Boolean(offers[0]?.lock_reason);
+  const shows =
+    (!connectionLocked || onlyOfferIsLocked) &&
+    (offers.length > 1 || onlyOfferIsLocked);
+  return shows ? offers : [];
 }

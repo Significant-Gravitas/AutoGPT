@@ -1,7 +1,7 @@
 """Spend-request block behaviour, and the deployment gate on the card flow.
 
 The virtual-card flow is self-hosted only: block outputs are persisted with
-the execution and surface into AutoPilot transcripts, so a PAN there is
+the execution and surface into Otto transcripts, so a PAN there is
 cardholder data at rest and a stored CVC is prohibited outright. The blocks
 are split along that line — card create/retrieve are gated, while everything
 the Shared Payment Token flow needs stays available on every deployment.

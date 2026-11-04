@@ -7,6 +7,7 @@ import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/grap
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useSaveGraph } from "../../../hooks/useSaveGraph";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -43,6 +44,7 @@ export const useNewSaveControl = () => {
       query: {
         select: (res) => res.data as GraphModel,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );

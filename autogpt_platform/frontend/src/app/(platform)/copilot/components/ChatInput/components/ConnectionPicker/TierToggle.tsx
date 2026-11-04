@@ -7,13 +7,16 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { Fragment, type ReactNode } from "react";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 import type { CopilotLlmModel } from "../../../../store";
+import { isComposingEvent } from "@/lib/keyboard";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { Swap } from "./Swap";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Segment {
   tier: CopilotLlmModel;
@@ -30,6 +33,7 @@ interface Props {
   segments: Segment[];
   value: CopilotLlmModel;
   onSelect: (tier: CopilotLlmModel) => void;
+  advancedUpgrade?: ReactNode;
 }
 
 /**
@@ -44,13 +48,21 @@ function tierIcon(tier: CopilotLlmModel) {
   return tier === "advanced" ? AiBrain01Icon : FlashIcon;
 }
 
-export function TierToggle({ segments, value, onSelect }: Props) {
+export function TierToggle({
+  segments,
+  value,
+  onSelect,
+  advancedUpgrade,
+}: Props) {
   const options = segments.map((segment) => ({
     value: segment.tier,
     disabled: Boolean(segment.lock),
   }));
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest("a")) return;
+    // `event.key` goes straight into the roving helper, so guard here instead.
+    if (isComposingEvent(event)) return;
     const to = nextRovingValue(options, value, event.key);
     if (to === null) return;
     event.preventDefault();
@@ -67,11 +79,18 @@ export function TierToggle({ segments, value, onSelect }: Props) {
       role="radiogroup"
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
-      className="divide-y divide-neutral-200"
+      className={cn(
+        "divide-y divide-border-base",
+        advancedUpgrade && "divide-y-0",
+      )}
     >
       {segments.map((segment) =>
         segment.lock ? (
-          <LockedSegment key={segment.tier} segment={segment} />
+          segment.tier === "advanced" && advancedUpgrade ? (
+            <Fragment key={segment.tier}>{advancedUpgrade}</Fragment>
+          ) : (
+            <LockedSegment key={segment.tier} segment={segment} />
+          )
         ) : (
           <button
             key={segment.tier}
@@ -84,21 +103,27 @@ export function TierToggle({ segments, value, onSelect }: Props) {
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-neutral-50 focus-visible:outline-none",
+              "focus-visible:bg-canvas focus-visible:outline-none",
             )}
           >
             <Icon
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-zinc-500"
+              tone="muted"
+              className="flex-none"
             />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-zinc-900">
+              <Text
+                variant="body-medium-tight"
+                as="span"
+                tone="primary"
+                className="truncate"
+              >
                 {segment.name ?? segment.label}
-              </span>
+              </Text>
               {segment.model && (
-                <span className="text-sm leading-snug text-zinc-500">
+                <span className="text-body leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -107,8 +132,9 @@ export function TierToggle({ segments, value, onSelect }: Props) {
               icon={Tick02Icon}
               size={16}
               aria-hidden
+              motion="opacity"
               className={cn(
-                "flex-none text-primary transition-opacity",
+                "flex-none text-action",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
@@ -143,21 +169,27 @@ function LockedSegment({ segment }: { segment: Segment }) {
           icon={LockIcon}
           size={14}
           aria-hidden
-          className="mt-[3px] flex-none text-zinc-400"
+          tone="subtle"
+          className="mt-[3px] flex-none"
         />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-zinc-500">
+          <Text
+            variant="body-medium-tight"
+            as="span"
+            tone="muted"
+            className="truncate"
+          >
             {segment.name ?? segment.label}
-          </span>
+          </Text>
           {segment.model && (
-            <span className="text-sm leading-snug text-zinc-400">
+            <span className="text-body leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
             </span>
           )}
           {/* A row has room for the lock but the name has none for why. Saying
               only "locked" would leave the user to guess at a barrier they can
               actually clear. */}
-          <span className="text-[11px] leading-snug text-zinc-400">
+          <span className="text-caption-sm leading-snug text-foreground-subtle">
             {segment.lock?.reason}
           </span>
         </span>
@@ -167,7 +199,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
           href={segment.lock.href}
           // Indented past the lock glyph so it lines up under the reason it
           // answers, the way it reads when it follows that sentence inline.
-          className="ml-6 mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+          className="mt-1 ml-6 w-fit text-caption-sm leading-inherit font-medium text-foreground-strong underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
         >
           See plans
         </Link>

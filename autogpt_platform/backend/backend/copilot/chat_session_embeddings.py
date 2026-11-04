@@ -12,11 +12,8 @@ import logging
 
 from prisma.enums import ContentType
 
-from backend.api.features.search.embeddings import (
-    delete_content_embedding,
-    ensure_content_embedding,
-    get_content_embedding,
-)
+from backend.api.features.search.embeddings import generate_embedding
+from backend.data.db_accessors import embeddings_db
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +27,24 @@ async def _run_embedding(session_id: str, user_id: str, title: str) -> None:
         if not searchable_text:
             # Nothing to search on — drop any stale row so renaming back
             # to "untitled" doesn't keep the old title indexed.
-            await delete_content_embedding(
+            await embeddings_db().delete_content_embedding(
                 ContentType.CHAT_SESSION, session_id, user_id=user_id
             )
             return
-        existing = await get_content_embedding(
+        existing = await embeddings_db().get_content_embedding(
             ContentType.CHAT_SESSION, session_id, user_id
         )
         if existing and existing.get("searchableText") == searchable_text:
             return
-        await ensure_content_embedding(
+        # Embedded here and stored through the accessor: titles are set from
+        # the copilot executor, which has no Prisma connection of its own.
+        await embeddings_db().store_content_embedding(
             content_type=ContentType.CHAT_SESSION,
             content_id=session_id,
+            embedding=await generate_embedding(searchable_text),
             searchable_text=searchable_text,
             metadata={"title": searchable_text},
             user_id=user_id,
-            force=True,
         )
     except Exception as e:
         logger.warning(
@@ -66,7 +65,7 @@ def schedule_chat_session_embedding(
 async def delete_chat_session_embedding(session_id: str, user_id: str) -> None:
     """Best-effort embedding cleanup when a chat session is deleted."""
     try:
-        await delete_content_embedding(
+        await embeddings_db().delete_content_embedding(
             ContentType.CHAT_SESSION, session_id, user_id=user_id
         )
     except Exception as e:

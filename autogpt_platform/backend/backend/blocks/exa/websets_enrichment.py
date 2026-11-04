@@ -12,10 +12,12 @@ from exa_py import AsyncExa
 from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -173,11 +175,13 @@ class ExaCreateEnrichmentBlock(Block):
             categories={BlockCategory.AI, BlockCategory.SEARCH},
             input_schema=ExaCreateEnrichmentBlock.Input,
             output_schema=ExaCreateEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         import time
 
         # Build the payload
@@ -325,12 +329,14 @@ class ExaGetEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetEnrichmentBlock.Input,
             output_schema=ExaGetEnrichmentBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_enrichment = await aexa.websets.enrichments.get(
@@ -401,11 +407,13 @@ class ExaUpdateEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateEnrichmentBlock.Input,
             output_schema=ExaUpdateEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}"
         headers = {
             "Content-Type": "application/json",
@@ -472,12 +480,15 @@ class ExaDeleteEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteEnrichmentBlock.Input,
             output_schema=ExaDeleteEnrichmentBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_enrichment = await aexa.websets.enrichments.delete(
@@ -524,12 +535,14 @@ class ExaCancelEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelEnrichmentBlock.Input,
             output_schema=ExaCancelEnrichmentBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         canceled_enrichment = await aexa.websets.enrichments.cancel(

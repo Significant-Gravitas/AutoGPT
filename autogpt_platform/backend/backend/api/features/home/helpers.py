@@ -1,3 +1,5 @@
+from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -43,6 +45,27 @@ def experts_by_schedule(
     return {schedule_id: expert for schedule_id, expert in owners.items() if expert}
 
 
+def experts_by_graph(experts: list[Expert]) -> dict[str, Expert]:
+    """Map graph id to the expert that owns a workflow built on it.
+
+    A run started from the library carries no expert stamp, but the workflow
+    it ran is still an expert's, so the surfaces that show who is working can
+    fall back to the owner instead of showing nobody. Two experts can build on
+    the same graph, and picking one of them would put the wrong face on the
+    run, so a shared graph is left unattributed.
+    """
+    owners: defaultdict[str, dict[str, Expert]] = defaultdict(dict)
+    for expert in experts:
+        for workflow in expert.workflows:
+            if workflow.graph_id:
+                owners[workflow.graph_id][expert.id] = expert
+    return {
+        graph_id: next(iter(by_expert_id.values()))
+        for graph_id, by_expert_id in owners.items()
+        if len(by_expert_id) == 1
+    }
+
+
 def next_runs_by_expert(
     schedules: list[GraphExecutionJobInfo], expert_by_schedule: dict[str, Expert]
 ) -> dict[str, datetime]:
@@ -64,28 +87,49 @@ class AgentRef(BaseModel):
 
     name: str
     library_agent_id: str | None
+    image_url: str | None = None
 
 
 UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
 
 
 def agent_refs_by_graph(
-    experts: list[Expert], refs: list[LibraryAgentRef]
+    experts: list[Expert],
+    refs: list[LibraryAgentRef],
+    schedules: Sequence[GraphExecutionJobInfo] = (),
 ) -> dict[str, AgentRef]:
+    # A schedule keeps the name it was given, so its runs keep one even when the
+    # graph is in neither the library nor an expert's workflows. Older runs carry
+    # no schedule id, so a graph gets none unless all its schedules share one.
+    names_by_graph: defaultdict[str, set[str]] = defaultdict(set)
+    for schedule in schedules:
+        names_by_graph[schedule.graph_id].add(schedule.agent_name or "")
+    scheduled_names = {
+        graph_id: next(iter(names))
+        for graph_id, names in names_by_graph.items()
+        if len(names) == 1 and "" not in names
+    }
     agents = {
         ref.graph_id: AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name, library_agent_id=ref.id
+            name=ref.name or scheduled_names.get(ref.graph_id) or UNKNOWN_AGENT.name,
+            library_agent_id=None if ref.is_deleted else ref.id,
+            image_url=ref.image_url,
         )
         for ref in refs
     }
+    for graph_id, name in scheduled_names.items():
+        agents.setdefault(graph_id, AgentRef(name=name, library_agent_id=None))
     for expert in experts:
         for workflow in expert.workflows:
             if workflow.graph_id:
                 current = agents.get(workflow.graph_id, UNKNOWN_AGENT)
+                # An expert names its own copy of the workflow, but only the
+                # library row carries the picture, so keep the one we found.
                 agents[workflow.graph_id] = AgentRef(
                     name=workflow.name or current.name,
                     library_agent_id=workflow.library_agent_id
                     or current.library_agent_id,
+                    image_url=current.image_url,
                 )
     return agents
 

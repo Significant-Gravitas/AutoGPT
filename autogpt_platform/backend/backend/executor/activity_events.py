@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from backend.blocks._base import Block, BlockSchema
+from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.execution import (
     ExecutionStatus,
@@ -45,12 +46,16 @@ async def log_node_integration_activity(
             provider = cred_data.get("provider")
             if not cred_data.get("id") or not provider:
                 continue
+            # An LLM key being used is the block thinking, not an action the
+            # user would recognise as work delivered.
+            if provider in LLM_PROVIDER_NAMES:
+                continue
             await db_client.create_activity_event(
                 user_id=node_exec.user_id,
                 draft=ActivityEventDraft(
                     category="INTEGRATION",
                     event_type="integration.action",
-                    title=block.name,
+                    title=block.display_name,
                     provider=provider,
                     graph_exec_id=node_exec.graph_exec_id,
                     node_exec_id=node_exec.node_exec_id,

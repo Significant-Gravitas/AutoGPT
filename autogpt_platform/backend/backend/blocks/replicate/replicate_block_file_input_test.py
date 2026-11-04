@@ -1,7 +1,7 @@
 """Unit tests for ReplicateModelBlock file-input handling.
 
 Verifies that uploaded ``files`` are merged into ``model_inputs`` under
-``file_input_field`` so AutoPilot can pass file references instead of inlining
+``file_input_field`` so Otto can pass file references instead of inlining
 base64 into the inputs dict by hand:
 
 1. No files → model_inputs passed through unchanged (and not mutated in place)
@@ -119,3 +119,38 @@ async def test_files_override_same_named_model_input():
         result = await block._build_model_inputs(input_data, _exec_context())
 
     assert result["image"] == "data:image/png;base64,NEW"
+
+
+@pytest.mark.asyncio
+async def test_files_total_size_is_limited():
+    block = ReplicateModelBlock()
+    input_data = _make_input(files=["workspace://a"] * 50)
+    store = AsyncMock(return_value="data:image/png;base64," + "A" * 18)
+
+    with (
+        patch("backend.blocks.replicate.replicate_block.store_media_file", new=store),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+        pytest.raises(ValueError, match="Files too large"),
+    ):
+        await block._build_model_inputs(input_data, _exec_context())
+
+    assert store.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_files_that_each_fit_may_together_pass_the_file_limit():
+    block = ReplicateModelBlock()
+    input_data = _make_input(files=["workspace://a", "workspace://b"])
+    clip = "data:video/mp4;base64," + "A" * 38  # 60 characters
+
+    with (
+        patch(
+            "backend.blocks.replicate.replicate_block.store_media_file",
+            new=AsyncMock(return_value=clip),
+        ),
+        patch("backend.util.file.MAX_FILE_SIZE_BYTES", 100),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 500),
+    ):
+        result = await block._build_model_inputs(input_data, _exec_context())
+
+    assert result[input_data.file_input_field] == [clip, clip]

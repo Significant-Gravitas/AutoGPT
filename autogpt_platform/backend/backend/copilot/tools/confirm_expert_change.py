@@ -2,8 +2,9 @@
 
 Step 2 of the confirm-gated team-change flow. One confirm tool serves both
 kinds: it takes nothing but the id, so the applied change is exactly what the
-user saw. The id is single-use and bound to the Autopilot session that
-produced it.
+user saw. The id is single-use and bound to the Otto session that
+produced it. A hire offered with its task also starts that task when the id
+confirmed is the "hire and start" one (see ``hire_handoff``).
 """
 
 from typing import Any
@@ -17,12 +18,14 @@ from .expert_proposal import (
     autopilot_session_guard,
     load_bound_proposal,
 )
-from .models import ErrorResponse, ToolResponseBase
+from .hire_handoff import hand_off_to_new_hire, with_hire_only
+from .models import ErrorResponse, ExpertChangeAppliedResponse, ToolResponseBase
 
 _PROPOSAL_FIELDS = (
     "template_id",
     "name",
     "role",
+    "tagline",
     "about",
     "boundaries",
     "voice_preferences",
@@ -57,6 +60,7 @@ class ConfirmExpertChangeTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The id returned by hire_expert/raise_expert.",
+                    "entity": "team_change",
                 },
             },
             "required": ["confirmation_id"],
@@ -79,8 +83,8 @@ class ConfirmExpertChangeTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "confirm_expert_change creates exactly the previewed "
-                    "expert and does not accept new values. Call hire_expert "
-                    "or raise_expert to propose something different."
+                    "expert and does not accept new values. Call tool:hire_expert "
+                    "or tool:raise_expert to propose something different."
                 ),
                 session_id=session_id,
             )
@@ -100,4 +104,10 @@ class ConfirmExpertChangeTool(BaseTool):
         )
         if isinstance(proposal, ErrorResponse):
             return proposal
-        return await apply_proposal(user_id, session_id, proposal)
+        applied = await apply_proposal(user_id, session_id, proposal)
+        task = proposal.handoff
+        if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
+            return applied
+        if not proposal.hand_off:
+            return with_hire_only(applied, task)
+        return await hand_off_to_new_hire(user_id, session, applied, task)
