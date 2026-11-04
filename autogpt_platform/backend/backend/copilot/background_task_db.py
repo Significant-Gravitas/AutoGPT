@@ -1,5 +1,6 @@
 """Durable subtask handoffs; creation and wake enqueueing are transactional."""
 
+import json
 from datetime import datetime
 from typing import Any, Literal
 
@@ -146,11 +147,11 @@ async def finish_background_turn(
     turn_held: bool = False,
 ) -> None:
     """Record how a child or continuation turn ended, and for a child which
-    row holds its answer; the answer itself stays in the child's chat. A
-    worker that still holds the child's turn passes ``turn_held``: every row
-    after the launch is then this execution's, a clarification it drained
-    mid-turn included. Recovery, which may run after the chat moved on, stops
-    at the next user row."""
+    row holds its answer; the answer itself stays in the child's chat. Every
+    row after the launch is the turn's, a clarification it drained mid-turn
+    included, when the worker still holds the turn (``turn_held``) or when
+    the chat records no later turn; otherwise recovery stops at the next user
+    row, since a later turn's rows cannot be told from drained ones."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$1 AND "childSessionId"=$2 AND "childTurnId"=$3""",
@@ -189,13 +190,29 @@ async def finish_background_turn(
         task.id,
         user_id,
         outcome,
-        result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
+        result_sequence=await _answer_sequence(
+            task.child_turn_id, turn_held or await _no_later_turn(task)
+        ),
     )
 
 
-async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
+async def _no_later_turn(task: BackgroundTask) -> bool:
+    """Whether the child's chat still records the child's turn as its last:
+    admission clears that identity and dispatch records the next one, so a
+    later turn, started or finished, always shows."""
+    session = await ChatSession.prisma().find_unique(
+        where={"id": task.child_session_id}
+    )
+    return (
+        session is not None
+        and _parse_json_field(session.metadata, default={}).get("_active_turn_id")
+        == task.child_turn_id
+    )
+
+
+async def _answer_sequence(child_turn_id: str, owns_rows: bool) -> int | None:
     """The last assistant row of the child's turn, which begins at its launch
-    row. Held by the worker, the turn owns every later row; otherwise it ends
+    row. Owning its rows, the turn takes every later one; otherwise it ends
     at the next user row."""
     rows = await db.query_raw_with_schema(
         """SELECT message.sequence FROM {schema_prefix}"ChatMessage" message
@@ -208,7 +225,7 @@ async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
               AND next.sequence>launch.sequence AND next.sequence<message.sequence
           )) ORDER BY message.sequence DESC LIMIT 1""",
         child_turn_id,
-        turn_held,
+        owns_rows,
     )
     return int(rows[0]["sequence"]) if rows else None
 
@@ -330,13 +347,12 @@ async def release_deleted_background_turn(
 
 
 async def release_abandoned_background_turn(
-    task_id: str, user_id: str, session_id: str, turn_id: str, before: datetime
+    task: BackgroundTask, session_id: str, turn_id: str, before: datetime
 ) -> bool:
-    """Release a chat still ``running`` the task's own turn with no live
-    worker: the orphan rule the chat routes apply, fenced to that turn and
-    to a row untouched since ``before``."""
-    task = await get_background_task(task_id, user_id)
-    if task is None or (session_id, turn_id) not in (
+    """Release a chat still ``running`` one of the task's own turns with no
+    live worker: the orphan rule the chat routes apply, fenced to that turn
+    and to a row untouched since ``before``."""
+    if (session_id, turn_id) not in (
         (task.child_session_id, task.child_turn_id),
         (task.parent_session_id, task.wake_id),
     ):
@@ -348,7 +364,7 @@ async def release_abandoned_background_turn(
               AND "updatedAt" < $4::timestamptz
               AND session.metadata->>'_active_turn_id'=$3""",
             session_id,
-            user_id,
+            task.user_id,
             turn_id,
             before,
         )
@@ -358,9 +374,11 @@ async def release_abandoned_background_turn(
 async def background_child_result(
     session_id: str, user_id: str
 ) -> BackgroundChildResult | None:
-    """What a finished background child answered, read from the row recorded
-    when its turn ended, so a later turn in its chat is never mistaken for
-    it. None while it runs, or for a chat that is not a background child."""
+    """A background child's recorded state. None for a chat that is not a
+    background child; an outcome of None while the child's turn has not been
+    recorded; otherwise the answer and tool calls of that turn, read up to the
+    row recorded when it ended, so a later turn in the chat is never mistaken
+    for it."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$1 AND "childSessionId"=$2""",
@@ -369,20 +387,33 @@ async def background_child_result(
         model=BackgroundTask,
     )
     task = tasks[0] if tasks else None
-    if task is None or task.outcome is None:
+    if task is None:
         return None
-    if task.result_sequence is None:
-        return BackgroundChildResult(outcome=task.outcome, response_text="")
+    if task.outcome is None or task.result_sequence is None:
+        return BackgroundChildResult(outcome=task.outcome)
     rows = await db.query_raw_with_schema(
-        """SELECT content FROM {schema_prefix}"ChatMessage"
-        WHERE "sessionId"=$1 AND sequence=$2 AND role='assistant'""",
+        """SELECT message.content, message."toolCalls"
+        FROM {schema_prefix}"ChatMessage" message
+        JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$2
+        WHERE message."sessionId"=$1 AND message.role='assistant'
+          AND message.sequence>launch.sequence AND message.sequence<=$3
+        ORDER BY message.sequence""",
         session_id,
+        task.child_turn_id,
         task.result_sequence,
     )
     return BackgroundChildResult(
         outcome=task.outcome,
-        response_text=(rows[0]["content"] or "") if rows else "",
+        response_text=(rows[-1]["content"] or "") if rows else "",
+        tool_calls=[call for row in rows for call in _tool_calls_of(row["toolCalls"])],
     )
+
+
+def _tool_calls_of(raw: Any) -> list[dict[str, Any]]:
+    """The tool calls a persisted assistant row carries, however the driver
+    returned the JSON column."""
+    calls = json.loads(raw) if isinstance(raw, str) else raw
+    return [call for call in (calls or []) if isinstance(call, dict)]
 
 
 async def cancel_queued_background_followup(user_id: str, session_id: str) -> bool:

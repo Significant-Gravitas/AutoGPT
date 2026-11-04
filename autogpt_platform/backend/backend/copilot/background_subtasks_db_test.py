@@ -1543,22 +1543,33 @@ async def test_a_cancelled_child_turn_cancels_the_background_work_it_launched(
     )
 
 
-async def test_result_tool_reads_a_background_childs_own_answer(
-    world: World, monkeypatch: pytest.MonkeyPatch
-):
-    """A later turn in the child's chat, started before the continuation ran,
-    is not handed back as the subtask's result."""
+async def test_result_tool_reads_a_background_childs_own_answer(world: World):
+    """The recorded turn's answer and tool calls come back; a later turn in
+    the child's chat, started before the continuation ran, is not handed back
+    as the subtask's result, and its tool calls are not counted."""
     task = await world.launch()
     await world.finish_parent()
-    await world.finish_child(task)
-    for role, content in (("user", "One more thing"), ("assistant", "A later answer.")):
-        await append_and_save_message(
-            task.child_session_id, ChatMessage(role=role, content=content)
-        )
-    monkeypatch.setattr(
-        "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
-        AsyncMock(return_value=[]),
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    call = {"id": "c1", "type": "function", "function": {"name": "bash_exec"}}
+    await append_and_save_message(
+        task.child_session_id,
+        ChatMessage(role="assistant", content=None, tool_calls=[call]),
     )
+    await append_and_save_message(
+        task.child_session_id,
+        ChatMessage(role="assistant", content="The answer is 42."),
+    )
+    await finish_background_execution(entry, None)
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=task.child_turn_id
+    )
+    for message in (
+        ChatMessage(role="user", content="One more thing"),
+        ChatMessage(role="assistant", content=None, tool_calls=[call, call]),
+        ChatMessage(role="assistant", content="A later answer."),
+    ):
+        await append_and_save_message(task.child_session_id, message)
 
     response = await GetSubSessionResultTool()._execute(
         world.user_id, world.parent, sub_session_id=task.child_session_id
@@ -1566,6 +1577,40 @@ async def test_result_tool_reads_a_background_childs_own_answer(
 
     assert response.status == "completed"
     assert response.response == "The answer is 42."
+    assert response.sub_tool_call_count == 1
+
+
+async def test_result_tool_does_not_call_an_unrecorded_background_child_complete(
+    world: World,
+):
+    """A child whose turn ended without an outcome yet (the worker died after
+    closing its stream) is still running as far as the parent is told; only
+    the recorded outcome says whether the work completed."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    await append_and_save_message(
+        task.child_session_id, ChatMessage(role="assistant", content="Partial.")
+    )
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=task.child_turn_id
+    )
+    await chat_db().update_chat_session_status(
+        session_id=task.child_session_id, expect_status="running", status="idle"
+    )
+
+    before = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+    assert before.status == "running"
+
+    await background_delivery.reconcile_background_subtasks()
+    after = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+    assert after.status == "completed"
+    assert after.response == "Partial."
 
 
 async def test_background_launch_is_refused_when_the_result_tool_is_not_allowed(
@@ -1634,13 +1679,14 @@ async def test_queued_child_past_an_inherited_deadline_is_closed_as_timed_out(
     assert "timed out" in world.entry(task.parent_session_id).message
 
 
-@pytest.mark.parametrize("turn_held", [True, False])
+@pytest.mark.parametrize("ending", ["held", "recovered", "recovered_after_later_turn"])
 async def test_answer_is_bounded_by_the_turn_the_worker_still_holds(
-    world: World, turn_held: bool
+    world: World, ending: str
 ):
-    """A clarification the child drained mid-turn is a user row. The worker
-    that still holds the turn keeps the answer after it; recovery, which may
-    run after the chat moved on, stops at that row."""
+    """A clarification the child drained mid-turn is a user row. The turn
+    owns the answer after it when the worker still holds the turn, and when
+    recovery finds the chat records no later turn; only once a later turn ran
+    does recovery stop at that row, since its rows cannot be told apart."""
     task = await world.launch()
     await world.finish_parent()
     entry = world.entry(task.child_session_id)
@@ -1654,9 +1700,17 @@ async def test_answer_is_bounded_by_the_turn_the_worker_still_holds(
             task.child_session_id, ChatMessage(role=role, content=content)
         )
 
-    if turn_held:
+    if ending == "held":
         await finish_background_execution(entry, None)
     else:
+        if ending == "recovered_after_later_turn":
+            await db.execute_raw_with_schema(
+                """UPDATE {schema_prefix}"ChatSession" SET metadata=
+                COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$2::text)
+                WHERE id=$1""",
+                task.child_session_id,
+                str(uuid4()),
+            )
         await background_task_db.finish_background_turn(
             world.user_id, task.child_session_id, task.child_turn_id, None
         )
@@ -1666,5 +1720,94 @@ async def test_answer_is_bounded_by_the_turn_the_worker_still_holds(
     )
     assert recorded and recorded.outcome == "completed"
     assert recorded.response_text == (
-        "The answer is 42 km." if turn_held else "Working on it."
+        "Working on it."
+        if ending == "recovered_after_later_turn"
+        else "The answer is 42 km."
     )
+
+
+@pytest.mark.parametrize("tree_state", ["expired", "spent"])
+async def test_nested_continuation_reopens_an_expired_tree_but_not_a_spent_one(
+    world: World, tree_state: str
+):
+    """A nested handoff has no clock, so it can outlive its tree's ledger key:
+    promotion and pickup reopen a closed tree as the first spawn opened it.
+    A spent tree still refuses the continuation; that is the spend budget
+    acting, as for any spawned turn."""
+    task = await world.launch()
+    await world.finish_parent()
+    entry = world.entry(task.child_session_id)
+    assert await claim_background_execution(entry)
+    child = await model.get_chat_session(task.child_session_id, world.user_id)
+    assert child and entry.envelope and entry.envelope.depth == 1
+    set_execution_context(
+        world.user_id, child, permissions=entry.permissions, envelope=entry.envelope
+    )
+    set_current_turn_id(entry.turn_id)
+    with tool_call_context("deeper"):
+        grandchild = await background_subtasks.start_background_subtask(
+            world.user_id, child, "Go deeper"
+        )
+    await finish_background_execution(entry, None)
+    await stream_registry.mark_session_completed(
+        task.child_session_id, turn_id=task.child_turn_id
+    )
+    grand_entry = world.entry(grandchild.child_session_id)
+    assert await claim_background_execution(grand_entry)
+    await append_and_save_message(
+        grandchild.child_session_id,
+        ChatMessage(role="assistant", content="Deeper answer."),
+    )
+    await finish_background_execution(grand_entry, None)
+    await stream_registry.mark_session_completed(
+        grandchild.child_session_id, turn_id=grandchild.child_turn_id
+    )
+    ledger = await get_tree_ledger()
+    if tree_state == "expired":
+        await (await get_redis_async()).delete(ledger.key(world.envelope.tree_id))
+    else:
+        await ledger.charge(world.envelope.tree_id, 1_000_000)
+
+    await background_delivery.reconcile_background_subtasks()
+    await background_delivery.reconcile_background_subtasks()
+
+    wakes = [
+        c.kwargs
+        for c in world.published.await_args_list
+        if c.kwargs.get("turn_id") == grandchild.wake_id
+    ]
+    if tree_state == "spent":
+        assert wakes == []
+        rows = await DbMessage.prisma().find_many(
+            where={"sessionId": task.child_session_id, "role": "assistant"}
+        )
+        assert any("budget" in (row.content or "").lower() for row in rows)
+        return
+    assert len(wakes) == 1 and wakes[0]["session_id"] == task.child_session_id
+    wake = CoPilotExecutionEntry(
+        **wakes[0], cost_context=TrialCostContext(user_id=world.user_id, trial_id=None)
+    )
+    assert wake.envelope and wake.envelope.depth == 1
+    assert await ledger.exists(world.envelope.tree_id)
+    assert await claim_background_execution(wake)
+
+
+@pytest.mark.parametrize(
+    "outcome, label",
+    [("failed", "failed"), ("timed_out", "timed out"), ("cancelled", "cancelled")],
+)
+async def test_result_tool_names_how_a_background_child_ended(
+    world: World, outcome: str, label: str
+):
+    task = await world.launch()
+    await world.finish_parent()
+    assert await claim_background_execution(world.entry(task.child_session_id))
+    await background_task_db.complete_background_task(task.id, world.user_id, outcome)
+
+    response = await GetSubSessionResultTool()._execute(
+        world.user_id, world.parent, sub_session_id=task.child_session_id
+    )
+
+    assert response.status == "error"
+    assert label in response.message
+    assert "result" in response.message

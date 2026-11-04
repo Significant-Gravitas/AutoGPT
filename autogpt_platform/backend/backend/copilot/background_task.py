@@ -61,10 +61,12 @@ class BackgroundTask(BaseModel):
 
 
 class BackgroundChildResult(BaseModel):
-    """What a finished background child answered in its own turn."""
+    """A background child's recorded state: its outcome once the turn ended,
+    and then the answer and tool calls of that turn."""
 
-    outcome: BackgroundOutcome
-    response_text: str
+    outcome: BackgroundOutcome | None = None
+    response_text: str = ""
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BackgroundSessionState(BaseModel):

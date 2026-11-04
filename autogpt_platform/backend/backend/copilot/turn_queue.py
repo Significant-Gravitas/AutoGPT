@@ -69,7 +69,12 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
-from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
+from backend.copilot.tree import (
+    TreeRefusal,
+    TurnEnvelope,
+    release_turn,
+    reopen_closed_tree,
+)
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
     capture_cost_context,
@@ -500,6 +505,10 @@ async def _promote_head(user_id: str) -> bool | None:
         if background and queued_envelope is None:
             await _refuse_queued_turn(head, UNREADABLE_BACKGROUND)
             return None
+        if background and queued_envelope is not None:
+            # Background work keeps no clock, so its tree may have expired
+            # while it waited; the recheck below would refuse a closed one.
+            await reopen_closed_tree(queued_envelope, user_id=user_id)
         if spawned and queued_envelope is None:
             # Nothing but that envelope bounds a child its spawner admitted.
             await _refuse_queued_turn(

@@ -24,7 +24,7 @@ from typing import Any
 
 from backend.copilot import stream_registry
 from backend.copilot.background_delivery import cancel_background_subtasks
-from backend.copilot.background_task import BACKGROUND_TASK_KEY, BackgroundChildResult
+from backend.copilot.background_task import BackgroundChildResult
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
 from backend.copilot.model import (
@@ -220,14 +220,12 @@ class GetSubSessionResultTool(BaseTool):
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
         refusal = None if turn_in_flight else queued_turn_refusal(sub)
-        # A finished background child is read from its own turn, so a later
-        # turn in its chat is never handed back as its result.
-        recorded = (
-            await background_task_db().background_child_result(
-                inner_session_id, user_id
-            )
-            if _is_background_child(sub)
-            else None
+        # A background child is read from its record, not its transcript: its
+        # answer comes from the turn recorded when it ended, so a later turn
+        # in its chat is never handed back as its result, and until that
+        # record exists a partial transcript is not a result either.
+        recorded = await background_task_db().background_child_result(
+            inner_session_id, user_id
         )
         outcome: SessionOutcome
         result: SessionResult
@@ -238,8 +236,12 @@ class GetSubSessionResultTool(BaseTool):
                 ),
                 delegate,
             )
-        if recorded is not None:
+        if recorded is not None and recorded.outcome is not None:
             outcome, result = _recorded_result(recorded, actor)
+        elif recorded is not None and not queued and not turn_in_flight:
+            # Ended without a recorded outcome: recovery records it within
+            # seconds, and only that record says whether the work completed.
+            outcome, result = "running", SessionResult()
         elif queued:
             outcome, result = await wait_for_queued_session(
                 session_id=inner_session_id, user_id=user_id, timeout=effective_wait
@@ -286,10 +288,12 @@ class GetSubSessionResultTool(BaseTool):
         # On completion, read the authoritative workspace-file manifest from the
         # sub's session. This covers the cold-poll / already-terminal path where
         # ``result.tool_calls`` reflects only the last persisted message and so
-        # would miss files the sub wrote in earlier turns (SECRT-2377).
+        # would miss files the sub wrote in earlier turns (SECRT-2377). A
+        # recorded background result is scoped to its turn instead: its files
+        # are mined from that turn's tool calls, so a later turn's never join.
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
-            if outcome == "completed"
+            if outcome == "completed" and recorded is None
             else None
         )
         return apply_delegated_expert(
@@ -306,22 +310,13 @@ class GetSubSessionResultTool(BaseTool):
         )
 
 
-def _is_background_child(sub: ChatSession) -> bool:
-    """A background child's launch row carries its task id, as the queue and
-    the UI read it."""
-    return any(
-        (message.metadata or {}).get(BACKGROUND_TASK_KEY)
-        for message in sub.messages
-        if message.role == "user"
-    )
-
-
 def _recorded_result(
     recorded: BackgroundChildResult, actor: str
 ) -> tuple[SessionOutcome, SessionResult]:
     if recorded.outcome == "completed":
         result = SessionResult()
         result.response_text = recorded.response_text
+        result.tool_calls = _tool_call_entries(recorded.tool_calls)
         return "completed", result
     label = "timed out" if recorded.outcome == "timed_out" else recorded.outcome
     return "refused", SessionResult(
@@ -444,12 +439,18 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
         return None
     result = SessionResult()
     result.response_text = last.content or ""
-    # Persisted tool calls are OpenAI-shape dicts; translate to
-    # ToolCallEntry so the downstream ``response_from_outcome`` can
-    # ``.model_dump()`` them uniformly with the live-drain path.
-    for tc in last.tool_calls or []:
+    result.tool_calls = _tool_call_entries(last.tool_calls or [])
+    return result
+
+
+def _tool_call_entries(raw_calls: list[dict[str, Any]]) -> list[ToolCallEntry]:
+    """Persisted tool calls are OpenAI-shape dicts; translate to
+    ``ToolCallEntry`` so the downstream ``response_from_outcome`` can
+    ``.model_dump()`` them uniformly with the live-drain path."""
+    entries: list[ToolCallEntry] = []
+    for tc in raw_calls:
         fn = tc.get("function") or {}
-        result.tool_calls.append(
+        entries.append(
             ToolCallEntry(
                 tool_call_id=tc.get("id", ""),
                 tool_name=fn.get("name") or tc.get("name") or "",
@@ -458,7 +459,7 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
                 success=tc.get("success"),
             )
         )
-    return result
+    return entries
 
 
 async def _build_progress_snapshot(

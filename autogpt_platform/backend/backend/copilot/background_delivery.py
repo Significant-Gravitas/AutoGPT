@@ -204,7 +204,7 @@ async def _release_if_abandoned(
         return
     before = datetime.now(UTC) - timedelta(seconds=ORPHAN_RUNNING_RESET_SECONDS)
     if await background_task_db().release_abandoned_background_turn(
-        task.id, task.user_id, session_id, turn_id, before
+        task, session_id, turn_id, before
     ):
         await invalidate_session_cache(session_id)
 

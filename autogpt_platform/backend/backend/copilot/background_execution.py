@@ -14,7 +14,7 @@ from backend.copilot.background_task import (
 from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.model import invalidate_session_cache
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
-from backend.copilot.tree import readmit_turn
+from backend.copilot.tree import readmit_turn, reopen_closed_tree
 from backend.copilot.turn_queue import dispatch_next_for_user
 from backend.data.db_accessors import background_task_db
 
@@ -42,6 +42,7 @@ async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
     try:
         if background_timeout(entry) == 0:
             raise TimeoutError(BACKGROUND_TIMEOUT_MESSAGE)
+        await reopen_closed_tree(entry.envelope, user_id=entry.user_id)
         await readmit_turn(entry.envelope, user_id=entry.user_id)
     except Exception as error:
         message = str(error) or type(error).__name__

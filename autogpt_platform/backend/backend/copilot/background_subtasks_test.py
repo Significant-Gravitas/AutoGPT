@@ -117,6 +117,7 @@ async def test_admission_failure_closes_the_stream_even_if_finalization_fails(
         "background_task_db",
         lambda: MagicMock(claim_background_turn=AsyncMock(return_value=True)),
     )
+    monkeypatch.setattr(background_execution, "reopen_closed_tree", AsyncMock())
     monkeypatch.setattr(
         background_execution, "readmit_turn", AsyncMock(side_effect=error)
     )

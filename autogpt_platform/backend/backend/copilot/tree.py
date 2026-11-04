@@ -632,6 +632,29 @@ async def readmit_turn(envelope: TurnEnvelope, *, user_id: str | None) -> None:
         ) from e
 
 
+async def reopen_closed_tree(envelope: TurnEnvelope, *, user_id: str | None) -> None:
+    """Open a spawned turn's tree again when its ledger has expired, as the
+    first spawn opened it. Background work keeps no clock, so a handoff can
+    outlive the ledger's turn-lifetime TTL; that expiry forgot the spend, and
+    a closed tree is bookkeeping, not a budget verdict. A root never needs
+    this, and a tree still open is left as it is, spent or not."""
+    if envelope.depth == 0:
+        return
+    try:
+        ledger = await get_tree_ledger()
+        if await ledger.exists(envelope.tree_id):
+            return
+        await ledger.open(
+            envelope.tree_id,
+            ceiling_microdollars=await resolve_root_ceiling_microdollars(user_id),
+            max_nodes=config.tree_max_nodes,
+            initial_nodes=1,
+        )
+    except Exception as e:
+        # The recheck that follows refuses on a ledger it cannot reach.
+        logger.warning(f"Could not reopen the tree for {envelope.tree_id}: {e}")
+
+
 async def _open_metered_root(
     envelope: TurnEnvelope, user_id: str | None, ledger: TreeLedger | None
 ) -> None:
