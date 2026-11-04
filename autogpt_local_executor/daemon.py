@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Never, cast
 
+import httpx
 import keyring.errors
 import websockets
 from pydantic import BaseModel, ValidationError
@@ -154,6 +155,14 @@ class DaemonPreflightError(RuntimeError):
     def __init__(self, message: str, *, permanent: bool = False) -> None:
         super().__init__(message)
         self.permanent = permanent
+
+
+class TokenRefreshUnavailableError(RuntimeError):
+    """The token endpoint couldn't be reached, or answered with a server error.
+
+    That says nothing about the credentials, so the reconnect loop retries;
+    only a refresh token the platform refuses ends the session for good.
+    """
 
 
 class KeychainUnavailableError(RuntimeError):
@@ -659,6 +668,20 @@ class ShimDaemon:
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
+            except httpx.TransportError as exc:
+                raise TokenRefreshUnavailableError(
+                    f"The token endpoint could not be reached ({type(exc).__name__}); retrying."
+                ) from None
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status == 429 or status >= 500:
+                    raise TokenRefreshUnavailableError(
+                        f"The token endpoint answered {status}; retrying."
+                    ) from None
+                logger.warning(
+                    "Token refresh was refused (HTTP %s). Run `autogpt-shim auth` again.", status
+                )
+                return None
             except Exception:
                 logger.warning(
                     "Token refresh failed. Check the deployment configuration and OS keychain, "

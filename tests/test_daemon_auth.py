@@ -534,3 +534,46 @@ async def test_a_keychain_read_failure_is_retried_unless_there_is_no_keychain(
     expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
     with pytest.raises(expected):
         await daemon._read_access_token()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "transient"),
+    [
+        ("connect", True),
+        ("timeout", True),
+        (503, True),
+        (429, True),
+        (400, False),
+    ],
+)
+async def test_a_refresh_that_could_not_reach_the_server_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure, transient: bool
+) -> None:
+    """A network error or a 5xx during the refresh used to end in a terminal
+    authentication failure; only a refused refresh token should."""
+    import httpx
+
+    from autogpt_local_executor.auth import OAuthFlow
+    from autogpt_local_executor.daemon import TokenRefreshUnavailableError
+
+    daemon = _daemon(tmp_path)
+    daemon.token_store = SimpleNamespace(get_access_token=AsyncMock(return_value="stale"))
+    request = httpx.Request("POST", "https://platform.example/api/oauth/token")
+
+    async def refresh(_flow):
+        if failure == "connect":
+            raise httpx.ConnectError("unreachable", request=request)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("slow", request=request)
+        raise httpx.HTTPStatusError(
+            "refused", request=request, response=httpx.Response(failure, request=request)
+        )
+
+    monkeypatch.setattr(OAuthFlow, "refresh_token", refresh)
+
+    if transient:
+        with pytest.raises(TokenRefreshUnavailableError):
+            await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
+    else:
+        assert await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale") is None
