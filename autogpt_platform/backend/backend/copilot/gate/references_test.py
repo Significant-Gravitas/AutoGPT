@@ -118,7 +118,8 @@ async def test_one_slow_lookup_is_cut_at_its_own_budget_and_the_rest_still_resol
     with (
         patch.object(references, "library_db", return_value=lib),
         patch.object(references, "LOOKUP_SECONDS", 0.05),
-        patch.object(references, "CARD_SECONDS", 1.0),
+        # Far above the lookup budget, so a stalled runner cannot cut the card first.
+        patch.object(references, "CARD_SECONDS", 30.0),
     ):
         refs = await resolve_references("move_folder", args, "user-1", _session())
 
