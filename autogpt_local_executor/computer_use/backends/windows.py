@@ -50,9 +50,12 @@ logger = logging.getLogger(__name__)
 _KEY_ALIASES = {"super": "win", "meta": "win"}
 # Registered formats an app puts beside a copy to keep it out of clipboard
 # monitors and history, as password managers do. Registered formats are
-# numbered from 0xC000.
+# numbered from 0xC000. Windows matches their names without regard to case
+# and returns the spelling of the first registration, so they are compared
+# casefolded.
 _CONCEALED_FORMAT_NAMES = frozenset(
-    {"ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"}
+    name.casefold()
+    for name in ("ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore")
 )
 _FIRST_REGISTERED_FORMAT = 0xC000
 # mouse_event's wheel flags, and one notch of the wheel in its units.
@@ -777,7 +780,7 @@ class WindowsBackend(ComputerUseBackend):
         except Exception:
             # A format whose name can't be read could be one of the markers.
             return "unknown"
-        return next((name for name in names if name in _CONCEALED_FORMAT_NAMES), None)
+        return next((name for name in names if name.casefold() in _CONCEALED_FORMAT_NAMES), None)
 
     def _clipboard_formats(self) -> set[int] | None:
         """Every format on the clipboard, or None if they can't be read."""

@@ -80,6 +80,31 @@ def _application_dirs() -> list[str]:
     ]
 
 
+def _desktop_entry_value(path: str, key: str) -> str | None:
+    """A key's value in a .desktop file's [Desktop Entry] group, or None."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as entry:
+            in_group = False
+            for raw in entry:
+                line = raw.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    in_group = line == "[Desktop Entry]"
+                elif in_group and not line.startswith("#") and "=" in line:
+                    name, _, value = line.partition("=")
+                    if name.strip() == key:
+                        return value.strip()
+    except OSError:
+        return None
+    return None
+
+
+def _program_found(program: str) -> bool:
+    """Whether `program` (a path, or a name looked up on PATH) can be run."""
+    if os.path.isabs(program):
+        return os.path.isfile(program) and os.access(program, os.X_OK)
+    return shutil.which(program) is not None
+
+
 def _gtk_launch_finds(path: str) -> bool:
     """Whether gtk-launch, given this file's desktop ID, starts this very file.
     It starts the first file of that name in the application directories, so
@@ -145,7 +170,9 @@ class LinuxBackend(ComputerUseBackend):
         if self._has_wmctrl:
             feats.extend(["window.list", "window.focus"])
         if self._clipboard_enabled and self._has_clipboard_tool():
-            feats.extend(["clipboard.read", "clipboard.write"])
+            if self._has_clipboard_read_tool():
+                feats.append("clipboard.read")
+            feats.append("clipboard.write")
         return feats
 
     # ── Screenshot ───────────────────────────────────────────────────
@@ -558,6 +585,17 @@ class LinuxBackend(ComputerUseBackend):
         this very file, else with dex, which takes the file's path. Either
         helper exits once it has started the app, so there is no app pid to
         report: the helper's names a process already gone."""
+        # dex can exit 0 for a file that can't start, so what can be checked
+        # is checked first.
+        if not os.path.isfile(path):
+            raise FeatureNotSupportedError(
+                "app.launch", reason=f"there is no .desktop file at {path}"
+            )
+        try_exec = _desktop_entry_value(path, "TryExec")
+        if try_exec and not _program_found(try_exec):
+            raise FeatureNotSupportedError(
+                "app.launch", reason=f"its TryExec program {try_exec!r} isn't installed"
+            )
         has_gtk_launch = shutil.which("gtk-launch") is not None
         if has_gtk_launch and _gtk_launch_finds(path):
             command = ["gtk-launch", os.path.basename(path).removesuffix(".desktop")]
@@ -595,6 +633,10 @@ class LinuxBackend(ComputerUseBackend):
         if format != "text":
             raise FeatureNotSupportedError(
                 "clipboard.read", reason=f"format {format!r} not supported"
+            )
+        if not self._has_clipboard_read_tool():
+            raise FeatureNotSupportedError(
+                "clipboard.read", reason="reading the clipboard needs xclip, or wl-paste on Wayland"
             )
         text, seq = self._read_clipboard_text()
         if self._clipboard_read_foreign:
@@ -647,6 +689,12 @@ class LinuxBackend(ComputerUseBackend):
         wl-copy in a Wayland session, xclip otherwise. wl-copy alone can't
         reach an X11 clipboard."""
         return (self._wayland and self._has_wlcopy) or self._has_xclip
+
+    def _has_clipboard_read_tool(self) -> bool:
+        """Whether a tool _read_clipboard_text reads with is installed:
+        wl-paste in a Wayland session, else xclip."""
+        wl_paste = self._wayland and self._has_wlcopy and shutil.which("wl-paste") is not None
+        return wl_paste or self._has_xclip
 
     def _write_clipboard_text(self, content: str) -> int | None:
         """Write `content`; raise if it did not land, so nothing acknowledges

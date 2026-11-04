@@ -637,7 +637,9 @@ report one. The shim uses, in order of preference:
   leads to this very file, and with `dex` (by path) otherwise. gtk-launch
   starts the first file with the ID in the XDG application directories,
   so a same-named file in an earlier directory would start instead; without
-  `dex`, such a file is refused. `args` are refused for a `.desktop` file,
+  `dex`, such a file is refused. A `.desktop` file that doesn't exist, or
+  whose `TryExec` program isn't installed, is refused before either helper
+  starts. `args` are refused for a `.desktop` file,
   since its `Exec` line sets them. A helper that exits with a failing
   status answers `FEATURE_NOT_SUPPORTED`. The `pid` is null: the helper
   exits once it has started the app, so its pid would name neither.

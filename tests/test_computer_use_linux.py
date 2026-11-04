@@ -669,3 +669,57 @@ def test_a_desktop_launch_whose_helper_fails_is_an_error(tmp_path, monkeypatch, 
 
     with pytest.raises(FeatureNotSupportedError, match=helper):
         b.app_launch(executable_path=str(desktop))
+
+
+@pytest.mark.parametrize("helpers", [("gtk-launch", "dex"), ("dex",)], ids=["both", "dex"])
+def test_a_desktop_file_that_does_not_exist_is_refused_before_a_helper_starts(
+    tmp_path, monkeypatch, helpers
+) -> None:
+    """dex started for a path with no file behind it, and the launch was
+    acknowledged."""
+    _xdg_applications(monkeypatch, tmp_path)
+    popen = _helpers(monkeypatch, *helpers)
+    b = LinuxBackend(_config(tmp_path))
+
+    with pytest.raises(FeatureNotSupportedError, match="no .desktop file"):
+        b.app_launch(executable_path=str(tmp_path / "Desktop" / "missing.desktop"))
+    popen.assert_not_called()
+
+
+@pytest.mark.parametrize(("try_exec", "launched"), [("/no/such/app", False), (None, True)])
+def test_a_desktop_file_whose_try_exec_is_missing_is_refused(
+    tmp_path, monkeypatch, try_exec, launched: bool
+) -> None:
+    """A file whose TryExec program isn't installed can't start, but dex can
+    still exit 0 for it, so the launch was acknowledged."""
+    import sys as _sys
+
+    _xdg_applications(monkeypatch, tmp_path)
+    desktop = tmp_path / "Desktop" / "editor.desktop"
+    desktop.parent.mkdir(parents=True)
+    program = try_exec or _sys.executable
+    desktop.write_text(f"[Desktop Entry]\nType=Application\nTryExec={program}\nExec=editor\n")
+    popen = _helpers(monkeypatch, "dex")
+    b = LinuxBackend(_config(tmp_path))
+
+    if launched:
+        assert b.app_launch(executable_path=str(desktop)) is None
+        assert popen.call_args.args[0] == ["dex", str(desktop)]
+    else:
+        with pytest.raises(FeatureNotSupportedError, match="TryExec"):
+            b.app_launch(executable_path=str(desktop))
+        popen.assert_not_called()
+
+
+def test_a_clipboard_read_with_no_tool_that_reads_is_refused(tmp_path, monkeypatch) -> None:
+    """On Wayland with wl-copy alone there is nothing to read with, and a
+    foreign read answered with an empty clipboard instead of refusing."""
+    monkeypatch.setattr(
+        linux_backend.shutil, "which", lambda n: "/usr/bin/wl-copy" if n == "wl-copy" else None
+    )
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_wayland", True)
+
+    assert "clipboard.read" not in b.features()
+    with pytest.raises(FeatureNotSupportedError, match="wl-paste"):
+        b.clipboard_read()

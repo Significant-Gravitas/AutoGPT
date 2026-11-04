@@ -825,3 +825,21 @@ def test_a_formats_read_that_fails_for_a_moment_is_read_again(tmp_path, monkeypa
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("user text", 7))
 
     assert b.clipboard_read().content == "user text"
+
+
+@pytest.mark.parametrize(
+    "name", ["clipboard viewer ignore", "EXCLUDECLIPBOARDCONTENTFROMMONITORPROCESSING"]
+)
+def test_a_concealment_marker_counts_whatever_its_case(tmp_path, monkeypatch, name) -> None:
+    """Windows matches format names without regard to case and returns the
+    spelling the name was first registered with, so an exact match missed a
+    marker another app had registered in lowercase."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0xC0F1})
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("hunter2", 5))
+    win32clipboard = MagicMock()
+    win32clipboard.GetClipboardFormatName.side_effect = lambda fmt: {0xC0F1: name}[fmt]
+    monkeypatch.setitem(sys.modules, "win32clipboard", win32clipboard)
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()
