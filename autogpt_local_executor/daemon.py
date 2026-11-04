@@ -337,7 +337,13 @@ class ShimDaemon:
                     self._disable_reconnect = True
                     break
                 except Exception as exc:
-                    if not self._running or self._disable_reconnect:
+                    if self._disable_reconnect:
+                        # run() returns normally next (`start` exits 0, so no
+                        # supervisor restarts it), leaving this log as the only
+                        # record of why.
+                        logger.error("Not reconnecting: %s", exc)
+                        break
+                    if not self._running:
                         break
                     delay = self._backoff_delay(attempt)
                     logger.warning(
@@ -483,7 +489,11 @@ class ShimDaemon:
                 logger.debug("WS_CONNECTED audit emit failed", exc_info=True)
         disconnect_reason = "clean_exit"
         try:
-            await self._handshake(ws)
+            try:
+                await self._handshake(ws)
+            except Exception as exc:
+                disconnect_reason = f"handshake_failed: {exc.__class__.__name__}"
+                raise
             # Start the periodic STATUS ticker AFTER handshake — we want
             # max_concurrent from HELLO_ACK before announcing capacity.
             self._status_task = asyncio.create_task(self._status_ticker(ws))
