@@ -22,6 +22,14 @@
 // turns and hires are rare but slow, so they get a sample-size floor in a
 // ten-minute run rather than their raw share.
 //
+// The whole workload is bounded by a preview's API server, which has one
+// CPU. At about 1,070 requests a minute of this mix it saturates: its own
+// Redis calls time out, it falls back to reading the database for
+// everything, its transactions expire, and it runs out of memory within
+// minutes. The baseline sends about 670 a minute, so it measures latency
+// below that capacity, not the queue past it; the stress profile, three
+// times the baseline, finds where it breaks.
+//
 // Graph runs are also bounded by the executor. A preview's executor is at
 // capacity at about ten runs a minute of the seeded graphs: at that rate a
 // small slowdown queues runs without bound, and the queue slows every other
@@ -53,19 +61,19 @@ export function realTurns() {
 // journey with `turns` instead of a rate runs that many iterations once.
 export const JOURNEYS = {
   copilot_reads: {
-    rate: 30,
+    rate: 18,
     exec: "copilotReads",
     requests: 9,
     why: "opening a chat: the session list (48k requests a week in production), usage (17k), transports, connections and experts, then one session's detail, review cards (75k, the largest single route) and queued messages",
   },
   copilot_poll: {
-    rate: 40,
+    rate: 24,
     exec: "copilotPoll",
     requests: 6.3,
     why: "an open chat waiting on a review card: the page polls its cards every 2 s, the session list every 10 s and usage every 30 s, which makes the review route the largest in production (75k requests a week, p95 227 ms)",
   },
   copilot_turn: {
-    rate: 15,
+    rate: 9,
     exec: "copilotTurn",
     requests: 6.1,
     why: "a streamed turn on the dummy engine, the platform's own path without a model, with the reads the page makes after it: rare by count in production (about 850 streams a week) but it is the product",
@@ -83,7 +91,7 @@ export const JOURNEYS = {
     why: "a few capped, opt-in turns on the real model, for what users feel with a model behind the chat; a one-step turn costs about $0.07 in production",
   },
   expert_work: {
-    rate: 6,
+    rate: 4,
     exec: "expertWork",
     requests: 12,
     why: "working with a hired expert: its page (the expert, its activity, schedules, home, its chats and files) and a turn in one of its chats; well above the experts' 2% of requests, since users work with experts far more often than they hire them",
@@ -95,19 +103,19 @@ export const JOURNEYS = {
     why: "hiring an expert from the marketplace and its kickoff turn, then the team page polling while it installs; rare (about 900 template reads a week in production) but slow, p50 1.3 s for the templates and 3.0 s p95 for an expert's page",
   },
   account_reads: {
-    rate: 16,
+    rate: 10,
     exec: "accountReads",
     requests: 10,
     why: "credits, subscription, onboarding, credentials and providers: every page load makes them (about 16% of requests)",
   },
   store_browse: {
-    rate: 25,
+    rate: 15,
     exec: "storeBrowse",
     requests: 7,
     why: "skills list and detail, store agents and search (about 17% of requests)",
   },
   library_browse: {
-    rate: 6,
+    rate: 4,
     exec: "libraryBrowse",
     requests: 3,
     why: "library list and agent detail: about 1% of requests with graphs, but p50 of 11 s and 39 s in production",
