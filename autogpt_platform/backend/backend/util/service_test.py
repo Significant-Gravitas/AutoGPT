@@ -1642,8 +1642,11 @@ async def _attempts_until_raised(
         return answer()
 
     client = await _rollout_client_answered_by(count)
-    with pytest.raises(expected):
-        await asyncio.wait_for(client.lookup(), timeout=30)
+    try:
+        with pytest.raises(expected):
+            await asyncio.wait_for(client.lookup(), timeout=30)
+    finally:
+        await client.aclose()
     return attempts
 
 
