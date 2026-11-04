@@ -10,9 +10,9 @@ relays a reviewed set of cua-driver's tools to the platform.
 The agent works mostly in the background. It reads a window's accessibility
 tree and acts on its elements directly, so the window you are using keeps
 focus, and it checks what changed. It falls back to clicking pixels, or to
-bringing a window forward, only when an app gives it no other way. On macOS
-with CuaDriver.app, and on Windows and Linux, a cursor overlay in the session
-color shows where the agent is working.
+bringing a window forward, only when an app gives it no other way. On Windows
+and Linux, a cursor overlay in the session color shows where the agent is
+working.
 
 ## Turning it on
 
@@ -41,14 +41,13 @@ session; the shim advertises it only once cua-driver has started.
 Computer use needs **Accessibility** (to act) and **Screen Recording** (to
 see; without it a capture shows only the wallpaper and menu bar).
 
-Install [CuaDriver.app](https://cua.ai/docs/cua-driver) as well. The shim
-then relays to it, so the two permissions belong to one app, CuaDriver, and
-the agent cursor is drawn. Without the app the shim runs the driver itself,
-and the permissions belong to whatever starts the shim (its launchd agent),
-with no cursor.
+The shim runs its own cua-driver, so both permissions belong to the app that
+runs the shim: the terminal you start it from, or, for the autostart service,
+the Python that runs it. It doesn't use a CuaDriver.app you may have
+installed for other tools (see [CUA_DRIVER.md](CUA_DRIVER.md#how-the-driver-runs)).
 
-`autogpt-shim doctor` reports both permissions and, with CuaDriver.app,
-raises the prompts for any that are missing. If computer use is on and a
+`autogpt-shim doctor` reports both permissions and asks macOS to show the
+prompts for any that are missing. If computer use is on and a
 permission is missing when the shim starts, it exits with code 78 and
 launchd starts it again later; grant the permission in System Settings →
 Privacy & Security and it connects on the next try.
@@ -95,8 +94,7 @@ trees, which can include the text of windows the agent reads, and
 screenshots. Each call, refused ones too, is recorded in the audit log,
 without the text the agent typed or scripted (see
 [AUDIT_LOG.md](AUDIT_LOG.md)). cua-driver's own telemetry is off for the
-driver the shim starts; CuaDriver.app on macOS keeps its own setting, which
-`doctor` shows and `cua-driver telemetry disable` turns off.
+driver the shim starts.
 
 ## Troubleshooting
 

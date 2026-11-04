@@ -221,23 +221,15 @@ async def test_the_driver_restarts_after_it_stops_then_gives_up(fake_log, monkey
 
 
 @pytest.mark.parametrize(
-    ("platform", "app", "runtime", "argv"),
-    [
-        ("darwin", True, "service", ["mcp"]),
-        ("darwin", False, "direct", ["mcp", "--direct"]),
-        ("linux", False, "direct", ["mcp"]),
-        ("win32", False, "direct", ["mcp"]),
-    ],
+    ("platform", "argv"),
+    [("darwin", ["mcp", "--direct"]), ("linux", ["mcp"]), ("win32", ["mcp"])],
 )
-def test_macos_uses_cuadriver_app_when_it_is_installed(
-    monkeypatch, platform: str, app: bool, runtime: str, argv: list[str]
-) -> None:
-    """CuaDriver.app holds the macOS grants and draws the agent cursor;
-    without it the driver owns the runtime itself."""
-    monkeypatch.setattr(driver, "macos_app_installed", lambda: app)
-
-    assert driver.driver_runtime(platform) == runtime
-    assert driver.driver_argv(Path("cua-driver"), runtime, platform)[1:] == argv
+def test_the_shim_always_owns_the_drivers_runtime(platform: str, argv: list[str]) -> None:
+    """macOS's default relays to CuaDriver.app, a daemon the person installs,
+    updates and shares with other clients, under its own policy; the shim
+    runs its pinned driver itself instead."""
+    assert driver.driver_runtime(platform) == "direct"
+    assert driver.driver_argv(Path("cua-driver"), "direct", platform)[1:] == argv
 
 
 def test_the_wheels_binary_is_found_without_importing_the_package(

@@ -33,17 +33,26 @@ installs (`cua-driver==0.38.0`), else `cua_driver_path` from the config, else
 (`REVIEWED_DRIVER_VERSION`); the shim refuses another, which could add tools
 or arguments nobody has looked at.
 
-**Which runtime.**
+**Which runtime.** The driver process the shim starts always owns the
+runtime (`HELLO.computer_use_driver.runtime` is `direct`): `cua-driver mcp`
+on Windows and Linux, `cua-driver mcp --direct` on macOS, where cua-driver's
+default would relay to CuaDriver.app's service instead. The shim doesn't use
+that service:
 
-| OS | Runtime | Who holds the OS grants | Agent cursor |
-|---|---|---|---|
-| macOS with CuaDriver.app | `service`: `cua-driver mcp` relays to the app | CuaDriver (`com.trycua.driver`) | yes |
-| macOS without it | `direct`: `cua-driver mcp --direct` | whatever starts the shim | no |
-| Windows, Linux | `direct`: `cua-driver mcp` | the user | yes |
+- It is installed and updated by the person, not pinned with the shim, so it
+  can be another release than the one this catalog was reviewed against,
+  and the relay can't tell: the version it reports is the relay's own.
+- It is shared with the person's other cua-driver clients, and runs with
+  whatever permission mode and policy it was started with. The calls a
+  script makes inside it wouldn't be bound by the shim's policy, and its
+  telemetry follows its own setting.
 
-`HELLO.computer_use_driver.runtime` says which. On a Mac, installing
-CuaDriver.app is the better setup: one well-known app holds Accessibility
-and Screen Recording, and the person can see where the agent is working.
+So on macOS the Accessibility and Screen Recording grants belong to the app
+that runs the shim (the terminal it was started from, or the Python that
+runs the autostart service), as they did before cua-driver: the driver runs
+as the shim's child and leaves prompting to its host. `autogpt-shim doctor`
+requests them. The agent cursor overlay needs CuaDriver.app's AppKit host,
+so it shows on Windows and Linux but not on macOS.
 
 **Environment.** The driver gets the shim's environment (it needs `DISPLAY`,
 the session bus and the rest), with these changes:
@@ -58,9 +67,7 @@ the session bus and the rest), with these changes:
 - `DO_NOT_TRACK=1`, `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` and
   `CUA_DRIVER_RS_UPDATE_CHECK=false`. cua-driver sends content-free product
   telemetry by default; the shim's driver sends none and never checks for
-  updates. In the macOS `service` runtime, CuaDriver.app keeps its own
-  setting: `autogpt-shim doctor` shows it, and `cua-driver telemetry disable`
-  turns it off.
+  updates.
 
 A managed policy (`CUA_DRIVER_MANAGED_POLICY_FILE`) set by an administrator
 is left in place; it can only narrow what the driver allows.
@@ -161,9 +168,6 @@ Known gaps:
 - `launch_app` accepts `launch_path` and `additional_arguments` (on Linux,
   the `Exec=` line of a `.desktop` file), so it can start any program with
   any arguments. Again no more than the GUI allows; each launch is audited.
-- On macOS in the `service` runtime, CuaDriver.app runs scripts with its own
-  policy, not the shim's. A script's calls are still limited to the sixteen
-  tools the driver lets scripts use, all in the catalog.
 - `set_value` writes a field's value directly. The 1.x design left it out
   because the text appeared without visible keystrokes and without an audit
   record. `type_text` now does the same in the background through the
@@ -221,8 +225,8 @@ driver and asks `check_permissions` for Accessibility and Screen Recording
 without prompting; if either is missing it exits 78 and launchd starts it
 again later, as before. `autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
-macOS reports both grants, asking CuaDriver.app to raise the prompts when one
-is missing (`cua-driver permissions grant`).
+macOS reports both grants and, when one is missing, asks macOS to show its
+prompt for the shim's app (the driver leaves prompting to its host).
 
 ## Updating the driver
 
