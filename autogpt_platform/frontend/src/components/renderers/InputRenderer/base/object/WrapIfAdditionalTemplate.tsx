@@ -12,6 +12,7 @@ import {
 } from "@rjsf/utils";
 
 import { Input } from "@/components/atoms/Input/Input";
+import { isPromptValuesEntry } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function WrapIfAdditionalTemplate(
@@ -64,7 +65,8 @@ export default function WrapIfAdditionalTemplate(
   const keyId = `${id}-key`;
 
   function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const key = e.currentTarget.value.trim();
+    const typed = e.currentTarget.value;
+    const key = isPromptValuesEntry(handleId) ? typed.trim() : typed;
     if (key === "") {
       e.currentTarget.value = label;
       return;

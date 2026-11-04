@@ -2374,6 +2374,7 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
         ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
         ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
         ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
         ({}, {}),
     ],
