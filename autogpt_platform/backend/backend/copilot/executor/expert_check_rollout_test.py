@@ -255,7 +255,11 @@ async def _serving(
     monkeypatch.setenv("INTERNAL_API_KEY", secrets.token_urlsafe(32))
     monkeypatch.setattr(service_module, "instrument_fastapi", lambda *_a, **_k: None)
     monkeypatch.setattr(db_accessors, "db", SimpleNamespace(is_connected=lambda: False))
-    transport = httpx.ASGITransport(app=release(roster).build_fastapi_app())
+    # A server answers an error it didn't map with a 500, as uvicorn does,
+    # instead of raising it into the client.
+    transport = httpx.ASGITransport(
+        app=release(roster).build_fastapi_app(), raise_app_exceptions=False
+    )
     answered: list[tuple[str, int]] = []
 
     async def record(response: httpx.Response) -> None:
