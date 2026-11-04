@@ -318,7 +318,7 @@ async def test_key_without_org_acts_in_the_personal_default_team(
     _org_a_is_the_callers_personal_org: AsyncMock,
 ) -> None:
     """Where a personal organization's rows live: a team is an exact-match
-    read filter, and migration 20261103180000 moved org-home rows there."""
+    read filter, and migration 20261104140000 moved org-home rows there."""
     _org_a_is_the_callers_personal_org.return_value = (PERSONAL_ORG, "personal-team")
 
     tenant = await resolve_tenant(_credential())

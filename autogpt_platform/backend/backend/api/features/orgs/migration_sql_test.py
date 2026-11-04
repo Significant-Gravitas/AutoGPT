@@ -90,7 +90,7 @@ def _personal_slot_migration_sql() -> str:
     return (
         Path(__file__).parents[4]
         / "migrations"
-        / "20261103180000_one_personal_team_slot"
+        / "20261104140000_one_personal_team_slot"
         / "migration.sql"
     ).read_text(encoding="utf-8")
 
@@ -334,7 +334,7 @@ def test_tenant_integrity_migration_prevents_team_scope_collapse() -> None:
 
 
 def test_tenant_integrity_audit_leaves_team_comparisons_to_the_personal_slot() -> None:
-    """Prod holds personal rows in both slots until 20261103180000 moves them,
+    """Prod holds personal rows in both slots until 20261104140000 moves them,
     so the audit before it can't compare teams."""
     sql = _tenant_integrity_migration_sql()
 

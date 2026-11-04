@@ -2,7 +2,7 @@
 
 The database sends every row a personal organization writes without a team to
 its default team (trigger ``a0_normalize_personal_team``, migration
-20261103180000). A caller that builds ``(personal org, None)`` by hand and then
+20261104140000). A caller that builds ``(personal org, None)`` by hand and then
 matches rows on the exact pair would find nothing, so exact-match checks read
 the pair through ``canonical_personal_scope`` first.
 """

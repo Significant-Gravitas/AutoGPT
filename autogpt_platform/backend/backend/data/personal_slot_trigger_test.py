@@ -1,6 +1,6 @@
 """Every write of a personal organization's row lands in its default team.
 
-Migration 20261103180000 installs ``a0_normalize_personal_team`` on each
+Migration 20261104140000 installs ``a0_normalize_personal_team`` on each
 tenant table: a row in a personal organization with no team gets the default
 team, before the table's own guards run. Team-organization rows and rows with
 no organization are left as written.

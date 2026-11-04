@@ -3,7 +3,7 @@
 Prod holds a personal organization's rows in two places: the web app saved
 some at its org-home, and the startup backfill and internal writers put the
 rest in its default team. This seeds rows in that shape with the database's
-triggers off, runs migration 20261103180000's SQL, and drives the real app with
+triggers off, runs migration 20261104140000's SQL, and drives the real app with
 organizations off: the API keys page, a run started with a key, new versions
 saved on the web and through v2, and a team organization's key on v1 and v2.
 
@@ -42,7 +42,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 MIGRATION = (
     Path(__file__).parents[2]
     / "migrations"
-    / "20261103180000_one_personal_team_slot"
+    / "20261104140000_one_personal_team_slot"
     / "migration.sql"
 )
 TENANT_TABLES = (

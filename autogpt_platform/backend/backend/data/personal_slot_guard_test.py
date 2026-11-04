@@ -1,7 +1,7 @@
 """Every tenant table sends a personal organization's rows to its default team.
 
 A table merged in later with both ``organizationId`` and ``teamId`` must carry
-migration 20261103180000's ``a0_normalize_personal_team`` trigger, or be listed
+migration 20261104140000's ``a0_normalize_personal_team`` trigger, or be listed
 in ``NOT_NORMALIZED`` with the reason, or personal rows can land at org-home
 again, where reads restricted to the default team don't find them.
 """

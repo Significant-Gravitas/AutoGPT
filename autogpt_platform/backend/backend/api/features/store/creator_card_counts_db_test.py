@@ -171,3 +171,51 @@ async def test_creator_stats_cover_only_the_listings_the_store_shows(server):
             where={"id": {"in": [owner, runner]}}
         )
         await _refresh()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_listing_whose_active_version_was_deleted_is_not_on_the_card(server):
+    """The live-version rule kept beside the visible-listing one (migration
+    20261104150000): an approved, available active version that was deleted
+    doesn't count."""
+    tag = uuid4().hex[:12]
+    owner = f"owner-{tag}"
+    await prisma.models.User.prisma().create(
+        data={"id": owner, "email": f"{owner}@example.invalid"}
+    )
+    await prisma.models.Profile.prisma().create(
+        data={
+            "userId": owner,
+            "name": owner,
+            "username": owner,
+            "avatarUrl": "",
+            "description": "",
+            "links": [],
+        }
+    )
+    live = f"graph-live-{tag}"
+    deleted = f"graph-deleted-{tag}"
+    graph_ids = [live, deleted]
+    try:
+        await _seed_listing(live, owner, [(APPROVED, True, "shown")], active=0)
+        deleted_versions = await _seed_listing(
+            deleted, owner, [(APPROVED, True, "gone")], active=0
+        )
+        await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": deleted_versions[0]}, data={"isDeleted": True}
+        )
+        await _refresh()
+
+        creator = await store_db.get_store_creator(owner)
+
+        assert creator.num_agents == 1
+        assert creator.top_categories == ["shown"]
+    finally:
+        await prisma.models.StoreListing.prisma().delete_many(
+            where={"agentGraphId": {"in": graph_ids}}
+        )
+        await prisma.models.AgentGraph.prisma().delete_many(
+            where={"id": {"in": graph_ids}}
+        )
+        await prisma.models.User.prisma().delete_many(where={"id": owner})
+        await _refresh()

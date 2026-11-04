@@ -482,7 +482,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 async def test_a_turn_saved_at_org_home_follows_only_a_personal_chat(
     stub_live_tenancy_rpc, organization_id: str, chat_team: str, runs: bool
 ):
-    """Migration 20261103180000 moved personal org-home chats to the default
+    """Migration 20261104140000 moved personal org-home chats to the default
     team. A turn saved before it still names org-home: it runs there, while a
     team organization's chat that changed teams still ends its schedule."""
     stub_live_tenancy_rpc.get_user_default_team.return_value = (

@@ -72,7 +72,7 @@ the per-user checks in `backend/copilot/rate_limit.py` directly.
 ### Where the plan lives
 
 `OrganizationSubscription`: `planTier`, `status`, and the `seats`, `endsAt` and
-`note` columns (migration `20261103120000_org_plan_seats_and_end`). Every
+`note` columns (migration `20261104130000_org_plan_seats_and_end`). Every
 process reads it through a shared cache for up to a minute; an admin's change,
 and converting a personal organization, drop the cached copy at once.
 
@@ -137,7 +137,7 @@ revocation.
 A personal organization keeps all of its rows in its default team. The web app
 used to save some at the organization's org-home (`teamId` NULL), which reads
 restricted to the default team then missed. Migration
-`20261103180000_one_personal_team_slot` moves those rows to the default team,
+`20261104140000_one_personal_team_slot` moves those rows to the default team,
 and the trigger `a0_normalize_personal_team`, on every table with both tenant
 columns, does the same to every later write that names no team. Code applies
 the same rule where a scope is compared exactly: the request context (a
@@ -178,7 +178,7 @@ team, whether or not organizations are on for the account
 
 - Preserve the database and artifact backups and verify the restore procedure.
 - Test migrations against a representative isolated copy before enabling users.
-- Before `20261103180000_one_personal_team_slot`, count read-only the rows in a
+- Before `20261104140000_one_personal_team_slot`, count read-only the rows in a
   personal organization with `teamId` NULL in each of its tables. It moves them
   in one transaction, and creating its triggers holds writes to all sixteen
   tables until it commits; past about a million executions, move

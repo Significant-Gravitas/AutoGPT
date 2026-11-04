@@ -575,7 +575,7 @@ async def _in_personal_default_team(
     args: "CopilotTurnJobArgs",
 ) -> "CopilotTurnJobArgs":
     """A turn saved at its personal organization's org-home runs in that
-    organization's default team, where migration 20261103180000 moved its
+    organization's default team, where migration 20261104140000 moved its
     chat. Compared as saved, the chat would read as moved elsewhere: the
     schedule would delete itself, or skip every run into a fresh chat."""
     if args.organization_id is None or args.team_id is not None:
