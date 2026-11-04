@@ -3,7 +3,12 @@ import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/ex
 import { okData } from "@/app/api/helpers";
 import { useContext } from "react";
 import { CopilotChatActionsContext } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import { nextPollInterval, runErrorFor, shouldWatchRun } from "./helpers";
+import {
+  isFinalStatus,
+  nextPollInterval,
+  runErrorFor,
+  shouldWatchRun,
+} from "./helpers";
 
 export function useLiveRunStatus(output: ExecutionStartedResponse | null) {
   // Only the signed-in /copilot chat polls: the public share page can't call
@@ -22,7 +27,7 @@ export function useLiveRunStatus(output: ExecutionStartedResponse | null) {
       query: {
         enabled,
         select: okData,
-        refetchInterval: (query) => nextPollInterval(query.state.data),
+        refetchInterval: (query) => nextPollInterval(query.state),
         refetchOnWindowFocus: false,
       },
     },
@@ -33,5 +38,6 @@ export function useLiveRunStatus(output: ExecutionStartedResponse | null) {
   return {
     status: liveRun?.status ?? output?.status,
     error: liveRun ? runErrorFor(liveRun) : null,
+    endedAfterStart: !!liveRun && isFinalStatus(liveRun.status),
   };
 }

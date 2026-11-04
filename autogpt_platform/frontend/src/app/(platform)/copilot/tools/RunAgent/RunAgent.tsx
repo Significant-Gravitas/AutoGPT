@@ -77,7 +77,12 @@ export function RunAgentTool({ part }: Props) {
       : null;
   const liveRun = useLiveRunStatus(startedOutput);
   const liveStartedOutput = startedOutput
-    ? { ...startedOutput, status: liveRun.status }
+    ? {
+        ...startedOutput,
+        status: liveRun.status,
+        // "Started successfully" reads wrong once the card says it failed.
+        message: liveRun.endedAfterStart ? "" : startedOutput.message,
+      }
     : null;
 
   const hasExpandableContent =

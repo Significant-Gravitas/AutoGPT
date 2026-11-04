@@ -62,9 +62,11 @@ export function ExecutionStartedCard({ output, error }: Props) {
       <ContentCard>
         <ContentCardTitle>{titleForStatus(output.status)}</ContentCardTitle>
         <ContentCardSubtitle>{output.execution_id}</ContentCardSubtitle>
-        <ContentCardDescription>{output.message}</ContentCardDescription>
+        {output.message && (
+          <ContentCardDescription>{output.message}</ContentCardDescription>
+        )}
         {error && (
-          <Text variant="small" tone="error" className="mt-2 line-clamp-2">
+          <Text variant="small" tone="error" className="mt-2 break-words">
             {error}
           </Text>
         )}

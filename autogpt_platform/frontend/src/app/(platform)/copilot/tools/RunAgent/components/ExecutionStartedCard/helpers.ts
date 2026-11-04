@@ -1,7 +1,11 @@
 import type { getV1GetExecutionDetailsResponse } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export const LIVE_STATUS_POLL_MS = 5000;
+const MAX_POLL_MS = 60_000;
+const POLLS_PER_STEP = 12;
+const PERMANENT_ERRORS = new Set([400, 403, 404, 422]);
 
 const FINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 const STOPPED_WITH_ERROR = new Set(["FAILED", "TERMINATED"]);
@@ -15,11 +19,30 @@ export function shouldWatchRun(status: string | undefined) {
   return !isFinalStatus(status) && (status ?? "").toUpperCase() !== "SCHEDULED";
 }
 
-export function nextPollInterval(
-  response: getV1GetExecutionDetailsResponse | undefined,
-) {
-  if (response?.status !== 200) return false;
-  return isFinalStatus(response.data.status) ? false : LIVE_STATUS_POLL_MS;
+interface PollState {
+  data: getV1GetExecutionDetailsResponse | undefined;
+  error: unknown;
+  dataUpdateCount: number;
+  errorUpdateCount: number;
+}
+
+function backedOffInterval(polls: number) {
+  // 5 s for the first minute, then twice as long each step, up to a minute,
+  // so a run parked in review for hours doesn't keep fetching every 5 s.
+  const step = Math.floor(polls / POLLS_PER_STEP);
+  return Math.min(LIVE_STATUS_POLL_MS * 2 ** step, MAX_POLL_MS);
+}
+
+export function nextPollInterval(state: PollState) {
+  const { data, error } = state;
+  // These won't fix themselves (the run is gone or not ours). A 401 during a
+  // session refresh, a 5xx or a network error might, so those keep polling.
+  if (error instanceof ApiError && PERMANENT_ERRORS.has(error.status))
+    return false;
+  if (!error && data?.status !== 200) return false;
+  if (!error && data?.status === 200 && isFinalStatus(data.data.status))
+    return false;
+  return backedOffInterval(state.dataUpdateCount + state.errorUpdateCount);
 }
 
 export function runErrorFor(run: Pick<GraphExecution, "status" | "stats">) {

@@ -102,6 +102,7 @@ describe("run card started from chat", () => {
     expect(await screen.findByText("Status: FAILED")).toBeDefined();
     expandCard();
     expect(screen.getByText("Execution failed")).toBeDefined();
+    expect(screen.queryByText(/started successfully/)).toBeNull();
     expect(
       screen.getByText("Missing API key for the image provider"),
     ).toBeDefined();
@@ -150,5 +151,42 @@ describe("run card started from chat", () => {
 
     expect(calls).toBe(1);
     expect(screen.getByText("Status: QUEUED")).toBeDefined();
+  });
+
+  it("stops polling when a later request gets a 404", async () => {
+    let calls = 0;
+    server.use(
+      http.get(EXECUTION_URL, () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json(makeRun("RUNNING"));
+        return HttpResponse.json({ detail: "Not found" }, { status: 404 });
+      }),
+    );
+    renderRun("QUEUED");
+
+    expect(await screen.findByText("Status: RUNNING")).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS));
+    await waitFor(() => expect(calls).toBe(2));
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 3));
+
+    expect(calls).toBe(2);
+  });
+
+  it("keeps polling through a server error", async () => {
+    let calls = 0;
+    server.use(
+      http.get(EXECUTION_URL, () => {
+        calls += 1;
+        if (calls === 1)
+          return HttpResponse.json({ detail: "Bad gateway" }, { status: 502 });
+        return HttpResponse.json(makeRun("FAILED", "Out of credits"));
+      }),
+    );
+    renderRun("QUEUED");
+
+    await waitFor(() => expect(calls).toBe(1));
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS));
+
+    expect(await screen.findByText("Status: FAILED")).toBeDefined();
   });
 });
