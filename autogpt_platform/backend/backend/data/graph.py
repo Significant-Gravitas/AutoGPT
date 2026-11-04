@@ -58,6 +58,11 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
 from backend.util.text import split_camelcase
+from backend.util.text_limits import (
+    MAX_CRON_LENGTH,
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_LONG_NAME_LENGTH,
+)
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
@@ -275,6 +280,16 @@ def _holds_picked_file(annotation: Any) -> bool:
         )
         for candidate in (annotation, *get_args(annotation))
     )
+
+
+# Checked at the save rather than on the model, because `GraphMeta` and
+# `GraphModel` read stored rows through it.
+GRAPH_TEXT_MAX_LENGTHS = {
+    "name": MAX_LONG_NAME_LENGTH,
+    "description": MAX_INSTRUCTIONS_LENGTH,
+    "instructions": MAX_INSTRUCTIONS_LENGTH,
+    "recommended_schedule_cron": MAX_CRON_LENGTH,
+}
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -2385,7 +2400,7 @@ async def fork_graph(
     # Set forked from ID and version as itself as it's about ot be copied
     graph.forked_from_id = graph.id
     graph.forked_from_version = graph.version
-    graph.name = f"{graph.name} (copy)"
+    graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
@@ -2399,6 +2414,12 @@ async def fork_graph(
         )
 
     return graph
+
+
+def fork_name(name: str) -> str:
+    """The fork's name, shortened so the suffix fits the saved-name bound."""
+    suffix = " (copy)"
+    return name[: GRAPH_TEXT_MAX_LENGTHS["name"] - len(suffix)] + suffix
 
 
 async def copy_graph(
@@ -2451,6 +2472,16 @@ async def __create_graph(
     graphs = [graph] + graph.sub_graphs
     for g in graphs:
         g.links = dedupe_links(g.links)
+
+    # Bound the metadata before anything is written, so every save path
+    # (route, fork, copy, copilot) is covered by one check.
+    for g in graphs:
+        for field_name, max_length in GRAPH_TEXT_MAX_LENGTHS.items():
+            if len(getattr(g, field_name) or "") > max_length:
+                raise ValueError(
+                    f"Graph {field_name} is too long: "
+                    f"at most {max_length} characters are allowed"
+                )
 
     # Reject unsafe dynamic pin names before anything is written, so no save
     # path (route, fork, copy, copilot) can persist one. The use-site guards in
