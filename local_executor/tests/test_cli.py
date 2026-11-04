@@ -564,3 +564,48 @@ async def test_an_embedder_logging_at_debug_never_sees_the_bearer_token(
 
     assert sent == ["Bearer access-secret"]
     assert "access-secret" not in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("supervisor", "permanent", "code"),
+    [
+        ("launchd", True, 0),
+        ("systemd", True, 0),
+        (None, True, 78),
+        ("launchd", False, 78),
+    ],
+)
+async def test_a_preflight_failure_a_restart_cannot_fix_stops_a_supervised_shim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    supervisor: str | None,
+    permanent: bool,
+    code: int,
+) -> None:
+    """An enabled preview fails preflight every time, so a supervisor would
+    restart it every few seconds; a missing macOS permission (the TCC chain)
+    must still exit 78 so launchd relaunches it once it is granted."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    class FailingDaemon:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def run(self) -> None:
+            raise daemon_module.DaemonPreflightError("preview is disabled", permanent=permanent)
+
+    monkeypatch.setattr(daemon_module, "ShimDaemon", FailingDaemon)
+    if supervisor is None:
+        monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    else:
+        monkeypatch.setenv("AUTOGPT_SHIM_SUPERVISOR", supervisor)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+    assert await cli._cmd_start(config) == code
+    assert "Preflight failed: preview is disabled" in capsys.readouterr().err

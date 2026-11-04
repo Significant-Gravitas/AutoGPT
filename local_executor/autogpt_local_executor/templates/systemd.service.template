@@ -26,6 +26,9 @@ RestartPreventExitStatus=77
 StandardOutput=append:{stdout_log}
 StandardError=append:{stderr_log}
 Environment=PYTHONUNBUFFERED=1
+# Lets `start` stop, rather than restart, on a preflight failure that every
+# restart would hit again (a preview turned on in the config).
+Environment=AUTOGPT_SHIM_SUPERVISOR=systemd
 
 [Install]
 WantedBy=default.target

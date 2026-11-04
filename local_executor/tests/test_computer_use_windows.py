@@ -116,7 +116,7 @@ def test_clipboard_cf_private_marker_raises_concealed(tmp_path, monkeypatch) -> 
     """Q3: CF_PRIVATE format on the clipboard → CLIPBOARD_CONCEALED with
     marker=CF_PRIVATE."""
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
-    monkeypatch.setattr(b, "_has_private_format", lambda: True)
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0x0200})
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("secret", 1))
     with pytest.raises(ClipboardConcealedError) as ei:
         b.clipboard_read()
@@ -134,7 +134,7 @@ def test_clipboard_writeback_round_trip(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
-    monkeypatch.setattr(b, "_has_private_format", lambda: False)
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
     b.clipboard_write(content="hello")
     res = b.clipboard_read()
     assert res.content == "hello"
@@ -143,7 +143,7 @@ def test_clipboard_writeback_round_trip(tmp_path, monkeypatch) -> None:
 def test_clipboard_writeback_only_refuses_foreign(tmp_path, monkeypatch) -> None:
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("user_text", 99))
-    monkeypatch.setattr(b, "_has_private_format", lambda: False)
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
 
@@ -466,3 +466,26 @@ def test_a_window_capture_releases_what_it_acquired_when_a_step_fails(
     mfc_dc.DeleteDC.assert_called_once()
     win32gui.ReleaseDC.assert_called_once()
     win32gui.DeleteObject.assert_not_called()
+
+
+def test_a_clipboard_read_refuses_a_private_format_that_lands_between_reads(
+    tmp_path, monkeypatch
+) -> None:
+    """The CF_PRIVATE check and the text read were separate clipboard
+    sessions, so a password-manager copy between them was returned."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    state = {"seq": 1, "content": "public", "private": False, "reads": 0}
+
+    def read() -> tuple[str, int]:
+        state["reads"] += 1
+        if state["reads"] == 1:
+            # The password manager copies right after this first read.
+            state["seq"] += 2
+            state["content"], state["private"] = "secret", True
+        return state["content"], state["seq"]
+
+    monkeypatch.setattr(b, "_read_clipboard_text", read)
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13, 0x0200} if state["private"] else {13})
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()

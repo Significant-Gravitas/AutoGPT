@@ -301,3 +301,21 @@ def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkey
         )
 
     assert state["content"] == "user text"
+
+
+def test_the_linux_restore_leaves_a_copy_made_during_the_paste(tmp_path, monkeypatch) -> None:
+    """The restore wrote the snapshot back without looking, over a copy
+    the user made in the 50 ms before it."""
+    monkeypatch.setattr(linux_backend.shutil, "which", lambda n: "/usr/bin/" + n)
+    b = LinuxBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    state = {"content": "user text"}
+    monkeypatch.setattr(b, "_write_clipboard_text", lambda text: state.update(content=text))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], None))
+    pyautogui.hotkey.side_effect = lambda *_keys: state.update(content="copied during the paste")
+
+    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+
+    assert state["content"] == "copied during the paste"

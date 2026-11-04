@@ -93,9 +93,9 @@ fingerprint stays in the shim's per-process stub registry, where
 `stub_id` is the same shim-minted-UUID pattern locked in Q2: never
 reused, wiped on HELLO. Subsequent `LOCAL_LLM_TURN` ops reference the
 stub_id rather than re-sending the path (so the file doesn't get
-re-resolved + re-fingerprinted each time, and a TOCTOU change between
-turns surfaces as `STUB_STALE` if the fingerprint the shim keeps has
-drifted).
+re-resolved + re-fingerprinted each time, and, when `verify_sha256` is
+true, a TOCTOU change between turns surfaces as `STUB_STALE` because the
+fingerprint the shim keeps has drifted).
 
 ### `LOCAL_LLM_TURN` (platform → shim) — NEW v2 op
 
@@ -111,7 +111,7 @@ drifted).
     "context": "The user is reviewing their Q3 expenses.",  // optional
     "max_tokens": 1024,
     "temperature": 0.0,
-    "verify_sha256": true          // re-fingerprint and refuse if drifted from stub
+    "verify_sha256": true          // default true: re-fingerprint, refuse if drifted from stub
   }
 }
 ```

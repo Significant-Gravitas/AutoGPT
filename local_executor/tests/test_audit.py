@@ -891,3 +891,48 @@ def test_tail_waits_for_the_rest_of_a_record_being_written(tmp_path: Path) -> No
             seen.append(line)
 
     assert seen == [b'{"seq": 1, "op": "X"}\n']
+
+
+@_posix_only
+@_not_root
+def test_a_writer_that_appears_during_an_unlocked_read_fails_the_read(tmp_path: Path) -> None:
+    """Without a lock file the read goes ahead unlocked; if a writer creates
+    one meanwhile, what was read may have been half written."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    logs.chmod(0o500)
+    try:
+        with pytest.raises(audit_module.AuditLockError, match="writer"):
+            with audit_module.holding_log_lock(logs / "audit.log"):
+                logs.chmod(0o700)
+                (logs / ".audit.log.lock").touch()
+    finally:
+        logs.chmod(0o700)
+
+
+@pytest.mark.asyncio
+async def test_export_refuses_an_output_named_like_a_rotated_log(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """verify-all would later read the zip as a rotated log and fail on it."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    output = tmp_path / "audit.log.export.zip"
+
+    assert cli._audit_export(writer.path, output) == 2
+    assert not output.exists()
+    assert "rotated" in capsys.readouterr().out
+
+
+def test_prune_judges_a_file_by_a_last_record_longer_than_8_kib(tmp_path: Path) -> None:
+    """The tail window was 8 KiB, so a longer final record (a long command)
+    failed to parse and the file was kept without a word."""
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20200101-000000"
+    record = {"seq": 1, "ts": 1.0, "details": {"command": "x" * 20_000}}
+    rotated.write_text(json.dumps(record) + "\n")
+
+    assert cli._audit_prune(current, "1d") == 0
+    assert not rotated.exists()

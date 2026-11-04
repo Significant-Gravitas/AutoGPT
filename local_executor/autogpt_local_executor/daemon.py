@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Never, cast
 
+import keyring.errors
 import websockets
 from pydantic import BaseModel, ValidationError
 from websockets.asyncio.client import connect
@@ -145,6 +146,21 @@ class DaemonPreflightError(RuntimeError):
     clear audit record and exits with EX_CONFIG (78). launchd's
     KeepAlive: SuccessfulExit=false re-launches us on the next TCC
     change.
+
+    `permanent` marks a failure no relaunch can fix (a preview that is
+    turned on, a missing package): a supervised `start` then stops instead.
+    """
+
+    def __init__(self, message: str, *, permanent: bool = False) -> None:
+        super().__init__(message)
+        self.permanent = permanent
+
+
+class KeychainUnavailableError(RuntimeError):
+    """The OS keychain couldn't be read just now (still locked at login, say).
+
+    Unlike a rejected credential, this can clear on its own, so the reconnect
+    loop retries it rather than stopping.
     """
 
 
@@ -656,10 +672,15 @@ class ShimDaemon:
             token = await self.token_store.get_access_token()
         except CredentialScopeError as exc:
             raise DaemonAuthenticationError(str(exc)) from None
-        except Exception:
+        except (keyring.errors.NoKeyringError, keyring.errors.InitError):
             raise DaemonAuthenticationError(
-                "Stored credentials are unavailable. Unlock or configure the OS keychain, "
-                "then run `autogpt-shim auth` with the intended deployment configuration."
+                "No usable OS keychain is configured. Set one up, then run "
+                "`autogpt-shim auth` with the intended deployment configuration."
+            ) from None
+        except Exception as exc:
+            raise KeychainUnavailableError(
+                f"The OS keychain could not be read ({type(exc).__name__}); "
+                "it may still be locked. Retrying."
             ) from None
         self._ensure_credential_scope()
         return token
@@ -1802,6 +1823,7 @@ class ShimDaemon:
                 "end-to-end cancellation are supported.",
                 missing_permissions=["local_model_preview_disabled"],
                 error_code=ErrorCode.CAPABILITY_NOT_GRANTED,
+                permanent=True,
             )
         if self.config.enable_recording:
             await self._fail_preflight(
@@ -1809,6 +1831,7 @@ class ShimDaemon:
                 "capture and interpretation are incomplete, so the shim will not advertise it.",
                 missing_permissions=["recording_preview_disabled"],
                 error_code=ErrorCode.CAPABILITY_NOT_GRANTED,
+                permanent=True,
             )
         if not self.config.enable_computer_use:
             return
@@ -1830,6 +1853,7 @@ class ShimDaemon:
                 "pyobjc is unavailable. Run `autogpt-shim doctor`.",
                 missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
+                permanent=True,
             )
         try:
             granted = {
@@ -1860,6 +1884,7 @@ class ShimDaemon:
         *,
         missing_permissions: list[str],
         error_code: ErrorCode,
+        permanent: bool = False,
     ) -> Never:
         try:
             await self.audit.write(
@@ -1879,9 +1904,9 @@ class ShimDaemon:
             )
         except Exception as exc:
             raise DaemonPreflightError(
-                f"{message} Mandatory preflight audit write also failed."
+                f"{message} Mandatory preflight audit write also failed.", permanent=permanent
             ) from exc
-        raise DaemonPreflightError(message)
+        raise DaemonPreflightError(message, permanent=permanent)
 
 
 __all__ = [

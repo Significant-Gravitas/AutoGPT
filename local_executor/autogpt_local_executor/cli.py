@@ -299,9 +299,24 @@ async def _cmd_start(config) -> int:
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
     except DaemonPreflightError as exc:
+        print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
+        supervisor = os.environ.get("AUTOGPT_SHIM_SUPERVISOR")
+        if exc.permanent and supervisor in ("launchd", "systemd"):
+            # A setting or a missing package fails the same way on every
+            # restart, so stop until the user has fixed it.
+            restart = (
+                "launchctl kickstart -k gui/$(id -u)/net.autogpt.shim"
+                if supervisor == "launchd"
+                else "systemctl --user restart autogpt-shim"
+            )
+            print(
+                f"The service will not restart on its own. Fix the above, then run `{restart}`.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 0
         # Exit 78 (EX_CONFIG) so launchd's KeepAlive: SuccessfulExit=false
         # re-launches us on the next TCC change. See COMPUTER_USE.md Q5.
-        print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
         return 78
     except DaemonAuthenticationError as exc:
         print(f"Authentication failed: {exc}", file=sys.stderr, flush=True)
@@ -641,6 +656,10 @@ def _audit_export(current: Path, output: Path | None) -> int:
         if any(_same_file(output, path) for path in (current, *files)):
             print(f"Refusing to write the export over an audit log: {output}")
             return 2
+        # Nor named like a rotated log beside it, which verify-all would read.
+        if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
+            print(f"Refusing to name the export like a rotated audit log: {output}")
+            return 2
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in files:
                 data = path.read_bytes()
@@ -712,18 +731,17 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
     deleted = 0
     for path in rotated:
         try:
-            # Newest record sits at the tail; reuse the same window logic
-            # as the writer's tail-state recovery (8 KiB is fine for our
-            # line sizes).
+            # The newest record is the last line, however long: a record can
+            # run past any fixed tail window (an EXECUTE_COMMAND with a long
+            # command, say).
+            last = b""
             with open(path, "rb") as f:
-                f.seek(0, 2)
-                size = f.tell()
-                f.seek(max(0, size - 8192))
-                tail = f.read()
-            lines = [ln for ln in tail.split(b"\n") if ln.strip()]
-            if not lines:
+                for line in f:
+                    if line.strip():
+                        last = line
+            if not last:
                 continue
-            newest = json.loads(lines[-1])
+            newest = json.loads(last)
             newest_ts = newest.get("ts") if isinstance(newest, dict) else None
             if newest_ts is None:
                 print(f"Kept {path.name}: its newest record has no timestamp.")

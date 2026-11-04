@@ -619,14 +619,17 @@ class LinuxBackend(ComputerUseBackend):
             # Also when the hotkey raised (pyautogui's fail-safe fires before
             # any key goes out): the user's text is already overwritten.
             if restore is not None:
-                self._restore_after_paste(restore)
+                self._restore_after_paste(text, restore)
 
-    def _restore_after_paste(self, restore: str) -> None:
+    def _restore_after_paste(self, pasted: str, restore: str) -> None:
         time.sleep(0.05)
-        # We don't have a reliable sequence number on X11/Wayland from
-        # the CLI utilities; the changeCount-skip-restore protection
-        # falls back to "restore unconditionally" here. Documented in
-        # COMPUTER_USE.md Q4 as a race window.
+        # The CLI tools expose no sequence number, so the text stands in for
+        # it: a clipboard that no longer holds what was pasted has had
+        # something copied to it since, and keeps that. (Copying the very
+        # same text again can't be told apart.)
+        current, _ = self._read_clipboard_text()
+        if current != pasted:
+            return
         # The restored contents are the user's, not ours, so they are not
         # recorded as a writeback: a writeback-only read refuses them.
         try:

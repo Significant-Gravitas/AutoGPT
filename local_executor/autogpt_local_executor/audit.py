@@ -774,6 +774,7 @@ def holding_log_lock(log: Path) -> Iterator[None]:
     failure raises AuditLockError rather than risk a half-written record.
     """
     lock = _lock_path(log)
+    unlocked = False
     with contextlib.ExitStack() as stack:
         try:
             stack.enter_context(_file_lock(lock))
@@ -781,10 +782,14 @@ def holding_log_lock(log: Path) -> Iterator[None]:
             try:
                 stack.enter_context(_file_lock(lock, read_only=True))
             except FileNotFoundError:
-                pass
+                unlocked = True
             except OSError as exc:
                 raise AuditLockError(f"{lock}: {exc}") from exc
         yield
+    # A writer that started meanwhile created the lock file first, and may
+    # have been mid-append while this read ran, so the read can't be trusted.
+    if unlocked and lock.exists():
+        raise AuditLockError(f"{lock}: a writer started during the read; run it again")
 
 
 @contextmanager
