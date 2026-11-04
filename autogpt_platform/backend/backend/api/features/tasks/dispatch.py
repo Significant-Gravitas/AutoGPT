@@ -12,14 +12,19 @@ Every public function here is best-effort and never raises.
 import logging
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 from backend.api.features.tasks.access import tasks_store
-from backend.api.features.tasks.events import publish_task_event
+from backend.api.features.tasks.events import (
+    publish_contract_update,
+    publish_task_event,
+)
 from backend.api.features.tasks.live_step import remember_work_session
 from backend.api.features.tasks.models import (
     DEFAULT_BUDGET_CAP_USD,
     ActivityKind,
     Actor,
+    ActorType,
     AssigneeType,
     Task,
     TaskStatus,
@@ -29,6 +34,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 
 logger = logging.getLogger(__name__)
 
+TASK_KICKOFF_KIND = "task_kickoff"
 MAX_TURNS_PER_TASK = 20
 RESUME_WINDOW_SECONDS = 120
 MAX_RESUMES_PER_WINDOW = 6
@@ -36,9 +42,9 @@ _STARTABLE = (TaskStatus.BACKLOG, TaskStatus.TODO)
 _recent_starts: dict[str, list[float]] = {}
 
 TOOL_HINT = (
-    "Task tools: list_my_tasks, update_task_status, comment_on_task, "
-    "request_input, link_artifact, create_task. If a tool is not in your tool "
-    "list, call it through run_capability with id 'tool:<name>'."
+    "Task tools: update_task, add_evidence, ask_user, comment_on_task, "
+    "list_my_tasks, create_task. If a tool is not in your tool list, call it "
+    "through run_capability with id 'tool:<name>'."
 )
 
 
@@ -54,7 +60,9 @@ async def on_task_assigned(user_id: str, task_id: str) -> None:
             return
         if await _wait_for_expert(user_id, task):
             return
-        await start_task_turn(user_id, task, kickoff_message(task))
+        await start_task_turn(
+            user_id, task, kickoff_message(task), kickoff_metadata(task)
+        )
     except Exception:
         logger.exception("on_task_assigned failed for task %s", task_id)
 
@@ -84,7 +92,12 @@ async def on_work_turn_finished(session_id: str, status: str) -> None:
         logger.exception("on_work_turn_finished failed for session %s", session_id)
 
 
-async def start_task_turn(user_id: str, task: Task, message: str) -> bool:
+async def start_task_turn(
+    user_id: str,
+    task: Task,
+    message: str,
+    message_metadata: dict[str, Any] | None = None,
+) -> bool:
     """Guard, open the work chat if needed, and queue one turn."""
     store = tasks_store()
     refusal = _guard_refusal(task)
@@ -128,11 +141,18 @@ async def start_task_turn(user_id: str, task: Task, message: str) -> bool:
     fresh = await store.get_task(user_id, task.id)
     await publish_task_event(user_id, "task_updated", fresh, task_id=task.id)
     await publish_task_event(user_id, "task_activity", fresh, activity, task.id)
-    return await _queue_turn(user_id, task, session_id, message, activity.id)
+    return await _queue_turn(
+        user_id, task, session_id, message, activity.id, message_metadata
+    )
 
 
 async def _queue_turn(
-    user_id: str, task: Task, session_id: str, message: str, activity_id: str
+    user_id: str,
+    task: Task,
+    session_id: str,
+    message: str,
+    activity_id: str,
+    message_metadata: dict[str, Any] | None,
 ) -> bool:
     store = tasks_store()
     try:
@@ -144,6 +164,7 @@ async def _queue_turn(
             tool_call_id=f"task:{task.id}",
             tool_name="task_dispatch",
             allow_queue=True,
+            message_metadata=message_metadata,
         )
     except Exception as e:
         logger.warning("Could not queue a work turn for task %s: %s", task.id, e)
@@ -193,15 +214,17 @@ def _guard_refusal(task: Task) -> str | None:
 
 
 async def _block(user_id: str, task: Task, note: str) -> None:
+    """Stop the task on a guard, with the guard's reason as its blocker so the
+    card says why instead of a generic "stopped"."""
     store = tasks_store()
     await store.set_live(task.id, False)
-    fresh = await store.set_task_status(
-        user_id, task.id, TaskStatus.BLOCKED, Actor.system(), note=note
+    update = await store.contract_update_task(
+        user_id,
+        task.id,
+        {"blocker": {"what_stopped_it": note, "cause": "limit"}},
+        Actor.system(),
     )
-    activity = await store.add_activity(
-        user_id, task.id, ActivityKind.SYSTEM, Actor.system(), body=note
-    )
-    await publish_task_event(user_id, "task_needs_input", fresh, activity, task.id)
+    await publish_contract_update(user_id, update)
 
 
 async def _wait_for_expert(user_id: str, task: Task) -> bool:
@@ -238,11 +261,33 @@ async def _ensure_work_session(user_id: str, task: Task) -> str:
         if task.assignee and task.assignee.type == AssigneeType.EXPERT
         else None
     )
+    origin = "interactive" if await _user_drives(user_id, task) else "automation"
     session = await create_chat_session(
-        user_id, dry_run=False, expert_id=expert_id, origin="automation"
+        user_id, dry_run=False, expert_id=expert_id, origin=origin
     )
     await tasks_store().set_work_session(task.id, session.session_id)
     return session.session_id
+
+
+async def _user_drives(user_id: str, task: Task) -> bool:
+    """Whether the task's chat counts as one the user drives, so it may do
+    what only a user-driven chat may (propose hires, each still waiting on
+    the user's approval). Two things make it so: the user wrote the task and
+    gave it to Otto, or the user pressed Allow on a blocker that a
+    user-driven chat would get past. A task Otto or an expert wrote stays an
+    automation until then."""
+    events = await tasks_store().list_activity(user_id, task.id)
+    if any(
+        e.kind == ActivityKind.ACTION_TAKEN
+        and e.data.get("action") == "allow"
+        and e.actor.type == ActorType.USER
+        for e in events
+    ):
+        return True
+    if task.assignee is None or task.assignee.type != AssigneeType.OTTO:
+        return False
+    created = next((e for e in events if e.kind == ActivityKind.CREATED), None)
+    return created is not None and created.actor.type == ActorType.USER
 
 
 def _worked_by_ai(task: Task) -> bool:
@@ -266,9 +311,28 @@ def kickoff_message(task: Task) -> str:
     if task.parent_key:
         parts.append(f"This is a sub-task of {task.parent_key}.")
     parts.append(
-        "Work it now. Use update_task_status / comment_on_task / request_input "
-        "/ link_artifact as you go; when finished call "
-        "update_task_status(status='done', outcome_summary=...). If you need "
-        "the user, call request_input and stop.\n" + TOOL_HINT
+        "Work it now. Start with update_task (goal, done_when, plan), keep its "
+        "steps current, record proof with add_evidence, and finish with "
+        "update_task(result=...). If you need the user, call ask_user.\n" + TOOL_HINT
     )
     return "\n\n".join(parts)
+
+
+def resume_brief(task: Task, contract_brief: str, note: str) -> str:
+    """The first message of a fresh work chat for a task that already has
+    work done: the kickoff, the record so far, and why it starts again."""
+    return (
+        f"{kickoff_message(task)}\n\nWork so far (keep it; don't redo finished "
+        f"steps):\n{contract_brief}\n\n{note}"
+    )
+
+
+def kickoff_metadata(task: Task) -> dict[str, Any]:
+    """Lets the chat show the kickoff as the task it starts, not as a message
+    the user typed; the model still reads the text."""
+    return {
+        "kind": TASK_KICKOFF_KIND,
+        "task_id": task.id,
+        "task_key": task.key,
+        "task_title": task.title,
+    }

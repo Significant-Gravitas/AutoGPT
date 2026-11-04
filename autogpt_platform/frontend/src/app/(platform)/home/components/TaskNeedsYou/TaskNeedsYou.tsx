@@ -69,6 +69,11 @@ export function TaskNeedsYou({ className }: Props) {
 
 function TaskRow({ task }: { task: Task }) {
   const asker = task.open_question?.asked_by ?? task.assignee;
+  const reason =
+    task.ask?.question ||
+    task.blocker?.short ||
+    task.open_question?.question ||
+    task.now;
   return (
     <NextLink
       href={`/tasks?task=${encodeURIComponent(task.id)}`}
@@ -93,9 +98,13 @@ function TaskRow({ task }: { task: Task }) {
             {task.title}
           </Text>
         </div>
-        {task.open_question ? (
-          <Text variant="inbox" tone="text" className="line-clamp-2">
-            {task.open_question.question}
+        {reason ? (
+          <Text
+            variant="inbox"
+            tone={task.state === "stuck" ? "warning" : "text"}
+            className="line-clamp-2"
+          >
+            {reason}
           </Text>
         ) : null}
         {asker ? (

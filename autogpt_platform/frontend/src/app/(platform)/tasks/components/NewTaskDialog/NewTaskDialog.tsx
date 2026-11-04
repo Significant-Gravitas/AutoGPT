@@ -1,9 +1,8 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/atoms/Input/Input";
-import { Select } from "@/components/atoms/Select/Select";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import type { ExpertOption } from "../../data/types";
-import { assigneeOptions, isPriority, PRIORITY_OPTIONS } from "./helpers";
+import { AssigneeChip } from "./components/AssigneeChip/AssigneeChip";
 import { useNewTaskDialog } from "./useNewTaskDialog";
 
 interface Props {
@@ -19,80 +18,49 @@ export function NewTaskDialog({
   experts,
   onCreated,
 }: Props) {
-  const form = useNewTaskDialog({ onOpenChange, onCreated });
+  const form = useNewTaskDialog({ experts, onOpenChange, onCreated });
 
   return (
     <Dialog
       title="New task"
-      className="max-w-lg"
+      className="max-w-xl"
       controlled={{
         isOpen,
         set: (open) => (open ? onOpenChange(true) : form.close()),
       }}
     >
       <Dialog.Content>
-        <form className="flex flex-col gap-1" onSubmit={form.submit}>
-          <Input
-            id="new-task-title"
-            label="Title"
+        <form
+          onSubmit={form.submit}
+          className="flex flex-col gap-2 rounded-card border border-border-base bg-surface p-3 shadow-sm transition-colors focus-within:border-border-strong"
+        >
+          <textarea
+            aria-label="What needs doing?"
             placeholder="What needs doing?"
-            value={form.title}
-            onChange={(e) => form.setTitle(e.target.value)}
+            value={form.text}
+            onChange={(e) => form.setText(e.target.value)}
+            onKeyDown={form.onKeyDown}
+            rows={2}
             autoFocus
+            className="[field-sizing:content] max-h-60 min-h-12 w-full resize-none bg-transparent px-1 text-body text-foreground-ink placeholder:text-foreground-faint focus:outline-none"
           />
-          <Input
-            id="new-task-description"
-            label="Description"
-            type="textarea"
-            rows={3}
-            placeholder="Add details, links or the result you expect"
-            value={form.description}
-            onChange={(e) => form.setDescription(e.target.value)}
-          />
-          <Select
-            id="new-task-assignee"
-            label="Assignee"
-            value={form.assignee}
-            onValueChange={form.setAssignee}
-            options={assigneeOptions(experts)}
-          />
-          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
-            <Select
-              id="new-task-priority"
-              label="Priority"
-              value={form.priority}
-              onValueChange={(value) => {
-                if (isPriority(value)) form.setPriority(value);
-              }}
-              options={PRIORITY_OPTIONS}
+          <div className="flex items-center justify-between gap-2">
+            <AssigneeChip
+              value={form.assignee}
+              choices={form.choices}
+              onChange={form.pickAssignee}
             />
-            <Input
-              id="new-task-due"
-              label="Due date"
-              type="date"
-              value={form.dueDate}
-              onChange={(e) => form.setDueDate(e.target.value)}
-            />
-          </div>
-          <Dialog.Footer>
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              onClick={form.close}
-            >
-              Cancel
-            </Button>
             <Button
               type="submit"
               variant="primary"
-              size="small"
+              size="icon-sm"
+              shape="pill"
+              aria-label="Create task"
+              leadingIcon={ArrowUp02Icon}
               disabled={!form.canSubmit}
               loading={form.isSubmitting}
-            >
-              Create task
-            </Button>
-          </Dialog.Footer>
+            />
+          </div>
         </form>
       </Dialog.Content>
     </Dialog>

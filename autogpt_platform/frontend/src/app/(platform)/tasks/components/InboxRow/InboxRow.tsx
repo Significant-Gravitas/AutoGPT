@@ -1,19 +1,17 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
-import { AnimatePresence } from "framer-motion";
+import { taskKey } from "../../data/helpers";
 import type { Task } from "../../data/types";
-import { FoldPanel } from "./components/FoldPanel";
-import { RowDetails } from "./components/RowDetails";
-import { RowSummary } from "./components/RowSummary";
+import { StateDot } from "../StateDot/StateDot";
+import { RowAssignee } from "./components/RowAssignee";
+import { openLabel } from "./helpers";
 import { useInboxRow } from "./useInboxRow";
 
 interface Props {
   task: Task;
-  expanded: boolean;
-  onToggle(): void;
   onOpen(): void;
   variant?: "list" | "board";
   selected?: boolean;
@@ -21,98 +19,118 @@ interface Props {
 
 export function InboxRow({
   task,
-  expanded,
-  onToggle,
   onOpen,
   variant = "list",
   selected = false,
 }: Props) {
-  const row = useInboxRow(task, expanded);
+  const row = useInboxRow(task);
   const board = variant === "board";
-  const detailsID = `inbox-row-${task.id}-details`;
+  const ask = task.ask;
 
   return (
     <div
       data-testid="inbox-row"
-      data-state={task.inbox.state}
+      data-state={task.state}
       data-selected={selected || undefined}
-      onKeyDown={row.handleKeyDown}
       className={cn(
-        "flex flex-col",
-        board &&
-          "rounded-card bg-surface shadow-card transition-shadow duration-150 ease-out-expo hover:shadow-card-hover motion-reduce:transition-none",
+        "flex flex-col transition-colors duration-150 ease-out-expo motion-reduce:transition-none",
+        board
+          ? "rounded-card bg-surface shadow-card transition-shadow hover:shadow-card-hover"
+          : "hover:bg-surface-wash",
         board && selected && "shadow-card-hover",
+        !board && selected && "bg-surface-wash",
       )}
     >
-      <div
+      <button
+        type="button"
+        id={`inbox-row-${task.id}`}
+        aria-current={selected ? "true" : undefined}
+        onClick={onOpen}
         className={cn(
-          "group/row flex items-stretch transition-colors duration-150 ease-out-expo motion-reduce:transition-none",
-          board ? "rounded-card" : "hover:bg-surface-wash",
-          selected && "bg-surface-wash",
+          "flex min-w-0 flex-col gap-1 text-left transition-transform duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset active:scale-99 motion-reduce:transition-none",
+          board ? "rounded-card p-3" : "py-3 pr-4 pl-3",
         )}
       >
-        <button
-          type="button"
-          id={`inbox-row-${task.id}`}
-          aria-current={selected ? "true" : undefined}
-          onClick={onOpen}
-          className={cn(
-            "min-w-0 flex-1 text-left transition-transform duration-150 ease-out-expo focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset active:scale-99 motion-reduce:transition-none",
-            board ? "rounded-l-card p-3 pr-1" : "py-3 pr-1 pl-4",
-          )}
-        >
-          <RowSummary task={task} elapsed={row.elapsed} variant={variant} />
-        </button>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={detailsID}
-          aria-label={expanded ? "Hide steps" : "Show steps"}
-          onClick={onToggle}
-          className={cn(
-            "flex w-8 shrink-0 items-start justify-center pt-3.5 focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset",
-            board ? "rounded-r-card" : "mr-1 rounded-control",
-          )}
-        >
-          <span
-            aria-hidden
+        <span className="flex min-w-0 items-start gap-2">
+          <StateDot state={task.state} className="mt-0.5" />
+          <Text
+            as="span"
+            variant="inbox-medium"
+            tone="ink"
             className={cn(
-              "flex transition-transform duration-300 ease-out-expo motion-reduce:transition-none",
-              expanded && "rotate-180",
+              "min-w-0 flex-1 break-words",
+              board ? "line-clamp-2" : "truncate",
             )}
           >
-            <Icon
-              icon={ArrowDown01Icon}
-              size={16}
-              tone={expanded ? "ink" : "faint"}
-            />
-          </span>
-        </button>
-      </div>
-      <AnimatePresence initial={false}>
-        {expanded ? (
-          <FoldPanel
-            key="details"
-            id={detailsID}
-            labelledBy={`inbox-row-${task.id}`}
+            {task.title}
+          </Text>
+          {board ? null : (
+            <span className="hidden shrink-0 md:inline-flex">
+              <RowAssignee assignee={task.assignee} />
+            </span>
+          )}
+        </span>
+        <span className="flex min-w-0 items-baseline gap-1.5 pl-6">
+          <Text
+            as="span"
+            variant="inbox"
+            tone={task.state === "stuck" ? "warning" : "quiet"}
+            className="line-clamp-2 min-w-0"
           >
-            <div className={cn(board ? "px-3 pb-3" : "pt-1 pr-4 pb-4 pl-11")}>
-              <RowDetails
-                task={task}
-                now={row.now}
-                action={row.action}
-                busy={row.busy}
-                pending={row.pending}
-                onAnswer={row.answerWith}
-                onApprove={row.approve}
-                onReject={row.reject}
-                onRetry={row.retry}
-                onOpen={onOpen}
-              />
-            </div>
-          </FoldPanel>
+            {task.now || "Not started"}
+          </Text>
+          <Text
+            as="span"
+            variant="inbox"
+            tone="faint"
+            tabular
+            className="shrink-0"
+          >
+            · {row.ago}
+          </Text>
+        </span>
+        {board ? (
+          <span className="flex min-w-0 items-center gap-2 pt-1 pl-6">
+            <span className="flex min-w-0 flex-1 overflow-hidden">
+              <RowAssignee assignee={task.assignee} />
+            </span>
+            <Text as="span" variant="small" tone="faint" mono>
+              {taskKey(task.number)}
+            </Text>
+          </span>
         ) : null}
-      </AnimatePresence>
+      </button>
+      {ask || row.action ? (
+        <div
+          className={cn(
+            "flex flex-col gap-2 rounded-control bg-surface-wash p-2.5",
+            board ? "mx-3 mb-3" : "mr-4 mb-3 ml-9",
+          )}
+        >
+          {ask ? (
+            <Text variant="inbox" tone="ink" className="break-words">
+              {ask.question}
+            </Text>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {row.action ? (
+              <Button
+                variant="primary"
+                size="xs"
+                className="max-w-full"
+                title={row.action.label}
+                loading={row.busy}
+                onClick={row.runAction}
+              >
+                <span className="truncate">{row.action.label}</span>
+              </Button>
+            ) : null}
+            <Button variant="ghost-muted" size="xs" onClick={onOpen}>
+              {openLabel(task, !!row.action)}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

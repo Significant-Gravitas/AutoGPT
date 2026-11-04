@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "TaskPlan" ADD COLUMN "split" BOOLEAN NOT NULL DEFAULT true;

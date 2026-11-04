@@ -11,6 +11,7 @@ async def create_plan(
     steps: list[PlanStep],
     budget_usd: float | None,
     session_id: str | None,
+    split: bool = True,
 ) -> Plan:
     row = await prisma.models.TaskPlan.prisma().create(
         data={
@@ -18,6 +19,7 @@ async def create_plan(
             "goal": goal,
             "budgetUsd": budget_usd,
             "steps": Json([s.model_dump(mode="json") for s in steps]),
+            "split": split,
             "sessionId": session_id,
         }
     )

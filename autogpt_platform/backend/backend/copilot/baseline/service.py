@@ -143,6 +143,7 @@ from backend.copilot.service import (
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.stream_checkpoint import turn_checkpoint
+from backend.copilot.tasks_rubric import get_tasks_supplement
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
@@ -2109,6 +2110,7 @@ async def stream_chat_completion_baseline(
     team_building_supplement = get_team_building_supplement(
         experts_enabled=experts_enabled, expert_id=session.expert_id
     )
+    tasks_supplement = await get_tasks_supplement(user_id)
     chat_platform_supplement = get_chat_platform_supplement(
         session.metadata.source_platform
     )
@@ -2126,6 +2128,7 @@ async def stream_chat_completion_baseline(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + tasks_supplement
         + chat_platform_supplement
         + graphiti_supplement
         + auto_mode_supplement

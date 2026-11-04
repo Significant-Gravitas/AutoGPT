@@ -9,6 +9,7 @@ import type { ToolUIPart } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../../store";
+import { PendingAnswerContexts } from "../../ChatMessagesContainer/components/PendingAnswerContexts";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import {
   ExpertChangeCard,
@@ -453,6 +454,37 @@ describe("expert approval", () => {
     );
     expect(screen.getByText("Sent")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Undo decline" })).toBeNull();
+  });
+
+  it("stays answered after a reload once the decisions were sent", () => {
+    const answer = {
+      id: "u1",
+      role: "user" as const,
+      parts: [
+        {
+          type: "text" as const,
+          text:
+            "Approved: create Fiona (confirmation_id: c-a).\n" +
+            "Not approved: do not create Bhaskar, discard that proposal (confirmation_id: c-b).",
+        },
+      ],
+    };
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingAnswerContexts messages={[answer]}>
+          <ExpertChangeGroup
+            parts={[proposal("Fiona", "a"), proposal("Bhaskar", "b")]}
+          />
+        </PendingAnswerContexts>
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(screen.getByText("Sent")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Go to expert 2" }).className,
+    ).toContain("bg-error");
   });
 
   it("takes no answer until the stream has settled, then sends on one click", async () => {

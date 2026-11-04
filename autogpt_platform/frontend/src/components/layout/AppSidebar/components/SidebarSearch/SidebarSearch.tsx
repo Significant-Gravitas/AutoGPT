@@ -20,12 +20,12 @@ export function SidebarSearch() {
           type="button"
           aria-label="Search"
           onClick={openSearch}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-surface-active max-md:size-10"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground max-md:size-10"
         >
           <Icon
             icon={Search01Icon}
-            tone="emphasis-soft"
-            className="size-4 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+            tone="inherit"
+            className="size-4 max-md:size-5"
           />
         </button>
       </TooltipTrigger>

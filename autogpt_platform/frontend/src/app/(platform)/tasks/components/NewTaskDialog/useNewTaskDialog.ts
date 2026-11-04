@@ -1,49 +1,53 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useState } from "react";
+import { isKey } from "@/lib/keyboard";
+import { Key, storage } from "@/services/storage/local-storage";
+import { useState, type KeyboardEvent } from "react";
 import { taskKey } from "../../data/helpers";
-import type { TaskPriority } from "../../data/types";
+import type { ExpertOption } from "../../data/types";
 import { useCreateTask } from "../../data/useTasksData";
-import { ME_VALUE, toAssignee } from "./helpers";
+import {
+  assigneeChoices,
+  createdMessage,
+  resolveChoice,
+  splitTaskText,
+  toAssignee,
+} from "./helpers";
 
 interface Args {
+  experts: ExpertOption[];
   onOpenChange: (open: boolean) => void;
   onCreated?: (id: string) => void;
 }
 
-export function useNewTaskDialog({ onOpenChange, onCreated }: Args) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [assignee, setAssignee] = useState(ME_VALUE);
-  const [priority, setPriority] = useState<TaskPriority>("none");
-  const [dueDate, setDueDate] = useState("");
+export function useNewTaskDialog({ experts, onOpenChange, onCreated }: Args) {
+  const [text, setText] = useState("");
+  const [picked, setPicked] = useState(() =>
+    storage.get(Key.NEW_TASK_ASSIGNEE),
+  );
   const createTask = useCreateTask();
+  const choices = assigneeChoices(experts);
+  const assignee = resolveChoice(choices, picked);
+  const canSubmit = text.trim().length > 0 && !createTask.isPending;
 
-  function reset() {
-    setTitle("");
-    setDescription("");
-    setAssignee(ME_VALUE);
-    setPriority("none");
-    setDueDate("");
+  function pickAssignee(value: string) {
+    setPicked(value);
+    storage.set(Key.NEW_TASK_ASSIGNEE, value);
   }
 
   function close() {
     onOpenChange(false);
-    reset();
+    setText("");
   }
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
-    const trimmed = title.trim();
-    if (!trimmed || createTask.isPending) return;
+    if (!canSubmit) return;
     try {
       const task = await createTask.mutateAsync({
-        title: trimmed,
-        description: description.trim() || undefined,
-        assignee: toAssignee(assignee),
-        priority,
-        due_date: dueDate || null,
+        ...splitTaskText(text),
+        assignee: toAssignee(assignee.value),
       });
-      toast({ title: `${taskKey(task.number)} created` });
+      toast({ title: createdMessage(taskKey(task.number), assignee) });
       close();
       onCreated?.(task.id);
     } catch (error) {
@@ -55,20 +59,22 @@ export function useNewTaskDialog({ onOpenChange, onCreated }: Args) {
     }
   }
 
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!isKey(e, "Enter") || e.shiftKey) return;
+    e.preventDefault();
+    void submit();
+  }
+
   return {
-    title,
-    setTitle,
-    description,
-    setDescription,
+    text,
+    setText,
+    choices,
     assignee,
-    setAssignee,
-    priority,
-    setPriority,
-    dueDate,
-    setDueDate,
-    canSubmit: title.trim().length > 0,
+    pickAssignee,
+    canSubmit,
     isSubmitting: createTask.isPending,
     submit,
+    onKeyDown,
     close,
   };
 }

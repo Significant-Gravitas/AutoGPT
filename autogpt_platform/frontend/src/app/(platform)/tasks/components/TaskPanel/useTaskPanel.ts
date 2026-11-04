@@ -1,14 +1,14 @@
 import {
-  useTaskActivity,
   useTaskDetail,
   useTaskExperts,
+  useTaskSummary,
   useUpdateTask,
 } from "../../data/useTasksData";
 import type { UpdateTaskInput } from "../../data/types";
 
 export function useTaskPanel(taskId: string) {
   const detail = useTaskDetail(taskId);
-  const activity = useTaskActivity(taskId);
+  const summary = useTaskSummary(taskId);
   const experts = useTaskExperts();
   const updateTask = useUpdateTask();
 
@@ -18,17 +18,16 @@ export function useTaskPanel(taskId: string) {
 
   function retry() {
     detail.refetch();
+    summary.refetch();
   }
 
   return {
     task: detail.data,
+    summary: summary.data,
     isLoading: detail.isLoading,
     isError: detail.isError,
     retry,
-    activity: activity.data ?? [],
-    isActivityLoading: activity.isLoading,
     experts: experts.data ?? [],
     update,
-    isUpdating: updateTask.isPending,
   };
 }

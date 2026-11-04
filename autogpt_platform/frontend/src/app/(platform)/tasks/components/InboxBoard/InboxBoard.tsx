@@ -1,44 +1,28 @@
 import { NumberTicker } from "@/components/atoms/NumberTicker/NumberTicker";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import type { Task } from "../../data/types";
-import { buildBoardColumns, type InboxTab } from "../../helpers";
+import { buildBoardColumns } from "../../helpers";
 import { InboxRow } from "../InboxRow/InboxRow";
 import { useInboxMotion } from "../InboxList/useInboxMotion";
 
 interface Props {
   tasks: Task[];
-  tab: InboxTab;
-  expandedID: string | null;
   selectedID: string | null;
-  onToggle: (id: string) => void;
   onOpen: (id: string) => void;
 }
 
-export function InboxBoard({
-  tasks,
-  tab,
-  expandedID,
-  selectedID,
-  onToggle,
-  onOpen,
-}: Props) {
-  const columns = buildBoardColumns(tasks, tab);
+export function InboxBoard({ tasks, selectedID, onOpen }: Props) {
+  const columns = buildBoardColumns(tasks);
 
   return (
     <LayoutGroup id="inbox-board">
-      <div
-        className={cn(
-          "palette-classic grid items-start gap-3",
-          columns.length === 4 ? "grid-cols-4" : "grid-cols-3",
-        )}
-      >
+      <div className="grid h-full grid-cols-3 grid-rows-[minmax(0,1fr)] gap-3 palette-classic">
         {columns.map((column) => (
           <section
             key={column.id}
             aria-labelledby={`inbox-column-${column.id}`}
-            className="flex min-w-0 flex-col rounded-tray bg-surface-tray p-1.5"
+            className="flex min-h-0 min-w-0 flex-col rounded-tray bg-surface-tray p-1.5"
           >
             <header className="flex items-center gap-1.5 px-3 pt-2 pb-2.5">
               <Text
@@ -53,20 +37,21 @@ export function InboxBoard({
                 <NumberTicker value={column.tasks.length} />
               </Text>
             </header>
-            <ul className="flex min-h-12 flex-col gap-1.5">
+            <motion.ul
+              layoutScroll
+              className="-mx-1.5 -mt-1 -mb-1.5 flex min-h-12 flex-1 flex-col gap-1.5 overflow-y-auto px-1.5 pt-1 pb-1.5"
+            >
               <AnimatePresence initial={false}>
                 {column.tasks.map((task) => (
                   <BoardItem
                     key={task.id}
                     task={task}
-                    expanded={expandedID === task.id}
                     selected={selectedID === task.id}
-                    onToggle={() => onToggle(task.id)}
                     onOpen={() => onOpen(task.id)}
                   />
                 ))}
               </AnimatePresence>
-            </ul>
+            </motion.ul>
           </section>
         ))}
       </div>
@@ -76,22 +61,18 @@ export function InboxBoard({
 
 interface ItemProps {
   task: Task;
-  expanded: boolean;
   selected: boolean;
-  onToggle: () => void;
   onOpen: () => void;
 }
 
-function BoardItem({ task, expanded, selected, onToggle, onOpen }: ItemProps) {
+function BoardItem({ task, selected, onOpen }: ItemProps) {
   const motionProps = useInboxMotion(`inbox-task-${task.id}`);
 
   return (
     <motion.li {...motionProps}>
       <InboxRow
         task={task}
-        expanded={expanded}
         selected={selected}
-        onToggle={onToggle}
         onOpen={onOpen}
         variant="board"
       />

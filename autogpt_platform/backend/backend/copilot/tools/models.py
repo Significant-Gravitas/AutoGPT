@@ -159,6 +159,7 @@ class ResponseType(str, Enum):
     TASK_UPDATED = "task_updated"
     TASK_PLAN = "task_plan"
     TASK_PLAN_CONFIRMED = "task_plan_confirmed"
+    TASK_CONTRACT = "task_contract"
 
 
 # Base response model
@@ -1578,6 +1579,16 @@ class TaskUpdatedToolResponse(ToolResponseBase):
     task: dict[str, Any] | None = None
     activity: dict[str, Any] | None = None
     attachment: dict[str, Any] | None = None
+
+
+class TaskContractToolResponse(ToolResponseBase):
+    """Tasks v1: a task's contract after one patch, with its derived state."""
+
+    type: ResponseType = ResponseType.TASK_CONTRACT
+    task_id: str
+    version: int
+    state: str
+    contract: dict[str, Any]
 
 
 class TaskPlanToolResponse(ToolResponseBase):

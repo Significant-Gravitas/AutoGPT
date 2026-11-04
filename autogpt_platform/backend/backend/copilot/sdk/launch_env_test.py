@@ -371,3 +371,19 @@ def _record_runs(
 
     monkeypatch.setattr(subprocess, "run", run)
     return envs
+
+
+def test_the_subscription_check_keeps_the_user_name_the_keychain_login_needs(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("USER", "abhi")
+    monkeypatch.setenv("LOGNAME", "abhi")
+    envs = _record_runs(monkeypatch, "2.1.284", auth='{"loggedIn": true}')
+    monkeypatch.setattr(subscription, "find_bundled_cli", lambda: _CLI)
+    monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
+
+    subscription.validate_subscription.__wrapped__()
+
+    _, auth_env = envs
+    assert auth_env["USER"] == "abhi"
+    assert auth_env["LOGNAME"] == "abhi"

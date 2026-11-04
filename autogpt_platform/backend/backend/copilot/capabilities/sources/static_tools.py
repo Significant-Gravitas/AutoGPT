@@ -64,14 +64,17 @@ EAGER_CORE: frozenset[str] = frozenset(
         # ``run_capability`` that would reach it.
         "expert_onboarding",
         # Tasks v1: the work-thread kickoff names these directly.
+        # ``request_input`` and ``link_artifact`` stay deferred: ``ask_user``
+        # and ``add_evidence`` do the same and keep the contract.
         "list_my_tasks",
         "update_task_status",
         "comment_on_task",
-        "request_input",
-        "link_artifact",
         "create_task",
         "propose_plan",
         "confirm_task_plan",
+        "update_task",
+        "add_evidence",
+        "ask_user",
     }
 )
 

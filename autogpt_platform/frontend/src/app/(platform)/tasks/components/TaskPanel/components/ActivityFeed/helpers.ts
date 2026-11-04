@@ -10,6 +10,8 @@ export function describeActivity(item: TaskActivity) {
     case "artifact_linked":
     case "system":
       return lowerFirst(item.body);
+    case "note":
+      return item.body;
     default:
       return "";
   }

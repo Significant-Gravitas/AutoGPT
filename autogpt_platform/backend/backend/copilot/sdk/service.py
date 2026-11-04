@@ -197,6 +197,7 @@ from ..builder_context import (
 )
 from ..expert_context import build_expert_identity_suffix
 from ..expert_kickoff import is_expert_kickoff_turn
+from ..tasks_rubric import get_tasks_supplement
 from ..service import (
     _build_system_prompt,
     _update_title_async,
@@ -5401,6 +5402,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         team_building_supplement = get_team_building_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        tasks_supplement = await get_tasks_supplement(user_id)
         chat_platform_supplement = get_chat_platform_supplement(
             session.metadata.source_platform
         )
@@ -5430,6 +5432,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
+            + tasks_supplement
             + chat_platform_supplement
             + graphiti_supplement
             + auto_mode_supplement

@@ -15,11 +15,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-surface-muted">
+    <div className="flex h-full w-full overflow-hidden bg-page">
       <AdminSidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AdminMobileNav />
-        <main className="flex-1 overflow-hidden bg-surface-muted">
+        <main className="flex-1 overflow-hidden bg-page">
           <ScrollArea className="h-full">
             <motion.div
               key={pathname}

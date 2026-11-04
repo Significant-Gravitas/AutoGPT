@@ -6,8 +6,8 @@ import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import type { ExpertOption, TaskActivity } from "../../../../data/types";
+import { Button } from "@/components/atoms/Button/Button";
 import { splitMentions } from "../../helpers";
-import { PanelSection } from "../PanelSection/PanelSection";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 import { TurnRow } from "./components/TurnRow/TurnRow";
 import { describeActivity } from "./helpers";
@@ -16,33 +16,58 @@ interface Props {
   items: TaskActivity[];
   isLoading: boolean;
   experts: ExpertOption[];
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-export function ActivityFeed({ items, isLoading, experts }: Props) {
+export function ActivityFeed({
+  items,
+  isLoading,
+  experts,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+}: Props) {
   const names = ["Otto", ...experts.map((e) => e.name)];
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-5 w-2/3" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-5 w-1/2" />
+      </div>
+    );
+  }
+  if (!items.length) {
+    return (
+      <Text variant="inbox" tone="faint">
+        No activity yet.
+      </Text>
+    );
+  }
   return (
-    <PanelSection label="Activity">
-      {isLoading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-11 w-full" />
-          <Skeleton className="h-5 w-1/2" />
-        </div>
-      ) : !items.length ? (
-        <Text variant="inbox" tone="faint">
-          No activity yet.
-        </Text>
-      ) : (
-        <ol className="flex flex-col gap-2">
-          {items.map((item) => (
-            <li key={item.id} className="animate-inbox-enter">
-              <ActivityRow item={item} names={names} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </PanelSection>
+    <div className="flex flex-col gap-2">
+      <ol className="flex flex-col gap-2">
+        {items.map((item) => (
+          <li key={item.id} className="animate-inbox-enter">
+            <ActivityRow item={item} names={names} />
+          </li>
+        ))}
+      </ol>
+      {hasMore && onLoadMore ? (
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="self-start"
+          loading={isLoadingMore}
+          onClick={onLoadMore}
+        >
+          Load more
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -112,12 +137,16 @@ function ActivityRow({ item, names }: { item: TaskActivity; names: string[] }) {
   }
 
   return (
-    <div className="flex items-center gap-2.5 px-3 py-1">
+    <div className="flex items-start gap-2.5 px-3 py-1">
       <AssigneeAvatar assignee={item.actor} size={16} />
-      <Text variant="inbox" tone="quiet" className="min-w-0 flex-1">
-        <Text variant="inbox-medium" tone="text" as="span">
-          {item.actor.name}
-        </Text>{" "}
+      <Text variant="inbox" tone="quiet" className="min-w-0 flex-1 break-words">
+        {item.kind === "note" ? null : (
+          <>
+            <Text variant="inbox-medium" tone="text" as="span">
+              {item.actor.name}
+            </Text>{" "}
+          </>
+        )}
         {describeActivity(item)}
       </Text>
       <Text variant="small" tone="faint" as="span" className="shrink-0">

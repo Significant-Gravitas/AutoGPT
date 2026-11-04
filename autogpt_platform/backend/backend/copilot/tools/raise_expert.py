@@ -35,6 +35,7 @@ from .expert_proposal import (
     store_proposal,
     user_turn_watermark,
 )
+from .hire_task import track_proposed_hire, tracked_note
 from .models import (
     ErrorResponse,
     ExpertChangePreview,
@@ -250,6 +251,9 @@ class RaiseExpertTool(BaseTool):
             voice_preferences=soul.voice_preferences or "",
             weekly_budget=params.weekly_budget,
         )
+        board_task = await track_proposed_hire(
+            user_id, session, preview.name, preview.role
+        )
         confirmation_id = str(uuid.uuid4())
         await store_proposal(
             await get_redis_async(),
@@ -259,6 +263,7 @@ class RaiseExpertTool(BaseTool):
                 session_id=session_id,
                 preview=preview,
                 user_turn_watermark=user_turn_watermark(session),
+                board_task_id=board_task.id if board_task else None,
             ),
         )
         return ExpertChangeProposedResponse(
@@ -268,6 +273,7 @@ class RaiseExpertTool(BaseTool):
                 "of it in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
                 "tool:confirm_expert_change with this confirmation_id."
+                + tracked_note(board_task)
             ),
             session_id=session_id,
             preview=preview,

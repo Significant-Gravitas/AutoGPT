@@ -8,6 +8,7 @@ import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessag
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
+import { TaskKickoffCard } from "../../../TaskKickoffCard/TaskKickoffCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
 import { ChainMessageParts } from "../ChainMessageParts";
 import { MessageAttachments } from "../MessageAttachments";
@@ -94,6 +95,7 @@ export const MessageRow = memo(function MessageRow({
     runMetadata,
     runPreview,
     notice,
+    taskKickoff,
     renderableParts,
     textParts,
     copyText,
@@ -125,6 +127,14 @@ export const MessageRow = memo(function MessageRow({
           <WorkCard metadata={runMetadata} preview={runPreview} />
         </MessageContent>
       </Message>
+    );
+  }
+
+  if (taskKickoff) {
+    return (
+      <div data-message-id={message.id} className="flex w-full justify-end">
+        <TaskKickoffCard kickoff={taskKickoff} />
+      </div>
     );
   }
 

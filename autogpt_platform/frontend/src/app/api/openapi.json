@@ -18606,6 +18606,1095 @@
         }
       }
     },
+    "/api/tasks": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "List Tasks",
+        "operationId": "list_tasks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "assignee_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/AssigneeType" },
+                { "type": "null" }
+              ],
+              "title": "Assignee Type"
+            }
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Priority"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^(overdue|today|week|none)$" },
+                { "type": "null" }
+              ],
+              "title": "Due"
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Parent Id"
+            }
+          },
+          {
+            "name": "top_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Top Level"
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false, "title": "Mine" }
+          },
+          {
+            "name": "include_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Hidden"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Create Task",
+        "operationId": "create_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCreate" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/counts": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Count Tasks",
+        "operationId": "count_tasks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "assignee_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/AssigneeType" },
+                { "type": "null" }
+              ],
+              "title": "Assignee Type"
+            }
+          },
+          {
+            "name": "assignee_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Assignee Id"
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Priority"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "pattern": "^(overdue|today|week|none)$" },
+                { "type": "null" }
+              ],
+              "title": "Due"
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Parent Id"
+            }
+          },
+          {
+            "name": "top_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Top Level"
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false, "title": "Mine" }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskCounts" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/enabled": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Get Tasks Enabled",
+        "operationId": "get_tasks_enabled",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksEnabledResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/tasks/experts": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "List Task Experts",
+        "operationId": "list_task_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/tasks/needs-you": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "List Tasks Needing Me",
+        "operationId": "list_tasks_needing_me",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/tasks/plans/{plan_id}": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Get Task Plan",
+        "operationId": "get_task_plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Plan Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Plan" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/plans/{plan_id}/approve": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Approve Task Plan",
+        "operationId": "approve_task_plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Plan Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/PlanConfirm" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanConfirmResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/plans/{plan_id}/cancel": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Cancel Task Plan",
+        "operationId": "cancel_task_plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Plan Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Plan" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/plans/{plan_id}/confirm": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Confirm Task Plan",
+        "operationId": "confirm_task_plan",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Plan Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/PlanConfirm" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanConfirmResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "delete": {
+        "tags": ["v2", "tasks"],
+        "summary": "Delete Task",
+        "operationId": "delete_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Get Task",
+        "operationId": "get_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "tasks"],
+        "summary": "Update Task",
+        "operationId": "update_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/actions/{action}": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Take Task Action",
+        "description": "What the user does about a stuck or finished task. ``retry_failed_part``,\n``allow``, ``change_goal``, ``take_over``, ``stop`` and ``accept`` have\ntheir own handling; any other action is passed to the worker as the\nuser's instruction, with ``note``.",
+        "operationId": "take_task_action",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Action" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TaskActionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/activity": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "List Task Activity",
+        "description": "The full log, oldest first. Pass ``limit`` (and then the returned\n``next_cursor``) to page through it; evidence content is left out and\nfetched with the evidence endpoint.",
+        "operationId": "list_task_activity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "integer", "maximum": 200, "minimum": 1 },
+                { "type": "null" }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/answer": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Answer Task Input",
+        "operationId": "answer_task_input",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AnswerCreate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/ask/answer": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Answer Task Ask",
+        "operationId": "answer_task_ask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AskAnswer" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/attachments": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Add Task Attachment",
+        "operationId": "add_task_attachment",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AttachmentCreate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Attachment" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/comments": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Create Task Comment",
+        "operationId": "create_task_comment",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CommentCreate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivityEvent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/evidence/{evidence_id}": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Get Task Evidence",
+        "description": "One proof item in full: its attachment and the activity row holding\nany raw content.",
+        "operationId": "get_task_evidence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Evidence Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EvidenceDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/start": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Start Task",
+        "operationId": "start_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/subtasks": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Create Subtask",
+        "operationId": "create_subtask",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCreate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/summary": {
+      "get": {
+        "tags": ["v2", "tasks"],
+        "summary": "Get Task Summary",
+        "description": "The task's contract and derived state: what the panel shows.",
+        "operationId": "get_task_summary",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/transfers": {
       "get": {
         "tags": ["v2", "transfers", "transfers"],
@@ -20056,6 +21145,98 @@
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
+      "ActivityEvent": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "actor": { "$ref": "#/components/schemas/Actor" },
+          "kind": { "$ref": "#/components/schemas/ActivityKind" },
+          "body": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Body"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": ["id", "task_id", "created_at", "actor", "kind"],
+        "title": "ActivityEvent"
+      },
+      "ActivityKind": {
+        "type": "string",
+        "enum": [
+          "created",
+          "status_changed",
+          "assigned",
+          "comment",
+          "turn",
+          "input_requested",
+          "input_answered",
+          "attachment_added",
+          "subtask_created",
+          "outcome",
+          "plan_confirmed",
+          "system",
+          "contract_set",
+          "goal_updated",
+          "step_updated",
+          "evidence_added",
+          "criterion_marked",
+          "blocker_reported",
+          "action_taken"
+        ],
+        "title": "ActivityKind"
+      },
+      "ActivityListResponse": {
+        "properties": {
+          "events": {
+            "items": { "$ref": "#/components/schemas/ActivityEvent" },
+            "type": "array",
+            "title": "Events"
+          },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": ["events"],
+        "title": "ActivityListResponse"
+      },
+      "Actor": {
+        "properties": {
+          "type": { "$ref": "#/components/schemas/ActorType" },
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "required": ["type", "name"],
+        "title": "Actor"
+      },
+      "ActorType": {
+        "type": "string",
+        "enum": ["user", "expert", "otto", "system"],
+        "title": "ActorType"
+      },
       "AddTeamMemberRequest": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -20470,6 +21651,18 @@
         "required": ["bases"],
         "title": "AirtableBasesResponse"
       },
+      "AnswerCreate": {
+        "properties": {
+          "answer": { "type": "string", "minLength": 1, "title": "Answer" },
+          "input_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Input Id"
+          }
+        },
+        "type": "object",
+        "required": ["answer"],
+        "title": "AnswerCreate"
+      },
       "ApiResponse": {
         "properties": {
           "answer": { "type": "string", "title": "Answer" },
@@ -20484,6 +21677,51 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "Ask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "question": { "type": "string", "title": "Question" },
+          "why": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Why"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "default_option": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Option"
+          },
+          "blocking_step_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocking Step Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "question"],
+        "title": "Ask"
+      },
+      "AskAnswer": {
+        "properties": {
+          "answer": { "type": "string", "minLength": 1, "title": "Answer" },
+          "ask_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ask Id"
+          }
+        },
+        "type": "object",
+        "required": ["answer"],
+        "title": "AskAnswer"
+      },
       "AssignPodRequest": {
         "properties": {
           "pod_id": {
@@ -20494,6 +21732,44 @@
         "type": "object",
         "required": ["pod_id"],
         "title": "AssignPodRequest"
+      },
+      "Assignee": {
+        "properties": {
+          "type": { "$ref": "#/components/schemas/AssigneeType" },
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          }
+        },
+        "type": "object",
+        "required": ["type", "name"],
+        "title": "Assignee"
+      },
+      "AssigneeRef": {
+        "properties": {
+          "type": { "$ref": "#/components/schemas/AssigneeType" },
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": ["type"],
+        "title": "AssigneeRef"
+      },
+      "AssigneeType": {
+        "type": "string",
+        "enum": ["user", "expert", "otto"],
+        "title": "AssigneeType"
       },
       "AtResetRequest": {
         "properties": {
@@ -20551,6 +21827,51 @@
         "required": ["jobs"],
         "title": "AtResetTurnsResponse",
         "description": "The chat's turns set for the budget reset, at most one of each kind."
+      },
+      "Attachment": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": { "type": "string", "title": "Kind" },
+          "title": { "type": "string", "title": "Title" },
+          "ref_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ref Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "added_by": { "$ref": "#/components/schemas/Actor" }
+        },
+        "type": "object",
+        "required": ["id", "kind", "title", "created_at", "added_by"],
+        "title": "Attachment"
+      },
+      "AttachmentCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^(file|chat|run|url|text)$",
+            "title": "Kind"
+          },
+          "title": { "type": "string", "minLength": 1, "title": "Title" },
+          "ref_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ref Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "title"],
+        "title": "AttachmentCreate"
       },
       "AuthAccessBlockKind": {
         "type": "string",
@@ -21156,6 +22477,22 @@
         "type": "object",
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
+      },
+      "Blocker": {
+        "properties": {
+          "done_so_far": { "type": "string", "title": "Done So Far" },
+          "what_stopped_it": { "type": "string", "title": "What Stopped It" },
+          "short": { "type": "string", "title": "Short", "default": "" },
+          "cause": { "type": "string", "title": "Cause", "default": "unknown" },
+          "next_actions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Next Actions"
+          }
+        },
+        "type": "object",
+        "required": ["done_so_far", "what_stopped_it"],
+        "title": "Blocker"
       },
       "Body_patchOauthUpdateAppStatus": {
         "properties": {
@@ -22254,6 +23591,14 @@
         "type": "object",
         "title": "CodexRateLimitsSnapshot"
       },
+      "CommentCreate": {
+        "properties": {
+          "body": { "type": "string", "minLength": 1, "title": "Body" }
+        },
+        "type": "object",
+        "required": ["body"],
+        "title": "CommentCreate"
+      },
       "CommunityListResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -22568,6 +23913,56 @@
         "type": "object",
         "required": ["turn_id"],
         "title": "ContinueSessionResponse"
+      },
+      "Contract": {
+        "properties": {
+          "goal": { "type": "string", "title": "Goal" },
+          "previous_goal": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Previous Goal"
+          },
+          "done_when": {
+            "items": { "$ref": "#/components/schemas/Criterion" },
+            "type": "array",
+            "title": "Done When"
+          },
+          "plan": {
+            "items": { "$ref": "#/components/schemas/Step" },
+            "type": "array",
+            "title": "Plan"
+          },
+          "evidence": {
+            "items": { "$ref": "#/components/schemas/Evidence" },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "result": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Result" },
+              { "type": "null" }
+            ]
+          },
+          "ask": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Ask" },
+              { "type": "null" }
+            ]
+          },
+          "blocker": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Blocker" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["goal"],
+        "title": "Contract"
+      },
+      "ContractState": {
+        "type": "string",
+        "enum": ["working", "needs_you", "done", "stuck", "stopped"],
+        "title": "ContractState"
       },
       "CopilotSkillDetail": {
         "properties": {
@@ -23738,6 +25133,29 @@
         ],
         "title": "CreditTransactionsExportResponse"
       },
+      "Criterion": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "text": { "type": "string", "title": "Text" },
+          "status": {
+            "$ref": "#/components/schemas/CriterionStatus",
+            "default": "pending"
+          },
+          "evidence_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Evidence Ids"
+          }
+        },
+        "type": "object",
+        "required": ["id", "text"],
+        "title": "Criterion"
+      },
+      "CriterionStatus": {
+        "type": "string",
+        "enum": ["pending", "met", "unmet", "skipped"],
+        "title": "CriterionStatus"
+      },
       "DecisionRequest": {
         "properties": {
           "action": {
@@ -24885,6 +26303,59 @@
         "title": "ErrorResponse",
         "description": "Response for errors."
       },
+      "Evidence": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": { "type": "string", "title": "Kind" },
+          "title": { "type": "string", "title": "Title" },
+          "summary": { "type": "string", "title": "Summary" },
+          "ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ref"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "criterion_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Criterion Ids"
+          },
+          "attachment_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Attachment Id"
+          },
+          "source_activity_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Activity Id"
+          },
+          "auto": { "type": "boolean", "title": "Auto", "default": false }
+        },
+        "type": "object",
+        "required": ["id", "kind", "title", "summary"],
+        "title": "Evidence"
+      },
+      "EvidenceDetail": {
+        "properties": {
+          "evidence": { "$ref": "#/components/schemas/Evidence" },
+          "attachment": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Attachment" },
+              { "type": "null" }
+            ]
+          },
+          "activity": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActivityEvent" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["evidence"],
+        "title": "EvidenceDetail"
+      },
       "ExecutionAnalyticsConfig": {
         "properties": {
           "available_models": {
@@ -25748,6 +27219,18 @@
         "required": ["learning_paused"],
         "title": "ExpertLearningPolicyRequest"
       },
+      "ExpertListResponse": {
+        "properties": {
+          "experts": {
+            "items": { "$ref": "#/components/schemas/ExpertOption" },
+            "type": "array",
+            "title": "Experts"
+          }
+        },
+        "type": "object",
+        "required": ["experts"],
+        "title": "ExpertListResponse"
+      },
       "ExpertModeUpdate": {
         "properties": {
           "autopilot_mode": {
@@ -25809,6 +27292,35 @@
         "required": ["question", "keyword"],
         "title": "ExpertOnboardingStep",
         "description": "One step of a freshly hired expert's intake card."
+      },
+      "ExpertOption": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Role"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
+          "busy_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Busy Task Id"
+          },
+          "busy_task_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Busy Task Key"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "ExpertOption"
       },
       "ExpertPod": {
         "properties": {
@@ -26683,7 +28195,8 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "tasks-v1"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -26703,7 +28216,8 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "TASKS_V1"
         ]
       },
       "FrontendFlagValues": {
@@ -28381,6 +29895,55 @@
         "type": "object",
         "required": ["alerted"],
         "title": "ImpersonationNotifyResponse"
+      },
+      "InboxActivity": {
+        "properties": {
+          "kind": { "type": "string", "title": "Kind" },
+          "text": { "type": "string", "title": "Text" },
+          "actor_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Actor Name"
+          },
+          "at": { "type": "string", "format": "date-time", "title": "At" }
+        },
+        "type": "object",
+        "required": ["kind", "text", "at"],
+        "title": "InboxActivity"
+      },
+      "InboxState": {
+        "type": "string",
+        "enum": ["running", "waiting", "done", "failed"],
+        "title": "InboxState"
+      },
+      "InboxStep": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "time": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Time"
+          },
+          "kind": { "type": "string", "title": "Kind" },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": ["label", "kind"],
+        "title": "InboxStep"
+      },
+      "InboxTool": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
+          "count": { "type": "integer", "title": "Count", "default": 0 }
+        },
+        "type": "object",
+        "required": ["name", "title"],
+        "title": "InboxTool"
       },
       "IngestionDrainStatus": {
         "type": "string",
@@ -31505,6 +33068,26 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PendingInput": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "question": { "type": "string", "title": "Question" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "asked_by": { "$ref": "#/components/schemas/Actor" },
+          "asked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Asked At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "question", "asked_by", "asked_at"],
+        "title": "PendingInput"
+      },
       "PendingInstallInfo": {
         "properties": {
           "server_name": {
@@ -31587,6 +33170,92 @@
         "required": ["access_token"],
         "title": "PickerTokenResponse",
         "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
+      "Plan": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": { "$ref": "#/components/schemas/PlanStatus" },
+          "goal": { "type": "string", "title": "Goal" },
+          "budget_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Budget Usd"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/PlanStep" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "split": { "type": "boolean", "title": "Split", "default": true },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "parent_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Task Id"
+          },
+          "task_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Task Ids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "status", "goal", "created_at"],
+        "title": "Plan"
+      },
+      "PlanConfirm": {
+        "properties": {
+          "steps": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/PlanStep" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "title": "PlanConfirm"
+      },
+      "PlanConfirmResponse": {
+        "properties": {
+          "plan": { "$ref": "#/components/schemas/Plan" },
+          "parent_task": { "$ref": "#/components/schemas/TaskDetail" }
+        },
+        "type": "object",
+        "required": ["plan", "parent_task"],
+        "title": "PlanConfirmResponse"
+      },
+      "PlanStatus": {
+        "type": "string",
+        "enum": ["proposed", "confirmed", "cancelled"],
+        "title": "PlanStatus"
+      },
+      "PlanStep": {
+        "properties": {
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Assignee" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "PlanStep"
       },
       "Platform": {
         "type": "string",
@@ -33410,7 +35079,12 @@
           "expert_onboarding",
           "team_consult",
           "session_list",
-          "session_message"
+          "session_message",
+          "task_list",
+          "task_updated",
+          "task_plan",
+          "task_plan_confirmed",
+          "task_contract"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -33427,6 +35101,18 @@
         "type": "object",
         "required": ["version_id"],
         "title": "RestoreVersionRequest"
+      },
+      "Result": {
+        "properties": {
+          "summary": { "type": "string", "title": "Summary" },
+          "primary_evidence_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Primary Evidence Id"
+          }
+        },
+        "type": "object",
+        "required": ["summary"],
+        "title": "Result"
       },
       "ResumeScheduledChatResponse": {
         "properties": { "resumed": { "type": "boolean", "title": "Resumed" } },
@@ -34236,6 +35922,13 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "attention": {
+            "anyOf": [
+              { "type": "string", "enum": ["needs_you", "failed"] },
+              { "type": "null" }
+            ],
+            "title": "Attention"
           }
         },
         "type": "object",
@@ -35066,6 +36759,43 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "Step": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "$ref": "#/components/schemas/StepStatus",
+            "default": "pending"
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/StepRow" },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title"],
+        "title": "Step"
+      },
+      "StepRow": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "$ref": "#/components/schemas/StepStatus",
+            "default": "pending"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title"],
+        "title": "StepRow",
+        "description": "One of several runs of the same step going at once (five hires)."
+      },
+      "StepStatus": {
+        "type": "string",
+        "enum": ["pending", "running", "done", "failed", "skipped"],
+        "title": "StepStatus"
       },
       "StopExecutionRequest": {
         "properties": {
@@ -36085,6 +37815,14 @@
         "required": ["tier"],
         "title": "SubscriptionUpgradePreviewRequest"
       },
+      "SubtaskCounts": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total", "default": 0 },
+          "done": { "type": "integer", "title": "Done", "default": 0 }
+        },
+        "type": "object",
+        "title": "SubtaskCounts"
+      },
       "SuggestedGoalResponse": {
         "properties": {
           "type": {
@@ -36258,6 +37996,267 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "Task": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "number": { "type": "integer", "title": "Number" },
+          "key": { "type": "string", "title": "Key" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "priority": { "$ref": "#/components/schemas/TaskPriority" },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Assignee" },
+              { "type": "null" }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              { "type": "string", "format": "date" },
+              { "type": "null" }
+            ],
+            "title": "Due Date"
+          },
+          "labels": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Labels"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "parent_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Key"
+          },
+          "outcome_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Outcome Summary"
+          },
+          "work_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Session Id"
+          },
+          "budget_cap_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Budget Cap Usd"
+          },
+          "review_required": {
+            "type": "boolean",
+            "title": "Review Required",
+            "default": false
+          },
+          "metrics": { "$ref": "#/components/schemas/TaskMetrics" },
+          "subtask_counts": { "$ref": "#/components/schemas/SubtaskCounts" },
+          "pending_input": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInput" },
+              { "type": "null" }
+            ]
+          },
+          "live": { "$ref": "#/components/schemas/TaskLive" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "plan_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Id"
+          },
+          "elapsed_ms": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Elapsed Ms"
+          },
+          "inbox": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskInbox" },
+              { "type": "null" }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContractState",
+            "default": "working"
+          },
+          "raw_status": {
+            "type": "string",
+            "title": "Raw Status",
+            "default": "queued"
+          },
+          "now": { "type": "string", "title": "Now", "default": "" },
+          "ask": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Ask" },
+              { "type": "null" }
+            ]
+          },
+          "blocker": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Blocker" },
+              { "type": "null" }
+            ]
+          },
+          "contract_version": {
+            "type": "integer",
+            "title": "Contract Version",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "key",
+          "title",
+          "status",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Task"
+      },
+      "TaskActionRequest": {
+        "properties": {
+          "goal": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Goal"
+          },
+          "note": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "TaskActionRequest"
+      },
+      "TaskCounts": {
+        "properties": {
+          "all": { "type": "integer", "title": "All", "default": 0 },
+          "running": { "type": "integer", "title": "Running", "default": 0 },
+          "waiting": { "type": "integer", "title": "Waiting", "default": 0 },
+          "done": { "type": "integer", "title": "Done", "default": 0 },
+          "failed": { "type": "integer", "title": "Failed", "default": 0 },
+          "needs_you": {
+            "type": "integer",
+            "title": "Needs You",
+            "default": 0
+          },
+          "by_status": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "By Status"
+          },
+          "by_state": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "By State"
+          }
+        },
+        "type": "object",
+        "title": "TaskCounts"
+      },
+      "TaskCreate": {
+        "properties": {
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskStatus" },
+              { "type": "null" }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskPriority" },
+              { "type": "null" }
+            ]
+          },
+          "assignee_type": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AssigneeType" },
+              { "type": "null" }
+            ]
+          },
+          "assignee_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Assignee Id"
+          },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AssigneeRef" },
+              { "type": "null" }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              { "type": "string", "format": "date" },
+              { "type": "null" }
+            ],
+            "title": "Due Date"
+          },
+          "labels": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Labels"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "budget_cap_usd": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Budget Cap Usd"
+          },
+          "budget_usd": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Budget Usd"
+          },
+          "review_required": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Review Required"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "TaskCreate"
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -36290,6 +38289,421 @@
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
+      "TaskDetail": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "number": { "type": "integer", "title": "Number" },
+          "key": { "type": "string", "title": "Key" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "priority": { "$ref": "#/components/schemas/TaskPriority" },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Assignee" },
+              { "type": "null" }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              { "type": "string", "format": "date" },
+              { "type": "null" }
+            ],
+            "title": "Due Date"
+          },
+          "labels": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Labels"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "parent_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Key"
+          },
+          "outcome_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Outcome Summary"
+          },
+          "work_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Session Id"
+          },
+          "budget_cap_usd": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Budget Cap Usd"
+          },
+          "review_required": {
+            "type": "boolean",
+            "title": "Review Required",
+            "default": false
+          },
+          "metrics": { "$ref": "#/components/schemas/TaskMetrics" },
+          "subtask_counts": { "$ref": "#/components/schemas/SubtaskCounts" },
+          "pending_input": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInput" },
+              { "type": "null" }
+            ]
+          },
+          "live": { "$ref": "#/components/schemas/TaskLive" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "plan_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Id"
+          },
+          "elapsed_ms": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Elapsed Ms"
+          },
+          "inbox": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskInbox" },
+              { "type": "null" }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContractState",
+            "default": "working"
+          },
+          "raw_status": {
+            "type": "string",
+            "title": "Raw Status",
+            "default": "queued"
+          },
+          "now": { "type": "string", "title": "Now", "default": "" },
+          "ask": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Ask" },
+              { "type": "null" }
+            ]
+          },
+          "blocker": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Blocker" },
+              { "type": "null" }
+            ]
+          },
+          "contract_version": {
+            "type": "integer",
+            "title": "Contract Version",
+            "default": 0
+          },
+          "subtasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Subtasks"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/Attachment" },
+            "type": "array",
+            "title": "Attachments"
+          },
+          "parent": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskParentRef" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "key",
+          "title",
+          "status",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskDetail"
+      },
+      "TaskInbox": {
+        "properties": {
+          "state": { "$ref": "#/components/schemas/InboxState" },
+          "needs_you": {
+            "type": "boolean",
+            "title": "Needs You",
+            "default": false
+          },
+          "last_activity": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/InboxActivity" },
+              { "type": "null" }
+            ]
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/InboxStep" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "tools_used": {
+            "items": { "$ref": "#/components/schemas/InboxTool" },
+            "type": "array",
+            "title": "Tools Used"
+          }
+        },
+        "type": "object",
+        "required": ["state"],
+        "title": "TaskInbox"
+      },
+      "TaskListResponse": {
+        "properties": {
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "counts": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskCounts" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["tasks"],
+        "title": "TaskListResponse"
+      },
+      "TaskLive": {
+        "properties": {
+          "running": {
+            "type": "boolean",
+            "title": "Running",
+            "default": false
+          },
+          "current_step": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Step"
+          },
+          "turn_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Turn Started At"
+          }
+        },
+        "type": "object",
+        "title": "TaskLive"
+      },
+      "TaskMetrics": {
+        "properties": {
+          "turns": { "type": "integer", "title": "Turns", "default": 0 },
+          "tool_calls": {
+            "type": "integer",
+            "title": "Tool Calls",
+            "default": 0
+          },
+          "tokens": { "type": "integer", "title": "Tokens", "default": 0 },
+          "cost_usd": { "type": "number", "title": "Cost Usd", "default": 0.0 },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TaskMetrics"
+      },
+      "TaskParentRef": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "key": { "type": "string", "title": "Key" },
+          "title": { "type": "string", "title": "Title" }
+        },
+        "type": "object",
+        "required": ["id", "key", "title"],
+        "title": "TaskParentRef"
+      },
+      "TaskPriority": {
+        "type": "string",
+        "enum": ["none", "low", "medium", "high", "urgent"],
+        "title": "TaskPriority"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "backlog",
+          "todo",
+          "in_progress",
+          "blocked",
+          "in_review",
+          "done",
+          "cancelled"
+        ],
+        "title": "TaskStatus"
+      },
+      "TaskSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "key": { "type": "string", "title": "Key" },
+          "title": { "type": "string", "title": "Title" },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "state": { "$ref": "#/components/schemas/ContractState" },
+          "raw_status": { "type": "string", "title": "Raw Status" },
+          "now": { "type": "string", "title": "Now" },
+          "work_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Session Id"
+          },
+          "version": { "type": "integer", "title": "Version" },
+          "derived": { "type": "boolean", "title": "Derived" },
+          "contract": { "$ref": "#/components/schemas/Contract" },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Assignee" },
+              { "type": "null" }
+            ]
+          },
+          "live": { "$ref": "#/components/schemas/TaskLive" },
+          "metrics": { "$ref": "#/components/schemas/TaskMetrics" },
+          "subtask_counts": { "$ref": "#/components/schemas/SubtaskCounts" },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "title",
+          "status",
+          "state",
+          "raw_status",
+          "now",
+          "version",
+          "derived",
+          "contract",
+          "live",
+          "metrics",
+          "subtask_counts",
+          "updated_at"
+        ],
+        "title": "TaskSummary",
+        "description": "The contract with what the UI needs around it, and nothing else."
+      },
+      "TaskUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskStatus" },
+              { "type": "null" }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskPriority" },
+              { "type": "null" }
+            ]
+          },
+          "assignee_type": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AssigneeType" },
+              { "type": "null" }
+            ]
+          },
+          "assignee_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Assignee Id"
+          },
+          "assignee": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AssigneeRef" },
+              { "type": "null" }
+            ]
+          },
+          "due_date": {
+            "anyOf": [
+              { "type": "string", "format": "date" },
+              { "type": "null" }
+            ],
+            "title": "Due Date"
+          },
+          "labels": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Labels"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
+          "budget_cap_usd": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Budget Cap Usd"
+          },
+          "budget_usd": {
+            "anyOf": [{ "type": "number", "minimum": 0.0 }, { "type": "null" }],
+            "title": "Budget Usd"
+          },
+          "review_required": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Review Required"
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "outcome_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Outcome Summary"
+          }
+        },
+        "type": "object",
+        "title": "TaskUpdate"
+      },
+      "TasksEnabledResponse": {
+        "properties": { "enabled": { "type": "boolean", "title": "Enabled" } },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "TasksEnabledResponse"
       },
       "TeamMemberResponse": {
         "properties": {

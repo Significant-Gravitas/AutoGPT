@@ -5,7 +5,7 @@ export function PanelSkeleton() {
     <div
       aria-busy="true"
       aria-label="Loading task"
-      className="flex flex-col gap-4 px-5 py-5"
+      className="flex flex-col gap-4 px-1.5 py-5"
     >
       <Skeleton className="h-7 w-3/4" />
       <div className="flex gap-2">

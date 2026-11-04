@@ -3,29 +3,34 @@
 from typing import Any
 
 from backend.api.features.tasks.access import tasks_store
-from backend.api.features.tasks.events import publish_task_event
+from backend.api.features.tasks.events import (
+    publish_contract_update,
+    publish_task_event,
+)
 from backend.api.features.tasks.models import (
     AssigneeType,
     AttachmentCreate,
+    Task,
     TaskFilters,
     TaskStatus,
 )
 from backend.copilot.model import ChatSession
 
 from .models import TaskListToolResponse, TaskUpdatedToolResponse, ToolResponseBase
-from .tasks_helpers import (
-    TaskToolBase,
-    TaskToolError,
-    caller_actor,
-    dump,
-    resolve_task,
-)
+from .tasks_helpers import TaskToolBase, TaskToolError, caller_actor, dump, resolve_task
 
 _TASK_ID = {
     "type": "string",
     "description": "Task id; omit to use the task this chat is working.",
 }
 _SETTABLE = ["todo", "in_progress", "in_review", "done", "blocked", "cancelled"]
+_EVIDENCE_KIND = {
+    "file": "file",
+    "url": "link",
+    "run": "record",
+    "chat": "record",
+    "text": "quote",
+}
 
 
 class ListMyTasksTool(TaskToolBase):
@@ -37,7 +42,9 @@ class ListMyTasksTool(TaskToolBase):
     def description(self) -> str:
         return (
             "List the tasks on the user's task board assigned to you (this "
-            "expert, or Otto in a plain chat). Optionally filter by status."
+            "expert, or Otto in a plain chat). Optionally filter by status. "
+            "Pass include_others to see everyone's, e.g. to find the open "
+            "task a message is about before creating a new one."
         )
 
     @property
@@ -49,8 +56,21 @@ class ListMyTasksTool(TaskToolBase):
         return {
             "type": "object",
             "properties": {
-                "status": {"type": "array", "items": {"type": "string", "enum": _SETTABLE}},
-                "include_done": {"type": "boolean", "default": False},
+                "status": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": _SETTABLE},
+                    "description": "Only these statuses.",
+                },
+                "include_done": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Also list done tasks.",
+                },
+                "include_others": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Also list tasks assigned to others or no one.",
+                },
             },
         }
 
@@ -58,20 +78,33 @@ class ListMyTasksTool(TaskToolBase):
         self, user_id: str, session: ChatSession, **kwargs: Any
     ) -> ToolResponseBase:
         statuses = kwargs.get("status") or None
+        everyone = bool(kwargs.get("include_others"))
         filters = TaskFilters(
             status=[TaskStatus(s) for s in statuses] if statuses else None,
-            assignee_type=AssigneeType.EXPERT if session.expert_id else AssigneeType.OTTO,
-            assignee_id=session.expert_id,
+            assignee_type=None if everyone else _own_assignee_type(session),
+            assignee_id=None if everyone else session.expert_id,
         )
         tasks = await tasks_store().list_tasks(user_id, filters)
         if not kwargs.get("include_done") and not statuses:
             tasks = [t for t in tasks if t.status != TaskStatus.DONE]
-        lines = [f"{t.key} [{t.status.value}] {t.title} (id {t.id})" for t in tasks]
+        lines = [_task_line(t, with_assignee=everyone) for t in tasks]
+        empty = "No open tasks." if everyone else "No tasks assigned to you."
         return TaskListToolResponse(
-            message="\n".join(lines) or "No tasks assigned to you.",
+            message="\n".join(lines) or empty,
             session_id=session.session_id,
             tasks=[t.model_dump(mode="json") for t in tasks],
         )
+
+
+def _own_assignee_type(session: ChatSession) -> AssigneeType:
+    return AssigneeType.EXPERT if session.expert_id else AssigneeType.OTTO
+
+
+def _task_line(task: Task, *, with_assignee: bool) -> str:
+    line = f"{task.key} [{task.status.value}] {task.title} (id {task.id})"
+    if not with_assignee:
+        return line
+    return f"{line}, assigned to {task.assignee.name if task.assignee else 'no one'}"
 
 
 class UpdateTaskStatusTool(TaskToolBase):
@@ -97,8 +130,15 @@ class UpdateTaskStatusTool(TaskToolBase):
             "type": "object",
             "properties": {
                 "task_id": _TASK_ID,
-                "status": {"type": "string", "enum": _SETTABLE},
-                "outcome_summary": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": _SETTABLE,
+                    "description": "The new status.",
+                },
+                "outcome_summary": {
+                    "type": "string",
+                    "description": "Required for done.",
+                },
                 "note": {"type": "string", "description": "Optional short reason."},
             },
             "required": ["status"],
@@ -114,7 +154,12 @@ class UpdateTaskStatusTool(TaskToolBase):
             raise TaskToolError("Pass outcome_summary when marking a task done.")
         actor = await caller_actor(user_id, session)
         updated = await tasks_store().set_task_status(
-            user_id, task.id, status, actor, note=kwargs.get("note"), outcome_summary=summary
+            user_id,
+            task.id,
+            status,
+            actor,
+            note=kwargs.get("note"),
+            outcome_summary=summary,
         )
         event = "task_completed" if status == TaskStatus.DONE else "task_updated"
         await publish_task_event(user_id, event, updated, task_id=task.id)
@@ -138,7 +183,10 @@ class CommentOnTaskTool(TaskToolBase):
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"task_id": _TASK_ID, "body": {"type": "string"}},
+            "properties": {
+                "task_id": _TASK_ID,
+                "body": {"type": "string", "description": "Markdown comment."},
+            },
             "required": ["body"],
         }
 
@@ -147,7 +195,9 @@ class CommentOnTaskTool(TaskToolBase):
     ) -> ToolResponseBase:
         task = await resolve_task(user_id, session, kwargs.get("task_id"))
         actor = await caller_actor(user_id, session)
-        activity = await tasks_store().add_comment(user_id, task.id, kwargs["body"], actor)
+        activity = await tasks_store().add_comment(
+            user_id, task.id, kwargs["body"], actor
+        )
         await publish_task_event(user_id, "task_activity", task, activity, task.id)
         return TaskUpdatedToolResponse(
             message=f"Comment posted on {task.key}.",
@@ -176,7 +226,7 @@ class RequestInputTool(TaskToolBase):
             "type": "object",
             "properties": {
                 "task_id": _TASK_ID,
-                "question": {"type": "string"},
+                "question": {"type": "string", "description": "One question."},
                 "options": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -189,23 +239,23 @@ class RequestInputTool(TaskToolBase):
     async def _run(
         self, user_id: str, session: ChatSession, **kwargs: Any
     ) -> ToolResponseBase:
-        store = tasks_store()
         task = await resolve_task(user_id, session, kwargs.get("task_id"))
         actor = await caller_actor(user_id, session)
-        await store.request_input(
-            user_id, task.id, kwargs["question"], kwargs.get("options") or [], actor
+        update = await tasks_store().contract_ask(
+            user_id,
+            task.id,
+            kwargs["question"],
+            actor,
+            options=kwargs.get("options") or [],
         )
-        events = await store.list_activity(user_id, task.id)
-        activity = events[-1] if events else None
-        fresh = await store.get_task(user_id, task.id)
-        await publish_task_event(user_id, "task_needs_input", fresh, activity, task.id)
+        await publish_contract_update(user_id, update)
         return TaskUpdatedToolResponse(
             message=(
                 f"Question sent; {task.key} now waits for the user. Stop here "
                 "and end your turn. Their answer will arrive as a new message."
             ),
             session_id=session.session_id,
-            task=dump(fresh),
+            task=dump(update.task),
         )
 
 
@@ -228,10 +278,14 @@ class LinkArtifactTool(TaskToolBase):
             "type": "object",
             "properties": {
                 "task_id": _TASK_ID,
-                "kind": {"type": "string", "enum": ["file", "chat", "run", "url", "text"]},
-                "title": {"type": "string"},
-                "ref_id": {"type": "string"},
-                "url": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "enum": ["file", "chat", "run", "url", "text"],
+                    "description": "What the result is.",
+                },
+                "title": {"type": "string", "description": "Shown on the task."},
+                "ref_id": {"type": "string", "description": "File, chat or run id."},
+                "url": {"type": "string", "description": "For kind=url."},
             },
             "required": ["kind", "title"],
         }
@@ -247,7 +301,20 @@ class LinkArtifactTool(TaskToolBase):
             ref_id=kwargs.get("ref_id"),
             url=kwargs.get("url"),
         )
-        attachment = await tasks_store().add_attachment(user_id, task.id, data, actor)
+        store = tasks_store()
+        attachment = await store.add_attachment(user_id, task.id, data, actor)
+        update = await store.contract_add_evidence(
+            user_id,
+            task.id,
+            _EVIDENCE_KIND[data.kind],
+            data.title,
+            data.title,
+            actor,
+            ref=data.ref_id,
+            url=data.url,
+            attachment_id=attachment.id,
+        )
+        await publish_contract_update(user_id, update)
         await publish_task_event(user_id, "task_updated", task, task_id=task.id)
         return TaskUpdatedToolResponse(
             message=f"Attached '{attachment.title}' to {task.key}.",

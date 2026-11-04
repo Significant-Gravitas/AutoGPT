@@ -62,7 +62,7 @@ export function CopilotPage() {
       // header overlays the chat (see PlatformChrome) instead of stacking
       // above it, so the full viewport is available. `svh` keeps the input
       // visible when mobile browser chrome is shown.
-      className="h-svh min-h-0"
+      className="h-(--inset-height) min-h-0"
     >
       <MainArea
         isMobile={isMobile}

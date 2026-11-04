@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import prisma.models
 
-from backend.api.features.tasks import db
+from backend.api.features.tasks import contract_db, db
 from backend.api.features.tasks.models import (
     ActivityKind,
     Actor,
@@ -329,7 +329,7 @@ async def seed_tasks(user_id: str, experts: dict[str, prisma.models.Expert]) -> 
         user_id,
         TaskCreate(
             title="Review the onboarding workflow",
-            assignee=AssigneeRef(type=AssigneeType.USER),
+            assignee=AssigneeRef(type=AssigneeType.OTTO),
             priority=TaskPriority.MEDIUM,
             due_date=today - timedelta(days=1),
         ),
@@ -345,14 +345,369 @@ async def seed_tasks(user_id: str, experts: dict[str, prisma.models.Expert]) -> 
     )
 
 
+CONTRACT_LABEL = "contract-example"
+
+_COMPARISON = """| Tool   | Price / seat | Speed | Fits a team of 8 |
+|--------|--------------|-------|------------------|
+| Linear | $8           | Fast  | Yes              |
+| Asana  | $11          | OK    | Yes              |
+| Notion | $10          | Slow  | Partly           |"""
+
+_PRICING_HTML = """<section class="pricing">
+  <h1>Simple pricing</h1>
+  <div class="plan"><h2>Starter</h2><p>$0</p></div>
+  <div class="plan"><h2>Pro</h2><p>$29 / month</p></div>
+  <div class="plan"><h2>Team</h2><p>$99 / month</p></div>
+</section>"""
+
+
+async def seed_contract_examples(email: str) -> None:
+    """Three test examples of the task contract, made with the same generic
+    calls a worker makes. They exercise the shape; nothing is built for
+    them."""
+    user = await prisma.models.User.prisma().find_unique(where={"email": email})
+    if user is None:
+        raise SystemExit(f"No user with email {email}")
+    user_id = user.id
+    existing = await prisma.models.Task.prisma().count(
+        where={"userId": user_id, "labels": {"has": CONTRACT_LABEL}}
+    )
+    if existing:
+        print(f"{email} already has {existing} contract examples; skipping")
+        return
+    experts = await ensure_experts(user_id)
+    await _research_example(user_id)
+    await _hire_example(user_id)
+    await _launch_example(user_id, experts)
+    await _timeout_example(user_id)
+    print(f"Seeded contract examples for {email}")
+
+
+async def _example(user_id: str, data: TaskCreate, actor: Actor | None = None):
+    data.labels = [*(data.labels or []), CONTRACT_LABEL]
+    return await db.create_task(user_id, data, actor or Actor.user(user_id))
+
+
+async def _research_example(user_id: str) -> None:
+    otto = Actor.otto()
+    task = await _example(
+        user_id,
+        TaskCreate(
+            title="Pick a project tool",
+            status=TaskStatus.IN_PROGRESS,
+            assignee=AssigneeRef(type=AssigneeType.OTTO),
+        ),
+    )
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "goal": "Pick a project tool for a team of 8",
+            "done_when": [
+                "Three tools compared on price and speed",
+                "One recommended, with the reason",
+            ],
+            "plan": ["Find candidates", "Compare them", "Recommend one"],
+            "steps": [{"id": "s1", "status": "done"}, {"id": "s2", "status": "done"}],
+        },
+        otto,
+    )
+    for title, url in [
+        ("Linear pricing", "https://linear.app/pricing"),
+        ("Asana pricing", "https://asana.com/pricing"),
+    ]:
+        await contract_db.add_evidence(
+            user_id, task.id, "link", title, f"{title} page", otto, url=url
+        )
+    table = await contract_db.add_evidence(
+        user_id,
+        task.id,
+        "quote",
+        "Comparison table",
+        "Linear is cheapest and fastest for 8 seats",
+        otto,
+        criterion_ids=["d1"],
+        content=_COMPARISON,
+    )
+    assert table.evidence is not None
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "steps": [{"id": "s3", "status": "done"}],
+            "criteria": [
+                {"id": "d1", "status": "met", "evidence_ids": [table.evidence.id]},
+                {"id": "d2", "status": "met"},
+            ],
+            "result": {
+                "summary": "Use Linear: $8 a seat and the fastest of the three.",
+                "primary_evidence_id": table.evidence.id,
+            },
+        },
+        otto,
+    )
+
+
+async def _hire_example(user_id: str) -> None:
+    otto = Actor.otto()
+    task = await _example(
+        user_id,
+        TaskCreate(
+            title="Hire 5 experts",
+            status=TaskStatus.IN_PROGRESS,
+            assignee=AssigneeRef(type=AssigneeType.OTTO),
+        ),
+        otto,
+    )
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "goal": "Hire a designer, a copywriter, an analyst, a developer and "
+            "a support lead",
+            "done_when": ["All five are on the team"],
+            "plan": ["Pick the five roles", "Hire each expert"],
+            "steps": [
+                {"id": "s1", "status": "done"},
+                {
+                    "id": "s2",
+                    "rows": [
+                        {"title": "Designer", "status": "done"},
+                        {"title": "Copywriter", "status": "done"},
+                        {"title": "Analyst", "status": "running"},
+                        {"title": "Developer", "status": "pending"},
+                        {"title": "Support lead", "status": "pending"},
+                    ],
+                },
+            ],
+        },
+        otto,
+    )
+    await contract_db.add_evidence(
+        user_id,
+        task.id,
+        "record",
+        "Five expert drafts",
+        "Roles, tone and tools drafted for all five",
+        otto,
+    )
+    await contract_db.fill_from_turn(
+        user_id,
+        task.id,
+        str(uuid.uuid4()),
+        datetime.now(UTC),
+        "Creating experts isn't permitted in a background run.",
+        "hire_expert",
+    )
+
+
+async def _timeout_example(user_id: str) -> None:
+    otto = Actor.otto()
+    task = await _example(
+        user_id,
+        TaskCreate(
+            title="Check competitor pricing pages",
+            status=TaskStatus.IN_PROGRESS,
+            assignee=AssigneeRef(type=AssigneeType.OTTO),
+        ),
+    )
+    sites = ["acme.com", "globex.com", "initech.com", "umbrella.com"]
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "goal": "Find what changed on four competitors' pricing pages",
+            "done_when": ["Every page read", "Changes summarised"],
+            "plan": ["Read each pricing page", "Summarise the changes"],
+            "steps": [
+                {
+                    "id": "s1",
+                    "rows": [
+                        {"title": site, "status": "done" if i < 3 else "running"}
+                        for i, site in enumerate(sites)
+                    ],
+                }
+            ],
+        },
+        otto,
+    )
+    for site, change in zip(
+        sites[:3],
+        ["Pro up from $25 to $29", "New free tier", "No change since March"],
+    ):
+        await contract_db.add_evidence(
+            user_id,
+            task.id,
+            "link",
+            f"{site} pricing",
+            change,
+            otto,
+            url=f"https://{site}/pricing",
+        )
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "steps": [
+                {"id": "s1", "rows": [{"title": "umbrella.com", "status": "failed"}]}
+            ]
+        },
+        otto,
+    )
+    await contract_db.fill_from_turn(
+        user_id,
+        task.id,
+        str(uuid.uuid4()),
+        datetime.now(UTC),
+        "umbrella.com didn't respond: the request timed out after 30 seconds.",
+        "web_fetch",
+    )
+
+
+async def _launch_example(
+    user_id: str, experts: dict[str, prisma.models.Expert]
+) -> None:
+    otto = Actor.otto()
+    maria, ada = experts["Maria"], experts["Ada"]
+    task = await _example(
+        user_id,
+        TaskCreate(
+            title="Launch pricing page",
+            status=TaskStatus.IN_PROGRESS,
+            assignee=AssigneeRef(type=AssigneeType.OTTO),
+            priority=TaskPriority.HIGH,
+        ),
+    )
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "goal": "Launch the new pricing page with three plans",
+            "done_when": ["Copy approved", "Page built", "Page live"],
+            "plan": ["Write the copy", "Build the page", "Publish"],
+        },
+        otto,
+    )
+    copy = await _example(
+        user_id,
+        TaskCreate(
+            title="Write the pricing copy",
+            parent_id=task.id,
+            assignee=_assign(maria),
+            status=TaskStatus.IN_PROGRESS,
+        ),
+        otto,
+    )
+    await contract_db.update_task(
+        user_id,
+        copy.id,
+        {"goal": "Write the copy for three plans", "done_when": ["Copy drafted"]},
+        _actor(maria),
+    )
+    await contract_db.update_task(
+        user_id,
+        copy.id,
+        {
+            "criteria": [{"id": "d1", "status": "met"}],
+            "result": {"summary": "Starter, Pro and Team copy drafted."},
+        },
+        _actor(maria),
+    )
+    build = await _example(
+        user_id,
+        TaskCreate(
+            title="Build the pricing page",
+            parent_id=task.id,
+            assignee=_assign(ada),
+            status=TaskStatus.IN_PROGRESS,
+        ),
+        otto,
+    )
+    await contract_db.update_task(
+        user_id,
+        build.id,
+        {"goal": "Build the page from the copy", "done_when": ["Page renders"]},
+        _actor(ada),
+    )
+    page = await contract_db.add_evidence(
+        user_id,
+        build.id,
+        "file",
+        "pricing.html",
+        "The page with three plan cards",
+        _actor(ada),
+        ref="pricing.html",
+        criterion_ids=["d1"],
+        content=_PRICING_HTML,
+    )
+    assert page.evidence is not None
+    await contract_db.update_task(
+        user_id,
+        build.id,
+        {
+            "criteria": [
+                {"id": "d1", "status": "met", "evidence_ids": [page.evidence.id]}
+            ],
+            "result": {"summary": "Page built with three plan cards."},
+        },
+        _actor(ada),
+    )
+    parent_page = await contract_db.add_evidence(
+        user_id,
+        task.id,
+        "file",
+        "pricing.html",
+        "Built page, ready to publish",
+        otto,
+        ref="pricing.html",
+        criterion_ids=["d2"],
+        content=_PRICING_HTML,
+    )
+    assert parent_page.evidence is not None
+    await contract_db.update_task(
+        user_id,
+        task.id,
+        {
+            "steps": [
+                {"id": "s1", "status": "done"},
+                {"id": "s2", "status": "done"},
+            ],
+            "criteria": [
+                {"id": "d1", "status": "met"},
+                {
+                    "id": "d2",
+                    "status": "met",
+                    "evidence_ids": [parent_page.evidence.id],
+                },
+            ],
+        },
+        otto,
+    )
+    await contract_db.ask(
+        user_id,
+        task.id,
+        "Publish the pricing page now?",
+        otto,
+        why="Publishing makes it public to every visitor.",
+        options=["Publish now", "Wait until Monday"],
+        default_option="Publish now",
+        blocking_step_id="s3",
+    )
+
+
 async def main() -> None:
-    if len(sys.argv) < 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
         raise SystemExit(
-            "Usage: python -m backend.api.features.tasks.seed_demo <user_email>"
+            "Usage: python -m backend.api.features.tasks.seed_demo <user_email> "
+            "[--contracts]"
         )
     await prisma_db.connect()
     try:
-        await seed(sys.argv[1])
+        if "--contracts" in sys.argv:
+            await seed_contract_examples(args[0])
+        else:
+            await seed(args[0])
     finally:
         await prisma_db.disconnect()
 

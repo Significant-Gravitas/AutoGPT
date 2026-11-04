@@ -1,42 +1,59 @@
-import type { SelectOption } from "@/components/atoms/Select/Select";
-import { PRIORITY_LABELS } from "../../data/helpers";
-import type {
-  CreateTaskInput,
-  ExpertOption,
-  TaskPriority,
-} from "../../data/types";
-import { ALL_PRIORITIES } from "../../helpers";
+import type { CreateTaskInput, ExpertOption } from "../../data/types";
 
-export const ME_VALUE = "user";
 export const OTTO_VALUE = "otto";
 const EXPERT_PREFIX = "expert:";
+const TITLE_LIMIT = 80;
 
-export function assigneeOptions(experts: ExpertOption[]): SelectOption[] {
+export interface AssigneeChoice {
+  value: string;
+  label: string;
+  avatarUrl: string | null;
+  busy: boolean;
+}
+
+export function assigneeChoices(experts: ExpertOption[]): AssigneeChoice[] {
   return [
-    { value: ME_VALUE, label: "Me" },
-    { value: OTTO_VALUE, label: "Otto" },
+    { value: OTTO_VALUE, label: "Otto", avatarUrl: null, busy: false },
     ...experts.map((expert) => ({
       value: `${EXPERT_PREFIX}${expert.id}`,
-      label: expert.busy
-        ? `${expert.name} · busy on another task`
-        : expert.name,
+      label: expert.name,
+      avatarUrl: expert.avatar_url ?? null,
+      busy: expert.busy,
     })),
   ];
 }
 
-export const PRIORITY_OPTIONS: SelectOption[] = ALL_PRIORITIES.map((p) => ({
-  value: p,
-  label: PRIORITY_LABELS[p],
-}));
-
-export function isPriority(value: string): value is TaskPriority {
-  return (ALL_PRIORITIES as string[]).includes(value);
+export function resolveChoice(
+  choices: AssigneeChoice[],
+  value: string | null | undefined,
+): AssigneeChoice {
+  return (
+    choices.find((choice) => choice.value === value) ??
+    choices.find((choice) => choice.value === OTTO_VALUE)!
+  );
 }
 
 export function toAssignee(value: string): CreateTaskInput["assignee"] {
-  if (value === OTTO_VALUE) return { type: "otto", id: null };
   if (value.startsWith(EXPERT_PREFIX)) {
     return { type: "expert", id: value.slice(EXPERT_PREFIX.length) };
   }
-  return { type: "user", id: null };
+  return { type: "otto", id: null };
+}
+
+export function splitTaskText(text: string) {
+  const full = text.trim();
+  const firstLine = full.split("\n")[0].trim();
+  const title = shorten(firstLine);
+  return { title, description: title === full ? undefined : full };
+}
+
+function shorten(line: string) {
+  if (line.length <= TITLE_LIMIT) return line;
+  const cut = line.slice(0, TITLE_LIMIT);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > TITLE_LIMIT / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+export function createdMessage(key: string, choice: AssigneeChoice) {
+  return `${key} created · ${choice.label} is on it`;
 }

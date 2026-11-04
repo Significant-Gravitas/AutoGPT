@@ -49,6 +49,107 @@ class ActivityKind(str, Enum):
     OUTCOME = "outcome"
     PLAN_CONFIRMED = "plan_confirmed"
     SYSTEM = "system"
+    CONTRACT_SET = "contract_set"
+    GOAL_UPDATED = "goal_updated"
+    STEP_UPDATED = "step_updated"
+    EVIDENCE_ADDED = "evidence_added"
+    CRITERION_MARKED = "criterion_marked"
+    BLOCKER_REPORTED = "blocker_reported"
+    ACTION_TAKEN = "action_taken"
+
+
+class ContractState(str, Enum):
+    WORKING = "working"
+    NEEDS_YOU = "needs_you"
+    DONE = "done"
+    STUCK = "stuck"
+    STOPPED = "stopped"
+
+
+class CriterionStatus(str, Enum):
+    PENDING = "pending"
+    MET = "met"
+    UNMET = "unmet"
+    SKIPPED = "skipped"
+
+
+class StepStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class Criterion(BaseModel):
+    id: str
+    text: str
+    status: CriterionStatus = CriterionStatus.PENDING
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class StepRow(BaseModel):
+    """One of several runs of the same step going at once (five hires)."""
+
+    id: str
+    title: str
+    status: StepStatus = StepStatus.PENDING
+
+
+class Step(BaseModel):
+    id: str
+    title: str
+    status: StepStatus = StepStatus.PENDING
+    rows: list[StepRow] = Field(default_factory=list)
+
+
+class Evidence(BaseModel):
+    id: str
+    kind: str
+    title: str
+    summary: str
+    ref: str | None = None
+    url: str | None = None
+    criterion_ids: list[str] = Field(default_factory=list)
+    attachment_id: str | None = None
+    source_activity_id: str | None = None
+    auto: bool = False
+
+
+class Result(BaseModel):
+    summary: str
+    primary_evidence_id: str | None = None
+
+
+class Ask(BaseModel):
+    id: str
+    question: str
+    why: str | None = None
+    options: list[str] = Field(default_factory=list)
+    default_option: str | None = None
+    blocking_step_id: str | None = None
+    expires_at: datetime | None = None
+
+
+class Blocker(BaseModel):
+    done_so_far: str
+    what_stopped_it: str
+    # A whole sentence or a plain label, short enough for a card.
+    short: str = ""
+    cause: str = "unknown"
+    next_actions: list[str] = Field(default_factory=list)
+
+
+class Contract(BaseModel):
+    goal: str
+    # Set when the scope changed after work was planned, so the change shows.
+    previous_goal: str | None = None
+    done_when: list[Criterion] = Field(default_factory=list)
+    plan: list[Step] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+    result: Result | None = None
+    ask: Ask | None = None
+    blocker: Blocker | None = None
 
 
 class PlanStatus(str, Enum):
@@ -175,6 +276,7 @@ class TaskCounts(BaseModel):
     failed: int = 0
     needs_you: int = 0
     by_status: dict[str, int] = Field(default_factory=dict)
+    by_state: dict[str, int] = Field(default_factory=dict)
 
 
 class Task(BaseModel):
@@ -205,6 +307,13 @@ class Task(BaseModel):
     plan_id: str | None = None
     elapsed_ms: int | None = None
     inbox: TaskInbox | None = None
+    state: ContractState = ContractState.WORKING
+    raw_status: str = "queued"
+    # What a card shows: the one line about now, and the open ask or blocker.
+    now: str = ""
+    ask: Ask | None = None
+    blocker: Blocker | None = None
+    contract_version: int = 0
 
 
 class TaskParentRef(BaseModel):
@@ -266,6 +375,7 @@ class Plan(BaseModel):
     goal: str
     budget_usd: float | None = None
     steps: list[PlanStep] = Field(default_factory=list)
+    split: bool = True
     session_id: str | None = None
     parent_task_id: str | None = None
     task_ids: list[str] = Field(default_factory=list)
@@ -351,6 +461,31 @@ class TaskListResponse(BaseModel):
 
 class ActivityListResponse(BaseModel):
     events: list[ActivityEvent]
+    next_cursor: str | None = None
+
+
+class AskAnswer(BaseModel):
+    answer: str = Field(min_length=1)
+    ask_id: str | None = None
+
+
+class TaskActionName(str, Enum):
+    """The actions with their own handling; any other is passed on as the
+    user's instruction."""
+
+    RETRY_FAILED_PART = "retry_failed_part"
+    SKIP = "skip"
+    ALLOW = "allow"
+    DO_IN_CHAT = "do_in_chat"
+    CHANGE_GOAL = "change_goal"
+    TAKE_OVER = "take_over"
+    STOP = "stop"
+    ACCEPT = "accept"
+
+
+class TaskActionRequest(BaseModel):
+    goal: str | None = Field(default=None, min_length=1, max_length=500)
+    note: str | None = None
 
 
 class ExpertListResponse(BaseModel):

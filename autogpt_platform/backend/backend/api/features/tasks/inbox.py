@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.api.features.tasks import db
 from backend.api.features.tasks.models import (
+    ContractState,
     InboxActivity,
     InboxState,
     InboxStep,
@@ -20,7 +21,7 @@ from backend.data.db import query_raw_with_schema
 
 MAX_STEPS = 5
 SNIPPET_LENGTH = 140
-NEEDS_YOU_STATUSES = {TaskStatus.BLOCKED, TaskStatus.IN_REVIEW}
+NEEDS_YOU_STATES = {ContractState.NEEDS_YOU, ContractState.STUCK}
 STATUS_LABELS = {
     "backlog": "Backlog",
     "todo": "To do",
@@ -93,13 +94,17 @@ async def count_tasks(user_id: str, filters: TaskFilters) -> TaskCounts:
     scope.limit = 500
     tasks = await db.list_tasks(user_id, scope)
     last_turns = await _last_turn_statuses([t.id for t in tasks])
-    counts = TaskCounts(by_status={s.value: 0 for s in TaskStatus})
+    counts = TaskCounts(
+        by_status={s.value: 0 for s in TaskStatus},
+        by_state={s.value: 0 for s in ContractState},
+    )
     for task in tasks:
         state = inbox_state(task.status, last_turns.get(task.id))
         counts.all += 1
         setattr(counts, state.value, getattr(counts, state.value) + 1)
-        counts.needs_you += int(task.status in NEEDS_YOU_STATUSES)
+        counts.needs_you += int(task.state in NEEDS_YOU_STATES)
         counts.by_status[task.status.value] += 1
+        counts.by_state[task.state.value] += 1
     return counts
 
 
@@ -140,7 +145,7 @@ def _decorate(
     task.elapsed_ms = _elapsed_ms(task)
     task.inbox = TaskInbox(
         state=inbox_state(task.status, last_turn_status),
-        needs_you=task.status in NEEDS_YOU_STATUSES,
+        needs_you=task.state in NEEDS_YOU_STATES,
         last_activity=(
             InboxActivity(
                 kind=last["kind"],

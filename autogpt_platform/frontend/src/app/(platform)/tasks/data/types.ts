@@ -1,3 +1,6 @@
+import type { Ask } from "@/app/api/__generated__/models/ask";
+import type { Blocker } from "@/app/api/__generated__/models/blocker";
+
 export type TaskStatus =
   | "backlog"
   | "todo"
@@ -75,6 +78,8 @@ export interface TaskInbox {
   tools_used: { name: string; title: string; count: number }[];
 }
 
+export type TaskState = "working" | "needs_you" | "done" | "stuck" | "stopped";
+
 export interface TaskCounts {
   all: number;
   running: number;
@@ -83,6 +88,7 @@ export interface TaskCounts {
   failed: number;
   needs_you: number;
   by_status: Record<TaskStatus, number>;
+  by_state: Record<TaskState, number>;
 }
 
 export interface Task {
@@ -105,6 +111,11 @@ export interface Task {
   thread_session_id: string | null;
   plan_id: string | null;
   inbox: TaskInbox;
+  state: TaskState;
+  raw_status: string;
+  now: string;
+  ask: Ask | null;
+  blocker: Blocker | null;
   elapsed_ms: number | null;
   started_at: string | null;
   completed_at: string | null;
@@ -160,7 +171,7 @@ export type TaskActivity =
     }
   | {
       id: string;
-      kind: "created" | "assigned" | "artifact_linked" | "system";
+      kind: "created" | "assigned" | "artifact_linked" | "system" | "note";
       created_at: string;
       actor: TaskAssignee;
       body: string;
@@ -208,6 +219,7 @@ export interface TaskPlan {
   title: string;
   summary?: string;
   steps: TaskPlanStep[];
+  split: boolean;
   budget_usd: number | null;
   status: "proposed" | "approved" | "rejected";
   task_id?: string | null;
@@ -221,5 +233,6 @@ export const TASK_EVENTS = [
   "task_activity",
   "task_needs_input",
   "task_completed",
+  "task_contract",
 ] as const;
 export type TaskEventName = (typeof TASK_EVENTS)[number];

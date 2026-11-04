@@ -8,6 +8,7 @@ from prisma.enums import ContentType
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.tasks import access as tasks_access
+from backend.api.features.tasks import contract_db as tasks_contract_db
 from backend.api.features.tasks import db as tasks_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
@@ -673,17 +674,39 @@ class DatabaseManager(AppService):
     tasks_answer_input = _(tasks_db.answer_input, name="tasks_answer_input")
     tasks_add_attachment = _(tasks_db.add_attachment, name="tasks_add_attachment")
     tasks_set_work_session = _(tasks_db.set_work_session, name="tasks_set_work_session")
-    tasks_get_task_for_work_session = _(tasks_db.get_task_for_work_session, name="tasks_get_task_for_work_session")
+    tasks_get_task_for_work_session = _(
+        tasks_db.get_task_for_work_session, name="tasks_get_task_for_work_session"
+    )
     tasks_set_live = _(tasks_db.set_live, name="tasks_set_live")
     tasks_add_turn_metrics = _(tasks_db.add_turn_metrics, name="tasks_add_turn_metrics")
-    tasks_get_busy_task_for_expert = _(tasks_db.get_busy_task_for_expert, name="tasks_get_busy_task_for_expert")
-    tasks_list_waiting_tasks_for_expert = _(tasks_db.list_waiting_tasks_for_expert, name="tasks_list_waiting_tasks_for_expert")
-    tasks_list_experts_for_user = _(tasks_db.list_experts_for_user, name="tasks_list_experts_for_user")
+    tasks_get_busy_task_for_expert = _(
+        tasks_db.get_busy_task_for_expert, name="tasks_get_busy_task_for_expert"
+    )
+    tasks_list_waiting_tasks_for_expert = _(
+        tasks_db.list_waiting_tasks_for_expert,
+        name="tasks_list_waiting_tasks_for_expert",
+    )
+    tasks_list_experts_for_user = _(
+        tasks_db.list_experts_for_user, name="tasks_list_experts_for_user"
+    )
     tasks_resolve_assignee = _(tasks_db.resolve_assignee, name="tasks_resolve_assignee")
     tasks_create_plan = _(tasks_db.create_plan, name="tasks_create_plan")
     tasks_get_plan = _(tasks_db.get_plan, name="tasks_get_plan")
     tasks_confirm_plan = _(tasks_db.confirm_plan, name="tasks_confirm_plan")
     tasks_get_turn_usage = _(tasks_access.get_turn_usage, name="tasks_get_turn_usage")
+    tasks_contract_update_task = _(
+        tasks_contract_db.update_task, name="tasks_contract_update_task"
+    )
+    tasks_contract_add_evidence = _(
+        tasks_contract_db.add_evidence, name="tasks_contract_add_evidence"
+    )
+    tasks_contract_ask = _(tasks_contract_db.ask, name="tasks_contract_ask")
+    tasks_contract_fill_from_turn = _(
+        tasks_contract_db.fill_from_turn, name="tasks_contract_fill_from_turn"
+    )
+    tasks_contract_get_summary = _(
+        tasks_contract_db.get_summary, name="tasks_contract_get_summary"
+    )
 
     # ============ Experts ============ #
     # Exposed so the Prisma-less copilot executor can resolve expert
@@ -1273,6 +1296,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     tasks_get_plan = d.tasks_get_plan
     tasks_confirm_plan = d.tasks_confirm_plan
     tasks_get_turn_usage = d.tasks_get_turn_usage
+    tasks_contract_update_task = d.tasks_contract_update_task
+    tasks_contract_add_evidence = d.tasks_contract_add_evidence
+    tasks_contract_ask = d.tasks_contract_ask
+    tasks_contract_fill_from_turn = d.tasks_contract_fill_from_turn
+    tasks_contract_get_summary = d.tasks_contract_get_summary
 
     # ============ Experts ============ #
     get_expert = d.get_expert

@@ -2,7 +2,9 @@
 
 Dispatch writes ``work session -> (user, task)`` to Redis when a turn
 starts, so the per-tool-call hook in ``BaseTool.execute`` costs one Redis
-read only on automation sessions and never touches the database otherwise.
+read and never touches the database outside a work chat. Work chats are not
+all automation sessions: a task the user wrote for Otto runs in an
+interactive one, so it can propose hires.
 """
 
 import asyncio
@@ -32,6 +34,9 @@ _STEP_LABELS = {
     "comment_on_task": "Commenting",
     "request_input": "Asking you",
     "link_artifact": "Attaching a result",
+    "update_task": "Updating the task",
+    "add_evidence": "Saving proof",
+    "ask_user": "Asking you",
     "create_task": "Creating a sub-task",
 }
 
@@ -60,9 +65,9 @@ async def remember_work_session(
         logger.warning("Could not remember work session %s", session_id)
 
 
-def note_tool_call(session_id: str, is_automation: bool, tool_name: str) -> None:
+def note_tool_call(session_id: str, tool_name: str) -> None:
     """Fire-and-forget: show *tool_name* as the task's current step."""
-    if not is_automation or not session_id:
+    if not session_id:
         return
     task = asyncio.create_task(_note(session_id, tool_name))
     _pending.add(task)

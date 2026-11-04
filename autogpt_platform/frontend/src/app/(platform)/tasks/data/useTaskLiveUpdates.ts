@@ -26,7 +26,8 @@ function readTitle(n: WebSocketNotification) {
 
 /**
  * Refreshes task queries on any task event from the notification WebSocket,
- * and toasts when a task finishes or needs the user. Mount once per page.
+ * and toasts only when a task asks something or gets stuck. Mount once per
+ * page.
  */
 export function useTaskLiveUpdates({ withToasts = true } = {}) {
   const api = useBackendAPI();
@@ -38,9 +39,7 @@ export function useTaskLiveUpdates({ withToasts = true } = {}) {
       invalidateTasks(queryClient);
       if (!withToasts) return;
       const name = (n as { event?: string }).event ?? n.type;
-      if (name === "task_completed") {
-        toast({ title: `${readTitle(n)} is done` });
-      } else if (name === "task_needs_input") {
+      if (name === "task_needs_input") {
         const activity = (n as { activity?: { body?: string } }).activity;
         toast({
           title: `${readTitle(n)} needs you`,

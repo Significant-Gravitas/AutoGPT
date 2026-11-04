@@ -26,7 +26,7 @@
    replaces. */
 :root {
   /* Surfaces */
-  --color-canvas: 246 247 248; /* #F6F7F8, the page behind everything */
+  --color-canvas: 252 252 252; /* #FCFCFC, AffectUI --panel, the page behind everything */
   --color-surface: 254 254 254; /* white #FEFEFE */
   --color-surface-muted: 249 249 250; /* zinc-50 #F9F9FA */
   --color-surface-hover: 239 239 240; /* zinc-100 #EFEFF0 */
@@ -57,9 +57,24 @@
   --alpha-foreground-quiet: 0.45;
   --alpha-foreground-faint: 0.27;
   --inbox-radius-card: 10px;
-  --inbox-shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --inbox-shadow-card-hover: 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12), 0 1px 3px 0 rgb(0 0 0 / 0.07);
+  --inbox-shadow-card:
+    0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --inbox-shadow-card-hover:
+    0 0 0 0.5px rgb(0 0 0 / 0.1), 0 1px 1px -1px rgb(0 0 0 / 0.12),
+    0 1px 3px 0 rgb(0 0 0 / 0.07);
   --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
+  /* App shell (AffectUI site shell, affectui.com assets/index-*.css :root):
+     the sidebar sits on the page grey and the content on a lighter panel
+     edged by a hairline. */
+  --color-shell: 245 245 245; /* #F5F5F5, AffectUI --bg, the sidebar */
+  --color-shell-hover: 233 233 233; /* #E9E9E9, AffectUI --hover-bg rgba(0,0,0,.05) over #F5F5F5: hover and current item */
+  --color-shell-foreground: 115 115 115; /* #737373, AffectUI --text-muted, nav text and icons */
+  --color-shell-foreground-strong: 10 10 10; /* #0A0A0A, AffectUI --text, hovered and current item */
+  --color-shell-foreground-subtle: 0 0 0; /* AffectUI --text-subtle #0006, black at /40: group labels */
+  --color-shell-border: 236 236 236; /* #ECECEC, AffectUI --panel-stroke, the sidebar edge */
+  --color-shell-ring: 161 161 166; /* #A1A1A6, AffectUI --focus-ring */
+  --color-page: 252 252 252; /* #FCFCFC, AffectUI --panel, the page behind content */
 
   /* Text */
   --color-foreground-base: 20 20 20; /* black #141414, the Text default */
@@ -136,14 +151,14 @@
   --color-border: var(--color-border-base);
   --color-input: var(--color-border-strong);
   --color-ring: var(--color-focus);
-  --color-sidebar: var(--color-surface-muted);
-  --color-sidebar-foreground: var(--color-foreground-emphasis);
+  --color-sidebar: var(--color-shell);
+  --color-sidebar-foreground: var(--color-shell-foreground);
   --color-sidebar-primary: var(--color-action);
   --color-sidebar-primary-foreground: var(--color-action-foreground);
-  --color-sidebar-accent: var(--color-surface-hover);
-  --color-sidebar-accent-foreground: var(--color-foreground-strong);
-  --color-sidebar-border: var(--color-border-base);
-  --color-sidebar-ring: var(--color-info);
+  --color-sidebar-accent: var(--color-shell-hover);
+  --color-sidebar-accent-foreground: var(--color-shell-foreground-strong);
+  --color-sidebar-border: var(--color-shell-border);
+  --color-sidebar-ring: var(--color-shell-ring);
 
   --radius: 0.5rem;
 }
@@ -163,35 +178,66 @@
   --color-surface-muted: rgb(var(--color-surface-muted) / 1);
   --color-surface-hover: rgb(var(--color-surface-hover) / 1);
   --color-surface-active: rgb(var(--color-surface-active) / 1);
-  --color-surface-tray: rgb(var(--color-surface-tray) / var(--alpha-surface-tray));
+  --color-surface-tray: rgb(
+    var(--color-surface-tray) / var(--alpha-surface-tray)
+  );
   --color-surface-wash: rgb(var(--color-surface-wash) / 0.03);
-  --color-border-hairline: rgb(var(--color-border-hairline) / var(--alpha-border-hairline));
+  --color-border-hairline: rgb(
+    var(--color-border-hairline) / var(--alpha-border-hairline)
+  );
   --color-border-card: rgb(var(--color-border-card) / var(--alpha-border-card));
   --color-foreground-black: rgb(var(--color-foreground-black) / 1);
-  --color-foreground-ink: rgb(var(--color-foreground-ink) / var(--alpha-foreground-ink));
-  --color-foreground-text: rgb(var(--color-foreground-text) / var(--alpha-foreground-text));
-  --color-foreground-quiet: rgb(var(--color-foreground-quiet) / var(--alpha-foreground-quiet));
-  --color-foreground-faint: rgb(var(--color-foreground-faint) / var(--alpha-foreground-faint));
+  --color-foreground-ink: rgb(
+    var(--color-foreground-ink) / var(--alpha-foreground-ink)
+  );
+  --color-foreground-text: rgb(
+    var(--color-foreground-text) / var(--alpha-foreground-text)
+  );
+  --color-foreground-quiet: rgb(
+    var(--color-foreground-quiet) / var(--alpha-foreground-quiet)
+  );
+  --color-foreground-faint: rgb(
+    var(--color-foreground-faint) / var(--alpha-foreground-faint)
+  );
   --color-status-waiting: rgb(var(--color-status-waiting) / 1);
   --color-status-ok: rgb(var(--color-status-ok) / 1);
   --color-status-ok-surface: rgb(var(--color-status-ok-surface) / 0.08);
   --color-focus-inbox: rgb(var(--color-focus-inbox) / 0.35);
   --color-action-inbox: rgb(var(--color-action-inbox) / 0.88);
   --color-action-inbox-hover: rgb(var(--color-action-inbox) / 0.8);
-  --color-action-inbox-foreground: rgb(var(--color-action-inbox-foreground) / 1);
+  --color-action-inbox-foreground: rgb(
+    var(--color-action-inbox-foreground) / 1
+  );
   --radius-card: var(--inbox-radius-card);
+  --radius-panel: 12px; /* affectUI app-shell --radius-panel, the inset content panel */
   --radius-tray: 22px;
+  --radius-composer-tray: 18px; /* affectUI assistant-home composer tray */
   --radius-control: 6px;
   --shadow-card: var(--inbox-shadow-card);
   --shadow-card-hover: var(--inbox-shadow-card-hover);
   --shadow-hairline-b: inset 0 -0.5px 0 rgb(0 0 0 / 0.06);
   --shadow-hairline-l: inset 0.5px 0 0 rgb(0 0 0 / 0.06);
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow-pill: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-pill:
+    0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1),
+    0 1px 2px 0 rgb(0 0 0 / 0.05);
   --animate-inbox-enter: inbox-enter 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-inbox-empty: inbox-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
+  --animate-inbox-empty: inbox-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) 300ms
+    both;
   --animate-number-in: number-in 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --color-overlay: rgb(var(--color-overlay) / 1);
+  --color-shell: rgb(var(--color-shell) / 1);
+  --color-shell-hover: rgb(var(--color-shell-hover) / 1);
+  --color-shell-foreground: rgb(var(--color-shell-foreground) / 1);
+  --color-shell-foreground-strong: rgb(
+    var(--color-shell-foreground-strong) / 1
+  );
+  --color-shell-foreground-subtle: rgb(
+    var(--color-shell-foreground-subtle) / 0.4
+  );
+  --color-shell-border: rgb(var(--color-shell-border) / 1);
+  --color-shell-ring: rgb(var(--color-shell-ring) / 1);
+  --color-page: rgb(var(--color-page) / 1);
   --color-foreground-base: rgb(var(--color-foreground-base) / 1);
   --color-foreground-strong: rgb(var(--color-foreground-strong) / 1);
   --color-foreground-emphasis: rgb(var(--color-foreground-emphasis) / 1);
@@ -902,5 +948,6 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   --color-status-ok-surface: 31 138 76;
   --inbox-radius-card: 16px;
   --inbox-shadow-card: 0 0 0 1px rgb(229 229 229), 0 1px 2px rgb(0 0 0 / 0.06);
-  --inbox-shadow-card-hover: 0 0 0 1px rgb(214 214 214), 0 2px 6px rgb(0 0 0 / 0.08);
+  --inbox-shadow-card-hover:
+    0 0 0 1px rgb(214 214 214), 0 2px 6px rgb(0 0 0 / 0.08);
 }

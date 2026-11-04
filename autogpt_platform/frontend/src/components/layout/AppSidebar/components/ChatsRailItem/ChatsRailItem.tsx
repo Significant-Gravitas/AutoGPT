@@ -27,7 +27,7 @@ export function ChatsRailItem({ onClick }: Props) {
             <Icon
               icon={BubbleChatIcon}
               tone="emphasis-soft"
-              className="size-4 group-data-[collapsible=icon]:size-4.5"
+              className="size-4"
             />
             <span className="truncate">Chats</span>
           </SidebarMenuButton>

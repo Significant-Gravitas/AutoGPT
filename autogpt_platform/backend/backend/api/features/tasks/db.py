@@ -137,9 +137,9 @@ async def resolve_assignee(
 ) -> Assignee | None:
     if assignee_type is None:
         return None
-    if assignee_type == AssigneeType.USER:
-        return Assignee(type=AssigneeType.USER, id=user_id, name="Me")
-    if assignee_type == AssigneeType.OTTO:
+    # The user hands work out and never holds a task, so "the user" means Otto,
+    # who can pass it on to an expert.
+    if assignee_type in (AssigneeType.USER, AssigneeType.OTTO):
         return Assignee(type=AssigneeType.OTTO, id=None, name="Otto")
     if not assignee_id:
         raise ValueError("Pick an expert to assign this task to")
@@ -469,9 +469,12 @@ async def answer_input(
     pending = task.pending_input
     if pending is not None and input_id and input_id != pending.id:
         raise ValueError("That question has already been answered")
+    from backend.api.features.tasks.contract_db import close_ask
+
     await prisma.models.Task.prisma().update(
         where={"id": task_id}, data={"pendingInput": Json({})}
     )
+    await close_ask(user_id, task_id)
     await set_task_status(user_id, task_id, TaskStatus.IN_PROGRESS, actor)
     await add_activity(
         user_id,
@@ -513,6 +516,20 @@ async def add_attachment(
 async def set_work_session(task_id: str, session_id: str) -> None:
     await prisma.models.Task.prisma().update(
         where={"id": task_id}, data={"workSessionId": session_id}
+    )
+
+
+async def clear_work_session(task_id: str) -> None:
+    """The next turn opens a fresh work chat."""
+    await prisma.models.Task.prisma().update(
+        where={"id": task_id}, data={"workSessionId": None}
+    )
+
+
+async def unassign(user_id: str, task_id: str) -> None:
+    await prisma.models.Task.prisma().update_many(
+        where={"id": task_id, "userId": user_id},
+        data={"assigneeType": None, "assigneeExpertId": None},
     )
 
 
@@ -642,18 +659,21 @@ async def confirm_plan(
     otto = Actor.otto()
     parent = await create_task(
         user_id,
-        TaskCreate(
-            title=plan.goal,
-            status=TaskStatus.IN_PROGRESS,
-            assignee=AssigneeRef(type="otto"),
-            budget_cap_usd=plan.budget_usd,
+        (
+            _plan_parent_task(plan)
+            if plan.split
+            else _single_plan_task(plan, final_steps)
         ),
         otto,
     )
-    task_ids = [
-        (await create_task(user_id, _step_task(step, parent.id), otto)).id
-        for step in final_steps
-    ]
+    task_ids = (
+        [
+            (await create_task(user_id, _step_task(step, parent.id), otto)).id
+            for step in final_steps
+        ]
+        if plan.split
+        else []
+    )
     await prisma.models.Task.prisma().update_many(
         where={"id": {"in": [parent.id, *task_ids]}, "userId": user_id},
         data={"planId": plan_id},
@@ -663,7 +683,11 @@ async def confirm_plan(
         parent.id,
         ActivityKind.PLAN_CONFIRMED,
         Actor.user(user_id),
-        body=f"Plan approved with {len(task_ids)} steps",
+        body=(
+            f"Plan approved with {len(task_ids)} steps"
+            if plan.split
+            else f"Plan approved as one task with {len(final_steps)} items"
+        ),
         data={"plan_id": plan_id, "task_ids": task_ids},
     )
     row = await prisma.models.TaskPlan.prisma().update(
@@ -679,6 +703,42 @@ async def confirm_plan(
     detail = await get_task_detail(user_id, parent.id)
     assert detail is not None
     return row_to_plan(row), detail
+
+
+def _plan_parent_task(plan: Plan) -> TaskCreate:
+    return TaskCreate(
+        title=plan.goal,
+        status=TaskStatus.IN_PROGRESS,
+        assignee=AssigneeRef(type=AssigneeType.OTTO),
+        budget_cap_usd=plan.budget_usd,
+    )
+
+
+def _single_plan_task(plan: Plan, steps: list[PlanStep]) -> TaskCreate:
+    """The whole plan as one task: its steps become a checklist, and it goes to
+    the one assignee every step shares, or to Otto."""
+    owners = {(s.assignee.type, s.assignee.id) if s.assignee else None for s in steps}
+    owner = steps[0].assignee if len(owners) == 1 else None
+    return TaskCreate(
+        title=plan.goal,
+        description="\n".join(_checklist_line(step) for step in steps),
+        status=TaskStatus.TODO,
+        assignee=(
+            AssigneeRef(type=owner.type, id=owner.id)
+            if owner
+            else AssigneeRef(type=AssigneeType.OTTO)
+        ),
+        budget_cap_usd=plan.budget_usd,
+    )
+
+
+def _checklist_line(step: PlanStep) -> str:
+    line = f"- [ ] {step.title}"
+    if step.description:
+        line += f": {step.description}"
+    if step.assignee:
+        line += f" ({step.assignee.name})"
+    return line
 
 
 def _step_task(step: PlanStep, parent_id: str) -> TaskCreate:

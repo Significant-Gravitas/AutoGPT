@@ -12,23 +12,15 @@ export const EMPTY_COPY: Record<InboxTab, EmptyCopy> = {
   },
   needs_you: {
     title: "Nothing needs you",
-    body: "When an expert has a question or something to review, it waits here.",
+    body: "When your team has a question or gets stuck, it waits here.",
   },
-  running: {
-    title: "Nothing running right now",
+  working: {
+    title: "Nothing in progress",
     body: "Tasks your team is working on show up here, live.",
-  },
-  waiting: {
-    title: "Nothing waiting",
-    body: "Tasks that are queued or paused show up here.",
   },
   done: {
     title: "Nothing finished yet",
     body: "Finished tasks land here with what came out of them.",
-  },
-  failed: {
-    title: "No failures",
-    body: "If a task runs into a problem, you'll find it here.",
   },
 };
 

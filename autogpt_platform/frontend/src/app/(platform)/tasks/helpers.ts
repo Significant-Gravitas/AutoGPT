@@ -1,100 +1,81 @@
 import { PRIORITY_LABELS, STATUS_LABELS } from "./data/helpers";
 import type {
   ExpertOption,
-  InboxState,
   Task,
   TaskCounts,
   TaskFilters,
   TaskPriority,
+  TaskState,
   TaskStatus,
 } from "./data/types";
 
 export const TASK_VIEWS = ["list", "board"] as const;
 export type TasksView = (typeof TASK_VIEWS)[number];
 
-export const INBOX_TABS = [
-  "all",
-  "needs_you",
-  "running",
-  "waiting",
-  "done",
-  "failed",
-] as const;
+export const LANES = ["needs_you", "working", "done"] as const;
+export type Lane = (typeof LANES)[number];
+
+export const INBOX_TABS = ["all", ...LANES] as const;
 export type InboxTab = (typeof INBOX_TABS)[number];
 
 export const INBOX_TAB_LABELS: Record<InboxTab, string> = {
   all: "All",
   needs_you: "Needs you",
-  running: "Running",
-  waiting: "Waiting",
+  working: "Working",
   done: "Done",
-  failed: "Failed",
+};
+
+const LANE_OF: Record<TaskState, Lane> = {
+  needs_you: "needs_you",
+  stuck: "needs_you",
+  working: "working",
+  done: "done",
+  stopped: "done",
+};
+
+const LANE_STATES: Record<Lane, TaskState[]> = {
+  needs_you: ["needs_you", "stuck"],
+  working: ["working"],
+  done: ["done", "stopped"],
 };
 
 export const BOARD_MIN_WIDTH = 620;
 
+export function laneOf(task: Task) {
+  return LANE_OF[task.state];
+}
+
 export function tabCount(counts: TaskCounts | undefined, tab: InboxTab) {
-  return counts ? counts[tab] : 0;
+  if (!counts) return 0;
+  if (tab === "all") return counts.all;
+  return LANE_STATES[tab].reduce((n, s) => n + (counts.by_state[s] ?? 0), 0);
 }
 
-export function matchesTab(task: Task, tab: InboxTab) {
-  if (tab === "all") return true;
-  if (tab === "needs_you") return task.inbox.needs_you;
-  return task.inbox.state === tab;
-}
+const LANE_RANK: Record<Lane, number> = { needs_you: 0, working: 1, done: 2 };
 
-const STATE_RANK: Record<InboxState, number> = {
-  running: 1,
-  waiting: 2,
-  failed: 3,
-  done: 4,
-};
-
-function inboxRank(task: Task) {
-  return task.inbox.needs_you ? 0 : STATE_RANK[task.inbox.state];
-}
-
-export function sortForInbox(tasks: Task[]) {
-  return [...tasks].sort((a, b) => inboxRank(a) - inboxRank(b));
+function byLaneThenRecent(a: Task, b: Task) {
+  const lane = LANE_RANK[laneOf(a)] - LANE_RANK[laneOf(b)];
+  if (lane) return lane;
+  return b.updated_at.localeCompare(a.updated_at);
 }
 
 export function filterInbox(tasks: Task[], tab: InboxTab) {
-  return sortForInbox(tasks.filter((t) => matchesTab(t, tab)));
+  const shown = tab === "all" ? tasks : tasks.filter((t) => laneOf(t) === tab);
+  return shown.toSorted(byLaneThenRecent);
 }
 
-export type BoardColumnID = "running" | "waiting" | "done" | "failed";
-
 export interface InboxColumn {
-  id: BoardColumnID;
+  id: Lane;
   label: string;
   tasks: Task[];
 }
 
-const COLUMN_LABELS: Record<BoardColumnID, string> = {
-  running: "Running",
-  waiting: "Waiting",
-  done: "Done",
-  failed: "Failed",
-};
-
-function boardColumnFor(task: Task, splitFailed: boolean): BoardColumnID {
-  const state = task.inbox.state;
-  if (task.inbox.needs_you) return "waiting";
-  if (state === "failed") return splitFailed ? "failed" : "waiting";
-  return state;
-}
-
-export function buildBoardColumns(tasks: Task[], tab: InboxTab) {
-  const splitFailed = tab === "failed";
-  const ids: BoardColumnID[] = splitFailed
-    ? ["running", "waiting", "done", "failed"]
-    : ["running", "waiting", "done"];
-  const sorted = sortForInbox(tasks);
-  return ids.map(
+export function buildBoardColumns(tasks: Task[]) {
+  return LANES.map(
     (id): InboxColumn => ({
       id,
-      label: COLUMN_LABELS[id],
-      tasks: sorted.filter((t) => boardColumnFor(t, splitFailed) === id),
+      label: INBOX_TAB_LABELS[id],
+      tasks: tasks.filter((t) => laneOf(t) === id),
     }),
   );
 }
@@ -105,7 +86,7 @@ export function inboxRowID(taskID: string) {
 
 export function describeLiveCounts(counts: TaskCounts | undefined) {
   if (!counts) return "";
-  return `${counts.needs_you} need you, ${counts.running} running`;
+  return `${tabCount(counts, "needs_you")} need you, ${tabCount(counts, "working")} working`;
 }
 
 export type DueFilter = "overdue" | "today" | "week";
@@ -148,17 +129,12 @@ export const DUE_LABELS: Record<DueFilter, string> = {
   week: "Due this week",
 };
 
-export function buildListFilters(args: {
-  filters: PageFilters;
-  mine: boolean;
-}): TaskFilters {
-  const { filters, mine } = args;
+export function buildListFilters(filters: PageFilters): TaskFilters {
   return {
     status: filters.status.length ? filters.status : undefined,
     priority: filters.priority.length ? filters.priority : undefined,
     assignee_ids: filters.assigneeIDs.length ? filters.assigneeIDs : undefined,
     due: filters.due,
-    mine: mine ? true : undefined,
   };
 }
 

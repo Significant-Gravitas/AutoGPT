@@ -1,3 +1,6 @@
+import type { Ask } from "@/app/api/__generated__/models/ask";
+import type { Blocker } from "@/app/api/__generated__/models/blocker";
+import type { TaskSummary } from "@/app/api/__generated__/models/taskSummary";
 import type {
   ExpertOption,
   Task,
@@ -8,6 +11,7 @@ import type {
   TaskInbox,
   TaskDetail,
   TaskPlan,
+  TaskState,
   TaskStatus,
 } from "./types";
 
@@ -93,9 +97,39 @@ function toInbox(v: unknown, status: TaskStatus): TaskInbox {
   };
 }
 
+const TASK_STATES: TaskState[] = [
+  "working",
+  "needs_you",
+  "done",
+  "stuck",
+  "stopped",
+];
+
+function stateFromStatus(status: TaskStatus): TaskState {
+  if (status === "done") return "done";
+  if (status === "cancelled") return "stopped";
+  if (status === "in_review") return "needs_you";
+  if (status === "blocked") return "stuck";
+  return "working";
+}
+
+function toState(v: unknown, status: TaskStatus): TaskState {
+  const s = str(v) as TaskState | null;
+  return s && TASK_STATES.includes(s) ? s : stateFromStatus(status);
+}
+
+function countStates(tasks: Task[]) {
+  const by_state = Object.fromEntries(
+    TASK_STATES.map((s) => [s, 0]),
+  ) as TaskCounts["by_state"];
+  for (const t of tasks) by_state[t.state] += 1;
+  return by_state;
+}
+
 export function toTaskCounts(v: unknown, tasks: Task[]): TaskCounts {
   const r = obj(v);
   if (typeof r.all === "number") {
+    const by_state = obj(r.by_state);
     return {
       all: num(r.all),
       running: num(r.running),
@@ -104,11 +138,18 @@ export function toTaskCounts(v: unknown, tasks: Task[]): TaskCounts {
       failed: num(r.failed),
       needs_you: num(r.needs_you),
       by_status: obj(r.by_status) as TaskCounts["by_status"],
+      by_state: Object.keys(by_state).length
+        ? ({
+            ...countStates([]),
+            ...by_state,
+          } as TaskCounts["by_state"])
+        : countStates(tasks),
     };
   }
   const by_status = {} as TaskCounts["by_status"];
   for (const t of tasks) by_status[t.status] = (by_status[t.status] ?? 0) + 1;
   return {
+    by_state: countStates(tasks),
     all: tasks.length,
     running: tasks.filter((t) => t.inbox.state === "running").length,
     waiting: tasks.filter((t) => t.inbox.state === "waiting").length,
@@ -127,6 +168,13 @@ export function toTask(v: unknown): Task {
       ...t,
       plan_id: t.plan_id ?? null,
       inbox: t.inbox ?? toInbox(null, t.status),
+      state: t.raw_status
+        ? toState(t.state, t.status)
+        : stateFromStatus(t.status),
+      raw_status: t.raw_status ?? "",
+      now: t.now ?? "",
+      ask: t.ask ?? null,
+      blocker: t.blocker ?? null,
       elapsed_ms: t.elapsed_ms ?? null,
       started_at: t.started_at ?? null,
       completed_at: t.completed_at ?? null,
@@ -136,6 +184,7 @@ export function toTask(v: unknown): Task {
   const live = obj(r.live);
   const pending = r.pending_input ? obj(r.pending_input) : null;
   const counts = obj(r.subtask_counts);
+  const status = (str(r.status) ?? "todo") as TaskStatus;
   return {
     id: String(r.id),
     number: num(r.number),
@@ -176,7 +225,12 @@ export function toTask(v: unknown): Task {
     subtask_counts: { total: num(counts.total), done: num(counts.done) },
     thread_session_id: str(r.work_session_id),
     plan_id: str(r.plan_id),
-    inbox: toInbox(r.inbox, (str(r.status) ?? "todo") as TaskStatus),
+    inbox: toInbox(r.inbox, status),
+    state: toState(r.state, status),
+    raw_status: str(r.raw_status) ?? "",
+    now: str(r.now) ?? "",
+    ask: r.ask ? (r.ask as Ask) : null,
+    blocker: r.blocker ? (r.blocker as Blocker) : null,
     elapsed_ms: typeof r.elapsed_ms === "number" ? r.elapsed_ms : null,
     started_at: str(r.started_at),
     completed_at: str(r.completed_at),
@@ -326,9 +380,80 @@ export function toActivity(v: unknown): TaskActivity {
       };
     case "plan_confirmed":
       return { ...base, kind: "system", body: body || "Plan approved" };
+    case "contract_set":
+      return { ...base, kind: "system", body: `set the goal: ${body}` };
+    case "goal_updated":
+      return { ...base, kind: "system", body: `changed the goal to: ${body}` };
+    case "step_updated":
+      return { ...base, kind: "system", body: describeStep(body, data) };
+    case "criterion_marked":
+      return { ...base, kind: "system", body: describeCheck(body, data) };
+    case "evidence_added":
+      return { ...base, kind: "system", body: `kept proof: ${body}` };
+    case "blocker_reported":
+      return { ...base, kind: "system", body: `got stuck: ${body}` };
+    case "action_taken":
+      return { ...base, kind: "note", body };
     default:
       return { ...base, kind: "system", body };
   }
+}
+
+/** The mocks keep no contract; this is the summary a legacy task reads as. */
+export function summaryFromTask(task: Task): TaskSummary {
+  return {
+    id: task.id,
+    key: `T-${task.number}`,
+    title: task.title,
+    status: task.status,
+    state: task.state,
+    raw_status: task.raw_status,
+    now: task.now,
+    work_session_id: task.thread_session_id,
+    version: 0,
+    derived: true,
+    contract: {
+      goal: task.title,
+      ask: task.ask,
+      blocker: task.blocker,
+      result: task.outcome_summary ? { summary: task.outcome_summary } : null,
+    },
+    live: {
+      running: task.status === "in_progress",
+      current_step: task.live?.current_step ?? null,
+    },
+    metrics: task.metrics,
+    subtask_counts: task.subtask_counts,
+    parent_id: task.parent_id,
+    updated_at: new Date(task.updated_at),
+  };
+}
+
+const STEP_VERBS: Record<string, string> = {
+  pending: "planned",
+  running: "started",
+  done: "finished",
+  failed: "couldn't finish",
+  skipped: "skipped",
+};
+
+function describeStep(title: string, data: Raw) {
+  const verb = STEP_VERBS[str(data.status) ?? ""] ?? "updated";
+  const rows = Array.isArray(data.rows) ? data.rows.length : 0;
+  const parallel = rows > 1 ? ` (${rows} at once)` : "";
+  return `${verb} “${title}”${parallel}`;
+}
+
+const CHECK_VERBS: Record<string, string> = {
+  met: "checked off",
+  unmet: "couldn't meet",
+  skipped: "skipped the check",
+  pending: "reopened",
+};
+
+function describeCheck(text: string, data: Raw) {
+  const verb = CHECK_VERBS[str(data.status) ?? ""] ?? "updated";
+  return `${verb} “${text}”`;
 }
 
 export function toExpert(v: unknown): ExpertOption {
@@ -359,6 +484,7 @@ export function toPlan(v: unknown): TaskPlan | null {
         expert: toAssignee(step.expert ?? step.assignee),
       };
     }),
+    split: r.split !== false,
     budget_usd: typeof r.budget_usd === "number" ? r.budget_usd : null,
     status:
       status === "confirmed" || status === "approved"

@@ -7,6 +7,8 @@ import type {
   TaskDetail,
   TaskFilters,
   TaskPlan,
+  TaskState,
+  TaskStatus,
   UpdateTaskInput,
 } from "./types";
 
@@ -31,6 +33,16 @@ function expert(id: string): TaskAssignee {
 const now = Date.now();
 const iso = (offsetMin: number) =>
   new Date(now + offsetMin * 60_000).toISOString();
+
+const MOCK_STATE: Record<TaskStatus, TaskState> = {
+  backlog: "working",
+  todo: "working",
+  in_progress: "working",
+  blocked: "needs_you",
+  in_review: "needs_you",
+  done: "done",
+  cancelled: "stopped",
+};
 
 function base(
   n: number,
@@ -60,6 +72,11 @@ function base(
       steps: [],
       tools_used: [],
     },
+    state: MOCK_STATE[partial.status],
+    raw_status: "",
+    now: "",
+    ask: null,
+    blocker: null,
     elapsed_ms: null,
     started_at: null,
     completed_at: null,

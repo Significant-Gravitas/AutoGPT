@@ -45,6 +45,12 @@ export function getErrorMessage(output: unknown) {
   return null;
 }
 
+export function getPlanShapeLabel(plan: TaskPlan) {
+  const count = plan.steps.length;
+  if (plan.split) return `${count} ${count === 1 ? "sub-task" : "sub-tasks"}`;
+  return `One task · ${count} ${count === 1 ? "item" : "items"}`;
+}
+
 export function taskHref(id: string) {
   return `/tasks?task=${encodeURIComponent(id)}`;
 }

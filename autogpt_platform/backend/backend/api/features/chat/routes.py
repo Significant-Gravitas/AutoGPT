@@ -20,6 +20,10 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.api.features.chat.session_attention import (
+    SessionAttention,
+    session_attention,
+)
 from backend.api.features.experts import experts_db
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
@@ -563,6 +567,7 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    attention: SessionAttention | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -670,6 +675,14 @@ async def list_sessions(
                 "Failed to fetch processing status from Redis; defaulting to empty"
             )
 
+    attention: dict[str, SessionAttention] = {}
+    try:
+        attention = await session_attention(
+            user_id, [session.session_id for session in sessions]
+        )
+    except Exception:
+        logger.warning("Failed to work out which chats need the user", exc_info=True)
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -682,6 +695,7 @@ async def list_sessions(
                 source_platform=session.metadata.source_platform,
                 is_pinned=session.is_pinned,
                 expert_id=session.expert_id,
+                attention=attention.get(session.session_id),
             )
             for session in sessions
         ],

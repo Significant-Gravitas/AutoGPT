@@ -45,6 +45,8 @@ interface Props {
    * exists would take that away.
    */
   connectionLocked?: boolean;
+  /** Name the tier beside its glyph instead of folding down to the icon. */
+  withLabel?: boolean;
   className?: string;
 }
 
@@ -55,6 +57,7 @@ interface Props {
  */
 export function ConnectionPicker({
   connectionLocked = false,
+  withLabel = false,
   className,
 }: Props) {
   const picker = useConnectionPicker();
@@ -156,12 +159,13 @@ export function ConnectionPicker({
   // quiet icons on the composer's right; the tier and its model wait in the
   // tooltip. A connection name is a decision the user has to read, so that
   // form keeps its label.
+  const iconOnly = showsTier && !withLabel;
   const trigger = (
     <PopoverTrigger asChild>
       <Button
         type="button"
         variant={showsTier ? "ghost-muted" : "ghost"}
-        size={showsTier ? "icon-sm" : "small"}
+        size={iconOnly ? "icon-sm" : "small"}
         shape={showsTier ? "pill" : undefined}
         withTooltip={false}
         aria-label={
@@ -169,7 +173,7 @@ export function ConnectionPicker({
             ? `Model tier ${label} — change`
             : `Runs on ${triggerLabel} — change`
         }
-        className={cn(!showsTier && "min-w-0", className)}
+        className={cn(!iconOnly && "min-w-0", className)}
       >
         {/* The tier the next turn runs at, whichever half of the setting
             the label happens to be naming. It swaps on the same beat as the
@@ -180,7 +184,7 @@ export function ConnectionPicker({
             size={16}
           />
         </Swap>
-        {!showsTier && (
+        {!iconOnly && (
           <>
             <span className="hidden sm:inline">
               <Swap>{triggerLabel}</Swap>

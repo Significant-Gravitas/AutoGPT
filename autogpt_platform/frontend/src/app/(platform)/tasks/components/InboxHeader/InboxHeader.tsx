@@ -1,14 +1,12 @@
-import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { SegmentedControl } from "@/components/molecules/SegmentedControl/SegmentedControl";
 import {
   DashboardSquare01Icon,
   LeftToRightListBulletIcon,
-  PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
 import type { TasksView } from "../../helpers";
+import { NewTaskButton } from "../NewTaskButton/NewTaskButton";
 
 interface Props {
   view: TasksView;
@@ -55,15 +53,7 @@ export function InboxHeader({ view, onViewChange, onNewTask }: Props) {
           options={VIEW_OPTIONS}
           ariaLabel="Layout"
         />
-        <Button
-          variant="primary"
-          size="small"
-          leftIcon={<Icon icon={PlusSignIcon} size={16} />}
-          onClick={onNewTask}
-          aria-keyshortcuts="N"
-        >
-          New task
-        </Button>
+        <NewTaskButton onClick={onNewTask} />
       </div>
     </header>
   );

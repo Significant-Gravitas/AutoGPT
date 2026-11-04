@@ -23,6 +23,7 @@ import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { SOUL_CHANGE_TOOLS } from "./helpers";
+import { SentDecisionsContext } from "./sentDecisions";
 import { useLiveTipMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { asObject, str } from "./resultHelpers";
 import {
@@ -723,9 +724,10 @@ export function ExpertChangeGroup({
 }: GroupProps) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<StepDirection | undefined>();
-  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
-  const [sent, setSent] = useState(false);
+  const [picked, setPicked] = useState<Record<string, Decision>>({});
+  const [sentHere, setSentHere] = useState(false);
   const actions = useContext(CopilotChatActionsContext);
+  const sentDecisions = useContext(SentDecisionsContext);
   const visible = parts.filter((part) =>
     isVisibleExpertPart(part, isCurrentlyStreaming),
   );
@@ -743,6 +745,12 @@ export function ExpertChangeGroup({
   const proposals = visible
     .map(proposalOf)
     .filter((proposal): proposal is Proposal => proposal !== null);
+  const recorded = recordedDecisions(proposals, sentDecisions);
+  const decisions = { ...recorded, ...picked };
+  const sent =
+    sentHere ||
+    (proposals.length > 0 &&
+      proposals.every((proposal) => recorded[proposal.toolCallId]));
   const allDecided =
     proposals.length > 0 &&
     proposals.every((proposal) => decisions[proposal.toolCallId]);
@@ -781,7 +789,7 @@ export function ExpertChangeGroup({
         .map((proposal) => answerLine(proposal, answered[proposal.toolCallId]))
         .join("\n"),
     );
-    setSent(true);
+    setSentHere(true);
   }
 
   function decide(decision: Decision) {
@@ -790,7 +798,7 @@ export function ExpertChangeGroup({
       ...decisions,
       [currentProposal.toolCallId]: decision,
     };
-    setDecisions(nextDecisions);
+    setPicked(nextDecisions);
     if (answerSends) {
       send(nextDecisions);
       return;
@@ -800,7 +808,7 @@ export function ExpertChangeGroup({
 
   function undo() {
     if (!currentProposal) return;
-    setDecisions(withoutDecision(decisions, currentProposal.toolCallId));
+    setPicked(withoutDecision(picked, currentProposal.toolCallId));
   }
 
   const pager = visible.length > 1 && (
@@ -903,6 +911,22 @@ export function ExpertChangeGroup({
       />
     </div>
   );
+}
+
+/** Each proposal's answer as already sent in this chat. An approved hand-off
+ *  is sent under the hand-off's own confirmation id. */
+function recordedDecisions(
+  proposals: Proposal[],
+  sentDecisions: ReadonlyMap<string, Decision>,
+) {
+  const recorded: Record<string, Decision> = {};
+  for (const proposal of proposals) {
+    const decision =
+      sentDecisions.get(proposal.confirmationId) ??
+      (proposal.handoff && sentDecisions.get(proposal.handoff.confirmationId));
+    if (decision) recorded[proposal.toolCallId] = decision;
+  }
+  return recorded;
 }
 
 /** The record of the choice, worded as the choice: the confirm runs after

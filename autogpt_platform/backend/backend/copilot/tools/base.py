@@ -927,11 +927,7 @@ class BaseTool:
 def _note_task_step(session: ChatSession, tool_name: str) -> None:
     """Tasks v1: show the tool as a running task's current step (best-effort)."""
     try:
-        note_tool_call(
-            session.session_id or "",
-            session.metadata.origin == "automation",
-            tool_name,
-        )
+        note_tool_call(session.session_id or "", tool_name)
     except Exception:
         logger.debug("Task step note failed", exc_info=True)
 

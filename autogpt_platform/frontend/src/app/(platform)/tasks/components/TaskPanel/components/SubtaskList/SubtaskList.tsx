@@ -33,7 +33,7 @@ export function SubtaskList({ task, onOpenTask }: Props) {
   const subtasks = task.subtasks;
   const doneCount = subtasks.filter((s) => s.status === "done").length;
 
-  if (!subtasks.length && !canAdd) return null;
+  if (!subtasks.length) return null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

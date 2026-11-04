@@ -15,6 +15,21 @@ export const COLOR_ROLE_GROUPS = [
     ],
   },
   {
+    name: "Shell",
+    description:
+      "The app sidebar and the page behind content (AffectUI's shell).",
+    roles: [
+      "shell",
+      "shell-hover",
+      "shell-foreground",
+      "shell-foreground-strong",
+      "shell-foreground-subtle",
+      "shell-border",
+      "shell-ring",
+      "page",
+    ],
+  },
+  {
     name: "Text",
     description: "Text and icon colours, strongest first.",
     roles: [

@@ -211,7 +211,7 @@ it("switches recipients from the intro with no duplicate picker in the composer"
   });
   const prompt = screen.getByPlaceholderText(/What's your role/);
   expect(
-    picker.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING,
+    picker.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_PRECEDING,
   ).toBeTruthy();
   expect(
     screen.getAllByRole("button", { name: /change recipient/, hidden: true }),

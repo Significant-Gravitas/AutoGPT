@@ -1,6 +1,10 @@
+import type { EvidenceDetail } from "@/app/api/__generated__/models/evidenceDetail";
+import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
+import type { TaskSummary } from "@/app/api/__generated__/models/taskSummary";
 import { customMutator } from "@/app/api/mutators/custom-mutator";
 import { mockApi } from "./mocks";
 import {
+  summaryFromTask,
   toActivity,
   toExpert,
   toPlan,
@@ -8,6 +12,8 @@ import {
   toTaskCounts,
   toTaskDetail,
 } from "./normalize";
+
+const ACTIVITY_PAGE = 50;
 import type {
   CreateTaskInput,
   TaskFilters,
@@ -55,12 +61,11 @@ function json(method: string, body?: unknown): RequestInit {
   };
 }
 
-function toQuery(filters: TaskFilters) {
+function toQuery(filters: TaskFilters, { withHidden = false } = {}) {
   const params = new URLSearchParams();
-  if (filters.status?.length) {
-    params.set("status", filters.status.join(","));
+  if (filters.status?.length) params.set("status", filters.status.join(","));
+  if (filters.status?.length || withHidden)
     params.set("include_hidden", "true");
-  }
   if (filters.priority?.length)
     params.set("priority", filters.priority.join(","));
   if (filters.assignee_ids?.length === 1)
@@ -75,7 +80,7 @@ function toQuery(filters: TaskFilters) {
 export const tasksApi = {
   listWithCounts: (filters: TaskFilters) =>
     call<{ tasks: unknown[]; counts?: unknown }>(
-      `/api/tasks${toQuery(filters)}`,
+      `/api/tasks${toQuery(filters, { withHidden: true })}`,
       json("GET"),
       () => ({ tasks: mockApi.list(filters) }),
     ).then((r) => {
@@ -116,6 +121,37 @@ export const tasksApi = {
       json("GET"),
       () => ({ activity: mockApi.activity(id) }),
     ).then((r) => (r.events ?? r.activity ?? []).map(toActivity)),
+  activityPage: (id: string, cursor: string | null) =>
+    call<{ events: unknown[]; next_cursor?: string | null }>(
+      `/api/tasks/${id}/activity?limit=${ACTIVITY_PAGE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      json("GET"),
+      () => ({ events: mockApi.activity(id), next_cursor: null }),
+    ).then((r) => ({
+      items: r.events.map(toActivity),
+      nextCursor: r.next_cursor ?? null,
+    })),
+  summary: (id: string) =>
+    call<TaskSummary>(`/api/tasks/${id}/summary`, json("GET"), () =>
+      summaryFromTask(mockApi.get(id)),
+    ),
+  evidence: (id: string, evidenceId: string) =>
+    call<EvidenceDetail | null>(
+      `/api/tasks/${id}/evidence/${evidenceId}`,
+      json("GET"),
+      () => null,
+    ),
+  answerAsk: (id: string, answer: string, askId?: string) =>
+    call<TaskSummary>(
+      `/api/tasks/${id}/ask/answer`,
+      json("POST", { answer, ask_id: askId }),
+      () => summaryFromTask(mockApi.answer(id, answer)),
+    ),
+  action: (id: string, action: string, body: TaskActionRequest = {}) =>
+    call<TaskSummary>(
+      `/api/tasks/${id}/actions/${action}`,
+      json("POST", body),
+      () => summaryFromTask(mockApi.get(id)),
+    ),
   create: (input: CreateTaskInput) =>
     call<unknown>(`/api/tasks`, json("POST", input), () =>
       mockApi.create(input),

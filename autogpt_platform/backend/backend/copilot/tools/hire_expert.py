@@ -30,6 +30,7 @@ from .expert_proposal import (
     store_proposal,
     user_turn_watermark,
 )
+from .hire_task import track_proposed_hire, tracked_note
 from .models import (
     ErrorResponse,
     ExpertChangePreview,
@@ -145,6 +146,9 @@ class HireExpertTool(BaseTool):
 
         preview = _preview(template, params.name)
         handoff = params.handoff()
+        board_task = await track_proposed_hire(
+            user_id, session, preview.name, preview.role
+        )
         confirmation_id, handoff_confirmation_id = await _park(
             ExpertChangeProposal(
                 user_id=user_id,
@@ -152,10 +156,11 @@ class HireExpertTool(BaseTool):
                 preview=preview,
                 user_turn_watermark=user_turn_watermark(session),
                 handoff=handoff,
+                board_task_id=board_task.id if board_task else None,
             )
         )
         return ExpertChangeProposedResponse(
-            message=_proposed_message(handoff is not None),
+            message=_proposed_message(handoff is not None) + tracked_note(board_task),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,

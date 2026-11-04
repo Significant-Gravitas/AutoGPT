@@ -130,9 +130,10 @@ class ScheduleRoutineTool(BaseTool):
             "Create standing work, or switch a routine on or off. Omit "
             "'routine_id' and pass 'title'/'prompt' plus 'crons' or "
             "'delay_seconds' to set up something new you agreed with the "
-            "user. ON commits to what it will do: answer any 'asks' first "
-            "(never guess), use the time THEY chose, and show them the "
-            "wording before calling."
+            "user. Anything asked to happen 'every…' or 'when…' is a "
+            "routine, not a task. ON commits to what it will do: answer any "
+            "'asks' first (never guess), use the time THEY chose, and show "
+            "them the wording before calling."
         )
 
     @property

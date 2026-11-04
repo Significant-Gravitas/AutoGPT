@@ -32,7 +32,7 @@ export function SectionSidebar({ items, className }: Props) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
       className={cn(
-        "hidden h-full shrink-0 overflow-y-auto border-r border-border-base bg-surface-muted px-2.5 pt-3 md:block",
+        "hidden h-full shrink-0 overflow-y-auto border-r border-sidebar-border bg-sidebar px-2.5 pt-3 md:block",
         className,
       )}
     >

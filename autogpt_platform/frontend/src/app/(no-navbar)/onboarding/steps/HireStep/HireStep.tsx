@@ -13,7 +13,7 @@ import {
 } from "./components/RecommendedExpertCard";
 import { hireDiagnosis, hireTitle, raiseNote } from "./helpers";
 import { useHireStep } from "./useHireStep";
-import { useScrollEdges } from "./useScrollEdges";
+import { useScrollEdges } from "@/lib/hooks/useScrollEdges";
 
 const SKELETON_CARDS = 3;
 // Three across at the container's max width, two on tablets, one on phones.

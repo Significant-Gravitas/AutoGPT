@@ -1,4 +1,6 @@
+import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -17,6 +19,10 @@ export const tasksKeys = {
   list: (filters: TaskFilters) => ["tasks-v1", "list", filters] as const,
   detail: (id: string) => ["tasks-v1", "detail", id] as const,
   activity: (id: string) => ["tasks-v1", "activity", id] as const,
+  activityLog: (id: string) => ["tasks-v1", "activity-log", id] as const,
+  summary: (id: string) => ["tasks-v1", "summary", id] as const,
+  evidence: (id: string, evidenceId: string) =>
+    ["tasks-v1", "evidence", id, evidenceId] as const,
   experts: ["tasks-v1", "experts"] as const,
   plan: (id: string) => ["tasks-v1", "plan", id] as const,
 };
@@ -132,6 +138,69 @@ export function useAnswerTaskQuestion() {
       answer: string;
       inputId?: string;
     }) => tasksApi.answer(id, answer, inputId),
+    onSuccess: () => invalidateTasks(queryClient),
+  });
+}
+
+export function useTaskSummary(id: string | null) {
+  return useQuery({
+    queryKey: tasksKeys.summary(id ?? ""),
+    queryFn: () => tasksApi.summary(id!),
+    enabled: !!id,
+  });
+}
+
+export function useTaskActivityLog(id: string, { enabled = true } = {}) {
+  return useInfiniteQuery({
+    queryKey: tasksKeys.activityLog(id),
+    queryFn: ({ pageParam }) => tasksApi.activityPage(id, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled,
+  });
+}
+
+export function useTaskEvidence(
+  id: string,
+  evidenceId: string,
+  { enabled = true } = {},
+) {
+  return useQuery({
+    queryKey: tasksKeys.evidence(id, evidenceId),
+    queryFn: () => tasksApi.evidence(id, evidenceId),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useAnswerAsk() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      answer,
+      askId,
+    }: {
+      id: string;
+      answer: string;
+      askId?: string;
+    }) => tasksApi.answerAsk(id, answer, askId),
+    onSuccess: () => invalidateTasks(queryClient),
+  });
+}
+
+export function useTaskAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      action,
+      body,
+    }: {
+      id: string;
+      action: string;
+      body?: TaskActionRequest;
+    }) => tasksApi.action(id, action, body),
     onSuccess: () => invalidateTasks(queryClient),
   });
 }

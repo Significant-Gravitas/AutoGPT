@@ -19,6 +19,7 @@ from .expert_proposal import (
     load_bound_proposal,
 )
 from .hire_handoff import hand_off_to_new_hire, with_hire_only
+from .hire_task import complete_hire
 from .models import ErrorResponse, ExpertChangeAppliedResponse, ToolResponseBase
 
 _PROPOSAL_FIELDS = (
@@ -105,6 +106,13 @@ class ConfirmExpertChangeTool(BaseTool):
         if isinstance(proposal, ErrorResponse):
             return proposal
         applied = await apply_proposal(user_id, session_id, proposal)
+        if proposal.board_task_id and isinstance(applied, ExpertChangeAppliedResponse):
+            await complete_hire(
+                user_id,
+                proposal.board_task_id,
+                proposal.preview.name,
+                proposal.preview.role,
+            )
         task = proposal.handoff
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
             return applied

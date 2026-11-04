@@ -308,7 +308,7 @@ const Sidebar = React.forwardRef<
             "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
             "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
-            variant === "floating" || variant === "inset"
+            variant === "floating"
               ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
               : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
@@ -319,10 +319,13 @@ const Sidebar = React.forwardRef<
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-            // Adjust the padding for floating and inset variants.
-            variant === "floating" || variant === "inset"
+            // Floating pads the sidebar into a card; inset leaves it flush
+            // and borderless, the content panel beside it carries the edge.
+            variant === "floating"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              : variant === "inset"
+                ? "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
+                : "border-sidebar-border group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           {...props}
@@ -406,8 +409,11 @@ const SidebarInset = React.forwardRef<
         // without it, min-width:auto sizes it to its content and fixed-width
         // panels (e.g. the copilot artifact panel) push the page past the
         // viewport instead of shrinking.
-        "relative flex w-full min-w-0 flex-1 flex-col bg-surface",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2",
+        "relative flex w-full min-w-0 flex-1 flex-col bg-surface [--inset-height:100svh]",
+        // Inset: the content sits on a rounded panel inside the shell, 8px
+        // off the viewport edges; pages that fill the screen size themselves
+        // with --inset-height instead of 100svh.
+        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:min-h-[calc(100svh-1rem)] md:peer-data-[variant=inset]:overflow-clip md:peer-data-[variant=inset]:rounded-panel md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border-hairline md:peer-data-[variant=inset]:[--inset-height:calc(100svh-1rem)] md:peer-data-[collapsible=offcanvas]:peer-data-[variant=inset]:ml-2",
         className,
       )}
       {...props}

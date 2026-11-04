@@ -1,4 +1,6 @@
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 import { describeLiveCounts } from "../../helpers";
 import { useContainerWidth } from "../../useContainerWidth";
 import type { useTasksPage } from "../../useTasksPage";
@@ -8,6 +10,7 @@ import { InboxFilters } from "../InboxFilters/InboxFilters";
 import { InboxHeader } from "../InboxHeader/InboxHeader";
 import { InboxList } from "../InboxList/InboxList";
 import { InboxListSkeleton } from "../InboxList/InboxListSkeleton";
+import { InboxToolbar } from "../InboxToolbar/InboxToolbar";
 import { InboxCard } from "../InboxList/InboxCard";
 import { LiveRegion } from "../LiveRegion/LiveRegion";
 
@@ -15,35 +18,41 @@ type Page = ReturnType<typeof useTasksPage>;
 
 interface Props {
   page: Page;
+  /** Home's Chat / Board switch. Given, the pane is board-only and its
+   *  controls collapse into one toolbar around the switch. */
+  viewSwitch?: ReactNode;
 }
 
-export function InboxPane({ page }: Props) {
+export function InboxPane({ page, viewSwitch }: Props) {
   const { attach, isWide } = useContainerWidth();
+  const isBoard = (viewSwitch != null || page.view === "board") && isWide;
 
   return (
     <div ref={attach} className="flex h-full min-h-0 flex-col">
-      <div className="mx-auto flex w-full max-w-6xl shrink-0 flex-col gap-4 pb-4">
-        <InboxHeader
-          view={page.view}
-          onViewChange={page.setView}
-          onNewTask={() => page.setIsCreateOpen(true)}
-        />
-        <InboxFilters
-          tab={page.tab}
-          onTabChange={page.setTab}
-          counts={page.counts}
-          mine={page.mine}
-          onMineChange={page.setMine}
-          filters={page.filters}
-          onFiltersChange={page.setFilters}
-          chips={page.filterChips}
-          experts={page.experts}
-        />
-        <LiveRegion message={describeLiveCounts(page.counts)} />
-      </div>
+      {viewSwitch != null ? (
+        <InboxToolbar page={page} viewSwitch={viewSwitch} />
+      ) : (
+        <div className="mx-auto flex w-full max-w-6xl shrink-0 flex-col gap-4 pb-4">
+          <InboxHeader
+            view={page.view}
+            onViewChange={page.setView}
+            onNewTask={() => page.setIsCreateOpen(true)}
+          />
+          <InboxFilters
+            tab={page.tab}
+            onTabChange={page.setTab}
+            counts={page.counts}
+            filters={page.filters}
+            onFiltersChange={page.setFilters}
+            chips={page.filterChips}
+            experts={page.experts}
+          />
+        </div>
+      )}
+      <LiveRegion message={describeLiveCounts(page.counts)} />
       <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
-        <div className="mx-auto w-full max-w-6xl">
-          <InboxBody page={page} isBoard={page.view === "board" && isWide} />
+        <div className={cn("mx-auto w-full max-w-6xl", isBoard && "h-full")}>
+          <InboxBody page={page} isBoard={isBoard} />
         </div>
       </div>
     </div>
@@ -71,7 +80,7 @@ function InboxBody({ page, isBoard }: BodyProps) {
       <InboxCard>
         <InboxEmpty
           tab={page.tab}
-          hasFilters={page.filterChips.length > 0 || page.mine}
+          hasFilters={page.filterChips.length > 0}
           onClearFilters={page.clearFilters}
         />
       </InboxCard>
@@ -81,10 +90,7 @@ function InboxBody({ page, isBoard }: BodyProps) {
     return (
       <InboxBoard
         tasks={page.tasks}
-        tab={page.tab}
-        expandedID={page.expandedID}
         selectedID={page.taskID}
-        onToggle={page.toggleRow}
         onOpen={page.openTask}
       />
     );
@@ -92,9 +98,7 @@ function InboxBody({ page, isBoard }: BodyProps) {
   return (
     <InboxList
       tasks={page.tasks}
-      expandedID={page.expandedID}
       selectedID={page.taskID}
-      onToggle={page.toggleRow}
       onOpen={page.openTask}
     />
   );

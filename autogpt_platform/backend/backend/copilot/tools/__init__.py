@@ -89,6 +89,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
+from .tasks_contract_tools import AddEvidenceTool, AskUserTool, UpdateTaskTool
 from .tasks_plan_tools import ConfirmTaskPlanTool, CreateTaskTool, ProposePlanTool
 from .tasks_tools import (
     CommentOnTaskTool,
@@ -245,6 +246,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "create_task": CreateTaskTool(),
     "propose_plan": ProposePlanTool(),
     "confirm_task_plan": ConfirmTaskPlanTool(),
+    # The task contract: a task's goal, done_when, plan, evidence, result,
+    # open question and blocker, kept by whoever works it.
+    "update_task": UpdateTaskTool(),
+    "add_evidence": AddEvidenceTool(),
+    "ask_user": AskUserTool(),
 }
 
 # Export individual tool instances for backwards compatibility

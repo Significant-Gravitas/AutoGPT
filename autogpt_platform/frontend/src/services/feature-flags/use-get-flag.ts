@@ -34,6 +34,7 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
+  [Flag.TASKS_V1]: false,
 } satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;

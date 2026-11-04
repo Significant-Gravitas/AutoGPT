@@ -4,12 +4,15 @@ import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Depends, Query, Security
 
-from backend.api.features.tasks import db, dispatch, events, inbox
+from backend.api.features.tasks import contract_db, db, dispatch, events, inbox
+from backend.api.features.tasks.contract import brief
+from backend.api.features.tasks.contract_db import EvidenceDetail, TaskSummary
 from backend.api.features.tasks.models import (
     ActivityEvent,
     ActivityListResponse,
     Actor,
     AnswerCreate,
+    AskAnswer,
     AssigneeType,
     Attachment,
     AttachmentCreate,
@@ -18,7 +21,10 @@ from backend.api.features.tasks.models import (
     Plan,
     PlanConfirm,
     PlanConfirmResponse,
+    StepStatus,
     Task,
+    TaskActionName,
+    TaskActionRequest,
     TaskCounts,
     TaskCreate,
     TaskDetail,
@@ -290,6 +296,8 @@ async def confirm_task_plan(
     for sub in parent.subtasks:
         await _emit(user_id, "task_created", sub)
         await _on_assigned(user_id, sub)
+    if not plan.split:
+        await _on_assigned(user_id, parent)
     return PlanConfirmResponse(
         plan=plan, parent_task=await _fresh_detail(user_id, parent.id)
     )
@@ -408,10 +416,235 @@ async def create_subtask(
 )
 async def list_task_activity(
     task_id: str,
+    cursor: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=200),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ActivityListResponse:
-    await _fresh_detail(user_id, task_id)
-    return ActivityListResponse(events=await db.list_activity(user_id, task_id))
+    """The full log, oldest first. Pass ``limit`` (and then the returned
+    ``next_cursor``) to page through it; evidence content is left out and
+    fetched with the evidence endpoint."""
+    if await db.get_task(user_id, task_id) is None:
+        raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    if cursor is None and limit is None:
+        events, next_cursor = await db.list_activity(user_id, task_id), None
+    else:
+        events, next_cursor = await contract_db.list_activity_page(
+            user_id, task_id, cursor, limit or 50
+        )
+    return ActivityListResponse(
+        events=[_without_content(e) for e in events], next_cursor=next_cursor
+    )
+
+
+def _without_content(event: ActivityEvent) -> ActivityEvent:
+    if not event.data.get("content"):
+        return event
+    return event.model_copy(update={"data": {**event.data, "content": None}})
+
+
+@router.get(
+    "/{task_id}/summary",
+    dependencies=_GATE,
+    operation_id="get_task_summary",
+    response_model=TaskSummary,
+)
+async def get_task_summary(
+    task_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> TaskSummary:
+    """The task's contract and derived state: what the panel shows."""
+    summary = await contract_db.get_summary(user_id, task_id)
+    if summary is None:
+        raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    return summary
+
+
+@router.get(
+    "/{task_id}/evidence/{evidence_id}",
+    dependencies=_GATE,
+    operation_id="get_task_evidence",
+    response_model=EvidenceDetail,
+)
+async def get_task_evidence(
+    task_id: str,
+    evidence_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> EvidenceDetail:
+    """One proof item in full: its attachment and the activity row holding
+    any raw content."""
+    detail = await contract_db.get_evidence(user_id, task_id, evidence_id)
+    if detail is None:
+        raise fastapi.HTTPException(status_code=404, detail="Evidence not found")
+    return detail
+
+
+@router.post(
+    "/{task_id}/ask/answer",
+    dependencies=_GATE,
+    operation_id="answer_task_ask",
+    response_model=TaskSummary,
+)
+async def answer_task_ask(
+    task_id: str,
+    body: AskAnswer,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> TaskSummary:
+    try:
+        await db.answer_input(
+            user_id, task_id, body.answer, body.ask_id, Actor.user(user_id)
+        )
+    except LookupError:
+        raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    except ValueError as e:
+        raise _bad_request(e)
+    await _emit(user_id, "task_updated", await db.get_task(user_id, task_id))
+    await _resume(user_id, task_id, f"The user answered: {body.answer}")
+    return await get_task_summary(task_id, user_id)
+
+
+@router.post(
+    "/{task_id}/actions/{action}",
+    dependencies=_GATE,
+    operation_id="take_task_action",
+    response_model=TaskSummary,
+)
+async def take_task_action(
+    task_id: str,
+    action: str,
+    body: TaskActionRequest | None = None,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> TaskSummary:
+    """What the user does about a stuck or finished task. ``retry_failed_part``,
+    ``allow``, ``change_goal``, ``take_over``, ``stop`` and ``accept`` have
+    their own handling; any other action is passed to the worker as the
+    user's instruction, with ``note``."""
+    body = body or TaskActionRequest()
+    task = await db.get_task(user_id, task_id)
+    if task is None:
+        raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    try:
+        await _apply_action(user_id, task, action.strip().lower(), body)
+    except ValueError as e:
+        raise _bad_request(e)
+    return await get_task_summary(task_id, user_id)
+
+
+async def _apply_action(
+    user_id: str, task: Task, action: str, body: TaskActionRequest
+) -> None:
+    me = Actor.user(user_id)
+    contract = await contract_db.get_contract(user_id, task.id)
+    stopped = contract.blocker.what_stopped_it if contract.blocker else None
+    note = f" {body.note.strip()}" if body.note and body.note.strip() else ""
+
+    async def log(text: str) -> None:
+        activity = await contract_db.log_action(user_id, task.id, action, me, text)
+        await _emit(user_id, "task_activity", task, activity)
+
+    async def unblock() -> None:
+        update = await contract_db.clear_blocker(user_id, task.id)
+        await events.publish_contract_update(user_id, update)
+
+    async def settle(status: TaskStatus) -> None:
+        await db.set_live(task.id, False)
+        updated = await db.set_task_status(user_id, task.id, status, me)
+        await _emit(user_id, "task_updated", updated)
+
+    if action == TaskActionName.STOP:
+        await log(f"You stopped it.{note}")
+        await settle(TaskStatus.CANCELLED)
+        return
+    if action == TaskActionName.ACCEPT:
+        if contract.result is None:
+            summary = task.outcome_summary or "Accepted as it is."
+            update = await contract_db.update_task(
+                user_id, task.id, {"result": {"summary": summary}}, me
+            )
+            await events.publish_contract_update(user_id, update)
+        await log(f"You accepted it.{note}")
+        await settle(TaskStatus.DONE)
+        return
+    if action == TaskActionName.TAKE_OVER:
+        await unblock()
+        await log(f"You took it over; the work so far is kept.{note}")
+        await db.unassign(user_id, task.id)
+        await settle(TaskStatus.TODO)
+        return
+    if action == TaskActionName.CHANGE_GOAL:
+        if not body.goal:
+            raise ValueError("Give the new goal.")
+        update = await contract_db.change_goal(user_id, task.id, body.goal, me)
+        await events.publish_contract_update(user_id, update)
+        await log(f"You changed the goal to: {update.contract.goal}{note}")
+        await _resume(
+            user_id,
+            task.id,
+            f"The user changed the goal to: {update.contract.goal}.{note} Revise "
+            "the plan and checks with update_task, keep the finished work, and "
+            "go on.",
+        )
+        return
+    if action in (TaskActionName.ALLOW, TaskActionName.DO_IN_CHAT):
+        if task.live.running:
+            raise ValueError("Wait for the current turn to end, then allow it.")
+        await unblock()
+        await log(f"You allowed it{f': {stopped}' if stopped else ''}.{note}")
+        # A fresh chat, which now counts as one the user drives
+        # (dispatch._user_drives), carrying the record of the work so far.
+        await db.clear_work_session(task.id)
+        fresh = await db.get_task(user_id, task.id)
+        if fresh is not None:
+            await dispatch.start_task_turn(
+                user_id,
+                fresh,
+                dispatch.resume_brief(
+                    fresh,
+                    brief(contract),
+                    f"The user allowed what stopped you"
+                    f"{f' ({stopped})' if stopped else ''}. Try it again.{note}",
+                ),
+                dispatch.kickoff_metadata(fresh),
+            )
+        return
+    if action == TaskActionName.SKIP:
+        failed = next(
+            (
+                s
+                for s in contract.plan
+                if s.status in (StepStatus.FAILED, StepStatus.RUNNING)
+            ),
+            None,
+        )
+        if failed is not None:
+            update = await contract_db.update_task(
+                user_id,
+                task.id,
+                {"steps": [{"id": failed.id, "status": "skipped"}]},
+                me,
+            )
+            await events.publish_contract_update(user_id, update)
+        await unblock()
+        part = f' "{failed.title}"' if failed else " the part that failed"
+        await log(f"You skipped{part}.{note}")
+        await _resume(
+            user_id,
+            task.id,
+            f"The user chose to skip{part}.{note} Go on without it and say in "
+            "the result what was left out.",
+        )
+        return
+    await unblock()
+    if action == TaskActionName.RETRY_FAILED_PART:
+        await log(f"You asked to retry the part that failed.{note}")
+        message = (
+            f"The user asked you to retry the part that failed"
+            f"{f': {stopped}' if stopped else ''}.{note} Keep the finished "
+            "work and evidence; redo only what failed."
+        )
+    else:
+        await log(f"You chose: {action}.{note}")
+        message = f"The user chose: {action}.{note} Act on it and go on."
+    await _resume(user_id, task.id, message)
 
 
 @router.post(

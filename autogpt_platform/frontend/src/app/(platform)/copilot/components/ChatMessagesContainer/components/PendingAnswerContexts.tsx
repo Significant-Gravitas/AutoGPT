@@ -13,6 +13,10 @@ import { getPendingQuestions } from "../../QuestionDock/helpers";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import { CurrentPauseContext } from "../../TurnPausedCard/CurrentPauseContext";
 import { getCurrentPause } from "../../TurnPausedCard/helpers";
+import {
+  getSentDecisions,
+  SentDecisionsContext,
+} from "../../ToolChain/sentDecisions";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -41,10 +45,13 @@ export function PendingAnswerContexts({
   const pendingQuestions = useEqualValue(getPendingQuestions(messages));
   const answeredQuestions = useEqualValue(getAnsweredQuestions(messages));
   const heldOutcomes = useEqualValue(getHeldOutcomesOrNone(messages));
+  const sentDecisions = useEqualValue(getSentDecisions(messages));
   if (readOnly) {
     return (
       <AnsweredQuestionsContext.Provider value={answeredQuestions}>
-        {children}
+        <SentDecisionsContext.Provider value={sentDecisions}>
+          {children}
+        </SentDecisionsContext.Provider>
       </AnsweredQuestionsContext.Provider>
     );
   }
@@ -55,9 +62,11 @@ export function PendingAnswerContexts({
           value={getPendingOnboardingCallId(messages)}
         >
           <HeldOutcomesContext.Provider value={heldOutcomes}>
-            <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
-              {children}
-            </CurrentPauseContext.Provider>
+            <SentDecisionsContext.Provider value={sentDecisions}>
+              <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
+                {children}
+              </CurrentPauseContext.Provider>
+            </SentDecisionsContext.Provider>
           </HeldOutcomesContext.Provider>
         </PendingOnboardingContext.Provider>
       </AnsweredQuestionsContext.Provider>

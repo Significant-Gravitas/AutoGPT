@@ -27,11 +27,15 @@ if TYPE_CHECKING:
 
 # The parent variables a launch keeps: the OS runtime, locale, proxies and CA
 # bundles, and where the CLI keeps its configuration. Compared upper-cased.
+# USER and LOGNAME: on macOS the CLI finds its keychain login by user name, so
+# without them a host signed in with `claude login` reads as logged out.
 INHERITED_NAMES = frozenset(
     {
         "PATH",
         "PATHEXT",
         "HOME",
+        "USER",
+        "LOGNAME",
         "USERPROFILE",
         "SYSTEMROOT",
         "WINDIR",

@@ -137,3 +137,6 @@ class TaskEventNotificationPayload(NotificationPayload):
     title: str | None = None
     task: dict | None = None
     activity: dict | None = None
+    # ``{version, state, changes: [{field, value, op}]}``: only what changed.
+    # A client whose version isn't ``version - 1`` refetches the summary.
+    contract_patch: dict | None = None

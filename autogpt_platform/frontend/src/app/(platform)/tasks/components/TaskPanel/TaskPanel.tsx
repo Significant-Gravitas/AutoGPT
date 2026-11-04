@@ -1,42 +1,36 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ActivityFeed } from "./components/ActivityFeed/ActivityFeed";
+import { AttentionCard } from "./components/AttentionCard/AttentionCard";
+import { unmetChecks } from "./components/AttentionCard/helpers";
 import { CommentComposer } from "./components/CommentComposer/CommentComposer";
-import { InboxStatus } from "./components/InboxStatus/InboxStatus";
-import { LiveStrip } from "./components/LiveStrip/LiveStrip";
-import { PanelHeader } from "./components/PanelHeader/PanelHeader";
-import { PanelPlan } from "./components/PanelPlan/PanelPlan";
-import { PanelSection } from "./components/PanelSection/PanelSection";
+import { DoneWhen } from "./components/DoneWhen/DoneWhen";
+import { GoalLine } from "./components/GoalLine/GoalLine";
 import { PanelSkeleton } from "./components/PanelSkeleton/PanelSkeleton";
-import { QuestionCard } from "./components/QuestionCard/QuestionCard";
+import { Progress } from "./components/Progress/Progress";
+import { ResultCard } from "./components/ResultCard/ResultCard";
+import { ShowWork } from "./components/ShowWork/ShowWork";
 import { SubtaskList } from "./components/SubtaskList/SubtaskList";
 import { TaskHeader } from "./components/TaskHeader/TaskHeader";
-import { TaskOutcome } from "./components/TaskOutcome/TaskOutcome";
 import { useTaskPanel } from "./useTaskPanel";
 
 interface Props {
   taskId: string;
-  onClose(): void;
   onOpenTask(id: string): void;
 }
 
-export function TaskPanel({ taskId, onClose, onOpenTask }: Props) {
-  const {
-    task,
-    isLoading,
-    isError,
-    retry,
-    activity,
-    isActivityLoading,
-    experts,
-    update,
-  } = useTaskPanel(taskId);
+export function TaskPanel({ taskId, onOpenTask }: Props) {
+  const { task, summary, isLoading, isError, retry, experts, update } =
+    useTaskPanel(taskId);
+  const contract = summary?.contract;
+  const ask = contract?.ask ?? task?.ask ?? null;
+  const blocker = contract?.blocker ?? task?.blocker ?? null;
+  const rawStatus = summary?.raw_status ?? task?.raw_status;
+  const state = summary?.state ?? task?.state;
+  const settled = state === "done" || state === "stopped";
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
-      <PanelHeader task={task} onClose={onClose} />
+    <div className="flex h-full min-h-0 flex-col">
       <div
         key={taskId}
         className="flex min-h-0 flex-1 animate-inbox-enter flex-col"
@@ -54,48 +48,49 @@ export function TaskPanel({ taskId, onClose, onOpenTask }: Props) {
         ) : (
           <>
             <div className="min-h-0 flex-1 divide-y divide-border-hairline overflow-y-auto">
-              <div className="flex flex-col gap-4 px-5 py-5">
+              <div className="flex flex-col gap-3 px-1.5 py-5">
                 <TaskHeader task={task} experts={experts} onUpdate={update} />
-                <InboxStatus task={task} />
+                {contract ? (
+                  <GoalLine
+                    title={task.title}
+                    goal={contract.goal}
+                    previousGoal={contract.previous_goal}
+                  />
+                ) : null}
               </div>
-              {task.open_question ? (
-                <div className="px-5 py-4">
-                  <QuestionCard
+              {!settled &&
+              (ask || blocker || rawStatus === "awaiting_accept") ? (
+                <div className="px-1.5 py-4">
+                  <AttentionCard
+                    key={ask?.id ?? blocker?.what_stopped_it ?? "accept"}
                     taskId={task.id}
-                    question={task.open_question}
+                    goal={contract?.goal ?? task.title}
+                    askerName={task.assignee?.name ?? "Otto"}
+                    ask={ask}
+                    blocker={blocker}
+                    awaitingAccept={rawStatus === "awaiting_accept"}
+                    resultSummary={contract?.result?.summary}
+                    unmet={unmetChecks(contract?.done_when)}
                   />
                 </div>
               ) : null}
-              {task.status === "in_progress" && task.live ? (
-                <div className="px-5 py-4">
-                  <LiveStrip live={task.live} metrics={task.metrics} />
-                </div>
+              {contract ? (
+                <DoneWhen taskId={task.id} contract={contract} />
               ) : null}
-              {task.plan_id ? <PanelPlan planId={task.plan_id} /> : null}
-              <PanelSection label="Description">
-                {task.description ? (
-                  <Text
-                    variant="inbox"
-                    tone="text"
-                    className="whitespace-pre-wrap"
-                  >
-                    {task.description}
-                  </Text>
-                ) : (
-                  <Text variant="inbox" tone="faint">
-                    No description
-                  </Text>
-                )}
-              </PanelSection>
-              {task.status === "done" ? <TaskOutcome task={task} /> : null}
+              {contract && task.state !== "done" ? (
+                <Progress
+                  plan={contract.plan ?? []}
+                  now={summary?.now ?? task.now}
+                  state={summary?.state ?? task.state}
+                />
+              ) : null}
+              {contract && task.state === "done" ? (
+                <ResultCard taskId={task.id} contract={contract} />
+              ) : null}
               <SubtaskList task={task} onOpenTask={onOpenTask} />
-              <ActivityFeed
-                items={activity}
-                isLoading={isActivityLoading}
-                experts={experts}
-              />
+              <ShowWork task={task} experts={experts} />
             </div>
-            <div className="shrink-0 border-t border-border-hairline bg-surface px-4 pt-3 pb-4">
+            <div className="shrink-0 border-t border-border-hairline px-1.5 pt-3 pb-1">
               <CommentComposer taskId={task.id} experts={experts} />
             </div>
           </>

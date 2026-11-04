@@ -97,6 +97,8 @@ class ExpertChangeProposal(BaseModel):
     handoff: ExpertHandoffTask | None = None
     hand_off: bool = False
     sibling_confirmation_id: str | None = None
+    # Tasks v1: the board task a hire or raise is tracked on (``hire_task``).
+    board_task_id: str | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:

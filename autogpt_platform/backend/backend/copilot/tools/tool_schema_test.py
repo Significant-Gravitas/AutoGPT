@@ -295,7 +295,21 @@ from ._test_data import make_session
 # Both met merging dev into #16101 (SECRT-3138); re-measured on that merged
 # tree, which is under dev's ceiling, so the higher value stands:
 #     merged tree                                 77,728 (89 tools)
-_CHAR_BUDGET = 77_810
+# Raised 77_810 -> 84_547 for the Tasks v1 tools (create_task, propose_plan,
+# confirm_task_plan, list_my_tasks, update_task_status, comment_on_task,
+# request_input, link_artifact): Otto and experts put work on the task board,
+# and hand it off, through them. Each property carries the shortest
+# description that says what it is for. Measured on feat/tasks-v1:
+#     without the task tools                      77,834 (89 tools)
+#     + the eight task tools          +6,413      84,247 (97 tools)
+#     + headroom                       +300       84,547
+# Raised 84_547 -> 88_142 for the task contract tools (update_task,
+# add_evidence, ask_user): the worker keeps its task's goal, checks, plan,
+# proof and blocker through them, so the task panel reads a record instead
+# of the chat. One nested update_task replaces seven narrower tools.
+#     feat/tasks-v1 with the contract tools       87,842 (100 tools)
+#     + headroom                       +300       88,142
+_CHAR_BUDGET = 88_142
 
 
 @pytest.fixture(scope="module")
@@ -498,7 +512,17 @@ def test_total_schema_char_budget() -> None:
 # over it. Same headroom, for the same reason.
 #     merged tree                                 69,808
 #     + headroom                       +300       70,108
-_SESSION_WIRE_BUDGET = 70_108
+# Raised 70_108 -> 76_297 for the Tasks v1 tools, for the same reason as
+# ``_CHAR_BUDGET`` above. They are not in any hidden group, so all eight are
+# declared in the largest session.
+#     feat/tasks-v1 tip                           75,997
+#     + headroom                       +300       76,297
+# Raised 76_297 -> 79_545 for the task contract tools, as ``_CHAR_BUDGET``
+# above. All three are eager; request_input and link_artifact moved to
+# run_capability to make room.
+#     feat/tasks-v1 with the contract tools       79,245
+#     + headroom                       +300       79,545
+_SESSION_WIRE_BUDGET = 79_545
 
 
 def test_largest_declared_session_wire_budget() -> None:

@@ -12,7 +12,12 @@ import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import { ToolIcon } from "../DecomposeGoal/helpers";
 import { PlanStartedCard } from "./components/PlanStartedCard";
 import { PlanStepRow } from "./components/PlanStepRow";
-import { getConfirmedPlan, getErrorMessage, getProposedPlan } from "./helpers";
+import {
+  getConfirmedPlan,
+  getErrorMessage,
+  getPlanShapeLabel,
+  getProposedPlan,
+} from "./helpers";
 import { useTaskPlanCard } from "./useTaskPlanCard";
 
 interface Props {
@@ -110,7 +115,7 @@ export function PlanCard({ plan }: { plan: TaskPlan }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Text variant="inbox" tone="quiet" tabular>
-            {plan.steps.length} {plan.steps.length === 1 ? "step" : "steps"}
+            {getPlanShapeLabel(plan)}
             {plan.budget_usd !== null
               ? ` · Budget ${formatCost(plan.budget_usd)}`
               : ""}

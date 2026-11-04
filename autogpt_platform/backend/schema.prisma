@@ -3920,6 +3920,12 @@ model Task {
   // {id, question, options, asked_by, asked_at} while waiting for the user.
   pendingInput Json?
 
+  // Goal, done_when, plan, evidence, result, ask and blocker (see
+  // tasks/contract.py). Every patch bumps the version, and a write that read
+  // an older version retries, so parallel tool calls never drop each other.
+  contract        Json?
+  contractVersion Int   @default(0)
+
   planId String?
 
   startedAt   DateTime?
@@ -3981,6 +3987,7 @@ model TaskPlan {
   goal         String
   budgetUsd    Float?
   steps        Json     @default("[]")
+  split        Boolean  @default(true)
   sessionId    String?
   parentTaskId String?
   taskIds      String[] @default([])

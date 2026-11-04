@@ -33,6 +33,7 @@ export enum Key {
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
   GITHUB_STAR_PROMPT_COUNT = "github-star-prompt-count",
+  NEW_TASK_ASSIGNEE = "new-task-assignee",
 }
 
 export const storage = createSafeStorage<Key>("local");

@@ -6,6 +6,7 @@ import {
   type SentFrom,
 } from "../../../../sentFrom";
 import { getScheduledChatNotice } from "../../../ScheduledChatNoticeCard/helpers";
+import { getTaskKickoff } from "../../../TaskKickoffCard/helpers";
 import { getWorkRunMetadata, toPreview } from "../../../WorkCard/helpers";
 import { deriveLiveCompaction, deriveRowParts, getRunPreview } from "./helpers";
 
@@ -29,6 +30,7 @@ export function useMessageRow({
   // `renderableParts` when only, say, `isLastInTurn` changed.
   const runMetadata = useMemo(() => getWorkRunMetadata(metadata), [metadata]);
   const notice = useMemo(() => getScheduledChatNotice(metadata), [metadata]);
+  const taskKickoff = getTaskKickoff(metadata);
   const runPreview = useMemo(
     () => (runMetadata ? toPreview(getRunPreview(parts)) : ""),
     [runMetadata, parts],
@@ -48,6 +50,7 @@ export function useMessageRow({
     runMetadata,
     runPreview,
     notice,
+    taskKickoff,
     ...rowParts,
     ...compaction,
     sentFrom,
