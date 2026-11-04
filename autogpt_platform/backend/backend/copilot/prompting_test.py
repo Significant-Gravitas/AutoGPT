@@ -500,10 +500,9 @@ class TestPlainLanguageRules:
         """Otto told a user a failure looked like a permissions issue when the
         input format was wrong (SECRT-2001)."""
         notes = prompting.SHARED_TOOL_NOTES
-        assert (
-            "Name the cause of a failure only when the tool result states it" in notes
-        )
-        assert "the cause isn't clear yet" in notes
+        assert "only when a tool result shows it" in notes
+        assert "Don't guess one from a vague error" in notes
+        assert "the cause isn't clear yet, and what you'll do next" in notes
 
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES
