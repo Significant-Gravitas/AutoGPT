@@ -403,7 +403,9 @@ _URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
 
 def _canonical_vapid_key(value: str) -> str:
     """The unpadded Base64url spelling of the bytes `value` decodes to, or
-    `value` without whitespace and padding when it does not decode."""
+    `value` without whitespace and padding when it does not decode. A copy
+    of `backend/util/secrets_guard.py`'s, which the package boundary keeps
+    apart; the pinned-spelling test in each suite holds the two in step."""
     compact = "".join(value.split()).rstrip("=")
     try:
         decoded = base64.b64decode(
