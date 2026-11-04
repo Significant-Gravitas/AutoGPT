@@ -319,6 +319,11 @@ async def _cmd_start(config) -> int:
         await daemon.run()
     except DaemonPreflightError as exc:
         print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
+        if exc.transient:
+            # It can clear on its own (audit storage that is full or not
+            # mounted yet, a keychain still locked): 75 (EX_TEMPFAIL), which
+            # systemd and launchd both restart.
+            return 75
         if exc.permanent and os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
             # A setting or a missing package fails the same way on every
             # restart, and launchd restarts any non-zero exit, so stop until

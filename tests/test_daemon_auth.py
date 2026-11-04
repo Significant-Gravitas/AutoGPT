@@ -620,3 +620,61 @@ async def test_a_keychain_failure_during_a_refresh_is_retried_unless_there_is_no
     expected = DaemonAuthenticationError if terminal else KeychainUnavailableError
     with pytest.raises(expected):
         await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
+
+
+@pytest.mark.parametrize(
+    ("failure", "permanent", "transient"),
+    [
+        ("corrupt", True, False),
+        ("disk-full", False, True),
+        ("read-only", True, False),
+        ("keychain-locked", False, True),
+    ],
+)
+def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    permanent: bool,
+    transient: bool,
+) -> None:
+    """Every audit failure at start was the same preflight error, exit 78.
+    Under launchd a log that fails verification restarted every few seconds,
+    and under systemd storage that recovered was never retried."""
+    import errno
+    import os
+
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    if failure == "keychain-locked":
+
+        def locked(*_args: object) -> None:
+            raise keyring.errors.KeyringLocked("the keychain is locked")
+
+        monkeypatch.setattr(keyring, "get_password", locked)
+    else:
+        monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+    if failure == "corrupt":
+        config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+    elif failure in ("disk-full", "read-only"):
+        code = errno.ENOSPC if failure == "disk-full" else errno.EROFS
+
+        def refuse(**_kwargs: object) -> None:
+            raise OSError(code, os.strerror(code))
+
+        monkeypatch.setattr(daemon_module, "AuditWriter", refuse)
+
+    with pytest.raises(DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.permanent is permanent
+    assert getattr(raised.value, "transient", False) is transient

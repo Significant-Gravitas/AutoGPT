@@ -14,6 +14,7 @@ can't starve keepalive.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import random
@@ -32,7 +33,13 @@ from pydantic import BaseModel, ValidationError
 from websockets.asyncio.client import connect
 
 from . import platform_info
-from .audit import AuditWriter, SessionAuditWriter, get_or_create_audit_key
+from .audit import (
+    AuditKeyUnavailableError,
+    AuditLogCorruptError,
+    AuditWriter,
+    SessionAuditWriter,
+    get_or_create_audit_key,
+)
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
@@ -149,12 +156,34 @@ class DaemonPreflightError(RuntimeError):
     change.
 
     `permanent` marks a failure no relaunch can fix (a preview that is
-    turned on, a missing package): a supervised `start` then stops instead.
+    turned on, a missing package, an audit log that fails verification): a
+    supervised `start` then stops instead. `transient` marks one that can
+    clear on its own (audit storage that is full or not mounted yet, a
+    keychain still locked): `start` exits 75 (EX_TEMPFAIL), which systemd and
+    launchd both restart.
     """
 
-    def __init__(self, message: str, *, permanent: bool = False) -> None:
+    def __init__(self, message: str, *, permanent: bool = False, transient: bool = False) -> None:
+        if permanent and transient:
+            raise ValueError("a preflight failure can't be both permanent and transient")
         super().__init__(message)
         self.permanent = permanent
+        self.transient = transient
+
+
+# Storage errors a restart can't fix: the path, or what it may do, is wrong.
+_PERMANENT_STORAGE_ERRNOS = frozenset(
+    {
+        errno.EACCES,
+        errno.EPERM,
+        errno.EROFS,
+        errno.ENOTDIR,
+        errno.EISDIR,
+        errno.ELOOP,
+        errno.ENAMETOOLONG,
+        errno.EINVAL,
+    }
+)
 
 
 class TokenRefreshUnavailableError(RuntimeError):
@@ -318,15 +347,44 @@ class ShimDaemon:
 
     @staticmethod
     def _build_audit_writer(config: ShimConfig) -> AuditWriter:
-        """Build the mandatory audit writer or fail startup closed."""
+        """Build the mandatory audit writer or fail startup closed, saying
+        whether a restart could fix the failure."""
         try:
             key = get_or_create_audit_key()
+        except AuditKeyUnavailableError as exc:
+            raise DaemonPreflightError(
+                f"{exc}; refusing to run without a mandatory audit log, which that key signs",
+                transient=True,
+            ) from exc
+        except Exception as exc:
+            # A malformed stored key, or no keychain and no file fallback.
+            raise DaemonPreflightError(
+                f"The audit key couldn't be loaded ({exc}); refusing to run without a "
+                "mandatory audit log",
+                permanent=True,
+            ) from exc
+        try:
             return AuditWriter(
                 path=config.audit_log_path,
                 audit_key=key,
                 machine_id=config.machine_id,
                 session_id=config.session_id,
             )
+        except AuditLogCorruptError as exc:
+            raise DaemonPreflightError(
+                f"{exc}: {config.audit_log_path}. Check it with `autogpt-shim audit verify`, "
+                "and move it aside to start a new log; refusing to run without a mandatory "
+                "audit log",
+                permanent=True,
+            ) from exc
+        except OSError as exc:
+            permanent = exc.errno in _PERMANENT_STORAGE_ERRNOS
+            raise DaemonPreflightError(
+                f"The audit log at {config.audit_log_path} couldn't be opened ({exc}); "
+                "refusing to run without a mandatory audit log",
+                permanent=permanent,
+                transient=not permanent,
+            ) from exc
         except Exception as exc:
             raise DaemonPreflightError(
                 "Audit initialization failed; refusing to run without a mandatory audit log"

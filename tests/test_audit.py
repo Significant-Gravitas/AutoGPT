@@ -1068,3 +1068,34 @@ def test_tail_starts_over_when_the_log_is_truncated_in_place(tmp_path: Path) -> 
             seen.append(line)
 
     assert seen == [b'{"seq": 1, "op": "a long first record"}\n', b'{"seq": 1}\n']
+
+
+def test_a_locked_keychain_is_not_replaced_by_the_file_key(monkeypatch) -> None:
+    """With the passphrase set, a keychain that was still locked made the
+    shim switch to the file's key, a different one, so the log it had been
+    signing no longer verified."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    with (
+        patch.object(keyring, "get_password", side_effect=keyring.errors.KeyringLocked("locked")),
+        patch("autogpt_local_executor.audit._fallback_audit_key") as fallback,
+    ):
+        with pytest.raises(AuditKeyUnavailableError):
+            get_or_create_audit_key()
+    fallback.assert_not_called()
+
+
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_no_usable_keychain_still_falls_back_to_the_file_key(error: str) -> None:
+    import keyring
+    import keyring.errors
+
+    with (
+        patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")),
+        patch("autogpt_local_executor.audit._fallback_audit_key", return_value=b"k" * 32),
+    ):
+        assert get_or_create_audit_key() == b"k" * 32
