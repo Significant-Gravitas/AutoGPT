@@ -354,9 +354,12 @@ trips IME/autocomplete on web forms.
    later than that pastes the restored contents instead of the text. A
    copy made after the snapshot but before the shim writes the text is
    lost: the write replaces it, and the restore, which finds only the
-   pasted text, puts the snapshot back. The clipboard has no
-   compare-and-set to close that gap. If the write itself fails, the
-   snapshot goes back only onto a clipboard that is still empty.
+   pasted text, puts the snapshot back. On Windows the shim checks the
+   sequence number again just before the write and types the text when a
+   copy landed since, which narrows that gap; the clipboard has no
+   compare-and-set to close it. If the write itself fails, macOS and
+   Windows put the snapshot back only onto a clipboard that is still
+   empty; Linux doesn't put it back.
 
 ```json
 {
@@ -721,9 +724,11 @@ multi-app workflow is half-blind without clipboard access.
 Responds with `ACK`, or `INTERNAL_ERROR` when the text did not land on
 the clipboard (for example, another app holds it open). A paste with
 `paste: true` stops before the paste keystroke in that case, so it never
-pastes what was already there. With `preserve_clipboard: true`, the user's
-text is put back first, since clearing the clipboard may have gone through
-before the write failed; a restore that fails too is logged.
+pastes what was already there. With `preserve_clipboard: true` on macOS and
+Windows, the user's text is put back first, since clearing the clipboard may
+have gone through before the write failed, but only onto a clipboard that is
+still empty (anything on it was copied since); a restore that fails too is
+logged. Linux doesn't put it back.
 
 Both clipboard directions are bounded by
 `HELLO_ACK.max_file_size_bytes`. `CLIPBOARD_READ` rejects an oversized backend

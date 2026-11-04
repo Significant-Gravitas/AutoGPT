@@ -136,6 +136,7 @@ def test_clipboard_writeback_round_trip(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: state["seq"])
     monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
     b.clipboard_write(content="hello")
     res = b.clipboard_read()
@@ -197,6 +198,7 @@ def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=Fal
 
     monkeypatch.setattr(b, "_write_clipboard_text", _write)
     monkeypatch.setattr(b, "_read_clipboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: state["seq"])
     # CF_UNICODETEXT (13), plus a CF_PRIVATE format (0x0200) when asked.
     monkeypatch.setattr(
         b,
@@ -220,6 +222,24 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
     assert clipboard["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
+
+
+def test_a_copy_made_after_the_snapshot_is_not_pasted_over(tmp_path, monkeypatch) -> None:
+    """A copy landing between the snapshot and the paste's write was
+    overwritten by the paste, and the restore then put the older text back,
+    so the newer copy was lost. The text is typed instead."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+    monkeypatch.setattr(b, "_clipboard_sequence", lambda: clipboard["seq"] + 1)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    pyautogui.hotkey.assert_not_called()
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
 
 
 def test_a_cf_private_clipboard_is_left_alone_and_the_text_typed(tmp_path, monkeypatch) -> None:

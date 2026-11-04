@@ -878,11 +878,17 @@ class WindowsBackend(ComputerUseBackend):
             # and the text typed.
             snapshot = self._clipboard_snapshot()
             if snapshot is not None:
-                previous, _, formats = snapshot
+                previous, seq, formats = snapshot
                 if (
                     formats is not None
                     and formats <= _TEXT_CLIPBOARD_FORMATS
                     and previous is not None
+                    # A copy made since the snapshot would be overwritten by
+                    # the paste, and the restore would put the older text
+                    # back. Checked just before the write, which narrows the
+                    # gap but can't close it: nothing holds the clipboard
+                    # between the check and the write.
+                    and self._clipboard_sequence() == seq
                 ):
                     self._do_paste(text, restore=previous)
                     return
