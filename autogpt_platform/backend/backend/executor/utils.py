@@ -439,6 +439,12 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
+    # A required input that arrived as None is skipped, as before, not failed:
+    # None is sometimes sent on purpose.
+    raise_on_mismatch = raise_on_mismatch and not any(
+        data.get(name, "") is None for name in schema.get_required_fields()
+    )
+
     # A value that can't be converted fails dry runs too, so the builder learns
     # the wiring is wrong.
     if conversion_error:
@@ -454,11 +460,7 @@ def validate_exec(
     if not dry_run:
         if error := schema.get_mismatch_error(data):
             error_message = f"{error_prefix} {error}"
-            # A required input that arrived as None is skipped, as before, not
-            # failed: None is sometimes sent on purpose.
-            if raise_on_mismatch and not any(
-                data.get(name, "") is None for name in schema.get_required_fields()
-            ):
+            if raise_on_mismatch:
                 raise InputMismatchError(error_message, data)
             logger.warning(error_message)
             return None, error_message

@@ -97,14 +97,20 @@ def test_a_long_bad_value_is_cut_short_in_the_error():
     assert "..." in error and value not in error
 
 
-def test_a_required_input_that_arrives_as_none_is_skipped_as_before():
-    """None is sometimes sent on purpose, so it doesn't fail the node."""
+@pytest.mark.parametrize(
+    "other", [{}, {"model": _BAD_MODEL}], ids=["alone", "with a bad value"]
+)
+def test_a_required_input_that_arrives_as_none_is_skipped_as_before(
+    other: dict[str, Any],
+):
+    """None is sometimes sent on purpose, so it doesn't fail the node, even
+    when another input can't be converted."""
     data, error = validate_exec(
-        _llm_node("prompt"), {"prompt": None}, raise_on_mismatch=True
+        _llm_node("prompt", *other), {"prompt": None, **other}, raise_on_mismatch=True
     )
 
     assert data is None
-    assert "prompt" in error
+    assert error.startswith("Input data missing or mismatch")
 
 
 def test_a_value_that_does_not_match_the_schema_raises_when_asked():
@@ -294,6 +300,38 @@ async def test_unused_credentials_do_not_mark_a_node_to_fail():
 
     assert len(queued) == 1
     assert queued[0].input_error is None
+
+
+@pytest.mark.asyncio
+async def test_unused_credentials_stay_in_the_queued_input():
+    """They are dropped only to validate. A static link passes the queued input
+    on to the node's other executions, whose auth may need them."""
+    block = AnySearchBlock()
+    target = Node(
+        id="llm-node",
+        block_id=block.id,
+        input_default={"auth": "anonymous"},
+        input_links=[
+            Link(
+                source_id="source-node",
+                sink_id="llm-node",
+                source_name=f"{pin}_out",
+                sink_name=pin,
+                is_static=pin == "credentials",
+            )
+            for pin in ("query", "credentials")
+        ],
+    )
+
+    queued = await _route(
+        target,
+        [("credentials_out", _CREDENTIALS), ("query_out", "news")],
+        _db_client(target),
+    )
+
+    assert len(queued) == 1
+    assert queued[0].input_error is None
+    assert queued[0].inputs["credentials"] == _CREDENTIALS
 
 
 @pytest.mark.asyncio

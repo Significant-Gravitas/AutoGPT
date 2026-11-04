@@ -10,6 +10,7 @@ review, run it, or die mid-run the way the real one does.
 import asyncio
 import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -257,19 +258,9 @@ def _fails_on_its_input(row: NodeRow):
     return run
 
 
-@pytest.mark.parametrize(
-    "model, block_run, billed",
-    [
-        pytest.param("not-a-model", _fails_on_its_input, 0, id="bad value"),
-        pytest.param("gpt-4o", _runs, PER_RUN_PRICE, id="usable value"),
-    ],
-)
-def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
-    harness, model, block_run, billed
-):
-    """The node was queued only to fail on a value it can't use (SECRT-1258).
-    Its in-memory marker is gone after a restart, so the rebuilt queue derives
-    it again from the stored input."""
+@contextmanager
+def _llm_row(harness, model: str, costs: list[BlockCost]):
+    """The row runs an LLM block given ``model``, priced at ``costs``."""
     block = AITextGeneratorBlock()
     harness.row.entry = harness.row.entry.model_copy(
         update={
@@ -283,16 +274,50 @@ def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
     )
     harness.sync_db.get_node.return_value = Node(id="node-1", block_id=block.id)
     original_costs = BLOCK_COSTS.get(AITextGeneratorBlock)
-    BLOCK_COSTS[AITextGeneratorBlock] = PER_RUN
+    BLOCK_COSTS[AITextGeneratorBlock] = costs
     try:
-        harness.dispatch(block_run(harness.row))
+        yield
     finally:
         if original_costs is None:
             BLOCK_COSTS.pop(AITextGeneratorBlock, None)
         else:
             BLOCK_COSTS[AITextGeneratorBlock] = original_costs
 
+
+@pytest.mark.parametrize(
+    "model, block_run, billed",
+    [
+        pytest.param("not-a-model", _fails_on_its_input, 0, id="bad value"),
+        pytest.param("gpt-4o", _runs, PER_RUN_PRICE, id="usable value"),
+    ],
+)
+def test_a_node_queued_to_fail_on_its_input_is_not_billed_after_a_restart(
+    harness, model, block_run, billed
+):
+    """The node was queued only to fail on a value it can't use (SECRT-1258).
+    Its in-memory marker is gone after a restart, so the rebuilt queue derives
+    it again from the stored input."""
+    with _llm_row(harness, model, PER_RUN):
+        harness.dispatch(block_run(harness.row))
+
     assert harness.wallet.total == billed, harness.wallet.spent
+
+
+@pytest.mark.parametrize(
+    "costs",
+    [
+        pytest.param(PER_RUN, id="per-run"),
+        pytest.param(USAGE_PRICED, id="usage-priced"),
+    ],
+)
+def test_a_node_failing_on_its_input_is_not_refunded_after_a_pod_died(harness, costs):
+    """It wrote RUNNING without being charged, so its redelivery must not
+    settle against a charge it never paid."""
+    harness.row.status = ExecutionStatus.RUNNING
+    with _llm_row(harness, "not-a-model", costs):
+        harness.dispatch(_fails_on_its_input(harness.row))
+
+    assert harness.wallet.total == 0, harness.wallet.spent
 
 
 def test_a_restart_that_cannot_recheck_the_input_bills_nothing(harness):

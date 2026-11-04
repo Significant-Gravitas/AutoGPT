@@ -340,10 +340,12 @@ async def _finish_despite_cancel(work: Awaitable[T]) -> T:
         raise
 
 
-def _drop_unused_credentials(node: Node, inputs: BlockInput) -> None:
+def _drop_unused_credentials(node: Node, inputs: BlockInput) -> BlockInput:
     """Remove optional credential metadata that the selected discriminator does
     not use before schema validation. Empty or stale objects would otherwise
-    fail their nested credential schema before the executor can ignore them."""
+    fail their nested credential schema before the executor can ignore them.
+    Returns the values it removed."""
+    dropped: BlockInput = {}
     input_model = cast(type[BlockSchema], node.block.input_schema)
     required_fields = input_model.get_required_fields()
     for field_name, field_info in input_model.get_credentials_fields_info().items():
@@ -358,7 +360,10 @@ def _drop_unused_credentials(node: Node, inputs: BlockInput) -> None:
         except TypeError:  # an unhashable linked value: validation reports it
             continue
         if unused:
+            if field_name in inputs:
+                dropped[field_name] = inputs[field_name]
             inputs[field_name] = None
+    return dropped
 
 
 def _validate_queued_input(
@@ -366,8 +371,13 @@ def _validate_queued_input(
 ) -> tuple[BlockInput | None, str, str | None]:
     """Validate a node's input as `execute_node` will: returns the data to
     queue, the message, and the input error the node is queued to fail with.
-    Missing input returns no data, so the node keeps waiting."""
-    _drop_unused_credentials(node, data)
+    Missing input returns no data, so the node keeps waiting. Credentials the
+    node doesn't use are dropped only to validate: the queued data keeps them,
+    since a static link passes them on to the node's other executions."""
+    present = set(data)
+    dropped = _drop_unused_credentials(node, data)
+    added = set(data) - present
+    input_error = None
     try:
         valid, msg = validate_exec(
             node,
@@ -377,8 +387,12 @@ def _validate_queued_input(
             raise_on_mismatch=True,
         )
     except InputMismatchError as e:
-        return e.data, str(e), str(e)
-    return valid, msg, None
+        valid, msg, input_error = e.data, str(e), str(e)
+    if valid is not None:
+        for name in added:
+            valid.pop(name, None)
+        valid.update(dropped)
+    return valid, msg, input_error
 
 
 async def execute_node(
@@ -1504,6 +1518,7 @@ class ExecutionProcessor:
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
+            rebuilt_nodes: dict[str, Node] = {}
             for node_exec in db_client.get_node_executions(
                 graph_exec.graph_exec_id,
                 statuses=[
@@ -1524,15 +1539,21 @@ class ExecutionProcessor:
                 if node_exec.status in BILLED_REDISPATCH_STATUSES:
                     node_entry.redispatched_from = node_exec.status
                 # The in-memory input-error marker is lost on a restart, so a
-                # node queued to fail would be charged; derive it again. A
-                # failed lookup fails the run before anything is charged, as
-                # the charge itself would.
-                elif (
-                    node_exec.status == ExecutionStatus.QUEUED
+                # node queued to fail would be charged (QUEUED) or refunded a
+                # charge it never paid (RUNNING); derive it again. A failed
+                # lookup fails the run before anything is charged, as the
+                # charge itself would.
+                if (
+                    node_exec.status
+                    in (ExecutionStatus.QUEUED, ExecutionStatus.RUNNING)
                     and not graph_exec.execution_context.dry_run
                 ):
+                    if node_entry.node_id not in rebuilt_nodes:
+                        rebuilt_nodes[node_entry.node_id] = db_client.get_node(
+                            node_entry.node_id
+                        )
                     _, _, node_entry.input_error = _validate_queued_input(
-                        db_client.get_node(node_entry.node_id),
+                        rebuilt_nodes[node_entry.node_id],
                         dict(node_entry.inputs),
                         dry_run=False,
                         resolve_input=False,
