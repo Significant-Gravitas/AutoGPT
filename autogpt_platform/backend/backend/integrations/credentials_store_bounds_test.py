@@ -141,6 +141,45 @@ async def test_an_upsert_replacing_a_provider_at_the_count_bound_goes_through(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method_name", ["add_creds", "upsert_single_provider_creds"])
+async def test_managed_credentials_do_not_count_toward_the_bound(
+    store, mocker, method_name: str
+):
+    held = [_credentials(id=f"id-{i}") for i in range(MAX_CREDENTIALS_PER_USER - 1)]
+    held.append(_credentials(id="managed", provider="openai", is_managed=True))
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=held),
+    )
+
+    await getattr(store, method_name)("user-1", _credentials(provider="linear"))
+
+    written = store._set_user_integration_creds.await_args.args[1]
+    assert len(written) == MAX_CREDENTIALS_PER_USER + 1
+
+
+@pytest.mark.asyncio
+async def test_an_upsert_that_keeps_a_long_stored_title_is_measured_after(
+    store, mocker
+):
+    half = MAX_STORED_ITEM_BYTES // 2
+    stored = _credentials(id="linear-1", provider="linear", title="t" * half)
+    incoming = _credentials(provider="linear", metadata={"pad": "x" * half})
+    check_storable_size(stored)
+    check_storable_size(incoming)
+    mocker.patch.object(
+        store,
+        "_get_persisted_user_creds_unlocked",
+        mocker.AsyncMock(return_value=[stored]),
+    )
+
+    with pytest.raises(InvalidInputError, match="is too large"):
+        await store.upsert_single_provider_creds("user-1", incoming)
+    store._set_user_integration_creds.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["add_creds", "upsert_single_provider_creds"])
 async def test_every_credential_write_refuses_an_oversized_item(
     store, mocker, method_name: str
 ):

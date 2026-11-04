@@ -536,6 +536,8 @@ class IntegrationCredentialsStore:
                         "title": compatible.title or credentials.title,
                     }
                 )
+                # The kept stored title can grow the item past the check above.
+                check_storable_size(replacement, allowance=stored_size(compatible))
 
             kept = [
                 credential
@@ -816,7 +818,8 @@ def check_storable_size(item: Credentials | OAuthState, *, allowance: int = 0) -
 
 
 def _check_credential_count(persisted: list[Credentials]) -> None:
-    if len(persisted) >= MAX_CREDENTIALS_PER_USER:
+    owned = sum(1 for credential in persisted if not credential.is_managed)
+    if owned >= MAX_CREDENTIALS_PER_USER:
         raise InvalidInputError(
             f"An account holds at most {MAX_CREDENTIALS_PER_USER} "
             "credentials; delete one before connecting another"
