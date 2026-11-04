@@ -21,7 +21,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
-from openai import APIConnectionError
+from openai import APIConnectionError, APIError
 from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -554,6 +554,7 @@ class _BaselineStreamState:
     turn_cache_creation_tokens: int = 0
     provider_request_count: int = 0
     last_request_prompt_tokens: int | None = None
+    recovery_text_override: str | None = None
     cost_usd: float | None = None
     # Tracks whether we've already warned about a missing `cost` field in
     # the usage chunk this stream, so non-OpenRouter providers don't
@@ -1035,6 +1036,14 @@ async def _baseline_llm_caller(
         )
         state.provider_request_count += 1
         tool_calls_by_index: dict[int, dict[str, str]] = {}
+        recover_request = True
+        usage_before = (
+            state.turn_prompt_tokens,
+            state.turn_completion_tokens,
+            state.turn_cache_read_tokens,
+            state.turn_cache_creation_tokens,
+            state.cost_usd,
+        )
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
         # break, exception) always release the underlying httpx connection.
@@ -1136,6 +1145,25 @@ async def _baseline_llm_caller(
                             entry["name"] = tc.function.name
                         if tc.function and tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
+        except APIError as error:
+            # The SDK uses bare APIError for an error SSE event. Transport and
+            # response-validation subclasses do not establish provider failure.
+            if (
+                baseline_provider == "anthropic"
+                and type(error) is APIError
+                and error.body is not None
+            ):
+                recover_request = False
+                state.provider_request_count -= 1
+                state.recovery_text_override = state.assistant_text
+                (
+                    state.turn_prompt_tokens,
+                    state.turn_completion_tokens,
+                    state.turn_cache_read_tokens,
+                    state.turn_cache_creation_tokens,
+                    state.cost_usd,
+                ) = usage_before
+            raise
         finally:
             # Release the streaming httpx connection back to the pool on every
             # exit path (normal completion, break, exception). openai.AsyncStream
@@ -1144,7 +1172,11 @@ async def _baseline_llm_caller(
                 await response.close()
             except Exception:
                 pass
-            if baseline_provider == "anthropic" and state.cost_usd is None:
+            if (
+                recover_request
+                and baseline_provider == "anthropic"
+                and state.cost_usd is None
+            ):
                 # The updater adds output and tool results after this returns.
                 # Freeze the sent prompt before those can change its price tier.
                 state.last_request_prompt_tokens = max(
@@ -3024,13 +3056,21 @@ async def stream_chat_completion_baseline(
             and state.turn_completion_tokens == 0
             and not (_stream_error and not state.assistant_text)
         ):
-            state.turn_prompt_tokens = (
-                state.last_request_prompt_tokens
-                if state.last_request_prompt_tokens is not None
-                else max(estimate_token_count(openai_messages, model=active_model), 1)
-            )
+            if state.last_request_prompt_tokens is not None:
+                state.turn_prompt_tokens = state.last_request_prompt_tokens
+            elif state.recovery_text_override is not None:
+                state.turn_prompt_tokens = 0
+            else:
+                state.turn_prompt_tokens = max(
+                    estimate_token_count(openai_messages, model=active_model), 1
+                )
             state.turn_completion_tokens = estimate_token_count_str(
-                state.assistant_text, model=active_model
+                (
+                    state.assistant_text
+                    if state.recovery_text_override is None
+                    else state.recovery_text_override
+                ),
+                model=active_model,
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
