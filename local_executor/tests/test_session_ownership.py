@@ -611,3 +611,21 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
 
     assert ws.sent == []
     assert ws.close_calls
+
+
+@pytest.mark.parametrize(
+    ("base", "cap"), [(1e-12, 60.0), (1.0, 1e308)], ids=["tiny-base", "huge-cap"]
+)
+def test_the_backoff_reaches_its_cap_from_any_base(
+    shim_config: ShimConfig, audit: _RecordingAudit, base: float, cap: float
+) -> None:
+    """The exponent stopped at 2**32, so with a base below cap / 2**32 the
+    delay never grew past a few milliseconds, and the shim reconnected that
+    often."""
+    shim_config.reconnect_base_delay = base
+    shim_config.reconnect_max_delay = cap
+    shim_config.reconnect_jitter_seconds = 0
+    daemon = ShimDaemon(shim_config, token_store=None, audit=audit)
+
+    assert daemon._backoff_delay(5000) == cap
+    assert daemon._backoff_delay(0) == min(base, cap)

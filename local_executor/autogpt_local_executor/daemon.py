@@ -17,6 +17,7 @@ import asyncio
 import errno
 import json
 import logging
+import math
 import random
 import secrets
 import urllib.parse
@@ -510,9 +511,14 @@ class ShimDaemon:
         """Per docs/PROTOCOL.md Reconnection: 2^attempt * 1s, capped at 60s,
         plus 0-5s jitter."""
         cap = self.config.reconnect_max_delay
-        # Bound the exponent: 2**1024 times a float delay overflows, and the
-        # cap is reached long before that anyway.
-        base = min(self.config.reconnect_base_delay * (2 ** min(attempt, 32)), cap)
+        # ldexp scales by 2**attempt with no exponent cap, so even a tiny base
+        # reaches the cap (one at 2**32 left a base below cap / 2**32 retrying
+        # every few milliseconds). A result past the largest float is past
+        # the cap too.
+        try:
+            base = min(math.ldexp(self.config.reconnect_base_delay, attempt), cap)
+        except OverflowError:
+            base = cap
         jitter = random.uniform(0, self.config.reconnect_jitter_seconds)
         return base + jitter
 
