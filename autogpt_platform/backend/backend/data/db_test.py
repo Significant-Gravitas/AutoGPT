@@ -52,11 +52,13 @@ async def test_disconnect_is_a_noop_when_not_connected(monkeypatch):
 
 
 async def test_connect_retries_an_unreachable_database_then_raises(monkeypatch):
-    client = _CountingPrisma(_url_at_port(_closed_port()), timedelta(seconds=1))
-    monkeypatch.setattr(db_module, "prisma", client)
+    with _refusing_socket() as sock:
+        port = sock.getsockname()[1]
+        client = _CountingPrisma(_url_at_port(port), timedelta(seconds=1))
+        monkeypatch.setattr(db_module, "prisma", client)
 
-    with pytest.raises(EngineConnectionError):
-        await _connect(max_retry=2)
+        with pytest.raises(EngineConnectionError):
+            await _connect(max_retry=2)
 
     assert client.attempts == 3
     assert not db_module.is_connected()
@@ -65,12 +67,13 @@ async def test_connect_retries_an_unreachable_database_then_raises(monkeypatch):
 async def test_connect_succeeds_once_the_database_comes_up(monkeypatch):
     """The case the retry exists for: Postgres refuses the first attempt and
     accepts the second."""
-    port = _closed_port()
+    sock = _refusing_socket()
+    port = sock.getsockname()[1]
     proxies: list[asyncio.Server] = []
 
     async def start_database_on_second_attempt(attempt: int) -> None:
         if attempt == 2:
-            proxies.append(await _forward_to_database(port))
+            proxies.append(await _forward_to_database(sock))
 
     client = _CountingPrisma(
         _url_at_port(port), timedelta(seconds=5), start_database_on_second_attempt
@@ -86,6 +89,7 @@ async def test_connect_succeeds_once_the_database_comes_up(monkeypatch):
         for proxy in proxies:
             proxy.close()
             await proxy.wait_closed()
+        sock.close()
 
 
 class _CountingPrisma(Prisma):
@@ -114,10 +118,11 @@ async def _connect(max_retry: int) -> None:
     await retried(inspect.unwrap(db_module.connect))()
 
 
-def _closed_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def _refusing_socket() -> socket.socket:
+    """Bound, not listening: connects are refused and the port stays ours."""
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    return s
 
 
 def _url_at_port(port: int) -> str:
@@ -127,7 +132,7 @@ def _url_at_port(port: int) -> str:
     return url._replace(netloc=f"{userinfo}@{host}" if userinfo else host).geturl()
 
 
-async def _forward_to_database(port: int) -> asyncio.Server:
+async def _forward_to_database(sock: socket.socket) -> asyncio.Server:
     url = urlparse(db_module.DATABASE_URL)
 
     async def forward(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -138,7 +143,7 @@ async def _forward_to_database(port: int) -> asyncio.Server:
             _pipe(reader, upstream_writer), _pipe(upstream_reader, writer)
         )
 
-    return await asyncio.start_server(forward, "127.0.0.1", port)
+    return await asyncio.start_server(forward, sock=sock)
 
 
 async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
