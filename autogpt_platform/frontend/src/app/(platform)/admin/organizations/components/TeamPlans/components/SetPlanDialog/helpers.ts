@@ -29,7 +29,7 @@ export const STATUS_OPTIONS = [
 export interface PlanForm {
   tier: SubscriptionTier | "";
   seats: string;
-  // "YYYY-MM-DD" from the date field, or "" for no end date.
+  // The plan's last day, "YYYY-MM-DD" from the date field, or "" for none.
   endDate: string;
   status: OrgPlanInputStatus;
   note: string;
@@ -62,11 +62,14 @@ function parseSeats(value: string) {
   return seats >= 1 && seats <= MAX_SEATS ? seats : null;
 }
 
-// The plan stops at 00:00 UTC on the chosen day.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The chosen day is the plan's last day: it stops at 00:00 UTC the day after.
 function parseEndDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  const lastDay = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(lastDay.getTime())) return null;
+  return new Date(lastDay.getTime() + DAY_MS);
 }
 
 export function getSeatsError(form: PlanForm) {
@@ -110,6 +113,7 @@ export function getSeatsWarning(form: PlanForm, org: OrgPlanSummary) {
   );
 }
 
+// The last day a plan counts is the UTC day just before it stops.
 function toDateFieldValue(value: Date | string) {
-  return new Date(value).toISOString().slice(0, 10);
+  return new Date(new Date(value).getTime() - 1).toISOString().slice(0, 10);
 }

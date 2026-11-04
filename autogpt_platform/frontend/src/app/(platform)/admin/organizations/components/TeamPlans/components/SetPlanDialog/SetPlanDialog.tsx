@@ -45,8 +45,8 @@ export function SetPlanDialog({ org }: Props) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Text variant="body" tone="secondary">
             While the plan is active, members get its tier in this organization.
-            It stops at 00:00 UTC on the end date. Seats cap members plus
-            pending invitations.
+            It counts through the end of its last day, in UTC. Seats cap members
+            plus pending invitations.
           </Text>
           <PlanFields org={org} dialog={dialog} />
           {dialog.seatsWarning ? (
@@ -120,7 +120,7 @@ function PlanFields({ org, dialog }: PlanFieldsProps) {
       />
       <Input
         id={`${idPrefix}-end-date`}
-        label="End date"
+        label="Last day"
         type="date"
         size="small"
         hint="Optional"

@@ -23,7 +23,8 @@ const PLAN = {
   tier: "BUSINESS",
   seats: 10,
   status: "active",
-  ends_at: "2027-01-31T00:00:00Z" as string | null,
+  // Last day 31 Jan 2027: the plan stops when 1 Feb begins (UTC).
+  ends_at: "2027-02-01T00:00:00Z" as string | null,
   note: "Invoice INV-1042" as string | null,
   updated_at: "2026-11-01T10:00:00Z",
   in_effect: true,
@@ -147,7 +148,7 @@ describe("Team plans", () => {
     expect(within(card).queryByText(/members see the paywall/)).toBeNull();
     expect(fact(card, "Plan")).toBe("Business");
     expect(fact(card, "Status")).toBe("Active");
-    expect(fact(card, "End date")).toBe("Ends 31 Jan 2027");
+    expect(fact(card, "End date")).toBe("Runs through 31 Jan 2027");
     expect(fact(card, "Seats")).toBe(
       "3 of 10 in use (2 members, 1 pending invitation)",
     );
@@ -157,7 +158,7 @@ describe("Team plans", () => {
 
   it("says why an ended plan is not in effect", async () => {
     mockLookup(() => [
-      org({ ends_at: "2026-10-01T00:00:00Z", in_effect: false }),
+      org({ ends_at: "2026-10-02T00:00:00Z", in_effect: false }),
     ]);
     renderPage();
 
@@ -173,7 +174,7 @@ describe("Team plans", () => {
     const saved: unknown[] = [];
     const savedPlan = {
       seats: 5,
-      ends_at: "2027-03-31T00:00:00Z",
+      ends_at: "2027-04-01T00:00:00Z",
       note: "Invoice INV-2001",
     };
     mockLookup(() => [org(saved.length ? savedPlan : null)]);
@@ -193,7 +194,7 @@ describe("Team plans", () => {
     fireEvent.change(within(dialog).getByLabelText("Seats"), {
       target: { value: "5" },
     });
-    fireEvent.change(within(dialog).getByLabelText("End date"), {
+    fireEvent.change(within(dialog).getByLabelText("Last day"), {
       target: { value: "2027-03-31" },
     });
     fireEvent.change(within(dialog).getByLabelText("Note"), {
@@ -206,7 +207,7 @@ describe("Team plans", () => {
         {
           tier: "BUSINESS",
           seats: 5,
-          ends_at: "2027-03-31T00:00:00.000Z",
+          ends_at: "2027-04-01T00:00:00.000Z",
           status: "active",
           note: "Invoice INV-2001",
         },
@@ -218,7 +219,7 @@ describe("Team plans", () => {
     expect(fact(card, "Seats")).toBe(
       "3 of 5 in use (2 members, 1 pending invitation)",
     );
-    expect(fact(card, "End date")).toBe("Ends 31 Mar 2027");
+    expect(fact(card, "End date")).toBe("Runs through 31 Mar 2027");
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Saved the plan for Acme",
@@ -261,6 +262,10 @@ describe("Team plans", () => {
     renderPage();
 
     const dialog = await openDialog("Set plan", "Plan for Acme");
+    expect(within(dialog).getByLabelText("Last day")).toHaveProperty(
+      "value",
+      "2027-01-31",
+    );
     expect(within(dialog).queryByText(/already uses 3 seats/)).toBeNull();
     fireEvent.change(within(dialog).getByLabelText("Seats"), {
       target: { value: "2" },
@@ -275,8 +280,14 @@ describe("Team plans", () => {
     ).toBeDefined();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save plan" }));
 
+    // Saving an existing plan keeps its end date: no day lost per save.
     await waitFor(() =>
-      expect(saved).toEqual([expect.objectContaining({ seats: 2 })]),
+      expect(saved).toEqual([
+        expect.objectContaining({
+          seats: 2,
+          ends_at: "2027-02-01T00:00:00.000Z",
+        }),
+      ]),
     );
     const card = await screen.findByTestId("team-org");
     await waitFor(() =>

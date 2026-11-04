@@ -21,8 +21,9 @@ const STATUS_LABELS: Record<string, string> = {
   canceled: "Canceled",
 };
 
-function formatPlanDate(value: Date | string) {
-  return PLAN_DATE_FORMAT.format(new Date(value));
+// A plan counts until ends_at; its last day is the UTC day just before.
+function formatLastDay(endsAt: Date | string) {
+  return PLAN_DATE_FORMAT.format(new Date(new Date(endsAt).getTime() - 1));
 }
 
 export function formatCredits(credits: number) {
@@ -38,7 +39,8 @@ export function getStatusLabel(status: string) {
   return STATUS_LABELS[status] ?? status;
 }
 
-// The server's in_effect decides; the clock only picks "Ends" or "Ended".
+// The server's in_effect decides; the clock only picks "Runs through" or
+// "Ended".
 function hasEnded(plan: OrgPlanView, now = new Date()) {
   return (
     !plan.in_effect &&
@@ -49,8 +51,8 @@ function hasEnded(plan: OrgPlanView, now = new Date()) {
 
 export function describeEnd(plan: OrgPlanView, now = new Date()) {
   if (plan.ends_at === null) return "No end date";
-  const date = formatPlanDate(plan.ends_at);
-  return hasEnded(plan, now) ? `Ended ${date}` : `Ends ${date}`;
+  const lastDay = formatLastDay(plan.ends_at);
+  return hasEnded(plan, now) ? `Ended ${lastDay}` : `Runs through ${lastDay}`;
 }
 
 // Without a plan in effect, members get the paywall in the organization and
@@ -72,7 +74,7 @@ function getNotInEffectReason(plan: OrgPlanView | null, now: Date) {
     return `The plan's status is ${getStatusLabel(plan.status)}`;
   }
   if (plan.ends_at !== null && hasEnded(plan, now)) {
-    return `The plan ended on ${formatPlanDate(plan.ends_at)}`;
+    return `The plan ended on ${formatLastDay(plan.ends_at)}`;
   }
   return "The plan's tier isn't a paid tier";
 }
