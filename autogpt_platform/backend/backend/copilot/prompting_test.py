@@ -403,7 +403,7 @@ class TestSchedulingGuidance:
 
 
 class TestReplyStyle:
-    # The base prompt comes from Langfuse in production, so the style rules
+    # The base prompt comes from PostHog in production, so the style rules
     # ride SHARED_TOOL_NOTES, which both engines append for Otto and experts.
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_supplement_carries_the_reply_style_rules(self, use_e2b):
@@ -655,7 +655,7 @@ class TestBuilderBlockRoles:
 
 
 class TestGuardrailsReachEveryBasePrompt:
-    """The deployed base prompt comes from Langfuse, not CACHEABLE_SYSTEM_PROMPT,
+    """The deployed base prompt comes from PostHog, not CACHEABLE_SYSTEM_PROMPT,
     so rules every turn needs live in the supplements appended to it."""
 
     @pytest.mark.parametrize(
@@ -682,7 +682,7 @@ class TestCostSourceRule:
     # SECRT-3133: Otto said a step "costs a few cents in image credits" and a
     # trial user could not tell whether that came off the trial, a balance or
     # the card they had just entered. The rule rides SHARED_TOOL_NOTES so Otto
-    # and every expert get it on both engines, whatever the Langfuse prompt.
+    # and every expert get it on both engines, whatever the PostHog prompt.
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_supplement_carries_the_rule(self, use_e2b):
         assert "### What things cost" in prompting.get_sdk_supplement(use_e2b=use_e2b)

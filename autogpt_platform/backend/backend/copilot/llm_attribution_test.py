@@ -1,6 +1,7 @@
 """Tests for the OpenRouter Broadcast attribution fields."""
 
 import asyncio
+import contextvars
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,11 +11,15 @@ from backend.copilot.llm_attribution import (
     is_impersonated_request,
     is_turn_impersonated,
     openrouter_attribution,
+    record_turn_prompt,
     set_turn_impersonated,
     set_turn_origin,
     set_turn_trace_id,
+    start_turn_prompt,
+    turn_prompt,
     turn_trace_id,
 )
+from backend.util.posthog_prompts import PromptRef
 from backend.util.settings import AppEnvironment
 
 
@@ -205,3 +210,67 @@ def test_is_impersonated_request(headers: dict[str, str], expected: bool):
     request.headers = headers
 
     assert is_impersonated_request(request) is expected
+
+
+def _in_a_turn_on(ref: PromptRef, generation_name) -> dict:
+    """The attribution a call makes in a turn that runs on *ref*. Run in a copy
+    of the context, so the turn's prompt record ends with the test."""
+
+    def call() -> dict:
+        start_turn_prompt()
+        record_turn_prompt(ref)
+        return openrouter_attribution(
+            user_id="user-1", session_id="sess-1", generation_name=generation_name
+        )
+
+    return contextvars.copy_context().run(call)
+
+
+@pytest.mark.parametrize("generation_name", ["copilot-sdk", "copilot-baseline"])
+def test_a_turns_calls_name_the_system_prompt_it_runs_on(generation_name):
+    body = _in_a_turn_on(PromptRef(name="copilot-prompt", version=7), generation_name)
+
+    assert body["trace"]["prompt_name"] == "copilot-prompt"
+    assert body["trace"]["prompt_version"] == 7
+    assert body["trace"]["prompt_source"] == "posthog"
+
+
+def test_a_turn_on_the_copy_in_code_names_no_version():
+    body = _in_a_turn_on(PromptRef(name="copilot-prompt"), "copilot-sdk")
+
+    assert body["trace"]["prompt_name"] == "copilot-prompt"
+    assert body["trace"]["prompt_source"] == "code"
+    assert "prompt_version" not in body["trace"]
+
+
+def test_the_title_call_names_no_prompt():
+    """The title is written with its own instructions, not the system prompt."""
+    body = _in_a_turn_on(PromptRef(name="copilot-prompt", version=7), "copilot-title")
+
+    assert not {"prompt_name", "prompt_version", "prompt_source"} & set(body["trace"])
+
+
+def test_a_prompt_recorded_outside_a_turn_is_dropped():
+    def call() -> PromptRef | None:
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=7))
+        return turn_prompt()
+
+    assert contextvars.copy_context().run(call) is None
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_recorded_in_a_task_the_turn_started_reaches_the_turn():
+    """The engines build the prompt under ``asyncio.gather``, in a child task
+    whose own context changes never reach the turn's."""
+
+    async def build() -> None:
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=7))
+
+    async def turn() -> PromptRef | None:
+        start_turn_prompt()
+        await asyncio.gather(build())
+        return turn_prompt()
+
+    assert await asyncio.create_task(turn()) == PromptRef(
+        name="copilot-prompt", version=7
+    )

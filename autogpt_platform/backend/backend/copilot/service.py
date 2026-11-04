@@ -1,7 +1,7 @@
 """CoPilot service — shared helpers used by both SDK and baseline paths.
 
 This module contains:
-- System prompt building (Langfuse prompt management + static fallback,
+- System prompt building (PostHog-managed prompt + static fallback,
   cache-optimised)
 - User context injection (prepends <user_context> to first user message)
 - Session title generation
@@ -9,16 +9,15 @@ This module contains:
 - Shared config and client instances
 """
 
-import asyncio
 import logging
 import re
 import threading
 import time
 from typing import Any
 
-from langfuse import Langfuse
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
+from pydantic import BaseModel
 
 from backend.copilot.chat_platform_header import strip_chat_platform_header
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -29,19 +28,21 @@ from backend.data.understanding import (
     format_understanding_for_prompt,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
-from backend.util.langfuse_prompts import (
-    get_langfuse_prompt_client,
-    langfuse_prompts_configured,
-)
 from backend.util.llm.providers import call_provider_openai_compat_sync
-from backend.util.settings import AppEnvironment, Settings
+from backend.util.posthog_prompts import (
+    PromptRef,
+    compile_prompt,
+    fetch_prompt,
+    posthog_prompts_configured,
+)
+from backend.util.settings import Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig, CopilotLLMModel
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
-from .llm_attribution import openrouter_attribution
+from .llm_attribution import openrouter_attribution, record_turn_prompt
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -83,10 +84,18 @@ def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
 _main_client: AsyncOpenAI | None = None
 _aux_client: AsyncOpenAI | None = None
 
+
+class _ManagedPrompt(BaseModel):
+    """The system prompt as compiled from PostHog, and its PostHog version."""
+
+    text: str
+    version: int
+
+
 # The system prompt this process last fetched, the monotonic timestamp of that
 # fetch, and the lock that hands the next window to one caller.
 # See _get_prompt_bounded_stale().
-_cached_prompt: str | None = None
+_cached_prompt: _ManagedPrompt | None = None
 _last_prompt_revalidation = 0.0
 _prompt_revalidation_lock = threading.Lock()
 
@@ -150,11 +159,6 @@ def reset_clients() -> None:
     global _main_client, _aux_client
     _main_client = None
     _aux_client = None
-
-
-def _get_langfuse() -> Langfuse:
-    """The Langfuse client the system prompt is fetched with (no tracing)."""
-    return get_langfuse_prompt_client()
 
 
 # Shared constant for the XML tag name used to wrap per-user context when
@@ -521,44 +525,42 @@ strip_user_context_tags = sanitize_user_supplied_context
 # ---------------------------------------------------------------------------
 
 
-def _is_langfuse_configured() -> bool:
-    """Check if Langfuse credentials are configured."""
-    return langfuse_prompts_configured()
+def _is_prompt_management_configured() -> bool:
+    """Check if a key to read the prompt from PostHog is configured."""
+    return posthog_prompts_configured()
 
 
-async def _fetch_langfuse_prompt() -> str | None:
-    """Fetch the static system prompt from Langfuse.
+async def _fetch_managed_prompt() -> _ManagedPrompt | None:
+    """Fetch the static system prompt from PostHog.
 
-    Returns the compiled prompt string, or None if Langfuse is unconfigured
-    or the fetch fails. Passes an empty users_information placeholder so the
-    prompt text is identical across all users (enabling cross-session caching).
+    Returns the compiled prompt, or None if PostHog prompts are
+    unconfigured or the fetch fails. Passes an empty users_information
+    placeholder so the prompt text is identical across all users (enabling
+    cross-session caching).
     """
-    if not _is_langfuse_configured():
+    if not _is_prompt_management_configured():
         return None
     try:
         return await _get_prompt_bounded_stale()
     except Exception as e:
-        logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
+        logger.warning(f"Failed to fetch prompt from PostHog, using default: {e}")
         return None
 
 
-async def _get_prompt_bounded_stale() -> str:
+async def _get_prompt_bounded_stale() -> _ManagedPrompt:
     """Return the prompt, never a copy this process has held longer than the TTL.
 
-    The SDK's own cache cannot give that bound. It answers an expired entry with
-    the stale value and queues a refresh on a background thread
-    (``langfuse/_client/client.py:3650-3674``), and that refresh can stop for the
-    life of the process: a queued key is cleared only by its task running, so a
-    consumer that is not running wedges the key and nothing is ever queued again
-    (``langfuse/_utils/prompt_cache.py:92-115``), while a refresh that fails every
-    time leaves the entry expired forever. Both are silent to us, because the call
-    still returns a value, and both made Dev pods serve one prompt version for as
-    long as they lived (2026-09-11).
+    The copy and the clock are ours and the SDK cache is bypassed. Langfuse's
+    cache, which this replaced, answered an expired entry with the stale value
+    and refreshed it on a background thread that could stop for the life of the
+    process, and Dev pods served one prompt version for as long as they lived
+    (2026-09-11). Keeping our own window also lets one caller revalidate while
+    concurrent turns serve the copy we hold, where the PostHog SDK would make
+    them wait on its request.
 
-    So the copy and the clock are ours and the SDK cache is bypassed entirely.
-    A revalidation that fails keeps the window and serves the copy we hold: it is
-    the freshest thing available while Langfuse is unreachable, and retrying on
-    every turn would hammer an endpoint that is already failing.
+    A revalidation that fails keeps the window and serves the copy we hold: it
+    is the freshest thing available while PostHog is unreachable, and retrying
+    on every turn would hammer an endpoint that is already failing.
     """
     claimed = _claim_prompt_revalidation()
     cached = _cached_prompt
@@ -570,7 +572,7 @@ async def _get_prompt_bounded_stale() -> str:
         cached = _cached_prompt
         if cached is None:
             raise
-        logger.warning(f"Langfuse prompt revalidation failed, serving cached: {e}")
+        logger.warning(f"PostHog prompt revalidation failed, serving cached: {e}")
         return cached
 
 
@@ -578,11 +580,11 @@ def _claim_prompt_revalidation() -> bool:
     """Whether this caller should re-fetch rather than serve the cached copy.
 
     The window is marked used before the fetch, so concurrent turns serve the
-    cached copy instead of stampeding Langfuse. A TTL of 0 disables caching, so
+    cached copy instead of stampeding PostHog. A TTL of 0 disables caching, so
     every caller re-fetches.
     """
     global _last_prompt_revalidation
-    ttl = config.langfuse_prompt_cache_ttl
+    ttl = config.system_prompt_cache_ttl
     if ttl == 0:
         return True
     with _prompt_revalidation_lock:
@@ -593,26 +595,25 @@ def _claim_prompt_revalidation() -> bool:
         return True
 
 
-async def _revalidate_prompt() -> str:
-    """Fetch the prompt from Langfuse past the SDK cache, and keep the result.
+async def _revalidate_prompt() -> _ManagedPrompt:
+    """Fetch the prompt from PostHog past the SDK cache, and keep the result.
 
-    ``cache_ttl_seconds=0`` makes the SDK skip its cache and its background
-    refresh altogether (``langfuse/_client/client.py:3607``), so neither failure
-    above can reach us. One attempt, because the copy we hold covers a failure
-    and a chat turn should not wait out a retry chain.
+    ``cache_ttl_seconds=0`` makes the SDK request the prompt every time. When
+    that request fails the SDK still answers with the copy it holds, marked
+    ``stale_cache``; that counts as a failure here, so the window and the copy
+    stay ours. One attempt, because the copy we hold covers a failure and a
+    chat turn should not wait out a retry chain.
     """
     global _cached_prompt
-    label = None if settings.config.app_env == AppEnvironment.PRODUCTION else "latest"
-    prompt = await asyncio.to_thread(
-        _get_langfuse().get_prompt,
-        config.langfuse_prompt_name,
-        label=label,
+    result = await fetch_prompt(
+        config.system_prompt_name,
         cache_ttl_seconds=0,
-        max_retries=0,
-        fetch_timeout_seconds=_PROMPT_REVALIDATION_TIMEOUT_SECONDS,
+        timeout_seconds=_PROMPT_REVALIDATION_TIMEOUT_SECONDS,
     )
-    compiled = prompt.compile(users_information="")
-    # Guard the caching contract: if the Langfuse template is ever updated
+    if result.source != "api" or result.version is None:
+        raise RuntimeError(f"PostHog prompt fetch failed (SDK served {result.source})")
+    compiled = compile_prompt(result.prompt, {"users_information": ""})
+    # Guard the caching contract: if the PostHog template is ever updated
     # to re-embed the {users_information} placeholder, the compiled text
     # will contain a literal "{users_information}" (because we passed an
     # empty string). That would mean user-specific text is back in the
@@ -620,14 +621,14 @@ async def _revalidate_prompt() -> str:
     # regression is immediately visible in production observability.
     if "{users_information}" in compiled:
         logger.error(
-            "Langfuse prompt still contains {users_information} placeholder — "
+            "PostHog prompt still contains {users_information} placeholder — "
             "user context has been re-embedded in the system prompt, which "
             "breaks cross-session LLM prompt caching. Remove the placeholder "
-            "from the Langfuse template and inject user context via "
+            "from the PostHog template and inject user context via "
             "inject_user_context() instead."
         )
-    _cached_prompt = compiled
-    return compiled
+    _cached_prompt = _ManagedPrompt(text=compiled, version=result.version)
+    return _cached_prompt
 
 
 async def _build_system_prompt(
@@ -640,6 +641,9 @@ async def _build_system_prompt(
     so the system prompt stays identical across all users and sessions,
     enabling cross-session cache hits.
 
+    Records which prompt it returned, the PostHog version or the copy in
+    code, as the running turn's (``llm_attribution.record_turn_prompt``).
+
     Returns:
         Tuple of (static_prompt, understanding_object_or_None)
     """
@@ -650,8 +654,14 @@ async def _build_system_prompt(
         except Exception as e:
             logger.warning(f"Failed to fetch business understanding: {e}")
 
-    prompt = await _fetch_langfuse_prompt() or _CACHEABLE_SYSTEM_PROMPT
-    return prompt, understanding
+    managed = await _fetch_managed_prompt()
+    if managed is None:
+        record_turn_prompt(PromptRef(name=config.system_prompt_name))
+        return _CACHEABLE_SYSTEM_PROMPT, understanding
+    record_turn_prompt(
+        PromptRef(name=config.system_prompt_name, version=managed.version)
+    )
+    return managed.text, understanding
 
 
 async def inject_user_context(

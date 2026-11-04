@@ -37,7 +37,11 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from backend.copilot.feedback_db import RATEABLE_ROLES
-from backend.copilot.llm_attribution import is_turn_impersonated, turn_trace_id
+from backend.copilot.llm_attribution import (
+    is_turn_impersonated,
+    turn_prompt,
+    turn_trace_id,
+)
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
@@ -251,6 +255,9 @@ def capture_turn(
     is an error, and *error_code* (a code, never a message) says which.
     *load_test* names the engine of a load-test account's turn
     (``backend/copilot/load_test.py``), so analytics can leave those out.
+    ``$ai_prompt_name`` and ``$ai_prompt_version`` name the system prompt the
+    turn ran on, so PostHog can compare its versions; ``prompt_source`` is
+    ``code`` when the copy in code served it, which has no version.
 
     A redelivered turn ends twice; the turn id is the event's dedup key, so
     PostHog keeps one root (or one subtask span) per turn."""
@@ -274,6 +281,9 @@ def capture_turn(
             properties["$ai_error"] = error_code
         if load_test is not None:
             properties["load_test"] = load_test
+        prompt = turn_prompt()
+        if prompt is not None:
+            properties.update(prompt.event_properties())
         if trace_id == entry.turn_id:
             properties["$ai_span_name"] = TRACE_NAME
             event = PostHogEvent.AI_TRACE

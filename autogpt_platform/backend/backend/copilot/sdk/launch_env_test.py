@@ -43,7 +43,7 @@ _PARENT_SECRETS = {
     "SUPABASE_SERVICE_ROLE_KEY": "FAKE-service-role",
     "ENCRYPTION_KEY": "FAKE-encryption-key",
     "STRIPE_API_KEY": "sk_live_FAKE",
-    "LANGFUSE_SECRET_KEY": "sk-lf-FAKE",
+    "POSTHOG_PROMPTS_API_KEY": "phx_FAKE",
     "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer FAKE-otel",
     "CLAUDE_CODE_OAUTH_TOKEN": _HOST_LOGIN,
 }

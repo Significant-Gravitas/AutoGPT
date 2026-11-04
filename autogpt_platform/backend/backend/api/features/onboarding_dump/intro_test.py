@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from posthog.ai.prompts import PromptResult
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import intro
@@ -40,7 +41,7 @@ def client(mocker: MockerFixture) -> MagicMock:
         return_value=fake,
     )
     mocker.patch(
-        "backend.api.features.onboarding_dump.intro._fetch_langfuse_prompt",
+        "backend.api.features.onboarding_dump.intro._fetch_managed_prompt",
         new=AsyncMock(return_value=None),
     )
     return fake
@@ -84,19 +85,26 @@ async def test_greeting_prompt_survives_an_empty_registry(
 
 
 @pytest.mark.asyncio
-async def test_the_coverage_rule_rides_along_with_the_langfuse_copy(
+async def test_the_coverage_rule_rides_along_with_the_posthog_copy(
     client: MagicMock, mocker: MockerFixture
 ):
-    """The Langfuse copy wins in prod, so the rule cannot live in either copy."""
+    """The PostHog copy wins in prod, so the rule cannot live in either copy."""
     mocker.patch(
-        "backend.api.features.onboarding_dump.intro._fetch_langfuse_prompt",
-        new=AsyncMock(return_value="Langfuse instructions.\nTranscript:\n"),
+        "backend.api.features.onboarding_dump.intro._fetch_managed_prompt",
+        new=AsyncMock(
+            return_value=PromptResult(
+                source="api",
+                prompt="PostHog instructions.\nTranscript:\n",
+                name="brain-dump-greeting",
+                version=4,
+            )
+        ),
     )
 
     await intro.generate_intro(TRANSCRIPT)
 
     assert _sent(client, "system") == intro.COVERAGE_CONTRACT
-    assert "Langfuse instructions." in _sent(client, "user")
+    assert "PostHog instructions." in _sent(client, "user")
 
 
 @pytest.mark.asyncio
@@ -173,3 +181,117 @@ def test_the_fallback_greeting_names_nobody():
 def _sent(client: MagicMock, role: str) -> str:
     messages = client.chat.completions.create.await_args.kwargs["messages"]
     return next(m["content"] for m in messages if m["role"] == role)
+
+
+@pytest.mark.asyncio
+async def test_the_managed_prompt_is_read_from_posthog(mocker: MockerFixture):
+    mocker.patch.object(intro, "posthog_prompts_configured", return_value=True)
+    fetch = mocker.patch.object(
+        intro,
+        "fetch_prompt",
+        new=AsyncMock(
+            return_value=PromptResult(
+                source="api", prompt="PostHog instructions.", name="n", version=3
+            )
+        ),
+    )
+
+    result = await intro._fetch_managed_prompt()
+    assert result is not None and result.prompt == "PostHog instructions."
+    fetch.assert_awaited_once_with(
+        intro.MANAGED_PROMPT_NAME,
+        cache_ttl_seconds=intro.MANAGED_PROMPT_CACHE_TTL_SECONDS,
+        timeout_seconds=intro.MANAGED_PROMPT_TIMEOUT_SECONDS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_managed_prompt_is_skipped_without_a_key(mocker: MockerFixture):
+    mocker.patch.object(intro, "posthog_prompts_configured", return_value=False)
+    fetch = mocker.patch.object(intro, "fetch_prompt", new=AsyncMock())
+
+    assert await intro._fetch_managed_prompt() is None
+    fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_posthog_failure_falls_back_to_the_local_prompt(
+    mocker: MockerFixture,
+):
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content=json.dumps(GENERATION)))
+        ]
+    )
+    llm = MagicMock()
+    llm.chat.completions.create = AsyncMock(return_value=completion)
+    mocker.patch.object(intro, "get_openai_client", return_value=llm)
+    mocker.patch.object(intro, "known_providers", return_value={})
+    mocker.patch.object(intro, "posthog_prompts_configured", return_value=True)
+    mocker.patch.object(
+        intro, "fetch_prompt", new=AsyncMock(side_effect=TimeoutError())
+    )
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    assert _sent(llm, "user").startswith(intro._LOCAL_PROMPT[:40])
+
+
+def _sent_trace(client: MagicMock) -> dict | None:
+    extra_body = client.chat.completions.create.await_args.kwargs["extra_body"]
+    return extra_body["trace"] if extra_body else None
+
+
+@pytest.mark.asyncio
+async def test_the_generation_names_the_posthog_prompt_version(
+    client: MagicMock, mocker: MockerFixture
+):
+    mocker.patch.object(
+        intro, "openrouter_helper_cost_provider", return_value="open_router"
+    )
+    mocker.patch.object(
+        intro,
+        "_fetch_managed_prompt",
+        new=AsyncMock(
+            return_value=PromptResult(
+                source="api", prompt="PostHog instructions.", name="n", version=4
+            )
+        ),
+    )
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    assert _sent_trace(client) == {
+        "generation_name": "onboarding-greeting",
+        "prompt_name": intro.MANAGED_PROMPT_NAME,
+        "prompt_version": 4,
+        "prompt_source": "posthog",
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_generation_on_the_local_prompt_names_no_version(
+    client: MagicMock, mocker: MockerFixture
+):
+    mocker.patch.object(
+        intro, "openrouter_helper_cost_provider", return_value="open_router"
+    )
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    assert _sent_trace(client) == {
+        "generation_name": "onboarding-greeting",
+        "prompt_name": intro.MANAGED_PROMPT_NAME,
+        "prompt_source": "code",
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_local_endpoint_gets_no_broadcast_fields(
+    client: MagicMock, mocker: MockerFixture
+):
+    mocker.patch.object(intro, "openrouter_helper_cost_provider", return_value="ollama")
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    assert _sent_trace(client) is None

@@ -1106,6 +1106,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             )
             return UserNotificationsAudience.SUBSCRIBERS
 
+    posthog_prompts_label: str = Field(
+        default="",
+        description="PostHog prompt label the AutoPilot and onboarding prompts "
+        "are read at. Empty reads 'production' in production and the latest "
+        "version elsewhere; 'latest' reads the latest version.",
+    )
+
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
         description="Where PostHog flag definitions are shared: redis "
@@ -1569,13 +1576,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 
-    # Langfuse prompt management (no tracing, see backend/util/langfuse_prompts.py)
-    langfuse_public_key: str = Field(default="", description="Langfuse public key")
-    langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
-    langfuse_host: str = Field(
-        default="https://cloud.langfuse.com", description="Langfuse host URL"
-    )
-
     # PostHog analytics
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(
@@ -1587,6 +1587,25 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "Feature Flags), for local flag evaluation; without it flag reads fall back "
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
+    )
+    # PostHog Prompts (backend/util/posthog_prompts.py)
+    posthog_prompts_api_key: str = Field(
+        default="",
+        description="PostHog personal API key (phx_...) with only the "
+        "llm_prompt:read scope, for reading the AutoPilot and onboarding prompts; "
+        "best created on a dedicated service member. Without it the prompts in "
+        "code are used.",
+    )
+    posthog_prompts_project_api_key: str = Field(
+        default="",
+        description="Project API key (phc_...) of the PostHog project the prompts "
+        "are read from. Defaults to POSTHOG_API_KEY; set it to read another "
+        "project's prompts, e.g. prod's from dev.",
+    )
+    posthog_prompts_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog app host the prompts are read from (not the "
+        "ingestion host)",
     )
 
     # Add more secret fields as needed
