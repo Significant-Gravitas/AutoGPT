@@ -25,7 +25,12 @@ from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFo
 
 from . import db
 from . import model as models
-from .model import node_input_mask_key, split_trigger_inputs
+from .model import (
+    NODE_INPUT_MASK_PREFIX,
+    is_trigger_config_entry,
+    node_input_mask_key,
+    split_trigger_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +106,7 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    _refuse_graph_inputs_read_as_trigger_config(constant_inputs)
     preset_inputs = dict(constant_inputs)
     preset_inputs[node_input_mask_key(trigger_node.id)] = (
         trigger_config_with_credentials
@@ -243,6 +249,7 @@ async def update_triggered_preset(
                     f"Trigger configuration for node {trigger_node.id} must be "
                     "an object"
                 )
+            _refuse_graph_inputs_read_as_trigger_config(graph_inputs)
             trigger_config_with_credentials = {
                 **trigger_config,
                 **(
@@ -346,6 +353,16 @@ async def delete_preset_with_webhook_cleanup(*, user_id: str, preset_id: str) ->
         await _prune_dangling_webhook(user_id, preset.webhook_id)
 
     await db.delete_preset(user_id, preset_id)
+
+
+def _refuse_graph_inputs_read_as_trigger_config(graph_inputs: GraphInput) -> None:
+    # A reader without the graph would take such an input for the trigger config.
+    for name, value in graph_inputs.items():
+        if is_trigger_config_entry(name, value):
+            raise InvalidInputError(
+                f"Input {name!r} can't hold an object: names starting with "
+                f"{NODE_INPUT_MASK_PREFIX!r} are reserved for trigger settings"
+            )
 
 
 async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:

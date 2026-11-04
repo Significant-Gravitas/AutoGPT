@@ -170,6 +170,17 @@ async def test_a_trigger_config_over_the_byte_bound_registers_no_webhook():
 
 
 @pytest.mark.asyncio
+async def test_a_graph_input_read_as_a_trigger_config_is_refused():
+    """A reader without the graph would take it for the trigger config."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_expert, p_create as create_mock, p_webhook as webhook_mock:
+        with pytest.raises(InvalidInputError, match="reserved for trigger settings"):
+            await _setup(constant_inputs={"_node_input_mask_x": {"repo": "a/b"}})
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_graph_inputs_over_the_byte_bound_register_no_webhook():
     """The graph inputs are stored beside the trigger config, so they count too."""
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
@@ -692,12 +703,8 @@ async def test_setup_keeps_a_blocks_own_input_check(trigger_blocks_enabled):
 )
 @pytest.mark.parametrize(
     "constant_inputs",
-    [
-        {"topic": "news"},
-        {"_node_input_mask_a": "news"},
-        {"_node_input_mask_a": {"topic": "news"}},
-    ],
-    ids=["plain-input", "prefixed-string-input", "prefixed-object-input"],
+    [{"topic": "news"}, {"_node_input_mask_a": "news"}],
+    ids=["plain-input", "prefixed-string-input"],
 )
 async def test_stored_trigger_secret_still_guards_ingress(
     manager, secret_field, constant_inputs
@@ -935,6 +942,23 @@ async def test_an_update_with_an_oversized_name_registers_no_webhook():
                 inputs={"repo": "owner/repo"},
                 credentials={},
                 name="x" * (db.MAX_PRESET_NAME_LENGTH + 1),
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_update_with_a_graph_input_read_as_a_trigger_config_is_refused():
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="reserved for trigger settings"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={
+                    "_node_input_mask_trigger": {"repo": "owner/repo"},
+                    "_node_input_mask_x": {"repo": "a/b"},
+                },
+                credentials={},
             )
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()

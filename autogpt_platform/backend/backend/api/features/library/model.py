@@ -81,11 +81,7 @@ def split_stored_trigger_inputs(
 def stored_trigger_mask_key(inputs: GraphInput) -> str | None:
     """The key a triggered preset's trigger config is stored under, if any."""
     return next(
-        (
-            key
-            for key, value in inputs.items()
-            if key.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(value, dict)
-        ),
+        (key for key, value in inputs.items() if is_trigger_config_entry(key, value)),
         None,
     )
 
@@ -97,11 +93,13 @@ def preset_trigger_configs(inputs: GraphInput) -> list[GraphInput]:
     """
     if not any(k.startswith(NODE_INPUT_MASK_PREFIX) for k in inputs):
         return [inputs]
-    return [
-        v
-        for k, v in inputs.items()
-        if k.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(v, dict)
-    ]
+    return [v for k, v in inputs.items() if is_trigger_config_entry(k, v)]
+
+
+def is_trigger_config_entry(key: str, value: object) -> bool:
+    """Whether a stored input reads as a trigger config; trigger setup and
+    reconfigure refuse a graph input that does, so a preset holds one."""
+    return key.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(value, dict)
 
 
 class LibraryAgentStatus(str, Enum):
