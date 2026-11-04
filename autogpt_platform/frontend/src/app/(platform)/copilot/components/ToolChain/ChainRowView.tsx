@@ -112,6 +112,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       ? output.sub_session_id
       : null,
     isSubTool && typeof output?.status === "string" ? output.status : null,
+    isSubTool && typeof output?.background_task_id === "string",
+    isSubTool && typeof output?.background_expires_at === "string"
+      ? output.background_expires_at
+      : null,
   );
   // "unknown" means the poll died, not that the teammate finished — the row
   // only has a running label and a done label, and claiming a result landed
@@ -142,7 +146,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       }
       shimmer={row.state === "running" || stillWorking}
       className={cn(
-        "max-w-full text-sm transition-colors duration-300",
+        "max-w-full text-body transition-colors duration-300",
         row.state === "error"
           ? "text-error"
           : row.held &&
@@ -200,8 +204,10 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
               <Icon
                 icon={ArrowDown01Icon}
                 size={10}
+                tone="disabled"
+                motion="transform"
                 className={cn(
-                  "shrink-0 text-foreground-disabled transition-transform duration-300 ease-out-quint group-hover/row:text-foreground-tertiary",
+                  "shrink-0 group-hover/row:text-foreground-tertiary",
                   open && "rotate-180",
                 )}
               />
@@ -215,7 +221,7 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
           </div>
         )}
         {row.detail && (
-          <p className="animate-fade-in truncate text-xs text-error motion-reduce:animate-none">
+          <p className="animate-fade-in truncate text-caption text-error motion-reduce:animate-none">
             {row.detail}
           </p>
         )}

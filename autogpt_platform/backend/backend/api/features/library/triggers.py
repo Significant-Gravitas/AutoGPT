@@ -106,9 +106,10 @@ async def setup_triggered_preset(
         trigger_config_with_credentials
     )
 
-    # What create_preset stores; `payload` is not a row — delivery adds it to
-    # the trigger node's mask, whose own count the validation below makes.
-    db.check_preset_input_count({**preset_inputs, **agent_credentials})
+    # What create_preset stores, checked before any webhook is registered. `payload`
+    # is not a row: delivery adds it to the trigger node's mask, counted below.
+    db.check_preset_text(name, description)
+    db.check_preset_inputs({**preset_inputs, **agent_credentials})
     await db.check_preset_count(user_id)
 
     # Validate the preset's inputs the same way the executor will — regular
@@ -214,6 +215,8 @@ async def update_triggered_preset(
 
     new_webhook = None
     if inputs is not None and credentials is not None:
+        # Refused before anything is registered with the provider.
+        db.check_preset_text(name, description)
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
         )
@@ -254,7 +257,7 @@ async def update_triggered_preset(
             stored_inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
             # What update_preset stores; `payload` is the trigger node's, not a
             # stored row — see setup_triggered_preset.
-            db.check_preset_input_count({**stored_inputs, **credentials})
+            db.check_preset_inputs({**stored_inputs, **credentials})
 
             # Validate as setup does, before the webhook is registered.
             try:

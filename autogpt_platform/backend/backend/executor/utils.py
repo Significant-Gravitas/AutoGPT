@@ -64,6 +64,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
+from backend.executor.input_depth import (
+    validate_graph_input_depth,
+    validate_starting_node_input_depth,
+)
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -1013,6 +1017,8 @@ async def validate_and_construct_node_execution_input(
         GraphValidationError: If the graph has validation issues.
         ValueError: If there are other validation errors.
     """
+    validate_graph_input_depth(graph_inputs, nodes_input_masks or {})
+
     if prisma.is_connected():
         gdb = graph_db
     else:
@@ -1062,6 +1068,7 @@ async def validate_and_construct_node_execution_input(
         dry_run=dry_run,
         trigger_setup=trigger_setup,
     )
+    validate_starting_node_input_depth(starting_nodes_input)
     # Also enforced by create_graph_execution; here a schedule or a request is
     # refused before anything is written.
     check_node_input_counts(starting_nodes_input)
@@ -1178,6 +1185,14 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
 GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
+# Nothing consumes this queue; a message parked here dead-letters onto the run
+# queue once the expiration the publisher gave it runs out.
+GRAPH_EXECUTION_DELAY_QUEUE_NAME = "graph_execution_delay_v1"
+GRAPH_EXECUTION_DELAY_ROUTING_KEY = "graph_execution.delayed"
+# Ceiling of `graph_run_requeue_delay_seconds`, so a message published without
+# an expiration cannot sit in a queue with no consumer for good.
+GRAPH_EXECUTION_DELAY_MAX_MS = 60 * 60 * 1000
+
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     name="graph_execution_cancel",
     type=ExchangeType.FANOUT,
@@ -1221,6 +1236,23 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
+    delay_queue = Queue(
+        name=GRAPH_EXECUTION_DELAY_QUEUE_NAME,
+        exchange=GRAPH_EXECUTION_EXCHANGE,
+        routing_key=GRAPH_EXECUTION_DELAY_ROUTING_KEY,
+        durable=True,
+        auto_delete=False,
+        arguments={
+            "x-queue-type": "quorum",
+            "x-dead-letter-exchange": GRAPH_EXECUTION_EXCHANGE.name,
+            "x-dead-letter-routing-key": GRAPH_EXECUTION_ROUTING_KEY,
+            # A quorum queue may drop a message dead-lettered at-most-once,
+            # its default; at-least-once requires reject-publish overflow.
+            "x-dead-letter-strategy": "at-least-once",
+            "x-overflow": "reject-publish",
+            "x-message-ttl": GRAPH_EXECUTION_DELAY_MAX_MS,
+        },
+    )
     # No cancel queue here: it is per-pod, exclusive to the consuming connection,
     # and declared by the consumer itself through ``declare_broadcast_queue``.
     # A queue in this config is declared by every holder, publishers included,
@@ -1228,7 +1260,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue],
+        queues=[run_queue, delay_queue],
     )
 
 
@@ -1848,11 +1880,14 @@ async def _add_graph_execution(
 
     # Generate execution context if it's not provided
     if execution_context is None:
-        user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_exec.graph_version,
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
+            udb.get_user_by_id(user_id),
+            gdb.get_graph_settings(
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_exec.graph_version,
+            ),
         )
         workspace = await wdb.get_or_create_workspace(user_id)
 

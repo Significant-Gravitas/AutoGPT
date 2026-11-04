@@ -65,6 +65,7 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.blocks import get_blocks
+from backend.copilot import background_task_db
 from backend.copilot import db as chat_db
 from backend.copilot.scheduled_chats.forget import forget_scheduled_chat
 from backend.copilot.scheduled_chats.service import record_scheduled_run
@@ -435,7 +436,7 @@ class DatabaseManager(AppService):
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
-    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    # full flag context — see backend/util/feature_flag/__init__.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     # Background work skips a banned owner in Prisma-less workers too.
     is_auth_user_banned = _(is_auth_user_banned)
@@ -774,6 +775,31 @@ class DatabaseManager(AppService):
     find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
 
     # ============ CoPilot Chat Sessions ============ #
+    get_background_task = _(background_task_db.get_background_task)
+    get_session_background_state = _(background_task_db.get_session_background_state)
+    create_background_task = _(background_task_db.create_background_task)
+    claim_background_turn = _(background_task_db.claim_background_turn)
+    finish_background_turn = _(background_task_db.finish_background_turn)
+    complete_background_task = _(background_task_db.complete_background_task)
+    list_background_tasks = _(background_task_db.list_background_tasks)
+    enqueue_background_followup = _(background_task_db.enqueue_background_followup)
+    get_background_followup_envelope = _(
+        background_task_db.get_background_followup_envelope
+    )
+    suppress_background_followup = _(background_task_db.suppress_background_followup)
+    release_deleted_background_turn = _(
+        background_task_db.release_deleted_background_turn
+    )
+    release_expired_background_turn = _(
+        background_task_db.release_expired_background_turn
+    )
+    cancel_background_tasks = _(background_task_db.cancel_background_tasks)
+    cancel_queued_background_followup = _(
+        background_task_db.cancel_queued_background_followup
+    )
+    cancel_orphaned_background_tasks = _(
+        background_task_db.cancel_orphaned_background_tasks
+    )
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
     # tool-pair boundary expansion + visibility guarantees apply uniformly
@@ -809,6 +835,7 @@ class DatabaseManager(AppService):
     list_chat_sessions_by_status = _(chat_db.list_chat_sessions_by_status)
     update_chat_session_status = _(chat_db.update_chat_session_status)
     admit_chat_session_turn = _(chat_db.admit_chat_session_turn)
+    record_chat_session_turn = _(chat_db.record_chat_session_turn)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
 
@@ -1316,6 +1343,21 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
+    get_background_task = d.get_background_task
+    get_session_background_state = d.get_session_background_state
+    create_background_task = d.create_background_task
+    claim_background_turn = d.claim_background_turn
+    finish_background_turn = d.finish_background_turn
+    complete_background_task = d.complete_background_task
+    list_background_tasks = d.list_background_tasks
+    enqueue_background_followup = d.enqueue_background_followup
+    get_background_followup_envelope = d.get_background_followup_envelope
+    suppress_background_followup = d.suppress_background_followup
+    release_deleted_background_turn = d.release_deleted_background_turn
+    release_expired_background_turn = d.release_expired_background_turn
+    cancel_background_tasks = d.cancel_background_tasks
+    cancel_queued_background_followup = d.cancel_queued_background_followup
+    cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks
     get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session
     update_chat_session = d.update_chat_session
@@ -1345,6 +1387,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_chat_sessions_by_status = d.list_chat_sessions_by_status
     update_chat_session_status = d.update_chat_session_status
     admit_chat_session_turn = d.admit_chat_session_turn
+    record_chat_session_turn = d.record_chat_session_turn
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
     add_chat_message = d.add_chat_message

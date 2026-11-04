@@ -60,9 +60,9 @@ export function RecentMemoriesCard({
               </Text>
               <Button
                 variant="ghost"
-                size="small"
-                // oxlint-disable-next-line design-system/no-restyle -- a compact 28px "Forget" text action in a dense list
-                className="h-7 !min-w-0 shrink-0 px-2 text-foreground-secondary"
+                size="row"
+                tone="secondary"
+                className="h-7 shrink-0"
                 loading={forgettingUuid === fact.uuid}
                 onClick={() => onForget(fact.uuid)}
               >

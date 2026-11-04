@@ -435,8 +435,27 @@ async def test_cron_schedules_recurring(tool, session):
     assert call_kwargs["user_timezone"] == "UTC"
 
 
+@pytest.mark.asyncio
+async def test_a_cron_that_never_fires_is_refused_before_the_scheduler(tool, session):
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone=None))
+    mock_client = AsyncMock()
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+    ):
+        result = await tool._execute(
+            user_id=_USER, session=session, message="check", cron="0 0 30 2 *"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_cron"
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
-# COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch
+# COPILOT_SCHEDULED_FOLLOWUPS PostHog kill-switch
 # ---------------------------------------------------------------------------
 
 
