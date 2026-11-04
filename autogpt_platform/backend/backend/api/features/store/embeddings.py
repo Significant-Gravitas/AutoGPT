@@ -18,7 +18,7 @@ from backend.api.features.search.embeddings import (
     build_searchable_text,
     delete_content_embedding,
     generate_embedding,
-    get_content_embedding,
+    read_content_embedding,
     store_content_embedding,
 )
 
@@ -47,15 +47,17 @@ async def store_embedding(
     )
 
 
-async def get_embedding(version_id: str) -> dict[str, Any] | None:
+async def get_embedding(
+    version_id: str, client: prisma.Prisma | None = None
+) -> dict[str, Any] | None:
     """
     Retrieve embedding record for a listing version.
 
     BACKWARD COMPATIBILITY: Maintained for existing store listing usage.
     Returns dict with storeListingVersionId, embedding, timestamps or None if not found.
     """
-    result = await get_content_embedding(
-        ContentType.STORE_AGENT, version_id, user_id=None
+    result = await read_content_embedding(
+        ContentType.STORE_AGENT, version_id, None, client=client
     )
     if result:
         # Transform to old format for backward compatibility
@@ -99,7 +101,7 @@ async def ensure_embedding(
     """
     # Check if embedding already exists
     if not force:
-        existing = await get_embedding(version_id)
+        existing = await get_embedding(version_id, client=tx)
         if existing and existing.get("embedding"):
             logger.debug(f"Embedding for version {version_id} already exists")
             return True

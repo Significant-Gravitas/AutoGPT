@@ -8,6 +8,7 @@ from enum import Enum
 
 from fastapi import HTTPException, Request
 
+from backend.blocks._platform_credentials import is_platform_credential
 from backend.data.model import Credentials
 from backend.sdk import (
     APIKeyCredentials,
@@ -111,6 +112,12 @@ class ExaWebhookManager(BaseWebhooksManager):
         """Register webhook with Exa API."""
         if not isinstance(credentials, APIKeyCredentials):
             raise ValueError("Exa webhooks require API key credentials")
+        if is_platform_credential(credentials.id):
+            # An Exa webhook is account-wide, so it needs the user's own key.
+            raise ValueError(
+                "Exa webhooks can't use the platform's shared Exa key. "
+                "Connect your own Exa API key and select it instead."
+            )
         api_key = credentials.api_key.get_secret_value()
 
         # Create webhook via Exa API

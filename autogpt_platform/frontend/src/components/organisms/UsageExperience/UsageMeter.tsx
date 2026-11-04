@@ -17,10 +17,10 @@ export function UsageMeter({ label, percent, detail }: Props) {
         data-slot="usage-meter-header"
         className="flex justify-between gap-2"
       >
-        <Text variant="small-medium" className="!text-foreground-body">
+        <Text variant="small-medium" tone="body">
           {label}
         </Text>
-        <Text variant="small" tone="muted" className="tabular-nums">
+        <Text variant="small" tone="muted" tabular>
           {formatUsagePercent(value)} used
         </Text>
       </div>
@@ -36,15 +36,15 @@ export function UsageMeter({ label, percent, detail }: Props) {
         <div
           data-slot="usage-meter-fill"
           className={cn(
-            "w-(--usage-meter-width) h-full rounded-full transition-[width]",
-            // TODO(tokens): no role for orange-500, the full-meter fill.
+            "h-full w-(--usage-meter-width) rounded-full transition-[width]",
+            // oxlint-disable-next-line design-system/no-raw-colors -- orange full-meter fill, no orange role; warning would turn it amber
             value >= 100 ? "bg-orange-500" : "bg-brand",
           )}
           style={{ "--usage-meter-width": `${value}%` } as CSSProperties}
         />
       </div>
       {detail && (
-        <Text variant="small" tone="muted" className="!text-xs">
+        <Text variant="small-tight" tone="muted">
           {detail}
         </Text>
       )}

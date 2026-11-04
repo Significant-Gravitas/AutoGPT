@@ -36,7 +36,7 @@ export function KitBudget({
               onClick={() => onSelect(preset.credits)}
               aria-pressed={selected}
               className={cn(
-                "rounded-full border px-5 py-2.5 text-sm font-medium text-foreground transition-colors",
+                "rounded-full border px-5 py-2.5 text-body font-medium text-foreground transition-colors",
                 selected
                   ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
                   : "border-border bg-background hover:border-accent hover:bg-accent/5",

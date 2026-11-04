@@ -16,21 +16,19 @@ const STATUS = {
     label: "Needs setup",
     className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
-    // TODO(tokens): no exact role: text-amber-600 #D97706
-    iconClassName: "bg-warning-surface text-amber-600",
+    iconClassName: "bg-warning-surface text-warning-foreground",
   },
   scheduled: {
     label: "Scheduled",
     className: "bg-surface text-foreground-body",
     icon: Calendar03Icon,
-    // TODO(tokens): no exact role: text-violet-600 #7C3AED
-    iconClassName: "bg-accent-surface text-violet-600",
+    iconClassName: "bg-accent-surface text-brand",
   },
   trigger: {
     label: "Triggered",
     className: "bg-surface text-foreground-body",
     icon: FlashIcon,
-    // TODO(tokens): no exact role: bg-sky-50 #F0F9FF, text-sky-600 #0284C7
+    // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
     iconClassName: "bg-sky-50 text-sky-600",
   },
   manual: {

@@ -87,7 +87,7 @@ export function ConnectToolsPanel({
   }, [selectedProvider, handleBackToList, onBack]);
 
   return (
-    <div className="flex flex-col gap-4 px-5 pb-5 pt-4">
+    <div className="flex flex-col gap-4 px-5 pt-4 pb-5">
       <Text variant="h5" tone="primary">
         Connect your tools
       </Text>
@@ -149,7 +149,8 @@ export function ConnectToolsPanel({
                     <Icon
                       icon={Search01Icon}
                       size={16}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground-subtle"
+                      tone="subtle"
+                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
                     />
                     <input
                       type="text"
@@ -157,18 +158,14 @@ export function ConnectToolsPanel({
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search services..."
                       aria-label="Search services"
-                      className="h-9 w-full rounded-md border border-border-base bg-surface pl-9 pr-3 text-sm leading-5.5 text-foreground-strong transition-colors placeholder:text-foreground-subtle focus:border-action-hover focus:outline-none"
+                      className="h-9 w-full rounded-md border border-border-base bg-surface pr-3 pl-9 text-body leading-5.5 text-foreground-strong transition-colors placeholder:text-foreground-subtle focus:border-action-hover focus:outline-none"
                     />
                   </div>
 
                   {query.trim() ? (
                     providers.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border-base py-8 text-center">
-                        <Icon
-                          icon={Plug01Icon}
-                          size={16}
-                          className="text-foreground-subtle"
-                        />
+                        <Icon icon={Plug01Icon} size={16} tone="subtle" />
                         <Text variant="body" tone="secondary">
                           {`No services match "${query.trim()}"`}
                         </Text>

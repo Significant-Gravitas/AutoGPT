@@ -33,7 +33,7 @@ export function ChangelogPopup() {
   return (
     <div
       data-slot="changelog-popup"
-      className={`fixed bottom-4 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:bottom-6 sm:right-6 ${
+      className={`fixed right-4 bottom-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] transition-all duration-500 ease-out sm:right-6 sm:bottom-6 ${
         isFading
           ? "pointer-events-none translate-y-2 opacity-0"
           : "translate-y-0 opacity-100"
@@ -75,29 +75,21 @@ export function ChangelogPopup() {
             />
           </div>
           <div data-slot="changelog-popup-heading" className="min-w-0 flex-1">
-            <Text
-              variant="body-medium"
-              data-slot="changelog-popup-title"
-              className="text-foreground"
-            >
+            <Text variant="body-medium" data-slot="changelog-popup-title">
               What&apos;s new
             </Text>
-            <Text
-              variant="small"
-              data-slot="changelog-popup-date"
-              className="text-muted-foreground"
-            >
+            <Text variant="small" data-slot="changelog-popup-date" tone="muted">
               {latestEntry.dateRange}
             </Text>
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant="ghost-muted"
             size="icon-sm"
             withTooltip={false}
             onClick={dismiss}
             data-slot="changelog-popup-dismiss"
-            className="-mr-1 -mt-1 text-muted-foreground hover:text-foreground"
+            className="-mt-1 -mr-1"
             aria-label="Dismiss changelog"
           >
             <Icon
@@ -120,11 +112,7 @@ export function ChangelogPopup() {
                 data-slot="changelog-popup-bullet"
                 className="mt-2.5 size-1 shrink-0 rounded-full bg-muted-foreground"
               />
-              <Text
-                variant="body"
-                data-slot="changelog-popup-highlight-text"
-                className="text-foreground"
-              >
+              <Text variant="body" data-slot="changelog-popup-highlight-text">
                 {item}
               </Text>
             </li>

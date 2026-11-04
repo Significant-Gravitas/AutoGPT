@@ -46,11 +46,10 @@ export function HireStepActions({
       {secondaryLabel && !isHiringAll ? (
         <Button
           type="button"
-          variant="ghost"
+          variant="toggle"
           size="xs"
           onClick={onSecondary}
           disabled={isCardHiring}
-          className="text-foreground-tertiary hover:text-foreground-strong"
         >
           {secondaryLabel}
         </Button>

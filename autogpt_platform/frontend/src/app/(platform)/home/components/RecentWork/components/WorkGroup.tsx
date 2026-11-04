@@ -22,23 +22,31 @@ export function WorkGroup({ group, timezone }: Props) {
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
-      <Text variant="body-medium" tone="primary" className="truncate leading-5">
+      <Text variant="body-medium-tight" tone="primary" className="truncate">
         {actor.name}
       </Text>
-      <Text
-        variant="small-medium"
-        as="span"
+      <span
         className={cn(
-          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          "shrink-0 rounded-full border px-1.5",
+          // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}
       >
-        {chip.label}
-      </Text>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="inherit"
+          transform="capitalize"
+          className="block"
+        >
+          {chip.label}
+        </Text>
+      </span>
       <Text
         variant="small"
         tone="muted"
-        className="ml-auto shrink-0 tabular-nums"
+        tabular
+        className="ml-auto shrink-0"
         as="span"
       >
         {formatGroupCounts(group)}
@@ -47,7 +55,9 @@ export function WorkGroup({ group, timezone }: Props) {
         <Icon
           icon={ArrowUpRight01Icon}
           size={14}
-          className="shrink-0 text-foreground-disabled transition-colors group-hover:text-foreground-secondary"
+          tone="disabled"
+          motion="colors"
+          className="shrink-0 group-hover:text-foreground-secondary"
           aria-hidden="true"
         />
       ) : null}

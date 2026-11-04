@@ -43,7 +43,8 @@ export function HomeTile({
           <Icon
             icon={icon}
             size={15}
-            className="shrink-0 text-foreground-subtle"
+            tone="subtle"
+            className="shrink-0"
             aria-hidden="true"
           />
           <Text
@@ -57,7 +58,7 @@ export function HomeTile({
           {badge}
         </div>
         {meta ? (
-          <div className="flex shrink-0 items-center gap-2 text-xs text-foreground-tertiary">
+          <div className="flex shrink-0 items-center gap-2 text-caption text-foreground-tertiary">
             {meta}
           </div>
         ) : null}

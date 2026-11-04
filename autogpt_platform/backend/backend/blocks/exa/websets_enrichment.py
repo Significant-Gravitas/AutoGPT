@@ -12,6 +12,7 @@ from exa_py import AsyncExa
 from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -180,6 +181,7 @@ class ExaCreateEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         import time
 
         # Build the payload
@@ -334,6 +336,7 @@ class ExaGetEnrichmentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_enrichment = await aexa.websets.enrichments.get(
@@ -410,6 +413,7 @@ class ExaUpdateEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}"
         headers = {
             "Content-Type": "application/json",
@@ -484,6 +488,7 @@ class ExaDeleteEnrichmentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_enrichment = await aexa.websets.enrichments.delete(
@@ -537,6 +542,7 @@ class ExaCancelEnrichmentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         canceled_enrichment = await aexa.websets.enrichments.cancel(

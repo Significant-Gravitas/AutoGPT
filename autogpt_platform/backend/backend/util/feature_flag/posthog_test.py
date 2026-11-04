@@ -102,7 +102,7 @@ class TestClientConstruction:
         assert all(client is clients[0] for client in clients)
 
     def test_an_unconfigured_deployment_does_not_retry_forever(self, mocker):
-        """Same reason LaunchDarkly gates on "did we try": a warning and a
+        """Gated on "did we try", not "did it work": otherwise a warning and a
         construction attempt per flag read on deployments shipping without
         PostHog."""
         configure(mocker, api_key="")
