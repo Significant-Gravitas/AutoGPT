@@ -289,6 +289,9 @@ class MacOSBackend(ComputerUseBackend):
         entry = self.window_registry.verify(window_id, self._live_fingerprint)
         cg_window_id = int(entry.native_handle)
         rect = CGRectNull
+        # The frame is read on both sides of the capture: one that changed in
+        # between can't be told apart from the pixels' own.
+        frame_before = self._cg_window_frame(cg_window_id)
         # Without IgnoreFraming the image includes the window's shadow and
         # covers more than the bounds that origin and logical_size describe.
         ref = CGWindowListCreateImage(
@@ -297,11 +300,21 @@ class MacOSBackend(ComputerUseBackend):
             cg_window_id,
             kCGWindowImageBoundsIgnoreFraming,
         )
+        frame_after = self._cg_window_frame(cg_window_id)
         if ref is None:
             raise PermissionPendingError(
                 "screen_recording",
                 "darwin",
                 hint="Window capture failed; grant Screen Recording in System Settings.",
+            )
+        if (
+            frame_before is not None
+            and frame_after is not None
+            and frame_before[0] != frame_after[0]
+        ):
+            raise FeatureNotSupportedError(
+                "screenshot.window",
+                reason="the window moved or was resized during the capture; capture it again",
             )
         # Convert CGImage → PIL via a pragmatic png round-trip through
         # Cocoa NSBitmapImageRep (ships in pyobjc; simpler than the
@@ -324,8 +337,8 @@ class MacOSBackend(ComputerUseBackend):
             ) from exc
 
         # The window may have moved or been resized since window_list, so use
-        # its frame now; fall back to the one it was listed with.
-        live = self._cg_window_frame(cg_window_id)
+        # its frame at the capture; fall back to the one it was listed with.
+        live = frame_after
         if live is not None and live[0][2] > 0 and live[0][3] > 0:
             x, y, w, h = live[0]
             bounds = (x, y, x + w, y + h)

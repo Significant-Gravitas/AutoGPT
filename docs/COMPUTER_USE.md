@@ -160,6 +160,10 @@ Semantics:
   guaranteed). On Windows a window that has stopped responding answers
   `FEATURE_NOT_SUPPORTED` instead, since the capture would wait on it to
   paint forever.
+- On macOS the window's frame is read before and after the capture. A
+  window that moved or was resized in between answers
+  `FEATURE_NOT_SUPPORTED`, since the image's `origin` and `logical_size`
+  would describe another frame than its pixels; capture it again.
 
 #### Q1 — Coordinate space (locked)
 
