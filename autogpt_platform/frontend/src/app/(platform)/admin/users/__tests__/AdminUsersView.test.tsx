@@ -304,6 +304,17 @@ describe("/admin/users", () => {
     expect(within(updated).getByText(/by admin@agpt\.co/)).toBeDefined();
   });
 
+  it("links to the team plans of the account being looked up", async () => {
+    renderPage(`?user=${ALEX.id}`);
+
+    const control = await screen.findByTestId("org-access-control");
+    expect(
+      within(control)
+        .getByRole("link", { name: "Team plans" })
+        .getAttribute("href"),
+    ).toBe(`/admin/organizations?account=${encodeURIComponent(ALEX.email)}`);
+  });
+
   it("offers no ban or impersonation until the signed-in admin is known", async () => {
     auth.user = null;
     renderPage(`?user=${ALEX.id}`);

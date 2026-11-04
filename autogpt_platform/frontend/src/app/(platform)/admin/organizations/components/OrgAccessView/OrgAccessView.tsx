@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AdminSection } from "../../../components/AdminSection";
 import { AccessGrantList } from "../AccessGrantList/AccessGrantList";
 import { EnableAccessForm } from "../EnableAccessForm/EnableAccessForm";
+import { TeamPlans } from "../TeamPlans/TeamPlans";
 import { useOrgAccessView } from "./useOrgAccessView";
 
 export function OrgAccessView() {
@@ -26,6 +27,12 @@ export function OrgAccessView() {
         description="Find the account by the email it signs in with."
       >
         <EnableAccessForm isEnabling={view.isEnabling} onEnable={view.enable} />
+      </AdminSection>
+      <AdminSection
+        title="Team plans"
+        description="Find an account by the email it signs in with, then set its team organizations' plans and add the credits an invoice paid for."
+      >
+        <TeamPlans />
       </AdminSection>
       <AdminSection
         title="Accounts with organizations"
