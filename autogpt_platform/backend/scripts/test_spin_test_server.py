@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.api import rest_api
+from backend.executor import Scheduler
 from backend.util.process import AppProcess
 from backend.util.test import SpinTestServer
 
@@ -103,6 +104,22 @@ async def test_a_failed_start_up_stops_the_services_and_keeps_its_error(
             pass
 
     assert len(stand_ins) == 4
+    assert not any(process.is_alive() for process in stand_ins.values())
+
+
+async def test_a_service_that_fails_to_start_does_not_keep_the_others_running(
+    stand_in_services, mocker
+):
+    """The services start one at a time, so the ones started before it are
+    running when it fails, and are stopped."""
+    _, stand_ins = stand_in_services
+    mocker.patch.object(Scheduler, "start", side_effect=OSError("fork failed"))
+
+    with pytest.raises(OSError, match="fork failed"):
+        async with SpinTestServer():
+            pass
+
+    assert sorted(stand_ins) == ["DatabaseManager", "ExecutionManager"]
     assert not any(process.is_alive() for process in stand_ins.values())
 
 
@@ -204,4 +221,23 @@ async def test_an_error_in_the_session_is_not_replaced_by_a_dead_service(
             raise ValueError("session failed")
 
     assert "during the session" not in str(failure.value)
+    assert not any(process.is_alive() for process in stand_ins.values())
+
+
+async def test_a_failing_cleanup_does_not_replace_an_error_in_the_session(
+    stand_in_services, mocker
+):
+    """As at start-up, the session's own error is the one raised, and the
+    services are still stopped."""
+    _, stand_ins = stand_in_services
+    mocker.patch(
+        "backend.data.redis_client.disconnect_async",
+        AsyncMock(side_effect=RuntimeError("disconnect failed")),
+    )
+
+    with pytest.raises(ValueError, match="session failed"):
+        async with SpinTestServer():
+            raise ValueError("session failed")
+
+    assert len(stand_ins) == 4
     assert not any(process.is_alive() for process in stand_ins.values())

@@ -59,11 +59,8 @@ class SpinTestServer:
         except BaseException as e:
             # A failed __aenter__ gets no __aexit__, and a service left running
             # would hang the session at exit, which joins every child process.
-            # The start-up error stays the one raised.
-            try:
-                await self.__aexit__(type(e), e, e.__traceback__)
-            except Exception:
-                log.exception("Cleanup after a failed start-up also failed")
+            # __aexit__ keeps the start-up error the one raised.
+            await self.__aexit__(type(e), e, e.__traceback__)
             raise
 
         return self
@@ -89,6 +86,11 @@ class SpinTestServer:
                 # cleaned up before the next test starts
                 await asyncio.sleep(0.5)
         except Exception as cleanup_error:
+            if exc_type is not None:
+                # The error the start-up or the session raised stays the one
+                # raised; the cleanup error is only logged.
+                log.exception("Cleanup after an error also failed")
+                return
             # A failing cleanup must not hide a service that died: report it,
             # with the cleanup error as its cause.
             if died:
