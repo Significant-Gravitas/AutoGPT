@@ -114,18 +114,21 @@ def test_a_product_manager_with_no_brain_dump_gets_a_product_team():
     [
         ("Founder/CEO", [], ["Max", "Maya", "Daniel"]),
         ("Marketing", [], ["Maya", "Nadia", "Quinn"]),
-        ("Sales/BD", [], ["Max", "Omar"]),
-        ("Operations", [], ["Frankie", "Quinn"]),
+        ("Sales/BD", [], ["Max", "Omar", "Quinn"]),
+        ("Operations", [], ["Frankie", "Quinn", "Kai"]),
         ("Product/PM", [], ["Alex", "Quinn", "Nadia"]),
         ("Engineering", [], ["Casey", "Devon", "Quinn"]),
-        # Ines (People Ops & HR) covers ops too, so nobody else is added.
-        ("HR/People", [], ["Sofia", "Ines"]),
-        ("Other", ["Reports & data"], ["Quinn"]),
-        ("Other", ["CRM & data entry"], ["Omar"]),
-        ("Other", ["Customer support"], ["Robin"]),
-        ("Other", ["Research"], ["Quinn"]),
+        ("HR/People", [], ["Sofia", "Ines", "Kai"]),
+        # Other has no need of its own: the user's pain points lead, then
+        # the experts its starter tasks need.
+        ("Other", [], ["Quinn", "Maya", "Nadia"]),
+        (None, [], ["Quinn", "Maya", "Nadia"]),
+        ("Other", ["Reports & data"], ["Quinn", "Maya", "Nadia"]),
+        ("Other", ["CRM & data entry"], ["Omar", "Quinn", "Maya"]),
+        ("Other", ["Customer support"], ["Robin", "Quinn", "Maya"]),
+        ("Other", ["Research"], ["Quinn", "Maya", "Nadia"]),
         # Omar's role is CRM work, not selling, so the leads still get Max.
-        ("Other", ["CRM & data entry", "Finding leads"], ["Omar", "Max"]),
+        ("Other", ["CRM & data entry", "Finding leads"], ["Omar", "Max", "Quinn"]),
         # The need the user named comes before finance, which the role only
         # suggests.
         ("Founder/CEO", ["Scheduling", "Finding leads"], ["Max", "Kai", "Maya"]),
@@ -164,13 +167,15 @@ def test_every_role_plan_is_the_team_s_work_not_otto_s(user_role: str):
     plan, team = role_tasks.role_plan(user_role, [], TEMPLATES)
     owners = [p.expert_template_id for p in plan]
 
+    # Everyone starts with a team of three.
+    assert len(team) == 3
     if user_role == role_task_sets.OTHER_ROLE:
-        # No role, no team: Otto takes it all.
-        assert team == [] and owners == [None] * len(plan)
-        return
-    assert owners[0] in {e.template_id for e in team}
-    # Engineering's customer questions are the one task no engineering
-    # expert covers.
+        # Other's first task is finding the work to hand off: Otto's.
+        assert owners[0] is None
+    else:
+        assert owners[0] in {e.template_id for e in team}
+    # Engineering's customer questions and Other's first task are the only
+    # ones nobody on the team covers.
     assert owners.count(None) <= 1
     # Nobody is hired for a plan with nothing of theirs on it.
     assert {e.template_id for e in team} <= set(owners)
@@ -352,8 +357,9 @@ def test_a_greeting_task_goes_to_the_teammate_its_subject_fits(
         # The specialist listed first never takes the generalist's work.
         ("Marketing", ["Clip", "Maya", "Maria"], ["Maya"] * 5),
         ("Sales/BD", ["Omar", "Max", "Jordan"], ["Max", "Max", "Max", "Omar", "Max"]),
-        ("Operations", ["Ines", "Frankie", "Kai"], ["Frankie"] * 5),
-        ("Operations", ["Vera", "James", "Kai"], ["James"] * 5),
+        # Kai takes the tracker that chases itself, an assistant's work.
+        ("Operations", ["Ines", "Frankie", "Kai"], ["Kai"] + ["Frankie"] * 4),
+        ("Operations", ["Vera", "James", "Kai"], ["Kai"] + ["James"] * 4),
     ],
 )
 def test_a_role_set_goes_to_the_most_focused_teammate_whatever_the_order(

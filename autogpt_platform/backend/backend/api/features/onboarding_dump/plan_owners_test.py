@@ -225,31 +225,40 @@ ROSTER = [
 def test_a_founder_plan_takes_owners_from_the_role_team():
     prompts, team = role_tasks.role_plan("Founder/CEO", [], ROSTER)
 
-    assert [e.name for e in team] == ["Max", "Maria"]
+    # Max and Maria for the role; Olive (Ops) fills the row and takes the
+    # numbers. Nobody here does fundraising or finance, so the pitch is Otto's.
+    assert [e.name for e in team] == ["Max", "Maria", "Olive"]
     assert prompts[0].title.startswith("Build a list of 25 companies")
     assert prompts[0].why == "Most founders start here."
     assert [p.expert_template_id for p in prompts] == [
         "tpl-max",
         "tpl-maria",
-        None,
+        "tpl-olive",
         None,
         "tpl-maria",
     ]
-    assert [p.expert_name for p in prompts] == ["Max", "Maria", None, None, "Maria"]
+    assert [p.expert_name for p in prompts] == [
+        "Max",
+        "Maria",
+        "Olive",
+        None,
+        "Maria",
+    ]
 
 
-def test_a_task_whose_skills_are_outside_the_role_team_is_otto_s():
-    # Ops is on the roster but not on a marketer's fallback team.
+def test_a_teammate_who_fills_the_row_takes_no_task_outside_their_skills():
+    # Max and Olive fill a marketer's row, but every marketing task is
+    # Maria's.
     prompts, team = role_tasks.role_plan("Marketing", [], ROSTER)
 
-    assert [e.name for e in team] == ["Maria"]
+    assert [e.name for e in team] == ["Maria", "Max", "Olive"]
     assert all(p.expert_template_id in (None, "tpl-maria") for p in prompts)
 
 
-def test_a_role_with_nobody_on_the_roster_leaves_every_task_with_otto():
+def test_a_role_nobody_on_the_roster_fits_gets_generalists_and_otto_s_tasks():
     prompts, team = role_tasks.role_plan("HR/People", [], ROSTER[:2])
 
-    assert team == []
+    assert [e.name for e in team] == ["Maria", "Max"]
     assert all(p.expert_template_id is None for p in prompts)
 
 
@@ -260,7 +269,15 @@ def test_other_and_unknown_roles_take_the_other_set(user_role: str | None):
     assert [p.title for p in prompts] == [
         t.title for t in role_task_sets.ROLE_FALLBACK_TASKS["Other"]
     ]
-    assert all(p.expert_template_id is None for p in prompts)
+    # Max for the leads, Maria and Olive to fill the row: the post is
+    # Maria's, the summary Olive's, and finding the work stays Otto's.
+    assert [p.expert_template_id for p in prompts] == [
+        None,
+        None,
+        "tpl-maria",
+        "tpl-olive",
+        None,
+    ]
 
 
 @pytest.mark.parametrize("user_role", WIZARD_ROLES)

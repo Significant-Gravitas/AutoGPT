@@ -57,7 +57,7 @@ ROLE_FALLBACK_TASKS: dict[str, list[RoleTask]] = {
     "Operations": [
         RoleTask(
             title="Turn your weekly checklist into a tracker that chases itself",
-            owner_skills=("ops", "assistant"),
+            owner_skills=("assistant", "ops"),
             why="The thing that comes back every week.",
             prompt="Turn my weekly operations checklist into a tracker that reminds the right people. Ask me what is on it and who owns what.",
             icon="calendar-check",
@@ -115,7 +115,7 @@ ROLE_FALLBACK_TASKS: dict[str, list[RoleTask]] = {
         ),
         RoleTask(
             title="Research five accounts and what changed for them this month",
-            owner_skills=("sales", "research"),
+            owner_skills=("research", "sales"),
             prompt="Research five accounts I care about and tell me what changed for them this month. Ask me which ones.",
             icon="magnifying-glass",
         ),

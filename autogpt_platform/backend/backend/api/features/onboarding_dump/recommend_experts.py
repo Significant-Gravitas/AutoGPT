@@ -15,6 +15,7 @@ become a colleague the user is invited to hire.
 
 import logging
 import os
+from collections.abc import Sequence
 
 from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import Expert
@@ -176,7 +177,20 @@ async def generate_expert_recommendations(
         # deterministic mapping is a worse answer than a good generation
         # and a better one than an empty section.
         return fallback
-    return team
+    return _topped_up(team, fallback)
+
+
+def _topped_up(
+    team: ExpertRecommendations, fallback: ExpertRecommendations
+) -> ExpertRecommendations:
+    """``team`` with the wizard's picks after the model's own, until it has
+    a row of three: everyone starts with a team, however little they said."""
+    chosen = {expert.template_id for expert in team.experts}
+    extra = [e for e in fallback.experts if e.template_id not in chosen]
+    missing = MAX_FALLBACK_EXPERTS - len(team.experts)
+    if missing <= 0 or not extra:
+        return team
+    return team.model_copy(update={"experts": [*team.experts, *extra[:missing]]})
 
 
 def roster_lines(templates: list[Expert]) -> str:
@@ -290,17 +304,31 @@ def _parse_raise_suggestion(raw: object) -> RaiseSuggestion | None:
 # so a need the user named is never cut for one we inferred. Skills are read
 # from a template's role words rather than template ids or whole roles, so a
 # renamed or re-seeded template still matches, and a skill nobody on the
-# roster has is simply skipped. Each role's skills cover its starter tasks
-# (``role_task_sets``), so its plan names the team, not Otto.
+# roster has is simply skipped. Each role names three skills that cover its
+# starter tasks (``role_task_sets``), so its plan names a team of three, not
+# Otto. Other, no role, or Other's typed text has no need of its own, so the
+# pain points lead and _OTHER_SKILLS, which cover the Other set, follow.
 _ROLE_SKILLS: dict[str, tuple[str, ...]] = {
     "Founder/CEO": ("sales", "marketing", "finance"),
     "Marketing": ("marketing", "competitors", "data"),
-    "Sales/BD": ("sales", "crm"),
-    "Operations": ("ops", "data"),
+    "Sales/BD": ("sales", "crm", "research"),
+    "Operations": ("ops", "data", "assistant"),
     "Product/PM": ("product", "data", "competitors"),
     "Engineering": ("engineering", "security", "data"),
-    "HR/People": ("recruiting", "people", "ops"),
+    "HR/People": ("recruiting", "people", "assistant"),
 }
+_OTHER_SKILLS: tuple[str, ...] = ("research", "marketing", "competitors")
+# Generalists who fill any seat still empty after the role and the pain
+# points, so a thin roster still starts the user with a team of three.
+_PAD_SKILLS: tuple[str, ...] = (
+    "assistant",
+    "research",
+    "marketing",
+    "sales",
+    "ops",
+    "data",
+    "product",
+)
 _PAIN_SKILLS: dict[str, tuple[str, ...]] = {
     "Social media": ("marketing",),
     "Finding leads": ("sales",),
@@ -346,13 +374,27 @@ def fallback_expert_recommendations(
     may not have heard anything at all.
     """
     role = _ROLE_SKILLS.get(user_role or "", ())
-    wanted = [
-        *role[:1],
-        *(skill for point in pain_points for skill in _PAIN_SKILLS.get(point, ())),
-        *role[1:],
-    ]
-    picked: list[Expert] = []
-    for skill in dict.fromkeys(wanted):
+    pains = [skill for point in pain_points for skill in _PAIN_SKILLS.get(point, ())]
+    wanted = [*role[:1], *pains, *role[1:]] if role else [*pains, *_OTHER_SKILLS]
+    picked = _pick(wanted, templates, [])
+    if len(picked) < MAX_FALLBACK_EXPERTS:
+        picked = _pick(_PAD_SKILLS, templates, picked)
+
+    return ExpertRecommendations(
+        diagnosis=FALLBACK_DIAGNOSIS,
+        experts=[_fallback_expert(template) for template in picked],
+        raise_suggestion=_fallback_raise(user_role, pain_points, picked),
+        source="fallback",
+    )
+
+
+def _pick(
+    skills: Sequence[str], templates: list[Expert], picked: list[Expert]
+) -> list[Expert]:
+    """``picked`` plus the most focused template for each of ``skills`` that
+    nobody picked already covers, up to one row of the team."""
+    picked = list(picked)
+    for skill in dict.fromkeys(skills):
         if len(picked) == MAX_FALLBACK_EXPERTS:
             break
         # Someone already picked for an earlier skill covers this one too.
@@ -364,13 +406,7 @@ def fallback_expert_recommendations(
         )
         if best is not None:
             picked.append(best)
-
-    return ExpertRecommendations(
-        diagnosis=FALLBACK_DIAGNOSIS,
-        experts=[_fallback_expert(template) for template in picked],
-        raise_suggestion=_fallback_raise(user_role, pain_points, picked),
-        source="fallback",
-    )
+    return picked
 
 
 def _fallback_expert(template: Expert) -> RecommendedExpert:

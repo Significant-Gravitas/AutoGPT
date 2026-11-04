@@ -60,7 +60,9 @@ async def test_a_skip_after_picking_a_role_is_offered_that_roles_team(user_id: s
 
     assert response.ready
     assert response.team is not None
-    assert [expert.name for expert in response.team.experts] == ["Maya"]
+    # Maya for the role, then Max, so the team is as full as the roster
+    # allows.
+    assert [expert.name for expert in response.team.experts] == ["Maya", "Max"]
 
 
 async def test_the_team_job_gets_the_role_picked_in_the_wizard(

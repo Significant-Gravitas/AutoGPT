@@ -940,9 +940,9 @@ def _hire(template_id: str, name: str) -> Expert:
     )
 
 
-# The Founder/CEO role team from this roster is Max and Maria: Mina's role
-# names none of its skills (sales, marketing, finance), so she is on a team
-# only when a take recommends her.
+# The Founder/CEO role team from this roster is all three: Max (sales) and
+# Maria (marketing) for the role's own needs, then Mina (ops), who fills the
+# row so everyone starts with a team of three.
 ROSTER = [
     _roster_template("tpl-max", "Max", "Sales"),
     _roster_template("tpl-maria", "Maria", "Marketing"),
@@ -1030,11 +1030,11 @@ def test_a_skipped_dump_gets_the_role_plan_stored_on_first_read(
     assert body["source"] == "fallback"
     assert body["skipped_dump"] is True
     assert body["heard"] is None
-    assert [e["name"] for e in body["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     assert [t["expert_template_id"] for t in body["tasks"]] == [
         "tpl-max",
         "tpl-maria",
-        None,
+        "tpl-mina",
         None,
         "tpl-maria",
     ]
@@ -1128,6 +1128,7 @@ def test_hiring_the_plan_hires_its_team_once(
         "hired": [
             {"template_id": "tpl-max", "expert_id": "expert-max", "name": "Max"},
             {"template_id": "tpl-maria", "expert_id": "expert-maria", "name": "Maria"},
+            {"template_id": "tpl-mina", "expert_id": "expert-mina", "name": "Mina"},
         ],
         "failed": [],
     }
@@ -1137,7 +1138,7 @@ def test_hiring_the_plan_hires_its_team_once(
     second = client.post(PLAN_HIRE_URL)
 
     assert second.json() == first.json()
-    assert plan_world["hire_expert"].await_count == 2
+    assert plan_world["hire_expert"].await_count == 3
 
 
 def test_a_failed_hire_is_reported_and_the_rest_still_join(
@@ -1158,7 +1159,8 @@ def test_a_failed_hire_is_reported_and_the_rest_still_join(
     assert response.status_code == 200
     assert response.json() == {
         "hired": [
-            {"template_id": "tpl-maria", "expert_id": "expert-maria", "name": "Maria"}
+            {"template_id": "tpl-maria", "expert_id": "expert-maria", "name": "Maria"},
+            {"template_id": "tpl-mina", "expert_id": "expert-mina", "name": "Mina"},
         ],
         "failed": [{"template_id": "tpl-max", "name": "Max"}],
     }
@@ -1207,7 +1209,7 @@ def test_the_expert_limit_stops_the_hire_and_reports_the_rest(
 
     assert response.status_code == 200
     assert response.json()["hired"] == []
-    assert [f["name"] for f in response.json()["failed"]] == ["Max", "Maria"]
+    assert [f["name"] for f in response.json()["failed"]] == ["Max", "Maria", "Mina"]
     plan_world["hire_expert"].assert_awaited_once()
 
 
@@ -1304,7 +1306,10 @@ def test_the_expert_limit_still_reports_teammates_already_on_the_team(
         "hired": [
             {"template_id": "tpl-maria", "expert_id": "expert-maria", "name": "Maria"}
         ],
-        "failed": [{"template_id": "tpl-max", "name": "Max"}],
+        "failed": [
+            {"template_id": "tpl-max", "name": "Max"},
+            {"template_id": "tpl-mina", "name": "Mina"},
+        ],
     }
 
 
@@ -1332,15 +1337,19 @@ def test_a_failed_take_plans_and_hires_from_the_role_not_the_team_it_stored(
         assert body["source"] == "fallback"
         assert body["skipped_dump"] is False
         assert body["heard"] is None
-        assert [e["name"] for e in body["team"]] == ["Max", "Maria"]
+        assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     assert [t["title"] for t in first["tasks"]] == FOUNDER_TITLES
     assert second["tasks"] == first["tasks"]
 
     hired = client.post(PLAN_HIRE_URL).json()
 
-    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria"]
+    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria", "Mina"]
     assert hired["failed"] == []
-    assert _hired_templates(plan_world["hire_expert"]) == ["tpl-max", "tpl-maria"]
+    assert _hired_templates(plan_world["hire_expert"]) == [
+        "tpl-max",
+        "tpl-maria",
+        "tpl-mina",
+    ]
 
 
 def _mid_pipeline(dumps: DumpStore) -> None:
@@ -1395,12 +1404,13 @@ def test_settling_mid_pipeline_stores_the_role_plan_the_step_shows(
         assert body["tasks"] == shown["tasks"]
         assert body["team"] == shown["team"]
     assert [t["title"] for t in settled["tasks"]] == FOUNDER_TITLES
-    assert [e["name"] for e in settled["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in settled["team"]] == ["Max", "Maria", "Mina"]
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.extracting
     assert [e["name"] for e in dumps.row.recommendedExperts["experts"]] == [
         "Max",
         "Maria",
+        "Mina",
     ]
 
 
@@ -1420,7 +1430,7 @@ def test_a_take_settled_while_it_is_transcribed_is_not_called_skipped(
     assert settled["ready"] is True
     assert settled["skipped_dump"] is False
     assert [t["title"] for t in settled["tasks"]] == FOUNDER_TITLES
-    assert [e["name"] for e in settled["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in settled["team"]] == ["Max", "Maria", "Mina"]
 
 
 def test_settling_a_ready_plan_changes_nothing(
@@ -1496,9 +1506,9 @@ def test_hiring_while_the_jobs_run_settles_the_plan_first(
     hired = client.post(PLAN_HIRE_URL).json()
     plan_after = client.get(PLAN_URL).json()
 
-    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria"]
+    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria", "Mina"]
     assert plan_after["ready"] is True
-    assert [e["name"] for e in plan_after["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in plan_after["team"]] == ["Max", "Maria", "Mina"]
     assert [t["title"] for t in plan_after["tasks"]] == FOUNDER_TITLES
 
 
@@ -1555,8 +1565,7 @@ def test_a_generic_greeting_swapped_for_the_role_set_keeps_the_dumps_team(
     assert body["source"] == "fallback"
     assert body["skipped_dump"] is False
     assert body["heard"] is None
-    # Mina is not on the role's own team; she is on the one this take got,
-    # and the numbers are ops work, so that task is hers rather than Otto's.
+    # The numbers are ops work, so that task is Mina's rather than Otto's.
     assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     assert [t["title"] for t in body["tasks"]] == FOUNDER_TITLES
     assert [t["expert_template_id"] for t in body["tasks"]] == [
@@ -1593,7 +1602,7 @@ def test_a_plan_whose_read_fails_is_an_error_not_a_stored_degraded_plan(
     # Once the read is back, the first plan stored is the whole one.
     plan_world[failing_read].side_effect = None
     body = lenient_client.get(PLAN_URL).json()
-    assert [e["name"] for e in body["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     assert len(dumps.row.suggestedPrompts) == len(FOUNDER_TITLES)
 
 
@@ -1615,9 +1624,9 @@ def test_a_team_left_empty_by_a_failed_roster_read_is_replaced_by_the_role_team(
 
     body = lenient_client.get(PLAN_URL).json()
 
-    assert [e["name"] for e in body["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in body["team"]] == ["Max", "Maria", "Mina"]
     lenient_client.post(PLAN_HIRE_URL)
-    assert plan_world["hire_expert"].await_count == 2
+    assert plan_world["hire_expert"].await_count == 3
 
 
 @FAILED_READS
@@ -1633,7 +1642,7 @@ def test_a_dump_whose_team_was_never_stored_fails_the_hire_rather_than_hire_nobo
     assert dumps.row is not None
     dumps.row.recommendedExperts = None
     shown = lenient_client.get(PLAN_URL).json()
-    assert [e["name"] for e in shown["team"]] == ["Max", "Maria"]
+    assert [e["name"] for e in shown["team"]] == ["Max", "Maria", "Mina"]
     plan_world[failing_read].side_effect = RuntimeError("database unavailable")
 
     response = lenient_client.post(PLAN_HIRE_URL)
@@ -1775,13 +1784,16 @@ def test_a_roster_read_that_fails_leaves_the_plan_hire_to_hire_expert(
         "hired": [
             {"template_id": "tpl-max", "expert_id": "expert-max", "name": "Max"},
             {"template_id": "tpl-maria", "expert_id": "expert-maria", "name": "Maria"},
+            {"template_id": "tpl-mina", "expert_id": "expert-mina", "name": "Mina"},
         ],
         "failed": [],
     }
     assert _hired_templates(plan_world["hire_expert"]) == [
         "tpl-max",
         "tpl-maria",
+        "tpl-mina",
         # The second time, from no roster: asked again, nobody hired twice.
         "tpl-max",
         "tpl-maria",
+        "tpl-mina",
     ]

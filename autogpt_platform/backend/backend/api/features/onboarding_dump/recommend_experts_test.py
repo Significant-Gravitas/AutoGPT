@@ -169,48 +169,55 @@ def test_parse_keeps_a_valid_raise_suggestion():
     assert team.raise_suggestion.reason == "Tickets pile up."
 
 
+# This roster has one expert per skill (Maria marketing, Max sales, Frankie
+# ops), so every team is all three: what matters is who leads. The experts
+# the answers point at come first; generalists fill the row.
 @pytest.mark.parametrize(
-    ("user_role", "pain_points", "expected_lead", "expected_raise"),
+    ("user_role", "pain_points", "expected_team", "expected_raise"),
     [
-        ("Marketing", [], ["Maria"], None),
-        ("Sales/BD", [], ["Max"], None),
-        ("Operations", [], ["Frankie"], None),
-        # Nobody on this roster does product, data or competitors.
-        ("Product/PM", [], [], None),
-        ("Founder/CEO", [], ["Max", "Maria"], None),
-        ("Engineering", [], [], "developer"),
-        ("HR/People", [], ["Frankie"], "recruiter"),
-        (None, ["Social media"], ["Maria"], None),
-        (None, ["Finding leads"], ["Max"], None),
-        (None, ["Email & outreach"], ["Max"], None),
-        # Needs nobody on this roster has a skill for add nobody.
-        (None, ["Reports & data"], [], None),
-        (None, ["Scheduling"], [], None),
-        (None, ["CRM & data entry"], [], None),
-        (None, ["Customer support"], [], "support"),
-        (None, ["Research"], [], "researcher"),
+        ("Marketing", [], ["Maria", "Max", "Frankie"], None),
+        ("Sales/BD", [], ["Max", "Maria", "Frankie"], None),
+        ("Operations", [], ["Frankie", "Maria", "Max"], None),
+        # Nobody here does product, data or competitors: generalists only.
+        ("Product/PM", [], ["Maria", "Max", "Frankie"], None),
+        ("Founder/CEO", [], ["Max", "Maria", "Frankie"], None),
+        ("Engineering", [], ["Maria", "Max", "Frankie"], "developer"),
+        ("HR/People", [], ["Maria", "Max", "Frankie"], "recruiter"),
+        (None, ["Social media"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Finding leads"], ["Max", "Maria", "Frankie"], None),
+        (None, ["Email & outreach"], ["Max", "Maria", "Frankie"], None),
+        (None, ["Reports & data"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Scheduling"], ["Maria", "Max", "Frankie"], None),
+        (None, ["CRM & data entry"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Customer support"], ["Maria", "Max", "Frankie"], "support"),
+        (None, ["Research"], ["Maria", "Max", "Frankie"], "researcher"),
         (
             "Marketing",
             ["Finding leads", "Scheduling"],
-            ["Maria", "Max"],
+            ["Maria", "Max", "Frankie"],
             None,
         ),
-        ("Other", ["Something else"], [], None),
+        # The user's pain point comes before what the role only suggests.
+        (
+            "Operations",
+            ["Finding leads", "Scheduling"],
+            ["Frankie", "Max", "Maria"],
+            None,
+        ),
+        ("Other", ["Something else"], ["Maria", "Max", "Frankie"], None),
     ],
 )
 def test_the_fallback_maps_wizard_answers_to_the_roster(
     user_role: str | None,
     pain_points: list[str],
-    expected_lead: list[str],
+    expected_team: list[str],
     expected_raise: str | None,
 ):
     team = recommend_experts.fallback_expert_recommendations(
         user_role, pain_points, ROSTER
     )
 
-    # Only the templates the answers point at: nothing has been read, so
-    # nothing else on the roster has earned a card.
-    assert [e.name for e in team.experts] == expected_lead
+    assert [e.name for e in team.experts] == expected_team
     assert (team.raise_suggestion.role if team.raise_suggestion else None) == (
         expected_raise
     )
@@ -224,9 +231,10 @@ def test_the_fallback_maps_wizard_answers_to_the_roster(
     ("user_role", "expected_names"),
     [
         # One template per skill: Eli and Rhea, the most focused, take
-        # engineering and recruiting over Nadia and Shay.
-        ("Engineering", ["Eli"]),
-        ("HR/People", ["Rhea", "Frankie"]),
+        # engineering and recruiting over Nadia and Shay; generalists fill
+        # the row.
+        ("Engineering", ["Eli", "Maria", "Max"]),
+        ("HR/People", ["Rhea", "Maria", "Max"]),
     ],
 )
 def test_the_fallback_drops_the_raise_door_once_a_template_covers_it(
@@ -241,7 +249,8 @@ def test_the_fallback_drops_the_raise_door_once_a_template_covers_it(
 
 
 def test_the_fallback_skips_roles_with_no_live_template():
-    # Content lags demand: the roster may not have every role seeded.
+    # Content lags demand: the roster may not have every role seeded, and a
+    # team is never padded with someone whose role names no skill.
     team = recommend_experts.fallback_expert_recommendations(
         "Founder/CEO", ["Scheduling"], [MARIA]
     )
@@ -321,8 +330,30 @@ async def test_a_good_generation_is_marked_as_read_from_the_transcript(
     )
 
     assert team.source == "llm"
-    assert [e.name for e in team.experts] == ["Maria"]
+    # The model's pick first, then the wizard's, so the user starts with a
+    # team of three.
+    assert [e.name for e in team.experts] == ["Maria", "Max", "Frankie"]
+    assert team.experts[0].reason == "You post weekly."
     assert team.raise_suggestion is not None
+
+
+@pytest.mark.asyncio
+async def test_a_full_generation_is_kept_as_the_model_ranked_it(client: MagicMock):
+    client.chat.completions.create.return_value = _completion(
+        {
+            "experts": [
+                {"template_id": "tpl-frankie"},
+                {"template_id": "tpl-max"},
+                {"template_id": "tpl-maria"},
+            ]
+        }
+    )
+
+    team = await recommend_experts.generate_expert_recommendations(
+        TRANSCRIPT, user_role="Marketing", pain_points=[], templates=ROSTER
+    )
+
+    assert [e.name for e in team.experts] == ["Frankie", "Max", "Maria"]
 
 
 @pytest.mark.asyncio
@@ -437,7 +468,7 @@ async def test_the_prompt_carries_the_roster_and_the_wizard_answers(
     assert TRANSCRIPT in content
 
 
-def test_fallback_offers_one_row_of_matches_and_never_pads_from_the_roster():
+def test_fallback_fills_one_row_and_never_with_roles_that_name_no_skill():
     unrelated = [_template(f"other-{i}", f"Other{i}", "Astrology") for i in range(16)]
     sales = [_template(f"sales-{i}", f"Seller{i}", " SALES ") for i in range(5)]
     needed = [
@@ -448,11 +479,16 @@ def test_fallback_offers_one_row_of_matches_and_never_pads_from_the_roster():
     ]
     roster = [*unrelated, *needed]
 
-    # One template per need, never a second seller for the same work.
+    # One template per need, never a second seller for the same work; the
+    # rest of the row is generalists.
     team = recommend_experts.fallback_expert_recommendations(
         "Sales/BD", ["Finding leads", "Email & outreach"], roster
     )
-    assert [expert.template_id for expert in team.experts] == ["sales-0"]
+    assert [expert.template_id for expert in team.experts] == [
+        "sales-0",
+        "tpl-helper",
+        "tpl-writer",
+    ]
 
     # The role's first need, then the user's own, up to one row: marketing
     # and finance, inferred from the role, are cut before them.
@@ -463,6 +499,9 @@ def test_fallback_offers_one_row_of_matches_and_never_pads_from_the_roster():
     assert len(team.experts) == recommend_experts.MAX_FALLBACK_EXPERTS
 
     team = recommend_experts.fallback_expert_recommendations("Other", [], roster)
+    assert [expert.name for expert in team.experts] == ["Writer", "Helper", "Seller0"]
+
+    team = recommend_experts.fallback_expert_recommendations("Other", [], unrelated)
     assert team.experts == []
 
 
