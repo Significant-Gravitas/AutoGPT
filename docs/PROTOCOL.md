@@ -617,8 +617,11 @@ Used in place of shell `rm` / `del`.
 }
 ```
 
-Responds with `ACK`. Shim's recycle-bin mode (see SECURITY.md Layer 5 —
-optional) moves to `~/.autogpt-trash/` instead of unlinking.
+Responds with `ACK`. A symlink is removed itself, never its target, but
+the path must still resolve inside the root: a link pointing outside it is
+refused with `PATH_OUTSIDE_ALLOWED_ROOT` and left in place (CROSS_PLATFORM.md).
+Shim's recycle-bin mode (see SECURITY.md Layer 5 — optional) moves to
+`~/.autogpt-trash/` instead of unlinking.
 
 A symlink or junction is removed itself; its target is untouched. The allowed
 root itself cannot be deleted.
