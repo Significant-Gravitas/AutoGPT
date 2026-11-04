@@ -180,6 +180,9 @@ must reproduce the float rule above; a stock RFC 8785 library (e.g. the
 of every existing record, so it waits for a versioned log format. `NaN`
 and `±Infinity` are rejected: the canonicalizer raises on them rather
 than silently producing non-JSON.
+A string UTF-8 can't encode (a POSIX path whose bytes aren't UTF-8
+decodes to lone surrogates) is written with those code points as
+`\udcXX` escapes, so its record is never dropped.
 
 ### Verification
 

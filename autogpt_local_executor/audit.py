@@ -112,6 +112,24 @@ def _canonicalize(value: Any) -> str:
     raise TypeError(f"Cannot canonicalize {type(value)!r}")
 
 
+def _utf8_safe(value: Any) -> Any:
+    """`value` with every string UTF-8 can encode. A POSIX path whose bytes
+    aren't UTF-8 decodes to lone surrogates, which it can't, and a record
+    that raised was dropped while the operation went ahead; those code points
+    are kept as `\\udcXX` escapes."""
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return value.encode("utf-8", "backslashreplace").decode("utf-8")
+        return value
+    if isinstance(value, dict):
+        return {_utf8_safe(key): _utf8_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_utf8_safe(item) for item in value]
+    return value
+
+
 def canonical_bytes(record: dict[str, Any]) -> bytes:
     """Public entry point — returns the JCS bytes used for HMAC input."""
     return _canonicalize(record).encode("utf-8")
@@ -252,18 +270,20 @@ class AuditWriter:
         details: dict[str, Any],
         result: dict[str, Any],
     ) -> None:
-        record = {
-            "ts": _now_ts(),
-            "session_id": session_id,
-            "machine_id": machine_id,
-            "shim_version": self._shim_version,
-            "request_id": request_id,
-            "op": op,
-            "details": details,
-            "result": _normalize_result(result),
-            "seq": self._seq,
-            "prev_hmac": self._prev_hmac,
-        }
+        record = _utf8_safe(
+            {
+                "ts": _now_ts(),
+                "session_id": session_id,
+                "machine_id": machine_id,
+                "shim_version": self._shim_version,
+                "request_id": request_id,
+                "op": op,
+                "details": details,
+                "result": _normalize_result(result),
+                "seq": self._seq,
+                "prev_hmac": self._prev_hmac,
+            }
+        )
         hmac_hex = hmac.new(self.audit_key, canonical_bytes(record), sha256).hexdigest()
         record["hmac"] = hmac_hex
         self._append(json.dumps(record, ensure_ascii=False) + "\n")
