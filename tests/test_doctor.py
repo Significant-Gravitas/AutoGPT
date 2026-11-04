@@ -390,3 +390,18 @@ def test_doctor_does_not_hang_on_a_keychain_that_never_answers(monkeypatch) -> N
 
     assert result.marker == "WARN"
     assert "did not answer" in result.detail
+
+
+def test_doctor_follows_the_backend_when_a_wayland_display_is_set(tmp_path, monkeypatch) -> None:
+    """With WAYLAND_DISPLAY set the backend refuses input, but doctor looked at
+    XDG_SESSION_TYPE=x11 and reported full computer_use."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setattr(
+        "autogpt_local_executor.computer_use.get_backend",
+        lambda _: MagicMock(display_info=lambda: []),
+    )
+
+    assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == 78
