@@ -7,7 +7,10 @@ from typing import Any
 
 from backend.blocks._base import BlockType
 from backend.data.dynamic_fields import (
+    DICT_SPLIT,
     LIST_SPLIT,
+    MAX_DYNAMIC_LIST_INDEX,
+    OBJC_SPLIT,
     extract_base_field_name,
     is_dynamic_field,
     parse_dynamic_field,
@@ -493,7 +496,7 @@ class AgentValidator:
             block_name: str,
             block_id: str,
         ) -> bool:
-            detail = _check_nested_chain(input_props, field_name)
+            detail = _check_nested_chain(input_props, field_name, writes=True)
             if detail:
                 self.add_error(
                     f"{context}: {detail} "
@@ -763,11 +766,17 @@ class AgentValidator:
 
             # Get all linked inputs to this node
             linked_sub_agent_inputs: set[str] = set()
+            # A link into part of an input (items_$_0) provides it too.
+            provided_sub_agent_inputs: set[str] = set()
             for link in links:
                 if link.get("sink_id") == node_id:
                     sink_name = link.get("sink_name", "")
                     if sink_name in sub_agent_properties:
                         linked_sub_agent_inputs.add(sink_name)
+                    if isinstance(sink_name, str):
+                        provided_sub_agent_inputs.add(
+                            extract_base_field_name(sink_name)
+                        )
 
             # Check for hardcoded inputs that should be linked
             hardcoded_inputs = input_default.get("inputs", {})
@@ -815,7 +824,7 @@ class AgentValidator:
                 hardcoded_inputs if isinstance(hardcoded_inputs, dict) else {}
             )
             for req_input in sub_agent_required_inputs:
-                if req_input in linked_sub_agent_inputs:
+                if req_input in provided_sub_agent_inputs:
                     continue
                 # Check if fixer populated it with a schema default value
                 if req_input in hardcoded_inputs_dict:
@@ -1147,7 +1156,9 @@ class AgentValidator:
             return False, error_message
 
 
-def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
+def _check_nested_chain(
+    props: dict[str, Any], field_name: str, writes: bool = False
+) -> str | None:
     """Walk a dynamic field's ``_#_`` / ``_@_`` / ``_$_`` chain through declared
     schema levels, parsed the way the executor parses it.
 
@@ -1176,6 +1187,12 @@ def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
     for delimiter, step in steps:
         if not isinstance(schema, dict):
             return None
+        # Writing an attribute, the executor swaps a dict for a bare object.
+        if writes and delimiter == OBJC_SPLIT and "object" in _schema_types(schema):
+            return (
+                f"'{path}' is an object field, which '{OBJC_SPLIT}' would replace "
+                f"with a bare object; set its key with '{path}{DICT_SPLIT}{step}'"
+            )
         if delimiter == LIST_SPLIT:
             schema, error = _list_item_schema(schema, path, step)
         else:
@@ -1217,6 +1234,11 @@ def _list_item_schema(
     (None, None) when only the run can tell."""
     if not (index.isascii() and index.isdigit()):
         return None, f"List index '{index}' after '{path}' is not a whole number"
+    if int(index) > MAX_DYNAMIC_LIST_INDEX:
+        return None, (
+            f"List index '{index}' after '{path}' is over the run's limit of "
+            f"{MAX_DYNAMIC_LIST_INDEX}"
+        )
     schema = _resolve_optional_union(schema) or schema
     if schema.get("type") == "array":
         return schema.get("items", {}), None

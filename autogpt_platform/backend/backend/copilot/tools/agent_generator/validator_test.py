@@ -496,6 +496,32 @@ class TestValidateAgentExecutorBlocks:
         assert v.validate_agent_executor_blocks(agent, library_agents) is False
         assert any("missing required sub-agent input" in e for e in v.errors)
 
+    def test_required_list_input_linked_per_item_passes(self):
+        v = AgentValidator()
+        lib_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_default={"graph_id": lib_id, "inputs": {}},
+        )
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="items_$_0"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+        items = {"type": "array", "items": {"type": "string"}}
+        library_agents = [
+            {
+                "graph_id": lib_id,
+                "graph_version": 1,
+                "name": "Sub",
+                "input_schema": {"required": ["items"], "properties": {"items": items}},
+                "output_schema": {},
+            }
+        ]
+
+        assert v.validate_agent_executor_blocks(agent, library_agents) is True
+        assert v.errors == []
+
 
 # ============================================================================
 # validate_io_blocks
@@ -1508,6 +1534,7 @@ class TestListIndexLinks:
         [
             ("nonexistent_$_0", "Parent property 'nonexistent' does not exist"),
             ("max_size_$_0", "Parent 'max_size' has type 'integer' and is not a list"),
+            ("values_$_10001", "over the run's limit of 10000"),
             (
                 "values_$_first",
                 "List index 'first' after 'values' is not a whole number",
@@ -1560,3 +1587,26 @@ class TestListIndexLinks:
         )
         agent = _make_agent(nodes=nodes, links=[link])
         assert v.validate_source_output_existence(agent, blocks) is valid
+
+    @pytest.mark.parametrize(
+        "sink_name, valid",
+        [("config_#_name", True), ("config_@_name", False), ("anything_@_name", True)],
+    )
+    def test_an_attribute_written_into_an_object_field_fails(
+        self, sink_name: str, valid: bool
+    ):
+        """The executor writes ``_@_`` onto a bare object, which replaces the
+        field's dict; an untyped field is left to the run."""
+        v = AgentValidator()
+        config = {"type": "object", "properties": {"name": {"type": "string"}}}
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"config": config, "anything": {}}},
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name=sink_name
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is valid
