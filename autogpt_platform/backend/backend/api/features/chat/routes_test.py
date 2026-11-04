@@ -5699,17 +5699,10 @@ def test_a_message_with_nothing_of_the_users_own_is_refused(
     mocks.enqueue.assert_not_awaited()
 
 
-def test_attachments_carry_a_message_whose_text_normalises_to_nothing(
+def test_attachments_do_not_carry_a_message_of_only_server_only_blocks(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    _mock_stream_internals(mocker)
-    mocker.patch(
-        "backend.data.workspace.get_or_create_workspace",
-        return_value=type("W", (), {"id": "ws-1"})(),
-    )
-    mock_prisma = mocker.MagicMock()
-    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
-    mocker.patch("prisma.models.UserWorkspaceFile.prisma", return_value=mock_prisma)
+    mocks = _mock_stream_internals(mocker)
 
     response = client.post(
         "/sessions/sess-1/stream",
@@ -5719,4 +5712,5 @@ def test_attachments_carry_a_message_whose_text_normalises_to_nothing(
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 422
+    mocks.enqueue.assert_not_awaited()

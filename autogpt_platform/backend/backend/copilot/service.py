@@ -330,6 +330,10 @@ _LONE_TAG_RES = {
     tag: re.compile(rf"</?{tag}>", re.IGNORECASE) for tag in SERVER_INJECTED_BLOCK_TAGS
 }
 
+# Ordinary text is clean after one pass of ``strip_server_injected_tags``.
+_MAX_STRIP_PASSES = 8
+_ANGLE_BRACKETS = re.compile(r"[<>]")
+
 # One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
 # injectors write. Non-greedy with a backreference, so a block ends at its own
 # closing tag.
@@ -386,10 +390,12 @@ def strip_server_injected_tags(text: str) -> str:
     or an expert's persona, workflows and machine.
 
     Repeats until nothing changes, because removing one tag can join the text
-    around it into another. A pass that changes the text shortens it, so the
-    loop ends.
+    around it into another. Text still changing after ``_MAX_STRIP_PASSES``
+    passes is built to do that, so its angle brackets are removed outright:
+    that leaves no tag of any kind, and the work stays bounded whatever the
+    input.
     """
-    while True:
+    for _ in range(_MAX_STRIP_PASSES):
         stripped = text
         for tag in SERVER_INJECTED_BLOCK_TAGS:
             stripped = _strip_block(stripped, tag)
@@ -397,6 +403,7 @@ def strip_server_injected_tags(text: str) -> str:
         if stripped == text:
             return text
         text = stripped
+    return _ANGLE_BRACKETS.sub("", text)
 
 
 class EmptyUserMessage(ValueError):

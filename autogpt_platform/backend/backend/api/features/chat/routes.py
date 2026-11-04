@@ -1977,11 +1977,7 @@ async def stream_chat_post(
         try:
             message = normalise_user_message(message)
         except EmptyUserMessage as exc:
-            # Attachments are the user's own content: a message that has them
-            # goes on as an attachments-only send.
-            if not (request.file_ids or request.folder_ids):
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-            message = ""
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         # The only writer of card approvals: a model can add chat rows, not requests.
         await record_card_decisions(user_id, session_id, message)
     message_id = (
