@@ -41,7 +41,7 @@ export function ConnectionsSection({ rows, mcp }: Props) {
         </div>
         <span
           role="status"
-          className="shrink-0 rounded-full border border-separator px-2.5 py-1 text-xs text-foreground-tertiary"
+          className="shrink-0 rounded-full border border-separator px-2.5 py-1 text-caption text-foreground-tertiary"
         >
           {rows.length + mcpRows.length - remaining.length} of{" "}
           {rows.length + mcpRows.length} ready

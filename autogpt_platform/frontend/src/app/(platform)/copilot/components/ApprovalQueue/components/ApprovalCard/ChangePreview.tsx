@@ -25,7 +25,7 @@ function TablePreview({ table }: { table: PreviewTable }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border-base">
       {table.name && (
-        <header className="flex flex-col gap-0.5 bg-surface-muted px-3 py-2 text-sm">
+        <header className="flex flex-col gap-0.5 bg-surface-muted px-3 py-2 text-body">
           <div className="flex min-w-0 items-center gap-2">
             <Icon
               icon={Table01Icon}
@@ -55,7 +55,7 @@ function TablePreview({ table }: { table: PreviewTable }) {
           {table.fields.map((field, index) => (
             <li
               key={`${field.name}-${index}`}
-              className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-1.5 text-sm"
+              className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-1.5 text-body"
             >
               <span className="flex min-w-0 flex-col">
                 <span
@@ -65,7 +65,7 @@ function TablePreview({ table }: { table: PreviewTable }) {
                   {field.name}
                 </span>
                 {field.detail && (
-                  <span className="text-xs [overflow-wrap:anywhere] text-foreground-tertiary">
+                  <span className="text-caption [overflow-wrap:anywhere] text-foreground-tertiary">
                     {field.detail}
                   </span>
                 )}

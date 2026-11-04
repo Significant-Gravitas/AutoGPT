@@ -107,7 +107,7 @@ export function PendingReviewCard({
         >
           <span
             data-slot="pending-review-card-toggle-label"
-            className="text-sm text-foreground-tertiary"
+            className="text-body text-foreground-tertiary"
           >
             {data ? "Enabled" : "Disabled"}
           </span>

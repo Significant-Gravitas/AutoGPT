@@ -387,7 +387,7 @@ const math: MathPlugin = {
   ...createMathPlugin({ singleDollarTextMath: true }),
   rehypePlugin: [
     rehypeKatex,
-    { errorColor: "var(--color-muted-foreground)", strict: "ignore" },
+    { errorColor: "var(--color-foreground-tertiary)", strict: "ignore" },
   ],
 };
 

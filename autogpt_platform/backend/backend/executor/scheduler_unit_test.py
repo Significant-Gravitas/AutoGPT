@@ -24,6 +24,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
@@ -66,6 +67,7 @@ from backend.executor.scheduler import (
     reconcile_stripe_tiers,
     refresh_near_expiry_credentials,
 )
+from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -143,6 +145,29 @@ def test_build_trigger_requires_exactly_one_of_cron_or_run_at():
 def test_build_trigger_cron_returns_crontrigger():
     trigger = _build_trigger(cron="0 9 * * 1", run_at=None, user_timezone="UTC")
     assert isinstance(trigger, CronTrigger)
+
+
+def test_build_trigger_accepts_the_rarest_cron_and_leaves_it_open_ended():
+    # Feb 29 on a Monday: decades between fires, but it does fire.
+    trigger = _build_trigger(cron="0 0 29 2 1", run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize("cron", ["0 0 30 2 *", "0 0 31 4,6,9,11 *"])
+def test_build_trigger_refuses_a_cron_that_never_fires(cron: str):
+    with pytest.raises(ValueError, match="never fires"):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
+def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
+    cron = "0 9 * * *" + " " * MAX_CRON_LENGTH
+    with (
+        patch.object(CronTrigger, "from_crontab") as parse,
+        pytest.raises(ValueError, match="too long"),
+    ):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    parse.assert_not_called()
 
 
 def test_build_trigger_run_at_returns_datetrigger():
@@ -927,13 +952,10 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 
 
 @pytest.mark.asyncio
-async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
-    """When schedule_turn raises ConcurrentTurnLimitError on a one-shot
-    schedule, the dispatcher reschedules instead of silently dropping."""
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-
+@pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
+async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
     args = _args()  # run_at set → one-shot
-    mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
+    mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
@@ -948,13 +970,12 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
 
 
 @pytest.mark.asyncio
-async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
+@pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
+async def test_execute_copilot_turn_slot_refusal_does_not_reschedule_cron(refusal):
     """Cron schedules don't need an explicit reschedule — APScheduler will
     re-fire on the next cron tick."""
-    from backend.copilot.active_turns import ConcurrentTurnLimitError
-
     args = _args(run_at=None, cron="* * * * *")  # recurring
-    mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
+    mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
     mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
@@ -1940,31 +1961,36 @@ def test_idle_credentials_job_is_registered_daily(monkeypatch):
     assert call.kwargs["jobstore"] == "execution"
 
 
-def test_refresh_job_stays_active_until_the_coroutine_finishes(monkeypatch):
+@pytest.mark.parametrize(
+    "job_function",
+    [refresh_near_expiry_credentials, scheduler_module.deliver_background_subtasks],
+)
+def test_sweep_job_stays_active_until_the_coroutine_finishes(monkeypatch, job_function):
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     started, release, completed = (threading.Event() for _ in range(3))
     run_async = scheduler_module.run_async
 
-    async def refresh():
+    async def sweep():
         started.set()
         await asyncio.to_thread(release.wait)
         completed.set()
 
     def short_timeout(coro, timeout=0.01):
-        return run_async(coro, timeout=timeout)
+        return run_async(coro, timeout=None if timeout is None else 0.01)
 
     monkeypatch.setattr(scheduler_module, "_event_loop", loop)
     monkeypatch.setattr(scheduler_module, "run_async", short_timeout)
+    monkeypatch.setattr(scheduler_module, "reconcile_background_subtasks", sweep)
     monkeypatch.setattr(
         scheduler_module,
         "IntegrationCredentialsManager",
-        lambda: MagicMock(refresh_idle_credentials=refresh),
+        lambda: MagicMock(refresh_idle_credentials=sweep),
     )
     thread.start()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            job = pool.submit(refresh_near_expiry_credentials)
+            job = pool.submit(job_function)
             try:
                 assert started.wait(timeout=2)
                 assert not completed.wait(timeout=0.1)

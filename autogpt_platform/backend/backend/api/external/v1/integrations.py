@@ -42,6 +42,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -617,6 +618,8 @@ async def create_credential(
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(

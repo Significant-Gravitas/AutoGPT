@@ -28,4 +28,18 @@ describe("UsageBar", () => {
     render(<UsageBar used={-100} limit={1_000_000} />);
     expect(screen.getByText("0.0% used")).toBeDefined();
   });
+
+  it("fills the bar green, then yellow from 70%, then red from 90%", () => {
+    const fill = (used: number) => {
+      const { container, unmount } = render(
+        <UsageBar used={used} limit={1_000_000} />,
+      );
+      const bar = container.querySelector("[style]")?.className ?? "";
+      unmount();
+      return bar;
+    };
+    expect(fill(500_000)).toContain("bg-success");
+    expect(fill(750_000)).toContain("bg-yellow");
+    expect(fill(950_000)).toContain("bg-error");
+  });
 });
