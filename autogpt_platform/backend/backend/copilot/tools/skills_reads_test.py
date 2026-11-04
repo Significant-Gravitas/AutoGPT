@@ -137,6 +137,34 @@ async def test_a_turn_that_updates_a_copy_announces_the_update_once(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("unreadable", ["heads", "seen"])
+async def test_unreadable_versions_skip_only_the_version_check(
+    skills_on, fake_learning_store, monkeypatch, unreadable
+):
+    """Queued updates are still announced, and the versions the chat saw are
+    left as they were for a later turn to compare against."""
+    mine = skills.ParsedSkill(name="mine", description="d", body="x")
+    failure = AsyncMock(side_effect=OSError("registry unavailable"))
+    monkeypatch.setattr(skills, "list_user_skills", AsyncMock(return_value=[mine]))
+    monkeypatch.setattr(skills, "_consume_updated", AsyncMock(return_value=["mine"]))
+    if unreadable == "heads":
+        monkeypatch.setattr(fake_learning_store, "list_heads", failure)
+    else:
+        monkeypatch.setattr(skills, "read_seen_index_revision", failure)
+    mark = AsyncMock()
+    monkeypatch.setattr(skills, "mark_index_revision_seen", mark)
+    index = skills.render_skills_index([*skills.get_default_skills_for_index(), mine])
+
+    notice = await skills.build_skills_update_notice(
+        "user-1", prior_contents=_history(index), session_id="chat-1"
+    )
+
+    assert "Updated skills: mine." in notice
+    failure.assert_awaited_once()
+    mark.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_failed_listing_reaches_the_caller_once_no_read_is_left_running(
     monkeypatch,
 ):
@@ -149,12 +177,12 @@ async def test_a_failed_listing_reaches_the_caller_once_no_read_is_left_running(
         raise RuntimeError("storage unavailable")
 
     async def paused(*_args, **_kwargs):
+        """Answers no names: unknown as well, which on its own would raise a
+        different error."""
         task = asyncio.current_task()
         assert task is not None
         paused_reads.append(task)
         await release.wait()
-        # Unknown as well, which on its own would raise a different error.
-        return None
 
     monkeypatch.setattr(skills, "list_user_skills", listing)
     monkeypatch.setattr(skills, "paused_skill_names", paused)
