@@ -870,6 +870,19 @@ async def test_the_text_is_trimmed_and_capped(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_text_past_the_request_bound_is_refused(
+    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+):
+    response = await api.post(
+        FEEDBACK,
+        json={"kind": "answer", "reason": "other", "text": "a" * 2001},
+    )
+
+    assert response.status_code == 422
+    assert _captured(posthog, ANSWERED) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_the_plan_and_tenure_come_from_the_server(
     account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
 ):

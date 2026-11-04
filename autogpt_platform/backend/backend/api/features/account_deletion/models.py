@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.util.text_limits import MAX_DESCRIPTION_LENGTH
+
 FEEDBACK_TEXT_MAX_CHARS = 1000
 
 DeletionSource = Literal["settings", "paywall"]
@@ -43,7 +45,8 @@ class DeletionFeedbackRequest(BaseModel):
 
     kind: Literal["opened", "answer", "alternative_clicked"]
     reason: ExitReason | None = None
-    text: str | None = None
+    # Refused past the request bound; within it, trimmed and capped below.
+    text: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     alternative: Alternative | None = None
     surface: DeletionSource | None = None
 

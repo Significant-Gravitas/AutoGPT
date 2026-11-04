@@ -24106,7 +24106,10 @@
             "title": "Reason"
           },
           "text": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Text"
           },
           "alternative": {
