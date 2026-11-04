@@ -665,6 +665,62 @@ async def test_every_consumer_declares_how_its_queue_is_ordered():
 # ── stopped during start-up ────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize("interrupt", ["cancelled", "failed"])
+@pytest.mark.asyncio
+async def test_a_start_up_cut_short_between_queues_leaves_no_consumer_running(
+    interrupt: str,
+):
+    """`_run_service` declares its queues one after another, and a shutdown or
+    a failed declaration can land between two of them. A consumer started
+    before that point is in no list the `finally` cancels: it would keep
+    consuming beside the replacements `continuous_retry` starts, and on the
+    audience queue two consumers break the one-at-a-time order."""
+    manager = _manager()
+    manager.rabbitmq_config = MagicMock()
+    started: list[asyncio.Task[None]] = []
+    reached_second = asyncio.Event()
+    declared = 0
+
+    async def consume(
+        _queue: Any, _handler: Any, _name: str, _ordering: delivery.Ordering
+    ) -> None:
+        task = asyncio.current_task()
+        assert task is not None
+        started.append(task)
+        await asyncio.Event().wait()
+
+    async def get_queue(_name: str) -> MagicMock:
+        nonlocal declared
+        declared += 1
+        if declared == 2:
+            reached_second.set()
+            if interrupt == "failed":
+                raise ConnectionError("channel lost")
+            await asyncio.Event().wait()
+        return MagicMock()
+
+    channel = MagicMock(set_qos=AsyncMock(), get_queue=get_queue)
+    rabbit = MagicMock(connect=AsyncMock(), get_channel=AsyncMock(return_value=channel))
+    expected = asyncio.CancelledError if interrupt == "cancelled" else ConnectionError
+
+    with (
+        patch.object(delivery.rabbitmq, "AsyncRabbitMQ", return_value=rabbit),
+        patch.object(manager, "_consume_queue", consume),
+    ):
+        undecorated = inspect.unwrap(NotificationManager._run_service)
+        run = asyncio.create_task(undecorated(manager))
+        try:
+            await asyncio.wait_for(reached_second.wait(), timeout=30)
+            if interrupt == "cancelled":
+                run.cancel()
+            with pytest.raises(expected):
+                await asyncio.wait_for(run, timeout=30)
+            assert [task for task in started if not task.done()] == []
+        finally:
+            for task in started:
+                task.cancel()
+
+
 def test_cleanup_of_a_manager_stopped_before_run_finishes_the_chain(mocker):
     """Sentry AUTOGPT-SERVER-A7H: a SIGTERM before `run()` created the loop."""
     process_cleanup = mocker.patch.object(AppProcess, "cleanup")

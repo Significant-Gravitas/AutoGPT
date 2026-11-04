@@ -565,11 +565,12 @@ class NotificationManager(AppService):
             AUDIENCE_QUEUE: (self._process_audience_change, Ordering.AS_PUBLISHED),
             PASS_WORK_QUEUE: (self._process_pass_work, Ordering.COMMUTATIVE),
         }
+        # Declared before any consumer starts: a cancel or a failed declaration
+        # midway would leave the consumers already started outside `tasks`.
+        queues = {name: await channel.get_queue(name) for name in consumers}
         tasks = [
             asyncio.create_task(
-                self._consume_queue(
-                    await channel.get_queue(name), handler, name, ordering
-                )
+                self._consume_queue(queues[name], handler, name, ordering)
             )
             for name, (handler, ordering) in consumers.items()
         ]
