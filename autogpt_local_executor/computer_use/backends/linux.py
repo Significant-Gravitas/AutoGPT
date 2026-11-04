@@ -105,20 +105,53 @@ def _program_found(program: str) -> bool:
     return shutil.which(program) is not None
 
 
-def _gtk_launch_finds(path: str) -> bool:
-    """Whether gtk-launch, given this file's desktop ID, starts this very file.
-    It starts the first file of that name in the application directories, so
-    one in an earlier directory shadows it, and a file outside them can't be
-    reached by its ID at all."""
-    name = os.path.basename(path)
+def _desktop_file_id(path: str) -> str | None:
+    """The desktop file ID of a file in an XDG application directory: its
+    path below that directory, with "/" turned into "-", so
+    applications/kde4/kcalc.desktop is kde4-kcalc.desktop. None for a file
+    outside them."""
     for directory in _application_dirs():
-        candidate = os.path.join(directory, name)
-        if os.path.exists(candidate):
+        for base in dict.fromkeys((os.path.abspath(directory), os.path.realpath(directory))):
+            relative = os.path.relpath(os.path.abspath(path), base)
+            if relative != os.pardir and not relative.startswith(os.pardir + os.sep):
+                return relative.replace(os.sep, "-")
+    return None
+
+
+def _files_with_desktop_id(directory: str, desktop_id: str) -> list[str]:
+    """The files in `directory` the ID names: the file of that name, and
+    files in its subdirectories, where any "-" in the ID can stand for a
+    "/"."""
+    found = []
+    candidate = os.path.join(directory, desktop_id)
+    if os.path.isfile(candidate):
+        found.append(candidate)
+    for index, char in enumerate(desktop_id):
+        if char == "-":
+            subdirectory = os.path.join(directory, desktop_id[:index])
+            if os.path.isdir(subdirectory):
+                found.extend(_files_with_desktop_id(subdirectory, desktop_id[index + 1 :]))
+    return found
+
+
+def _gtk_launch_id(path: str) -> str | None:
+    """The desktop ID that gtk-launch starts this very file by, or None.
+    gtk-launch starts the first file with the ID in the application
+    directories, so one in an earlier directory shadows it, two in the same
+    directory leave it to the order the directory lists them in, and a file
+    outside them can't be reached by an ID at all."""
+    desktop_id = _desktop_file_id(path)
+    if desktop_id is None:
+        return None
+    for directory in _application_dirs():
+        found = _files_with_desktop_id(directory, desktop_id)
+        if found:
             try:
-                return os.path.samefile(candidate, path)
+                same = all(os.path.samefile(candidate, path) for candidate in found)
             except OSError:
-                return False
-    return False
+                return None
+            return desktop_id if same else None
+    return None
 
 
 class LinuxBackend(ComputerUseBackend):
@@ -597,15 +630,16 @@ class LinuxBackend(ComputerUseBackend):
                 "app.launch", reason=f"its TryExec program {try_exec!r} isn't installed"
             )
         has_gtk_launch = shutil.which("gtk-launch") is not None
-        if has_gtk_launch and _gtk_launch_finds(path):
-            command = ["gtk-launch", os.path.basename(path).removesuffix(".desktop")]
+        desktop_id = _gtk_launch_id(path) if has_gtk_launch else None
+        if desktop_id is not None:
+            command = ["gtk-launch", desktop_id.removesuffix(".desktop")]
         elif shutil.which("dex"):
             command = ["dex", path]
         elif has_gtk_launch:
             raise FeatureNotSupportedError(
                 "app.launch",
                 reason="gtk-launch finds a desktop file by its ID in the XDG application "
-                "directories, where this one's name leads to another file or to none; "
+                "directories, where this one's ID leads to another file or to none; "
                 "install dex to launch it by its path",
             )
         else:

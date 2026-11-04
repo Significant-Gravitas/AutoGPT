@@ -635,11 +635,14 @@ report one. The shim uses, in order of preference:
   runs with `subprocess.Popen`.
 - Windows: `subprocess.Popen` with `CREATE_NEW_PROCESS_GROUP`.
 - Linux: `subprocess.Popen` with `start_new_session=True`. A `.desktop`
-  file launches with `gtk-launch` (by its desktop file ID) when that ID
-  leads to this very file, and with `dex` (by path) otherwise. gtk-launch
-  starts the first file with the ID in the XDG application directories,
-  so a same-named file in an earlier directory would start instead; without
-  `dex`, such a file is refused. A `.desktop` file that doesn't exist, or
+  file launches with `gtk-launch` (by its desktop file ID: its path below
+  the applications directory with `/` turned into `-`, so
+  `applications/kde4/kcalc.desktop` is `kde4-kcalc`) when that ID leads to
+  this very file, and with `dex` (by path) otherwise. gtk-launch starts the
+  first file with the ID in the XDG application directories, so a file
+  with the same ID in an earlier directory would start instead, and two in
+  one directory leave it to the order the directory lists them in; without
+  `dex`, such a file is refused, as is one outside those directories. A `.desktop` file that doesn't exist, or
   whose `TryExec` program isn't installed, is refused before either helper
   starts. `args` are refused for a `.desktop` file,
   since its `Exec` line sets them. A helper that exits with a failing

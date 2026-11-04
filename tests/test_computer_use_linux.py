@@ -642,6 +642,45 @@ def test_a_desktop_file_another_entry_shadows_is_not_started_through_gtk_launch(
         popen.assert_not_called()
 
 
+@pytest.mark.parametrize("has_dex", [True, False], ids=["with-dex", "gtk-launch-only"])
+def test_a_desktop_file_in_an_applications_subdirectory_launches_by_its_desktop_id(
+    tmp_path, monkeypatch, has_dex: bool
+) -> None:
+    """A file in a subdirectory of an applications directory has its path
+    below that directory as its ID, with "/" turned into "-", so
+    applications/kde4/kcalc.desktop is kde4-kcalc. Only the file's name was
+    looked up, so without dex it was refused, though gtk-launch starts it."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    desktop = _desktop_file(applications / "kde4", "kcalc.desktop")
+    popen = _helpers(monkeypatch, "gtk-launch", *(["dex"] if has_dex else []))
+    b = LinuxBackend(_config(tmp_path))
+
+    assert b.app_launch(executable_path=str(desktop)) is None
+    assert popen.call_args.args[0] == ["gtk-launch", "kde4-kcalc"]
+
+
+@pytest.mark.parametrize(
+    "other",
+    ["share/applications/kde4-kcalc.desktop", "system/applications/kde4-kcalc.desktop"],
+    ids=["earlier-directory", "same-directory"],
+)
+def test_a_nested_desktop_file_whose_id_leads_elsewhere_launches_with_dex(
+    tmp_path, monkeypatch, other: str
+) -> None:
+    """gtk-launch starts the first file with the ID: one in an earlier
+    directory, or, in the same directory, whichever it lists first."""
+    _xdg_applications(monkeypatch, tmp_path)
+    wanted = _desktop_file(tmp_path / "system" / "applications" / "kde4", "kcalc.desktop")
+    elsewhere = tmp_path / other
+    _desktop_file(elsewhere.parent, elsewhere.name, "someone-else")
+    popen = _helpers(monkeypatch, "gtk-launch", "dex")
+    b = LinuxBackend(_config(tmp_path))
+
+    b.app_launch(executable_path=str(wanted))
+
+    assert popen.call_args.args[0] == ["dex", str(wanted)]
+
+
 @pytest.mark.parametrize("helper", ["gtk-launch", "dex"])
 def test_a_desktop_launch_reports_no_pid(tmp_path, monkeypatch, helper: str) -> None:
     """The pid was the helper's, which exits once the app has started: it
