@@ -868,7 +868,14 @@ class ReadWorkspaceFileTool(BaseTool):
                 )
                 if save_to_path:
                     msg += f" — also saved to {save_to_path}"
-                text, encoded = _inline(content)
+                text, encoded = _inline(
+                    content,
+                    (
+                        _MAX_EXTERNAL_RANGE_ESCAPED
+                        if session.external_caller
+                        else _MAX_INTERNAL_RANGE_ESCAPED
+                    ),
+                )
                 return WorkspaceFileContentResponse(
                     file_id=file_info.id,
                     name=file_info.name,
@@ -957,12 +964,16 @@ def _fit_escaped(text: str, max_chars: int) -> str:
     return text[:low]
 
 
-def _inline(raw: bytes) -> tuple[str | None, str | None]:
-    """``(content, content_base64)``: the text of UTF-8 bytes, else their base64."""
+def _inline(raw: bytes, max_escaped: int) -> tuple[str | None, str | None]:
+    """``(content, content_base64)``: UTF-8 text no longer than *max_escaped* once
+    escaped as JSON, else the bytes' base64, which a whole read's size cap bounds."""
     try:
-        return raw.decode("utf-8"), None
+        text = raw.decode("utf-8")
     except UnicodeDecodeError:
-        return None, base64.b64encode(raw).decode("ascii")
+        text = None
+    if text is not None and _fit_escaped(text, max_escaped) == text:
+        return text, None
+    return None, base64.b64encode(raw).decode("ascii")
 
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the

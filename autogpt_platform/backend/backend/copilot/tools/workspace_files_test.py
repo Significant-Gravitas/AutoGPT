@@ -1214,6 +1214,36 @@ async def test_a_text_file_that_is_not_utf8_comes_back_whole_as_base64():
     assert base64.b64decode(resp.content_base64) == raw
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("external_caller, as_text", [(False, False), (True, True)])
+async def test_a_whole_read_too_long_once_escaped_comes_back_as_base64(
+    external_caller: bool, as_text: bool
+):
+    """25,000 quotes escape to 50,000 characters: past what an internal result
+    keeps inline, so as text it was saved again as a preview."""
+    raw = ('"' * 25_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(raw)))
+    manager.read_file_by_id = AsyncMock(return_value=raw)
+    session = make_session("user-1")
+    session.external_caller = external_caller
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=session, file_id="f-1"
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    if as_text:
+        assert resp.content == raw.decode() and resp.content_base64 is None
+    else:
+        assert resp.content is None
+        assert base64.b64decode(resp.content_base64 or "") == raw
+
+
 def _text_file(size_bytes: int) -> WorkspaceFile:
     now = datetime.now(timezone.utc)
     return WorkspaceFile(
