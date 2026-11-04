@@ -40,6 +40,7 @@ from backend.copilot.response_model import (
     StreamPendingDrained,
     StreamPendingDrainedMessage,
 )
+from backend.copilot.service import strip_server_injected_tags
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -171,10 +172,6 @@ async def queue_user_message(
     reaches the model through the drain, after the engines' own entry
     sanitising has run.
     """
-    # Deferred like ``schedule_chat_turn``'s import of the same function: the
-    # service module pulls in the whole prompt chain.
-    from backend.copilot.service import strip_server_injected_tags
-
     pending = PendingMessage(
         content=strip_server_injected_tags(message),
         file_ids=file_ids or [],

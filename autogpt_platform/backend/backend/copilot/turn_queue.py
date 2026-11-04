@@ -67,6 +67,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import strip_server_injected_tags
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
 from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
@@ -219,12 +220,8 @@ async def enqueue_turn(
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
     if is_user_message:
-        # Deferred like ``queue_user_message``'s import of the same function:
-        # the service module pulls in the whole prompt chain. Promotion replays
-        # this row as the turn's message and later turns replay it as history,
-        # so it is normalised before it is stored.
-        from backend.copilot.service import strip_server_injected_tags
-
+        # Promotion replays this row as the turn's message and later turns
+        # replay it as history, so it is normalised before it is stored.
         message = strip_server_injected_tags(message)
     metadata = dict(message_metadata or {})
     metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
