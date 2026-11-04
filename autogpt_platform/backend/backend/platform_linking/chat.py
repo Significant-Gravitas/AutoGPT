@@ -27,6 +27,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.service import EmptyUserMessage, normalise_user_message
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
 from backend.copilot.turn_queue import count_inflight_turns
@@ -76,6 +77,14 @@ def _unavailable_denial() -> TurnDenial:
     return TurnDenial(
         reason="unavailable",
         message="Chat is temporarily unavailable — please try again in a moment.",
+    )
+
+
+def _empty_message_denial() -> TurnDenial:
+    """The message has no text of its own once server-only blocks are removed."""
+    return TurnDenial(
+        reason="empty_message",
+        message="That message is empty. Please send it again with some text.",
     )
 
 
@@ -374,6 +383,20 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         return ChatTurnHandle(
             session_id="", turn_id="", user_id=owner_user_id, denial=denial
         )
+
+    # The message is stored and run as the engines read it, the same as a
+    # message sent from the web app; one with no text of its own is refused
+    # before any session is touched.
+    try:
+        message = normalise_user_message(request.message)
+    except EmptyUserMessage:
+        return ChatTurnHandle(
+            session_id="",
+            turn_id="",
+            user_id=owner_user_id,
+            denial=_empty_message_denial(),
+        )
+    request = request.model_copy(update={"message": message})
 
     # Bot turns share the owner's in-flight cap with every other turn source.
     inflight_cap = get_inflight_turn_limit()
