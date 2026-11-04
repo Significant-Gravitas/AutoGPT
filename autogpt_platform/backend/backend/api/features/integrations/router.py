@@ -38,7 +38,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.credential_scope import credential_user_id, oauth_credential_scope
 from backend.api.features.library.db import set_preset_webhook, update_preset
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.scheduled_chats.reconnect import (
     resume_after_reconnect_in_background,
@@ -133,6 +133,7 @@ from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
+    InvalidInputError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -1291,6 +1292,8 @@ async def create_credentials(
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(
@@ -1895,7 +1898,10 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    _, mask = split_trigger_inputs(preset.inputs, trigger_node.id)
+    if not trigger_node.block.is_triggered_by_event_type(mask, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
@@ -1954,19 +1960,21 @@ async def _execute_webhook_preset_trigger(
                     webhook_id,
                 )
                 return
-            if not trigger_node.block.is_triggered_by_event_type(
-                live_preset.inputs, event_type
-            ):
+            # The preset as it is now: its event filter and trigger config, with
+            # the payload on a copy (`mask` may be the dict its inputs hold).
+            graph_inputs, mask = split_trigger_inputs(
+                live_preset.inputs, trigger_node.id
+            )
+            if not trigger_node.block.is_triggered_by_event_type(mask, event_type):
                 return
             graph_exec = await add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=live_preset.graph_id,
                 preset_id=live_preset.id,
+                inputs=graph_inputs,
                 graph_version=live_preset.graph_version,
                 graph_credentials_inputs=live_preset.credentials,
-                nodes_input_masks={
-                    trigger_node.id: {**live_preset.inputs, "payload": payload}
-                },
+                nodes_input_masks={trigger_node.id: {**mask, "payload": payload}},
                 organization_id=org_id,
                 team_id=ws_id,
                 expert_id=live_preset.expert_id,

@@ -256,6 +256,8 @@ class TrialUpdateData(LifecycleData):
     kind: Literal[
         "started",
         "ending",
+        "expiring",
+        "last_call",
         "canceled",
         "resumed",
         "ended",
@@ -579,7 +581,11 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(
+        description="The account's address, as shown in the form. Ignored on "
+        "update: an account's address changes only through the verified "
+        "change-email flow."
+    )
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool
     store_verdicts_enabled: bool

@@ -20,7 +20,7 @@ from backend.data.db import execute_raw_with_schema, prisma, transaction
 from backend.data.tenancy import lock_live_org_permission_scope
 from backend.util.exceptions import NotFoundError
 
-from .db import lock_org_membership
+from .db import check_membership_count, lock_org_membership
 from .invitation_limits import check_invitation_rate
 from .model import (
     CreateInvitationRequest,
@@ -122,6 +122,8 @@ async def _create_invitation_locked(
 ) -> InvitationCreateResponse:
 
     email = request.email.strip().lower()
+    # An invitation stores each team once.
+    team_ids = list(dict.fromkeys(request.team_ids))
     preliminary_target = await prisma.user.find_first(
         where={"email": {"equals": email, "mode": "insensitive"}}
     )
@@ -176,14 +178,14 @@ async def _create_invitation_locked(
                 raise HTTPException(409, detail="A pending invitation already exists")
             await assert_free_seat(tx, org_id, user_id, accepting=False)
 
-            if request.team_ids:
-                teams = await tx.team.find_many(where={"id": {"in": request.team_ids}})
+            if team_ids:
+                teams = await tx.team.find_many(where={"id": {"in": team_ids}})
                 valid_ids = {
                     team.id
                     for team in teams
                     if team.orgId == org_id and team.archivedAt is None
                 }
-                invalid = [team for team in request.team_ids if team not in valid_ids]
+                invalid = [team for team in team_ids if team not in valid_ids]
                 if invalid:
                     raise HTTPException(
                         400,
@@ -202,7 +204,7 @@ async def _create_invitation_locked(
                     "expiresAt": datetime.now(timezone.utc)
                     + timedelta(days=INVITATION_TTL_DAYS),
                     "invitedByUserId": user_id,
-                    "teamIds": request.team_ids,
+                    "teamIds": team_ids,
                 }
             )
     except UniqueViolationError as error:
@@ -413,6 +415,9 @@ async def accept_invitation(
     accepted_at = datetime.now(timezone.utc)
     already_member = False
     async with transaction() as tx:
+        # Joining is a membership like any other; first, as it sets the
+        # transaction's isolation.
+        await check_membership_count(tx, user_id, joining_org_id=invitation.orgId)
         await lock_org_membership(tx, invitation.orgId, user_id)
         org = await tx.organization.find_first(
             where={"id": invitation.orgId, "deletedAt": None}
@@ -477,7 +482,7 @@ async def accept_invitation(
         skipped_team_ids = (
             [
                 team_id
-                for team_id in invitation.teamIds
+                for team_id in dict.fromkeys(invitation.teamIds)
                 if team_id not in active_team_ids
             ]
             if continue_accept

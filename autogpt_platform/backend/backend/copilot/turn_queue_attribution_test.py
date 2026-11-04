@@ -31,6 +31,7 @@ def fifo(monkeypatch: pytest.MonkeyPatch):
     db.add_chat_message = AsyncMock()
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.admit_chat_session_turn = AsyncMock(return_value="admitted")
+    db.record_chat_session_turn = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock()
     session = ChatSessionInfo(
         session_id="session-1",
@@ -42,6 +43,7 @@ def fifo(monkeypatch: pytest.MonkeyPatch):
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
     monkeypatch.setattr(turn_queue, "chat_db", lambda: db)
+    monkeypatch.setattr(utils, "chat_db", lambda: db)
     monkeypatch.setattr(turn_queue, "_get_session_lock", lock)
     monkeypatch.setattr(turn_queue, "invalidate_session_cache", AsyncMock())
     monkeypatch.setattr(turn_queue, "track_user_message", MagicMock())

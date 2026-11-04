@@ -1,28 +1,17 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
-});
 import { Flag, useGetFlag } from "../use-get-flag";
 
-// LD is enabled but has not answered for any key — the exact window
-// (init lag, outage, missing flag key) where useGetFlag falls through
+// The flag service has not answered for any key — the exact window
+// (load lag, outage, missing flag key) where useGetFlag falls through
 // to defaultFlags in production.
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
+vi.mock("../flag-source", () => ({
+  useFlagSource: () => ({ value: undefined, resolved: false }),
 }));
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: {
-    isServerSide: () => false,
-    areFeatureFlagsEnabled: () => true,
-  },
 }));
 
 const DREAM_FLAGS = [
@@ -39,7 +28,7 @@ describe("experimental dream flag defaults fail closed", () => {
   });
 
   it.each(DREAM_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
+    "resolves %s to false when the flag service has not answered, mirroring the backend's default=False gating",
     (flag) => {
       const { result } = renderHook(() => useGetFlag(flag));
       expect(result.current).toBe(false);
@@ -53,7 +42,7 @@ describe("experimental dream flag defaults fail closed", () => {
   });
 });
 
-// If LaunchDarkly does not answer — outage, init lag, or a key mismatch —
+// If the flag service does not answer — outage, load lag, or a key mismatch —
 // this is the only path, and it must resolve false or merging ships the
 // half-built org management UI to everyone.
 describe("org settings flag default fails closed", () => {
@@ -63,15 +52,16 @@ describe("org settings flag default fails closed", () => {
       .forEach((k) => delete process.env[k]);
   });
 
-  // The LD key was created as literal `SHOW_ORG_SETTINGS` and cannot be
-  // renamed. The client runs with `useCamelCaseFlagKeys: false`, so the
-  // enum *value* is what gets looked up — normalising it to the repo's
-  // usual kebab-case would resolve nothing and pin the flag off forever.
-  it("keeps the enum value pinned to the pre-existing LaunchDarkly key", () => {
+  // The flag was created as literal `SHOW_ORG_SETTINGS` (in LaunchDarkly,
+  // and kept as that key in PostHog) and cannot be renamed. The enum *value*
+  // is the key the backend evaluates and serves on `/api/feature-flags` —
+  // normalising it to the repo's usual kebab-case would resolve nothing and
+  // pin the flag off forever.
+  it("keeps the enum value pinned to the pre-existing flag key", () => {
     expect(Flag.SHOW_ORG_SETTINGS).toBe("SHOW_ORG_SETTINGS");
   });
 
-  it("resolves SHOW_ORG_SETTINGS to false when LaunchDarkly has not answered", () => {
+  it("resolves SHOW_ORG_SETTINGS to false when the flag service has not answered", () => {
     const { result } = renderHook(() => useGetFlag(Flag.SHOW_ORG_SETTINGS));
     expect(result.current).toBe(false);
   });

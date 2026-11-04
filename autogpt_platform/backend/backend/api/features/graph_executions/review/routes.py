@@ -24,6 +24,7 @@ from backend.data.human_review import (
     get_reviews_by_node_exec_ids,
 )
 from backend.data.tenancy import get_user_team_ids, live_resource_access_barrier
+from backend.util.models import MAX_PAGE
 
 from .model import PendingHumanReviewModel, ReviewRequest, ReviewResponse
 from .service import process_reviews
@@ -54,7 +55,7 @@ async def list_pending_reviews(
             autogpt_auth_lib.TeamAction.VIEW_AGENTS,
         )
     ),
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="Page number (1-indexed)"),
     page_size: int = Query(25, ge=1, le=100, description="Number of reviews per page"),
 ) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for the current user.

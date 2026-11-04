@@ -463,6 +463,53 @@ def test_office_preview_declines_an_oversized_thumbnail(mocker):
     assert response.status_code == 413
 
 
+# The embedded thumbnail cap: 10 MB, the same as an image preview.
+_THUMBNAIL_CAP = 10_000_000
+
+
+def _office_with_thumbnail(thumbnail_bytes: int, method: int) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", method) as archive:
+        with archive.open("docProps/thumbnail.jpeg", "w") as member:
+            # Written in pieces so the test never holds the whole member.
+            for start in range(0, thumbnail_bytes, 1_000_000):
+                member.write(b"\0" * min(1_000_000, thumbnail_bytes - start))
+        archive.writestr("word/document.xml", "<w/>")
+    return buf.getvalue()
+
+
+def test_office_thumbnail_unpacking_past_the_cap_is_refused():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP + 1, zipfile.ZIP_DEFLATED)
+    assert len(content) < 100_000
+
+    with pytest.raises(preview_render.PreviewTooLarge):
+        preview_render._extract_zip_thumbnail(content)
+
+
+def test_office_thumbnail_at_the_cap_is_read():
+    content = _office_with_thumbnail(_THUMBNAIL_CAP, zipfile.ZIP_DEFLATED)
+
+    thumbnail = preview_render._extract_zip_thumbnail(content)
+    assert thumbnail is not None and len(thumbnail) == _THUMBNAIL_CAP
+
+
+@pytest.mark.parametrize(
+    "method, status", [(zipfile.ZIP_DEFLATED, 413), (zipfile.ZIP_BZIP2, 415)]
+)
+def test_office_preview_declines_a_thumbnail_that_unpacks_past_the_cap(
+    mocker, method, status
+):
+    # Rendered in the child: an unbounded read would hand 10 MB of zeros to the
+    # image decoder and fail as a 415, so a 413 means the cap stopped the read.
+    _mock_lookups(mocker, _make_file(name="report.docx", path="/report.docx"))
+    _mock_storage(mocker, _office_with_thumbnail(_THUMBNAIL_CAP + 1, method))
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == status
+
+
 def _mock_render_io(mocker, content: bytes) -> None:
     storage = mocker.MagicMock()
     storage.retrieve = AsyncMock(return_value=content)

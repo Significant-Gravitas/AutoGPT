@@ -4,8 +4,8 @@ may not exceed its plan's seats (``backend.data.org_plan``).
 Without a plan that counts, the owner holds the only seat, so nobody can be
 invited. Checked when an invitation is created and when one is accepted,
 under the organization's membership lock, so two at once can't both take the
-last seat. With ``ENABLE_PLATFORM_PAYMENT`` off for the person acting (a
-self-hosted installation), there are no seats to count.
+last seat. With ``ENABLE_PLATFORM_PAYMENT`` off for the installation (a
+self-hosted one), there are no seats to count.
 """
 
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from prisma import Prisma
 
 from backend.data.org_plan import OrgPlanSnapshot, query_org_plan_snapshot
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.platform_payment import is_platform_payment_enabled
 
 from .db import lock_org_membership
 
@@ -33,7 +33,7 @@ async def assert_free_seat(
     accepted, declined, revoked or expires. Accepting one moves its seat to the
     new member, so the count must already fit with it included.
     """
-    if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, actor_user_id):
+    if not is_platform_payment_enabled():
         return
     await lock_org_membership(client, org_id, actor_user_id)
     snapshot = await query_org_plan_snapshot(org_id)

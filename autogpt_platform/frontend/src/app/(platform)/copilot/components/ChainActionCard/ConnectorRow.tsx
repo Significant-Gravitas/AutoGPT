@@ -324,7 +324,7 @@ export function ConnectorRow({ row }: Props) {
           {row.displayName}
         </Text>
         {grantError && !isDialogOpen ? (
-          <span className="truncate text-xs text-error-foreground">
+          <span className="truncate text-caption text-error-foreground">
             {grantError}
           </span>
         ) : expertGrant && !isSatisfied ? (
@@ -361,7 +361,7 @@ export function ConnectorRow({ row }: Props) {
           </Text>
         )}
         {awaitingReconnect && (
-          <span className="text-xs text-error-foreground">
+          <span className="text-caption text-error-foreground">
             Access needs attention. Connect this account again.
           </span>
         )}
@@ -369,7 +369,7 @@ export function ConnectorRow({ row }: Props) {
 
       {isSatisfied && !linksOnAyrshare ? (
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground-tertiary">
+          <span className="flex items-center gap-1.5 text-body font-medium text-foreground-tertiary">
             <Icon icon={CheckmarkCircle02Icon} size={16} />
             {expertGrant ? "Granted" : "Connected"}
           </span>
@@ -377,7 +377,7 @@ export function ConnectorRow({ row }: Props) {
             <button
               type="button"
               onClick={openDialog}
-              className="text-xs text-foreground-tertiary underline underline-offset-2"
+              className="text-caption text-foreground-tertiary underline underline-offset-2"
             >
               Change account
             </button>

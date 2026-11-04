@@ -27,8 +27,7 @@ import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 
 const PENDING_COLORS =
-  // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-  "border-warning-surface bg-warning-surface text-yellow-700";
+  "border-warning-surface bg-warning-surface text-yellow-foreground";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (

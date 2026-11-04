@@ -2,10 +2,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useOrgTeamStore } from "@/services/org-team/store";
 
-const { passthrough, user, launchDarklyFlags } = vi.hoisted(() => ({
+const { passthrough, user, servedFlags } = vi.hoisted(() => ({
   passthrough: ({ children }: { children: React.ReactNode }) => children,
   user: { id: "flagged-user" },
-  launchDarklyFlags: { value: {} as Record<string, boolean> },
+  servedFlags: { value: {} as Record<string, boolean> },
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
@@ -33,36 +33,18 @@ vi.mock("@/services/analytics/AdsConversionTracker", () => ({
 }));
 vi.mock("next-themes", () => ({ ThemeProvider: passthrough }));
 vi.mock("nuqs/adapters/next/app", () => ({ NuqsAdapter: passthrough }));
-vi.mock("@/services/environment", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/services/environment")>();
-  return {
-    ...actual,
-    environment: {
-      ...actual.environment,
-      areFeatureFlagsEnabled: () => true,
-      getLaunchDarklyClientId: () => "test-client",
-    },
-  };
-});
-vi.mock("launchdarkly-react-client-sdk", async () => {
-  const { createContext, useContext } = await import("react");
-  const flags = createContext<Record<string, boolean>>({});
-  return {
-    LDProvider: ({ children }: { children: React.ReactNode }) => (
-      <flags.Provider value={launchDarklyFlags.value}>
-        {children}
-      </flags.Provider>
-    ),
-    useFlags: () => useContext(flags),
-  };
-});
+vi.mock("@/services/feature-flags/flag-source", () => ({
+  useFlagSource: (key: string) => ({
+    value: servedFlags.value[key],
+    resolved: key in servedFlags.value,
+  }),
+}));
 
 import { Providers } from "../providers";
 
 beforeEach(() => {
   delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
-  launchDarklyFlags.value = { SHOW_ORG_SETTINGS: true };
+  servedFlags.value = { SHOW_ORG_SETTINGS: true };
   useOrgTeamStore.getState().clearContext();
 });
 
@@ -73,9 +55,9 @@ afterEach(() => {
 });
 
 it.each(["enabled", "disabled", "timeout"])(
-  "preserves saved shared scope while LaunchDarkly is pending, then resolves %s",
+  "preserves saved shared scope while the flag service is pending, then resolves %s",
   async (resolution) => {
-    launchDarklyFlags.value = {};
+    servedFlags.value = {};
     if (resolution === "timeout") vi.useFakeTimers();
     useOrgTeamStore.getState().setActiveOrg("shared-org");
     useOrgTeamStore.getState().setActiveTeam("shared-team");
@@ -133,7 +115,7 @@ it.each(["enabled", "disabled", "timeout"])(
       await act(() => vi.advanceTimersByTimeAsync(5000));
       vi.useRealTimers();
     } else {
-      launchDarklyFlags.value = { SHOW_ORG_SETTINGS: resolution === "enabled" };
+      servedFlags.value = { SHOW_ORG_SETTINGS: resolution === "enabled" };
       rerender(
         <Providers>
           <span>resource actions</span>
@@ -157,7 +139,7 @@ it.each(["enabled", "disabled", "timeout"])(
   },
 );
 
-it("lets organization initialization observe the enabled LaunchDarkly key in the real provider tree", async () => {
+it("lets organization initialization observe the enabled flag in the real provider tree", async () => {
   delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   useOrgTeamStore.setState({
     activeOrgID: "shared-org",

@@ -8,6 +8,7 @@ import backend.api.features.library._get_many as get_many
 from backend.api.live_auth import live_dependency, requires_live_resource_permission
 from backend.data.entitlement import enforce_payment_paywall
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE
 
 from .. import db as library_db
 from .. import model as library_model
@@ -41,11 +42,13 @@ async def list_library_agents(
     page: int = Query(
         1,
         ge=1,
+        le=MAX_PAGE,
         description="Page number to retrieve (must be >= 1)",
     ),
     page_size: int = Query(
         15,
         ge=1,
+        le=MAX_PAGE_SIZE,
         description="Number of agents per page (must be >= 1)",
     ),
     folder_id: Optional[str] = Query(
@@ -97,11 +100,13 @@ async def list_favorite_library_agents(
     page: int = Query(
         1,
         ge=1,
+        le=MAX_PAGE,
         description="Page number to retrieve (must be >= 1)",
     ),
     page_size: int = Query(
         15,
         ge=1,
+        le=MAX_PAGE_SIZE,
         description="Number of agents per page (must be >= 1)",
     ),
 ) -> library_model.LibraryAgentResponse:

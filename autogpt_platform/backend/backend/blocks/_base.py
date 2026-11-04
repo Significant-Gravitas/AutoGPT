@@ -291,8 +291,10 @@ class BlockSchema(BaseModel):
         )
 
     @classmethod
-    def get_mismatch_error(cls, data: BlockInput) -> str | None:
-        return cls.validate_data(data)
+    def get_mismatch_error(
+        cls, data: BlockInput, exclude_fields: set[str] | None = None
+    ) -> str | None:
+        return cls.validate_data(data, exclude_fields=exclude_fields)
 
     # JSON-schema keywords whose violations are NOT already prevented at the
     # widget level (number bounds and length bounds are bypassable by typing

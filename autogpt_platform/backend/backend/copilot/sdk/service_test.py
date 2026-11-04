@@ -1610,7 +1610,7 @@ class TestConsumeSdkUntilDone:
     rig — just verify that the moved-from-while-True body still dispatches
     the SDK message stream correctly across the common branches."""
 
-    def _ctx(self, session_id="s1"):
+    def _ctx(self, session_id="s1", codex_gateway=None):
         from datetime import UTC, datetime
         from unittest.mock import MagicMock
 
@@ -1642,6 +1642,7 @@ class TestConsumeSdkUntilDone:
             attachments=attachments,
             compaction=CompactionTracker(),
             lock=lock,
+            codex_gateway=codex_gateway,
         )
 
     def _state(self, session_id="s1"):
@@ -1727,6 +1728,96 @@ class TestConsumeSdkUntilDone:
         assert any(isinstance(e, StreamFinish) for e in events)
         assert acc.stream_completed is True
         assert loop_state.ended_with_stream_error is False
+
+    @pytest.mark.parametrize(
+        "preceding_text",
+        ["", "a line the model wrote before the error happened. " * 20],
+        ids=["error-alone", "error-behind-a-long-block"],
+    )
+    @pytest.mark.asyncio
+    async def test_a_refusal_from_our_own_gateway_fails_the_turn(self, preceding_text):
+        """The CLI reports a 4xx of ours as an assistant message with an error.
+
+        Forwarded, it becomes the turn's reply: a user read "API Error: 409
+        This tool-result request refers to a completed model call" off a turn
+        that ended as a success with no output (SECRT-3333). It must fail the
+        turn instead, so the chat bot can say why.
+
+        The second case puts the error behind a block long enough to push it
+        out of the 500-character ``repr`` preview the surrounding checks use.
+        """
+        from aiohttp import ClientSession
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.response_model import StreamTextDelta
+        from backend.copilot.sdk.codex_compat_gateway import (
+            GATEWAY_REFUSED_CODE,
+            GATEWAY_REFUSED_MESSAGE,
+            CodexAnthropicGateway,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        class _NeverInvoked:
+            async def invoke(self, *_args, **_kwargs):
+                raise AssertionError("a refused request must not reach the model")
+
+        async with CodexAnthropicGateway(
+            agent_session=_NeverInvoked(),
+            model="gpt-5.6-terra",
+        ) as gateway:
+            async with ClientSession() as client:
+                refused = await client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers={"Authorization": f"Bearer {gateway.auth_token}"},
+                    json=["not an object"],
+                )
+                body = await refused.json()
+            # The gateway's own sentence, in the wording the CLI hands us.
+            reported = f"API Error: {refused.status} {body['error']['message']}"
+
+            ctx = self._ctx(codex_gateway=gateway)
+            state = self._state()
+            acc = self._acc()
+            loop_state = self._loop_state()
+
+            async def fake_iter(client, wake=None, tool_display_wake=None):
+                blocks = [TextBlock(text=reported)]
+                if preceding_text:
+                    blocks.insert(0, TextBlock(text=preceding_text))
+                yield AssistantMessage(
+                    content=blocks,
+                    model="test",
+                    error="unknown",
+                )
+                yield ResultMessage(
+                    subtype="success",
+                    duration_ms=1,
+                    duration_api_ms=1,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="s1",
+                    result=reported,
+                )
+
+            with patch(
+                "backend.copilot.sdk.service._iter_sdk_messages",
+                new=fake_iter,
+            ):
+                events = []
+                async for ev in _consume_sdk_until_done(
+                    MagicMock(), ctx, state, acc, loop_state
+                ):
+                    events.append(ev)
+
+        assert gateway.last_refusal == body["error"]["message"]
+        assert [e for e in events if isinstance(e, StreamTextDelta)] == []
+        assert all(reported not in str(event) for event in events)
+        assert all(
+            reported not in (message.content or "") for message in ctx.session.messages
+        )
+        assert loop_state.ended_with_stream_error is True
+        assert loop_state.stream_error_code == GATEWAY_REFUSED_CODE
+        assert loop_state.stream_error_msg == GATEWAY_REFUSED_MESSAGE
 
     @pytest.mark.asyncio
     async def test_heartbeat_sentinel_yields_heartbeat_event(self):

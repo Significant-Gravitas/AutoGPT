@@ -5,8 +5,8 @@ organization the work runs in:
 
 - **A personal organization, or no organization known**: the user's own plan
   (``subscriptionTier``, trials included), exactly as
-  ``backend.copilot.rate_limit`` decides it. With ``ENABLE_PLATFORM_PAYMENT``
-  off for the user, nobody is paywalled.
+  ``backend.copilot.rate_limit`` decides it. With the installation setting
+  ``ENABLE_PLATFORM_PAYMENT`` off, nobody is paywalled.
 - **A team organization**: the organization's plan (``backend.data.org_plan``)
   and an active membership. The person's own plan doesn't count there, so an
   owner with personal Pro is paywalled in their team organization until it has
@@ -33,7 +33,7 @@ from backend.copilot.rate_limit import SubscriptionTier
 from backend.data.db_accessors import org_plan_db
 from backend.data.org_plan import OrgPlanSnapshot, get_org_plan_snapshot
 from backend.util.exceptions import UserPaywalledError
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.platform_payment import is_platform_payment_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ async def _org_paywall_reason(
         return "not_member"
     if team.counting_plan() is not None:
         return None
-    if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+    if not is_platform_payment_enabled():
         return None
     return "org_plan_required"
 

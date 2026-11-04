@@ -4,20 +4,38 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_EMAIL_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_LIST_ENTRIES,
+    MAX_NAME_LENGTH,
+    MAX_URL_LENGTH,
+    IDText,
+)
+
 
 class CreateOrgRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
     slug: str = Field(
-        ..., min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$"
+        ...,
+        min_length=1,
+        max_length=MAX_NAME_LENGTH,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
     )
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
 
 
 class UpdateOrgRequest(BaseModel):
-    name: str | None = None
-    slug: str | None = Field(None, pattern=r"^[a-z0-9][a-z0-9-]*$")
-    description: str | None = None
-    avatar_url: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    slug: str | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_NAME_LENGTH,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
+    )
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    avatar_url: str | None = Field(default=None, max_length=MAX_URL_LENGTH)
     # Shared-memory hold buffer toggle. None → leave unchanged. Persisted to
     # Organization.settings["memory"]["holdBuffer"] — the exact key
     # copilot/graphiti/tiers.hold_buffer_enabled reads.
@@ -132,7 +150,7 @@ class UpdateMemberRequest(BaseModel):
 
 
 class TransferOwnershipRequest(BaseModel):
-    new_owner_id: str
+    new_owner_id: str = Field(..., max_length=MAX_ID_LENGTH)
 
 
 class OrgAliasResponse(BaseModel):
@@ -153,7 +171,10 @@ class OrgAliasResponse(BaseModel):
 
 class CreateAliasRequest(BaseModel):
     alias_slug: str = Field(
-        ..., min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$"
+        ...,
+        min_length=1,
+        max_length=MAX_NAME_LENGTH,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
     )
 
 
@@ -169,10 +190,10 @@ class OrgSpendResponse(BaseModel):
 
 
 class CreateInvitationRequest(BaseModel):
-    email: str
+    email: str = Field(..., max_length=MAX_EMAIL_LENGTH)
     is_admin: bool = False
     is_billing_manager: bool = False
-    team_ids: list[str] = Field(default_factory=list)
+    team_ids: list[IDText] = Field(default_factory=list, max_length=MAX_LIST_ENTRIES)
 
     @field_validator("email")
     @classmethod

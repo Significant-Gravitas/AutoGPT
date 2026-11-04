@@ -57,14 +57,14 @@ async def _account(label: str, role: str = "user") -> _Account:
 
 
 @pytest.fixture
-def payments_on(monkeypatch):
+def payments_on(monkeypatch, set_platform_payment):
     for name in (
         "FORCE_FLAG_SHOW_ORG_SETTINGS",
         "NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS",
         "FORCE_ALL_FLAGS",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("FORCE_FLAG_ENABLE_PLATFORM_PAYMENT", "true")
+    set_platform_payment(True)
 
 
 @pytest.fixture

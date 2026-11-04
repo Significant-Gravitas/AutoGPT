@@ -22,9 +22,6 @@ import {
 } from "./useArtifactContent";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
-// Text is typed with <p> props; the retry buttons keep their type="button".
-const BUTTON_TYPE = { type: "button" } as const;
-
 interface Props {
   artifact: ArtifactRef;
   isSourceView: boolean;
@@ -55,16 +52,20 @@ function ArtifactContentLoader({
         <Text variant="small-tight" as="p" tone="subtle">
           {error}
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={retry}
           className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -111,11 +112,8 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
         <Text variant="body-tight" as="p" tone="muted">
           Failed to load image
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={() => {
             setError(false);
             setLoaded(false);
@@ -123,8 +121,15 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
           }}
           className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -163,11 +168,8 @@ function ArtifactVideo({ src }: { src: string }) {
         <Text variant="body-tight" as="p" tone="muted">
           Failed to load video
         </Text>
-        <Text
-          as="button"
-          variant="small-medium-tight"
-          tone="body"
-          {...BUTTON_TYPE}
+        <button
+          type="button"
           onClick={() => {
             setError(false);
             setLoaded(false);
@@ -175,8 +177,15 @@ function ArtifactVideo({ src }: { src: string }) {
           }}
           className="rounded-md border border-border-base bg-surface px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          Try again
-        </Text>
+          <Text
+            as="span"
+            variant="small-medium-tight"
+            tone="body"
+            className="block"
+          >
+            Try again
+          </Text>
+        </button>
       </div>
     );
   }
@@ -250,14 +259,16 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <Text
-        variant="body-mono-tight"
-        as="pre"
-        tone="emphasis"
-        className="p-4 break-words whitespace-pre-wrap"
-      >
-        {content}
-      </Text>
+      <div className="p-4">
+        <Text
+          variant="body-mono-tight"
+          as="pre"
+          tone="emphasis"
+          className="break-words whitespace-pre-wrap"
+        >
+          {content}
+        </Text>
+      </div>
     );
   }
 
@@ -346,14 +357,16 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <Text
-      variant="body-mono-tight"
-      as="pre"
-      tone="emphasis"
-      className="p-4 break-words whitespace-pre-wrap"
-    >
-      {content}
-    </Text>
+    <div className="p-4">
+      <Text
+        variant="body-mono-tight"
+        as="pre"
+        tone="emphasis"
+        className="break-words whitespace-pre-wrap"
+      >
+        {content}
+      </Text>
+    </div>
   );
 }
 

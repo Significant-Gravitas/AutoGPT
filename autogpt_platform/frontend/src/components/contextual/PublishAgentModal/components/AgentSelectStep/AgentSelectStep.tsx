@@ -84,11 +84,11 @@ export function AgentSelectStep({
           currentStep="select"
         />
         <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-error/10 bg-error-surface px-6 py-8 text-center">
-          <Icon icon={AlertCircleIcon} size={32} className="text-error-hover" />
-          <Text variant="large-medium" className="text-error-foreground">
+          <Icon icon={AlertCircleIcon} size={32} tone="danger" />
+          <Text variant="large-medium" tone="error-strong">
             We could not load your workflows
           </Text>
-          <Text variant="body" className="max-w-[420px] text-error-foreground">
+          <Text variant="body" tone="error-strong" className="max-w-[420px]">
             Refresh the list and try again. Your current marketplace submissions
             are unchanged.
           </Text>
@@ -383,16 +383,16 @@ function PaginationBar({
         </button>
         {pages.map((entry, idx) =>
           entry === "…" ? (
-            <Text
-              variant="body-tight"
-              as="span"
-              tone="subtle"
-              key={`gap-${idx}`}
-              className="px-1"
-              aria-hidden
-            >
-              …
-            </Text>
+            <span key={`gap-${idx}`} className="px-1" aria-hidden>
+              <Text
+                variant="body-tight"
+                as="span"
+                tone="subtle"
+                className="block"
+              >
+                …
+              </Text>
+            </span>
           ) : (
             <button
               key={entry}

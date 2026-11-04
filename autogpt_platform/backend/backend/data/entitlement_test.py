@@ -36,7 +36,7 @@ def _team(plan: OrgPlan | None = None, **changes) -> OrgPlanSnapshot:
 
 @pytest.fixture
 def world(mocker):
-    """The user's own plan, the org, membership and the payments flag."""
+    """The user's own plan, the org, membership and the payments setting."""
     state = SimpleNamespace(
         own_paywalled=False,
         own_tier=SubscriptionTier.PRO,
@@ -65,8 +65,8 @@ def world(mocker):
     mocker.patch.object(entitlement, "org_plan_db", return_value=membership)
     mocker.patch.object(
         entitlement,
-        "is_feature_enabled",
-        AsyncMock(side_effect=lambda *_a, **_k: state.payments),
+        "is_platform_payment_enabled",
+        side_effect=lambda: state.payments,
     )
     return state
 

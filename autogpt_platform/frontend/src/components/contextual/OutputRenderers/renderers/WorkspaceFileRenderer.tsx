@@ -161,10 +161,11 @@ function renderWorkspaceFile(
       <Icon
         icon={File02Icon}
         size={28}
-        className="flex-shrink-0 text-foreground-tertiary"
+        tone="muted"
+        className="flex-shrink-0"
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-foreground-base">
+        <span className="truncate text-body font-medium text-foreground-base">
           {metadata?.filename || label}
         </span>
         {mimeType && (

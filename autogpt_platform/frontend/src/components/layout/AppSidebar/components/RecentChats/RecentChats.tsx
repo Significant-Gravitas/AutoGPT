@@ -56,9 +56,11 @@ export function RecentChats() {
 
   if (!sessions.length) {
     return (
-      <Text variant="body-tight" as="p" tone="muted" className="px-2 py-2">
-        No conversations yet
-      </Text>
+      <div className="px-2 py-2">
+        <Text variant="body-tight" as="p" tone="muted">
+          No conversations yet
+        </Text>
+      </div>
     );
   }
 

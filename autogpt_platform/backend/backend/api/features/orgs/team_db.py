@@ -11,7 +11,12 @@ from prisma.errors import UniqueViolationError
 from prisma.models import TeamMember
 from prisma.types import TeamMemberUpdateInput, TeamUpdateInput, TeamWhereInput
 
-from backend.data.db import TRANSACTION_TIMEOUT, execute_raw_with_schema, prisma
+from backend.data.db import (
+    TRANSACTION_TIMEOUT,
+    execute_raw_with_schema,
+    prisma,
+    transaction,
+)
 from backend.data.tenancy import (
     lock_live_org_membership_scopes,
     lock_live_org_or_team_permission_scope,
@@ -28,6 +33,9 @@ from .db import (
 from .team_model import TeamMemberResponse, TeamResponse
 
 logger = logging.getLogger(__name__)
+
+# Bounded at the create, because the listing has no page to truncate.
+MAX_TEAMS_PER_ORG = 500
 
 
 async def _lock_team_manager(
@@ -62,7 +70,8 @@ async def create_team(
     require_live_permission: bool = False,
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
-    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+    async with transaction() as tx:
+        await _check_team_count(tx, org_id)
         await lock_org_membership(tx, org_id, user_id)
         member = await tx.orgmember.find_first(
             where={
@@ -96,6 +105,25 @@ async def create_team(
         )
 
     return TeamResponse.from_db(ws, member_count=1, is_member=True)
+
+
+async def _check_team_count(tx: Prisma, org_id: str) -> None:
+    """Refuse a workspace past `MAX_TEAMS_PER_ORG`; the transaction's first call.
+
+    The lock makes concurrent creates count one after another, which needs
+    READ COMMITTED.
+    """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"org-teams:{org_id}",
+    )
+    if await tx.team.count(where={"orgId": org_id, "archivedAt": None}) >= (
+        MAX_TEAMS_PER_ORG
+    ):
+        raise ValueError(
+            f"An organization holds at most {MAX_TEAMS_PER_ORG} workspaces"
+        )
 
 
 async def _member_facts(

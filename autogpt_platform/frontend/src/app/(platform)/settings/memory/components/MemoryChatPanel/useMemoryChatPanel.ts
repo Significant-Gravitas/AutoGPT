@@ -6,6 +6,7 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import * as Sentry from "@sentry/nextjs";
@@ -104,6 +105,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   const scopeRef = useRef(scopeIdentity);
   const scopeGenRef = useRef(0);
   useEffect(() => {
+    return () => {
+      scopeGenRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
     if (scopeRef.current === scopeIdentity) return;
     scopeRef.current = scopeIdentity;
     scopeGenRef.current += 1;
@@ -135,8 +142,13 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
       setSessionId(response.data.id);
     } catch (err) {
+      if (generation !== scopeGenRef.current) return;
+      if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {
+        setIsOpen(false);
+        return;
+      }
       Sentry.captureException(err);
-      if (generation === scopeGenRef.current) setStartError(true);
+      setStartError(true);
     } finally {
       // Only release the lock if this call still owns it — a superseded
       // create must not unlock a newer scope's in-flight create.

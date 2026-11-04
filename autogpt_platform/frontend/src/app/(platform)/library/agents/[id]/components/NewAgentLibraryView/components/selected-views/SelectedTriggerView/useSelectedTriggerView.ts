@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
+import { mergeTriggerPresetInputs, splitTriggerPresetInputs } from "./helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -48,6 +49,8 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [inputs, setInputs] = useState<Record<string, any>>({});
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>({});
+  const [maskKey, setMaskKey] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<
     Record<string, CredentialsMetaInput>
   >({});
@@ -56,7 +59,10 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      const split = splitTriggerPresetInputs(query.data.inputs);
+      setInputs(split.inputs);
+      setTriggerConfig(split.triggerConfig);
+      setMaskKey(split.maskKey);
       setCredentials(query.data.credentials || {});
     }
   }, [query.data]);
@@ -98,6 +104,19 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
   function handleSaveChanges() {
     if (!query.data) return;
 
+    // Without a mask key the backend reads every stored input as trigger config,
+    // so a graph input saved now would land inside it.
+    if (!maskKey && Object.keys(inputs).length > 0) {
+      toast({
+        title: "Failed to update trigger",
+        description:
+          "This trigger was saved in an older format. " +
+          "Save its trigger settings first, then set its inputs.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const updateData: LibraryAgentPresetUpdatable = {};
     if (name !== (query.data.name || "")) {
       updateData.name = name;
@@ -107,15 +126,23 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
       updateData.description = description;
     }
 
+    // Send back the stored shape, so update_triggered_preset finds the trigger
+    // config where it keeps it.
+    const mergedInputs = mergeTriggerPresetInputs({
+      inputs,
+      triggerConfig,
+      maskKey,
+    });
+
     const inputsChanged =
-      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+      JSON.stringify(mergedInputs) !== JSON.stringify(query.data.inputs || {});
 
     const credentialsChanged =
       JSON.stringify(credentials) !==
       JSON.stringify(query.data.credentials || {});
 
     if (inputsChanged || credentialsChanged) {
-      updateData.inputs = inputs;
+      updateData.inputs = mergedInputs;
       updateData.credentials = credentials;
     }
 
@@ -127,6 +154,10 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
 
   function setInputValue(key: string, value: any) {
     setInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setTriggerConfigValue(key: string, value: any) {
+    setTriggerConfig((prev) => ({ ...prev, [key]: value }));
   }
 
   function setCredentialValue(key: string, value: CredentialsMetaInput) {
@@ -142,7 +173,10 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      const split = splitTriggerPresetInputs(query.data.inputs);
+      setInputs(split.inputs);
+      setTriggerConfig(split.triggerConfig);
+      setMaskKey(split.maskKey);
       setCredentials(query.data.credentials || {});
     }
   }, [updateMutation.isSuccess, query.data]);
@@ -157,6 +191,8 @@ export function useSelectedTriggerView({ triggerId, agent }: Args) {
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
     credentials,
     setCredentialValue,
     handleSaveChanges,

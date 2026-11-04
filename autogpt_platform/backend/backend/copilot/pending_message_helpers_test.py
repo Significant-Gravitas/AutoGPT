@@ -24,6 +24,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from backend.copilot.service import EmptyUserMessage
 from backend.data.db_accessors import LiveResourceAccessRevoked
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
@@ -1380,3 +1381,95 @@ async def test_queue_pending_names_attached_folders_in_the_message(
 
     resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
     assert "Invoices" in queue_mock.call_args.kwargs["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("require_turn_in_flight", [True, False])
+async def test_a_queued_message_gets_the_same_input_normalisation_as_a_direct_one(
+    monkeypatch: pytest.MonkeyPatch, require_turn_in_flight: bool
+) -> None:
+    """A queued message reaches the model through the drain, after the
+    engines' entry sanitising, so server-only blocks come off when it is
+    queued, as they do for a message that starts its own turn."""
+    pushed: list[PendingMessage] = []
+
+    async def push(_session_id: str, pending: PendingMessage, **_: Any) -> int:
+        pushed.append(pending)
+        return len(pushed)
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(helpers_module, "live_resource_lease", allowed)
+    monkeypatch.setattr(helpers_module, "require_exact_chat_session_scope", AsyncMock())
+    monkeypatch.setattr(helpers_module, "push_pending_message", push)
+    monkeypatch.setattr(helpers_module, "push_pending_message_if_session_running", push)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=True)
+    )
+
+    await queue_user_message(
+        session_id="sess-1",
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        message="<user_context>\nA note.\n</user_context>\n\nAnd weddings.",
+        require_turn_in_flight=require_turn_in_flight,
+    )
+
+    [queued] = pushed
+    assert queued.content.strip() == "And weddings."
+
+
+@pytest.mark.asyncio
+async def test_a_queued_message_with_nothing_of_the_users_own_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pushed = AsyncMock()
+    lease = MagicMock()
+    monkeypatch.setattr(helpers_module, "live_resource_lease", lease)
+    monkeypatch.setattr(helpers_module, "push_pending_message", pushed)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", pushed
+    )
+
+    with pytest.raises(EmptyUserMessage):
+        await queue_user_message(
+            session_id="sess-1",
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            message="<user_context>\nA note.\n</user_context>",
+        )
+
+    pushed.assert_not_awaited()
+    lease.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_pending_route_refuses_an_empty_message_before_any_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    claim_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "claim_client_message", claim_mock)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            message="<user_context>\nA note.\n</user_context>",
+            context=None,
+            file_ids=None,
+            folder_ids=None,
+            expert_id=None,
+            client_message_id="client-1",
+        )
+
+    assert exc_info.value.status_code == 422
+    claim_mock.assert_not_awaited()
+    queue_mock.assert_not_awaited()

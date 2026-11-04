@@ -1,7 +1,8 @@
 """CoPilot service — shared helpers used by both SDK and baseline paths.
 
 This module contains:
-- System prompt building (Langfuse + static fallback, cache-optimised)
+- System prompt building (Langfuse prompt management + static fallback,
+  cache-optimised)
 - User context injection (prepends <user_context> to first user message)
 - Session title generation
 - Session assignment
@@ -15,10 +16,8 @@ import threading
 import time
 from typing import Any
 
-from langfuse import get_client
-from langfuse.openai import (
-    AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
-)
+from langfuse import Langfuse
+from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.chat_platform_header import strip_chat_platform_header
@@ -37,6 +36,10 @@ from backend.data.understanding import (
     format_understanding_for_prompt,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.langfuse_prompts import (
+    get_langfuse_prompt_client,
+    langfuse_prompts_configured,
+)
 from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
@@ -45,7 +48,6 @@ from .config import ChatConfig, CopilotLLMModel
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
-from .google_data_redaction import install_langfuse_mask
 from .llm_attribution import openrouter_attribution
 from .model import (
     ChatMessage,
@@ -86,9 +88,8 @@ def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
     return config.thinking_standard_model
 
 
-_main_client: LangfuseAsyncOpenAI | None = None
-_aux_client: LangfuseAsyncOpenAI | None = None
-_langfuse = None
+_main_client: AsyncOpenAI | None = None
+_aux_client: AsyncOpenAI | None = None
 
 # The system prompt this process last fetched, the monotonic timestamp of that
 # fetch, and the lock that hands the next window to one caller.
@@ -100,7 +101,7 @@ _prompt_revalidation_lock = threading.Lock()
 _PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
 
 
-def _get_main_client() -> LangfuseAsyncOpenAI:
+def _get_main_client() -> AsyncOpenAI:
     """Main OpenAI-compat client used by the baseline path.
 
     Driven by ``config.main_client_credentials`` so a deployment can flip
@@ -120,11 +121,11 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
         # keep the SDK default so genuine hangs still surface promptly.
         if config.transport.name == "local":
             kwargs["timeout"] = config.local_request_timeout_s
-        _main_client = LangfuseAsyncOpenAI(**kwargs)
+        _main_client = AsyncOpenAI(**kwargs)
     return _main_client
 
 
-def _get_aux_client() -> LangfuseAsyncOpenAI:
+def _get_aux_client() -> AsyncOpenAI:
     """Auxiliary OpenAI-compat client.
 
     Used for non-Anthropic helpers (title generation, builder helpers)
@@ -143,7 +144,7 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
         # on a CPU-only host doesn't surface as an opaque 600 s timeout.
         if config.transport.name == "local":
             kwargs["timeout"] = config.local_request_timeout_s
-        _aux_client = LangfuseAsyncOpenAI(**kwargs)
+        _aux_client = AsyncOpenAI(**kwargs)
     return _aux_client
 
 
@@ -159,11 +160,9 @@ def reset_clients() -> None:
     _aux_client = None
 
 
-def _get_langfuse():
-    global _langfuse
-    if _langfuse is None:
-        _langfuse = get_client()
-    return _langfuse
+def _get_langfuse() -> Langfuse:
+    """The Langfuse client the system prompt is fetched with (no tracing)."""
+    return get_langfuse_prompt_client()
 
 
 # Shared constant for the XML tag name used to wrap per-user context when
@@ -339,6 +338,10 @@ _LONE_TAG_RES = {
     tag: re.compile(rf"</?{tag}>", re.IGNORECASE) for tag in SERVER_INJECTED_BLOCK_TAGS
 }
 
+# Ordinary text is clean after one pass of ``strip_server_injected_tags``.
+_MAX_STRIP_PASSES = 8
+_ANGLE_BRACKETS = re.compile(r"[<>]")
+
 # One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
 # injectors write. Non-greedy with a backreference, so a block ends at its own
 # closing tag.
@@ -394,12 +397,38 @@ def strip_server_injected_tags(text: str) -> str:
     model would pass to ``delete_schedule``, a skill the registry does not hold,
     or an expert's persona, workflows and machine.
 
-    Order does not matter: each tag is distinct.
+    Repeats until nothing changes, because removing one tag can join the text
+    around it into another. Text still changing after ``_MAX_STRIP_PASSES``
+    passes is built to do that, so its angle brackets are removed outright:
+    that leaves no tag of any kind, and the work stays bounded whatever the
+    input.
     """
-    for tag in SERVER_INJECTED_BLOCK_TAGS:
-        text = _strip_block(text, tag)
-        text = _LONE_TAG_RES[tag].sub("", text)
-    return text
+    for _ in range(_MAX_STRIP_PASSES):
+        stripped = text
+        for tag in SERVER_INJECTED_BLOCK_TAGS:
+            stripped = _strip_block(stripped, tag)
+            stripped = _LONE_TAG_RES[tag].sub("", stripped)
+        if stripped == text:
+            return text
+        text = stripped
+    return _ANGLE_BRACKETS.sub("", text)
+
+
+class EmptyUserMessage(ValueError):
+    """A user message with no text of its own once server-only blocks are removed."""
+
+
+def normalise_user_message(text: str) -> str:
+    """*text* as the engines read it, for a user message that is stored or queued.
+
+    An empty message stays empty. One that had text, but none left once its
+    server-only blocks are removed, raises :class:`EmptyUserMessage`, so it is
+    refused instead of being stored or queued as nothing.
+    """
+    normalised = strip_server_injected_tags(text)
+    if text.strip() and not normalised.strip():
+        raise EmptyUserMessage("The message is empty.")
+    return normalised
 
 
 def _strip_block(text: str, tag: str) -> str:
@@ -478,19 +507,7 @@ strip_user_context_tags = sanitize_user_supplied_context
 
 def _is_langfuse_configured() -> bool:
     """Check if Langfuse credentials are configured."""
-    return bool(
-        settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
-    )
-
-
-# Before anything asks for a Langfuse client: the SDK keeps the first one's
-# settings, and this one's mask keeps Google data out of the traces.
-if _is_langfuse_configured():
-    try:
-        install_langfuse_mask()
-    except Exception:
-        # The SDK path checks again and runs untraced; this is the alarm.
-        logger.exception("Langfuse traces are not masked for Google data")
+    return langfuse_prompts_configured()
 
 
 async def _fetch_langfuse_prompt() -> str | None:
@@ -933,11 +950,9 @@ async def _generate_session_title(
         # Route through the shared providers helper so future provider
         # work (flex tier, new SDK upgrades, etc.) propagates here
         # without a parallel migration. Pass the cached
-        # ``_get_aux_client()`` singleton (a Langfuse-wrapped
-        # AsyncOpenAI) so the title-gen span lands in the same trace
-        # tree as the originating chat turn AND the httpx connection
-        # pool stays warm across calls — building a fresh client per
-        # title would cost a TCP+TLS handshake every session.
+        # ``_get_aux_client()`` singleton so the httpx connection pool
+        # stays warm across calls — building a fresh client per title
+        # would cost a TCP+TLS handshake every session.
         response = await call_provider_openai_compat_sync(
             client=_get_aux_client(),
             model=title_model,

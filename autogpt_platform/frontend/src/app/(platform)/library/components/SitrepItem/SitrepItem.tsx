@@ -52,8 +52,7 @@ const PRIORITY_CONFIG: Record<
   },
   stale: {
     icon: ClockFadingIcon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   warning: {
@@ -73,8 +72,7 @@ const PRIORITY_CONFIG: Record<
   },
   scheduled: {
     icon: Calendar03Icon,
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow-600 #DFAF00 has no role; gold to amber change deferred (see PR)
-    color: "text-yellow-600",
+    color: "text-yellow-foreground",
     bg: "bg-warning-surface",
   },
   idle: {

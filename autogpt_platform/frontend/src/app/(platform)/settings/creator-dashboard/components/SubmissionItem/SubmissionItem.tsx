@@ -133,8 +133,8 @@ export function SubmissionItem({
                   <UIIcon
                     icon={LinkSquare01Icon}
                     size={14}
-                    // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
-                    className="shrink-0 text-foreground-tertiary"
+                    tone="muted"
+                    className="shrink-0"
                     aria-hidden
                   />
                 </Link>
@@ -166,18 +166,18 @@ export function SubmissionItem({
 
       <td className="px-4 py-3 align-middle">
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={12} />
           {visual.label}
         </span>
       </td>
 
-      <td className="px-4 py-3 align-middle text-sm whitespace-nowrap text-foreground-body">
+      <td className="px-4 py-3 align-middle text-body whitespace-nowrap text-foreground-body">
         {formatSubmittedAt(submission.submitted_at)}
       </td>
 
-      <td className="px-4 py-3 text-right align-middle text-sm whitespace-nowrap text-foreground-body tabular-nums">
+      <td className="px-4 py-3 text-right align-middle text-body whitespace-nowrap text-foreground-body tabular-nums">
         {formatRuns(submission.run_count ?? 0)}
       </td>
 
@@ -233,8 +233,8 @@ export function SubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
-                  className="text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-restyle -- the menu item has no destructive variant (deferred)
+                  className="text-error-hover focus:text-error-foreground"
                 >
                   <span className="flex items-center gap-2">
                     <UIIcon icon={Delete02Icon} size={14} />

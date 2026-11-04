@@ -35,7 +35,7 @@ export function ActivationPaymentMethod() {
     >
       <div
         data-slot="activation-payment-method-label"
-        className="flex items-center gap-2 text-sm text-foreground-secondary"
+        className="flex items-center gap-2 text-body text-foreground-secondary"
       >
         <Icon icon={CreditCardIcon} size={18} />
         Payment method
@@ -46,8 +46,8 @@ export function ActivationPaymentMethod() {
         target="_blank"
         rel="noopener noreferrer"
         variant="ghost"
-        size="small"
-        className="h-auto min-w-0 p-0 text-sm underline underline-offset-4"
+        size="inline"
+        className="underline underline-offset-4"
         aria-label="Manage payment method in a new tab"
       >
         Manage

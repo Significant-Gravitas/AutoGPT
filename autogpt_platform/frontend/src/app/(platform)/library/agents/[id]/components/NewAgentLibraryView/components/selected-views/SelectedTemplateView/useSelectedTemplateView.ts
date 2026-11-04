@@ -20,6 +20,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import {
+  mergePresetInputs,
+  splitPresetInputs,
+} from "../SelectedTriggerView/helpers";
 
 type Args = {
   templateId: string;
@@ -54,6 +58,10 @@ export function useSelectedTemplateView({
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [inputs, setInputs] = useState<Record<string, any>>({});
+  // A detached triggered preset is filed here, so its inputs can carry the
+  // trigger node's mask; keep the key so saving re-nests under the same one.
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, any>>({});
+  const [maskKey, setMaskKey] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<
     Record<string, CredentialsMetaInput>
   >({});
@@ -62,7 +70,7 @@ export function useSelectedTemplateView({
     if (query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      applyPresetInputs(query.data.inputs);
       setCredentials(query.data.credentials || {});
     }
   }, [query.data]);
@@ -135,6 +143,8 @@ export function useSelectedTemplateView({
   function handleSaveChanges() {
     if (!query.data) return;
 
+    const storedInputs = mergePresetInputs({ inputs, triggerConfig, maskKey });
+
     const updateData: LibraryAgentPresetUpdatable = {};
     if (name !== (query.data.name || "")) {
       updateData.name = name;
@@ -145,14 +155,14 @@ export function useSelectedTemplateView({
     }
 
     const inputsChanged =
-      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+      JSON.stringify(storedInputs) !== JSON.stringify(query.data.inputs || {});
 
     const credentialsChanged =
       JSON.stringify(credentials) !==
       JSON.stringify(query.data.credentials || {});
 
     if (inputsChanged || credentialsChanged) {
-      updateData.inputs = inputs;
+      updateData.inputs = storedInputs;
       updateData.credentials = credentials;
     }
 
@@ -165,8 +175,10 @@ export function useSelectedTemplateView({
   function handleStartTask() {
     if (!query.data) return;
 
+    const storedInputs = mergePresetInputs({ inputs, triggerConfig, maskKey });
+
     const inputsChanged =
-      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+      JSON.stringify(storedInputs) !== JSON.stringify(query.data.inputs || {});
 
     const credentialsChanged =
       JSON.stringify(credentials) !==
@@ -176,7 +188,7 @@ export function useSelectedTemplateView({
     executeMutation.mutate({
       presetId: templateId,
       data: {
-        inputs: inputsChanged ? inputs : undefined,
+        inputs: inputsChanged ? storedInputs : undefined,
         credential_inputs: credentialsChanged ? credentials : undefined,
       },
     });
@@ -184,6 +196,17 @@ export function useSelectedTemplateView({
 
   function setInputValue(key: string, value: any) {
     setInputs((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setTriggerConfigValue(key: string, value: any) {
+    setTriggerConfig((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function applyPresetInputs(presetInputs: Record<string, any> | undefined) {
+    const split = splitPresetInputs(presetInputs);
+    setInputs(split.inputs);
+    setTriggerConfig(split.triggerConfig);
+    setMaskKey(split.maskKey);
   }
 
   function setCredentialValue(key: string, value: CredentialsMetaInput) {
@@ -199,7 +222,7 @@ export function useSelectedTemplateView({
     if (updateMutation.isSuccess && query.data) {
       setName(query.data.name || "");
       setDescription(query.data.description || "");
-      setInputs(query.data.inputs || {});
+      applyPresetInputs(query.data.inputs);
       setCredentials(query.data.credentials || {});
     }
   }, [updateMutation.isSuccess, query.data]);
@@ -214,6 +237,9 @@ export function useSelectedTemplateView({
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
+    hasTriggerConfig: maskKey !== null,
     credentials,
     setCredentialValue,
     handleSaveChanges,

@@ -497,7 +497,7 @@ You don't need to wrap components in error boundaries manually unless you need c
 
 ## 🚩 Feature Flags
 
-- By default the browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
+- The browser reads its flags from the backend (`GET /api/feature-flags`), which answers from PostHog; see `docs/engineering/feature-flags.md`
 - Use the helper APIs under `src/services/feature-flags`
 
 Check a flag in a client component:
@@ -534,11 +534,7 @@ Adding new flags:
 
 1. Add the flag to `FrontendFlag` in `backend/backend/util/feature_flag/frontend.py`; the frontend's `Flag` is generated from it (`pnpm generate:api`)
 2. Give it a default in `defaultFlags` (`use-get-flag.ts`); `tsc` fails until you do
-3. Configure the flag in the vendor that answers it, by `NEXT_PUBLIC_FEATURE_FLAG_BACKEND`:
-   - `launchdarkly`: LaunchDarkly
-   - `posthog`: PostHog
-   - `dual`: both; create it in LaunchDarkly, then copy it over with `backend/scripts/sync_feature_flags_to_posthog.py`
-   - `server` (default): whichever the backend's `FEATURE_FLAG_BACKEND` names (`posthog` by default), by the same rule
+3. Create the flag in each environment's PostHog project; the backend evaluates it there and serves it through `/api/feature-flags`
 
 ---
 
@@ -627,7 +623,7 @@ Control flow:
 - Use Tailwind utilities; prefer semantic, composable class names
 - Use shadcn/ui components as building blocks when available
 - Use the `scrollbar-*` utilities (`@utility` in `src/app/globals.css`) for scrollbar styling
-- The theme is CSS-first: the colour roles, type scale, radii, the `dark` variant and the app's own utilities are in `src/app/globals.css` (`@theme`, `@custom-variant`, `@utility`); `tailwind.config.ts` and its preset keep the raw palette, spacing, shadows and motion. Tailwind CSS 4 runs with Tailwind 3's theme and output (`tailwind.v3-preset.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
+- The theme is CSS-first: the colour roles, type scale, radii, the `dark` variant and the app's own utilities are in `src/app/globals.css` (`@theme`, `@custom-variant`, `@utility`); `tailwind.config.ts` keeps the spacing, shadows and motion. There is no colour palette: colours are the roles in `src/app/tokens/theme.css`, and `bg-red-500` generates nothing. Tailwind CSS 4 runs with Tailwind 3's theme and output (`TAILWIND_3_THEME` in `tailwind.config.ts`, `src/app/tailwind-v3-preflight.css`, `postcss.tailwind3-compat.cjs`), so every other class keeps its Tailwind 3 value. Look values up in the [Tailwind 3 docs](https://v3.tailwindcss.com/docs): `shadow-sm` is still the small shadow, a bare `ring` is 3px and `outline-none` draws a transparent outline. Names that exist only in Tailwind 4, such as `shadow-xs`, `rounded-xs` or `blur-xs`, generate nothing
 - Keep responsive behavior consistent with the design system; no `dark:` classes, the role tokens carry the theme
 
 Additional requirements:

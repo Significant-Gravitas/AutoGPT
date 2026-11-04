@@ -18,7 +18,10 @@ from backend.data.tenancy import (
     agent_graph_attachment_barrier,
     live_resource_access_barrier,
 )
-from backend.executor.utils import make_node_credentials_input_map
+from backend.executor.utils import (
+    make_node_credentials_input_map,
+    validate_and_construct_node_execution_input,
+)
 from backend.integrations.webhooks.utils import (
     prune_webhook_with_credential_lease,
     setup_webhook_for_block,
@@ -32,6 +35,12 @@ from backend.util.exceptions import (
 
 from . import db
 from . import model as models
+from .model import (
+    NODE_INPUT_MASK_PREFIX,
+    is_trigger_config_entry,
+    node_input_mask_key,
+    split_trigger_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +70,7 @@ async def setup_triggered_preset(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    constant_inputs: dict[str, Any] | None = None,
     expert_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -79,6 +89,7 @@ async def setup_triggered_preset(
                 description=description,
                 trigger_config=trigger_config,
                 agent_credentials=agent_credentials,
+                constant_inputs=constant_inputs,
                 expert_id=expert_id,
                 organization_id=organization_id,
                 team_id=team_id,
@@ -94,6 +105,7 @@ async def _setup_triggered_preset_locked(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    constant_inputs: dict[str, Any] | None = None,
     expert_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -106,14 +118,20 @@ async def _setup_triggered_preset_locked(
     returned preset has ``.webhook`` populated, so ``preset.webhook.url`` is the
     ingress URL to hand to the user for manual-setup webhooks.
 
+    The preset's ``inputs`` hold the regular graph inputs (``constant_inputs``)
+    plus the trigger config nested under a per-node ``_node_input_mask_{node_id}``
+    key, so a graph can have both input nodes and a trigger node. The executor
+    separates the two again (see ``_execute_webhook_preset_trigger``).
+
     Fetches the graph itself (rather than taking a ``GraphModel``) so it can run
     as an RPC endpoint without serializing the whole graph across the boundary.
 
     Raises:
         NotFoundError: if the graph no longer exists / isn't accessible.
         MissingConfigError: if the private expert workspace is unavailable.
-        InvalidInputError: if the graph has no webhook node, or the webhook
-            backend rejects the trigger config / credentials.
+        InvalidInputError: if the graph has no webhook node, the given
+            ``constant_inputs`` don't match the graph's input schema, or the
+            webhook backend rejects the trigger config / credentials.
     """
     graph = await get_graph(
         graph_id,
@@ -179,6 +197,8 @@ async def _setup_triggered_preset_locked(
     # that session's list/update/delete/run scope filters while its webhook
     # stays live. create_preset re-validates the expert under the same
     # transaction as the durable write.
+    constant_inputs = constant_inputs or {}
+
     trigger_config_with_credentials = {
         **trigger_config,
         **(
@@ -188,6 +208,41 @@ async def _setup_triggered_preset_locked(
             or {}
         ),
     }
+    _refuse_graph_inputs_read_as_trigger_config(constant_inputs)
+    preset_inputs = dict(constant_inputs)
+    preset_inputs[node_input_mask_key(trigger_node.id)] = (
+        trigger_config_with_credentials
+    )
+
+    # What create_preset stores, checked before any webhook is registered. `payload`
+    # is not a row: delivery adds it to the trigger node's mask, counted below.
+    db.check_preset_text(name, description)
+    db.check_preset_inputs({**preset_inputs, **agent_credentials})
+    await db.check_preset_count(user_id)
+
+    # Validate the preset's inputs the same way the executor will — regular
+    # inputs as graph inputs, trigger config as the trigger node's mask — so an
+    # invalid preset is rejected before any webhook is registered. A placeholder
+    # `payload` stands in for the (not-yet-received) webhook event, which the
+    # trigger node requires to pass execution-input construction. It and the
+    # credentials are the only inputs left unchecked. Checked in the preset's
+    # own org/team, where its runs will be.
+    try:
+        await validate_and_construct_node_execution_input(
+            graph_id=graph.id,
+            user_id=user_id,
+            graph_inputs=constant_inputs,
+            graph_version=graph.version,
+            graph_credentials_inputs=agent_credentials,
+            nodes_input_masks={
+                trigger_node.id: {**trigger_config_with_credentials, "payload": {}}
+            },
+            organization_id=organization_id,
+            team_id_restriction=team_id,
+            trigger_setup=True,
+        )
+    except ValueError as e:
+        raise InvalidInputError(f"Invalid preset inputs: {e}")
 
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
@@ -207,7 +262,7 @@ async def _setup_triggered_preset_locked(
                 graph_version=graph.version,
                 name=name,
                 description=description,
-                inputs=trigger_config_with_credentials,
+                inputs=preset_inputs,
                 credentials=agent_credentials,
                 is_active=True,
             ),
@@ -218,6 +273,7 @@ async def _setup_triggered_preset_locked(
             enforce_scope=True,
         )
     except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
         await _prune_dangling_webhook(user_id, new_webhook.id)
         raise
 
@@ -302,6 +358,8 @@ async def _update_triggered_preset_locked(
 
     new_webhook = None
     if inputs is not None and credentials is not None:
+        # Refused before anything is registered with the provider.
+        db.check_preset_text(name, description)
         graph = await get_graph(
             current.graph_id,
             current.graph_version,
@@ -313,7 +371,42 @@ async def _update_triggered_preset_locked(
             raise NotFoundError(
                 f"Graph #{current.graph_id} is not accessible (anymore)"
             )
-        if trigger_node := graph.webhook_input_node:
+        trigger_node = graph.webhook_input_node
+        mask_key = node_input_mask_key(trigger_node.id) if trigger_node else ""
+        # A run-template preset on a trigger-bearing graph has no trigger to
+        # reconfigure; a triggered one is attached or already holds the mask.
+        if trigger_node and (
+            current.webhook_id or mask_key in current.inputs or mask_key in inputs
+        ):
+            # A flat preset the boot backfill has not reached is read as delivery
+            # reads it, and is stored nested below.
+            if mask_key not in inputs and mask_key in current.inputs:
+                raise InvalidInputError(
+                    f"Missing trigger configuration for node {trigger_node.id}"
+                )
+            graph_inputs, trigger_config = split_trigger_inputs(inputs, trigger_node.id)
+            if not isinstance(trigger_config, dict):
+                raise InvalidInputError(
+                    f"Trigger configuration for node {trigger_node.id} must be "
+                    "an object"
+                )
+            _refuse_graph_inputs_read_as_trigger_config(graph_inputs)
+            trigger_config_with_credentials = {
+                **trigger_config,
+                **(
+                    make_node_credentials_input_map(graph, credentials).get(
+                        trigger_node.id
+                    )
+                    or {}
+                ),
+            }
+            # The stored mask overrides preset.credentials at execution, so it
+            # must carry the new credentials, not the ones the caller echoed back.
+            stored_inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
+            # What update_preset stores; `payload` is the trigger node's, not a
+            # stored row — see setup_triggered_preset.
+            db.check_preset_inputs({**stored_inputs, **credentials})
+
             if current.expert_id:
                 organization_id, team_id = await _resolve_private_expert_tenancy(
                     user_id,
@@ -326,15 +419,28 @@ async def _update_triggered_preset_locked(
                 organization_id, team_id = await resolve_member_tenancy(
                     user_id, current.organization_id, current.team_id
                 )
-            trigger_config_with_credentials = {
-                **inputs,
-                **(
-                    make_node_credentials_input_map(graph, credentials).get(
-                        trigger_node.id
-                    )
-                    or {}
-                ),
-            }
+
+            # Validate as setup does, before the webhook is registered.
+            try:
+                await validate_and_construct_node_execution_input(
+                    graph_id=graph.id,
+                    user_id=user_id,
+                    graph_inputs=graph_inputs,
+                    graph_version=graph.version,
+                    graph_credentials_inputs=credentials,
+                    nodes_input_masks={
+                        trigger_node.id: {
+                            **trigger_config_with_credentials,
+                            "payload": {},
+                        }
+                    },
+                    organization_id=organization_id,
+                    team_id_restriction=team_id,
+                    trigger_setup=True,
+                )
+            except ValueError as e:
+                raise InvalidInputError(f"Invalid preset inputs: {e}")
+
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,
@@ -347,6 +453,7 @@ async def _update_triggered_preset_locked(
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
+            inputs = stored_inputs
 
     try:
         updated = await db.update_preset(
@@ -460,6 +567,26 @@ async def _delete_preset_with_webhook_cleanup_locked(
         team_id,
         enforce_team_scope,
     )
+
+
+def refuse_direct_run(preset: models.LibraryAgentPreset) -> None:
+    """Refuse running a webhook-triggered preset by hand: its trigger node only
+    gets a payload from a delivery, so the run could never start."""
+    if preset.webhook_id:
+        raise InvalidInputError(
+            "This preset runs when its webhook trigger fires, "
+            "so it can't be run directly"
+        )
+
+
+def _refuse_graph_inputs_read_as_trigger_config(graph_inputs: GraphInput) -> None:
+    # A reader without the graph would take such an input for the trigger config.
+    for name, value in graph_inputs.items():
+        if is_trigger_config_entry(name, value):
+            raise InvalidInputError(
+                f"Input {name!r} can't hold an object: names starting with "
+                f"{NODE_INPUT_MASK_PREFIX!r} are reserved for trigger settings"
+            )
 
 
 async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:

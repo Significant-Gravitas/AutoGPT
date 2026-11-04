@@ -15,11 +15,13 @@ from backend.util.exceptions import (
     WebhookRegistrationError,
     WebhookSetupUnavailableError,
 )
+from backend.util.models import MAX_PAGE
 
 from .. import db
 from .. import model as models
 from ..triggers import (
     delete_preset_with_webhook_cleanup,
+    refuse_direct_run,
     setup_triggered_preset,
     update_triggered_preset,
 )
@@ -41,8 +43,8 @@ async def list_presets(
     ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
         OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
     ),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = Query(default=10, ge=1, le=db.MAX_PRESETS_PER_PAGE),
     graph_id: Optional[str] = Query(
         description="Allows to filter presets by a specific agent graph"
     ),
@@ -187,6 +189,7 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             trigger_config=params.trigger_config,
+            constant_inputs=params.constant_inputs,
             agent_credentials=params.agent_credentials,
             # Graph-match attribution is resolved by the caller (mirroring
             # create_preset above): setup_triggered_preset itself never
@@ -360,6 +363,7 @@ async def execute_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
         )
+    refuse_direct_run(preset)
 
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs

@@ -141,7 +141,7 @@ function ChatHostView({
           immutable metadata. Never based on the global isDryRun preference
           (which only predicts future sessions). */}
       {sessionId && sessionDryRun && (
-        <div className="flex items-center justify-center gap-1.5 bg-warning-surface px-3 py-1.5 text-xs font-medium text-warning-foreground">
+        <div className="flex items-center justify-center gap-1.5 bg-warning-surface px-3 py-1.5 text-caption font-medium text-warning-foreground">
           <Icon icon={FlaskConicalIcon} size={13} />
           Test mode — this session runs workflows as simulation
         </div>

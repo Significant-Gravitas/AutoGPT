@@ -370,13 +370,16 @@ async def _resume(
     run_organization_id, run_team_id = run_scope
     try:
         assert graph_id and graph_version is not None
-        user = await get_user_by_id(user_id)
-        settings = await get_graph_settings(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            organization_id=run_organization_id,
-            team_id=run_team_id,
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
+            get_user_by_id(user_id),
+            get_graph_settings(
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                organization_id=run_organization_id,
+                team_id=run_team_id,
+            ),
         )
         workspace = await get_or_create_workspace(user_id)
         await add_graph_execution(

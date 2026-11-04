@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
@@ -18,7 +18,7 @@ interface Props {
 export function TopUpPromptProvider({ children }: Props) {
   const { user, isLoggedIn } = useAuth();
   const identityKey = user?.id ?? null;
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled: isBillingEnabled } = usePlatformPayment();
   // A team organization's credits can't be bought, so nothing here nudges
   // anyone to top one up.
   const { isTeamOrg } = useActiveOrgWallet();

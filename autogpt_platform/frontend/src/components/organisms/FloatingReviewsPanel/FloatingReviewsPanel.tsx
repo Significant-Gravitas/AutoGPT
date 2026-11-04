@@ -173,7 +173,7 @@ export function FloatingReviewsPanel({
                 data-slot="floating-reviews-panel-loading"
                 className="py-8 text-center"
               >
-                <Text variant="body" className="text-muted-foreground">
+                <Text variant="body" tone="muted">
                   Loading reviews...
                 </Text>
               </div>

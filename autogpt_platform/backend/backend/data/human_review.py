@@ -568,13 +568,14 @@ async def get_reviews(
     if not steps_waiting_in_chat and (in_chat := await _steps_waiting_in_chat(user_id)):
         where["nodeExecId"] = {"not_in": in_chat}
 
-    total_count = await PendingHumanReview.prisma().count(where=where)
-
-    _reviews = await PendingHumanReview.prisma().find_many(
-        where=where,
-        order={"createdAt": "asc" if oldest_first else "desc"},
-        skip=(page - 1) * page_size if page_size else None,
-        take=page_size,
+    total_count, _reviews = await asyncio.gather(
+        PendingHumanReview.prisma().count(where=where),
+        PendingHumanReview.prisma().find_many(
+            where=where,
+            order={"createdAt": "asc" if oldest_first else "desc"},
+            skip=(page - 1) * page_size if page_size else None,
+            take=page_size,
+        ),
     )
 
     # node_id is filled in by the batched enrichment step.
@@ -1193,7 +1194,8 @@ async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
     Used by CoPilot's resume_capability to clean up one-time-use review records
-    after successful execution.
+    after successful execution, and to use up an approval whose block has since
+    been disabled.
 
     Args:
         node_exec_id: The node execution ID of the review to delete

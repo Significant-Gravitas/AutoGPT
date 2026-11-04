@@ -191,6 +191,7 @@ async def create_routine_schedules(
     run_at: datetime | None,
     session_id: str | None,
     user_timezone: str,
+    replaces: list[str],
 ) -> list[str]:
     organization_id = await saved_personal_org(row)
     team_id = None
@@ -218,6 +219,9 @@ async def create_routine_schedules(
                 routine_id=row.id,
                 organization_id=organization_id,
                 team_id=team_id,
+                # Deleted once the row names the new jobs, so both sets
+                # exist for a moment and only one of them counts.
+                replaces_schedule_ids=replaces,
             )
             created.append(info.id)
     except Exception:

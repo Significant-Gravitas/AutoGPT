@@ -1,7 +1,5 @@
-import asyncio
 import base64
 import time
-from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -20,19 +18,33 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from starlette.status import HTTP_402_PAYMENT_REQUIRED
+from starlette.status import (
+    HTTP_402_PAYMENT_REQUIRED,
+    HTTP_429_TOO_MANY_REQUESTS,
+    HTTP_503_SERVICE_UNAVAILABLE,
+    HTTP_504_GATEWAY_TIMEOUT,
+)
 
 from backend.api.live_auth import (
     requires_live_resource_permission as requires_resource_permission,
 )
 from backend.api.model import CloudStorageUploadResponse
 from backend.blocks import get_block, get_blocks
+from backend.blocks._base import AnyBlockSchema
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.entitlement import enforce_payment_paywall
 from backend.data.execution import ExecutionContext
 from backend.data.tenancy import live_resource_permission_barrier
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
+    DirectBlockExecutionLimitError,
+    DirectBlockExecutionSlot,
+    DirectBlockExecutionTimeoutError,
+    claim_direct_block_execution_slot,
+    run_block_off_loop,
+)
 from backend.monitoring.instrumentation import record_block_execution
 from backend.util.cache import cached
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -162,59 +174,78 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    async with _live_resource_action(
-        user_id,
-        ctx,
-        OrgAction.EXECUTE_RESOURCES,
-        TeamAction.EXECUTE_AGENTS,
-    ):
-        try:
-            await execution_utils.charge_for_direct_block_execution(
-                user_id=user_id, block=obj, input_data=data, source="internal"
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)
-            ) from e
+    try:
+        slot = claim_direct_block_execution_slot(user_id)
+    except DirectBlockExecutionBusyError as e:
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
+    except DirectBlockExecutionLimitError as e:
+        raise HTTPException(
+            status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+        ) from e
 
-        execution_context = ExecutionContext(
-            user_id=user_id,
-            user_timezone=get_user_timezone_or_utc(user.timezone),
-            organization_id=ctx.org_id,
-            team_id=ctx.team_id,
+    with slot:
+        async with _live_resource_action(
+            user_id,
+            ctx,
+            OrgAction.EXECUTE_RESOURCES,
+            TeamAction.EXECUTE_AGENTS,
+        ):
+            return await _run_direct_block(obj, data, user_id, user.timezone, ctx, slot)
+
+
+async def _run_direct_block(
+    obj: AnyBlockSchema,
+    data: BlockInput,
+    user_id: str,
+    user_timezone: str,
+    ctx: RequestContext,
+    slot: DirectBlockExecutionSlot,
+) -> CompletedBlockOutput:
+    try:
+        await execution_utils.charge_for_direct_block_execution(
+            user_id=user_id, block=obj, input_data=data, source="internal"
+        )
+    except InsufficientBalanceError as e:
+        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
+
+    # Direct block execution has no graph; build a minimal ExecutionContext
+    # carrying the caller's identity, org/team scope and timezone so blocks
+    # that depend on those (e.g. time blocks) get correct data.
+    execution_context = ExecutionContext(
+        user_id=user_id,
+        user_timezone=get_user_timezone_or_utc(user_timezone),
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+
+    start_time = time.time()
+    try:
+        output = await run_block_off_loop(
+            obj.execute(data, user_id=user_id, execution_context=execution_context),
+            slot,
         )
 
-        start_time = time.time()
-        try:
-            output = defaultdict(list)
-            configured_timeout = getattr(obj, "execution_timeout_seconds", None)
-            block_timeout = (
-                min(configured_timeout, 30 * 60)
-                if isinstance(configured_timeout, (int, float))
-                and configured_timeout > 0
-                else 30 * 60
-            )
-            async with asyncio.timeout(block_timeout):
-                async for name, data in obj.execute(
-                    data,
-                    user_id=user_id,
-                    execution_context=execution_context,
-                ):
-                    output[name].append(data)
+        # Record successful block execution with duration
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(
+            block_type=block_type, status="success", duration=duration
+        )
 
-            duration = time.time() - start_time
-            block_type = obj.__class__.__name__
-            record_block_execution(
-                block_type=block_type, status="success", duration=duration
-            )
-            return output
-        except Exception:
-            duration = time.time() - start_time
-            block_type = obj.__class__.__name__
-            record_block_execution(
-                block_type=block_type, status="error", duration=duration
-            )
-            raise
+        return output
+    except DirectBlockExecutionTimeoutError as e:
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
+    except Exception:
+        # Record failed block execution
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise
 
 
 @router.post(

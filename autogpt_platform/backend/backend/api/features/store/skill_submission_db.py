@@ -48,7 +48,41 @@ async def submit_skill(
     skill, files = await _read_library_package(
         user_id, slug, organization_id=organization_id
     )
+    return await _create_pending_version(
+        user_id, slug, request, skill, files, organization_id=organization_id
+    )
 
+
+async def submit_skill_package(
+    user_id: str,
+    request: skill_model.SkillSubmissionRequest,
+    skill: ParsedSkill,
+    files: list[SkillFile],
+    *,
+    organization_id: str | None = None,
+) -> skill_model.SkillSubmission:
+    """Create a pending version for a package that is not in a library.
+
+    The preview seed publishes its synthetic creators' skills this way: they
+    have no workspace to read from, and get the same listing and version rows
+    as a library skill submitted through :func:`submit_skill`.
+    """
+    slug = request.skill_name.strip().lower()
+    await _require_profile(user_id)
+    return await _create_pending_version(
+        user_id, slug, request, skill, files, organization_id=organization_id
+    )
+
+
+async def _create_pending_version(
+    user_id: str,
+    slug: str,
+    request: skill_model.SkillSubmissionRequest,
+    skill: ParsedSkill,
+    files: list[SkillFile],
+    *,
+    organization_id: str | None,
+) -> skill_model.SkillSubmission:
     async with transaction() as tx:
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
             where={"slug": slug}

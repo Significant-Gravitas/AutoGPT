@@ -112,7 +112,7 @@ export function MarkdownPreview({ file, onError }: PreviewProps) {
           {text.slice(0, TEXT_SNIPPET_CHARS)}
         </ReactMarkdown>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent" />
     </div>
   );
 }
@@ -147,7 +147,7 @@ function CsvTable({ preview }: { preview: CsvPreview }) {
           ))}
         </tbody>
       </table>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent" />
     </div>
   );
 }

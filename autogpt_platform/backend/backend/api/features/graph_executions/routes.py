@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -31,6 +32,7 @@ from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_toke
 from backend.data.tenancy import live_resource_permission_barrier
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import NotFoundError
+from backend.util.models import MAX_PAGE
 
 # No router-level auth dependency: the two /public/shared routes are
 # deliberately unauthenticated, so each route keeps its own.
@@ -200,21 +202,22 @@ async def list_graph_executions(
         RequestContext,
         requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
     ],
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
     ),
 ) -> execution_db.GraphExecutionsPaginated:
-    paginated_result = await execution_db.get_graph_executions_paginated(
-        graph_id=graph_id,
-        user_id=user_id,
-        page=page,
-        page_size=page_size,
-        organization_id=ctx.org_id,
-        team_id_restriction=ctx.team_id,
+    paginated_result, onboarding = await asyncio.gather(
+        execution_db.get_graph_executions_paginated(
+            graph_id=graph_id,
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+            organization_id=ctx.org_id,
+            team_id_restriction=ctx.team_id,
+        ),
+        get_user_onboarding(user_id),
     )
-
-    onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId
         and onboarding.onboardingAgentExecutionId
@@ -267,6 +270,7 @@ async def get_graph_execution(
         )
 
     onboarding = await get_user_onboarding(user_id)
+
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id
         and OnboardingStep.GET_RESULTS not in onboarding.completedSteps

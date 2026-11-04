@@ -11,6 +11,11 @@ type ExecutionEventHandler = (execution: GraphExecution) => void;
 /** For handlers that refetch a list: at most one refetch per 2 s. */
 export const EXECUTION_REFETCH_THROTTLE_MS = 2000;
 
+// The backend allows 1000 subscriptions per connection, shared by every
+// subscriber on the page. Lists of graphs (the whole library) take the first
+// 500, which leaves room for the run and builder pages.
+export const MAX_GRAPH_SUBSCRIPTIONS = 500;
+
 interface GraphScope {
   graphId: GraphID | string;
   organizationId: string | null;
@@ -70,7 +75,8 @@ export function useExecutionEvents({
   // Keyed on the scopes' content, so an equal list built on every render of
   // the caller does not tear the subscription down and send it again.
   const scopesKey = getScopesKey(
-    graphScopes ||
+    (
+      graphScopes ||
       (graphId
         ? [
             {
@@ -79,7 +85,8 @@ export function useExecutionEvents({
               teamId: teamId ?? null,
             },
           ]
-        : []),
+        : [])
+    ).slice(0, MAX_GRAPH_SUBSCRIPTIONS),
   );
 
   useEffect(() => {

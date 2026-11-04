@@ -47,12 +47,12 @@ export function AccountMenuHeader({
           </>
         ) : (
           <>
-            <span className="truncate text-sm leading-tight font-semibold text-foreground-strong">
+            <span className="truncate text-body leading-tight font-semibold text-foreground-strong">
               {userName}
             </span>
             <span
               data-testid="account-menu-user-email"
-              className="truncate text-sm leading-tight text-foreground-body"
+              className="truncate text-body leading-tight text-foreground-body"
             >
               {userEmail}
             </span>
@@ -83,7 +83,8 @@ export function AccountMenuHeader({
           {profile}
           <Icon
             icon={ArrowRight01Icon}
-            className="shrink-0 text-foreground-body"
+            tone="body"
+            className="shrink-0"
             size={16}
             aria-hidden="true"
           />

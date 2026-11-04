@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional, cast
 
@@ -2187,6 +2188,46 @@ async def test_validate_node_input_credentials_linked_picker_is_not_checked(
     assert mock_node.id not in nodes_to_skip
 
 
+class _CountedLinks(list):
+    """A graph's links that count how many are read."""
+
+    reads = 0
+
+    def __iter__(self):
+        for link in super().__iter__():
+            _CountedLinks.reads += 1
+            yield link
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_reads_each_link_once(
+    mocker: MockerFixture,
+):
+    """Whether a picker is fed by a link is looked up in an index built
+    from the graph's links once."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    count = 300
+    nodes = []
+    for i in range(count):
+        node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+        node.id = f"node-{i}"
+        nodes.append(node)
+    links = _CountedLinks(
+        mocker.MagicMock(sink_id=node.id, sink_name="spreadsheet") for node in nodes
+    )
+    mock_graph = mocker.MagicMock(nodes=nodes, links=links)
+    _CountedLinks.reads = 0
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert not errors
+    assert not nodes_to_skip
+    assert _CountedLinks.reads <= count
+
+
 @pytest.mark.asyncio
 async def test_validate_node_input_credentials_link_into_one_attribute_needs_a_file(
     mocker: MockerFixture,
@@ -3054,6 +3095,95 @@ async def test_a_run_given_an_org_the_user_isnt_in_is_refused(
     membership.assert_awaited_once_with("runner", "other-org", "other-team")
     mock_edb.create_graph_execution.assert_not_called()
     queue.assert_not_called()
+
+
+def _webhook_preset_delivery(mocker: MockerFixture):
+    """A delivery of a push to a preset whose inputs hold a graph input and,
+    under the trigger node's mask, the trigger's config. The router's own live
+    checks pass; what's left to decide is the executor's."""
+    import backend.api.features.integrations.router as router
+
+    trigger_node = mocker.MagicMock(id="abc123-0")
+    trigger_node.block.is_triggered_by_event_type.return_value = True
+    mocker.patch.object(
+        router,
+        "get_graph",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(webhook_input_node=trigger_node)
+        ),
+    )
+    mocker.patch.object(
+        router, "has_live_resource_access", new=mocker.AsyncMock(return_value=True)
+    )
+
+    @asynccontextmanager
+    async def live_preset(preset, _webhook):
+        yield preset
+
+    mocker.patch.object(router, "_live_preset_webhook_trigger", live_preset)
+    preset = mocker.MagicMock(
+        id="preset-1",
+        is_active=True,
+        user_id="runner",
+        graph_id="g",
+        graph_version=1,
+        expert_id=None,
+        organization_id="other-org",
+        team_id="other-team",
+        credentials={},
+        inputs={"topic": "news", "_node_input_mask_abc123": {"repo": "o/r"}},
+    )
+    webhook = mocker.MagicMock(id="wh-1", user_id="runner")
+
+    async def deliver():
+        await router._execute_webhook_preset_trigger(
+            preset, webhook, "wh-1", "push", {"event": 1}
+        )
+
+    return deliver
+
+
+@pytest.mark.asyncio
+async def test_a_triggered_run_in_an_org_its_owner_isnt_in_is_refused(
+    mocker: MockerFixture,
+):
+    """A delivery to a preset tagged with an org its owner isn't in starts
+    nothing, rather than running in the owner's own org."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    membership = _runner_is_not_in_the_given_org(mocker)
+    deliver = _webhook_preset_delivery(mocker)
+
+    await deliver()
+
+    membership.assert_awaited_once_with("runner", "other-org", "other-team")
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_triggered_run_hands_the_trigger_only_its_config_and_payload(
+    mocker: MockerFixture,
+):
+    """The preset's graph inputs are the run's inputs; the trigger node gets
+    only its config and the payload. The run stays in the preset's org."""
+    import backend.executor.utils as executor_utils
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="other-org", team_id="other-team"
+    )
+    deliver = _webhook_preset_delivery(mocker)
+
+    await deliver()
+
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert (create_kwargs["organization_id"], create_kwargs["team_id"]) == (
+        "other-org",
+        "other-team",
+    )
+    validate = executor_utils.validate_and_construct_node_execution_input
+    assert validate.call_args.kwargs["graph_inputs"] == {"topic": "news"}
+    assert validate.call_args.kwargs["nodes_input_masks"] == {
+        "abc123-0": {"repo": "o/r", "payload": {"event": 1}}
+    }
 
 
 @pytest.mark.asyncio

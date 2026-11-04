@@ -302,6 +302,8 @@ class TestOrgDbCreateOrg:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         self.prisma.organization.find_unique = AsyncMock(return_value=None)
         self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
         self.prisma.organization.create = AsyncMock(return_value=_make_org())
@@ -659,6 +661,7 @@ class TestOrgDbMembers:
         self.prisma.execute_raw = AsyncMock()
         self.prisma.user.find_unique = AsyncMock(return_value=None)
         self.prisma.orginvitation.update_many = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.db.transaction",
@@ -1349,7 +1352,13 @@ class TestWorkspaceDbCreate:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         _configure_mock_client_tx(self.prisma)
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_create_team_creator_becomes_admin(self):
@@ -1860,10 +1869,17 @@ class TestInvitationAcceptance:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+        # Accepting counts the account's other memberships first.
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.invitation_routes.transaction",
+            _fake_transaction(self.prisma),
+        )
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
             _fake_transaction(self.prisma),
         )
         mocker.patch(
@@ -2118,6 +2134,32 @@ class TestInvitationAcceptance:
             for c in self.prisma.teammember.upsert.await_args_list
         ]
         assert joined == ["team-live"]
+
+    @pytest.mark.asyncio
+    async def test_accepting_at_the_org_bound_is_refused(self, test_user_id):
+        """Joining through an invitation counts like creating an org."""
+        from backend.api.features.orgs.db import MAX_ORGS_PER_USER
+        from backend.api.features.orgs.invitation_routes import accept_invitation
+
+        self.prisma.orginvitation.find_unique = AsyncMock(
+            return_value=self._make_invitation(email="test@example.com")
+        )
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(id=test_user_id, email="test@example.com")
+        )
+        self.prisma.orgmember.count = AsyncMock(return_value=MAX_ORGS_PER_USER)
+        self.prisma.orgmember.upsert = AsyncMock()
+        self.prisma.orginvitation.update_many = AsyncMock(return_value=1)
+
+        with pytest.raises(ValueError, match="at most 50 organizations"):
+            await accept_invitation("tok-abc", user_id=test_user_id)
+
+        self.prisma.orgmember.upsert.assert_not_awaited()
+        self.prisma.orginvitation.update_many.assert_not_awaited()
+        # The org being joined isn't counted, so a repeat accept stays the
+        # "already a member" it always was.
+        where = self.prisma.orgmember.count.await_args.kwargs["where"]
+        assert where["orgId"] == {"not": ORG_ID}
 
     @pytest.mark.asyncio
     async def test_decline_invitation_to_a_deleted_org_is_not_found(self, test_user_id):
@@ -3616,6 +3658,9 @@ class TestPRReviewBugs:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.orgmember.count = AsyncMock(return_value=0)
+        self.prisma.team.count = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)

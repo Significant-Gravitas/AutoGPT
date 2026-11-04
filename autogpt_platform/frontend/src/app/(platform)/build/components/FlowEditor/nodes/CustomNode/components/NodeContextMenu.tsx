@@ -78,7 +78,7 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
         )}
 
         <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
-          <Icon icon={Delete02Icon} size={20} className="mr-2 text-error" />
+          <Icon icon={Delete02Icon} size={20} tone="error" className="mr-2" />
           <span>Delete</span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>

@@ -71,8 +71,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "emphasis"}
+            className="line-clamp-1"
           >
             {highlightText(title, highlightedText)}
           </Text>
@@ -81,8 +81,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("truncate group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="truncate"
           >
             By {creator_name}
           </Text>
@@ -94,8 +94,8 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("truncate group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="truncate"
           >
             {number_of_runs} runs
           </Text>
@@ -110,13 +110,14 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             <Text
               variant="small-medium-loose-underline"
               as="span"
-              className="text-info-foreground"
+              tone="info-strong"
             >
               Workflow page
             </Text>
             <Icon
               icon={LinkSquare01Icon}
-              className="h-4 w-4 text-info-foreground"
+              tone="info-strong"
+              className="h-4 w-4"
               strokeWidth={1}
             />
           </Link>
@@ -130,11 +131,12 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         {!loading ? (
           <Icon
             icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
+            tone="inverse"
+            className="h-5 w-5"
             strokeWidth={2}
           />
         ) : (
-          <Icon icon={Loading03Icon} className="h-5 w-5 animate-spin" />
+          <Icon icon={Loading03Icon} spin className="h-5 w-5" />
         )}
       </div>
     </button>

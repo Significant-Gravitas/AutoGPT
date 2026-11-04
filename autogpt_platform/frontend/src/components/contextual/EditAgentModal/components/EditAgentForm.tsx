@@ -151,24 +151,12 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Store01Icon} size={18} tone="muted" />
                   Listing basics
                   {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
@@ -243,24 +231,12 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Album01Icon} size={18} tone="muted" />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
@@ -286,24 +262,12 @@ export function EditAgentForm({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={SparklesIcon} size={18} tone="muted" />
                   Experience details
                   {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>

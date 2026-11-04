@@ -5,7 +5,17 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Literal, Mapping, Optional, cast, get_args
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    TypeVar,
+    cast,
+    get_args,
+)
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -44,6 +54,7 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
+    check_node_input_counts,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
@@ -56,6 +67,10 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import is_user_banned
+from backend.executor.input_depth import (
+    validate_graph_input_depth,
+    validate_starting_node_input_depth,
+)
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -76,10 +91,12 @@ from backend.util.exceptions import (
     GraphNotInLibraryError,
     GraphValidationError,
     InsufficientBalanceError,
+    InvalidInputError,
     NotAuthorizedError,
     NotFoundError,
     UserBannedError,
 )
+from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import coerce_inputs_to_schema
@@ -91,6 +108,10 @@ RUN_OUTSIDE_ORG_REFUSAL = (
     "You aren't a member of the organization or team this workflow would run "
     "in, so it wasn't started."
 )
+# The most a run may store and hand to its blocks, counting every copy.
+MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
+# A credentials title is only a label; this is what a node gets of it.
+MAX_CREDENTIALS_TITLE_LENGTH = 256
 
 # ============ Resource Helpers ============ #
 
@@ -354,6 +375,7 @@ def validate_exec(
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -365,6 +387,10 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
+        trigger_setup: Validate a trigger before its first event: absent
+            credential fields and a webhook block's ``payload`` are left out of
+            the missing-input and schema checks; everything else is validated as
+            for a real run.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -400,8 +426,16 @@ def validate_exec(
     # Coerce non-matching data types to the expected input schema.
     coerce_inputs_to_schema(data, schema)
 
+    unchecked_fields: set[str] = set()
+    if trigger_setup:
+        unchecked_fields = {
+            f for f in schema.get_credentials_fields() if data.get(f) is None
+        }
+        if node_block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL):
+            unchecked_fields.add("payload")
+
     # Input data post-merge should contain all required fields from the schema.
-    if missing_input := schema.get_missing_input(data):
+    if missing_input := schema.get_missing_input(data) - unchecked_fields:
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
             # generates synthetic outputs without needing real input values.
@@ -413,7 +447,7 @@ def validate_exec(
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
-        if error := schema.get_mismatch_error(data):
+        if error := schema.get_mismatch_error(data, exclude_fields=unchecked_fields):
             error_message = f"{error_prefix} {error}"
             logger.warning(error_message)
             return None, error_message
@@ -511,6 +545,7 @@ async def _validate_node_input_credentials(
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
     nodes_to_skip: set[str] = set()
+    linked_inputs = _linked_inputs(graph)
     user_credentials = _credentials_snapshot(user_id)
     # The graph owner's, for the references an OWNER-mode run resolves there.
     owner_credentials = (
@@ -683,7 +718,7 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                if _is_linked(graph, node, field_name):
+                if (node.id, field_name) in linked_inputs:
                     # An upstream block supplies the file at run time, so the
                     # stored value (possibly a leftover None) isn't what runs.
                     continue
@@ -883,12 +918,12 @@ def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> boo
     return field is not None and type(None) in get_args(field.annotation)
 
 
-def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
-    """Whether a link supplies the whole input. A link into one attribute of
-    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
-    return any(
-        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
-    )
+def _linked_inputs(graph: GraphModel) -> set[tuple[str, str]]:
+    """The (node id, input name) pairs a link supplies as a whole input, built
+    once per validation so each lookup is constant time. A link into one
+    attribute of an input (e.g. `spreadsheet_@_id`) can't bring the
+    `_credentials_id`, so it doesn't count as the whole input."""
+    return {(link.sink_id, link.sink_name) for link in graph.links}
 
 
 def make_node_credentials_input_map(
@@ -916,15 +951,21 @@ def make_node_credentials_input_map(
         if graph_input_name not in graph_credentials_input:
             continue
 
+        credentials = _node_credentials_input(graph_credentials_input[graph_input_name])
         # Use passed-in credentials for all compatible node input fields
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[
-                graph_input_name
-            ].model_dump(exclude_none=True)
+            result[node_id][node_field_name] = dict(credentials)
 
     return result
+
+
+def _node_credentials_input(credentials: CredentialsMetaInput) -> dict[str, JsonValue]:
+    node_input = credentials.model_dump(exclude_none=True)
+    if title := node_input.get("title"):
+        node_input["title"] = title[:MAX_CREDENTIALS_TITLE_LENGTH]
+    return node_input
 
 
 async def validate_graph_with_credentials(
@@ -976,6 +1017,7 @@ async def _construct_starting_node_execution_input(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     dry_run: bool = False,
     credentials_owner_id: Optional[str] = None,
+    trigger_setup: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -989,6 +1031,8 @@ async def _construct_starting_node_execution_input(
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
         dry_run: When True, skip credential validation errors (simulation needs no real creds).
+        trigger_setup: Skip credential errors and a webhook block's payload checks,
+            validating every other input as for a real run.
 
     Returns:
         tuple[
@@ -1001,9 +1045,9 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks, credentials_owner_id
     )
-    # Dry runs simulate every block — missing credentials are irrelevant.
-    # Strip credential-only errors so the graph can proceed.
-    if dry_run and validation_errors:
+    # Dry runs simulate every block, and trigger setup runs before credentials are
+    # picked: strip credential-only errors so the graph can proceed.
+    if (dry_run or trigger_setup) and validation_errors:
         validation_errors = {
             node_id: {
                 field: msg
@@ -1059,7 +1103,12 @@ async def _construct_starting_node_execution_input(
                 "Please use the appropriate trigger to run this workflow."
             )
 
-        input_data, error = validate_exec(node, input_data, dry_run=dry_run)
+        input_data, error = validate_exec(
+            node,
+            input_data,
+            dry_run=dry_run,
+            trigger_setup=trigger_setup,
+        )
         if input_data is None:
             raise ValueError(error)
         else:
@@ -1085,6 +1134,7 @@ async def validate_and_construct_node_execution_input(
     credentials_owner_id: Optional[str] = None,
     organization_id: Optional[str] = None,
     team_id_restriction: Optional[str] = None,
+    trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -1114,6 +1164,8 @@ async def validate_and_construct_node_execution_input(
         GraphValidationError: If the graph has validation issues.
         ValueError: If there are other validation errors.
     """
+    validate_graph_input_depth(graph_inputs, nodes_input_masks or {})
+
     if prisma.is_connected():
         gdb = graph_db
     else:
@@ -1156,6 +1208,9 @@ async def validate_and_construct_node_execution_input(
         ),
         nodes_input_masks or {},
     )
+    _check_run_input_size(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs or {}
+    )
 
     (
         starting_nodes_input,
@@ -1167,9 +1222,96 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
         credentials_owner_id=credentials_owner_id,
+        trigger_setup=trigger_setup,
     )
+    validate_starting_node_input_depth(starting_nodes_input)
+    # Also enforced by create_graph_execution; here a schedule or a request is
+    # refused before anything is written.
+    check_node_input_counts(starting_nodes_input)
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
+
+
+def _check_run_input_size(
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
+) -> None:
+    """Refuses a run that would store and hand its blocks more than
+    `MAX_RUN_INPUT_BYTES`, before any of it is built. Counting stops as soon as
+    the total is over."""
+    total = 0
+    for size in _run_input_sizes(
+        graph, graph_inputs, nodes_input_masks, graph_credentials_inputs
+    ):
+        total += size
+        if total > MAX_RUN_INPUT_BYTES:
+            raise InvalidInputError(
+                "The inputs for this run are too large: together, as handed to "
+                f"each block, they must stay under {MAX_RUN_INPUT_BYTES // 2**20} MB."
+            )
+
+
+def _run_input_sizes(
+    graph: GraphModel,
+    graph_inputs: GraphInput,
+    nodes_input_masks: NodesInputMasks,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput],
+) -> Iterator[int]:
+    """The size of the graph inputs, node input overrides and credentials as
+    stored on the run, keys included, then of each starting node's copy of a
+    graph input value and of its own input overrides, which
+    `_construct_starting_node_execution_input` puts in that node's input.
+    Each value is measured only once."""
+    input_sizes: dict[str, int] = {}
+    mask_sizes: dict[str, int] = {}
+
+    def graph_input_size(input_name: str, value: Any) -> int:
+        input_sizes[input_name] = _json_size(value)
+        return input_sizes[input_name]
+
+    def node_input_mask_size(node_id: str, node_input_mask: Any) -> int:
+        mask_sizes[node_id] = _json_size(node_input_mask)
+        return mask_sizes[node_id]
+
+    yield from _json_mapping_sizes(graph_inputs, graph_input_size)
+    yield from _json_mapping_sizes(nodes_input_masks, node_input_mask_size)
+    yield from _json_mapping_sizes(
+        graph_credentials_inputs,
+        lambda _, credentials: _json_size(
+            credentials.model_dump(mode="json", exclude_none=True)
+        ),
+    )
+    for node in graph.starting_nodes:
+        if node.block.block_type == BlockType.NOTE:
+            continue
+        input_name = cast(str | None, node.input_default.get("name"))
+        if (
+            node.block.block_type == BlockType.INPUT
+            and input_name
+            and input_name in input_sizes
+        ):
+            yield input_sizes[input_name]
+        if node.id in mask_sizes:
+            yield mask_sizes[node.id]
+
+
+_V = TypeVar("_V")
+
+
+def _json_mapping_sizes(
+    mapping: Mapping[str, _V], value_size: Callable[[str, _V], int]
+) -> Iterator[int]:
+    """The size of `mapping` as compact JSON, in parts: its braces, then each
+    entry with its key, colon and comma."""
+    yield 2
+    for i, (key, value) in enumerate(mapping.items()):
+        yield (1 if i else 0) + _json_size(key) + 1 + value_size(key, value)
+
+
+def _json_size(value: Any) -> int:
+    return len(json_dumps(value).encode("utf-8"))
 
 
 def _merge_nodes_input_masks(
@@ -1198,6 +1340,14 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
 # drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
 GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
+
+# Nothing consumes this queue; a message parked here dead-letters onto the run
+# queue once the expiration the publisher gave it runs out.
+GRAPH_EXECUTION_DELAY_QUEUE_NAME = "graph_execution_delay_v1"
+GRAPH_EXECUTION_DELAY_ROUTING_KEY = "graph_execution.delayed"
+# Ceiling of `graph_run_requeue_delay_seconds`, so a message published without
+# an expiration cannot sit in a queue with no consumer for good.
+GRAPH_EXECUTION_DELAY_MAX_MS = 60 * 60 * 1000
 
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     name="graph_execution_cancel",
@@ -1242,6 +1392,23 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
+    delay_queue = Queue(
+        name=GRAPH_EXECUTION_DELAY_QUEUE_NAME,
+        exchange=GRAPH_EXECUTION_EXCHANGE,
+        routing_key=GRAPH_EXECUTION_DELAY_ROUTING_KEY,
+        durable=True,
+        auto_delete=False,
+        arguments={
+            "x-queue-type": "quorum",
+            "x-dead-letter-exchange": GRAPH_EXECUTION_EXCHANGE.name,
+            "x-dead-letter-routing-key": GRAPH_EXECUTION_ROUTING_KEY,
+            # A quorum queue may drop a message dead-lettered at-most-once,
+            # its default; at-least-once requires reject-publish overflow.
+            "x-dead-letter-strategy": "at-least-once",
+            "x-overflow": "reject-publish",
+            "x-message-ttl": GRAPH_EXECUTION_DELAY_MAX_MS,
+        },
+    )
     # No cancel queue here: it is per-pod, exclusive to the consuming connection,
     # and declared by the consumer itself through ``declare_broadcast_queue``.
     # A queue in this config is declared by every holder, publishers included,
@@ -1249,7 +1416,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue],
+        queues=[run_queue, delay_queue],
     )
 
 
@@ -2025,13 +2192,16 @@ async def _add_graph_execution(
 
     # Generate execution context if it's not provided
     if execution_context is None:
-        user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_exec.graph_version,
-            organization_id=graph_exec.organization_id,
-            team_id=graph_exec.team_id,
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
+            udb.get_user_by_id(user_id),
+            gdb.get_graph_settings(
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_exec.graph_version,
+                organization_id=graph_exec.organization_id,
+                team_id=graph_exec.team_id,
+            ),
         )
         workspace = await wdb.get_or_create_workspace(user_id)
 

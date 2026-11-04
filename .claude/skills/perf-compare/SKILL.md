@@ -32,11 +32,11 @@ The script reads `SENTRY_AUTH_TOKEN` from the environment and nowhere else. It n
 
 ## Where things are in Sentry
 
-| Project | What it holds | Environments | `release` |
-|---|---|---|---|
-| `autogpt-server` | Backend: FastAPI routes (`/api/library/agents`, `/api/chat/sessions/{session_id}/stream`) and internal RPC services (`/update_node_execution_status`) | `app:prod-behave:cloud`, `app:dev-behave:cloud` | git sha once the backend sets it; check first |
-| `builder` | Frontend (Next.js on Vercel): `http.server` routes (`GET /api/proxy/[...path]`), `middleware GET`, `serverAction/*`, browser `pageload` and `navigation` with web vitals | `app:prod-behave:cloud` is prod; `app:preview-behave:cloud` is dev **and** every Vercel preview | git sha |
-| `autogpt-server-previews`, `builder-previews` | `!deploy` previews | `pr-<n>` | git sha |
+| Project                                       | What it holds                                                                                                                                                            | Environments                                                                                    | `release`                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `autogpt-server`                              | Backend: FastAPI routes (`/api/library/agents`, `/api/chat/sessions/{session_id}/stream`) and internal RPC services (`/update_node_execution_status`)                    | `app:prod-behave:cloud`, `app:dev-behave:cloud`                                                 | git sha once the backend sets it; check first |
+| `builder`                                     | Frontend (Next.js on Vercel): `http.server` routes (`GET /api/proxy/[...path]`), `middleware GET`, `serverAction/*`, browser `pageload` and `navigation` with web vitals | `app:prod-behave:cloud` is prod; `app:preview-behave:cloud` is dev **and** every Vercel preview | git sha                                       |
+| `autogpt-server-previews`, `builder-previews` | `!deploy` previews                                                                                                                                                       | `pr-<n>`                                                                                        | git sha                                       |
 
 Check a selector has data before you measure:
 
@@ -85,19 +85,20 @@ Measuring the candidate preview against `app:dev-behave:cloud` at dev HEAD in th
 
 A preview's backend is `https://pr-<N>-server.agpt.co` (REST under `/api`, health at `/health`), and its frontend is `https://autogpt-pr-<N>.vercel.app`.
 
-The k6 tests are in `autogpt_platform/backend/load-tests/`; its `README.md` covers every test and setting. Run them on your own machine: `./k6.sh` runs k6 in Docker (`grafana/k6`), so nothing else needs installing, and a local run costs nothing beyond the load on the target. Do not run them on Grafana Cloud k6. It bills every virtual-user hour, so `./k6.sh` refuses cloud runs unless they are explicitly opted into, and the README reserves them for rare runs the team has agreed to. `K6_ENVIRONMENT=PREVIEW` with `PR_NUMBER=<N>` targets a preview:
+The k6 workload is in `autogpt_platform/backend/load-tests/`; its `README.md` covers the journeys, the profiles and every setting. Run it on your own machine: `./k6.sh` runs k6 in Docker, so nothing else needs installing (the first run builds the image, about two minutes), and a local run costs nothing beyond the load on the target. Do not run it on Grafana Cloud k6. It bills every virtual-user hour, so `./k6.sh` refuses cloud runs unless they are explicitly opted into, and the README reserves them for rare runs the team has agreed to.
+
+`tests/workload.js` drives the user-facing mix at production's weights: copilot reads and streamed turns, account reads, store browsing, library reads and graph runs watched over the WebSocket. Every journey is an open-model scenario at a fixed arrival rate, so a slow build queues instead of sending fewer requests. `LOAD_PROFILE` picks `smoke` (a minute), `baseline` (one-minute warm-up, ten minutes steady: the comparison run) or `stress` (three times baseline):
 
 ```bash
 cd autogpt_platform/backend/load-tests
 export K6_ENVIRONMENT=PREVIEW PR_NUMBER=<N>
-VUS=5 DURATION=10m RAMP_UP=30s RAMP_DOWN=30s ./k6.sh run tests/api/core-api-test.js
+LOAD_PROFILE=baseline ./k6.sh run tests/workload.js
 ```
 
-- **Authentication needs no setup on a preview.** The authenticated tests (`tests/api/*`, `tests/basic/*`, `tests/marketplace/library-access-test.js`, `tests/comprehensive/platform-journey-test.js`) sign up throwaway `loadtest-*@previews.agpt.co` accounts in `setup()`, once per run, and use the Better Auth tokens the preview's frontend issues for them. `LOAD_TEST_ACCOUNT_COUNT` sets how many (default 5). `tests/marketplace/public-access-test.js` needs no account at all.
-- **To run as specific accounts**, such as the seeded `preview-*@previews.agpt.co` personas, set `LOAD_TEST_ACCOUNTS` to a JSON array of `{"email", "password"}`. The tests sign each one in once per run. Dev has no throwaway sign-up, so it always needs `LOAD_TEST_ACCOUNTS`.
-- **Note the run's UTC window** (`date -u +%FT%TZ` before and after) for the baseline and candidate windows above, and drive the same test, VUs and duration at both sides.
-- **Previews start with an empty database.** Store and library lists return nothing, so costs that grow with data (N+1 queries, scans) do not show. Seed data through the API first, or confirm on dev and prod after merge.
-- None of the k6 tests open copilot chats. To measure copilot turns, run chats against the preview yourself, or measure on dev and prod traffic.
+- **Authentication needs no setup on a preview; graph runs and chat sessions need a Stripe test-mode key.** `setup()` signs up throwaway `@previews.agpt.co` accounts named for the engine their copilot turns run on (`loadtest-dummy-<run>-<n>`, `loadtest-scripted-<run>-<n>`, and `loadtest-<run>-<n>` for the real model), seeds each with graphs, runs, chat sessions and a hired expert, and finds whatever store listings and expert templates the preview has. Previews paywall new accounts, so with `STRIPE_TEST_SECRET_KEY` unset the graph journey skips and the copilot reads have no session to open; with it, `setup()` subscribes each account in Stripe test mode first. The summary's `coverage` says which journeys ran in full. Dev has no throwaway sign-up, so it needs `LOAD_TEST_ACCOUNTS` (a JSON array of `{"email", "password"}`).
+- **Every run writes `results/<RUN_ID>.json`** with the UTC window of its steady phase (`window.steady_started_at` / `window.steady_ended_at`, after the warm-up and before teardown), the target and its Sentry selector, the rates it sent, what each journey covered, and the client-side numbers: per endpoint p50/p95, copilot time to first token and turn time, graph run time and WebSocket event latency. Use the steady window for the `window=` arguments above: it is what k6's thresholds judged.
+- **`scripts/ab.sh <control PR> <candidate PR>`** runs the baseline profile at both previews interleaved (A B B A) with the same seed and prints the perf-compare command for the steady windows it produced. Runs that covered different journeys did not send the same load, so then it prints their coverage and no command. `scripts/diff-summaries.js` puts two summaries side by side; it is a quick read, not a verdict.
+- **Copilot turns run on the engine each account's address names.** On a preview, a `loadtest-dummy-` account's turns run on the dummy engine and a `loadtest-scripted-` account's on the SDK engine against the preview's scripted model, at no model cost; everyone else on the preview keeps the real model (backend `copilot/load_test.py`). `setup()` confirms both with a probe turn before it sends any, a probe that fails fails the run, and `LOAD_TEST_COPILOT_TURNS=off` sends no turn. Real-model turns are opt-in (`LOAD_TEST_COPILOT_REAL_TURNS`, 1 to 10, about $0.07 each). The backend records `copilot.turn.ttft_ms`, `copilot.turn.queue_wait_ms` and `copilot.turn.duration_ms` on its `copilot.turn` transaction, and `copilot.load_test` names a load-test account's engine, so compare with `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'`, adding `copilot.load_test:dummy` to the query for one engine or `!has:copilot.load_test` for people's turns only. `tests/copilot-real-model.js` sends a capped number of turns at a real model, opt-in, and prints what it cost.
 - The repository's evals (`backend/copilot/eval`, `backend/copilot/capabilities/eval`, `poetry run expert-style-eval`, `poetry run brain-dump-eval`) are offline quality and cost harnesses. They send no traffic to a deploy.
 - After merge, real traffic on dev and prod is the load.
 
@@ -130,15 +131,15 @@ A run over the top transactions is for spotting regressions and leads, not for c
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | faster: a compared transaction got faster and nothing regressed |
-| 1 | slower or more failures: at least one compared transaction regressed |
-| 2 | usage error: bad arguments (including a `--region-url` that is not https, `--timeout` ≤ 0, or `--sample-cap` below `--min-count`), unknown project, or Sentry rejected the query (HTTP 400) |
-| 3 | no detectable change |
-| 4 | not enough data: no compared transaction met `--min-count` and `--min-traces` on both sides |
-| 5 | auth: `SENTRY_AUTH_TOKEN` missing, or Sentry rejected it (401/403) |
-| 6 | Sentry API or network error after retries, or any unexpected error; never read as a regression |
+| Code | Meaning                                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | faster: a compared transaction got faster and nothing regressed                                                                                                                             |
+| 1    | slower or more failures: at least one compared transaction regressed                                                                                                                        |
+| 2    | usage error: bad arguments (including a `--region-url` that is not https, `--timeout` ≤ 0, or `--sample-cap` below `--min-count`), unknown project, or Sentry rejected the query (HTTP 400) |
+| 3    | no detectable change                                                                                                                                                                        |
+| 4    | not enough data: no compared transaction met `--min-count` and `--min-traces` on both sides                                                                                                 |
+| 5    | auth: `SENTRY_AUTH_TOKEN` missing, or Sentry rejected it (401/403)                                                                                                                          |
+| 6    | Sentry API or network error after retries, or any unexpected error; never read as a regression                                                                                              |
 
 With `--json`, the fields to branch on are:
 

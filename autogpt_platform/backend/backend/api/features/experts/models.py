@@ -43,6 +43,8 @@ EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
 EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
+# Each repeat time of a routine is one scheduler job.
+MAX_ROUTINE_CRONS = 24
 
 # Avatars come from our own upload (an absolute https URL) or ship with a
 # roster template (a path under /public). Anything else — notably data:,

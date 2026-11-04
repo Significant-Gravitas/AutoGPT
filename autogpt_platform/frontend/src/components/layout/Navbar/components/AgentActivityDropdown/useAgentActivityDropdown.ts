@@ -12,6 +12,7 @@ import {
   NotificationState,
   categorizeExecutions,
   handleExecutionUpdate,
+  relabelNotifications,
 } from "./helpers";
 import {
   getTeamScopedQueryKey,
@@ -98,7 +99,9 @@ export function useAgentActivityDropdown() {
   });
 
   return {
-    ...notifications,
+    // Named at read time: the library loads page by page, and runs of
+    // workflows on later pages get their names once those pages land.
+    ...relabelNotifications(notifications, agentInfoMap),
     isReady: executionsSuccess,
     error: executionsError,
     isOpen,

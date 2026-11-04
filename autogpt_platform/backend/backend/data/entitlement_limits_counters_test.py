@@ -94,7 +94,7 @@ def _team(org_id: str) -> OrgPlanSnapshot:
 
 
 @pytest.fixture
-def world(mocker, monkeypatch):
+def world(mocker, monkeypatch, set_platform_payment):
     now = pin_usage_clock(monkeypatch)
     counters = SpendCounters()
     mocker.patch.object(rate_limit, "get_redis_async", AsyncMock(return_value=counters))
@@ -128,7 +128,7 @@ def world(mocker, monkeypatch):
         "org_plan_db",
         return_value=MagicMock(query_active_membership=AsyncMock(return_value=True)),
     )
-    mocker.patch.object(entitlement, "is_feature_enabled", AsyncMock(return_value=True))
+    set_platform_payment(True)
     # The flag service's limits: a base of DAILY and WEEKLY, PRO at 1x.
     mocker.patch.object(
         rate_limit,

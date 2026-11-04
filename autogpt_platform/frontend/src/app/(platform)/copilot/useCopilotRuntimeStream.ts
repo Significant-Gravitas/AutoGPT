@@ -28,6 +28,7 @@ import {
   convertChatSessionMessagesToUiMessages,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
+import { countAnswerTowardStarToast } from "./helpers/githubStarToast";
 import {
   latestProviderFailure,
   parseProviderFailure,
@@ -144,6 +145,8 @@ export function useCopilotRuntimeStream({
   useInsertionEffect(() => {
     isUserStoppingRef.current = snapshot.stopped;
   });
+  // The turn-end handler is bound before `messages` is built, below.
+  const messagesRef = useRef<UIMessage[]>([]);
 
   function handleError(error: Error, rawFailure: unknown) {
     if (!sessionId) return;
@@ -200,10 +203,16 @@ export function useCopilotRuntimeStream({
     return runtime.bind(
       {
         onError: handleError,
-        onTurnEnd: () =>
-          queryClient.invalidateQueries({
+        onTurnEnd: ({ expired }) => {
+          void queryClient.invalidateQueries({
             queryKey: getGetV2GetCopilotUsageQueryKey(),
-          }),
+          });
+          // Only a finish the stream delivered counts: a failed turn ends here
+          // too, and so does one whose stream went away first.
+          if (!expired && runtime.getSnapshot().phase === "finished") {
+            countAnswerTowardStarToast({ messages: messagesRef.current });
+          }
+        },
       },
       async () => viewOf((await refetchSession()).data),
     );
@@ -238,6 +247,9 @@ export function useCopilotRuntimeStream({
         : [],
     [sessionId, joinAssistantRuns, history.messages, tail.messages],
   );
+  useInsertionEffect(() => {
+    messagesRef.current = messages;
+  });
   const turnStats = withLatestUser(
     messages,
     statsOfAssistantRuns(

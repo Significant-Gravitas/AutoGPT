@@ -42,7 +42,7 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import record_graph_operation
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import GraphInUseError, GraphValidationError
 
 # Every route here is authenticated by the router and tagged "graphs" at the
 # mount; execute_graph adds Depends(enforce_payment_paywall) on top.
@@ -337,23 +337,46 @@ async def delete_graph(
         str | None, live_dependency(_live_graph_delete_dependency)
     ],
 ) -> DeleteGraphResponse:
-    if active_version := await graph_db.get_graph(
-        graph_id=graph_id,
-        version=None,
+    # A caller who owns no version of the graph gets what they always got:
+    # nothing deleted, no conflict, and no hint whether the graph exists.
+    if not await graph_db.user_owns_graph(
+        graph_id,
         user_id=user_id,
         organization_id=ctx.org_id,
-        team_id=target_team_id,
+        team_id_restriction=target_team_id,
     ):
-        await on_graph_deactivate(active_version, user_id=user_id)
+        return {"version_counts": 0}
 
-    return {
-        "version_counts": await graph_db.delete_graph(
+    try:
+        # Refuse before touching anything, so a rejected delete leaves the
+        # graph's triggers, schedules and webhooks running.
+        await graph_db.assert_graph_deletable(graph_id, user_id)
+
+        if active_version := await graph_db.get_graph(
+            graph_id=graph_id,
+            version=None,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=target_team_id,
+        ):
+            await on_graph_deactivate(active_version, user_id=user_id)
+            await library_db.cleanup_graph_for_permanent_delete(
+                graph_id,
+                user_id,
+                organization_id=active_version.organization_id,
+                team_id=active_version.team_id,
+            )
+
+        version_counts = await graph_db.delete_graph_permanently(
             graph_id,
             user_id=user_id,
             organization_id=ctx.org_id,
             team_id_restriction=target_team_id,
         )
-    }
+    except GraphInUseError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    return {"version_counts": version_counts}
 
 
 @router.put(

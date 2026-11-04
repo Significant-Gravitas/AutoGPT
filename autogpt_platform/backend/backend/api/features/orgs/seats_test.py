@@ -28,14 +28,14 @@ def _snapshot(plan_seats: int | None) -> OrgPlanSnapshot:
 
 
 @pytest.fixture
-def org(mocker):
+def org(mocker, set_platform_payment):
     """A team org with one member (its owner) and payments on; tests set the
     plan's seats and the pending invitations."""
     client = MagicMock()
     client.orgmember.count = AsyncMock(return_value=1)
     client.orginvitation.count = AsyncMock(return_value=0)
     lock = mocker.patch.object(seats, "lock_org_membership", AsyncMock())
-    mocker.patch.object(seats, "is_feature_enabled", AsyncMock(return_value=True))
+    set_platform_payment(True)
     plan = mocker.patch.object(
         seats, "query_org_plan_snapshot", AsyncMock(return_value=_snapshot(3))
     )
@@ -82,9 +82,9 @@ async def test_without_a_plan_nobody_can_be_invited(org):
 
 
 @pytest.mark.asyncio
-async def test_with_payments_off_there_are_no_seats_to_count(org, mocker):
+async def test_with_payments_off_there_are_no_seats_to_count(org, set_platform_payment):
     client, plan, lock = org
-    mocker.patch.object(seats, "is_feature_enabled", AsyncMock(return_value=False))
+    set_platform_payment(False)
     await seats.assert_free_seat(client, "org", "owner", accepting=False)
     plan.assert_not_awaited()
     lock.assert_not_awaited()

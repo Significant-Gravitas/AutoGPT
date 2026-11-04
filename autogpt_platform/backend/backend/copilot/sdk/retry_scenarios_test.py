@@ -1062,10 +1062,6 @@ def _make_sdk_patches(
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
         ("os.makedirs", {}),
         (
-            f"{_SVC}.propagate_attributes",
-            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
-        ),
-        (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
@@ -1130,7 +1126,6 @@ def _make_sdk_patches(
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
-        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
             "backend.copilot.gate.held.answered",
             dict(new_callable=AsyncMock, return_value=[]),
@@ -3553,6 +3548,80 @@ class TestStreamChatCompletionRetryIntegration:
         ]
         assert len(queries) == 1, "a refused auto-continue must not query again"
         drain.assert_awaited_once()  # the turn-start drain only
+
+    @pytest.mark.asyncio
+    async def test_a_load_test_accounts_queued_messages_stay_on_the_scripted_model(
+        self,
+    ):
+        """A load-test account's turn talks to the scripted model
+        (``backend/copilot/load_test.py``), and the continuation that answers
+        what the user queued during it is handed the same stand-in, so
+        neither query gets the deployment's provider."""
+        from backend.copilot.pending_messages import PendingMessage
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+
+        def _client_factory(*args, **kwargs):
+            return self._make_client_mock(result_message=result_msg)
+
+        drains: list[int] = []
+
+        async def _drain(*args, **kwargs):
+            # Queued after the turn-start drain: the auto-continue picks it up.
+            drains.append(1)
+            if len(drains) == 2:
+                return [PendingMessage(content="and one more thing")]
+            return []
+
+        continuation: dict = {}
+
+        async def _continuation(**kwargs):
+            # The recursive call the auto-continue makes, looked up on the
+            # module; the turn it would run is covered by the tests above.
+            continuation.update(kwargs)
+            return
+            yield
+
+        stand_in = "http://scripted-model:4010/api/v1"
+        env = MagicMock(return_value={})
+        patches = [
+            p
+            for p in _make_sdk_patches(
+                session,
+                original_transcript=_build_transcript(
+                    [("user", "prior question"), ("assistant", "prior answer")]
+                ),
+                compacted_transcript=None,
+                client_side_effect=_client_factory,
+            )
+            if p[0] not in {f"{_SVC}.build_sdk_env", f"{_SVC}.drain_pending_safe"}
+        ]
+
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.build_sdk_env", new=env))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=_drain))
+            stack.enter_context(
+                patch(f"{_SVC}.stream_chat_completion_sdk", new=_continuation)
+            )
+            async for _ in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+                stand_in_model_url=stand_in,
+            ):
+                pass
+
+        assert env.call_args.kwargs["stand_in_model_url"] == stand_in
+        assert continuation, "the queued message should start a continuation"
+        assert continuation["stand_in_model_url"] == stand_in
+        assert [m.content for m in continuation["continued_pending"]] == [
+            "and one more thing"
+        ]
 
 
 # ---------------------------------------------------------------------------

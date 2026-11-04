@@ -101,6 +101,13 @@ async def test_dispatch_continues_only_the_trace_of_the_turns_cause(
         ),
         patch.object(utils, "readmit_turn", new=AsyncMock()),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
         patch.object(utils, "enqueue_copilot_turn", new=enqueue),
     ):
         with tracing.start_transaction("copilot.turn", "copilot.turn"):
@@ -179,6 +186,13 @@ async def test_a_re_admitted_turn_keeps_the_trace_its_envelope_recorded(
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
         patch.object(
             utils, "capture_org_cost_context", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
         ),
     ):
         set_turn_trace_id("unrelated-turn")

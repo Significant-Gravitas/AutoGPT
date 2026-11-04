@@ -9,12 +9,10 @@ import pytest
 from prisma.enums import SubscriptionTier
 from pytest_snapshot.plugin import Snapshot
 
-from backend.copilot import rate_limit
 from backend.data import entitlement
 from backend.data.org_plan import OrgPlanSnapshot
 from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
-from backend.util.feature_flag import Flag
 
 # The one check every paywall asks (``backend.data.entitlement``), and the
 # modules that call it by name.
@@ -139,21 +137,18 @@ def real_entitlement(mocker):
 
 
 @pytest.fixture
-def paywalled_user(mocker, test_user_id):
+def paywalled_user(mocker, set_platform_payment, test_user_id):
     """Make the signed-in test user one without a plan, judged by the real check.
 
-    Undoes ``_bypass_paywall`` and stubs only the stored tier, the payments
-    flag and the organization (the user's personal one), so a 402 comes from
-    the same entitlement check production runs.
+    Undoes ``_bypass_paywall``, stubs the stored tier and the organization (the
+    user's personal one) and turns payment on, so a 402 comes from the same
+    entitlement check production runs.
     """
 
     async def no_plan(user_id: str) -> UsageActivationState:
         return UsageActivationState(
             user_id=user_id, tier=SubscriptionTier.NO_TIER, ready=True
         )
-
-    async def payments_on(flag: Flag, *args, **kwargs) -> bool:
-        return flag == Flag.ENABLE_PLATFORM_PAYMENT
 
     async def personal_org(org_id: str) -> OrgPlanSnapshot:
         return OrgPlanSnapshot(org_id=org_id, exists=True, is_personal=True)
@@ -165,7 +160,7 @@ def paywalled_user(mocker, test_user_id):
         "backend.copilot.usage_activation.pro_activation_db",
         return_value=SimpleNamespace(get_usage_activation_state=no_plan),
     )
-    mocker.patch.object(rate_limit, "is_feature_enabled", new=payments_on)
+    set_platform_payment(True)
     return test_user_id
 
 

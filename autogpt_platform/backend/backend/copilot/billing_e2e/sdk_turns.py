@@ -136,7 +136,6 @@ class SdkTurns:
             "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
-            "propagate_attributes": MagicMock(),
             "_build_system_prompt": AsyncMock(
                 return_value=("You are a test assistant. Reply briefly.", None)
             ),
@@ -152,7 +151,6 @@ class SdkTurns:
             # ingestion read and write the account's rows in the database;
             # the baseline harness stubs it too.
             "_graphiti_enabled": MagicMock(return_value=False),
-            "get_user_tier": AsyncMock(return_value=None),
             # Well above any turn here, so the governor never lands one.
             "resolve_turn_budget": AsyncMock(
                 return_value=TurnBudget(usd=100.0, limiting="task")

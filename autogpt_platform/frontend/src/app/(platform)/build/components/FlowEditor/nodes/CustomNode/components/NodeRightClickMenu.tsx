@@ -105,7 +105,7 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
         )}
 
         <SecondaryMenuItem variant="destructive" onSelect={deleteNode}>
-          <Icon icon={Delete02Icon} size={20} className="mr-2 text-error" />
+          <Icon icon={Delete02Icon} size={20} tone="error" className="mr-2" />
           <span>Delete</span>
         </SecondaryMenuItem>
       </SecondaryMenuContent>

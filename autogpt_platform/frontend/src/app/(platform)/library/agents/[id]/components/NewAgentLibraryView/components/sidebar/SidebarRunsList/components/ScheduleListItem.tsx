@@ -39,10 +39,7 @@ export function ScheduleListItem({
       onClick={onClick}
       selected={selected}
       icon={
-        <IconWrapper
-          // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-          className="border-surface-muted bg-warning-surface text-yellow-700"
-        >
+        <IconWrapper className="border-surface-muted bg-warning-surface text-yellow-foreground">
           <Icon icon={TimeScheduleIcon} size={16} />
         </IconWrapper>
       }

@@ -32,7 +32,7 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
     return (
       <NextLink
         href={threadHref}
-        className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
+        className="inline-flex shrink-0 items-center gap-1 rounded text-body font-medium text-foreground-emphasis underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
       >
         Open {possessive(name)} chat
         <Icon
@@ -47,12 +47,11 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
   return (
     <Button
       variant="secondary"
-      size="small"
+      size="row"
       onClick={() => {
         markAsked();
         onSend(`Try handing ${title} to ${name} again.`);
       }}
-      className="h-8 !min-w-0 px-3"
     >
       Try again
     </Button>

@@ -611,18 +611,18 @@ export function ChatMessagesContainer({
             <Message from="assistant">
               <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
-                  <div className="flex flex-col gap-1 text-sm text-foreground-tertiary">
+                  <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
                       active
                       startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span className="pl-6 text-xs text-foreground-subtle">
+                    <span className="pl-6 text-caption text-foreground-subtle">
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-foreground-tertiary">
+                  <div className="flex items-center gap-2 text-body text-foreground-tertiary">
                     <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
                     <span>Retrieving latest messages</span>
                   </div>
@@ -655,7 +655,7 @@ export function ChatMessagesContainer({
                   className={cn(
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
-                      ? "rounded-xl text-sm leading-6"
+                      ? "rounded-xl text-body leading-6"
                       : "rounded-3xl text-body-lg leading-relaxed",
                   )}
                 >

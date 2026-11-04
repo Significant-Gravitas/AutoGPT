@@ -52,6 +52,7 @@ import {
   setStreamShadowRate,
 } from "./stream/turnShadow";
 import { ReportedSendError } from "./helpers/reportedSendError";
+import { backgroundRefreshInterval } from "./helpers/backgroundSubtasks";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -193,6 +194,12 @@ export function useChatSession({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
+      refetchInterval: (query) => {
+        const response = query.state.data;
+        return response?.status === 200
+          ? backgroundRefreshInterval(response.data)
+          : false;
+      },
       retry: (failureCount, error) =>
         !isDefinitiveSessionFailure(error) && failureCount < 3,
     },

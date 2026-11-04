@@ -13,7 +13,6 @@ from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from autogpt_libs.auth.dependencies import default_team_membership
 from autogpt_libs.auth.models import RequestContext
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
@@ -69,6 +68,7 @@ import backend.api.features.orgs.memory_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.platform_config.routes as platform_config_routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
@@ -125,6 +125,7 @@ from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
+from .middleware.compression import BoundedGZipMiddleware
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.auth_before_body import check_token_before_body
 from .utils.cors import build_cors_params
@@ -257,6 +258,17 @@ async def _run_data_migrations() -> None:
         ),
         ("org bootstrap", backend.data.org_migration.run_migration),
         (
+            # Bounded because this one loops: the first boot after the data
+            # migration walks whatever it could not reach, a graph load and a
+            # transaction each. Presets commit individually, so a timeout
+            # defers the rest to the next boot.
+            "triggered-preset inputs",
+            lambda: asyncio.wait_for(
+                backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
+                timeout=30,
+            ),
+        ),
+        (
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
@@ -267,6 +279,9 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
+        except asyncio.TimeoutError:
+            # A bounded migration resumes on the next start; not worth an alert.
+            logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
             logger.error(f"Start-up data migration '{name}' failed", exc_info=True)
 
@@ -326,7 +341,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
-app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
+app.add_middleware(BoundedGZipMiddleware)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -526,6 +541,7 @@ app.include_router(
 )
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(feature_flags_routes.router, prefix="/api")
+app.include_router(platform_config_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
@@ -817,9 +833,6 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
-        await backend.api.features.library.db.delete_library_agent_by_graph_id(
-            graph_id=graph_id, user_id=user_id
-        )
         ctx = await _test_request_context(user_id)
         return await graphs_routes.delete_graph(
             graph_id, user_id, ctx, target_team_id=None

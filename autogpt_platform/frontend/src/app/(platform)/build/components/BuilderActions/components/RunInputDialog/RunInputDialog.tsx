@@ -126,7 +126,7 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                   data-id="run-input-manual-run-button"
@@ -134,7 +134,8 @@ export const RunInputDialog = ({
                   {!isExecutingGraph && (
                     <Icon
                       icon={PlayIcon}
-                      className="size-5 transition-transform group-hover:scale-110"
+                      motion="transform"
+                      className="size-5 group-hover:scale-110"
                     />
                   )}
                   <Text variant="body-semibold-tight" as="span" tone="inherit">
@@ -146,13 +147,14 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
                   <Icon
                     icon={Clock01Icon}
-                    className="size-5 transition-transform group-hover:scale-110"
+                    motion="transform"
+                    className="size-5 group-hover:scale-110"
                   />
                   <Text variant="body-semibold-tight" as="span" tone="inherit">
                     Schedule Run

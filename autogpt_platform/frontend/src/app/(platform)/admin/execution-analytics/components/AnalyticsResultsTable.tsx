@@ -23,7 +23,7 @@ export function AnalyticsResultsTable({ results }: Props) {
 
   const createCopyableId = (value: string, label: string) => (
     <div
-      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-foreground-tertiary hover:text-foreground-body"
+      className="group flex cursor-pointer items-center gap-1 font-mono text-caption text-foreground-tertiary hover:text-foreground-body"
       onClick={() => {
         navigator.clipboard.writeText(value);
         toast({
@@ -118,10 +118,8 @@ export function AnalyticsResultsTable({ results }: Props) {
     let colorClass = "";
 
     if (score >= 0.8) colorClass = "text-success";
-    // oxlint-disable-next-line design-system/no-raw-colors -- yellow has no role; amber would change the hue (deferred)
-    else if (score >= 0.6) colorClass = "text-yellow-600";
-    // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-    else if (score >= 0.4) colorClass = "text-orange-600";
+    else if (score >= 0.6) colorClass = "text-yellow-foreground";
+    else if (score >= 0.4) colorClass = "text-orange-foreground";
     else colorClass = "text-error-foreground";
 
     return <span className={colorClass}>{percentage}%</span>;
@@ -134,7 +132,7 @@ export function AnalyticsResultsTable({ results }: Props) {
         <Text variant="h3" className="mb-3">
           Analytics Summary
         </Text>
-        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 text-body md:grid-cols-5">
           <div>
             <Text variant="body" tone="secondary">
               Total Executions:
