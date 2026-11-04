@@ -206,9 +206,11 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
             )
             data = parse_response_json(response.choices[0].message.content or "")
         except Exception as e:  # degrades to the template below
+            # The type too: a timeout's message is empty.
             logger.warning(
-                "Brain dump greeting generation failed (attempt %s): %s",
+                "Brain dump greeting generation failed (attempt %s): %s: %s",
                 attempt + 1,
+                type(e).__name__,
                 e,
             )
             continue

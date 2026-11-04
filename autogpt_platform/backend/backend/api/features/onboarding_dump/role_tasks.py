@@ -2,8 +2,8 @@
 
 Used when there is no brain dump to read: it was skipped, it failed, or it
 left nothing usable. The sets themselves are copy, in ``role_task_sets``. A
-role the roster has no expert for, or one outside the team, leaves the task
-with Otto, so the plan never shows a face that will not be hired.
+task whose skills nobody on the team has (``role_skills``) stays with Otto, so
+the plan never shows a face that will not be hired.
 """
 
 from collections.abc import Sequence
@@ -14,7 +14,7 @@ from backend.api.features.onboarding_dump.models import (
     RecommendedExpert,
     SuggestedPrompt,
 )
-from backend.api.features.onboarding_dump.plan_owners import MAX_TEAM, owner_for_role
+from backend.api.features.onboarding_dump.plan_owners import MAX_TEAM, owners_for
 from backend.api.features.onboarding_dump.recommend_experts import (
     fallback_expert_recommendations,
 )
@@ -46,18 +46,15 @@ def role_plan(
 def role_prompts(
     user_role: str | None, team: list[RecommendedExpert]
 ) -> list[SuggestedPrompt]:
-    """The role's tasks, each owned by whoever on ``team`` has its role.
+    """The role's tasks, each owned by whoever on ``team`` has its skills.
 
     ``Other`` and anything the wizard does not offer (Other's typed text)
-    take the ``Other`` set; a task whose role has nobody on ``team`` is
-    Otto's.
+    take the ``Other`` set; a task whose skills nobody the plan keeps from
+    ``team`` has is Otto's.
     """
     tasks = ROLE_FALLBACK_TASKS.get(user_role or "", ROLE_FALLBACK_TASKS[OTHER_ROLE])
     names = {expert.template_id: expert.name for expert in team}
-    owners = [
-        owner_for_role(task.owner_role, team) if task.owner_role else None
-        for task in tasks
-    ]
+    owners = owners_for([task.owner_skills for task in tasks], team)
     return [
         SuggestedPrompt(
             title=task.title,

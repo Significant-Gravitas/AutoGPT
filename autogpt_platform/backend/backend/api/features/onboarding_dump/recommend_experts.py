@@ -18,7 +18,7 @@ import os
 
 from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import Expert
-from backend.api.features.onboarding_dump import plan
+from backend.api.features.onboarding_dump import plan, role_skills
 from backend.api.features.onboarding_dump.models import (
     ExpertRecommendations,
     RaiseSuggestion,
@@ -284,32 +284,39 @@ def _parse_raise_suggestion(raw: object) -> RaiseSuggestion | None:
     )
 
 
-# The wizard's role ids, mapped to the template *roles* that cover them —
-# roles rather than template ids or names so a renamed or re-seeded
-# template still matches, and a missing one is simply skipped.
-_ROLE_TEMPLATE_ROLES: dict[str, tuple[str, ...]] = {
-    "Founder/CEO": ("sales", "marketing"),
-    "Marketing": ("marketing",),
-    "Sales/BD": ("sales",),
-    "Operations": ("ops", "office ops", "executive assistant"),
-    "Product/PM": ("project management", "ops"),
-    "Engineering": ("engineering", "code quality"),
-    "HR/People": ("recruiting", "talent sourcing", "ops"),
+# The wizard's role ids and pain points, mapped to the skills
+# (``role_skills``) the fallback team needs, one expert each: the role's
+# first, then the pain points the user picked, then the rest of the role's,
+# so a need the user named is never cut for one we inferred. Skills are read
+# from a template's role words rather than template ids or whole roles, so a
+# renamed or re-seeded template still matches, and a skill nobody on the
+# roster has is simply skipped. Each role's skills cover its starter tasks
+# (``role_task_sets``), so its plan names the team, not Otto.
+_ROLE_SKILLS: dict[str, tuple[str, ...]] = {
+    "Founder/CEO": ("sales", "marketing", "finance"),
+    "Marketing": ("marketing", "competitors", "data"),
+    "Sales/BD": ("sales", "crm"),
+    "Operations": ("ops", "assistant"),
+    "Product/PM": ("product", "data", "competitors"),
+    "Engineering": ("engineering", "security", "data"),
+    "HR/People": ("recruiting", "people", "ops"),
 }
-_PAIN_TEMPLATE_ROLES: dict[str, tuple[str, ...]] = {
+_PAIN_SKILLS: dict[str, tuple[str, ...]] = {
     "Social media": ("marketing",),
     "Finding leads": ("sales",),
     "Email & outreach": ("sales",),
-    "Reports & data": ("ops",),
-    "Scheduling": ("ops",),
-    "CRM & data entry": ("ops",),
+    "Reports & data": ("data",),
+    "Scheduling": ("assistant",),
+    "CRM & data entry": ("crm",),
+    "Customer support": ("support",),
+    "Research": ("research",),
 }
 
 # Needs the roster may have no template for — the honest answer is the
-# raise door, not the nearest expert. A raise is only suggested when none
-# of the template roles that cover it made the team (_RAISE_COVERED_BY),
-# so an environment seeded with the engineering or people rosters never
-# claims nobody covers a role it just recommended.
+# raise door, not the nearest expert. A raise is only suggested when nobody
+# picked has a skill that covers it (_RAISE_COVERED_BY), so an environment
+# seeded with the engineering or people rosters never claims nobody covers a
+# role it just recommended.
 _ROLE_RAISE_ROLES: dict[str, str] = {
     "Engineering": "developer",
     "HR/People": "recruiter",
@@ -319,8 +326,10 @@ _PAIN_RAISE_ROLES: dict[str, str] = {
     "Research": "researcher",
 }
 _RAISE_COVERED_BY: dict[str, tuple[str, ...]] = {
-    "developer": ("engineering", "code quality"),
-    "recruiter": ("recruiting", "talent sourcing"),
+    "developer": ("engineering", "security"),
+    "recruiter": ("recruiting",),
+    "support": ("support",),
+    "researcher": ("research", "competitors"),
 }
 
 
@@ -336,27 +345,30 @@ def fallback_expert_recommendations(
     claims nothing about what the user said, because in those cases we
     may not have heard anything at all.
     """
+    role = _ROLE_SKILLS.get(user_role or "", ())
     wanted = [
-        *_ROLE_TEMPLATE_ROLES.get(user_role or "", ()),
-        *(
-            role
-            for point in pain_points
-            for role in _PAIN_TEMPLATE_ROLES.get(point, ())
-        ),
+        *role[:1],
+        *(skill for point in pain_points for skill in _PAIN_SKILLS.get(point, ())),
+        *role[1:],
     ]
-    prioritized = [
-        template
-        for role in dict.fromkeys(wanted)
-        for template in templates
-        if template.role.strip().lower() == role
-    ]
-    picked = list({t.id: t for t in prioritized}.values())[:MAX_FALLBACK_EXPERTS]
+    picked: list[Expert] = []
+    for skill in dict.fromkeys(wanted):
+        if len(picked) == MAX_FALLBACK_EXPERTS:
+            break
+        # Someone already picked for an earlier skill covers this one too.
+        if role_skills.first_with_skill((skill,), picked) is not None:
+            continue
+        taken = {template.id for template in picked}
+        best = role_skills.best_template(
+            skill, [t for t in templates if t.id not in taken]
+        )
+        if best is not None:
+            picked.append(best)
 
-    picked_roles = {template.role.strip().lower() for template in picked}
     return ExpertRecommendations(
         diagnosis=FALLBACK_DIAGNOSIS,
         experts=[_fallback_expert(template) for template in picked],
-        raise_suggestion=_fallback_raise(user_role, pain_points, picked_roles),
+        raise_suggestion=_fallback_raise(user_role, pain_points, picked),
         source="fallback",
     )
 
@@ -377,7 +389,7 @@ def _fallback_expert(template: Expert) -> RecommendedExpert:
 
 
 def _fallback_raise(
-    user_role: str | None, pain_points: list[str], picked_roles: set[str]
+    user_role: str | None, pain_points: list[str], picked: list[Expert]
 ) -> RaiseSuggestion | None:
     role = _ROLE_RAISE_ROLES.get(user_role or "") or next(
         (
@@ -387,7 +399,10 @@ def _fallback_raise(
         ),
         None,
     )
-    if role is None or picked_roles & set(_RAISE_COVERED_BY.get(role, ())):
+    covered = role_skills.first_with_skill(
+        _RAISE_COVERED_BY.get(role or "", ()), picked
+    )
+    if role is None or covered is not None:
         return None
     return RaiseSuggestion(
         role=role,

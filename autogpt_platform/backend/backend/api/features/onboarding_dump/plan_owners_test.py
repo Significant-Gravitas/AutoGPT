@@ -7,7 +7,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     intro,
     plan_owners,
-    recommend_experts,
+    role_skills,
     role_task_sets,
     role_tasks,
     suggested_tasks,
@@ -35,31 +35,11 @@ PROMPTS = [
 
 # The wizard's option ids, then Other, which also stands for its typed text.
 WIZARD_ROLES = [*ROLE_LABELS, role_task_sets.OTHER_ROLE]
-# The roster templates' roles, lower-cased as the owner match reads them:
-# every role the fallback team is built from (``recommend_experts``) and
-# Bookkeeping, which only the model's recommendation picks.
-TEMPLATE_ROLES = {
-    "sales",
-    "marketing",
-    "ops",
-    "office ops",
-    "executive assistant",
-    "project management",
-    "engineering",
-    "code quality",
-    "recruiting",
-    "talent sourcing",
-    "bookkeeping",
-}
-# Roles the owner hints name ahead of the roster: no template has one today,
-# so the hint gives no owner until one does (``plan_owners.OWNER_HINTS``).
-# The role starter sets name only roles the roster has.
-NOT_ON_THE_ROSTER_YET = {"research"}
 
 
-def _hinted_roles() -> list[tuple[str, ...]]:
+def _hinted_skills() -> list[tuple[str, ...]]:
     return [*plan_owners.OWNER_HINTS.values()] + [
-        roles for _, roles in plan_owners.TITLE_HINTS
+        skills for _, skills in plan_owners.TITLE_HINTS
     ]
 
 
@@ -68,25 +48,10 @@ def test_the_starter_sets_cover_every_role_the_wizard_offers_and_other():
     assert sorted(role_task_sets.ROLE_FALLBACK_TASKS) == sorted(WIZARD_ROLES)
 
 
-def test_every_role_the_fallback_team_is_built_from_is_a_template_role():
-    wanted = [
-        *recommend_experts._ROLE_TEMPLATE_ROLES.values(),
-        *recommend_experts._PAIN_TEMPLATE_ROLES.values(),
-    ]
-
-    assert {role for roles in wanted for role in roles} <= TEMPLATE_ROLES
-
-
-def test_every_owner_hint_names_a_prompt_icon_and_template_roles():
+def test_every_owner_hint_names_a_prompt_icon_and_known_skills():
     assert set(plan_owners.OWNER_HINTS) <= intro.PROMPT_ICONS
-    for roles in _hinted_roles():
-        assert set(roles) <= TEMPLATE_ROLES | NOT_ON_THE_ROSTER_YET, roles
-
-
-def test_a_hint_for_a_role_not_on_the_roster_yet_falls_back_to_one_that_is():
-    for roles in _hinted_roles():
-        if NOT_ON_THE_ROSTER_YET & set(roles):
-            assert TEMPLATE_ROLES & set(roles), roles
+    for skills in _hinted_skills():
+        assert set(skills) <= set(role_skills.SKILL_WORDS), skills
 
 
 def test_every_wizard_role_has_five_starter_tasks():
@@ -95,18 +60,18 @@ def test_every_wizard_role_has_five_starter_tasks():
         assert tasks[0].why, f"{role}'s first task explains itself"
 
 
-def test_role_tasks_are_valid_copy_owned_by_roles_the_roster_has():
+def test_role_tasks_are_valid_copy_owned_by_known_skills():
     for tasks in role_task_sets.ROLE_FALLBACK_TASKS.values():
         for task in tasks:
             assert task.icon in intro.PROMPT_ICONS, task.title
-            assert task.owner_role is None or task.owner_role in TEMPLATE_ROLES
+            assert set(task.owner_skills) <= set(role_skills.SKILL_WORDS)
             assert task.why is None or len(task.why) <= MAX_WHY_CHARS
             assert len(task.title) <= intro.MAX_TITLE_CHARS, task.title
             for text in (task.title, task.prompt, task.why or ""):
                 assert "—" not in text and "–" not in text, text
 
 
-def test_the_fallback_keeps_the_order_and_matches_owners_by_icon_and_title():
+def test_the_fallback_keeps_the_order_and_matches_owners_by_title_and_icon():
     prompts = [
         SuggestedPrompt(title="Chase cold leads", prompt=".", icon="sparkle"),
         SuggestedPrompt(title="Draft the newsletter", prompt=".", icon="megaphone"),
@@ -122,24 +87,28 @@ def test_the_fallback_keeps_the_order_and_matches_owners_by_icon_and_title():
     assert [p.expert_template_id for p in assigned] == [
         "tpl-max",  # title: leads
         "tpl-maria",  # icon: megaphone
-        "tpl-mina",  # icon: chart-bar, bookkeeping before ops
-        "tpl-nadia",  # icon: bell, research before marketing
+        "tpl-mina",  # title: books, finance before ops
+        # title: competitors, research (Nadia), then marketing; the first
+        # three tasks keep Max, Maria and Mina, so Nadia is cut and the
+        # next match who stays takes it.
+        "tpl-maria",
         None,  # code, but nobody on the team does engineering
         None,  # no hint at all
     ]
 
 
-def test_the_icon_s_hint_comes_before_the_title_s():
+def test_the_title_s_hint_comes_before_the_icon_s():
+    # A title says what the task is; an icon only what it looks like.
     prompt = SuggestedPrompt(
         title="Announce the launch to your leads", prompt=".", icon="megaphone"
     )
 
     [assigned] = plan_owners.fallback_assign([prompt], TEAM)
 
-    assert assigned.expert_template_id == "tpl-maria"
+    assert assigned.expert_template_id == "tpl-max"
 
 
-def test_a_hinted_role_nobody_on_the_team_has_falls_to_the_next_one():
+def test_a_hinted_skill_nobody_on_the_team_has_falls_to_the_next_one():
     prompts = [
         SuggestedPrompt(title="Weekly numbers", prompt=".", icon="chart-bar"),
         SuggestedPrompt(title="Watch competitors", prompt=".", icon="bell"),
@@ -147,11 +116,11 @@ def test_a_hinted_role_nobody_on_the_team_has_falls_to_the_next_one():
 
     assigned = plan_owners.fallback_assign(prompts, [MARIA, OLIVE])
 
-    # Bookkeeping and research are not on this team; ops and marketing are.
+    # Data, finance and research are not on this team; ops and marketing are.
     assert [p.expert_template_id for p in assigned] == ["tpl-olive", "tpl-maria"]
 
 
-def test_an_owner_is_matched_by_role_whatever_its_case_and_spacing():
+def test_an_owner_is_matched_by_role_words_whatever_their_case_and_spacing():
     team = [
         RecommendedExpert(
             template_id="tpl-eve", name="Eve", role="  Executive Assistant "
@@ -160,11 +129,14 @@ def test_an_owner_is_matched_by_role_whatever_its_case_and_spacing():
         RecommendedExpert(template_id="tpl-sid", name="Sid", role="Sales"),
     ]
 
-    assert plan_owners.owner_for_role("executive assistant", team) == "tpl-eve"
-    # Two people with the role: the first on the team takes it.
-    assert plan_owners.owner_for_role("sales", team) == "tpl-sam"
-    assert plan_owners.owner_for_role("engineering", team) is None
-    assert plan_owners.owner_for_role("sales", []) is None
+    assert plan_owners.owner_for_skills(("assistant",), team) == "tpl-eve"
+    # Two people with the skill: the first on the team takes it.
+    assert plan_owners.owner_for_skills(("sales",), team) == "tpl-sam"
+    # A skill nobody has gives way to the next one.
+    assert plan_owners.owner_for_skills(("engineering", "sales"), team) == "tpl-sam"
+    assert plan_owners.owner_for_skills(("engineering",), team) is None
+    assert plan_owners.owner_for_skills(("sales",), []) is None
+    assert plan_owners.owner_for_skills((), team) is None
 
 
 def test_the_team_is_the_first_three_tasks_owners_then_the_recommendation():
@@ -266,7 +238,7 @@ def test_a_founder_plan_takes_owners_from_the_role_team():
     assert [p.expert_name for p in prompts] == ["Max", "Maria", None, None, "Maria"]
 
 
-def test_a_task_whose_role_is_outside_the_role_team_is_otto_s():
+def test_a_task_whose_skills_are_outside_the_role_team_is_otto_s():
     # Ops is on the roster but not on a marketer's fallback team.
     prompts, team = role_tasks.role_plan("Marketing", [], ROSTER)
 

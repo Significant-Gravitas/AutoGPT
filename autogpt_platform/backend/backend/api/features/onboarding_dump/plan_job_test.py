@@ -222,7 +222,7 @@ async def test_a_jev_reorder_keeps_each_task_under_the_id_it_was_handed_out_with
     assert {t.id: t.title for t in tasks} == handed_out
 
 
-async def test_the_team_is_capped_at_three_and_a_task_outside_it_goes_to_otto(
+async def test_the_team_is_capped_at_three_and_a_task_outside_it_goes_to_one_who_stays(
     rows: RowStore, judge: AsyncMock
 ):
     rows.put(
@@ -235,14 +235,15 @@ async def test_the_team_is_capped_at_three_and_a_task_outside_it_goes_to_otto(
     await _run()
 
     # Nadia would take the fourth task, but the first three tasks' owners
-    # fill the team, so she is not on it and that task is Otto's.
+    # fill the team, so she is not on it and the task's next match, Maria
+    # (marketing, from the bell), takes it.
     assert [e.name for e in rows.team.experts] == ["Maria", "Max", "Mina"]
     assert rows.team.diagnosis == "Orders eat your week."
     assert [row["expert_template_id"] for row in rows.prompts] == [
         "tpl-maria",
         "tpl-max",
         "tpl-mina",
-        None,
+        "tpl-maria",
     ]
 
 
@@ -408,19 +409,22 @@ async def test_a_user_with_a_role_gets_their_role_set_over_the_generic_starters(
         t.title for t in role_tasks.ROLE_FALLBACK_TASKS["Founder/CEO"]
     ]
     assert [t.id for t in tasks] == ["0", "1", "2", "3", "4"]
-    # Sales and marketing tasks go to the stored team's Max and Maria.
+    # Matched by the words of each role: sales to Max, marketing to Maria,
+    # the numbers and the pitch to Mina (Bookkeeping). The competitors task
+    # would be Nadia's (Research), but the first three tasks keep Max, Maria
+    # and Mina, so it goes to the next match who stays: Maria.
     assert [t.expert_template_id for t in tasks] == [
         "tpl-max",
         "tpl-maria",
-        None,
-        None,
+        "tpl-mina",
+        "tpl-mina",
         "tpl-maria",
     ]
     assert tasks[0].why == "Most founders start here."
     assert [e.name for e in rows.team.experts] == ["Max", "Maria", "Mina"]
 
 
-async def test_a_role_set_task_whose_role_is_not_on_the_stored_team_is_otto_s(
+async def test_a_role_set_task_whose_skills_are_not_on_the_stored_team_is_otto_s(
     rows: RowStore, judge: AsyncMock
 ):
     rows.put(
@@ -430,12 +434,13 @@ async def test_a_role_set_task_whose_role_is_not_on_the_stored_team_is_otto_s(
 
     await _run("Founder/CEO", [])
 
+    # Nobody here sells, so the sales task is Otto's.
     assert [row["expert_template_id"] for row in rows.prompts] == [
         None,
         "tpl-maria",
-        None,
-        None,
-        "tpl-maria",
+        "tpl-mina",
+        "tpl-mina",
+        "tpl-nadia",
     ]
     assert [e.name for e in rows.team.experts] == ["Maria", "Mina", "Nadia"]
 
