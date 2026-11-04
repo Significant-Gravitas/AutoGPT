@@ -287,7 +287,7 @@ const ROLE_FAMILIES: { utilities: RegExp; roles: RegExp }[] = [
   {
     utilities: /^(?:text|placeholder|caret|decoration|fill|stroke|accent)$/,
     roles:
-      /^(?:foreground-.+|placeholder|action-foreground|brand|accent-strong|error|error-foreground|warning|warning-foreground|success|success-foreground|info|info-foreground|(?:orange|yellow|sky|pink)(?:-foreground)?|indigo)$/,
+      /^(?:foreground-.+|placeholder|action-foreground|brand|accent-strong|error|error-foreground|error-inverse|warning|warning-foreground|success|success-foreground|success-inverse|info|info-foreground|(?:orange|yellow|sky|pink)(?:-foreground)?|indigo)$/,
   },
   {
     utilities: /^(?:bg|from|via|to)$/,
@@ -370,7 +370,7 @@ const PALETTE_CLASS_EXACT = new RegExp(
 function isPaletteOrHardcodedColor(report: Report, file: string) {
   if (String(report.messageId ?? "").startsWith("undeclaredToken"))
     return false;
-  // no-palette-colours and no-hex-colours report these, with the role to use
+  // no-raw-palette-classes and no-hex-colours report these, with the role to use
   // and ds-colour-exempt.json's exemptions.
   const said = [report.message, ...Object.values(report.data ?? {})].join(" ");
   if (PALETTE_CLASS_EXACT.test(said) || hexColours(said).length > 0)
@@ -383,6 +383,13 @@ function quotedClass(message: string, report: Report) {
   const fromData = report.data?.className;
   if (typeof fromData === "string") return fromData;
   return /^"([^"]+)"/.exec(message)?.[1] ?? null;
+}
+
+// An arbitrary colour (`bg-[#fff]`) is no-arbitrary-colour's, which reads
+// ds-colour-exempt.json; the shadcn rule reports the other arbitrary values.
+function isNotArbitraryColour(report: Report) {
+  const className = quotedClass(renderMessage(report, {}), report) ?? "";
+  return arbitraryColours(className).length === 0;
 }
 
 const rewriteRawColor: Rewrite = (message, report) => {
@@ -689,7 +696,7 @@ const ALIAS_CLASS = colourClassPattern(
     .join("|"),
 );
 
-const noAliasColours: Rule.RuleModule = {
+const noShadcnAliasColours: Rule.RuleModule = {
   meta: {
     type: "problem",
     docs: { description: "Disallow the shadcn colour names" },
@@ -715,7 +722,7 @@ const noAliasColours: Rule.RuleModule = {
 const PALETTE_CLASS = colourClassPattern(PALETTE_VALUES);
 const PALETTE_TO_ROLE = buildPaletteMap();
 
-const noPaletteColours: Rule.RuleModule = {
+const noRawPaletteClasses: Rule.RuleModule = {
   meta: {
     type: "problem",
     docs: { description: "Disallow the raw Tailwind palette" },
@@ -761,11 +768,71 @@ const noHexColours: Rule.RuleModule = {
     const file = relativeToFrontend(context.filename);
     if (isWholeFileExempt(file)) return {};
     return stringNodes((node, text) => {
-      for (const hex of hexColours(text)) {
+      // A hex that is a class's whole arbitrary value (`bg-[#fff]`,
+      // `[color:#fff]`) is no-arbitrary-colour's, which names the role to
+      // use; the same hex elsewhere in the string is still this rule's.
+      const owned = new Set(
+        arbitraryColours(text).map((match) => match.valueIndex),
+      );
+      for (const match of text.matchAll(HEX_COLOUR)) {
+        const hex = match[0];
         if (isExempt(file, hex)) continue;
+        if (owned.has(match.index)) continue;
         context.report({
           node,
           message: `"${hex}" hardcodes a colour. Use a role: a class (bg-surface, text-foreground-secondary) or, where a string needs a colour, rgb(var(--color-<role>)). Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
+        });
+      }
+    });
+  },
+};
+
+// A colour class whose arbitrary value is a colour literal: `bg-[#fff]`,
+// `text-[rgb(20,20,20)]`, `border-[color:hsl(0_0%_90%)]/50`, or an arbitrary
+// colour property (`[color:#fff]`). A value read from a role
+// (`rgb(var(--color-surface))`) is not one, and neither is a colour inside a
+// shadow or gradient (`shadow-[0_1px_2px_rgba(0,0,0,0.05)]`).
+const COLOUR_LITERAL = String.raw`#[0-9a-f]{3,8}|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\((?![^\]\s]*var\()[^\]\s]*\)`;
+const ARBITRARY_COLOUR_CLASS = new RegExp(
+  String.raw`(?<![\w\-/\[.#])((?:[^\s"'\`{}]*:)?!?)(${[...COLOUR_UTILITIES].sort((a, b) => b.length - a.length).join("|")})-\[(?:color:)?(${COLOUR_LITERAL})\](\/(?:\d+(?:\.\d+)?|\[[^\]\s]+\]))?(?![\w\-])`,
+  "gi",
+);
+const ARBITRARY_COLOUR_PROPERTY = new RegExp(
+  String.raw`(?<![\w\-/\[.#])((?:[^\s"'\`{}]*:)?!?)\[((?:background-|border(?:-[a-z]+)?-|outline-|caret-|accent-|text-decoration-)?color|background|fill|stroke):(${COLOUR_LITERAL})\](?![\w\-])`,
+  "gi",
+);
+
+/** Each arbitrary colour in `text`, with where its colour value starts. */
+export function arbitraryColours(text: string) {
+  return [
+    ...text.matchAll(ARBITRARY_COLOUR_CLASS),
+    ...text.matchAll(ARBITRARY_COLOUR_PROPERTY),
+  ].map((match) => ({
+    whole: match[0],
+    value: match[3],
+    // The value is the last bracketed part of the match.
+    valueIndex: match.index + match[0].lastIndexOf(`${match[3]}]`),
+  }));
+}
+
+const noArbitraryColour: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow arbitrary colour values" },
+    schema: [],
+  },
+  create(context) {
+    const file = relativeToFrontend(context.filename);
+    if (isWholeFileExempt(file)) return {};
+    return stringNodes((node, text) => {
+      for (const { whole, value } of arbitraryColours(text)) {
+        if (isExempt(file, value)) continue;
+        const advice =
+          colorAdvice(whole.replace("[color:", "[")) ??
+          "Use the colour role that fits what the element means.";
+        context.report({
+          node,
+          message: `"${whole}" hardcodes a colour. ${advice} Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
         });
       }
     });
@@ -787,6 +854,7 @@ const plugin = {
       "no-arbitrary-values",
       shadcnRules["no-arbitrary-values"],
       rewriteArbitraryValue,
+      isNotArbitraryColour,
     ),
     "no-restyle": ratchet("no-restyle", shadcnRules["no-restyle"]),
     "no-inline-styles": ratchet(
@@ -801,9 +869,16 @@ const plugin = {
       "no-unknown-classes",
       shadcnRules["no-unknown-classes"],
     ),
-    "no-alias-colours": ratchet("no-alias-colours", noAliasColours),
-    "no-palette-colours": ratchet("no-palette-colours", noPaletteColours),
+    "no-shadcn-alias-colours": ratchet(
+      "no-shadcn-alias-colours",
+      noShadcnAliasColours,
+    ),
+    "no-raw-palette-classes": ratchet(
+      "no-raw-palette-classes",
+      noRawPaletteClasses,
+    ),
     "no-hex-colours": ratchet("no-hex-colours", noHexColours),
+    "no-arbitrary-colour": ratchet("no-arbitrary-colour", noArbitraryColour),
     "no-dark-variant": ratchet("no-dark-variant", noDarkVariant),
     "no-raw-text-size": ratchet("no-raw-text-size", noRawTextSize),
     "no-legacy-import": ratchet("no-legacy-import", noLegacyImport),

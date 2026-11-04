@@ -1,7 +1,7 @@
 /**
  * Reads ds-colour-exempt.json: the files, or the classes and hex values
  * within a file, that may keep a raw palette class or a hex colour. Read by
- * design-system/no-palette-colours and no-hex-colours, by the palette codemod
+ * design-system/no-raw-palette-classes and no-hex-colours, by the palette codemod
  * (which leaves them alone) and by scripts/__tests__/colour-exempt.test.ts.
  */
 import { readFileSync } from "node:fs";

@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
 import { createMathPlugin, type MathPlugin } from "@streamdown/math";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { mermaid } from "@/lib/streamdown-mermaid-plugin";
 import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
@@ -28,9 +28,16 @@ import type {
 } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
+import { defaultSchema } from "hast-util-sanitize";
 import type { LinkSafetyModalProps } from "streamdown";
-import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import {
+  defaultRehypePlugins,
+  defaultRemarkPlugins,
+  parseMarkdownIntoBlocks,
+  Streamdown,
+} from "streamdown";
 import { remarkAppLinks } from "./app-links";
+import { rehypeLiteralTags } from "./literal-tags";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -40,16 +47,20 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
 
+const MessageRoleContext = createContext<MessageProps["from"]>("assistant");
+
 export const Message = ({ className, from, ...props }: MessageProps) => (
-  <div
-    className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
-      // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
-      from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
-      className,
-    )}
-    {...props}
-  />
+  <MessageRoleContext value={from}>
+    <div
+      className={cn(
+        "group flex w-full max-w-[95%] flex-col gap-2",
+        // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
+        from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+        className,
+      )}
+      {...props}
+    />
+  </MessageRoleContext>
 );
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
@@ -378,7 +389,7 @@ function ExternalLinkModal({
 }
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
-// reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
+// reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
 // KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
 // its default strict mode console.warns each time, and console capture filed
 // every warning as a Sentry issue (BUILDER-94S). The plugin has no option for
@@ -390,6 +401,31 @@ const math: MathPlugin = {
     { errorColor: "var(--color-foreground-tertiary)", strict: "ignore" },
   ],
 };
+
+// Streamdown renders each block on its own, so each is escaped on its own, and a
+// streamed reply re-parses only the block still growing.
+const ESCAPED_BLOCKS = new Map<string, string>();
+const ESCAPED_BLOCKS_LIMIT = 500;
+
+function parseEscapedBlocks(markdown: string): string[] {
+  return parseMarkdownIntoBlocks(markdown).map(escapeBlock);
+}
+
+function escapeBlock(block: string): string {
+  const cached = ESCAPED_BLOCKS.get(block);
+  if (cached !== undefined) {
+    // Re-inserting keeps the blocks in use last in line for eviction.
+    ESCAPED_BLOCKS.delete(block);
+    ESCAPED_BLOCKS.set(block, cached);
+    return cached;
+  }
+  const escaped = escapeLiteralDollars(block);
+  if (ESCAPED_BLOCKS.size >= ESCAPED_BLOCKS_LIMIT) {
+    ESCAPED_BLOCKS.delete(ESCAPED_BLOCKS.keys().next().value!);
+  }
+  ESCAPED_BLOCKS.set(block, escaped);
+  return escaped;
+}
 
 // Streamdown re-parses every block of a message when the identity of a
 // component in `components` changes, and React remounts any element whose
@@ -414,6 +450,24 @@ const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 // Streamdown memoises every block on the identity of this list, so it is built
 // once here.
 const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
+
+// Server-only tags CommonMark reads as HTML (the rest carry an underscore, which
+// already keeps them text) are dropped by the sanitiser; the text inside them shows.
+const SERVER_ONLY_TAGS = ["routines", "thinking"];
+
+// The user's bubble shows any tag they typed; Otto's keeps every element the
+// sanitiser keeps. Streamdown's own raw, sanitise and harden steps run after.
+const USER_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [rehypeLiteralTags, { keep: SERVER_ONLY_TAGS }],
+  ...Object.values(defaultRehypePlugins),
+];
+const REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [
+    rehypeLiteralTags,
+    { keep: [...(defaultSchema.tagNames ?? []), ...SERVER_ONLY_TAGS] },
+  ],
+  ...Object.values(defaultRehypePlugins),
+];
 
 const LINK_SAFETY = {
   enabled: true,
@@ -449,6 +503,7 @@ export const MessageResponse = memo(function MessageResponse({
   const mergedComponents = useReadEveryRender(() =>
     withTableComponent(components),
   );
+  const from = useContext(MessageRoleContext);
   return (
     <Streamdown
       className={cn(
@@ -476,12 +531,14 @@ export const MessageResponse = memo(function MessageResponse({
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={
+        from === "user" ? USER_REHYPE_PLUGINS : REPLY_REHYPE_PLUGINS
+      }
       linkSafety={LINK_SAFETY}
+      parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}
     >
-      {typeof children === "string"
-        ? escapeCurrencyAmounts(children)
-        : children}
+      {children}
     </Streamdown>
   );
 }, areSameChildren);

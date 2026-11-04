@@ -59,6 +59,8 @@ class PostHogEvent(StrEnum):
     # Trial lifecycle: backend/notifications/trial.py
     TRIAL_STARTED = "trial_started"
     TRIAL_ENDING = "trial_ending"
+    TRIAL_EXPIRING = "trial_expiring"
+    TRIAL_LAST_CALL = "trial_last_call"
     TRIAL_CANCELED = "trial_canceled"
     TRIAL_RESUMED = "trial_resumed"
     TRIAL_ENDED = "trial_ended"

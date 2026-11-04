@@ -27,7 +27,7 @@ from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.db_accessors import experts_db
-from backend.data.dynamic_fields import parse_execution_output
+from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
     ExecutionContext,
     ExecutionQueue,
@@ -440,6 +440,13 @@ async def execute_node(
         for key in tool_props:
             if key in input_data:
                 merged_args[key] = input_data[key]
+        # A link into `tool_arguments` beats a saved value, unless the tool declares
+        # its own; without one, this is the saved dict the Orchestrator re-enqueues.
+        if "tool_arguments" not in tool_props and any(
+            sanitize_pin_name(link.sink_name) == "tool_arguments"
+            for link in node.input_links
+        ):
+            merged_args.update(input_data.get("tool_arguments") or {})
         _mcp_data.tool_arguments = merged_args
         input_data = _mcp_data.model_dump()
     data.inputs = input_data
