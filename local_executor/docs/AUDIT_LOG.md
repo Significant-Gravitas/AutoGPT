@@ -225,8 +225,8 @@ writer, so appends and rotations hold an exclusive lock on
 rotated or appended to since its last write reloads the chain state
 from the file before it appends.
 
-`audit verify` and `verify-all` list and read the files under the same
-lock, so they never see a half-written record or miss a file that a
+`audit verify`, `verify-all` and `show` list and read the files under
+the same lock, so they never see a half-written record or miss a file that a
 rotation has just moved. `export` lists the files and reads the current
 log under the lock, then reads the rotated files one at a time after
 releasing it, since they never change; one pruned or replaced in between

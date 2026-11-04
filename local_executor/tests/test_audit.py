@@ -710,9 +710,9 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
     (tmp_path / "audit.log.20200101-000000").write_text('{"seq": 1, "ts": 1.0}\n')
     config = types.SimpleNamespace(audit_log_path=log)
 
-    for command in ("verify", "verify-all", "export", "prune"):
+    for command in ("verify", "verify-all", "export", "prune", "show"):
         args = types.SimpleNamespace(
-            audit_command=command, output=tmp_path / "out.zip", older_than="1d"
+            audit_command=command, output=tmp_path / "out.zip", older_than="1d", seq=1
         )
         assert cli._cmd_audit(config, args) == 2
         assert "Could not lock the audit log" in capsys.readouterr().err
@@ -1328,3 +1328,28 @@ def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
     assert cli._audit_rotate(log) == 1
     out = capsys.readouterr().out
     assert ("audit verify" in out) if failure == "corrupt" else ("Permission denied" in out)
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_audit_show_reads_the_logs_under_the_writers_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """show listed the logs and read them unlocked, so a rotation in between
+    moved records to a file it never listed, and it answered "No record"."""
+    import builtins
+
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    held: list[bool] = []
+    real_open = builtins.open
+
+    def open_(file, *args, **kwargs):
+        if str(file) == str(writer.path):
+            held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", open_)
+
+    assert cli._audit_show(writer.path, 1) == 0
+    assert held == [True]
