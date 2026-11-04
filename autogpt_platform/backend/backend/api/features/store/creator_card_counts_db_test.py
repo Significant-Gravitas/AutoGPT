@@ -28,11 +28,10 @@ async def _refresh() -> None:
 async def _seed_listing(
     graph_id: str,
     owner: str,
-    versions: list[tuple[prisma.enums.SubmissionStatus, bool]],
+    versions: list[tuple[prisma.enums.SubmissionStatus, bool, str]],
     active: int | None,
-    category: str,
 ) -> list[str]:
-    """One listing with a version per (status, isAvailable) pair.
+    """One listing with a version per (status, isAvailable, category).
 
     ``active`` is the index of the version the listing points at, or None for
     a listing with no active version. Returns the version ids.
@@ -56,7 +55,7 @@ async def _seed_listing(
         }
     )
     version_ids: list[str] = []
-    for number, (status, available) in enumerate(versions, start=1):
+    for number, (status, available, category) in enumerate(versions, start=1):
         version = await prisma.models.StoreListingVersion.prisma().create(
             data={
                 "storeListingId": listing.id,
@@ -104,25 +103,30 @@ async def test_creator_stats_cover_only_the_listings_the_store_shows(server):
     no_active = f"graph-noactive-{tag}"
     graph_ids = [visible, unavailable, pending_active, no_active]
     try:
+        # The visible listing's earlier approved version carries a category
+        # the listed version dropped; the card shows the listed one only.
         visible_versions = await _seed_listing(
-            visible, owner, [(APPROVED, True)], active=0, category="shown"
+            visible,
+            owner,
+            [(APPROVED, True, "dropped"), (APPROVED, True, "shown")],
+            active=1,
         )
         unavailable_versions = await _seed_listing(
-            unavailable, owner, [(APPROVED, False)], active=0, category="hidden"
+            unavailable, owner, [(APPROVED, False, "hidden")], active=0
         )
         await _seed_listing(
             pending_active,
             owner,
-            [(APPROVED, True), (PENDING, True)],
+            [(APPROVED, True, "hidden"), (PENDING, True, "hidden")],
             active=1,
-            category="hidden",
         )
-        await _seed_listing(
-            no_active, owner, [(APPROVED, True)], active=None, category="hidden"
-        )
+        await _seed_listing(no_active, owner, [(APPROVED, True, "hidden")], active=None)
 
+        # Reviews on both approved versions of the visible listing count, as
+        # in StoreAgent.rating; the hidden listing's review does not.
         for version_id, score in (
-            (visible_versions[0], 5),
+            (visible_versions[0], 4),
+            (visible_versions[1], 5),
             (unavailable_versions[0], 1),
         ):
             await prisma.models.StoreListingReview.prisma().create(
@@ -150,7 +154,7 @@ async def test_creator_stats_cover_only_the_listings_the_store_shows(server):
         assert [a.agent_graph_id for a in listed.agents] == [visible]
         assert creator.num_agents == listed.pagination.total_items
         assert creator.agent_runs == 2
-        assert creator.agent_rating == 5
+        assert creator.agent_rating == 4.5
         assert creator.top_categories == ["shown"]
     finally:
         await prisma.models.AgentGraphExecution.prisma().delete_many(

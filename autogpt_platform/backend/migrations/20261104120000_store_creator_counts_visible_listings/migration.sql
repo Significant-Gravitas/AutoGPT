@@ -8,17 +8,20 @@
 --
 -- creator_listings now selects the same set as StoreAgent with
 -- is_available = true: the active version is approved and available, and its
--- graph exists. Runs, rating and categories read from that set too, so every
--- number on the card describes the listings the page shows. The columns and
--- their types are unchanged, so CREATE OR REPLACE keeps the Creator view and
--- the Prisma view models as they are.
+-- graph exists. Runs, rating and categories read from that set too, the way
+-- StoreAgent reads them: runs by the active version's graph, rating over the
+-- listing's approved versions (as mv_review_stats does), categories from the
+-- active version. So every number on the card describes the listings the
+-- page shows. The columns and their types are unchanged, so CREATE OR REPLACE
+-- keeps the Creator view and the Prisma view models as they are.
 
 CREATE OR REPLACE VIEW "StoreCreator" AS
 WITH creator_listings AS (
     SELECT
-        sl.id AS listing_id,
+        sl.id                    AS listing_id,
         sl."owningUserId",
-        sl."agentGraphId"
+        active_slv.id            AS active_version_id,
+        active_slv."agentGraphId"
     FROM "StoreListing" sl
     JOIN "StoreListingVersion" active_slv
       ON active_slv."storeListingId" = sl.id
@@ -60,8 +63,7 @@ creator_categories AS (
           FILTER (WHERE cat IS NOT NULL AND cat != '') AS all_categories
     FROM creator_listings cl
     JOIN "StoreListingVersion" slv
-      ON slv."storeListingId" = cl.listing_id
-     AND slv."submissionStatus" = 'APPROVED'
+      ON slv.id = cl.active_version_id
     LEFT JOIN LATERAL unnest(COALESCE(slv.categories, ARRAY[]::text[])) AS cat ON true
     GROUP BY cl."owningUserId"
 )
