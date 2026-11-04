@@ -10,7 +10,7 @@ import copy
 import logging
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from graphiti_core.edges import EntityEdge
@@ -43,7 +43,11 @@ from backend.copilot.baseline.service import (
     stream_chat_completion_baseline,
 )
 from backend.copilot.constants import EMPTY_COMPLETION_NOTICE
-from backend.copilot.context import get_execution_context, set_execution_context
+from backend.copilot.context import (
+    get_current_sandbox,
+    get_execution_context,
+    set_execution_context,
+)
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.graphiti import context as graphiti_context
 from backend.copilot.graphiti import context_refresh
@@ -3926,3 +3930,116 @@ class TestStampPostHogTrace:
         for stamp, save in pairs:
             stamped_at = src.index(stamp)
             assert stamped_at < src.index(save, stamped_at)
+
+
+@pytest.mark.asyncio
+async def test_skill_invocation_keeps_one_first_turn_context_in_transcript():
+    from backend.copilot.skill_invocation import InvocableSkill
+    from backend.copilot.tools.skills import ParsedSkill
+
+    session = _baseline_session("/report weekly")
+    found = InvocableSkill(
+        skill=ParsedSkill(name="report", description="Write a report", body="Write $0"),
+        is_default=True,
+    )
+    skills_context = "<available_skills>report</available_skills>"
+    turn = await _run_baseline_turn(
+        session,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                f"{_BASELINE}.build_skills_context",
+                dict(new=AsyncMock(return_value=skills_context)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(return_value=found)),
+            ),
+        ],
+    )
+    assert "Write weekly" in turn.model_input()
+    assert turn.model_input().count(skills_context) == 1
+    assert turn.uploaded().count(skills_context.encode()) == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_command_runs_with_the_turns_sandbox_bound():
+    """A user skill's package is copied into the working directory the
+    model's shell uses, so the command expands with the turn's sandbox bound
+    even though the turn's execution context is set after it."""
+    sandbox = MagicMock(name="sandbox")
+    seen: list[Any] = []
+
+    async def resolve(*_args, **_kwargs):
+        seen.append(get_current_sandbox())
+        return None
+
+    await _run_baseline_turn(
+        _baseline_session("/report weekly"),
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.config.ChatConfig.active_e2b_api_key",
+                dict(new_callable=PropertyMock, return_value="e2b-key"),
+            ),
+            (
+                f"{_BASELINE}.get_or_create_sandbox",
+                dict(new=AsyncMock(return_value=sandbox)),
+            ),
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=AsyncMock(side_effect=resolve)),
+            ),
+        ],
+    )
+    assert seen == [sandbox]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_turn", [True, False])
+@pytest.mark.parametrize("incoming", ["/report weekly", ""])
+async def test_retry_keeps_persisted_skill_in_model_and_transcript(
+    first_turn, incoming
+):
+    expanded = "<skill_invocation>\nWrite the saved weekly report.\n</skill_invocation>\n\n/report weekly"
+    if first_turn:
+        expanded = "<available_skills>report</available_skills>\n\n" + expanded
+    session = (
+        _baseline_session(expanded)
+        if first_turn
+        else _baseline_session("hello", "ready", expanded)
+    )
+    original_rows = len(session.messages)
+    resolve = AsyncMock(return_value=None)
+    turn = await _run_baseline_turn(
+        session,
+        message=incoming,
+        first_block=None,
+        refresh=_refresh_nothing,
+        extra=[
+            (
+                "backend.copilot.skill_invocation.is_skills_feature_enabled",
+                dict(new=AsyncMock(return_value=True)),
+            ),
+            (
+                "backend.copilot.skill_invocation.resolve_invocable_skill",
+                dict(new=resolve),
+            ),
+        ],
+    )
+    assert turn.model_input().count("<skill_invocation>") == 1
+    assert turn.uploaded().count(b"<skill_invocation>") == 1
+    assert session.messages[original_rows - 1].content == expanded
+    assert sum(m.role == "user" for m in session.messages) == (1 if first_turn else 2)
+    resolve.assert_not_awaited()
