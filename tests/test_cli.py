@@ -617,6 +617,59 @@ async def test_a_preflight_failure_a_restart_cannot_fix_stops_a_supervised_shim(
     assert "Preflight failed: preview is disabled" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "content",
+    [None, b"allowed_root = [unclosed\n", b"max_concurrent = 0\n"],
+    ids=["missing", "malformed", "invalid"],
+)
+def test_install_refuses_a_config_the_service_could_not_start_with(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    content: bytes | None,
+) -> None:
+    """install wrote the autostart entry for any --config, and the service
+    then failed at every start with a config error nobody saw."""
+    from autogpt_local_executor import install
+
+    config = tmp_path / "config.toml"
+    if content is not None:
+        config.write_bytes(content)
+    install_autostart = MagicMock()
+    monkeypatch.setattr(install, "install_autostart", install_autostart)
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "install"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    assert "Configuration error" in capsys.readouterr().err
+    install_autostart.assert_not_called()
+
+
+def test_install_takes_a_config_the_service_can_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autogpt_local_executor import install
+
+    config = tmp_path / "config.toml"
+    config.write_text(f'allowed_root = "{(tmp_path / "files").as_posix()}"\n')
+    install_autostart = MagicMock()
+    install_autostart.return_value = SimpleNamespace(
+        target_path=tmp_path / "unit",
+        platform="linux",
+        enable_command=None,
+        disable_command=None,
+        notes=[],
+    )
+    monkeypatch.setattr(install, "install_autostart", install_autostart)
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "install"])
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["config_path"] == config
+
+
 def test_a_bad_config_stops_the_launchagent_instead_of_looping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
