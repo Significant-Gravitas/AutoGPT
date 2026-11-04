@@ -351,7 +351,10 @@ def _drop_unused_credentials(node: Node, inputs: BlockInput) -> BlockInput:
     fail their nested credential schema before the executor can ignore them.
     Returns the values it removed."""
     dropped: BlockInput = {}
-    input_model = cast(type[BlockSchema], node.block.input_schema)
+    input_schema = getattr(node.block, "input_schema", None)
+    if input_schema is None:  # an unknown block; validation reports it
+        return dropped
+    input_model = cast(type[BlockSchema], input_schema)
     required_fields = input_model.get_required_fields()
     for field_name, field_info in input_model.get_credentials_fields_info().items():
         if not field_info.discriminator or field_name in required_fields:
