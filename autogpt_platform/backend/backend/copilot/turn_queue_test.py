@@ -109,7 +109,7 @@ def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 @pytest.fixture(autouse=True)
 def cost_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        turn_queue, "capture_cost_context", AsyncMock(return_value=_COST_CONTEXT)
+        turn_queue, "capture_org_cost_context", AsyncMock(return_value=_COST_CONTEXT)
     )
 
 

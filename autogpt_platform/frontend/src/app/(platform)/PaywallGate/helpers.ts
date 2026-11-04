@@ -1,3 +1,5 @@
+import type { Org } from "@/services/org-team/store";
+
 const CHECKOUT_CANCELLED_PARAM = "paywall_checkout";
 const CHECKOUT_CANCELLED_VALUE = "cancelled";
 
@@ -43,4 +45,19 @@ export function pausedSchedulesText(count: number) {
   return count === 1
     ? "Your scheduled workflow is paused until you subscribe."
     : `Your ${count} scheduled workflows are paused until you subscribe.`;
+}
+
+interface OrgScopeState {
+  orgs: Org[];
+  activeOrgID: string | null;
+  isLoaded: boolean;
+}
+
+// Whose plan decides where the person works now: their own in a personal
+// organization, the organization's in a team one. Unknown until the
+// organizations load; if they can't load, the person's own.
+export function planScopeOf({ orgs, activeOrgID, isLoaded }: OrgScopeState) {
+  const active = orgs.find((org) => org.id === activeOrgID);
+  if (active) return active.isPersonal ? "personal" : "team";
+  return isLoaded ? "personal" : "unknown";
 }

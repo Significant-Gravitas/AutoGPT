@@ -57,16 +57,13 @@ from backend.copilot.model import (
     invalidate_session_cache,
 )
 from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
+from backend.copilot.org_cost_context import capture_org_cost_context
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
 from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
-from backend.copilot.trial_cost_context import (
-    TrialCostContext,
-    capture_cost_context,
-    restore_cost_context,
-)
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import (
     LiveResourceAccessRevoked,
     chat_db,
@@ -234,9 +231,9 @@ async def enqueue_turn(
         )
 
         metadata = dict(message_metadata or {})
-        metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
-            mode="json"
-        )
+        metadata["cost_context"] = (
+            await capture_org_cost_context(user_id, organization_id)
+        ).model_dump(mode="json")
         if context is not None:
             metadata["context"] = dict(context)
         if file_ids is not None:

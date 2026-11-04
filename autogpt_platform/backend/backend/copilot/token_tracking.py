@@ -14,11 +14,17 @@ import logging
 import math
 import re
 import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from openai.types.completion_usage import PromptTokensDetails
 
 from backend.copilot.credit_billing import credit_billed_turn, record_credit_billed_cost
-from backend.copilot.trial_cost_context import get_trial_cost_context
+from backend.copilot.org_cost_context import team_cost_context
+from backend.copilot.trial_cost_context import (
+    get_trial_cost_context,
+    restore_cost_context,
+)
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
@@ -131,6 +137,7 @@ async def persist_and_record_usage(
     skip_daily: bool = False,
     execution_path: str = "sync",
     expert_id: str | None = None,
+    org_id: str | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -155,6 +162,9 @@ async def persist_and_record_usage(
         provider: Cost provider name (e.g. "anthropic", "open_router").
         expert_id: The expert the spend is attributed to on the cost log
             row (``PlatformCostLog.expertId``); ``None`` for the account's own.
+        org_id: The organization the cost was spent in, when there is no
+            chat session to read it from. Only work with no usage attribution
+            of its own reads it (or the session's).
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -236,11 +246,14 @@ async def persist_and_record_usage(
             # record_cost_usage() owns its fail-open handling for Redis/network
             # errors. Don't wrap with a broad except here — unexpected accounting
             # bugs should surface instead of being silently logged as warnings.
-            await record_cost_usage(
-                user_id=user_id,
-                cost_microdollars=cost_microdollars,
-                skip_daily=skip_daily,
-            )
+            async with _counted_in_org(
+                user_id, org_id or (session.organization_id if session else None)
+            ):
+                await record_cost_usage(
+                    user_id=user_id,
+                    cost_microdollars=cost_microdollars,
+                    skip_daily=skip_daily,
+                )
         # Same charge, second ledger: the tree this turn belongs to. A tree is
         # identified by its root turn, not by a user, so this must not sit
         # behind the user_id guard — an anonymous turn still spends its tree's
@@ -321,3 +334,20 @@ async def persist_and_record_usage(
         )
 
     return total_tokens
+
+
+@asynccontextmanager
+async def _counted_in_org(user_id: str, org_id: str | None) -> AsyncIterator[None]:
+    """Usage with no attribution of its own (an MCP tool call, a dry run's
+    block) counts in the organization it was spent in: in a team
+    organization, the user's own counters there and not their personal trial.
+    Work that carries an attribution (a turn, a held call, a background job)
+    keeps the one it started under."""
+    team = None
+    if org_id is not None and get_trial_cost_context(user_id) is None:
+        team = await team_cost_context(user_id, org_id)
+    if team is None:
+        yield
+        return
+    with restore_cost_context(user_id, team):
+        yield

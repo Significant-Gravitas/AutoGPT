@@ -16,6 +16,8 @@ from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.billing.credits.routes import (
+    TEAM_ORG_CHECKOUT_REFUSED,
+    TEAM_ORG_REFUND_REFUSED,
     TEAM_ORG_TOP_UP_REFUSED,
     get_credit_history,
     router,
@@ -520,6 +522,38 @@ def test_refund_top_up_forwards_the_transaction_key_and_metadata(
     args = credit_model.top_up_refund.await_args.args
     assert args[1] == "txn-1"
     assert args[2] == {"reason": "duplicate"}
+
+
+def test_refund_in_a_team_organization_says_to_contact_autogpt(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A team organization's credits are added by AutoGPT, so its billing
+    manager hears where a refund goes instead of a server error."""
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=OrgCreditModel("team-org")),
+    )
+
+    response = client.post("/credits/txn-1/refund", json={"reason": "duplicate"})
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": TEAM_ORG_REFUND_REFUSED}
+
+
+def test_fulfill_checkout_in_a_team_organization_says_there_is_none(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A team organization has no checkout of its own, so finishing one there
+    is refused with a reason instead of a server error."""
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=OrgCreditModel("team-org")),
+    )
+
+    response = client.patch("/credits")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": TEAM_ORG_CHECKOUT_REFUSED}
 
 
 def test_fulfill_checkout_credits_the_calling_user(

@@ -73,6 +73,7 @@ async def synthesize(
             text=request.text,
             session_id=request.session_id,
             voice=request.voice,
+            org_id=ctx.org_id,
         )
     except SpeechUnavailable:
         logger.error("Voice mode is enabled but no OpenAI key is configured")

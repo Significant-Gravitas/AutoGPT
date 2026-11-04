@@ -2,10 +2,17 @@
 
 The tier comes from ``backend.data.entitlement``: the user's own plan in a
 personal organization, the team organization's plan there. Limits are per
-person, so each seat gets the tier's whole allowance; nothing is pooled. The
-usage counters are the person's own in every organization. In a team
-organization the person's own tier and trial don't apply: the helpers in
-``backend.copilot.rate_limit`` run with ``org_plan=True``.
+person, so each seat gets the tier's whole allowance; nothing is pooled.
+
+Each seat's usage counts on its own, too. In a team organization a person has
+counters of their own there, apart from their personal ones and from every
+other team organization's, and their own tier and trial don't apply: the
+helpers in ``backend.copilot.rate_limit`` run with ``team_org_id``. In a
+personal organization, or with none, the counters are the person's own ones,
+as they always were. The checks, the usage display, the resets and the spend
+recording all name the counters the same way: the readers and resets with the
+organization they're given, the recording with the usage attribution the work
+was captured under (``backend.copilot.org_cost_context``).
 """
 
 import logging
@@ -60,7 +67,7 @@ async def check_rate_limit(
         weekly_cost_limit=weekly_cost_limit,
         skip_daily=skip_daily,
         expected_tier=expected_tier,
-        org_plan=await org_plan_decides(org_id),
+        team_org_id=await team_org_id_for(org_id),
     )
 
 
@@ -74,15 +81,20 @@ async def get_usage_status(
     *,
     org_id: str | None = None,
 ) -> CoPilotUsageStatus:
-    """``rate_limit.get_usage_status`` for work in *org_id*."""
+    """``rate_limit.get_usage_status`` for work in *org_id*.
+
+    A team organization's counters can't be reset with credits (the reset
+    route refuses there), so the status offers no reset in one.
+    """
+    team_org_id = await team_org_id_for(org_id)
     return await rate_limit.get_usage_status(
         user_id=user_id,
         daily_cost_limit=daily_cost_limit,
         weekly_cost_limit=weekly_cost_limit,
-        rate_limit_reset_cost=rate_limit_reset_cost,
+        rate_limit_reset_cost=0 if team_org_id else rate_limit_reset_cost,
         tier=tier,
         fail_closed=fail_closed,
-        org_plan=await org_plan_decides(org_id),
+        team_org_id=team_org_id,
     )
 
 
@@ -102,7 +114,27 @@ async def get_remaining_usd_budget(
         weekly_cost_limit=weekly_cost_limit,
         floor_usd=floor_usd,
         expected_tier=expected_tier,
-        org_plan=await org_plan_decides(org_id),
+        team_org_id=await team_org_id_for(org_id),
+    )
+
+
+async def reset_user_usage(
+    user_id: str, *, reset_weekly: bool = False, org_id: str | None = None
+) -> None:
+    """``rate_limit.reset_user_usage`` on the counters of *user_id*'s usage in
+    *org_id* (none: their own)."""
+    await rate_limit.reset_user_usage(
+        user_id, reset_weekly=reset_weekly, team_org_id=await team_org_id_for(org_id)
+    )
+
+
+async def reset_daily_usage(
+    user_id: str, daily_cost_limit: int = 0, *, org_id: str | None = None
+) -> bool:
+    """``rate_limit.reset_daily_usage`` on the counters of *user_id*'s usage
+    in *org_id* (none: their own)."""
+    return await rate_limit.reset_daily_usage(
+        user_id, daily_cost_limit, team_org_id=await team_org_id_for(org_id)
     )
 
 
@@ -193,3 +225,10 @@ async def platform_spend_refusal(
 async def org_plan_decides(org_id: str | None) -> bool:
     """Whether a team organization's plan, not the user's own, sets the limits."""
     return await team_org_snapshot(org_id) is not None
+
+
+async def team_org_id_for(org_id: str | None) -> str | None:
+    """*org_id* when it is a team organization, whose plan sets the limits and
+    whose members each have counters of their own there; None for the
+    person's own plan and counters (a personal organization, or none)."""
+    return org_id if await org_plan_decides(org_id) else None

@@ -177,7 +177,9 @@ async def test_a_re_admitted_turn_keeps_the_trace_its_envelope_recorded(
     with (
         patch.object(utils, "readmit_turn", new=AsyncMock()),
         patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
-        patch.object(utils, "capture_cost_context", new=AsyncMock(return_value=None)),
+        patch.object(
+            utils, "capture_org_cost_context", new=AsyncMock(return_value=None)
+        ),
     ):
         set_turn_trace_id("unrelated-turn")
         set_turn_span("unrelated-turn")

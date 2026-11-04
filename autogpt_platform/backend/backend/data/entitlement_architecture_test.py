@@ -16,8 +16,9 @@ import pathlib
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 RATE_LIMIT_MODULE = "backend.copilot.rate_limit"
 
-# Per-user checks, and the helpers whose personal-tier logic the entitlement
-# modules switch off for an organization's plan.
+# Per-user checks, the helpers whose personal-tier logic the entitlement
+# modules switch off for an organization's plan, and the resets, which must
+# name the same counters as the checks: a member's own in a team organization.
 PER_USER_FUNCTIONS = frozenset(
     {
         "check_rate_limit",
@@ -29,6 +30,8 @@ PER_USER_FUNCTIONS = frozenset(
         "get_workspace_storage_limit_bytes",
         "is_user_paywalled",
         "rate_limits_for_tier",
+        "reset_daily_usage",
+        "reset_user_usage",
         "storage_limit_bytes_for_tier",
     }
 )

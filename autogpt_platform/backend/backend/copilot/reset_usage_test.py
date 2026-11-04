@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 from backend.api.features.chat.routes import reset_copilot_usage
@@ -46,6 +47,31 @@ def _usage(daily_used: int = 3_000_000, daily_limit: int = 2_500_000):
 _MODULE = "backend.api.features.chat.routes"
 
 
+# The request acts in the user's personal organization.
+def _ctx(org_id: str = "personal-org") -> RequestContext:
+    return RequestContext(
+        user_id="user-1",
+        org_id=org_id,
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=True,
+        is_org_billing_manager=True,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
+_CTX = _ctx()
+
+
+@pytest.fixture(autouse=True)
+def personal_org():
+    """The organization the request acts in is a personal one."""
+    with patch(f"{_MODULE}.org_plan_decides", AsyncMock(return_value=False)) as team:
+        yield team
+
+
 def _mock_settings(enable_credit: bool = True):
     """Return a mock Settings object with the given enable_credit flag."""
     mock = MagicMock()
@@ -72,7 +98,7 @@ class TestResetCopilotUsage:
 
         with patch(f"{_MODULE}.config", _make_config(rate_limit_reset_cost=0)):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 400
             assert "not available" in exc_info.value.detail
 
@@ -85,7 +111,7 @@ class TestResetCopilotUsage:
             _mock_rate_limits(daily=0),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 400
             assert "nothing to reset" in exc_info.value.detail.lower()
 
@@ -106,7 +132,7 @@ class TestResetCopilotUsage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 400
             assert "not reached" in exc_info.value.detail
             mock_release.assert_awaited_once()
@@ -140,7 +166,7 @@ class TestResetCopilotUsage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 402
             mock_release.assert_awaited_once()
 
@@ -173,7 +199,7 @@ class TestResetCopilotUsage:
             ) as mock_reset,
             patch(f"{_MODULE}.increment_daily_reset_count", AsyncMock()) as mock_incr,
         ):
-            result = await reset_copilot_usage(user_id="user-1")
+            result = await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert result.success is True
             assert result.credits_charged == 500
             assert result.remaining_balance == 1500
@@ -191,7 +217,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=3)),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 429
 
     async def test_credit_system_disabled_returns_400(self):
@@ -202,7 +228,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.settings", _mock_settings(enable_credit=False)),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 400
             assert "credit system is disabled" in exc_info.value.detail.lower()
 
@@ -235,7 +261,7 @@ class TestResetCopilotUsage:
             ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 400
             assert "weekly" in exc_info.value.detail.lower()
             mock_release.assert_awaited_once()
@@ -250,7 +276,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=None)),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 503
             assert "verify" in exc_info.value.detail.lower()
 
@@ -279,7 +305,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=False)),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 503
             assert "not been charged" in exc_info.value.detail
             mock_credit_model.grant_credits.assert_awaited_once()
@@ -312,6 +338,29 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=False)),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await reset_copilot_usage(user_id="user-1")
+                await reset_copilot_usage(user_id="user-1", ctx=_CTX)
             assert exc_info.value.status_code == 503
             assert "contact support" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_a_team_org_refuses_the_reset_before_charging(personal_org):
+    """A team organization's plan sets each member's limits there; personal
+    credits don't buy them back, so nothing is charged or reset."""
+    personal_org.return_value = True
+    credit_model = AsyncMock()
+    reset = AsyncMock(return_value=True)
+    with (
+        patch(f"{_MODULE}.config", _make_config()),
+        patch(f"{_MODULE}.settings", _mock_settings()),
+        _mock_rate_limits(),
+        patch(f"{_MODULE}.get_user_credit_model", credit_model),
+        patch(f"{_MODULE}.reset_daily_usage", reset),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await reset_copilot_usage(user_id="user-1", ctx=_ctx(org_id="team-org"))
+    assert exc_info.value.status_code == 409
+    assert "team organization" in exc_info.value.detail
+    personal_org.assert_awaited_once_with("team-org")
+    credit_model.assert_not_awaited()
+    reset.assert_not_awaited()

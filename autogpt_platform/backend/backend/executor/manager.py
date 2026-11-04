@@ -1027,6 +1027,7 @@ async def _execute_node_authorized(
                 node_block.execution_stats,
                 user_id=user_id,
                 model=input_data.get("model"),
+                org_id=execution_context.organization_id,
             )
 
 

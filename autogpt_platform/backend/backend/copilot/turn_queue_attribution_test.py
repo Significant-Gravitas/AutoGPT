@@ -100,6 +100,7 @@ async def test_admission_captures_authoritative_attribution_without_parent(fifo)
         "user_id": "user-1",
         "trial_id": None,
         "generation": "paid-1",
+        "team_org_id": None,
     }
 
 

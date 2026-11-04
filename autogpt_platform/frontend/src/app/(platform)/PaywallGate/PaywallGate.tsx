@@ -6,6 +6,8 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { environment } from "@/services/environment";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { planScopeOf } from "./helpers";
 import { PaywallModal } from "./PaywallModal";
 import { WorkflowsMovedNotice } from "../components/WorkflowsMovedNotice/WorkflowsMovedNotice";
 
@@ -39,6 +41,11 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     },
   });
 
+  // The picker sells a personal plan, which decides only in a personal
+  // organization; until the organizations load, it waits rather than flash.
+  const planScope = useOrgTeamStore(planScopeOf);
+  const planScopePending = isLoggedIn && planScope === "unknown";
+
   const isExempt = PAYWALL_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
 
   // Gate on the DB tier rather than has_active_stripe_subscription so a
@@ -53,6 +60,7 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     // that exit.
     isLoggedIn &&
     !isLoading &&
+    planScope === "personal" &&
     !isExempt &&
     // Never gate local dev — running the stack locally shouldn't require a
     // Stripe subscription to reach Otto.
@@ -64,9 +72,10 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     <>
       {children}
       {shouldGate && <PaywallModal />}
-      {!shouldGate && (!isPaymentEnabled || !isLoading) && (
-        <WorkflowsMovedNotice />
-      )}
+      {!shouldGate &&
+        (!isPaymentEnabled || (!isLoading && !planScopePending)) && (
+          <WorkflowsMovedNotice />
+        )}
     </>
   );
 }

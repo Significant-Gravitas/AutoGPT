@@ -1,3 +1,4 @@
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,9 +19,40 @@ const NO_PLAN = new SendRefusedError(
   402,
 );
 
+// What the backend says in a team organization without a plan
+// (``paywall_message`` in backend/data/entitlement.py).
+const ORG_NEEDS_A_PLAN =
+  "This organization needs an active plan to use this feature. Ask its owner to contact AutoGPT about a team plan.";
+const NO_ORG_PLAN = new SendRefusedError(
+  JSON.stringify({
+    message: "Failed to process POST /api/chat/sessions/s-1/stream",
+    detail: ORG_NEEDS_A_PLAN,
+    hint: "Adjust the request and retry.",
+  }),
+  402,
+);
+
+function workInATeamOrg() {
+  useOrgTeamStore.setState({
+    activeOrgID: "org-team",
+    orgs: [
+      {
+        id: "org-team",
+        name: "Acme Inc",
+        slug: "acme",
+        avatarUrl: null,
+        isPersonal: false,
+        memberCount: 4,
+      },
+    ],
+    isLoaded: true,
+  });
+}
+
 afterEach(() => {
   window.history.replaceState(null, "", "/");
   billing.enabled = true;
+  useOrgTeamStore.setState({ activeOrgID: null, orgs: [], isLoaded: false });
 });
 
 describe("ChatErrorBanner", () => {
@@ -58,6 +90,20 @@ describe("ChatErrorBanner", () => {
     expect(
       screen.getByText("Ask whoever runs this server to set one up."),
     ).toBeDefined();
+  });
+
+  it("no plan in a team organization: the backend's reason, and no personal plans", () => {
+    workInATeamOrg();
+    render(<ChatErrorBanner error={NO_ORG_PLAN} />);
+
+    expect(screen.getByText("This message wasn't sent.")).toBeDefined();
+    expect(screen.getByText(ORG_NEEDS_A_PLAN)).toBeDefined();
+    expect(screen.queryByRole("link", { name: "See plans" })).toBeNull();
+    expect(
+      screen.queryByText(
+        "Sending needs an active plan, so this message wasn't sent.",
+      ),
+    ).toBeNull();
   });
 
   it("a chat that is gone: offers a new chat", () => {

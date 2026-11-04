@@ -1,13 +1,16 @@
-"""Immutable usage attribution, inherited by child tasks and queued work."""
+"""Immutable usage attribution, inherited by child tasks and queued work.
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+This module captures the person's own attribution (their trial and activation
+generation). Work that runs in an organization captures it through
+``backend.copilot.org_cost_context``, which knows which organizations are team
+ones.
+"""
+
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from functools import wraps
-from inspect import signature
-from typing import ParamSpec, TypeVar
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.usage_activation import get_ready_usage_state
 from backend.data import db_accessors
@@ -19,6 +22,10 @@ class TrialCostContext(BaseModel):
     user_id: str | None
     trial_id: str | None
     generation: str | None = None
+    # Set when the work runs in a team organization: its usage counts in the
+    # person's own counters there, never toward their personal trial
+    # (``backend.copilot.org_cost_context``).
+    team_org_id: str | None = None
 
 
 _trial_cost_context: ContextVar[TrialCostContext | None] = ContextVar(
@@ -76,24 +83,3 @@ async def record_attributed_trial_cost(user_id: str, cost_microdollars: int) -> 
             user_id, cost_microdollars, trial_id=context.trial_id
         )
     return True
-
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-def attributed_usage(function: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-    """Capture standalone/background work before its first provider request."""
-    parameters = signature(function)
-
-    @wraps(function)
-    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-        arguments = parameters.bind(*args, **kwargs)
-        arguments.apply_defaults()
-        user_id = TypeAdapter(str | None).validate_python(
-            arguments.arguments["user_id"]
-        )
-        async with trial_cost_context(user_id):
-            return await function(*args, **kwargs)
-
-    return wrapped

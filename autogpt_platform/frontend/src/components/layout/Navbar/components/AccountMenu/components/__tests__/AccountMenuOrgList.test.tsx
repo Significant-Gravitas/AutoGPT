@@ -1,6 +1,12 @@
+import {
+  getGetV2GetPersonalOrganizationContextMockHandler,
+  getGetV2GetPersonalOrganizationContextResponseMock,
+} from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
+import { server } from "@/mocks/mock-server";
 import { useOrgTeamStore } from "@/services/org-team/store";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AccountMenuOrgList } from "../AccountMenuOrgList";
@@ -44,6 +50,17 @@ const PRIVATE_TEAM = {
   orgId: COMPANY_ORG.id,
 };
 
+// GET /api/orgs/default: whether this account may create an organization.
+function mayCreateOrganizations(allowed: boolean) {
+  server.use(
+    getGetV2GetPersonalOrganizationContextMockHandler(
+      getGetV2GetPersonalOrganizationContextResponseMock({
+        can_create_organization: allowed,
+      }),
+    ),
+  );
+}
+
 function seedStore(overrides = {}) {
   useOrgTeamStore.setState({
     activeOrgID: COMPANY_ORG.id,
@@ -59,6 +76,7 @@ describe("AccountMenuOrgList", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
+    mayCreateOrganizations(true);
   });
 
   afterEach(() => {
@@ -90,13 +108,15 @@ describe("AccountMenuOrgList", () => {
     },
   );
 
-  it("shows an empty state with a create button when there are no orgs", () => {
+  it("shows an empty state with a create button when there are no orgs", async () => {
     seedStore({ orgs: [], teams: [] });
 
     render(<AccountMenuOrgList />);
 
     expect(screen.getByText("No organizations yet")).toBeDefined();
-    expect(screen.getByTestId("create-organization-button")).toBeDefined();
+    expect(
+      await screen.findByTestId("create-organization-button"),
+    ).toBeDefined();
   });
 
   it("lists every org with a Personal badge and marks the active org", () => {
@@ -171,8 +191,44 @@ describe("AccountMenuOrgList", () => {
 
     expect(screen.queryByText("URL slug")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("create-organization-button"));
+    await userEvent.click(
+      await screen.findByTestId("create-organization-button"),
+    );
 
     expect(await screen.findByText("URL slug")).toBeDefined();
   });
+
+  it("offers no creation to an account that only inherited its organizations", async () => {
+    mayCreateOrganizations(false);
+    seedStore();
+
+    render(<AccountMenuOrgList />);
+
+    // The organizations stay switchable; only creating one is withheld,
+    // which the backend would refuse.
+    expect(await screen.findByText(COMPANY_ORG.name)).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByTestId("create-organization-button")).toBeNull(),
+    );
+  });
+
+  it.each([500, 401])(
+    "offers no creation when the backend can't say (HTTP %i)",
+    async (status) => {
+      let answered = false;
+      server.use(
+        http.get("/api/proxy/api/orgs/default", () => {
+          answered = true;
+          return HttpResponse.json({ detail: "unavailable" }, { status });
+        }),
+      );
+      seedStore({ orgs: [], teams: [] });
+
+      render(<AccountMenuOrgList />);
+
+      expect(await screen.findByText("No organizations yet")).toBeDefined();
+      await waitFor(() => expect(answered).toBe(true));
+      expect(screen.queryByTestId("create-organization-button")).toBeNull();
+    },
+  );
 });

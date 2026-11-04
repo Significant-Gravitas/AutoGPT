@@ -9,6 +9,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CreateOrgDialog } from "@/components/contextual/CreateOrgDialog/CreateOrgDialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { isProtectedOrgAvatarUrl } from "@/services/org-team/avatar";
+import { useCanCreateOrganization } from "@/services/org-team/useCanCreateOrganization";
 import { PlusSignIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useOrgTeamSwitcher } from "../../OrgTeamSwitcher/useOrgTeamSwitcher";
@@ -20,6 +21,11 @@ interface Props {
 export function AccountMenuOrgList({ onSelect }: Props) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const canManageOrgs = useGetFlag(Flag.SHOW_ORG_SETTINGS);
+  // Access inherited through someone else's organization lets the account
+  // switch organizations, not create one: the backend would refuse it.
+  const canCreateOrganization = useCanCreateOrganization({
+    enabled: canManageOrgs === true,
+  });
   const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
 
   function handleSwitchOrg(orgId: string) {
@@ -31,7 +37,7 @@ export function AccountMenuOrgList({ onSelect }: Props) {
     return null;
   }
 
-  const createOrgButton = canManageOrgs ? (
+  const createOrgButton = canCreateOrganization ? (
     <button
       type="button"
       className="flex w-full items-center gap-2 rounded-lg bg-surface-hover px-2 py-1.5 text-sm text-foreground-body hover:bg-surface-active"
@@ -45,7 +51,7 @@ export function AccountMenuOrgList({ onSelect }: Props) {
     </button>
   ) : null;
 
-  const createOrgDialog = canManageOrgs ? (
+  const createOrgDialog = canCreateOrganization ? (
     <CreateOrgDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
   ) : null;
 

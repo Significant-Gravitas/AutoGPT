@@ -1,8 +1,11 @@
 """Admin endpoints for checking and resetting user CoPilot rate limit usage.
 
-These read and set a user's own plan, so they ask the entitlement check about
-the user's personal organization (no organization). A team organization's
-plan is managed on ``org_plan_admin_routes``.
+The tier endpoints read and set a user's own plan, so they ask the entitlement
+check about the user's personal organization (no organization). A team
+organization's plan is managed on ``org_plan_admin_routes``. The usage
+endpoints take an optional ``org_id``: a member of a team organization has
+usage counters of their own there, apart from their personal ones, and
+without it these read and reset the personal ones.
 """
 
 import asyncio
@@ -18,11 +21,14 @@ from backend.copilot.rate_limit import (
     SubscriptionTier,
     get_stripe_sweep_revert_warning,
     get_tier_multipliers,
-    reset_user_usage,
     set_user_tier,
 )
 from backend.data.entitlement import get_user_tier
-from backend.data.entitlement_limits import get_global_rate_limits, get_usage_status
+from backend.data.entitlement_limits import (
+    get_global_rate_limits,
+    get_usage_status,
+    reset_user_usage,
+)
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)
@@ -103,23 +109,34 @@ async def _resolve_user_id(
 async def get_user_rate_limit(
     user_id: Optional[str] = None,
     email: Optional[str] = None,
+    org_id: Optional[str] = None,
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
     """Get a user's current usage and effective rate limits. Admin-only.
 
     Accepts either ``user_id`` or ``email`` as a query parameter.
     When ``email`` is provided the user is looked up by email first.
+    With ``org_id``, the usage and limits are the user's in that
+    organization.
     """
     resolved_id, resolved_email = await _resolve_user_id(user_id, email)
 
-    logger.info("Admin %s checking rate limit for user %s", admin_user_id, resolved_id)
+    logger.info(
+        "Admin %s checking rate limit for user %s in org %s",
+        admin_user_id,
+        resolved_id,
+        org_id,
+    )
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         resolved_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
-    usage = await get_usage_status(resolved_id, daily_limit, weekly_limit, tier=tier)
+    usage = await get_usage_status(
+        resolved_id, daily_limit, weekly_limit, tier=tier, org_id=org_id
+    )
     multipliers = await get_tier_multipliers()
 
     return UserRateLimitResponse(
@@ -142,18 +159,23 @@ async def get_user_rate_limit(
 async def reset_user_rate_limit(
     user_id: str = Body(embed=True),
     reset_weekly: bool = Body(False, embed=True),
+    org_id: Optional[str] = Body(None, embed=True),
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
-    """Reset a user's daily usage counter (and optionally weekly). Admin-only."""
+    """Reset a user's daily usage counter (and optionally weekly). Admin-only.
+
+    With ``org_id``, the counters reset are the user's in that organization.
+    """
     logger.info(
-        "Admin %s resetting rate limit for user %s (reset_weekly=%s)",
+        "Admin %s resetting rate limit for user %s in org %s (reset_weekly=%s)",
         admin_user_id,
         user_id,
+        org_id,
         reset_weekly,
     )
 
     try:
-        await reset_user_usage(user_id, reset_weekly=reset_weekly)
+        await reset_user_usage(user_id, reset_weekly=reset_weekly, org_id=org_id)
     except Exception as e:
         logger.exception("Failed to reset user usage")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
@@ -162,8 +184,11 @@ async def reset_user_rate_limit(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
+        org_id,
     )
-    usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
+    usage = await get_usage_status(
+        user_id, daily_limit, weekly_limit, tier=tier, org_id=org_id
+    )
     multipliers = await get_tier_multipliers()
 
     try:

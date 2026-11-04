@@ -3,7 +3,9 @@
 Uses Redis fixed-window counters to track per-user USD spend (stored as
 microdollars, matching ``PlatformCostLog.cost_microdollars``) with
 configurable daily and weekly limits. Daily windows reset at midnight UTC;
-weekly windows reset at ISO week boundary (Monday 00:00 UTC).
+weekly windows reset at ISO week boundary (Monday 00:00 UTC). In a team
+organization a member's counters are their own there (``team_org_id``), apart
+from their personal ones; see ``backend.data.entitlement_limits``.
 
 Failure-mode policy:
 
@@ -551,7 +553,7 @@ async def get_usage_status(
     tier: SubscriptionTier = DEFAULT_TIER,
     fail_closed: bool = False,
     *,
-    org_plan: bool = False,
+    team_org_id: str | None = None,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -566,9 +568,10 @@ async def get_usage_status(
         fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
             read, instead of reporting no usage. For callers that act on the
             figures rather than show them.
-        org_plan: The limits and ``tier`` come from an organization's plan
-            (``backend.data.entitlement``): the user's own tier and trial
-            don't apply, only their counters do.
+        team_org_id: The team organization whose plan sets the limits and
+            ``tier`` (``backend.data.entitlement``): the user's own tier and
+            trial don't apply, and the counters are theirs in that
+            organization. None for the user's own plan and counters.
 
     Returns:
         CoPilotUsageStatus with current usage and limits in microdollars.
@@ -582,11 +585,11 @@ async def get_usage_status(
         return _no_allowance_status(
             now,
             tier,
-            trial_ended=not org_plan and state.tier == SubscriptionTier.TRIAL,
+            trial_ended=team_org_id is None and state.tier == SubscriptionTier.TRIAL,
         )
-    if not org_plan and await _effective_usage_tier(user_id, state.tier) != tier:
+    if team_org_id is None and await _effective_usage_tier(user_id, state.tier) != tier:
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
-    d_key, w_key = usage_keys(user_id, state.generation, now)
+    d_key, w_key = usage_keys(user_id, state.generation, now, team_org_id)
     daily_used = 0
     weekly_used = 0
     try:
@@ -674,7 +677,7 @@ async def get_remaining_usd_budget(
     floor_usd: float = 0.5,
     *,
     expected_tier: SubscriptionTier | str | None = None,
-    org_plan: bool = False,
+    team_org_id: str | None = None,
 ) -> float:
     """Return the user's remaining USD spend cap for the current windows.
 
@@ -709,18 +712,19 @@ async def get_remaining_usd_budget(
             handing the SDK a degenerate ``$0`` budget that would refuse
             to start a turn.  Set to ``0.0`` when the caller wants a
             faithful "no remaining budget" signal instead of a floor.
-        org_plan: The limits come from an organization's plan, so the user's
-            own tier and trial don't apply.
+        team_org_id: The team organization whose plan sets the limits, so the
+            user's own tier and trial don't apply and the counters are theirs
+            in that organization.
     """
     state = await get_ready_usage_state(user_id)
     if (
-        not org_plan
+        team_org_id is None
         and expected_tier is not None
         and await _effective_usage_tier(user_id, state.tier) != expected_tier
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     trial = None
-    if not org_plan and state.tier == SubscriptionTier.TRIAL:
+    if team_org_id is None and state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0.0
@@ -730,7 +734,7 @@ async def get_remaining_usd_budget(
                 / 1_000_000
             )
     now = datetime.now(UTC)
-    d_key, w_key = usage_keys(user_id, state.generation, now)
+    d_key, w_key = usage_keys(user_id, state.generation, now, team_org_id)
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
@@ -776,7 +780,7 @@ async def check_rate_limit(
     *,
     skip_daily: bool = False,
     expected_tier: SubscriptionTier | str | None = None,
-    org_plan: bool = False,
+    team_org_id: str | None = None,
 ) -> None:
     """Check if user is within rate limits.
 
@@ -796,8 +800,9 @@ async def check_rate_limit(
     entirely should not call this function. Entitlement is enforced
     upstream by ``backend.data.entitlement`` (the ``enforce_payment_paywall``
     route dependency), so this function is purely about per-window USD usage.
-    ``org_plan`` means the limits come from an organization's plan: the
-    user's own tier and trial don't apply, only their counters do.
+    ``team_org_id`` names the team organization whose plan sets the limits:
+    the user's own tier and trial don't apply, and the counters are theirs in
+    that organization.
 
     ``skip_daily`` skips the daily-cap check; the weekly cap still
     applies. Used by the dream pass so a user with a busy interactive
@@ -813,13 +818,13 @@ async def check_rate_limit(
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
     if (
-        not org_plan
+        team_org_id is None
         and expected_tier is not None
         and await _effective_usage_tier(user_id, state.tier) != expected_tier
     ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
-    d_key, w_key = usage_keys(user_id, state.generation, now)
-    if not org_plan and state.tier == SubscriptionTier.TRIAL:
+    d_key, w_key = usage_keys(user_id, state.generation, now, team_org_id)
+    if team_org_id is None and state.tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             raise RateLimitExceeded("trial", now)
@@ -881,7 +886,9 @@ def _trial_uses_total_budget(
     )
 
 
-async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
+async def reset_daily_usage(
+    user_id: str, daily_cost_limit: int = 0, *, team_org_id: str | None = None
+) -> bool:
     """Reset a user's daily cost usage counter in Redis.
 
     Called after a user pays credits to extend their daily limit.
@@ -893,6 +900,8 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
         user_id: The user's ID.
         daily_cost_limit: The configured daily cost limit in microdollars.
             When positive, the weekly counter is reduced by this amount.
+        team_org_id: Reset the user's counters in this team organization
+            instead of their own.
 
     Returns False if Redis is unavailable so the caller can handle
     compensation (fail-closed for billed operations, unlike the read-only
@@ -903,7 +912,7 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
         redis = await get_redis_async()
 
         state = await get_ready_usage_state(user_id)
-        d_key, w_key = usage_keys(user_id, state.generation, now)
+        d_key, w_key = usage_keys(user_id, state.generation, now, team_org_id)
 
         # Daily and weekly keys hash to different cluster slots, so cross-key
         # MULTI/EXEC is not available. Issue the writes sequentially — the
@@ -999,6 +1008,11 @@ async def record_cost_usage(
     cost already reflects model pricing and cache discounts, this function
     carries no pricing table or weighting — it just increments counters.
 
+    The counters and the trial are the ones the usage attribution in force
+    names (``trial_cost_context``), else the user's own: work in a team
+    organization counts in the user's counters there and never toward their
+    personal trial.
+
     Args:
         user_id: The user's ID.
         cost_microdollars: Spend to record in microdollars (1 USD = 1_000_000).
@@ -1025,7 +1039,7 @@ async def record_cost_usage(
     )
 
     now = datetime.now(UTC)
-    d_key, w_key = usage_keys(user_id, context.generation, now)
+    d_key, w_key = usage_keys(user_id, context.generation, now, context.team_org_id)
     daily_ttl = max(int((_daily_reset_time(now=now) - now).total_seconds()), 1)
     weekly_ttl = max(int((_weekly_reset_time(now=now) - now).total_seconds()), 1)
     try:
@@ -1470,11 +1484,14 @@ async def rate_limits_for_tier(
     return daily, weekly, tier
 
 
-async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
+async def reset_user_usage(
+    user_id: str, *, reset_weekly: bool = False, team_org_id: str | None = None
+) -> None:
     """Reset a user's usage counters.
 
     Always deletes the daily Redis key.  When *reset_weekly* is ``True``,
-    the weekly key is deleted as well.
+    the weekly key is deleted as well. With *team_org_id* these are the
+    user's counters in that team organization, not their own.
 
     Unlike read paths (``get_usage_status``, ``check_rate_limit``) which
     fail-open on Redis errors, resets intentionally re-raise so the caller
@@ -1483,7 +1500,7 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
     """
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
-    d_key, w_key = usage_keys(user_id, state.generation, now)
+    d_key, w_key = usage_keys(user_id, state.generation, now, team_org_id)
     try:
         redis = await get_redis_async()
         # Daily and weekly keys hash to different cluster slots — multi-key

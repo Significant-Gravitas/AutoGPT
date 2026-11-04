@@ -32,20 +32,30 @@ router = APIRouter(dependencies=[Security(requires_user)])
 # MANAGE_BILLING excludes org admins by design; personal-org membership rows
 # are always isOwner=True, so this gate is a no-op for personal orgs.
 #
-# Release ordering (SECRT-2449): the frontend never sends X-Org-Id, so the gate
-# is inert today. Forwarding it must not ship before the billing UI handles 403
-# for plain members — they would otherwise lose the nav Wallet (GET /credits)
-# and the settings billing page (/credits/transactions, /credits/refunds,
-# /credits/invoices).
+# The frontend sends the active organization as X-Org-Id on every request, so
+# in a team organization these routes serve its owner and billing managers and
+# answer a plain member with 403 (SECRT-2449). The billing UI expects that: a
+# plain member's nav Wallet (GET /credits) and settings billing page say the
+# owner and billing managers manage the organization's credits, instead of
+# showing its balance and history.
 BillingManagerContext = Annotated[
     RequestContext,
     requires_org_permission(OrgAction.MANAGE_BILLING),
 ]
 
-# A team organization's wallet has no checkout of its own yet.
+# A team organization's wallet has no checkout of its own yet: AutoGPT adds
+# its credits, so the Stripe steps that buy, refund and settle them refuse.
 TEAM_ORG_TOP_UP_REFUSED = (
     "A team organization's credits are added by AutoGPT for now, so they "
     "can't be bought here."
+)
+TEAM_ORG_REFUND_REFUSED = (
+    "A team organization's credits are added by AutoGPT for now, so contact "
+    "AutoGPT about a refund."
+)
+TEAM_ORG_CHECKOUT_REFUSED = (
+    "A team organization's credits are added by AutoGPT for now, so there's "
+    "no checkout to finish here."
 )
 
 
@@ -106,7 +116,10 @@ async def refund_top_up(
     metadata: dict[str, str],
 ) -> int:
     credit_model = await get_credit_model(user_id, ctx.org_id)
-    return await credit_model.top_up_refund(user_id, transaction_key, metadata)
+    try:
+        return await credit_model.top_up_refund(user_id, transaction_key, metadata)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=409, detail=TEAM_ORG_REFUND_REFUSED) from e
 
 
 @router.patch(
@@ -118,7 +131,10 @@ async def fulfill_checkout(
     ctx: BillingManagerContext,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
-    await credit_model.fulfill_checkout(user_id=user_id)
+    try:
+        await credit_model.fulfill_checkout(user_id=user_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=409, detail=TEAM_ORG_CHECKOUT_REFUSED) from e
     return Response(status_code=200)
 
 

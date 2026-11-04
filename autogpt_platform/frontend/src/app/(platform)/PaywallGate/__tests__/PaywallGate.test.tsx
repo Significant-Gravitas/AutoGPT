@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock next/navigation — usePathname isn't available in jsdom.
@@ -39,7 +39,7 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
 // local per test to assert the local-dev bypass.
 let mockIsLocal = false;
 vi.mock("@/services/environment", () => ({
-  environment: { isLocal: () => mockIsLocal },
+  environment: { isLocal: () => mockIsLocal, isServerSide: () => false },
 }));
 
 // Mock PaywallModal — actual rendering depends on Radix portals + the full
@@ -56,7 +56,33 @@ vi.mock("../../components/WorkflowsMovedNotice/WorkflowsMovedNotice", () => ({
   ),
 }));
 
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { PaywallGate } from "../PaywallGate";
+
+const PERSONAL_ORG = {
+  id: "org-personal",
+  name: "Jane's Org",
+  slug: "jane",
+  avatarUrl: null,
+  isPersonal: true,
+  memberCount: 1,
+};
+const TEAM_ORG = {
+  ...PERSONAL_ORG,
+  id: "org-team",
+  name: "Acme Inc",
+  slug: "acme",
+  isPersonal: false,
+  memberCount: 4,
+};
+
+function workIn(org: typeof PERSONAL_ORG | null, isLoaded = true) {
+  useOrgTeamStore.setState({
+    activeOrgID: org?.id ?? null,
+    orgs: org ? [PERSONAL_ORG, TEAM_ORG] : [],
+    isLoaded,
+  });
+}
 
 describe("PaywallGate", () => {
   beforeEach(() => {
@@ -66,6 +92,7 @@ describe("PaywallGate", () => {
     mockSubscriptionResult = { data: null, isLoading: false };
     subscriptionQueryEnabled = undefined;
     mockIsLocal = false;
+    workIn(PERSONAL_ORG);
   });
 
   it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
@@ -174,6 +201,40 @@ describe("PaywallGate", () => {
     );
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
     expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("never opens the personal plan picker in a team organization, whose own plan decides there", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    workIn(TEAM_ORG);
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
+  });
+
+  it("waits for the organizations, so a team organization's member never sees the picker flash", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    workIn(null, false);
+    render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    act(() => workIn(PERSONAL_ORG));
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
+  });
+
+  it("falls back to the person's own plan when the organizations can't load", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    workIn(null, true);
+    render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
   });
 
   it("defers the migration notice until the paywall clears", () => {

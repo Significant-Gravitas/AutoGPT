@@ -113,7 +113,6 @@ from backend.copilot.rate_limit import (
     get_daily_reset_count,
     increment_daily_reset_count,
     release_reset_lock,
-    reset_daily_usage,
 )
 from backend.copilot.response_model import (
     StreamError,
@@ -192,6 +191,8 @@ from backend.data.entitlement_limits import (
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
+    org_plan_decides,
+    reset_daily_usage,
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.tenancy import (
@@ -1688,6 +1689,9 @@ class RateLimitResetResponse(BaseModel):
             "description": "Bad Request (feature disabled or daily limit not reached)"
         },
         402: {"description": "Payment Required (insufficient credits)"},
+        409: {
+            "description": "Conflict (resets aren't available in a team organization)"
+        },
         429: {
             "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
         },
@@ -1698,6 +1702,7 @@ class RateLimitResetResponse(BaseModel):
 )
 async def reset_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> RateLimitResetResponse:
     """Reset the daily CoPilot rate limit by spending credits.
 
@@ -1705,12 +1710,21 @@ async def reset_copilot_usage(
     to reset their daily usage counter and continue working.
     Returns 400 if the feature is disabled or the user is not over the limit.
     Returns 402 if the user has insufficient credits.
+    Returns 409 in a team organization: its plan sets each member's limits
+    there, and personal credits don't buy them back. Everywhere else these are
+    the user's own counters.
     """
     cost = config.rate_limit_reset_cost
     if cost <= 0:
         raise HTTPException(
             status_code=400,
             detail="Rate limit reset is not available.",
+        )
+    if await org_plan_decides(ctx.org_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Resetting usage with credits isn't available in a team "
+            "organization.",
         )
 
     if not settings.config.enable_credit:

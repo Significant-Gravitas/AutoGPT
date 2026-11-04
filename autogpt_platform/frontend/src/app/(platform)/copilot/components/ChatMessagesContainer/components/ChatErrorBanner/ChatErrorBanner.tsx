@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 
 import {
   describeChatError,
@@ -12,7 +13,8 @@ interface Props {
 }
 
 export function ChatErrorBanner({ error }: Props) {
-  const guidance = describeChatError(error);
+  const { isTeamOrg } = useActiveOrgWallet();
+  const guidance = describeChatError(error, { isTeamOrg });
   const isBillingEnabled = useIsBillingEnabled();
   // Without billing (most self-hosted installs) there are no plans to pick
   // and /settings/billing is a 404, so point at whoever runs the server.

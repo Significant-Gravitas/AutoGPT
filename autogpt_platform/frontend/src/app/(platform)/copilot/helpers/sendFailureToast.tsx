@@ -7,6 +7,7 @@ import {
   isPaywallError,
   PAYWALL_TOAST_DURATION_MS,
 } from "@/components/contextual/PaywallToast/helpers";
+import { paywallDetail } from "@/components/contextual/PaywallToast/paywall-detail";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { describeSendFailure } from "../components/ChatInput/helpers";
 import { SentNowError } from "../components/SendAtReset/helpers";
@@ -36,7 +37,12 @@ export function toastSendFailure({
   if (isPaywallError(failure)) {
     toast({
       title: "Sending needs an active plan",
-      description: <PaywallToastDescription recovery={paywallRecovery} />,
+      description: (
+        <PaywallToastDescription
+          recovery={paywallRecovery}
+          detail={paywallDetail(failure)}
+        />
+      ),
       variant: "destructive",
       duration: PAYWALL_TOAST_DURATION_MS,
       replaceKey: PAYWALL_TOAST_KEY,

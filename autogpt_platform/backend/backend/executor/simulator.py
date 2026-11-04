@@ -43,8 +43,8 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.copilot.org_cost_context import attributed_usage
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.trial_cost_context import attributed_usage
 from backend.data.entitlement_limits import platform_spend_refusal
 from backend.data.model import NodeExecutionStats
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
@@ -387,18 +387,25 @@ async def _track_simulator_cost(
 
 
 async def track_dry_run_block_cost(
-    stats: NodeExecutionStats, *, user_id: str, model: str | None
+    stats: NodeExecutionStats,
+    *,
+    user_id: str,
+    model: str | None,
+    org_id: str | None = None,
 ) -> None:
     """Record what a block that ran for real on the platform's key spent.
 
     The ``prepare_dry_run`` counterpart of ``_track_simulator_cost``: the
     OrchestratorBlock's usage lands on its execution stats, and a dry run skips
-    the credit reconciliation that would otherwise account for it.
+    the credit reconciliation that would otherwise account for it. It counts
+    in the counters of the run's organization (*org_id*), the allowance the
+    run was checked against.
     """
     try:
         await persist_and_record_usage(
             session=None,
             user_id=user_id,
+            org_id=org_id,
             prompt_tokens=stats.input_token_count,
             completion_tokens=stats.output_token_count,
             cache_read_tokens=stats.cache_read_token_count,

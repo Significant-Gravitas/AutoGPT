@@ -64,7 +64,7 @@ async def test_the_window_check_skips_the_users_own_tier_in_a_team_org(team: boo
         await entitlement_limits.check_rate_limit(
             "u-1", 3, 6, org_id="org", expected_tier=SubscriptionTier.PRO
         )
-    assert check.await_args.kwargs["org_plan"] is team
+    assert check.await_args.kwargs["team_org_id"] == ("org" if team else None)
 
 
 @pytest.mark.asyncio

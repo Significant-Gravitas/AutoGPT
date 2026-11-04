@@ -181,7 +181,7 @@ def test_reset_user_usage_daily_only(
     assert data["tier"] == "BASIC"
     assert data["tier_multipliers"] == _MOCK_TIER_MULTIPLIERS
 
-    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
+    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False, org_id=None)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
@@ -212,12 +212,51 @@ def test_reset_user_usage_daily_and_weekly(
     assert data["weekly_cost_used_microdollars"] == 0
     assert data["tier"] == "BASIC"
 
-    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True)
+    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True, org_id=None)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
         "reset_user_usage_daily_and_weekly",
     )
+
+
+def test_reset_and_read_a_members_usage_in_a_team_org(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """A member of a team organization has usage counters of their own there:
+    with ``org_id`` the admin resets and reads those, not the personal ones."""
+    mock_reset = mocker.patch(
+        f"{_MOCK_MODULE}.reset_user_usage",
+        new_callable=AsyncMock,
+    )
+    _patch_rate_limit_deps(mocker, target_user_id, daily_used=0, weekly_used=0)
+    limits = mocker.patch(
+        f"{_MOCK_MODULE}.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.BUSINESS),
+    )
+    usage = mocker.patch(
+        f"{_MOCK_MODULE}.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=_mock_usage_status(daily_used=0, weekly_used=0),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/reset",
+        json={"user_id": target_user_id, "reset_weekly": True, "org_id": "team-org"},
+    )
+    assert response.status_code == 200
+    mock_reset.assert_awaited_once_with(
+        target_user_id, reset_weekly=True, org_id="team-org"
+    )
+
+    response = client.get(
+        "/admin/rate_limit", params={"user_id": target_user_id, "org_id": "team-org"}
+    )
+    assert response.status_code == 200
+    assert [call.args[3] for call in limits.await_args_list] == ["team-org"] * 2
+    assert [call.kwargs["org_id"] for call in usage.await_args_list] == ["team-org"] * 2
 
 
 def test_reset_user_usage_redis_failure(

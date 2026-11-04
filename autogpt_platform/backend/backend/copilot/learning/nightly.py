@@ -23,12 +23,12 @@ from typing import Literal
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.dream.billing import check_dream_budget
+from backend.copilot.org_cost_context import attributed_usage
 from backend.copilot.tools.skills import (
     ParsedSkill,
     list_user_skills,
     read_user_skill_with_body,
 )
-from backend.copilot.trial_cost_context import attributed_usage
 from backend.data.db_accessors import (
     skill_learning_db,
     skill_reviews_db,

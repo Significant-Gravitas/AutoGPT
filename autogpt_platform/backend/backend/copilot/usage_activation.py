@@ -29,8 +29,22 @@ async def get_ready_usage_state(user_id: str) -> "UsageActivationState":
     return state
 
 
-def usage_keys(user_id: str, generation: str | None, now: datetime) -> tuple[str, str]:
-    owner = f"{user_id}:{generation}" if generation else user_id
+def usage_keys(
+    user_id: str,
+    generation: str | None,
+    now: datetime,
+    team_org_id: str | None = None,
+) -> tuple[str, str]:
+    """The daily and weekly spend counters of *user_id* at *now*.
+
+    In a team organization each member has counters of their own there, apart
+    from their personal ones and from other organizations'; the personal
+    plan's activation *generation* doesn't apply to them.
+    """
+    if team_org_id:
+        owner = f"{user_id}:org:{team_org_id}"
+    else:
+        owner = f"{user_id}:{generation}" if generation else user_id
     year, week, _ = now.isocalendar()
     return (
         f"copilot:cost:daily:{owner}:{now.strftime('%Y-%m-%d')}",

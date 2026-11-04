@@ -27,6 +27,7 @@ from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.llm_attribution import turn_trace_id
+from backend.copilot.org_cost_context import capture_org_cost_context
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
@@ -39,7 +40,7 @@ from backend.copilot.tree import (
     release_turn,
     root_envelope,
 )
-from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.tenancy import live_resource_access_barrier
 from backend.util import tracing
@@ -484,7 +485,7 @@ async def enqueue_copilot_turn(
             else tracing.trace_propagation_headers()
         ),
         enqueued_at=time.time(),
-        cost_context=await capture_cost_context(user_id),
+        cost_context=await capture_org_cost_context(user_id, organization_id),
         tool_name=tool_name,
     )
 

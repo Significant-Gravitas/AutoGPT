@@ -153,6 +153,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.CLOUD)
+    # The request's organization is a personal one unless a test says so.
+    mocker.patch.object(
+        chat_routes, "org_plan_decides", new=AsyncMock(return_value=False)
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -4365,6 +4369,7 @@ def _mock_reset_internals(
     acquire_lock: bool = True,
     reset_daily: bool = True,
     remaining_balance: int = 9_000,
+    team_org: bool = False,
 ):
     """Set up all dependencies for reset_copilot_usage tests."""
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
@@ -4372,6 +4377,11 @@ def _mock_reset_internals(
     mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", cost)
     mocker.patch.object(chat_routes.config, "max_daily_resets", 3)
     mocker.patch.object(chat_routes.settings.config, "enable_credit", enable_credit)
+    mocker.patch(
+        "backend.api.features.chat.routes.org_plan_decides",
+        new_callable=AsyncMock,
+        return_value=team_org,
+    )
 
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
@@ -4608,6 +4618,20 @@ def test_reset_usage_returns_402_when_insufficient_credits(
     response = client.post("/usage/reset")
 
     assert response.status_code == 402
+
+
+def test_reset_usage_returns_409_in_a_team_org(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A team organization's plan sets each member's limits there, so a reset
+    in one is refused before any credits are charged."""
+    mock_credit = _mock_reset_internals(mocker, team_org=True)
+
+    response = client.post("/usage/reset")
+
+    assert response.status_code == 409
+    assert "team organization" in response.json()["detail"]
+    mock_credit.spend_credits.assert_not_awaited()
 
 
 def test_reset_usage_success(mocker: pytest_mock.MockerFixture) -> None:

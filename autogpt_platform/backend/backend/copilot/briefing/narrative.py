@@ -44,7 +44,7 @@ from backend.copilot.inference.context import (
 from backend.copilot.inference.record import record
 from backend.copilot.inference.routing import resolve_route
 from backend.copilot.inference.trace import trace
-from backend.copilot.trial_cost_context import attributed_usage
+from backend.copilot.org_cost_context import attributed_usage
 
 from .models import BriefingContent, BriefingRunItem
 

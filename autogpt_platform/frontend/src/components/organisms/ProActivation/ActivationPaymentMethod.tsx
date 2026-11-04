@@ -1,10 +1,25 @@
-import { useGetV1ManagePaymentMethods } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetV1ManagePaymentMethodsQueryKey,
+  useGetV1ManagePaymentMethods,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getPersonalBillingQueryOptions } from "@/services/org-team/org-wallet";
+import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
 import { CreditCardIcon, LinkSquare01Icon } from "@hugeicons/core-free-icons";
 
 export function ActivationPaymentMethod() {
-  const { data } = useGetV1ManagePaymentMethods({ query: { retry: false } });
+  // A personal subscription is the person's own, whichever organization they
+  // work in now, so its payment method is too.
+  const wallet = useActiveOrgWallet();
+  const personal = getPersonalBillingQueryOptions(
+    getGetV1ManagePaymentMethodsQueryKey(),
+    wallet,
+  );
+  const { data } = useGetV1ManagePaymentMethods({
+    request: personal.request,
+    query: { ...personal.query, retry: false },
+  });
   const raw = data?.data;
   const portal =
     raw && typeof raw === "object" && "url" in raw ? raw.url : null;

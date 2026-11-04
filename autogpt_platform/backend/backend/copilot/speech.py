@@ -11,8 +11,8 @@ import httpx
 from openai import AsyncOpenAI
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.org_cost_context import attributed_usage
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -62,8 +62,10 @@ async def synthesize_speech(
     text: str,
     session_id: str | None = None,
     voice: str | None = None,
+    org_id: str | None = None,
 ) -> bytes:
-    """Speak *text* as MP3 and meter its cost against the user's plan.
+    """Speak *text* as MP3 and meter its cost against the user's plan, in the
+    counters of the organization the request acts in (*org_id*).
 
     Raises ``SpeechUnavailable`` when no key is configured and ``ValueError``
     for an empty/oversized input or an unknown voice.

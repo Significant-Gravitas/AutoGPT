@@ -1,3 +1,7 @@
+import {
+  paywallDetail,
+  TEAM_ORG_PLAN_REQUIRED,
+} from "@/components/contextual/PaywallToast/paywall-detail";
 import { CopilotAuthError } from "./helpers";
 import {
   ChatUnavailableError,
@@ -15,8 +19,16 @@ export interface ChatErrorGuidance {
   note?: string;
 }
 
+interface Scope {
+  /** The person works in a team organization, whose plan decides there. */
+  isTeamOrg?: boolean;
+}
+
 /** Guidance for a failed send or stream; it promises a resend only where one can succeed. */
-export function describeChatError(error: Error): ChatErrorGuidance {
+export function describeChatError(
+  error: Error,
+  { isTeamOrg = false }: Scope = {},
+): ChatErrorGuidance {
   const status = statusOf(error);
   if (
     error instanceof CopilotAuthError ||
@@ -42,6 +54,14 @@ export function describeChatError(error: Error): ChatErrorGuidance {
       title:
         "This conversation is too long to continue. Start a new chat to keep going.",
       action: "new-chat",
+    };
+  // In a team organization a personal plan can't help: say what the
+  // backend said, which names the organization's own way forward.
+  if (status === 402 && isTeamOrg)
+    return {
+      title: "This message wasn't sent.",
+      action: null,
+      note: paywallDetail(error) ?? TEAM_ORG_PLAN_REQUIRED,
     };
   if (status === 402)
     return {

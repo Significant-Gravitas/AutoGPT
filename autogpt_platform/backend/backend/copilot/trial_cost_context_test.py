@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from prisma.enums import SubscriptionTier
 
+from backend.copilot.org_cost_context import attributed_usage
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
-    attributed_usage,
     get_trial_cost_context,
     record_attributed_trial_cost,
     restore_cost_context,
