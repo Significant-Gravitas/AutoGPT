@@ -1262,6 +1262,7 @@ class TestInvitationAcceptance:
         isBillingManager=False,
         teamIds=None,
         orgDeletedAt=None,
+        orgIsPersonal=False,
     ):
         inv = MagicMock()
         inv.id = "inv-1"
@@ -1276,7 +1277,7 @@ class TestInvitationAcceptance:
         inv.createdAt = FIXED_NOW
         inv.invitedByUserId = USER_ID
         inv.teamIds = teamIds or []
-        inv.Org = _make_org(id=orgId, deletedAt=orgDeletedAt)
+        inv.Org = _make_org(id=orgId, deletedAt=orgDeletedAt, isPersonal=orgIsPersonal)
         return inv
 
     @pytest.fixture
@@ -1342,6 +1343,34 @@ class TestInvitationAcceptance:
             await accept_invitation("tok-abc", user_id=test_user_id)
 
         self.prisma.orgmember.create.assert_not_called()
+
+    def test_accept_invitation_into_a_personal_org_is_refused_and_kept(
+        self, _app_and_client, test_user_id
+    ):
+        """An invitation created before invitations into a personal org were
+        refused stays pending: it can be accepted if the owner converts the
+        org to a team."""
+        _, client = _app_and_client
+        self.prisma.orginvitation.find_unique = AsyncMock(
+            return_value=self._make_invitation(
+                email="test@example.com", orgIsPersonal=True
+            )
+        )
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(id=test_user_id, email="test@example.com")
+        )
+        self.prisma.organization.find_first = AsyncMock(
+            return_value=_make_org(isPersonal=True)
+        )
+        self.prisma.orgmember.create = AsyncMock()
+        self.prisma.orginvitation.update = AsyncMock()
+
+        resp = client.post("/invitations/tok-abc/accept")
+
+        assert resp.status_code == 409
+        assert "team organization" in resp.json()["detail"]
+        self.prisma.orgmember.create.assert_not_called()
+        self.prisma.orginvitation.update.assert_not_called()
 
     def test_accept_expired_invitation_raises(self, _app_and_client):
         _, client = _app_and_client
@@ -3027,7 +3056,59 @@ class TestInvitationSeeding:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.organization.find_unique = AsyncMock(return_value=_make_org())
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
+
+    @pytest.mark.asyncio
+    async def test_create_invitation_into_a_personal_org_is_refused(self):
+        """A personal org bills only its owner, so a member could join it but
+        never run anything there."""
+        from backend.api.features.orgs.invitation_routes import create_invitation
+        from backend.api.features.orgs.model import CreateInvitationRequest
+
+        self.prisma.organization.find_unique = AsyncMock(
+            return_value=_make_org(isPersonal=True)
+        )
+        self.prisma.orginvitation.create = AsyncMock()
+
+        with pytest.raises(fastapi.HTTPException) as exc:
+            await create_invitation(
+                org_id=ORG_ID,
+                request=CreateInvitationRequest(email="new@example.com"),
+                ctx=_member_ctx(org_id=ORG_ID),
+            )
+
+        assert exc.value.status_code == 409
+        assert "team organization" in exc.value.detail
+        self.prisma.orginvitation.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_invitation_into_a_team_org_is_stored(self):
+        from backend.api.features.orgs.invitation_routes import create_invitation
+        from backend.api.features.orgs.model import CreateInvitationRequest
+
+        self.prisma.organization.find_unique = AsyncMock(
+            return_value=_make_org(isPersonal=False)
+        )
+        created = MagicMock()
+        created.id = "inv-4"
+        created.token = "tok-team"
+        created.email = "new@example.com"
+        created.isAdmin = False
+        created.isBillingManager = False
+        created.expiresAt = datetime.now(timezone.utc) + timedelta(days=3)
+        created.createdAt = FIXED_NOW
+        created.teamIds = []
+        self.prisma.orginvitation.create = AsyncMock(return_value=created)
+
+        result = await create_invitation(
+            org_id=ORG_ID,
+            request=CreateInvitationRequest(email="new@example.com"),
+            ctx=_member_ctx(org_id=ORG_ID),
+        )
+
+        assert result.token == "tok-team"
+        self.prisma.orginvitation.create.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_create_invitation_rejects_foreign_team_ids(self):
