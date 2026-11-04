@@ -66,7 +66,10 @@ The service names a config file with `--config` when you passed one or a file
 exists at the default location; otherwise the shim looks at the default
 location itself. `install` refuses a `--config` it can't load, such as one that
 names no file, since the service could never start with it; create the file
-before you install.
+before you install. The service also gets the `--platform-url`,
+`--platform-oauth-url`, `--allowed-root` and `--session-id` you give
+`install`: credentials are kept per deployment, so give it the same platform
+URLs you gave `auth`.
 
 The platform never sends an arbitrary host path to the shim. Folder navigation
 uses short-lived opaque references issued by the host, and selecting a folder
