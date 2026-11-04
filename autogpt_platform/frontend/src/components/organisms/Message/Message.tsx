@@ -27,13 +27,16 @@ import type {
 } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
+import { defaultSchema } from "hast-util-sanitize";
 import {
+  defaultRehypePlugins,
   defaultRemarkPlugins,
   parseMarkdownIntoBlocks,
   Streamdown,
 } from "streamdown";
 import { remarkAppLinks } from "./app-links";
 import { MessageLink } from "./components/MessageLink/MessageLink";
+import { rehypeLiteralTags } from "./literal-tags";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -43,16 +46,20 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
 
+const MessageRoleContext = createContext<MessageProps["from"]>("assistant");
+
 export const Message = ({ className, from, ...props }: MessageProps) => (
-  <div
-    className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
-      // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
-      from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
-      className,
-    )}
-    {...props}
-  />
+  <MessageRoleContext value={from}>
+    <div
+      className={cn(
+        "group flex w-full max-w-[95%] flex-col gap-2",
+        // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
+        from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+        className,
+      )}
+      {...props}
+    />
+  </MessageRoleContext>
 );
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
@@ -391,6 +398,24 @@ const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 // once here.
 const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
 
+// Server-only tags CommonMark reads as HTML (the rest carry an underscore, which
+// already keeps them text) are dropped by the sanitiser; the text inside them shows.
+const SERVER_ONLY_TAGS = ["routines", "thinking"];
+
+// The user's bubble shows any tag they typed; Otto's keeps every element the
+// sanitiser keeps. Streamdown's own raw, sanitise and harden steps run after.
+const USER_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [rehypeLiteralTags, { keep: SERVER_ONLY_TAGS }],
+  ...Object.values(defaultRehypePlugins),
+];
+const REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [
+    rehypeLiteralTags,
+    { keep: [...(defaultSchema.tagNames ?? []), ...SERVER_ONLY_TAGS] },
+  ],
+  ...Object.values(defaultRehypePlugins),
+];
+
 // MessageLink asks before leaving the site itself; Streamdown's own check
 // would draw every link as a button without an href.
 const LINK_SAFETY = { enabled: false };
@@ -427,6 +452,7 @@ export const MessageResponse = memo(function MessageResponse({
   const mergedComponents = useReadEveryRender(() =>
     withDefaultComponents(components),
   );
+  const from = useContext(MessageRoleContext);
   return (
     <Streamdown
       className={cn(
@@ -454,6 +480,9 @@ export const MessageResponse = memo(function MessageResponse({
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={
+        from === "user" ? USER_REHYPE_PLUGINS : REPLY_REHYPE_PLUGINS
+      }
       linkSafety={LINK_SAFETY}
       parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}
