@@ -573,7 +573,7 @@ async def test_a_request_while_an_idle_detach_is_audited_is_refused_not_cut_off(
 
     stop.assert_awaited_once_with("session-1")
     assert started == []
-    (refusal,) = [json.loads(raw) for raw in sent]
+    (refusal,) = (json.loads(raw) for raw in sent)
     assert refusal["type"] == "ERROR" and refusal["payload"]["code"] == "SHIM_OVERLOADED"
 
 
