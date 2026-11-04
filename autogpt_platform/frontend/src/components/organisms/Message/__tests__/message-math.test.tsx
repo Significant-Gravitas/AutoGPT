@@ -117,7 +117,7 @@ describe("MessageResponse math", () => {
       "an HTML comment block holding a browser comment end",
       "<!-- a --!>\necho $HOME\n-->",
       "div",
-      "echo $HOME -->",
+      "<!-- a --!> echo $HOME -->",
     ],
     [
       "a code span that wraps a line",

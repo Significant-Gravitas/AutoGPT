@@ -46,6 +46,15 @@ describe("MessageResponse with text that looks like HTML", () => {
     expect(container.textContent).toBe("Keep <b>this</b> as typed");
   });
 
+  it("keeps a typed tag and the shell text inside it as typed", async () => {
+    const markdown = "Run <b>$HOME</b> and $(date) now";
+    const container = await renderBubble("user", markdown);
+
+    expect(container.querySelector("b")).toBeNull();
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toBe(markdown);
+  });
+
   it("renders the HTML Otto formats with", async () => {
     const container = await renderBubble(
       "assistant",
