@@ -627,3 +627,49 @@ def test_a_bad_config_stops_the_launchagent_instead_of_looping(
 
     assert exited.value.code == 0
     assert "launchctl kickstart" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("supervisor", [None, "launchd", "systemd"])
+async def test_a_temporary_preflight_failure_exits_75_for_a_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    supervisor: str | None,
+) -> None:
+    """Audit storage that was full, or not mounted yet, failed preflight with
+    78, which the systemd unit never restarts, so the shim stayed down once
+    the storage was back. 75 (EX_TEMPFAIL) is restarted by systemd and
+    launchd alike."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    class FailingDaemon:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def run(self) -> None:
+            raise daemon_module.DaemonPreflightError("the disk is full", transient=True)
+
+    monkeypatch.setattr(daemon_module, "ShimDaemon", FailingDaemon)
+    if supervisor is None:
+        monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    else:
+        monkeypatch.setenv("AUTOGPT_SHIM_SUPERVISOR", supervisor)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+    assert await cli._cmd_start(config) == 75
+    assert "Preflight failed: the disk is full" in capsys.readouterr().err
+
+
+def test_the_systemd_unit_restarts_a_temporary_failure() -> None:
+    template = Path(cli.__file__).parent / "templates" / "systemd.service.template"
+    [line] = [
+        line
+        for line in template.read_text().splitlines()
+        if line.startswith("RestartPreventExitStatus=")
+    ]
+    assert "75" not in line.split("=", 1)[1].split()

@@ -517,3 +517,28 @@ async def test_control_reconnect_invalidates_browse_refs(
 
     with pytest.raises(Exception):
         daemon._directory_browser.resolve(listing.browse_id, old_ref.directory_ref)
+
+
+@pytest.mark.asyncio
+async def test_hello_detects_capabilities_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The X display probe can take seconds, and HELLO ran it on the event
+    loop, stalling every other session the machine connection carries."""
+    import threading
+
+    from autogpt_local_executor import platform_info
+
+    daemon = _control_daemon(tmp_path)
+    ran_on: list[int] = []
+    real = platform_info.detect_capabilities
+
+    def detect(**kwargs: Any) -> list[str]:
+        ran_on.append(threading.get_ident())
+        return real(**kwargs)
+
+    monkeypatch.setattr(platform_info, "detect_capabilities", detect)
+
+    await daemon._build_hello()
+
+    assert ran_on and ran_on[0] != threading.get_ident()

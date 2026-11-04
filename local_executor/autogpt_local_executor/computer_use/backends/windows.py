@@ -446,7 +446,9 @@ class WindowsBackend(ComputerUseBackend):
 
     @staticmethod
     def _chord(key: str) -> list[str]:
-        return chord_keys(key, _KEY_ALIASES)
+        import pyautogui  # type: ignore[import-untyped]
+
+        return chord_keys(key, _KEY_ALIASES, known=getattr(pyautogui, "KEY_NAMES", None))
 
     @staticmethod
     def _turn_wheel(notches: int, *, horizontal: bool) -> None:
@@ -825,6 +827,7 @@ class WindowsBackend(ComputerUseBackend):
         from separate clipboard sessions, so the sequence number and text
         must read the same after the formats as before them, or a copy
         landed in between; retried a few times, then None."""
+        unreadable_formats: tuple[str | None, int | None, set[int] | None] | None = None
         for attempt in range(3):
             if attempt:
                 # Another app may be holding the clipboard open for a moment.
@@ -835,8 +838,12 @@ class WindowsBackend(ComputerUseBackend):
             # A sequence number that couldn't be read proves nothing, and two
             # failed reads would otherwise look alike.
             if seq is not None and seq == seq_again and text == again:
-                return text, seq, formats
-        return None
+                if formats is not None:
+                    return text, seq, formats
+                # The formats session failed (the clipboard held open for it,
+                # say): try again. Formats that never read count as concealed.
+                unreadable_formats = (text, seq, None)
+        return unreadable_formats
 
     def _do_paste(self, text: str, *, restore: str | None) -> None:
         """Paste `text`, then put `restore` back unless something else has

@@ -1259,6 +1259,12 @@ async def test_start_refuses_a_route_other_than_the_consented_one(tmp_path: Path
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.CONSENT_REQUIRED
 
+    # The refusal leaves the single-use token unspent: once the route can be
+    # honored, the same token starts the recording.
+    handler.set_local_llm_models(["llava:13b"])
+    retry = await handler.handle(start.model_copy(update={"id": new_id()}), send=None)
+    assert isinstance(retry, RecordingStartedMessage)
+
 
 async def test_an_accessibility_result_with_no_fields_leaves_the_step_unenriched() -> None:
     """Any non-empty dict used to tag the step `ax`, so coverage counted

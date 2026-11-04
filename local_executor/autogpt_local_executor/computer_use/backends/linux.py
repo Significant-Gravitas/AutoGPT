@@ -69,17 +69,31 @@ def _is_wayland() -> bool:
     )
 
 
-def _in_application_dir(path: str) -> bool:
-    """Whether `path` is in an XDG application directory, where gtk-launch
-    looks desktop file IDs up."""
+def _application_dirs() -> list[str]:
+    """The XDG application directories, in the order gtk-launch searches."""
     data_home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-    directory = os.path.realpath(os.path.dirname(os.path.abspath(path)))
-    return any(
-        directory == os.path.realpath(os.path.join(base, "applications"))
+    return [
+        os.path.join(base, "applications")
         for base in [data_home, *data_dirs.split(":")]
         if os.path.isabs(base)
-    )
+    ]
+
+
+def _gtk_launch_finds(path: str) -> bool:
+    """Whether gtk-launch, given this file's desktop ID, starts this very file.
+    It starts the first file of that name in the application directories, so
+    one in an earlier directory shadows it, and a file outside them can't be
+    reached by its ID at all."""
+    name = os.path.basename(path)
+    for directory in _application_dirs():
+        candidate = os.path.join(directory, name)
+        if os.path.exists(candidate):
+            try:
+                return os.path.samefile(candidate, path)
+            except OSError:
+                return False
+    return False
 
 
 class LinuxBackend(ComputerUseBackend):
@@ -362,7 +376,9 @@ class LinuxBackend(ComputerUseBackend):
 
     @staticmethod
     def _chord(key: str) -> list[str]:
-        return chord_keys(key, _KEY_ALIASES)
+        import pyautogui  # type: ignore[import-untyped]
+
+        return chord_keys(key, _KEY_ALIASES, known=getattr(pyautogui, "KEY_NAMES", None))
 
     def _check_bounds(self, coordinate: tuple[int, int]) -> None:
         displays = self.display_info()
@@ -522,7 +538,7 @@ class LinuxBackend(ComputerUseBackend):
         executable_path: str | None = None,
         args: list[str] | None = None,
         activate: bool = True,
-    ) -> int:
+    ) -> int | None:
         if not executable_path:
             raise FeatureNotSupportedError(
                 "app.launch", reason="executable_path is required on Linux"
@@ -537,29 +553,39 @@ class LinuxBackend(ComputerUseBackend):
         return proc.pid
 
     @staticmethod
-    def _launch_desktop_file(path: str) -> int:
-        """Prefer gtk-launch, which takes a desktop file ID and so finds only
-        files in the XDG application directories; dex takes the file's path."""
+    def _launch_desktop_file(path: str) -> None:
+        """Start a .desktop file with gtk-launch when its desktop ID leads to
+        this very file, else with dex, which takes the file's path. Either
+        helper exits once it has started the app, so there is no app pid to
+        report: the helper's names a process already gone."""
         has_gtk_launch = shutil.which("gtk-launch") is not None
-        if shutil.which("dex") and not (has_gtk_launch and _in_application_dir(path)):
-            return subprocess.Popen(["dex", path], start_new_session=True).pid
-        if not has_gtk_launch:
+        if has_gtk_launch and _gtk_launch_finds(path):
+            command = ["gtk-launch", os.path.basename(path).removesuffix(".desktop")]
+        elif shutil.which("dex"):
+            command = ["dex", path]
+        elif has_gtk_launch:
+            raise FeatureNotSupportedError(
+                "app.launch",
+                reason="gtk-launch finds a desktop file by its ID in the XDG application "
+                "directories, where this one's name leads to another file or to none; "
+                "install dex to launch it by its path",
+            )
+        else:
             raise FeatureNotSupportedError(
                 "app.launch", reason=".desktop launch needs gtk-launch or dex"
             )
-        desktop_id = os.path.basename(path).removesuffix(".desktop")
-        proc = subprocess.Popen(["gtk-launch", desktop_id], start_new_session=True)
-        # gtk-launch exits once it has started the app, with a failing status
-        # if it found no such ID or couldn't start it.
+        proc = subprocess.Popen(command, start_new_session=True)
+        # The helper exits once it has started the app, with a failing status
+        # if it couldn't.
         try:
             status = proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            return proc.pid  # still starting it: not a failure
+            return None  # still starting it: not a failure
         if status != 0:
             raise FeatureNotSupportedError(
-                "app.launch", reason=f"gtk-launch {desktop_id} exited with status {status}"
+                "app.launch", reason=f"{' '.join(command)} exited with status {status}"
             )
-        return proc.pid
+        return None
 
     # ── Clipboard ────────────────────────────────────────────────────
 

@@ -1455,6 +1455,8 @@ def test_rename_no_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nati
     with pytest.raises(FileExistsError):
         fsops.rename_no_replace(src, taken)
     if native and sys.platform in ("linux", "darwin"):
+        if not _the_os_refuses_a_replacing_rename(tmp_path):
+            pytest.skip("this filesystem can't refuse in the rename itself")
         # The atomic call itself must work here, not just the fallback.
         assert fsops._native_no_replace_rename(src, tmp_path / "c") is True
     else:

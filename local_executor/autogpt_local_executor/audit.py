@@ -171,12 +171,18 @@ class AuditWriter:
             if self.path.exists():
                 try:
                     violations = self.verify(self.path, audit_key)
+                except OSError:
+                    # Storage, not the log's contents: the caller decides
+                    # whether a retry can fix it.
+                    raise
                 except Exception as exc:
-                    raise RuntimeError(
+                    raise AuditLogCorruptError(
                         "Existing audit log cannot be verified; refusing to append"
                     ) from exc
                 if violations:
-                    raise RuntimeError("Existing audit log failed verification; refusing to append")
+                    raise AuditLogCorruptError(
+                        "Existing audit log failed verification; refusing to append"
+                    )
             self._seq, self._prev_hmac = self._load_tail_state(self.path)
             # 0600 on POSIX; on Windows the file inherits the user-only ACL.
             if not self.path.exists():
@@ -507,16 +513,30 @@ class AuditKeyError(RuntimeError):
     pass
 
 
+class AuditKeyUnavailableError(RuntimeError):
+    """The OS keychain holding the audit key couldn't be used just now (still
+    locked at login, say). Unlike a missing keychain this can clear on its
+    own, so the file fallback doesn't stand in: its key is a different one,
+    and the log signed with the keychain's would no longer verify."""
+
+
+class AuditLogCorruptError(RuntimeError):
+    """The existing audit log failed verification, so nothing is appended to
+    it. A restart can't fix this: someone has to look at the log."""
+
+
 def get_or_create_audit_key() -> bytes:
     """Return the persisted audit key, generating + storing one on first use.
 
     Prefers the OS keychain. The legacy audit-only fallback requires
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
     """
-    # Try keyring first.
     try:
         import keyring
-
+        import keyring.errors
+    except ImportError:
+        return _fallback_audit_key()
+    try:
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
         if stored is not None:
             try:
@@ -535,9 +555,14 @@ def get_or_create_audit_key() -> bytes:
         return key
     except AuditKeyError:
         raise
-    except Exception as exc:
-        logger.warning("Keychain unavailable for audit key (%s); using fallback.", exc)
+    except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+        logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
         return _fallback_audit_key()
+    except Exception as exc:
+        raise AuditKeyUnavailableError(
+            f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
+            "it may still be locked"
+        ) from exc
 
 
 def _fallback_audit_key() -> bytes:

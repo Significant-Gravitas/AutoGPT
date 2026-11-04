@@ -21,6 +21,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import uuid
 from functools import lru_cache
 from pathlib import Path
@@ -152,17 +153,36 @@ def _can_do_computer_use() -> bool:
     return True
 
 
+# How long the X server has to answer the display probe.
+X11_PROBE_SECONDS = 5.0
+
+
 def _x11_display_opens() -> bool:
     """Whether the X server DISPLAY names accepts a connection. A set DISPLAY
     can still name a server that has gone, such as a closed SSH forward.
-    pyautogui connects through python-xlib, so the probe does too."""
-    try:
-        from Xlib.display import Display  # type: ignore[import-not-found]
+    pyautogui connects through python-xlib, so the probe does too.
 
-        Display().close()
-    except Exception:
-        return False
-    return True
+    python-xlib waits for the server's setup reply with no time limit, so a
+    server that takes the connection and never answers would hang HELLO and
+    doctor. The probe runs in a daemon thread, so one left waiting never holds
+    up exit, and counts as failed after X11_PROBE_SECONDS.
+    """
+    outcome: list[bool] = []
+
+    def probe() -> None:
+        try:
+            from Xlib.display import Display  # type: ignore[import-not-found]
+
+            Display().close()
+        except Exception:
+            outcome.append(False)
+        else:
+            outcome.append(True)
+
+    thread = threading.Thread(target=probe, name="x11-display-probe", daemon=True)
+    thread.start()
+    thread.join(X11_PROBE_SECONDS)
+    return outcome == [True]
 
 
 # ── Machine ID ───────────────────────────────────────────────────────────────

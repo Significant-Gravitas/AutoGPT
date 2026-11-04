@@ -504,7 +504,9 @@ class MacOSBackend(ComputerUseBackend):
 
     @staticmethod
     def _chord(key: str) -> list[str]:
-        return chord_keys(key, _KEY_ALIASES)
+        import pyautogui  # type: ignore[import-untyped]
+
+        return chord_keys(key, _KEY_ALIASES, known=getattr(pyautogui, "KEY_NAMES", None))
 
     def _check_bounds(self, coordinate: tuple[int, int]) -> None:
         displays = self.display_info()

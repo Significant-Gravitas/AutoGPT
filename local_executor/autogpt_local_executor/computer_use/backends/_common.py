@@ -20,12 +20,23 @@ def _typeable(text: str) -> bool:
     return all(char in _TYPEABLE for char in text)
 
 
-def chord_keys(key: str, aliases: dict[str, str]) -> list[str]:
+def chord_keys(key: str, aliases: dict[str, str], known: object = None) -> list[str]:
     """The keys of a `ctrl+s`-style chord, lowercased, with the documented
     modifier names (`super` and its alias `meta`) mapped to the OS's own.
-    pyautogui skips a key name it doesn't know without a word."""
-    keys = (part.strip().lower() for part in key.split("+"))
-    return [aliases.get(k, k) for k in keys if k]
+
+    pyautogui skips a key name it doesn't know without a word, so `ctrl+bogus`
+    would press Ctrl alone and still be acknowledged. A chord with a name not
+    in `known` (pyautogui's KEY_NAMES) is refused before any key goes down.
+    """
+    keys = [aliases.get(k, k) for k in (part.strip().lower() for part in key.split("+")) if k]
+    if isinstance(known, (list, tuple, set, frozenset)):
+        unknown = [k for k in keys if k not in known]
+        if unknown:
+            raise FeatureNotSupportedError(
+                "input.key",
+                reason=f"unknown key name {unknown[0]!r}; COMPUTER_USE.md lists the key names",
+            )
+    return keys
 
 
 def paste_is_worth_it(text: str) -> bool:

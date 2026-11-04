@@ -62,11 +62,31 @@ def run_doctor(config: ShimConfig) -> int:
         checks.append(
             CheckResult("WARN", "platform", f"unknown platform {plat!r}; doctor cannot probe")
         )
+    if config.enable_computer_use:
+        checks.append(_check_computer_use_modules(plat))
     checks.append(_check_display(config))
     _print_checks(checks)
     if any(c.blocking for c in checks):
         return EX_CONFIG
     return 0
+
+
+def _check_computer_use_modules(plat: str) -> CheckResult:
+    """The modules HELLO needs before it advertises computer_use."""
+    missing = [
+        name
+        for name in platform_info.computer_use_modules(plat)
+        if not platform_info._module_available(name)
+    ]
+    if missing:
+        return CheckResult(
+            "WARN",
+            "modules",
+            f"computer_use needs {', '.join(missing)}; install them with "
+            "`pip install 'autogpt-local-executor[computer-use]'`",
+            blocking=True,
+        )
+    return CheckResult("OK", "modules", "computer_use's Python modules are installed")
 
 
 def _print_checks(checks: list[CheckResult]) -> None:
@@ -348,7 +368,11 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
     elif session == "x11" and os.environ.get("DISPLAY"):
         # HELLO's own probe, so doctor never reports what HELLO leaves out.
         if platform_info._x11_display_opens():
-            out.append(CheckResult("OK", "display_server", "X11 — full computer_use available"))
+            out.append(
+                CheckResult(
+                    "OK", "display_server", f"X11 — the display at {os.environ['DISPLAY']} opens"
+                )
+            )
         else:
             out.append(
                 CheckResult(

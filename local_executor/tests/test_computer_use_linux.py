@@ -387,14 +387,14 @@ def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeyp
     pyautogui.hotkey.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("helper", "argument"),
-    [("gtk-launch", "org.gnome.Calculator"), ("dex", "/opt/apps/org.gnome.Calculator.desktop")],
-)
+@pytest.mark.parametrize("helper", ["gtk-launch", "dex"])
 def test_desktop_files_launch_with_the_argument_each_helper_takes(
-    tmp_path, monkeypatch, helper: str, argument: str
+    tmp_path, monkeypatch, helper: str
 ) -> None:
     """gtk-launch takes a desktop file ID; dex takes the file's path."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    folder = applications if helper == "gtk-launch" else tmp_path / "opt" / "apps"
+    desktop = _desktop_file(folder, "org.gnome.Calculator.desktop")
     monkeypatch.setattr(
         linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}" if name == helper else None
     )
@@ -404,9 +404,9 @@ def test_desktop_files_launch_with_the_argument_each_helper_takes(
     monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
     b = LinuxBackend(_config(tmp_path))
 
-    pid = b.app_launch(executable_path="/opt/apps/org.gnome.Calculator.desktop")
+    b.app_launch(executable_path=str(desktop))
 
-    assert pid == 4321
+    argument = "org.gnome.Calculator" if helper == "gtk-launch" else str(desktop)
     assert popen.call_args.args[0] == [helper, argument]
 
 
@@ -434,7 +434,7 @@ def test_a_desktop_file_outside_the_application_directories_launches_with_dex(
     directories, so it can't find a file anywhere else; dex runs the file."""
     applications = _xdg_applications(monkeypatch, tmp_path)
     folder = applications if in_applications else tmp_path / "Desktop"
-    desktop_file = folder / "calculator.desktop"
+    desktop_file = _desktop_file(folder)
     monkeypatch.setattr(linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}")
     popen = MagicMock()
     popen.return_value.pid = 4321
@@ -442,17 +442,17 @@ def test_a_desktop_file_outside_the_application_directories_launches_with_dex(
     monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
     b = LinuxBackend(_config(tmp_path))
 
-    assert b.app_launch(executable_path=str(desktop_file)) == 4321
+    assert b.app_launch(executable_path=str(desktop_file)) is None
     assert popen.call_args.args[0] == (
         ["gtk-launch", "calculator"] if in_applications else ["dex", str(desktop_file)]
     )
 
 
-def test_a_desktop_file_gtk_launch_cannot_find_is_an_error(tmp_path, monkeypatch) -> None:
-    """Without dex, a file outside the application directories goes to
-    gtk-launch by its ID, which it can't find. Its pid was returned as the
-    launched app's."""
+def test_a_desktop_file_gtk_launch_cannot_find_is_refused(tmp_path, monkeypatch) -> None:
+    """Without dex, a file outside the application directories went to
+    gtk-launch by its ID, which finds another file of that name, or none."""
     _xdg_applications(monkeypatch, tmp_path)
+    _desktop_file(tmp_path / "Desktop")
     monkeypatch.setattr(
         linux_backend.shutil,
         "which",
@@ -460,14 +460,13 @@ def test_a_desktop_file_gtk_launch_cannot_find_is_an_error(tmp_path, monkeypatch
     )
     popen = MagicMock()
     popen.return_value.pid = 4321
-    popen.return_value.wait.return_value = 2  # gtk-launch: no such application
     monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
     b = LinuxBackend(_config(tmp_path))
 
-    with pytest.raises(FeatureNotSupportedError, match="gtk-launch"):
+    with pytest.raises(FeatureNotSupportedError, match="dex"):
         b.app_launch(executable_path=str(tmp_path / "Desktop" / "calculator.desktop"))
 
-    assert popen.call_args.args[0] == ["gtk-launch", "calculator"]
+    popen.assert_not_called()
 
 
 def test_a_gtk_launch_still_starting_the_app_counts_as_launched(tmp_path, monkeypatch) -> None:
@@ -480,7 +479,7 @@ def test_a_gtk_launch_still_starting_the_app_counts_as_launched(tmp_path, monkey
     monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
     b = LinuxBackend(_config(tmp_path))
 
-    assert b.app_launch(executable_path=str(applications / "calculator.desktop")) == 4321
+    assert b.app_launch(executable_path=str(_desktop_file(applications))) is None
 
 
 def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkeypatch) -> None:
@@ -589,3 +588,84 @@ def test_a_left_or_right_scroll_scrolls_sideways_on_x11(
     expected = {"x": 100, "y": 200} if at_point else {}
     pyautogui.hscroll.assert_called_once_with(-2, **expected)
     pyautogui.scroll.assert_not_called()
+
+
+def test_an_unknown_key_name_is_refused_on_x11(tmp_path, monkeypatch) -> None:
+    b = LinuxBackend(_config(tmp_path))
+    monkeypatch.setattr(b, "_wayland", False)
+    pyautogui = MagicMock()
+    pyautogui.KEY_NAMES = ["ctrl", "l", "win"]
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="bogus"):
+        b.input_action("key", key="super+bogus")
+    pyautogui.hotkey.assert_not_called()
+
+
+def _desktop_file(folder: Path, name: str = "calculator.desktop", exec_line: str = "calc") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text(f"[Desktop Entry]\nType=Application\nExec={exec_line}\n")
+    return path
+
+
+def _helpers(monkeypatch, *names: str) -> MagicMock:
+    monkeypatch.setattr(
+        linux_backend.shutil, "which", lambda name: f"/usr/bin/{name}" if name in names else None
+    )
+    popen = MagicMock()
+    popen.return_value.pid = 4321
+    popen.return_value.wait.return_value = 0
+    monkeypatch.setattr(linux_backend.subprocess, "Popen", popen)
+    return popen
+
+
+@pytest.mark.parametrize("has_dex", [True, False], ids=["with-dex", "gtk-launch-only"])
+def test_a_desktop_file_another_entry_shadows_is_not_started_through_gtk_launch(
+    tmp_path, monkeypatch, has_dex: bool
+) -> None:
+    """gtk-launch starts the first file with that desktop ID in the XDG
+    directories, so a same-named entry in the user's directory started
+    instead of the system file asked for, and the launch was acknowledged."""
+    user_applications = _xdg_applications(monkeypatch, tmp_path)
+    wanted = _desktop_file(tmp_path / "system" / "applications", "editor.desktop", "wanted")
+    _desktop_file(user_applications, "editor.desktop", "someone-else")
+    popen = _helpers(monkeypatch, "gtk-launch", *(["dex"] if has_dex else []))
+    b = LinuxBackend(_config(tmp_path))
+
+    if has_dex:
+        b.app_launch(executable_path=str(wanted))
+        assert popen.call_args.args[0] == ["dex", str(wanted)]
+    else:
+        with pytest.raises(FeatureNotSupportedError, match="dex"):
+            b.app_launch(executable_path=str(wanted))
+        popen.assert_not_called()
+
+
+@pytest.mark.parametrize("helper", ["gtk-launch", "dex"])
+def test_a_desktop_launch_reports_no_pid(tmp_path, monkeypatch, helper: str) -> None:
+    """The pid was the helper's, which exits once the app has started: it
+    named a process already gone, and one the OS could reuse."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    folder = applications if helper == "gtk-launch" else tmp_path / "Desktop"
+    desktop = _desktop_file(folder)
+    popen = _helpers(monkeypatch, helper)
+    b = LinuxBackend(_config(tmp_path))
+
+    assert b.app_launch(executable_path=str(desktop)) is None
+    assert popen.call_args.args[0][0] == helper
+
+
+@pytest.mark.parametrize("helper", ["gtk-launch", "dex"])
+def test_a_desktop_launch_whose_helper_fails_is_an_error(tmp_path, monkeypatch, helper) -> None:
+    """dex's exit status went unchecked, so a file it couldn't start was
+    acknowledged as launched."""
+    applications = _xdg_applications(monkeypatch, tmp_path)
+    folder = applications if helper == "gtk-launch" else tmp_path / "Desktop"
+    desktop = _desktop_file(folder)
+    popen = _helpers(monkeypatch, helper)
+    popen.return_value.wait.return_value = 2
+    b = LinuxBackend(_config(tmp_path))
+
+    with pytest.raises(FeatureNotSupportedError, match=helper):
+        b.app_launch(executable_path=str(desktop))

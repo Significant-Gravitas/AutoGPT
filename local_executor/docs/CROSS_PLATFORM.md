@@ -156,6 +156,13 @@ restart can fix (a preview turned on, pyobjc missing) exit 0 for the same
 reason. A missing macOS permission still exits 78, so launchd relaunches
 the shim once it is granted.
 
+A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
+which systemd and launchd both restart: audit storage that is full or
+not mounted yet, or a keychain still locked when the audit key is read.
+An audit log that fails verification can't clear that way, so under
+launchd it exits 0 like the other permanent failures; check it with
+`autogpt-shim audit verify` and move it aside to start a new log.
+
 ### Packaging & install
 
 | Dimension | macOS | Linux | Windows | Notes |

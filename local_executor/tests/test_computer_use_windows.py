@@ -793,3 +793,35 @@ def test_a_clipboard_held_open_for_a_moment_is_read_once_it_is_free(tmp_path, mo
 
     assert b.clipboard_read().content == "user text"
     assert slept
+
+
+def test_an_unknown_key_name_is_refused_before_any_key_is_pressed(tmp_path, monkeypatch) -> None:
+    """pyautogui skips a name it doesn't know, so ctrl+bogus pressed only
+    Ctrl, and was acknowledged."""
+    b = WindowsBackend(_config(tmp_path))
+    pyautogui = MagicMock()
+    pyautogui.KEY_NAMES = ["ctrl", "s", "win", "r"]
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+
+    with pytest.raises(FeatureNotSupportedError, match="bogus"):
+        b.input_action("key", key="ctrl+bogus")
+    with pytest.raises(FeatureNotSupportedError, match="bogus"):
+        b.input_action("hold_key", key="ctrl+bogus", duration_ms=0)
+    pyautogui.hotkey.assert_not_called()
+    pyautogui.keyDown.assert_not_called()
+
+    b.input_action("key", key="ctrl+S")
+    pyautogui.hotkey.assert_called_once_with("ctrl", "s")
+
+
+def test_a_formats_read_that_fails_for_a_moment_is_read_again(tmp_path, monkeypatch) -> None:
+    """Only disagreeing text or sequence reads were retried. A formats read
+    that failed while another app held the clipboard counted as unreadable,
+    and the copy was reported as concealed."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    formats = iter([None, {13}])
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: next(formats))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: ("user text", 7))
+
+    assert b.clipboard_read().content == "user text"

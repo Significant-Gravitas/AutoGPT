@@ -219,3 +219,26 @@ def test_linux_computer_use_without_python_xlib_is_not_advertised(
     monkeypatch.setitem(sys.modules, "Xlib", None)
 
     assert "computer_use" not in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+def test_an_x_server_that_never_answers_counts_as_no_display(monkeypatch) -> None:
+    """python-xlib waits for the server's setup reply with no time limit, so
+    a server that accepted the connection and never answered hung HELLO and
+    doctor."""
+    import threading
+    import time
+
+    answer = threading.Event()
+
+    def stalled(*_args, **_kwargs):
+        answer.wait(10)
+        return MagicMock()
+
+    _fake_xlib(monkeypatch, MagicMock(side_effect=stalled))
+    monkeypatch.setattr(platform_info, "X11_PROBE_SECONDS", 0.2, raising=False)
+    started = time.monotonic()
+    try:
+        assert platform_info._x11_display_opens() is False
+    finally:
+        answer.set()
+    assert time.monotonic() - started < 5

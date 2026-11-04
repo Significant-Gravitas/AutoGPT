@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import errno
 import logging
 import os
 import sys
@@ -319,6 +321,11 @@ async def _cmd_start(config) -> int:
         await daemon.run()
     except DaemonPreflightError as exc:
         print(f"Preflight failed: {exc}", file=sys.stderr, flush=True)
+        if exc.transient:
+            # It can clear on its own (audit storage that is full or not
+            # mounted yet, a keychain still locked): 75 (EX_TEMPFAIL), which
+            # systemd and launchd both restart.
+            return 75
         if exc.permanent and os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
             # A setting or a missing package fails the same way on every
             # restart, and launchd restarts any non-zero exit, so stop until
@@ -673,13 +680,13 @@ def _audit_export(current: Path, output: Path | None) -> int:
     import datetime
     import hashlib
     import hmac
-    import io
     import json
+    import secrets
     import zipfile
-    from typing import Any
 
     from .audit import (
         KEYCHAIN_AUDIT_KEY_USERNAME,
+        _file_identity,
         get_or_create_audit_key,
         holding_log_lock,
     )
@@ -690,6 +697,9 @@ def _audit_export(current: Path, output: Path | None) -> int:
         print(f"Could not load audit key: {exc}")
         return 2
 
+    # The default name has one-second precision, so a second export in that
+    # second gets a numbered name rather than replacing the first archive.
+    numbered = output is None
     if output is None:
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         output = Path.cwd() / f"audit-export-{stamp}.zip"
@@ -699,56 +709,105 @@ def _audit_export(current: Path, output: Path | None) -> int:
         "files": [],
         "key_username": KEYCHAIN_AUDIT_KEY_USERNAME,
     }
-    # Take one consistent set under the lock, then write the archive after
-    # releasing it: appends wait on that lock, and a slow destination would
-    # hold them, and the requests behind them, until the export finished.
-    # Rotated files never change, so an open handle is enough (it outlives a
-    # prune on POSIX, and stops one on Windows); the current log, which
-    # grows, is read into memory.
-    sources: list[tuple[str, Any]] = []
+    # Take one consistent set under the lock, then read the rotated logs and
+    # write the archive after releasing it: appends wait on that lock, and a
+    # slow destination would hold them, and the requests behind them, until
+    # the export finished. The current log, which grows, is read into memory.
+    # A rotated log never changes, so its identity is noted and checked when
+    # it is read, one at a time: holding them all open ran out of file
+    # descriptors with enough of them. A log pruned or replaced in between
+    # fails the export, which then writes nothing.
+    current_data = b""
+    listed: list[tuple[Path, tuple[int, int, int] | None]] = []
+    with holding_log_lock(current):
+        files = _audit_files(current)
+        if not files:
+            print("Nothing to export — no audit logs present.")
+            return 1
+        # The finished archive replaces `output`, so it must not be a log being exported.
+        if any(_same_file(output, path) for path in (current, *files)):
+            print(f"Refusing to write the export over an audit log: {output}")
+            return 2
+        # Nor named like a rotated log beside it, which verify-all would read.
+        if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
+            print(f"Refusing to name the export like a rotated audit log: {output}")
+            return 2
+        for path in files:
+            if path == current:
+                current_data = path.read_bytes()
+            listed.append((path, None if path == current else _file_identity(path)))
+    # Built beside the output and moved into place when complete, so a failed
+    # export leaves nothing behind. Owner-only, like the logs it holds,
+    # whatever the umask.
+    temp = output.with_name(f".{output.name}.{secrets.token_hex(6)}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     try:
-        with holding_log_lock(current):
-            files = _audit_files(current)
-            if not files:
-                print("Nothing to export — no audit logs present.")
-                return 1
-            # Opening the zip truncates `output`, so it must not be a log being exported.
-            if any(_same_file(output, path) for path in (current, *files)):
-                print(f"Refusing to write the export over an audit log: {output}")
-                return 2
-            # Nor named like a rotated log beside it, which verify-all would read.
-            if _same_file(output.parent, current.parent) and output.name.startswith(
-                current.name + "."
-            ):
-                print(f"Refusing to name the export like a rotated audit log: {output}")
-                return 2
-            for path in files:
-                source = io.BytesIO(path.read_bytes()) if path == current else open(path, "rb")
-                sources.append((path.name, source))
-        # Owner-only, like the logs it holds, whatever the umask.
-        descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        descriptor = os.open(temp, flags, 0o600)
         if hasattr(os, "fchmod"):
             os.fchmod(descriptor, 0o600)
         with (
             os.fdopen(descriptor, "wb") as archive,
             zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf,
         ):
-            for name, source in sources:
-                data = source.read()
+            for path, identity in listed:
+                # A rotated log whose identity couldn't be read fails the check.
+                data = current_data if path == current else _read_unchanged(path, identity)
                 digest = hashlib.sha256(data).hexdigest()
-                manifest["files"].append({"name": name, "size": len(data), "sha256": digest})
-                zf.writestr(name, data)
+                manifest["files"].append({"name": path.name, "size": len(data), "sha256": digest})
+                zf.writestr(path.name, data)
             manifest_bytes = json.dumps(manifest, sort_keys=True).encode("utf-8")
             signature = hmac.new(key, manifest_bytes, hashlib.sha256).hexdigest()
             zf.writestr("manifest.json", manifest_bytes)
             zf.writestr("manifest.sig", signature)
-    finally:
-        for _name, source in sources:
-            source.close()
+        output = _install_export(temp, output, numbered=numbered)
+    except _ExportSetChanged as exc:
+        temp.unlink(missing_ok=True)
+        print(
+            f"{exc} was pruned or replaced during the export, so nothing was written. "
+            "Run the export again."
+        )
+        return 1
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
     print(f"Wrote {output}")
     print(f"  files: {len(files)}")
     print(f"  signature (HMAC-SHA256): {signature}")
     return 0
+
+
+class _ExportSetChanged(Exception):
+    """A rotated log listed for an export is gone, or is another file."""
+
+
+def _read_unchanged(path: Path, identity: tuple[int, int, int] | None) -> bytes:
+    """The contents of a rotated log, if it is still the file listed."""
+    try:
+        with open(path, "rb") as source:
+            info = os.fstat(source.fileno())
+            if (info.st_dev, info.st_ino, info.st_size) != identity:
+                raise _ExportSetChanged(path.name)
+            return source.read()
+    except FileNotFoundError:
+        raise _ExportSetChanged(path.name) from None
+
+
+def _install_export(temp: Path, output: Path, *, numbered: bool) -> Path:
+    """Move a finished archive to `output`. An --output that exists is
+    replaced, as asked; the default name gets a number instead."""
+    if not numbered:
+        os.replace(temp, output)
+        return output
+    from .fsops import rename_no_replace
+
+    candidate = output
+    for number in range(1, 1000):
+        try:
+            rename_no_replace(temp, candidate)
+            return candidate
+        except FileExistsError:
+            candidate = output.with_name(f"{output.stem}-{number}{output.suffix}")
+    raise FileExistsError(errno.EEXIST, "no free name for the export", str(output))
 
 
 def _audit_rotate(current: Path) -> int:
@@ -782,49 +841,37 @@ def _audit_prune(current: Path, older_than: str) -> int:
     shim never auto-prunes — this is operator-initiated."""
     import time
 
-    from .audit import holding_log_lock
-
     seconds = _parse_duration(older_than)
     if seconds is None:
         print(f"Could not parse duration: {older_than!r}. Use e.g. 90d, 12h, 30m.")
         return 2
     cutoff = time.time() - seconds
-    # Under the writers' lock, so an export never loses a file it has listed.
-    with holding_log_lock(current):
-        return _prune_rotated(current, cutoff)
+    return _prune_rotated(current, cutoff)
 
 
 def _prune_rotated(current: Path, cutoff: float) -> int:
-    import json
-
-    from .audit import list_rotated_files
+    from .audit import _file_identity, holding_log_lock, list_rotated_files
 
     rotated = list_rotated_files(current)
     if not rotated:
         print("No rotated audit files to prune.")
         return 0
-    deleted = 0
+    # A rotated log never changes, so it is read without the writers' lock:
+    # reading every line of every one under it held off every audit write.
+    # The deletes run under the lock, so verify-all and show, which list and
+    # read under it, never lose a file part way, and only of files that are
+    # still the ones read.
+    expired: list[tuple[Path, tuple[int, int, int], float]] = []
     for path in rotated:
-        try:
-            # The newest record is the last line, however long: a record can
-            # run past any fixed tail window (an EXECUTE_COMMAND with a long
-            # command, say).
-            last = b""
-            with open(path, "rb") as f:
-                for line in f:
-                    if line.strip():
-                        last = line
-            if not last:
+        newest = _newest_record_ts(path)
+        if newest is not None and newest[1] < cutoff:
+            expired.append((path, *newest))
+    deleted = 0
+    with holding_log_lock(current) if expired else contextlib.nullcontext():
+        for path, identity, newest_ts in expired:
+            if _file_identity(path) != identity:
+                print(f"Kept {path.name}: it changed after it was read.")
                 continue
-            newest = json.loads(last)
-            newest_ts = newest.get("ts") if isinstance(newest, dict) else None
-            if newest_ts is None:
-                print(f"Kept {path.name}: its newest record has no timestamp.")
-                continue
-            newest_ts = float(newest_ts)
-        except (OSError, ValueError, json.JSONDecodeError):
-            continue
-        if newest_ts < cutoff:
             try:
                 path.unlink()
                 deleted += 1
@@ -833,6 +880,33 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
                 print(f"Could not delete {path.name}: {exc}")
     print(f"\nPruned {deleted} of {len(rotated)} rotated files.")
     return 0
+
+
+def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
+    """A rotated log's identity and its newest record's timestamp; None when
+    it can't be read, is empty, or that record has no timestamp."""
+    import json
+
+    try:
+        # The newest record is the last line, however long: a record can run
+        # past any fixed tail window (an EXECUTE_COMMAND with a long command,
+        # say).
+        last = b""
+        with open(path, "rb") as f:
+            info = os.fstat(f.fileno())
+            for line in f:
+                if line.strip():
+                    last = line
+        if not last:
+            return None
+        newest = json.loads(last)
+        newest_ts = newest.get("ts") if isinstance(newest, dict) else None
+        if newest_ts is None:
+            print(f"Kept {path.name}: its newest record has no timestamp.")
+            return None
+        return (info.st_dev, info.st_ino, info.st_size), float(newest_ts)
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def _parse_duration(s: str) -> float | None:
