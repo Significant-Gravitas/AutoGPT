@@ -117,9 +117,10 @@
             ]
           }
         ],
-        "design-system/no-alias-colours": "error",
-        "design-system/no-palette-colours": "error",
+        "design-system/no-shadcn-alias-colours": "error",
+        "design-system/no-raw-palette-classes": "error",
         "design-system/no-hex-colours": "error",
+        "design-system/no-arbitrary-colour": "error",
         "design-system/no-dark-variant": "error",
         "design-system/no-raw-text-size": "error",
         "design-system/no-legacy-import": "error",
@@ -206,9 +207,10 @@
       ],
       "rules": {
         "design-system/no-raw-colors": "off",
-        "design-system/no-alias-colours": "off",
-        "design-system/no-palette-colours": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
         "design-system/no-hex-colours": "off",
+        "design-system/no-arbitrary-colour": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",
@@ -224,9 +226,10 @@
       "files": ["src/app/api/__generated__/**"],
       "rules": {
         "design-system/no-raw-colors": "off",
-        "design-system/no-alias-colours": "off",
-        "design-system/no-palette-colours": "off",
+        "design-system/no-shadcn-alias-colours": "off",
+        "design-system/no-raw-palette-classes": "off",
         "design-system/no-hex-colours": "off",
+        "design-system/no-arbitrary-colour": "off",
         "design-system/no-arbitrary-values": "off",
         "design-system/no-restyle": "off",
         "design-system/no-inline-styles": "off",

@@ -2,7 +2,7 @@
   "$comment": [
     "The colours that may stay outside the role tokens (SECRT-3154): artwork, logos, brand marks, chart series, user-picked colour palettes, and markup that never reaches the app's stylesheet.",
     "files: a glob from autogpt_platform/frontend. allow: only these palette classes (no variant or opacity) and hex values may stay in the file; without it, the whole file may keep its colours.",
-    "design-system/no-palette-colours and no-hex-colours read this list, and scripts/__tests__/colour-exempt.test.ts checks every entry still matches a file and every allowed value is still used. Add an entry only with a reason."
+    "design-system/no-raw-palette-classes and no-hex-colours read this list, and scripts/__tests__/colour-exempt.test.ts checks every entry still matches a file and every allowed value is still used. Add an entry only with a reason."
   ],
   "exempt": [
     {
@@ -15,7 +15,7 @@
     },
     {
       "files": "src/app/(platform)/raise/components/ColorStep/helpers.ts",
-      "reason": "The expert colour picker: each option is the Tailwind hue a person picks, saved with the expert, and its dither ramp."
+      "reason": "The expert colour picker: each option is a Tailwind 3 hue a person picks, saved with the expert (its id names the hue), written as that hue's hex, and its dither ramp."
     },
     {
       "files": "src/app/(platform)/library/components/LibraryFolder/FolderIcon.tsx",
@@ -28,21 +28,6 @@
     {
       "files": "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock.tsx",
       "reason": "Sticky-note colours are user-picked data, one pastel per note."
-    },
-    {
-      "files": "src/components/styles/tones.ts",
-      "allow": ["text-emerald-300"],
-      "reason": "The success-light tone (Text and Icon), green text on the always-dark toast and terminal; the success roles have no value that reads on dark until the dark theme (D1)."
-    },
-    {
-      "files": "src/app/(platform)/copilot/components/ToolChain/ToolResultViews.tsx",
-      "allow": ["text-red-400"],
-      "reason": "The exit code on the always-dark terminal; the error role drops it to 3.3:1 there until the dark theme (D1) gives error a dark value."
-    },
-    {
-      "files": "src/app/(platform)/library/components/LibraryAgentCard/LibraryAgentCard.tsx",
-      "allow": ["text-red-300"],
-      "reason": "Error text on the always-dark tooltip; the error role drops its contrast there until the dark theme (D1)."
     },
     {
       "files": "src/components/overview.stories.tsx",
