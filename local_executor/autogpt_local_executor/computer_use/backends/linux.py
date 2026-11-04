@@ -41,6 +41,7 @@ from ._common import (
     capture_fields,
     chord_keys,
     ensure_typeable,
+    holding,
     image_to_base64,
     in_any_rect,
     normalize_displays_for_error,
@@ -387,26 +388,19 @@ class LinuxBackend(ComputerUseBackend):
             return
         if action == "hold_key" and key:
             duration = max(0.0, min((duration_ms or 0) / 1000.0, 5.0))
-            held: list[str] = []
-            try:
-                # Recorded as pressed, so a press that fails lets go of the
-                # ones before it.
-                for k in self._chord(key):
-                    pyautogui.keyDown(k)
-                    held.append(k)
+            with holding(pyautogui, self._chord(key)):
                 time.sleep(duration)
-            finally:
-                release_held(pyautogui, keys=held)
             return
         if action == "scroll":
             amount = scroll_amount if scroll_amount is not None else (clicks or 3)
             d = scroll_direction or direction or "down"
             sign = 1 if d in ("up", "right") else -1
             scroll = pyautogui.hscroll if d in ("left", "right") else pyautogui.scroll
-            if coordinate:
-                scroll(sign * amount, x=coordinate[0], y=coordinate[1])
-            else:
-                scroll(sign * amount)
+            with holding(pyautogui, [self._modifier(m) for m in modifiers or []]):
+                if coordinate:
+                    scroll(sign * amount, x=coordinate[0], y=coordinate[1])
+                else:
+                    scroll(sign * amount)
             return
         raise FeatureNotSupportedError(action, reason=f"unknown action {action!r}")
 
@@ -420,13 +414,7 @@ class LinuxBackend(ComputerUseBackend):
 
         if coordinate is None:
             raise FeatureNotSupportedError(action, reason="coordinate is required")
-        held: list[str] = []
-        try:
-            # Recorded as pressed, so a press that fails lets go of the ones
-            # before it.
-            for m in modifiers or []:
-                pyautogui.keyDown(self._modifier(m))
-                held.append(self._modifier(m))
+        with holding(pyautogui, [self._modifier(m) for m in modifiers or []]):
             if action == "left_click":
                 pyautogui.click(coordinate[0], coordinate[1])
             elif action == "right_click":
@@ -443,8 +431,6 @@ class LinuxBackend(ComputerUseBackend):
                 pyautogui.click(coordinate[0], coordinate[1])
                 time.sleep(0.05)
                 pyautogui.click(coordinate[0], coordinate[1])
-        finally:
-            release_held(pyautogui, keys=held)
 
     @staticmethod
     def _modifier(name: str) -> str:

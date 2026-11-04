@@ -145,3 +145,27 @@ def test_keys_pressed_before_the_fail_safe_fired_are_let_go(
 
     assert pyautogui.held_keys == []
     assert pyautogui.released == ["shift"]
+
+
+@_BACKENDS
+def test_scroll_holds_the_requested_modifiers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """The scroll branch never read `modifiers`, so Shift+scroll (sideways
+    in most apps) went out as a plain scroll and was acknowledged."""
+    from unittest.mock import MagicMock, call
+
+    pyautogui = MagicMock()
+    pyautogui.FAILSAFE = True
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    backend = _backend(name, tmp_path, monkeypatch)
+    if name == "windows":
+        monkeypatch.setattr(backend, "_turn_wheel", pyautogui.scroll)
+
+    backend.input_action(
+        "scroll", coordinate=(50, 50), modifiers=["shift"], scroll_direction="down", scroll_amount=2
+    )
+
+    pressed = [c for c in pyautogui.mock_calls if c[0] in ("keyDown", "keyUp", "scroll")]
+    assert [c[0] for c in pressed] == ["keyDown", "scroll", "keyUp"]
+    assert pressed[0] == call.keyDown("shift") and pressed[2] == call.keyUp("shift")

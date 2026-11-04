@@ -416,14 +416,19 @@ def _check_linux(config: ShimConfig, *, is_wsl2: bool) -> list[CheckResult]:
             )
         )
     if config.enable_clipboard:
-        if shutil.which("xclip") or shutil.which("wl-copy"):
-            out.append(CheckResult("OK", "clipboard tools", "xclip or wl-copy present"))
+        # The tool the backend uses: wl-copy only in a Wayland session (it
+        # can't reach an X11 clipboard), xclip otherwise.
+        if session == "wayland" and shutil.which("wl-copy"):
+            out.append(CheckResult("OK", "clipboard tools", "wl-copy present"))
+        elif shutil.which("xclip"):
+            out.append(CheckResult("OK", "clipboard tools", "xclip present"))
         else:
+            needed = "wl-copy or xclip" if session == "wayland" else "xclip"
             out.append(
                 CheckResult(
                     "WARN",
                     "clipboard tools",
-                    "neither xclip nor wl-copy on PATH — clipboard ops will fail",
+                    f"{needed} not on PATH — clipboard ops will fail",
                 )
             )
     return out

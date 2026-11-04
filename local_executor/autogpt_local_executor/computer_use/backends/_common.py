@@ -5,9 +5,10 @@ Backend-agnostic helpers shared across macOS / Windows / Linux backends.
 from __future__ import annotations
 
 import base64
+import contextlib
 import io
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 from ...protocol import DisplayMonitor
@@ -87,6 +88,21 @@ def release_held(pyautogui: Any, *, keys: Sequence[str] = (), button: str | None
                 logger.warning("Could not release the %s mouse button", button, exc_info=True)
     finally:
         pyautogui.FAILSAFE = failsafe
+
+
+@contextlib.contextmanager
+def holding(pyautogui: Any, keys: Sequence[str]) -> Iterator[None]:
+    """Hold `keys` down, in order, for the body, then let go of every one
+    pressed, however the body or a press ended (release_held). A key counts
+    as held only once its press went through."""
+    held: list[str] = []
+    try:
+        for key in keys:
+            pyautogui.keyDown(key)
+            held.append(key)
+        yield
+    finally:
+        release_held(pyautogui, keys=held)
 
 
 def paste_is_worth_it(text: str) -> bool:
