@@ -274,7 +274,7 @@ class MacOSBackend(ComputerUseBackend):
             from Quartz import (  # type: ignore[import-not-found]
                 CGRectNull,
                 CGWindowListCreateImage,
-                kCGWindowImageDefault,
+                kCGWindowImageBoundsIgnoreFraming,
                 kCGWindowListOptionIncludingWindow,
             )
         except ImportError as exc:
@@ -283,8 +283,13 @@ class MacOSBackend(ComputerUseBackend):
         entry = self.window_registry.verify(window_id, self._live_fingerprint)
         cg_window_id = int(entry.native_handle)
         rect = CGRectNull
+        # Without IgnoreFraming the image includes the window's shadow and
+        # covers more than the bounds that origin and logical_size describe.
         ref = CGWindowListCreateImage(
-            rect, kCGWindowListOptionIncludingWindow, cg_window_id, kCGWindowImageDefault
+            rect,
+            kCGWindowListOptionIncludingWindow,
+            cg_window_id,
+            kCGWindowImageBoundsIgnoreFraming,
         )
         if ref is None:
             raise PermissionPendingError(
