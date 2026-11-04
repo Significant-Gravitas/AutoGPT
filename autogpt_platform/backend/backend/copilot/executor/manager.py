@@ -85,6 +85,16 @@ turns_counter = Counter(
     "CoPilot turns that ended, by outcome, engine, origin and load-test engine",
     ["outcome", "engine", "origin", "load_test"],
 )
+# People's turns on the platform's engines, exported at 0 from the start.
+# Prometheus's increase() can't count a series' first sample, so a series
+# that first appears at 1 would hide the first turn of its kind after every
+# restart, and alerts that need a handful of failures would see one fewer.
+for _outcome in ("completed", "cancelled", "failed"):
+    for _engine in ("sdk", "baseline", "none"):
+        for _origin in ("chat", "scheduled", "spawned", "automation", "system"):
+            turns_counter.labels(
+                outcome=_outcome, engine=_engine, origin=_origin, load_test=""
+            )
 
 
 class CoPilotExecutor(AppProcess):

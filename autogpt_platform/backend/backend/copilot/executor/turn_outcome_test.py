@@ -318,3 +318,14 @@ async def test_the_turn_counter_is_served_with_the_executors_metrics() -> None:
         'copilot_executor_turns_total{engine="dummy",load_test="",'
         'origin="chat",outcome="completed"}'
     ) in served
+
+
+def test_peoples_turn_series_are_exported_at_zero_before_any_turn() -> None:
+    # increase() can't count a series' first sample, so a failed turn's
+    # series must already exist when the first one fails.
+    served = generate_latest(REGISTRY).decode()
+    for outcome in ("completed", "cancelled", "failed"):
+        assert (
+            "copilot_executor_turns_total{"
+            f'engine="sdk",load_test="",origin="chat",outcome="{outcome}"}}'
+        ) in served
