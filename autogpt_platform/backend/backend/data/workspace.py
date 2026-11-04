@@ -202,9 +202,9 @@ async def create_workspace_file(
                 data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
             )
             if not retired:
-                # It moved off the path after the count, so it still counts.
+                # It left the path after the count: count again as the path is now.
                 await require_storage_room(
-                    tx, workspace_id, size_bytes, storage_limit_bytes
+                    tx, workspace_id, size_bytes, storage_limit_bytes, replacing=[path]
                 )
         file = await tx.userworkspacefile.create(
             data={

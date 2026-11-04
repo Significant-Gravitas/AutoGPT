@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from prisma.errors import UniqueViolationError
 
 from backend.data import db
 from backend.data import workspace as workspace_data
@@ -179,6 +180,30 @@ async def test_an_overwrite_counts_a_file_renamed_away_after_the_quota_read(
     live = await _live_files(manager)
     assert [f.path for f in live] == ["/b.bin"]
     assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_overwrite_behind_another_of_the_same_path_conflicts_not_refuses(
+    manager: WorkspaceManager, tmp_path: Path
+):
+    """The other overwrite retired the file this one read, so this one meets a
+    path conflict, which its caller retries, rather than a full workspace."""
+    with _real_storage(tmp_path):
+        old = await manager.write_file(b"o" * 600, "a.bin")
+        await manager.write_file(b"n" * 600, "a.bin", overwrite=True)
+
+    with pytest.raises(UniqueViolationError):
+        await workspace_data.create_workspace_file(
+            workspace_id=manager.workspace_id,
+            file_id=str(uuid.uuid4()),
+            name="a.bin",
+            path="/a.bin",
+            storage_path="local://unused",
+            mime_type="application/octet-stream",
+            size_bytes=600,
+            storage_limit_bytes=LIMIT,
+            replacing_file_id=old.id,
+        )
 
 
 @contextmanager
