@@ -82,3 +82,57 @@ async def test_a_walk_that_matches_nothing_stops_at_its_scan_budget(
 
     assert response.payload.entries == []
     assert response.payload.truncated is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recursive", [True, False], ids=["recursive", "flat"])
+async def test_a_walk_stops_part_way_through_a_directory_larger_than_its_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recursive: bool
+) -> None:
+    """os.walk, and iterdir, read a whole directory before the walk counts
+    a single entry, so one directory with millions of entries was read, and
+    held in memory, in full, whatever the budget."""
+    import os
+
+    for index in range(50):
+        (tmp_path / f"f{index:02d}").write_text("")
+    monkeypatch.setattr(handlers_module, "MAX_FILE_LIST_SCANNED", 12)
+    read = 0
+    real_scandir = os.scandir
+    real_listdir = os.listdir
+
+    class CountingScandir:
+        def __init__(self, path):
+            self._entries = real_scandir(path)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            self._entries.close()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            nonlocal read
+            entry = next(self._entries)
+            read += 1
+            return entry
+
+        def close(self):
+            self._entries.close()
+
+    def counting_listdir(path="."):
+        nonlocal read
+        names = real_listdir(path)
+        read += len(names)
+        return names
+
+    monkeypatch.setattr(os, "scandir", CountingScandir)
+    monkeypatch.setattr(os, "listdir", counting_listdir)
+
+    response = await _listing(tmp_path, recursive=recursive, glob="*.nothing")
+
+    assert response.payload.truncated is True
+    assert read <= 13
