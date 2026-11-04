@@ -27,7 +27,7 @@ export function SharedWithTeamsSection() {
         {grants.map((grant) => (
           <div
             key={grant.id}
-            className="rounded-large border border-zinc-200 bg-white p-4"
+            className="rounded-large border border-border-base bg-surface p-4"
             data-testid="shared-with-teams-card"
           >
             <div className="flex items-center justify-between gap-2">
@@ -37,11 +37,17 @@ export function SharedWithTeamsSection() {
               <TeamBadge teamId={grant.principal_id} />
             </div>
             {grant.graph_description ? (
-              <Text variant="small" className="mt-1 line-clamp-2 text-zinc-500">
+              <Text
+                variant="small"
+                className="mt-1 line-clamp-2 text-foreground-tertiary"
+              >
                 {grant.graph_description}
               </Text>
             ) : null}
-            <Text variant="small" className="mt-2 block text-zinc-500">
+            <Text
+              variant="small"
+              className="mt-2 block text-foreground-tertiary"
+            >
               {capabilityLabel(grant.capability)} ·{" "}
               {grant.follow_latest
                 ? "latest version"

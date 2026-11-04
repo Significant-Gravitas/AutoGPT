@@ -11,7 +11,7 @@ export function ConversationOrganization({ organizationId }: Props) {
   return (
     <div
       role="status"
-      className="shrink-0 border-b border-border bg-background px-5 py-2 text-sm text-muted-foreground"
+      className="shrink-0 border-b border-border-base bg-canvas px-5 py-2 text-body text-foreground-tertiary"
     >
       Viewing {org?.name ?? "another organization"}
     </div>

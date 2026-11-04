@@ -42,7 +42,7 @@ export function MembersSection({
       <Text variant="h4" as="h2">
         Members ({members.length})
       </Text>
-      <ul className="flex flex-col divide-y divide-zinc-100">
+      <ul className="flex flex-col divide-y divide-separator">
         {members.map((member) => {
           const isSelf = member.user_id === currentMember?.user_id;
           const canRemove = isAdmin && !member.is_owner && !isSelf;
@@ -56,16 +56,16 @@ export function MembersSection({
               data-testid="org-member-row"
             >
               <Avatar className="size-8 shrink-0">
-                <AvatarFallback className="text-xs">
+                <AvatarFallback className="text-caption">
                   {(member.name || member.email).charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-body font-medium">
                   {member.name || member.email}
                   {isSelf ? " (you)" : ""}
                 </span>
-                <span className="truncate text-xs text-zinc-500">
+                <span className="truncate text-caption text-foreground-tertiary">
                   {member.email}
                 </span>
               </div>

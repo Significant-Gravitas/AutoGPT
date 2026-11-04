@@ -43,7 +43,7 @@ export function DangerZoneSection({
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl border border-red-200 p-4"
+      className="flex flex-col gap-3 rounded-xl border border-error/20 p-4"
       data-testid="org-danger-zone"
     >
       <Text variant="h4" as="h2">
@@ -51,14 +51,14 @@ export function DangerZoneSection({
       </Text>
 
       {org.is_personal ? (
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-foreground-tertiary">
           This is your home organization. It cannot be deleted or transferred.
         </Text>
       ) : transferableMembers.length > 0 ? (
         <div className="flex items-center gap-3">
           <div className="flex flex-1 flex-col">
             <Text variant="body">Transfer ownership</Text>
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               Hand this organization to another member. You will keep your
               current access but stop being the owner.
             </Text>
@@ -91,7 +91,7 @@ export function DangerZoneSection({
         <div className="flex items-center gap-3">
           <div className="flex flex-1 flex-col">
             <Text variant="body">Delete this organization</Text>
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               Members lose access; financial records are retained.
             </Text>
           </div>

@@ -16,7 +16,7 @@ export function MyInvitationsSection() {
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4"
+      className="flex flex-col gap-3 rounded-xl border border-brand/20 bg-accent-surface p-4"
       data-testid="my-invitations-section"
     >
       <Text variant="h4" as="h2">
@@ -30,10 +30,10 @@ export function MyInvitationsSection() {
             data-testid="my-invitation-row"
           >
             <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium">
+              <span className="truncate text-body font-medium">
                 {invitation.org_name}
               </span>
-              <span className="text-xs text-zinc-500">
+              <span className="text-caption text-foreground-tertiary">
                 Expires {new Date(invitation.expires_at).toLocaleDateString()}
               </span>
             </div>

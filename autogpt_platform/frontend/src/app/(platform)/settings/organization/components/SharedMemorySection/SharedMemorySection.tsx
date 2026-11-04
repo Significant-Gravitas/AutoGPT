@@ -33,17 +33,17 @@ export function SharedMemorySection({ org, isAdmin, onSaved }: Props) {
         <Text variant="h4" as="h2">
           Shared memory
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-foreground-tertiary">
           Require an admin to approve shared facts written by non-admin members
           before Otto and the organization’s experts can rely on them.
         </Text>
       </div>
 
-      <div className="rounded-large border border-zinc-200 p-4">
+      <div className="rounded-large border border-border-base p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col">
             <Text variant="body-medium">Hold new memories for review</Text>
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               Member-written organization and team memories stay tentative until
               an admin approves them.
             </Text>

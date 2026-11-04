@@ -25,11 +25,11 @@ export function HeldMemoryReviewQueue({ orgId }: Props) {
 
   return (
     <div
-      className="rounded-large border border-zinc-200 p-4"
+      className="rounded-large border border-border-base p-4"
       data-testid="org-memory-review-queue"
     >
       <Text variant="body-medium">Review queue</Text>
-      <Text variant="small" className="mt-1 block text-zinc-500">
+      <Text variant="small" className="mt-1 block text-foreground-tertiary">
         Tentative memories awaiting an admin decision before they’re trusted
         org-wide.
       </Text>
@@ -46,7 +46,7 @@ export function HeldMemoryReviewQueue({ orgId }: Props) {
         ) : items.length === 0 ? (
           <Text
             variant="small"
-            className="text-zinc-500"
+            className="text-foreground-tertiary"
             data-testid="org-memory-review-empty"
           >
             Nothing awaiting review.
@@ -56,7 +56,7 @@ export function HeldMemoryReviewQueue({ orgId }: Props) {
             {items.map((item) => (
               <li
                 key={item.id}
-                className="flex flex-col gap-2 rounded-medium border border-zinc-100 p-3 sm:flex-row sm:items-start sm:justify-between"
+                className="flex flex-col gap-2 rounded-medium border border-separator p-3 sm:flex-row sm:items-start sm:justify-between"
                 data-testid="org-memory-review-row"
               >
                 <div className="flex flex-col gap-1">
@@ -69,16 +69,20 @@ export function HeldMemoryReviewQueue({ orgId }: Props) {
                         {item.team_name ?? "Team"}
                       </Badge>
                     ) : (
-                      <Text variant="small" as="span" className="text-zinc-500">
+                      <Text
+                        variant="small"
+                        as="span"
+                        className="text-foreground-tertiary"
+                      >
                         Organization
                       </Text>
                     )}
                   </div>
-                  <Text variant="small" className="text-zinc-800">
+                  <Text variant="small" className="text-foreground-emphasis">
                     {item.fact ?? item.name ?? "Untitled memory"}
                   </Text>
                   {(item.provenance ?? item.source_kind) ? (
-                    <Text variant="small" className="text-zinc-400">
+                    <Text variant="small" className="text-foreground-subtle">
                       {item.provenance ?? item.source_kind}
                     </Text>
                   ) : null}

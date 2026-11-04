@@ -29,11 +29,11 @@ export function ActiveMemoryList({ orgId }: Props) {
   return (
     <>
       <div
-        className="rounded-large border border-zinc-200 p-4"
+        className="rounded-large border border-border-base p-4"
         data-testid="org-active-memory-list"
       >
         <Text variant="body-medium">Active shared memory</Text>
-        <Text variant="small" className="mt-1 block text-zinc-500">
+        <Text variant="small" className="mt-1 block text-foreground-tertiary">
           Facts currently available to Otto, the organization’s experts and its
           teams.
         </Text>
@@ -48,7 +48,7 @@ export function ActiveMemoryList({ orgId }: Props) {
               onRetry={() => refetch()}
             />
           ) : items.length === 0 ? (
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" className="text-foreground-tertiary">
               No active shared memories yet.
             </Text>
           ) : (
@@ -56,7 +56,7 @@ export function ActiveMemoryList({ orgId }: Props) {
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="flex flex-col gap-2 rounded-medium border border-zinc-100 p-3 sm:flex-row sm:items-start sm:justify-between"
+                  className="flex flex-col gap-2 rounded-medium border border-separator p-3 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -71,17 +71,17 @@ export function ActiveMemoryList({ orgId }: Props) {
                         <Text
                           variant="small"
                           as="span"
-                          className="text-zinc-500"
+                          className="text-foreground-tertiary"
                         >
                           Organization
                         </Text>
                       )}
                     </div>
-                    <Text variant="small" className="text-zinc-800">
+                    <Text variant="small" className="text-foreground-emphasis">
                       {item.fact ?? item.name ?? "Untitled memory"}
                     </Text>
                     {(item.provenance ?? item.source_kind) && (
-                      <Text variant="small" className="text-zinc-400">
+                      <Text variant="small" className="text-foreground-subtle">
                         {item.provenance ?? item.source_kind}
                       </Text>
                     )}
@@ -114,12 +114,15 @@ export function ActiveMemoryList({ orgId }: Props) {
       >
         <Dialog.Content>
           <div className="flex flex-col gap-4">
-            <Text variant="body" className="text-zinc-800">
+            <Text variant="body" className="text-foreground-emphasis">
               Agents will stop recalling this fact from shared memory. The
               revocation remains in the audit history.
             </Text>
             {selectedMemory && (
-              <Text variant="small" className="rounded-medium bg-zinc-50 p-3">
+              <Text
+                variant="small"
+                className="rounded-medium bg-surface-muted p-3"
+              >
                 {selectedMemory.fact ??
                   selectedMemory.name ??
                   "Untitled memory"}

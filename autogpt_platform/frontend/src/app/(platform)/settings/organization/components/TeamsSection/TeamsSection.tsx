@@ -79,15 +79,15 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
       </div>
 
       {isLoading ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           Loading teams…
         </Text>
       ) : teams.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           This organization has no teams yet.
         </Text>
       ) : (
-        <ul className="flex flex-col divide-y divide-zinc-100">
+        <ul className="flex flex-col divide-y divide-separator">
           {teams.map((team) => {
             const isExpanded = expandedTeamId === team.id;
             const isMembersOpen = openMemberTeamIds.has(team.id);
@@ -109,15 +109,15 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                     <Icon
                       icon={ArrowDown01Icon}
                       className={cn(
-                        "h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200",
+                        "h-4 w-4 shrink-0 text-foreground-tertiary transition-transform duration-200",
                         isMembersOpen && "rotate-180",
                       )}
                     />
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm font-medium">
+                      <span className="truncate text-body font-medium">
                         {team.name}
                       </span>
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-caption text-foreground-tertiary">
                         {team.member_count}{" "}
                         {team.member_count === 1 ? "member" : "members"}
                       </span>
@@ -131,7 +131,7 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="rounded p-1.5 text-neutral-600 transition-colors hover:bg-neutral-100"
+                        className="rounded p-1.5 text-foreground-secondary transition-colors hover:bg-surface-hover"
                         aria-label={`Team actions for ${team.name}`}
                         data-testid="team-actions-button"
                       >
@@ -158,7 +158,7 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                       {canDelete && !team.is_default ? (
                         <DropdownMenuItem
                           onClick={() => setTeamToDelete(team)}
-                          className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                          className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
                           data-testid="team-delete-item"
                         >
                           Delete

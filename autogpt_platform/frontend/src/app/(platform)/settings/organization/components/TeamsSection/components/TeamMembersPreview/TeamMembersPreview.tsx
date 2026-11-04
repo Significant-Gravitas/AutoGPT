@@ -52,11 +52,11 @@ export function TeamMembersPreview({
   return (
     <div
       id={`team-members-${team.id}`}
-      className="rounded-lg bg-zinc-50 px-3 py-2"
+      className="rounded-lg bg-surface-muted px-3 py-2"
       data-testid="team-members-preview"
     >
       {isLoading ? (
-        <ul className="flex flex-col divide-y divide-zinc-100">
+        <ul className="flex flex-col divide-y divide-separator">
           {[0, 1].map((i) => (
             <li
               key={i}
@@ -74,7 +74,7 @@ export function TeamMembersPreview({
       ) : isError ? (
         <Text
           variant="small"
-          className="text-zinc-500"
+          className="text-foreground-tertiary"
           data-testid="team-members-hint"
         >
           {isPrivate
@@ -84,11 +84,11 @@ export function TeamMembersPreview({
             : "Couldn't load members."}
         </Text>
       ) : members.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           This team has no members yet.
         </Text>
       ) : (
-        <ul className="flex flex-col divide-y divide-zinc-100">
+        <ul className="flex flex-col divide-y divide-separator">
           {members.map((member) => {
             const isSelf = member.user_id === currentUserId;
             return (
@@ -98,16 +98,16 @@ export function TeamMembersPreview({
                 data-testid="team-member-preview-row"
               >
                 <Avatar className="size-8 shrink-0">
-                  <AvatarFallback className="text-xs">
+                  <AvatarFallback className="text-caption">
                     {(member.name || member.email).charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium">
+                  <span className="truncate text-body font-medium">
                     {member.name || member.email}
                     {isSelf ? " (you)" : ""}
                   </span>
-                  <span className="truncate text-xs text-zinc-500">
+                  <span className="truncate text-caption text-foreground-tertiary">
                     {member.email}
                   </span>
                 </div>
@@ -127,7 +127,7 @@ export function TeamMembersPreview({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="rounded p-1.5 text-neutral-600 transition-colors hover:bg-neutral-100"
+                        className="rounded p-1.5 text-foreground-secondary transition-colors hover:bg-surface-hover"
                         aria-label={`Member actions for ${member.name || member.email}`}
                         data-testid="team-member-actions-button"
                       >
@@ -145,7 +145,7 @@ export function TeamMembersPreview({
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => setMemberToRemove(member)}
-                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                        className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
                         data-testid="team-member-remove-item"
                       >
                         Remove from team

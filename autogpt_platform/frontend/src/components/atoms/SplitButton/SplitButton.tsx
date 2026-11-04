@@ -71,6 +71,7 @@ export function SplitButton({
         onClick={onPrimaryClick}
         aria-label={primaryAriaLabel}
         withTooltip={false}
+        // oxlint-disable-next-line design-system/no-restyle -- a split button joins its halves: the primary gives up its right corners and border to the menu trigger
         className={cn("min-w-0 rounded-r-none border-r-0", buttonClassName)}
       >
         {primaryLabel}
@@ -83,7 +84,7 @@ export function SplitButton({
             aria-label={menuAriaLabel}
             className={cn(
               extendedButtonVariants({ variant, size }),
-              "min-w-0 rounded-l-none border-l border-l-zinc-300 px-2",
+              "min-w-0 rounded-l-none border-l border-l-border-strong px-2",
               buttonClassName,
             )}
           >

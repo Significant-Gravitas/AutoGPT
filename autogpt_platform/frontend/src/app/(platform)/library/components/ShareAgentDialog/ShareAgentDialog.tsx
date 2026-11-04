@@ -61,7 +61,7 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4" data-testid="share-agent-dialog">
-          <Text variant="body" className="text-zinc-600">
+          <Text variant="body" className="text-foreground-secondary">
             Share “{agent.name}” with a team in your organization.
           </Text>
 
@@ -91,7 +91,7 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col">
               <Text variant="body-medium">Always share latest version</Text>
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 {followLatest
                   ? "The team always runs your newest version."
                   : `Pinned to the current version (v${agent.graph_version}).`}
@@ -115,7 +115,7 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
                 size="small"
               />
               {credentialMode === CredentialMode.Owner ? (
-                <Text variant="small" className="text-amber-600">
+                <Text variant="small" className="text-warning-foreground">
                   Runs use your connected accounts.
                 </Text>
               ) : null}
@@ -132,20 +132,20 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
             </Button>
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-zinc-100 pt-4">
+          <div className="flex flex-col gap-2 border-t border-separator pt-4">
             <Text variant="body-medium">Shared with</Text>
             {isLoadingGrants ? (
               <Skeleton className="h-8 w-full" />
             ) : isGrantsError ? (
-              <Text variant="small" className="text-red-600">
+              <Text variant="small" className="text-error-foreground">
                 Couldn’t load existing shares. Please try again.
               </Text>
             ) : grants.length === 0 ? (
-              <Text variant="small" className="text-zinc-500">
+              <Text variant="small" className="text-foreground-tertiary">
                 Not shared with any teams yet.
               </Text>
             ) : (
-              <ul className="flex flex-col divide-y divide-zinc-100">
+              <ul className="flex flex-col divide-y divide-separator">
                 {grants.map((grant) => (
                   <li
                     key={grant.id}
@@ -154,7 +154,10 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <TeamBadge teamId={grant.principal_id} />
-                      <Text variant="small" className="truncate text-zinc-500">
+                      <Text
+                        variant="small"
+                        className="truncate text-foreground-tertiary"
+                      >
                         {capabilityLabel(grant.capability)} ·{" "}
                         {grant.follow_latest
                           ? "latest"

@@ -220,7 +220,6 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
                   e.stopPropagation();
                   setShowShareDialog(true);
                 }}
-                className="flex items-center gap-2"
                 data-testid="library-agent-card-share"
               >
                 Share with a team

@@ -25,7 +25,7 @@ export function OrgAvatarControl({ org, isAdmin, onSaved }: Props) {
 
   return (
     <div className="flex items-center gap-4" data-testid="org-avatar-control">
-      <Avatar className="h-16 w-16 bg-zinc-100">
+      <Avatar className="h-16 w-16 bg-surface-hover">
         {avatarUrl ? (
           <AvatarImage
             src={avatarUrl}
@@ -36,7 +36,7 @@ export function OrgAvatarControl({ org, isAdmin, onSaved }: Props) {
           />
         ) : (
           <span
-            className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-600"
+            className="flex h-full w-full items-center justify-center text-lead font-medium text-foreground-secondary"
             data-testid="org-avatar-initials"
           >
             {getOrgInitials(org.name)}
@@ -55,7 +55,7 @@ export function OrgAvatarControl({ org, isAdmin, onSaved }: Props) {
           >
             Change
           </Button>
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             PNG, JPG, GIF or WebP.
           </Text>
         </div>

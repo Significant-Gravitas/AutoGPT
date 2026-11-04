@@ -116,7 +116,7 @@ export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
             name="teamIds"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs text-zinc-500">
+                <FormLabel className="text-caption text-foreground-tertiary">
                   Pre-assign to teams
                 </FormLabel>
                 <FormControl>
@@ -137,7 +137,7 @@ export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
       </Form>
 
       {invitations.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-zinc-100">
+        <ul className="flex flex-col divide-y divide-separator">
           {invitations.map((invitation) => (
             <li
               key={invitation.id}
@@ -145,7 +145,7 @@ export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
               data-testid="org-invitation-row"
             >
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-body font-medium">
                   {invitation.email}
                 </span>
                 {invitation.team_ids.length > 0 ? (
@@ -159,7 +159,7 @@ export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
                     )}
                   </div>
                 ) : null}
-                <span className="truncate text-xs text-zinc-500">
+                <span className="truncate text-caption text-foreground-tertiary">
                   Expires {new Date(invitation.expires_at).toLocaleDateString()}
                 </span>
               </div>
@@ -190,7 +190,7 @@ export function InvitationsSection({ orgId, isAdmin, isOwner = false }: Props) {
           ))}
         </ul>
       ) : (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           No pending invitations.
         </Text>
       )}

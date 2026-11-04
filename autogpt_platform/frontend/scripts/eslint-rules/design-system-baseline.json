@@ -355,11 +355,9 @@
     "no-restyle": 1
   },
   "src/app/(platform)/library/components/ShareAgentDialog/ShareAgentDialog.tsx": {
-    "no-raw-colors": 8,
     "no-restyle": 6
   },
   "src/app/(platform)/library/components/SharedWithTeamsSection/SharedWithTeamsSection.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 2
   },
   "src/app/(platform)/raise/components/JobTitleStep/JobTitleStep.tsx": {
@@ -384,62 +382,48 @@
     "no-restyle": 1
   },
   "src/app/(platform)/settings/organization/components/DangerZoneSection/DangerZoneSection.tsx": {
-    "no-raw-colors": 4,
     "no-restyle": 3
   },
   "src/app/(platform)/settings/organization/components/InvitationsSection/InvitationsSection.tsx": {
-    "no-raw-colors": 4,
     "no-restyle": 4
   },
   "src/app/(platform)/settings/organization/components/MembersSection/MembersSection.tsx": {
-    "no-raw-colors": 2,
     "no-restyle": 1
-  },
-  "src/app/(platform)/settings/organization/components/MyInvitationsSection/MyInvitationsSection.tsx": {
-    "no-raw-colors": 3
   },
   "src/app/(platform)/settings/organization/components/OrgProfileSection/OrgProfileSection.tsx": {
     "no-restyle": 1
   },
   "src/app/(platform)/settings/organization/components/OrgProfileSection/components/OrgAvatarControl/OrgAvatarControl.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 2
   },
   "src/app/(platform)/settings/organization/components/OrgRoleSelect/OrgRoleSelect.tsx": {
     "require-static-classes": 1
   },
   "src/app/(platform)/settings/organization/components/SharedMemorySection/SharedMemorySection.tsx": {
-    "no-raw-colors": 3,
     "no-restyle": 2
   },
   "src/app/(platform)/settings/organization/components/SharedMemorySection/components/ActiveMemoryList/ActiveMemoryList.tsx": {
-    "no-raw-colors": 9,
     "no-restyle": 9
   },
   "src/app/(platform)/settings/organization/components/SharedMemorySection/components/HeldMemoryReviewQueue/HeldMemoryReviewQueue.tsx": {
-    "no-raw-colors": 7,
     "no-restyle": 5
   },
   "src/app/(platform)/settings/organization/components/TeamSpendSection/TeamSpendSection.tsx": {
-    "no-raw-colors": 11,
     "no-restyle": 3
   },
   "src/app/(platform)/settings/organization/components/TeamsSection/TeamsSection.tsx": {
-    "no-raw-colors": 10,
     "no-restyle": 8
   },
   "src/app/(platform)/settings/organization/components/TeamsSection/components/CreateTeamDialog/CreateTeamDialog.tsx": {
     "no-restyle": 2
   },
   "src/app/(platform)/settings/organization/components/TeamsSection/components/TeamManagePanel/TeamManagePanel.tsx": {
-    "no-raw-colors": 4,
     "no-restyle": 1
   },
   "src/app/(platform)/settings/organization/components/TeamsSection/components/TeamManagePanel/TeamProfileForm.tsx": {
     "no-restyle": 1
   },
   "src/app/(platform)/settings/organization/components/TeamsSection/components/TeamMembersPreview/TeamMembersPreview.tsx": {
-    "no-raw-colors": 11,
     "no-restyle": 6
   },
   "src/components/atoms/Button/helpers.ts": {
@@ -453,7 +437,6 @@
   },
   "src/components/atoms/SplitButton/SplitButton.tsx": {
     "no-legacy-import": 1,
-    "no-raw-colors": 1,
     "require-static-classes": 1
   },
   "src/components/atoms/ToggleChip/ToggleChip.tsx": {

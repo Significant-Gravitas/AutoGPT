@@ -80,7 +80,7 @@ export function TeamManagePanel({
 
   return (
     <div
-      className="flex flex-col gap-4 rounded-lg bg-zinc-50 p-4"
+      className="flex flex-col gap-4 rounded-lg bg-surface-muted p-4"
       data-testid="team-manage-panel"
     >
       <div className="flex justify-end">
@@ -103,11 +103,11 @@ export function TeamManagePanel({
           Team members ({members.length})
         </Text>
         {isLoading ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" className="text-foreground-tertiary">
             Loading members…
           </Text>
         ) : (
-          <ul className="flex flex-col divide-y divide-zinc-100">
+          <ul className="flex flex-col divide-y divide-separator">
             {members.map((member) => {
               const isSelf = member.user_id === currentUserId;
               return (
@@ -117,11 +117,11 @@ export function TeamManagePanel({
                   data-testid="team-member-row"
                 >
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">
+                    <span className="truncate text-body font-medium">
                       {member.name || member.email}
                       {isSelf ? " (you)" : ""}
                     </span>
-                    <span className="truncate text-xs text-zinc-500">
+                    <span className="truncate text-caption text-foreground-tertiary">
                       {member.email}
                     </span>
                   </div>

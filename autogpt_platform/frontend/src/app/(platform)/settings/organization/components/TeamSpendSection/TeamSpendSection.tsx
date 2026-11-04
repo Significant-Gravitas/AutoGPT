@@ -36,7 +36,7 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
         <Text variant="h4" as="h2">
           Spend by team
         </Text>
-        <Text variant="body" className="text-zinc-500">
+        <Text variant="body" className="text-foreground-tertiary">
           How your organization’s credit usage breaks down across teams.
         </Text>
       </div>
@@ -50,19 +50,21 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
           onRetry={() => refetch()}
         />
       ) : buckets.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" className="text-foreground-tertiary">
           No spend recorded yet.
         </Text>
       ) : (
-        <div className="overflow-x-auto rounded-large border border-zinc-200">
-          <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-large border border-border-base">
+          <table className="w-full text-left text-body">
             <thead>
-              <tr className="border-b border-zinc-100 bg-zinc-50/50">
-                <th className="px-3 py-2 font-medium text-zinc-600">Team</th>
-                <th className="px-3 py-2 text-right font-medium text-zinc-600">
+              <tr className="border-b border-separator bg-surface-muted/50">
+                <th className="px-3 py-2 font-medium text-foreground-secondary">
+                  Team
+                </th>
+                <th className="px-3 py-2 text-right font-medium text-foreground-secondary">
                   Spend
                 </th>
-                <th className="px-3 py-2 text-right font-medium text-zinc-600">
+                <th className="px-3 py-2 text-right font-medium text-foreground-secondary">
                   Runs
                 </th>
               </tr>
@@ -71,7 +73,7 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
               {buckets.map((bucket) => (
                 <tr
                   key={bucket.team_id ?? "org-home"}
-                  className="border-b border-zinc-50 last:border-0"
+                  className="border-b border-surface-muted last:border-0"
                   data-testid="team-spend-row"
                 >
                   <td className="px-3 py-2">
@@ -80,7 +82,11 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
                         {bucket.team_name ?? "Team"}
                       </Badge>
                     ) : (
-                      <Text variant="small" as="span" className="text-zinc-600">
+                      <Text
+                        variant="small"
+                        as="span"
+                        className="text-foreground-secondary"
+                      >
                         Organization
                       </Text>
                     )}
@@ -88,7 +94,7 @@ export function TeamSpendSection({ orgId, canManageBilling }: Props) {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatSpend(bucket.total_spent)}
                   </td>
-                  <td className="px-3 py-2 text-right text-zinc-500 tabular-nums">
+                  <td className="px-3 py-2 text-right text-foreground-tertiary tabular-nums">
                     {bucket.transaction_count}
                   </td>
                 </tr>
