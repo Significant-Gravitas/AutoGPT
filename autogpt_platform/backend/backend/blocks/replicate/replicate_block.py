@@ -26,8 +26,10 @@ from backend.blocks.replicate._helper import (
 )
 from backend.blocks.replicate._pricing import (
     OFFICIAL_MODEL_PRICES,
-    MetricPrice,
+    OFFICIAL_PRICES,
+    OfficialModelPrice,
     official_run_cost_usd,
+    run_refusal,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
@@ -263,9 +265,16 @@ class ReplicateModelBlock(Block):
         client = ReplicateClient(api_token=api_key_str)
 
         model_name, _, version = model_ref.partition(":")
-        prices = OFFICIAL_MODEL_PRICES.get(model_name)
+        price = OFFICIAL_MODEL_PRICES.get(model_name)
+        refusal = OFFICIAL_PRICES.unpriced.get(model_name) or (
+            run_refusal(price, model_inputs) if price else None
+        )
+        if refusal:
+            raise ReplicateModelNotRunnableError(
+                f"The Replicate block can't run '{model_name}': {refusal}."
+            )
         prediction = await start_prediction(
-            client, model_name, version, model_inputs, priced=prices is not None
+            client, model_name, version, model_inputs, priced=price is not None
         )
 
         await prediction.async_wait()
@@ -280,7 +289,7 @@ class ReplicateModelBlock(Block):
         if prediction.status == "canceled":
             raise RuntimeError("Replicate prediction was canceled")
 
-        cost_usd = _run_cost_usd(prices, model_inputs, prediction)
+        cost_usd = _run_cost_usd(price, model_inputs, prediction)
         if cost_usd > 0:
             self.merge_stats(
                 NodeExecutionStats(
@@ -294,9 +303,9 @@ class ReplicateModelBlock(Block):
 
 
 def _run_cost_usd(
-    prices: tuple[MetricPrice, ...] | None, model_inputs: dict, prediction: Prediction
+    price: OfficialModelPrice | None, model_inputs: dict, prediction: Prediction
 ) -> float:
     metrics = prediction.metrics or {}
-    if prices is not None:
-        return official_run_cost_usd(prices, model_inputs, metrics, prediction.output)
+    if price is not None:
+        return official_run_cost_usd(price, model_inputs, metrics, prediction.output)
     return float(metrics.get("predict_time") or 0) * _REPLICATE_USD_PER_SEC

@@ -10,7 +10,11 @@ import pytest
 
 from backend.blocks._base import BlockCostType
 from backend.blocks.replicate._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.replicate._pricing import OFFICIAL_MODEL_PRICES, _units
+from backend.blocks.replicate._pricing import (
+    OFFICIAL_MODEL_PRICES,
+    OFFICIAL_PRICES,
+    _units,
+)
 from backend.blocks.replicate.replicate_block import (
     _REPLICATE_USD_PER_SEC,
     ReplicateModelBlock,
@@ -93,12 +97,7 @@ async def test_community_model_is_charged_by_run_time(fake_replicate):
             id="seconds-from-inputs",
         ),
         pytest.param(
-            "google/veo-3.1",
-            {},
-            {},
-            "https://x/v.mp4",
-            3.20,
-            id="model-defaults",
+            "google/veo-3.1", {}, {}, "https://x/v.mp4", 3.20, id="model-defaults"
         ),
         pytest.param(
             "prunaai/p-video",
@@ -106,23 +105,31 @@ async def test_community_model_is_charged_by_run_time(fake_replicate):
             {},
             "https://x/v.mp4",
             0.04,
-            id="matched-tier",
+            id="tier-from-inputs",
         ),
+        # The tier the run reports wins over the one its inputs ask for.
         pytest.param(
             "prunaai/p-video",
-            {"resolution": "4k", "duration": 4},
-            {},
+            {"resolution": "1080p", "duration": 4},
+            {
+                "billing": {
+                    "model_variant": "base",
+                    "resolution_target": "720p",
+                    "video_output_duration_seconds": 4,
+                }
+            },
             "https://x/v.mp4",
-            0.16,
-            id="unknown-tier-is-the-dearest",
+            0.08,
+            id="tier-from-report",
         ),
+        # A value no tier names can't select its cheap "fallback" tier.
         pytest.param(
-            "prunaai/p-video-avatar",
-            {"resolution": "720p"},
+            "google/nano-banana-pro",
+            {"resolution": "8K"},
             {},
-            "https://x/v.mp4",
-            1.50,
-            id="unreported-length-is-the-cap",
+            "https://x/1.png",
+            0.30,
+            id="unknown-value-is-the-dearest",
         ),
         pytest.param(
             "black-forest-labs/flux-schnell",
@@ -146,12 +153,20 @@ async def test_community_model_is_charged_by_run_time(fake_replicate):
             id="reported-tokens",
         ),
         pytest.param(
-            "minimax/speech-2.6-hd",
-            {"text": "x" * 500},
-            {"predict_time": 3.0},
-            "https://x/a.mp3",
-            0.05,
-            id="speech-text-from-inputs",
+            "anthropic/claude-sonnet-5",
+            {"prompt": "x" * 100},
+            {},
+            "hello",
+            100 * 2e-6 + 8192 * 10e-6,
+            id="tokens-from-text-and-default-cap",
+        ),
+        pytest.param(
+            "openai/clip",
+            {"text": "a cat"},
+            {"predict_time": 10.0},
+            "[0.1]",
+            10 * 0.975e-3,
+            id="billed-by-run-time",
         ),
     ],
 )
@@ -165,6 +180,45 @@ async def test_official_run_price(
     block = await _run(fake_replicate, model, model_inputs)
 
     assert block.execution_stats.provider_cost == pytest.approx(usd)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model, model_inputs, match",
+    [
+        pytest.param(
+            "openai/gpt-5",
+            {
+                "prompt": "hi",
+                "max_completion_tokens": 100,
+                "image_input": "https://x/1.png",
+            },
+            "image_input",
+            id="file-input-billed-as-tokens",
+        ),
+        pytest.param(
+            "openai/gpt-5",
+            {"prompt": "hi"},
+            "max_completion_tokens",
+            id="no-cap-on-output-tokens",
+        ),
+        pytest.param(
+            "topazlabs/image-upscale",
+            {"image": "https://x/1.png"},
+            "table on its model page",
+            id="listed-as-unpriced",
+        ),
+    ],
+)
+async def test_run_the_block_cant_price_is_refused_before_it_runs(
+    fake_replicate, model, model_inputs, match
+):
+    fake_replicate.add_model(model, official=True)
+
+    with pytest.raises(BlockInputError, match=match):
+        await _run(fake_replicate, model, model_inputs)
+
+    assert fake_replicate.predictions_created() == []
 
 
 @pytest.mark.asyncio
@@ -188,19 +242,28 @@ async def test_official_model_without_a_price_is_refused_before_it_runs(
     assert fake_replicate.predictions_created() == []
 
 
-def test_every_price_ends_on_its_dearest_unconditional_rate():
-    for model, prices in OFFICIAL_MODEL_PRICES.items():
-        for price in prices:
-            last = price.rates[-1]
-            assert last.when == {}, model
-            assert last.usd == max(rate.usd for rate in price.rates), model
+def test_every_official_model_is_priced_or_has_a_reason():
+    """A model Replicate lists as official is either priced or named with the
+    reason it can't be, so a model missing from the table can't go unnoticed."""
+    priced, unpriced = set(OFFICIAL_PRICES.priced), set(OFFICIAL_PRICES.unpriced)
+    assert set(OFFICIAL_PRICES.collection) == priced | unpriced
+    assert not priced & unpriced
+    assert all(reason.strip() for reason in OFFICIAL_PRICES.unpriced.values())
 
 
 def test_every_price_has_a_quantity_when_the_run_reports_none():
-    for model, prices in OFFICIAL_MODEL_PRICES.items():
-        for price in prices:
-            units = _units(price, {"prompt": "hi", "text": "hi"}, {}, ["out"])
-            assert units > 0, (model, price.metric)
+    """Run time aside, which every run reports, an unreported quantity is
+    measured from the run's inputs, its model's defaults or its cap."""
+    for model, price in OFFICIAL_MODEL_PRICES.items():
+        for metric, quantity in price.quantities.items():
+            if quantity.kind == "input_value":
+                inputs = {quantity.inputs[0]: 100} if quantity.required else {}
+            else:
+                sample = "https://x/in.png" if quantity.kind == "input_files" else "hi"
+                inputs = {key: sample for key in quantity.inputs}
+            metrics = {"predict_time": 1.0} if quantity.kind == "run_time" else {}
+            units = _units(price, metric, quantity, inputs, metrics, ["out"])
+            assert units > 0, (model, metric)
 
 
 @pytest.mark.asyncio

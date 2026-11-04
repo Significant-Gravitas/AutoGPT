@@ -14,7 +14,7 @@ This block runs any model hosted on Replicate using their API. Specify the model
 
 The block waits for completion and returns the model output along with status information.
 
-A run of an official Replicate model is charged at that model's published price; a community model is charged by its run time. An official model the block has no price for yet is refused before it runs, and a pinned version must belong to the named model.
+A run of an official Replicate model is charged at that model's published price; a community model is charged by its run time. A run the block can't price that way is refused before it starts: an official model Replicate bills by a quantity the block can't measure (such as image megapixels), an input the model bills in a way the block can't count (such as an image sent to a language model), or a language model run without its output-token limit set. A pinned version must belong to the named model.
 <!-- END MANUAL -->
 
 ### Inputs
