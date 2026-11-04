@@ -6,6 +6,7 @@ queued against the plan's limits. Check it before launching a large webset to
 see whether it will start now or wait in the queue.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -77,6 +78,7 @@ class ExaGetWebsetsTeamInfoBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         team = await self._api(credentials, "GET", "/teams/me")
         concurrency = team.get("concurrency") or {}
         limits = team.get("limits") or {}

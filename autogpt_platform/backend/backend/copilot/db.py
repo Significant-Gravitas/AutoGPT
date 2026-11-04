@@ -27,6 +27,7 @@ from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
     ChatMessage,
@@ -638,21 +639,6 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
-_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
-
-
-def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
-    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
-    primary key — i.e. the caller supplied a duplicate ``id``.
-
-    Used by ``append_and_save_message`` to distinguish the dedup signal
-    from the unrelated ``(sessionId, sequence)`` collision that the
-    streaming-callback race retries silently."""
-    return isinstance(
-        exc, UniqueViolationError
-    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
-
-
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -733,8 +719,6 @@ async def add_chat_messages_batch(
                         data["llmAuthProvider"] = msg["llm_auth_provider"]
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
-                    if msg.get("langfuse_trace_id") is not None:
-                        data["langfuseTraceId"] = msg["langfuse_trace_id"]
                     if msg.get("trace_id") is not None:
                         data["traceId"] = msg["trace_id"]
 
@@ -762,10 +746,10 @@ async def add_chat_messages_batch(
 
         except UniqueViolationError as e:
             # Two distinct unique constraints on ``ChatMessage`` can fire here:
-            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
-            #     duplicate PK — this is the idempotency signal, propagate
-            #     so the route layer can short-circuit.
-            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #   - the row ``id``: caller supplied a duplicate PK — this is
+            #     the idempotency signal, propagate so the route layer can
+            #     short-circuit.
+            #   - ``(sessionId, sequence)``: the streaming loop
             #     and a long-running callback raced on ``sequence`` — retry
             #     with a freshly queried offset (existing behaviour).
             if is_duplicate_chat_message_id_error(e):
@@ -1416,7 +1400,6 @@ async def update_chat_message_stamps(
     routing_source: str | None,
     llm_auth_provider: str | None = None,
     llm_credential_id: str | None = None,
-    langfuse_trace_id: str | None = None,
     trace_id: str | None = None,
 ) -> bool:
     """Back-fill the execution stamps on an already-persisted message row.
@@ -1439,8 +1422,6 @@ async def update_chat_message_stamps(
         data["llmAuthProvider"] = llm_auth_provider
     if llm_credential_id is not None:
         data["llmCredentialId"] = llm_credential_id
-    if langfuse_trace_id is not None:
-        data["langfuseTraceId"] = langfuse_trace_id
     if trace_id is not None:
         data["traceId"] = trace_id
     result = await PrismaChatMessage.prisma().update(
@@ -1635,11 +1616,40 @@ async def admit_chat_session_turn(
             return "full"
         # Conditional: a transition outside this lock (a cancel) may have
         # moved the row since it was read.
-        updated = await sessions.update_many(
-            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+        # A newly admitted slot must not inherit a previous turn's cleanup identity.
+        updated = await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession"
+            SET "chatStatus"='running', "updatedAt"=CURRENT_TIMESTAMP,
+                metadata=COALESCE(metadata,'{{}}'::jsonb)-'_active_turn_id'
+            WHERE id=$1 AND "userId"=$2
+              AND "chatStatus"=$3::{schema_prefix}"ChatSessionStatus" """,
+            session_id,
+            user_id,
+            expect_status,
+            client=tx,
         )
     return "admitted" if updated else "busy"
+
+
+async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
+    """Persist the dispatched turn's identity independently of Redis stream TTLs.
+
+    Admission clears the identity, so one admission records one turn: a
+    dispatcher that stalled until orphan recovery freed its slot finds the
+    successor's identity in place and refuses itself instead of overwriting it.
+    """
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" SET metadata=
+            COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('_active_turn_id',$3::text),
+            "updatedAt"=CURRENT_TIMESTAMP
+            WHERE id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND metadata->>'_active_turn_id' IS NULL """,
+            session_id,
+            user_id,
+            turn_id,
+        )
+    )
 
 
 async def update_chat_session_status(

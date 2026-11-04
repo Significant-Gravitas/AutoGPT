@@ -12,7 +12,7 @@ Get your team's Websets concurrency usage and limits, to check capacity before l
 <!-- MANUAL: how_it_works -->
 This block reads the Websets API's `/v0/teams/me` and returns how many requests are active and queued against the team's concurrency and queue limits. An empty limit means unlimited.
 
-`available_slots` is max concurrent minus active (never below 0), and `has_capacity` is true when a slot is free or there is no limit; it does not consider the queue. It charges only if Exa's response reports a cost (100 credits per USD).
+`available_slots` is max concurrent minus active (never below 0), and `has_capacity` is true when a slot is free or there is no limit; it does not consider the queue. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Outputs

@@ -1,10 +1,13 @@
 """Payload parsing tests for the Exa webhook trigger blocks."""
 
+from typing import Any
+
 from backend.blocks.exa._search_monitor_samples import (
     SAMPLE_MONITOR,
     SAMPLE_MONITOR_ID,
     SAMPLE_RUN_COMPLETED_EVENT,
 )
+from backend.blocks.exa._test import TEST_CREDENTIALS
 from backend.blocks.exa.search_monitor_trigger import ExaSearchMonitorTriggerBlock
 from backend.blocks.exa.search_monitors_models import SearchMonitorModel
 from backend.blocks.exa.webhook_blocks import (
@@ -14,9 +17,11 @@ from backend.blocks.exa.webhook_blocks import (
 )
 
 
-async def _run(block, **inputs) -> dict:
+async def _run(block, run_kwargs: dict[str, Any] | None = None, **inputs) -> dict:
     outputs: dict = {}
-    async for name, value in block.run(block.input_schema(**inputs)):
+    async for name, value in block.run(
+        block.input_schema(**inputs), **(run_kwargs or {})
+    ):
         outputs.setdefault(name, value)
     return outputs
 
@@ -24,6 +29,7 @@ async def _run(block, **inputs) -> dict:
 async def _run_webset(payload: dict, **inputs) -> dict:
     return await _run(
         ExaWebsetWebhookBlock(),
+        {"credentials": TEST_CREDENTIALS},
         credentials={"provider": "exa", "id": "c", "type": "api_key"},
         payload=payload,
         **inputs,

@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -217,6 +218,7 @@ class ExaCreateMonitorBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         if input_data.behavior_type == MonitorBehaviorType.REFRESH:
             raise ValueError(
                 "Exa no longer supports refresh monitors; monitors can only run "
@@ -325,6 +327,7 @@ class ExaGetMonitorBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         monitor = MonitorModel.from_api(
             await self._api(
                 credentials, "GET", f"/monitors/{segment(input_data.monitor_id)}"
@@ -430,6 +433,7 @@ class ExaUpdateMonitorBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         monitor = MonitorModel.from_api(
             await self._api(
                 credentials,
@@ -522,6 +526,7 @@ class ExaDeleteMonitorBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         deleted = await self._api(
             credentials, "DELETE", f"/monitors/{segment(input_data.monitor_id)}"
         )
@@ -579,6 +584,7 @@ class ExaListMonitorsBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self._api(
             credentials,
             "GET",

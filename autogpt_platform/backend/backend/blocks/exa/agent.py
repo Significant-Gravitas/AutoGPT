@@ -9,6 +9,7 @@ answer, optionally as JSON matching your schema.
 from collections.abc import Iterator
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -226,6 +227,7 @@ class ExaAgentRunBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         payload = build_create_payload(_to_request(input_data))
         created = parse_run(await self.create_run(credentials, payload))
         if not input_data.wait_for_completion:

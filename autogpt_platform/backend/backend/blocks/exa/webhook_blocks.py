@@ -6,7 +6,9 @@ These blocks handle webhook events from Exa's API for websets and other events.
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
+    APIKeyCredentials,
     BaseModel,
     Block,
     BlockCategory,
@@ -206,8 +208,11 @@ class ExaWebsetWebhookBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         """Process incoming Exa webhook payload."""
+        refuse_platform_credentials(self, credentials)
         payload = input_data.payload
         event_type = str(payload.get("type") or payload.get("eventType") or "unknown")
 

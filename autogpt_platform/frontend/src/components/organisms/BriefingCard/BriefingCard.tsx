@@ -50,17 +50,15 @@ export function BriefingCard({ briefing, className }: Props) {
         data-slot="briefing-card-header"
         className="mb-2 flex items-center gap-2 px-2"
       >
-        <Icon icon={News01Icon} size={16} className="text-foreground-subtle" />
-        <Text variant="body" className="text-foreground-body">
+        <Icon icon={News01Icon} size={16} tone="subtle" />
+        <Text variant="body" tone="body">
           Recap
         </Text>
         {/* Both stops stay at or below purple-600 so the lightest painted
             pixel still clears WCAG AA (4.5:1) against the white card. */}
         <Text
           variant="body"
-          // TODO(tokens): no role for the purple-800 to purple-600 gradient
-          // stops.
-          className="bg-gradient-to-r from-purple-800 to-purple-600 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-accent-strong to-brand-hover bg-clip-text text-transparent"
         >
           {formatBriefingDate(briefing.briefing_date)}
         </Text>
@@ -86,7 +84,7 @@ export function BriefingCard({ briefing, className }: Props) {
             className={cn(
               "h-full divide-y divide-separator",
               isShowingAll
-                ? "overflow-y-auto scrollbar-none"
+                ? "scrollbar-none overflow-y-auto"
                 : "overflow-hidden",
             )}
           >
@@ -123,7 +121,7 @@ export function BriefingCard({ briefing, className }: Props) {
             // Separator would move the button, and its focus outline, 1px.
             className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
-            <Text variant="small-medium" className="text-inherit">
+            <Text variant="small-medium" tone="inherit">
               {isShowingAll
                 ? "Show less"
                 : `Show all results (${run_items.length})`}
@@ -131,10 +129,8 @@ export function BriefingCard({ briefing, className }: Props) {
             <Icon
               icon={ArrowDown01Icon}
               size={14}
-              className={cn(
-                "transition-transform",
-                isShowingAll && "rotate-180",
-              )}
+              motion="transform"
+              className={cn(isShowingAll && "rotate-180")}
             />
           </button>
         ) : null}
@@ -164,8 +160,8 @@ function ScrollArrow({
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
         isUp
-          ? "top-0 bg-gradient-to-b from-white via-white/85 to-transparent"
-          : "bottom-0 bg-gradient-to-t from-white via-white/85 to-transparent",
+          ? "top-0 bg-gradient-to-b from-surface via-surface/85 to-transparent"
+          : "bottom-0 bg-gradient-to-t from-surface via-surface/85 to-transparent",
       )}
     >
       <button
@@ -176,8 +172,7 @@ function ScrollArrow({
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          // TODO(tokens): no shadow-colour role for zinc-950 (#09090B).
-          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary shadow-zinc-950 transition-colors smooth-shadow-ring-sm hover:text-foreground-strong",
+          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-foreground-base transition-colors hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

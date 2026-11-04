@@ -12,7 +12,7 @@ Wait for a webset enrichment to complete with progress tracking
 <!-- MANUAL: how_it_works -->
 This block polls the enrichment, starting every `check_interval` seconds (default 5) and backing off by 1.5x up to 30, until it is completed, failed or canceled, or `timeout` (default 300, max 1800) passes. On timeout it returns the last status with `timed_out` true instead of failing.
 
-`items_enriched` and `sample_data` come from the webset's first 5 items only, and only when `sample_results` is on and the enrichment completed; otherwise `items_enriched` is 0. It charges only if Exa's response reports a cost (100 credits per USD).
+`items_enriched` and `sample_data` come from the webset's first 5 items only, and only when `sample_results` is on and the enrichment completed; otherwise `items_enriched` is 0. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -58,7 +58,7 @@ Wait for a specific webset search to complete with progress tracking
 <!-- MANUAL: how_it_works -->
 This block polls the search, starting every `check_interval` seconds (default 5) and backing off by 1.5x up to 30, until it is completed, failed or canceled, or `timeout` (default 300, max 1800) passes. It returns items found, items analyzed, completion percentage and, once the search has finished, the recall estimate.
 
-On timeout it returns the last known progress with `timed_out` true instead of failing. It charges only if Exa's response reports a cost (100 credits per USD).
+On timeout it returns the last known progress with `timed_out` true instead of failing. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -104,7 +104,7 @@ Wait for a webset to reach a specific status with progress tracking
 <!-- MANUAL: how_it_works -->
 This block polls a webset until it reaches the target status. For 'idle' (the default) and the legacy 'completed' and 'any_complete', it checks the webset every `check_interval` seconds until it is idle; if it is not idle within `timeout` (default 300, max 1800), the run fails with a timeout error. For 'running' or 'paused' it backs off by 1.5x up to `max_interval` and, on timeout, returns the last status with `timed_out` true.
 
-It returns the final status, elapsed time, the number of items found by the webset's searches and, with `include_progress` on, per-search progress and per-enrichment status. It charges only if Exa's response reports a cost (100 credits per USD).
+It returns the final status, elapsed time, the number of items found by the webset's searches and, with `include_progress` on, per-search progress and per-enrichment status. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

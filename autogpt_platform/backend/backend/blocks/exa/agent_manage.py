@@ -2,6 +2,7 @@
 Exa Agent blocks that manage runs: list, cancel, stop, delete, list events.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -16,7 +17,6 @@ from backend.sdk import (
 
 from . import agent_api
 from ._config import exa
-from ._platform_key import require_own_exa_key
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from .agent import RUN_ID_PLACEHOLDER, AgentRunOutputs, run_outputs
 from .agent_billing import bill_finished_run
@@ -98,7 +98,7 @@ class ExaListAgentRunsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        require_own_exa_key(credentials, "Listing Exa Agent runs")
+        refuse_platform_credentials(self, credentials)
         data = await self.list_runs(credentials, input_data.limit, input_data.cursor)
         runs = [parse_run(r) for r in data.get("data") or []]
         page = parse_page(data)
@@ -148,6 +148,7 @@ class ExaCancelAgentRunBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.cancel_run(credentials, input_data.run_id)
         run = parse_run(data)
         await bill_finished_run(self, run, user_id)
@@ -194,6 +195,7 @@ class ExaStopAgentRunBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.stop_run(credentials, input_data.run_id)
         run = parse_run(data)
         await bill_finished_run(self, run, user_id)
@@ -236,6 +238,7 @@ class ExaDeleteAgentRunBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.delete_run(credentials, input_data.run_id)
         yield "run_id", data.get("id", input_data.run_id)
         yield "deleted", bool(data.get("deleted", False))
@@ -295,6 +298,7 @@ class ExaListAgentRunEventsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.list_events(
             credentials,
             input_data.run_id,

@@ -5,6 +5,7 @@ Exa Search Monitor batch action block: delete, pause or unpause by filter.
 from enum import Enum
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -120,6 +121,7 @@ class ExaBatchSearchMonitorsBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "POST", f"{MONITORS_URL}/batch", body=batch_body(input_data)
         )

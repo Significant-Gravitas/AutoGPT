@@ -12,7 +12,7 @@ Get the status and outcome of one scheduled run of a Websets monitor
 <!-- MANUAL: how_it_works -->
 This block reads one run from the Websets API's `/v0/monitors/{monitor_id}/runs/{run_id}` and returns it once, without waiting or polling. Status is one of created, running, completed, canceled or failed, and type says whether the run was a search or a refresh.
 
-`failed_reason` is filled only for failed runs and `completed_at` only once the run has finished. It charges only if Exa's response reports a cost (100 credits per USD).
+`failed_reason` is filled only for failed runs and `completed_at` only once the run has finished. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -55,7 +55,7 @@ List the scheduled runs of a Websets monitor, to check whether its updates succe
 <!-- MANUAL: how_it_works -->
 This block lists a monitor's runs from the Websets API's `/v0/monitors/{monitor_id}/runs` in a single request. It outputs the whole list and then each run one at a time, plus `has_more` and `next_cursor` as Exa returns them.
 
-The block has no limit or cursor input, so it always returns Exa's first page; `next_cursor` can't be passed back to it. It charges only if Exa's response reports a cost (100 credits per USD).
+The block has no limit or cursor input, so it always returns Exa's first page; `next_cursor` can't be passed back to it. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

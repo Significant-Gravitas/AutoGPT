@@ -8,6 +8,7 @@ Webhook" trigger block instead: it registers and verifies its own webhook.
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -101,6 +102,7 @@ class ExaCreateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         body: dict[str, Any] = {
             "url": input_data.url.strip(),
             "events": event_type_values(input_data.events),
@@ -160,6 +162,7 @@ class ExaGetWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "GET", f"{WEBHOOKS_URL}/{path_segment(input_data.webhook_id)}"
         )
@@ -226,6 +229,7 @@ class ExaUpdateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "PATCH",
@@ -293,6 +297,7 @@ class ExaDeleteWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "DELETE",

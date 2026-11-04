@@ -49,14 +49,18 @@ export function IntegrationsPanel({
       />
       <AIConnectionsSection />
       <section aria-labelledby="tool-connections-heading">
-        <Text
-          variant="small-medium"
-          as="h2"
-          id="tool-connections-heading"
-          className="pb-3 pl-4 uppercase tracking-eyebrow text-foreground-body"
-        >
-          Tools your experts and workflows use
-        </Text>
+        <div className="pb-3 pl-4">
+          <Text
+            variant="small-medium"
+            as="h2"
+            id="tool-connections-heading"
+            tone="body"
+            transform="uppercase"
+            tracking="eyebrow"
+          >
+            Tools your experts and workflows use
+          </Text>
+        </div>
         <IntegrationsList
           query={query}
           onQueryChange={setQuery}

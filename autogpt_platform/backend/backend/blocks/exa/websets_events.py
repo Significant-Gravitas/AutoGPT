@@ -8,6 +8,7 @@ and keeps it for 60 days. Listing them is a polling alternative to the
 
 from datetime import UTC, datetime
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -105,6 +106,7 @@ class ExaListWebsetEventsBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "GET", EVENTS_URL, params=event_params(input_data)
         )
@@ -186,6 +188,7 @@ class ExaGetWebsetEventBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "GET", f"{EVENTS_URL}/{path_segment(input_data.event_id)}"
         )

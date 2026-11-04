@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -266,6 +267,7 @@ class ExaCreateWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         payload = create_webset_payload(input_data)
         start_time = time.time()
         created = await self._api(credentials, "POST", "/websets", json=payload)
@@ -401,6 +403,7 @@ class ExaCreateOrFindWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         try:
             existing = await self._api(
                 credentials, "GET", f"/websets/{segment(input_data.external_id)}"
@@ -486,6 +489,7 @@ class ExaUpdateWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         payload: dict[str, Any] = {}
         if input_data.title:
             payload["title"] = input_data.title
@@ -579,6 +583,7 @@ class ExaListWebsetsBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         params = {
             "cursor": input_data.cursor,
             "limit": input_data.limit,
@@ -679,6 +684,7 @@ class ExaGetWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self._api(
             credentials,
             "GET",
@@ -734,6 +740,7 @@ class ExaDeleteWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self._api(
             credentials, "DELETE", f"/websets/{segment(input_data.webset_id)}"
         )
@@ -780,6 +787,7 @@ class ExaCancelWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self._api(
             credentials, "POST", f"/websets/{segment(input_data.webset_id)}/cancel"
         )
@@ -997,6 +1005,7 @@ class ExaWebsetStatusBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         webset = await self._get_webset(credentials, input_data.webset_id)
 
         yield "webset_id", webset.id
@@ -1075,6 +1084,7 @@ class ExaWebsetSummaryBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         webset = await self._get_webset(credentials, input_data.webset_id)
 
         sample_items: list[dict[str, Any]] = []
@@ -1193,6 +1203,7 @@ class ExaWebsetReadyCheckBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         webset = await self._get_webset(credentials, input_data.webset_id)
         item_count = webset.items_found
         has_min_items = item_count >= input_data.min_items

@@ -37,12 +37,12 @@ export function AutopilotSkillsSection({ skills }: Props) {
         />
       </div>
       {skills.length === 0 ? (
-        <Text variant="body-md" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No skills yet. Skills in your library that no expert has claimed show
           up here.
         </Text>
       ) : visible.length === 0 ? (
-        <Text variant="body-md" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No skills match.
         </Text>
       ) : (

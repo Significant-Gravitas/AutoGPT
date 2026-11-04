@@ -16,6 +16,7 @@ Run", "Wait for Exa Agent Run", "List Exa Agent Runs"), which expose every
 Agent option. See research_models.py for the fields Exa Agent no longer reports.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -30,7 +31,6 @@ from backend.sdk import (
 
 from . import agent_api
 from ._config import exa
-from ._platform_key import require_own_exa_key
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from .agent_api import AgentRunRequest, AgentWaitResult, build_create_payload
 from .agent_billing import bill_finished_run
@@ -186,6 +186,7 @@ class ExaCreateResearchBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         payload = build_create_payload(
             AgentRunRequest(
                 query=input_data.instructions,
@@ -285,7 +286,7 @@ class ExaListResearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        require_own_exa_key(credentials, "Listing Exa research tasks")
+        refuse_platform_credentials(self, credentials)
         data = await self.list_runs(credentials, input_data.limit, input_data.cursor)
         tasks = [
             ResearchTaskModel.from_agent_run(parse_run(run))

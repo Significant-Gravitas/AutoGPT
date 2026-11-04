@@ -12,7 +12,7 @@ Cancel all operations being performed on a Webset
 <!-- MANUAL: how_it_works -->
 This block sends `POST /v0/websets/{id}/cancel` to the Websets API, which stops every running operation (searches, enrichments) on the webset. It accepts the webset ID or your external ID and returns the status Exa reports after cancellation. Items already processed before cancellation are retained.
 
-The block is useful for stopping long-running operations that are no longer needed or when you need to modify the webset configuration. It charges only if Exa's response reports a cost (100 credits per USD).
+The block is useful for stopping long-running operations that are no longer needed or when you need to modify the webset configuration. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -51,7 +51,7 @@ Create a new webset or return existing one by external_id (idempotent operation)
 <!-- MANUAL: how_it_works -->
 This block first looks the webset up by your external ID (`GET /v0/websets/{external_id}`). If it exists, the block returns it unchanged with `was_created` false, even when the search query or metadata you pass are different. Only a 404 leads to creation; any other error fails the run.
 
-When creating, the block sends the external ID, the metadata and, if you give a search query, a search for `search_count` items (1-1000). It returns as soon as Exa accepts the webset and does not wait for the search to finish. It charges only if Exa's response reports a cost (100 credits per USD).
+When creating, the block sends the external ID, the metadata and, if you give a search query, a search for `search_count` items (1-1000). It returns as soon as Exa accepts the webset and does not wait for the search to finish. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -91,7 +91,7 @@ Create a new Exa Webset for persistent web search collections with optional wait
 <!-- MANUAL: how_it_works -->
 This block sends one `POST /v0/websets` request that starts a search and can also copy in items from imports or other websets, add enrichment columns, and set webset-wide exclusions, a title, an external ID and metadata. The search can be limited to imports or websets (scope), leave out the items of others (exclude), or become a "hop" search when a scope source has a relationship such as "investors of these companies", which needs a limit of 1-10. Before calling Exa the block rejects more than 5 criteria, a 'custom' entity without a 2-200 character description, a source type other than 'import' or 'webset', and more than 150 options on an enrichment.
 
-With `wait_for_initial_results` on (the default), the block polls the webset every 5 seconds until it is idle, then returns it with the number of items its searches found and the time taken. If the webset is still busy after `polling_timeout` seconds (default 300, max 600), the run fails with a timeout error, although the webset has already been created. It charges only if Exa's response reports a cost (100 credits per USD).
+With `wait_for_initial_results` on (the default), the block polls the webset every 5 seconds until it is idle, then returns it with the number of items its searches found and the time taken. If the webset is still busy after `polling_timeout` seconds (default 300, max 600), the run fails with a timeout error, although the webset has already been created. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -155,7 +155,7 @@ Delete a Webset and all its items
 <!-- MANUAL: how_it_works -->
 This block permanently deletes a webset and all of its items, searches, enrichments, and monitors. The operation cannot be undone.
 
-Use this to clean up websets that are no longer needed or to remove test data. The block accepts either the Exa-generated ID or your custom external_id. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to clean up websets that are no longer needed or to remove test data. The block accepts either the Exa-generated ID or your custom external_id. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -194,7 +194,7 @@ Retrieve a Webset by ID or external ID
 <!-- MANUAL: how_it_works -->
 This block sends `GET /v0/websets/{id}` (webset ID or external ID) and returns the webset's status, title, dashboard link, metadata and timestamps, plus its searches, imports, enrichments, monitors and webset-wide excludes as raw objects. Turn on `expand_items` to also get up to the first 100 items in `items`; otherwise `items` is empty.
 
-Use this to check webset configuration or status before performing operations. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to check webset configuration or status before performing operations. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -244,7 +244,7 @@ List all Websets with pagination support, optionally filtered by ID, external ID
 <!-- MANUAL: how_it_works -->
 This block sends `GET /v0/websets` and returns one page of websets (`limit` 1-100, default 25), both as a list and one at a time. `search` keeps only websets whose ID, external ID or title matches the text (2-50 characters). While `has_more` is true, pass `next_cursor` back in as `cursor` to get the next page. The `trigger` input's value is ignored; it only lets another block start this one.
 
-Use this to discover existing websets or build management views of your collections. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to discover existing websets or build management views of your collections. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -286,7 +286,7 @@ Preview how a search query will be interpreted before creating a webset. Helps u
 <!-- MANUAL: how_it_works -->
 This block sends your query to `POST /v0/websets/preview` and shows how Exa will interpret it before you create a webset: the detected (or forced) entity type, the criteria Exa would generate, and the enrichment columns it detects. A 'custom' entity type needs a 2-200 character description. Turn on `include_sample_items` to also get up to `sample_count` (1-10) matching items; this runs a real search and uses Websets credits.
 
-The `interpretation` sentence and `suggestions` are written by the block from the number of criteria and columns, not by Exa: it suggests adding criteria when none were generated and naming the data points you want when no columns were detected. It charges only if Exa's response reports a cost (100 credits per USD).
+The `interpretation` sentence and `suggestions` are written by the block from the number of criteria and columns, not by Exa: it suggests adding criteria when none were generated and naming the data points you want when no columns were detected. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -333,7 +333,7 @@ Update the title or metadata of an existing Webset
 <!-- MANUAL: how_it_works -->
 This block sends `POST /v0/websets/{id}` (webset ID or external ID) with a new title and/or metadata. Inputs you leave empty are not sent, so the current title or metadata stays as it is; leaving metadata empty does not clear it.
 
-This operation does not affect the webset's items, searches, or enrichments. It returns the webset's status, title, metadata and update time as Exa reports them after the change. It charges only if Exa's response reports a cost (100 credits per USD).
+This operation does not affect the webset's items, searches, or enrichments. It returns the webset's status, title, metadata and update time as Exa reports them after the change. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -376,7 +376,7 @@ Check if webset is ready for next operation - enables conditional workflow branc
 <!-- MANUAL: how_it_works -->
 This block reads the webset once and sets `is_ready` to true when its status is idle and it has at least `min_items` items (default 1). The item count is the total found by the webset's searches, because Exa reports no webset-wide total, so items that came only from imports are not counted. `recommendation` is `needs_search` (no searches), `waiting_for_results` (running or pending), `insufficient_items`, `ready_to_enrich` (no enrichments yet) or `ready_to_process`.
 
-Use this block for conditional workflow branching to decide whether to proceed with processing, wait for more results, or add additional searches. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this block for conditional workflow branching to decide whether to proceed with processing, wait for more results, or add additional searches. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -418,7 +418,7 @@ Get a quick status overview of a webset
 <!-- MANUAL: how_it_works -->
 This block reads the webset once and returns its status (idle, pending, running or paused), the number of searches, enrichments and monitors, and when it was last updated, without fetching any items. `item_count` is the total found by the webset's searches (Exa reports no webset-wide total, so imported items are not included), and `is_processing` is true while the webset is running or pending.
 
-Use this for quick status checks and monitoring without the overhead of retrieving complete webset details or items. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this for quick status checks and monitoring without the overhead of retrieving complete webset details or items. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -461,7 +461,7 @@ Get a comprehensive summary of a webset with samples and statistics
 <!-- MANUAL: how_it_works -->
 This block reads the webset and, when `include_sample_items` is on, fetches its first `sample_size` items (0-10, default 3). It returns summaries of searches (counts, items found, first three queries), enrichments (counts, formats, first three titles) and monitors (enabled count, earliest next run), plus statistics such as average items per search. Turning off `include_search_details` or `include_enrichment_details` sets that summary to zeros instead of leaving it out.
 
-`total_items` is the number of sample items returned, not the size of the webset; use `search_summary.total_items_found` or the Webset Status block for the item count. It charges only if Exa's response reports a cost (100 credits per USD).
+`total_items` is the number of sample items returned, not the size of the webset; use `search_summary.total_items_found` or the Webset Status block for the item count. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

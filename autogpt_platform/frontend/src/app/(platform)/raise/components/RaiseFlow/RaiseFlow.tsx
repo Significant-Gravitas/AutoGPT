@@ -63,7 +63,7 @@ export function RaiseFlow() {
           <Button
             variant="secondary"
             size="small"
-            className="-ml-3 rounded-full"
+            className="-ml-3"
             onClick={startRaising}
             disabled={hasStarted}
           >
@@ -92,7 +92,7 @@ export function RaiseFlow() {
   }
 
   return (
-    <main className="min-h-screen bg-background lg:h-screen lg:overflow-hidden">
+    <main className="min-h-screen bg-canvas lg:h-screen lg:overflow-hidden">
       <div className="grid w-full items-stretch lg:h-full lg:grid-cols-2">
         <div className="relative order-2 lg:order-1 lg:h-screen">
           <div
@@ -101,7 +101,7 @@ export function RaiseFlow() {
             aria-live="polite"
             aria-relevant="additions text"
             aria-label="Expert creation conversation"
-            className="flex flex-col gap-4 px-4 pb-16 pt-6 scrollbar-none sm:px-6 lg:h-full lg:overflow-y-auto lg:px-8"
+            className="scrollbar-none flex flex-col gap-4 px-4 pt-6 pb-16 sm:px-6 lg:h-full lg:overflow-y-auto lg:px-8"
           >
             {items.map(renderItem)}
           </div>
@@ -109,30 +109,33 @@ export function RaiseFlow() {
           <ScrollFade edge="bottom" isVisible={canScrollDown} />
         </div>
 
-        <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-muted/40 lg:order-2">
+        {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 40px panel radius has no rounded-* step (4xl is 32px) */}
+        <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-surface-hover/40 lg:order-2">
           <DitheredWaves
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
           />
-          <div className="absolute left-4 top-4 z-10 flex gap-2 sm:left-6 sm:top-6">
+          <div className="absolute top-4 left-4 z-10 flex gap-2 sm:top-6 sm:left-6">
             <Button
               variant="icon"
-              size="small"
+              size="icon-sm"
+              shape="pill"
               aria-label="Back"
-              className="bg-surface p-2 hover:bg-surface-hover"
+              className="size-9"
               onClick={goBack}
               disabled={!canGoBack}
             >
-              <Icon icon={ArrowLeft02Icon} size={16} />
+              <Icon icon={ArrowLeft02Icon} size={16} tone="emphasis" />
             </Button>
             <Button
               variant="icon"
-              size="small"
+              size="icon-sm"
+              shape="pill"
               aria-label="Start over"
-              className="bg-surface p-2 hover:bg-surface-hover"
+              className="size-9"
               onClick={() => setIsRestartOpen(true)}
             >
-              <Icon icon={RefreshIcon} size={16} />
+              <Icon icon={RefreshIcon} size={16} tone="emphasis" />
             </Button>
           </div>
 
@@ -184,8 +187,8 @@ function ScrollFade({
       className={cn(
         "pointer-events-none absolute inset-x-0 h-16 transition-opacity duration-200",
         edge === "top"
-          ? "top-0 bg-gradient-to-b from-background to-transparent"
-          : "bottom-0 bg-gradient-to-t from-background to-transparent",
+          ? "top-0 bg-gradient-to-b from-canvas to-transparent"
+          : "bottom-0 bg-gradient-to-t from-canvas to-transparent",
         isVisible ? "opacity-100" : "opacity-0",
       )}
     />

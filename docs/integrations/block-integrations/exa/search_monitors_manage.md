@@ -45,7 +45,7 @@ Get an Exa Search Monitor's query, schedule, webhook and status
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends `GET /monitors/{monitor_id}` to Exa and returns the monitor's ID, status, next scheduled run and the full monitor (query, result count, domains, content options, period, output schema, metadata and webhook). `status` is `active`, `paused` or `disabled`; Exa sets `disabled` itself after repeated authentication failures. `next_run_at` is empty for a manual-only monitor. If Exa's response reports a `costDollars` total, the block bills it at 100 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
+This block sends `GET /monitors/{monitor_id}` to Exa and returns the monitor's ID, status, next scheduled run and the full monitor (query, result count, domains, content options, period, output schema, metadata and webhook). `status` is `active`, `paused` or `disabled`; Exa sets `disabled` itself after repeated authentication failures. `next_run_at` is empty for a manual-only monitor. If Exa's response reports a `costDollars` total, the block bills it at 150 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
 <!-- END MANUAL -->
 
 ### Inputs

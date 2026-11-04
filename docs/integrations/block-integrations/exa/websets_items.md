@@ -54,7 +54,7 @@ Delete a specific item from a webset
 <!-- MANUAL: how_it_works -->
 This block permanently removes a specific item from a webset. The item and all its enrichment data are deleted and cannot be recovered.
 
-Use this to clean up irrelevant results, remove duplicates, or curate webset contents by removing items that don't meet your quality standards. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to clean up irrelevant results, remove duplicates, or curate webset contents by removing items that don't meet your quality standards. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -92,7 +92,7 @@ Get items added since a cursor - enables incremental processing without reproces
 <!-- MANUAL: how_it_works -->
 This block lists the webset's items after `since_cursor` (from the start when it is empty), up to 100 per page, until it has `max_items` (1-1000, default 100) or no more remain. It returns the items, their count, `has_more`, and the `next_cursor` to save for the next run.
 
-On the last page Exa can return an empty `next_cursor`; passing that in starts again from the first item, so keep your previous cursor in that case. It charges only if Exa's response reports a cost (100 credits per USD).
+On the last page Exa can return an empty `next_cursor`; passing that in starts again from the first item, so keep your previous cursor in that case. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -134,7 +134,7 @@ Get a specific item from a webset by its ID
 <!-- MANUAL: how_it_works -->
 This block retrieves one item from a webset and returns its URL, title, content, entity data, enrichment results (keyed by enrichment ID) and timestamps. The title is the person's or company's name, or the item description for other entity types; content is empty for people.
 
-Use this when you need complete data for a particular item. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this when you need complete data for a particular item. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -178,7 +178,7 @@ List items in a webset with pagination support
 <!-- MANUAL: how_it_works -->
 This block returns one page of a webset's items (`limit` 1-100, default 25), optionally only those that came from one search or import (`source_id`). With `wait_for_items` on, it checks again every 2 seconds (backing off to 10) until the page has items or `wait_timeout` (default 60, max 300) passes, then returns what it has, possibly nothing, without failing.
 
-While `has_more` is true, pass `next_cursor` back in as `cursor` to get the next page. It charges only if Exa's response reports a cost (100 credits per USD).
+While `has_more` is true, pass `next_cursor` back in as `cursor` to get the next page. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -223,7 +223,7 @@ Get a summary of webset items without retrieving all data
 <!-- MANUAL: how_it_works -->
 This block reads the webset and returns its entity type (taken from the first search), its enrichment column titles, and up to `sample_size` (0-10, default 5) sample items. `total_items` is the total found by the webset's searches, because Exa reports no webset-wide total, so imported items are not counted.
 
-Use this to understand webset contents at a glance, check enrichment availability, or get sample data for validation. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to understand webset contents at a glance, check enrichment availability, or get sample data for validation. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

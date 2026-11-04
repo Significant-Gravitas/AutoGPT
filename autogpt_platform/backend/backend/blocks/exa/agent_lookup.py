@@ -5,6 +5,7 @@ Both report a failed run through ``failure_reason`` rather than failing the
 block, so a workflow can branch on ``status``.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -80,6 +81,7 @@ class ExaGetAgentRunBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         run = parse_run(await self.get_run(credentials, input_data.run_id))
         await bill_finished_run(self, run, user_id)
         for name, value in run_outputs(run):
@@ -173,6 +175,7 @@ class ExaWaitForAgentRunBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         result = await self.wait_for_run(
             credentials,
             input_data.run_id,

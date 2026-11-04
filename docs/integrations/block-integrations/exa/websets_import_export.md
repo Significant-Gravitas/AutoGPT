@@ -12,7 +12,7 @@ Import CSV data to use with websets for targeted searches
 <!-- MANUAL: how_it_works -->
 This block uploads CSV text to Exa as an import that webset searches can use as a scope (search within it) or exclude source, or that a new webset can copy items from. It treats the first row as a header, so it reports the number of rows minus one as the item count, along with the data size, the entity type and the 0-based column holding each item's identifier.
 
-`url_column` is not part of Exa's current import API (Exa infers columns from the file) and is only sent if you set it. For a 'custom' entity type the description is sent only when you provide one. The block returns the import's initial status; use Get Import to check when it has finished processing. It charges only if Exa's response reports a cost (100 credits per USD).
+`url_column` is not part of Exa's current import API (Exa infers columns from the file) and is only sent if you set it. For a 'custom' entity type the description is sent only when you provide one. The block returns the import's initial status; use Get Import to check when it has finished processing. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -61,7 +61,7 @@ Delete an import
 <!-- MANUAL: how_it_works -->
 This block permanently deletes an import and its data. Any websets that reference this import for scoped or exclusion searches will no longer have access to it.
 
-Use this to clean up imports that are no longer needed or contain outdated data. The deletion cannot be undone. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to clean up imports that are no longer needed or contain outdated data. The deletion cannot be undone. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -142,7 +142,7 @@ Get the status and details of an import
 <!-- MANUAL: how_it_works -->
 This block sends `GET /v0/imports/{id}` and returns the import's status (pending, processing, completed, failed or canceled), title, format, entity type, item count, metadata and timestamps. Use this to check if an import is ready to use or to troubleshoot failed imports.
 
-The upload URL and its expiry are filled in while the import is waiting for its data, and the failure reason and message when it failed. It charges only if Exa's response reports a cost (100 credits per USD).
+The upload URL and its expiry are filled in while the import is waiting for its data, and the failure reason and message when it failed. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -190,7 +190,7 @@ List all imports with pagination support
 <!-- MANUAL: how_it_works -->
 This block sends `GET /v0/imports` and returns one page of imports (`limit` 1-200, default 25), both as a list and one at a time, with each import's title, status, entity type and item count. While `has_more` is true, pass `next_cursor` back in as `cursor` to get the next page.
 
-Use this to discover existing imports that can be referenced in webset searches or to manage your import library. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to discover existing imports that can be referenced in webset searches or to manage your import library. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

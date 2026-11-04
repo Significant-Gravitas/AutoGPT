@@ -12,7 +12,7 @@ Update the title or metadata of an Exa Websets import
 <!-- MANUAL: how_it_works -->
 This block sends a PATCH to the Websets API's `/v0/imports/{id}` with only the fields you set, so anything left empty stays as it is. Metadata is replaced as a whole, not merged. The imported data itself can't be changed after upload; create a new import for that.
 
-If neither a title nor metadata is set, the block fails before calling Exa. It returns the import's status, title, metadata and update time as Exa reports them after the change. It charges only if Exa's response reports a cost (100 credits per USD).
+If neither a title nor metadata is set, the block fails before calling Exa. It returns the import's status, title, metadata and update time as Exa reports them after the change. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

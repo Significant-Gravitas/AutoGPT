@@ -60,7 +60,7 @@ async def test_team_scoped_blocks_refuse_platform_key_before_any_request(
     input_data = block.input_schema(credentials=TEST_CREDENTIALS_INPUT, **raw_input)
     with (
         patch.object(_platform_key, "exa_request", request),
-        pytest.raises(ValueError, match="needs your own Exa API key"),
+        pytest.raises(ValueError, match="platform's shared Exa key"),
     ):
         async for _ in block.run(input_data, credentials=PLATFORM_KEY):
             pass
@@ -73,7 +73,7 @@ async def test_list_agent_runs_refuses_platform_key():
     input_data = block.input_schema(credentials=TEST_CREDENTIALS_INPUT)
     with (
         patch.object(block, "list_runs", AsyncMock()) as list_runs,
-        pytest.raises(ValueError, match="Listing Exa Agent runs"),
+        pytest.raises(ValueError, match="platform's shared Exa key"),
     ):
         async for _ in block.run(input_data, credentials=PLATFORM_KEY):
             pass
@@ -85,7 +85,7 @@ async def test_webset_trigger_refuses_to_register_on_platform_key():
     request = AsyncMock()
     with (
         patch.object(_exa_rest, "Requests", request),
-        pytest.raises(ValueError, match="Exa Webset trigger"),
+        pytest.raises(ValueError, match="platform's shared Exa key"),
     ):
         await ExaWebhookManager()._register_webhook(
             PLATFORM_KEY,

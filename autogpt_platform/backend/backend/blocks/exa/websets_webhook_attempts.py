@@ -2,6 +2,7 @@
 Exa Websets webhook listing blocks: list webhooks and list delivery attempts.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -84,6 +85,7 @@ class ExaListWebsetWebhooksBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         params: QueryParams = []
         add_param(params, "limit", input_data.limit)
         add_param(params, "cursor", input_data.cursor)
@@ -170,6 +172,7 @@ class ExaListWebsetWebhookAttemptsBlock(WebsetsTeamApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "GET",

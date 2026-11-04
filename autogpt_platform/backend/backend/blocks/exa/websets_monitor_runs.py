@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -116,6 +117,7 @@ class ExaListWebsetMonitorRunsBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self._api(
             credentials, "GET", f"/monitors/{segment(input_data.monitor_id)}/runs"
         )
@@ -190,6 +192,7 @@ class ExaGetWebsetMonitorRunBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         path = (
             f"/monitors/{segment(input_data.monitor_id)}"
             f"/runs/{segment(input_data.run_id)}"

@@ -4,6 +4,7 @@ Legacy Research blocks that read a task: Get Research and Wait for Research.
 Both now read Exa Agent runs; see research.py for the migration notes.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -151,6 +152,7 @@ class ExaGetResearchBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         run = parse_run(await self.get_run(credentials, input_data.research_id))
         task = ResearchTaskModel.from_agent_run(run)
         yield "research_id", task.research_id
@@ -276,6 +278,7 @@ class ExaWaitForResearchBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         result = await self.wait_for_run(
             credentials,
             input_data.research_id,

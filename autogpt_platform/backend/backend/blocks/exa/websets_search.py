@@ -10,6 +10,7 @@ from asyncio import sleep
 from enum import Enum
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -215,6 +216,7 @@ class ExaCreateWebsetSearchBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         searches_path = f"/websets/{segment(input_data.webset_id)}/searches"
         created = ApiWebsetSearch.model_validate(
@@ -371,6 +373,7 @@ class ExaGetWebsetSearchBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         path = (
             f"/websets/{segment(input_data.webset_id)}"
             f"/searches/{segment(input_data.search_id)}"
@@ -446,6 +449,7 @@ class ExaCancelWebsetSearchBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         path = (
             f"/websets/{segment(input_data.webset_id)}"
             f"/searches/{segment(input_data.search_id)}/cancel"
@@ -517,6 +521,7 @@ class ExaFindOrCreateSearchBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         webset = await self._get_webset(credentials, input_data.webset_id)
         wanted = input_data.query.strip().lower()
         existing = next(

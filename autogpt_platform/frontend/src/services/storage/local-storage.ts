@@ -2,6 +2,8 @@ import { createSafeStorage } from "./safe-storage";
 
 export enum Key {
   LOGOUT = "supabase-logout",
+  IMPERSONATION_CLEARED = "impersonation-cleared",
+  IMPERSONATION_CHANGED = "impersonation-changed",
   WEBSOCKET_DISCONNECT_INTENT = "websocket-disconnect-intent",
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",
@@ -30,6 +32,7 @@ export enum Key {
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
+  GITHUB_STAR_PROMPT_COUNT = "github-star-prompt-count",
 }
 
 export const storage = createSafeStorage<Key>("local");

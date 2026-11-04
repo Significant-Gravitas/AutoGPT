@@ -50,9 +50,17 @@ class TurnTrace:
         self._chunks = 0
         self._tool_calls = 0
         self.engine: str | None = None
+        self.load_test: str | None = None
         self.origin: str | None = None
         self.outcome = "completed"
         self.error_code: str | None = None
+
+    def load_test_account(self, engine: str) -> None:
+        """The turn is a load-test account's, run on *engine*
+        (``backend/copilot/load_test.py``), so it can be told apart from
+        people's turns even when it fails before its engine starts."""
+        self.load_test = engine
+        self.span.set_tag("copilot.load_test", engine)
 
     def engine_started(self, engine: str) -> None:
         """Setup is done and the turn is handed to ``engine``."""
@@ -117,6 +125,7 @@ class TurnTrace:
             engine=self.engine,
             origin=self.origin or turn_origin(entry),
             tool_call_count=self._tool_calls,
+            load_test=self.load_test,
         )
 
     def _elapsed_ms(self) -> float:

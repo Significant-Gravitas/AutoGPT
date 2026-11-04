@@ -16,6 +16,7 @@ from exa_py.websets.types import CreateImportResponse
 from exa_py.websets.types import Import as SdkImport
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -281,6 +282,7 @@ class ExaCreateImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = self._get_client(credentials.api_key.get_secret_value())
 
         csv_reader = csv.reader(StringIO(input_data.csv_data))
@@ -383,6 +385,7 @@ class ExaGetImportBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         import_obj = ImportModel.from_api(
             await self._api(
                 credentials, "GET", f"/imports/{segment(input_data.import_id)}"
@@ -449,6 +452,7 @@ class ExaListImportsBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         response = await self._api(
             credentials,
             "GET",
@@ -496,6 +500,7 @@ class ExaDeleteImportBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         deleted = await self._api(
             credentials, "DELETE", f"/imports/{segment(input_data.import_id)}"
         )
@@ -617,6 +622,7 @@ class ExaExportWebsetBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = self._get_client(credentials.api_key.get_secret_value())
 
         try:

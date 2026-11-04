@@ -12,7 +12,7 @@ Create automated monitors to keep websets updated with fresh data on a schedule
 <!-- MANUAL: how_it_works -->
 This block creates a monitor (`POST /v0/monitors`) that runs a search on the webset on a schedule: a 5-field cron expression read in an IANA timezone (default Etc/UTC), at most one run per day. Each run looks for up to `search_count` (1-100) new items; a query, criteria or entity left empty reuses the webset's last search. 'append' adds the new items, while 'override' re-evaluates existing items against the run's criteria.
 
-Exa removed refresh monitors, so the legacy 'refresh' behavior fails before calling Exa and the refresh content and enrichment inputs are ignored. The usual search checks apply: at most 5 criteria, and a 2-200 character description for a 'custom' entity. It charges only if Exa's response reports a cost (100 credits per USD).
+Exa removed refresh monitors, so the legacy 'refresh' behavior fails before calling Exa and the refresh content and enrichment inputs are ignored. The usual search checks apply: at most 5 criteria, and a 2-200 character description for a 'custom' entity. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +67,7 @@ Delete a monitor from a webset
 <!-- MANUAL: how_it_works -->
 This block permanently deletes a monitor, stopping all future scheduled runs. Any data already collected by the monitor remains in the webset.
 
-Use this to clean up monitors that are no longer needed or to stop scheduled operations before deleting a webset. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to clean up monitors that are no longer needed or to stop scheduled operations before deleting a webset. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -104,7 +104,7 @@ Get the details and status of a webset monitor
 <!-- MANUAL: how_it_works -->
 This block retrieves a monitor and returns its status (enabled or disabled), behavior type and search config, cron schedule and timezone, next run time, details of the last run, metadata and timestamps.
 
-Use this to verify monitor settings, check when the next run is scheduled, or review the most recent run. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to verify monitor settings, check when the next run is scheduled, or review the most recent run. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -151,7 +151,7 @@ List all monitors with optional webset filtering
 <!-- MANUAL: how_it_works -->
 This block returns one page of monitors (`limit` 1-200, default 25), optionally only those for one webset, both as a list and one at a time. Each entry includes the monitor's status, schedule, search config and next run time; pass `next_cursor` back in as `cursor` while `has_more` is true.
 
-Use this to get an overview of all monitors or find the ones attached to a specific webset. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to get an overview of all monitors or find the ones attached to a specific webset. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -192,7 +192,7 @@ Update a monitor's status, schedule, search settings or metadata
 <!-- MANUAL: how_it_works -->
 This block sends a PATCH with only the inputs you set. Status 'enabled' or 'disabled' turns scheduled runs on or off; the legacy 'paused' is sent as 'disabled'. A new timezone must come with the cron expression, and changing any search setting (query, criteria, behavior or entity) needs `search_count` too, because Exa requires it whenever the search is updated; otherwise the block fails before calling Exa.
 
-Search settings left empty reuse the webset's last search. It charges only if Exa's response reports a cost (100 credits per USD).
+Search settings left empty reuse the webset's last search. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

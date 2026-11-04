@@ -163,10 +163,20 @@ jobs:
               per_page: 100
             });
 
+            // Same trust gate as the comment handler: only commands it would have acted on count.
+            const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
+            const isTrusted = (comment) => (
+              ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association) ||
+              BOT_ALLOWLIST.includes(comment.user?.login)
+            );
+
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
             comments.forEach((comment, index) => {
+              if (!isTrusted(comment)) {
+                return;
+              }
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {
@@ -240,10 +250,9 @@ jobs:
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
-            // Unlike the close/undeploy scan, this path TRIGGERS a deploy, so
-            // only commands from authorized authors count — otherwise a
-            // drive-by !deploy comment (ignored by the comment handler's
-            // permission gate) would arm auto-redeploy for the next push.
+            // Only commands from authorized authors count: a drive-by !deploy,
+            // ignored by the comment handler's permission gate, would otherwise
+            // arm auto-redeploy for the next push.
             const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
             // Trusted bots comment as 'NONE'; allowlist by login (see comment handler).
             const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];

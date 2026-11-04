@@ -12,7 +12,7 @@ Fetches clean text, highlights or summaries for known URLs with Exa Contents, us
 <!-- MANUAL: how_it_works -->
 This block sends the URLs (or, if no URLs are given, the deprecated document IDs) to Exa's `/contents` endpoint in one request and returns each page's text, plus highlights, a summary, subpages or extra links when you ask for them. It fails before calling Exa if neither URLs nor IDs are set. Statuses reports per URL whether the fetch succeeded and whether the page came from Exa's cache or a fresh crawl.
 
-Max Age Hours replaces the deprecated Livecrawl option and wins when both are set. Legacy Livecrawl values are translated: 'always' is sent as max age 0, 'never' as -1, 'fallback' (the default) as Exa's default, and 'preferred' is passed through unchanged. Snapshot As Of returns stored page versions only and is rejected together with Max Age Hours or a translated Livecrawl value; the run is billed from the dollar cost Exa reports, at 100 credits per US dollar.
+Max Age Hours replaces the deprecated Livecrawl option and wins when both are set. Legacy Livecrawl values are translated: 'always' is sent as max age 0, 'never' as -1, 'fallback' (the default) as Exa's default, and 'preferred' is passed through unchanged. Snapshot As Of returns stored page versions only and is rejected together with Max Age Hours or a translated Livecrawl value; the run is billed from the dollar cost Exa reports, at 150 credits per US dollar.
 <!-- END MANUAL -->
 
 ### Inputs

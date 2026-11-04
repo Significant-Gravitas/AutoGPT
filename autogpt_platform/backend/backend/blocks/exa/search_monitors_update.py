@@ -4,6 +4,7 @@ Exa Search Monitor update block.
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -135,6 +136,7 @@ class ExaUpdateSearchMonitorBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "PATCH",

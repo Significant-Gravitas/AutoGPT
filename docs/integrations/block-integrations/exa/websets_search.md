@@ -12,7 +12,7 @@ Cancel a running webset search
 <!-- MANUAL: how_it_works -->
 This block stops a running search operation on a webset. Items already found before cancellation are retained in the webset.
 
-Use this when a search is taking too long, returning unexpected results, or is no longer needed. The block returns the number of items found before cancellation. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this when a search is taking too long, returning unexpected results, or is no longer needed. The block returns the number of items found before cancellation. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -52,7 +52,7 @@ Add a new search to an existing webset to find more items
 <!-- MANUAL: how_it_works -->
 This block adds a search for up to `count` items (1-1000) to an existing webset. `behavior` decides what happens to existing items: 'append' (default) keeps them and adds the new results, 'override' re-evaluates them against this search's criteria and drops the ones that fail; the legacy 'merge' is sent as 'append'. A search can be limited to imports or websets, leave out the items of others, or become a "hop" search through a scope relationship, which needs a limit of 1-10. Before calling Exa the block rejects more than 5 criteria, a 'custom' entity without a 2-200 character description, and source types other than 'import' or 'webset'.
 
-`recall` (on by default) asks Exa to estimate how many matches exist, returned in `expected_results`. With `wait_for_completion` on, the block polls the search (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600); on timeout it returns the status from creation and 0 items instead of failing. It charges only if Exa's response reports a cost (100 credits per USD).
+`recall` (on by default) asks Exa to estimate how many matches exist, returned in `expected_results`. With `wait_for_completion` on, the block polls the search (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600); on timeout it returns the status from creation and 0 items instead of failing. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -111,7 +111,7 @@ Find existing search by query or create new - prevents duplicate searches in wor
 <!-- MANUAL: how_it_works -->
 This block reads the webset and looks for a search whose query matches yours, ignoring case and surrounding spaces. If one exists it returns that search with its items found so far and `was_created` false; otherwise it creates a search with your query, count, entity type and behavior and returns it straight away with 0 items.
 
-The default behavior here is 'override', which re-evaluates the webset's existing items against the new search and drops the ones that fail; choose 'append' to keep them. The 'custom' entity type always fails, because this block has no description input and Exa needs one. It charges only if Exa's response reports a cost (100 credits per USD).
+The default behavior here is 'override', which re-evaluates the webset's existing items against the new search and drops the ones that fail; choose 'append' to keep them. The 'custom' entity type always fails, because this block has no description input and Exa needs one. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -156,7 +156,7 @@ Get the status and details of a webset search
 <!-- MANUAL: how_it_works -->
 This block retrieves one webset search and returns its status, query, entity type, criteria, target count, behavior, scope and exclude sources, progress (found, analyzed, completion, time left) and the recall estimate when one was requested. For a canceled search it also gives the time and reason (webset_deleted, webset_canceled or out_of_credits).
 
-Use this to monitor search progress, verify search configuration, or investigate search behavior when results don't match expectations. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to monitor search progress, verify search configuration, or investigate search behavior when results don't match expectations. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

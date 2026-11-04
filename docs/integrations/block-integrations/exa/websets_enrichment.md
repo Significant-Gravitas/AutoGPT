@@ -12,7 +12,7 @@ Cancel a running enrichment operation
 <!-- MANUAL: how_it_works -->
 This block stops a running enrichment operation on a webset. Items already enriched before cancellation retain their enrichment data, but remaining items will not be processed.
 
-After cancelling, the block counts how many of the webset's first 100 items have a result for this enrichment, so `items_enriched_before_cancel` undercounts on larger websets. It charges only if Exa's response reports a cost (100 credits per USD).
+After cancelling, the block counts how many of the webset's first 100 items have a result for this enrichment, so `items_enriched_before_cancel` undercounts on larger websets. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -52,7 +52,7 @@ Create enrichments to extract additional structured data from webset items
 <!-- MANUAL: how_it_works -->
 This block creates an enrichment that has Exa's AI extract one value per webset item from your description, in the chosen format (text, date, number, options, email, phone or url). Exa runs it on all existing items and on items added later. Options (1-150 labels) are only sent when the format is 'options', and more than 150 fails before calling Exa. The `title` input is not part of Exa's current API; Exa generates the title from the description and format.
 
-With `wait_for_completion` and `apply_to_existing` both on, the block polls the enrichment (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600). `items_enriched` is then an estimate taken from the number of items the webset's searches found. On timeout the block returns the status from creation and `items_enriched` 0 instead of failing. `apply_to_existing` only controls this waiting and cannot stop Exa enriching existing items. It charges only if Exa's response reports a cost (100 credits per USD).
+With `wait_for_completion` and `apply_to_existing` both on, the block polls the enrichment (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600). `items_enriched` is then an estimate taken from the number of items the webset's searches found. On timeout the block returns the status from creation and `items_enriched` 0 instead of failing. `apply_to_existing` only controls this waiting and cannot stop Exa enriching existing items. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -104,7 +104,7 @@ Delete an enrichment from a webset
 <!-- MANUAL: how_it_works -->
 This block permanently removes an enrichment from a webset, so it is no longer applied to items. The deletion cannot be undone.
 
-Use this to clean up enrichments that are no longer needed or to remove misconfigured enrichments before creating corrected ones. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to clean up enrichments that are no longer needed or to remove misconfigured enrichments before creating corrected ones. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -142,7 +142,7 @@ Get the status and details of a webset enrichment
 <!-- MANUAL: how_it_works -->
 This block retrieves one enrichment and returns its status, title, description, format, options, the instructions Exa generated for it, metadata and timestamps. It reports status only; it has no per-item progress.
 
-Use this to check whether an enrichment has finished, verify its configuration, or troubleshoot unexpected results. It charges only if Exa's response reports a cost (100 credits per USD).
+Use this to check whether an enrichment has finished, verify its configuration, or troubleshoot unexpected results. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -188,7 +188,7 @@ Update an existing enrichment configuration
 <!-- MANUAL: how_it_works -->
 This block sends a PATCH to the enrichment with only the inputs you set: description, format, options (1-150 labels, checked before calling Exa) or metadata. The title cannot be changed here.
 
-It returns the enrichment's status, title, description and format as Exa reports them after the change. It charges only if Exa's response reports a cost (100 credits per USD).
+It returns the enrichment's status, title, description and format as Exa reports them after the change. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
 
 ### Inputs

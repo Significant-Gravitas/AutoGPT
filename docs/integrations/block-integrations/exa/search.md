@@ -12,7 +12,7 @@ Searches the web with Exa and returns ranked pages with their text or highlights
 <!-- MANUAL: how_it_works -->
 This block sends one request to Exa's `/search` endpoint and returns the ranked results, each with up to 10,000 characters of page text unless you change Contents. The type sets speed, depth and price: 'auto' (default), 'lite' (cheapest and fastest), 'deep-lite' or 'deep' (multi-step research); the legacy types 'fast', 'instant', 'deep-reasoning', 'neural' and 'keyword' are still sent unchanged, but Exa recommends 'lite', 'deep' or 'auto' instead. The categories 'people' and 'publication' are new, and the legacy 'research paper' and 'linkedin profile' are sent as 'publication' and 'people'.
 
-Set Output Schema (and optionally System Prompt) to have Exa synthesize an answer from the results into Output Content, with sources in Output Grounding. Before sending, the block rejects options 'lite' does not support (such as Output Schema, System Prompt, Summary or Max Age Hours) by name, and Additional Queries unless the type is a deep one. The run is billed from the dollar cost Exa reports for the request, at 100 credits per US dollar.
+Set Output Schema (and optionally System Prompt) to have Exa synthesize an answer from the results into Output Content, with sources in Output Grounding. Before sending, the block rejects options 'lite' does not support (such as Output Schema, System Prompt, Summary or Max Age Hours) by name, and Additional Queries unless the type is a deep one. The run is billed from the dollar cost Exa reports for the request, at 150 credits per US dollar.
 <!-- END MANUAL -->
 
 ### Inputs

@@ -12,7 +12,7 @@ Legacy: Exa no longer documents its code context API; for new workflows use the 
 <!-- MANUAL: how_it_works -->
 This block sends your query to Exa's `/context` endpoint, which Exa no longer documents: it is missing from Exa's API spec and its reference page redirects to the Code & Docs search guide. The block is kept so saved workflows keep running; for new workflows, use the Exa Search block (for example type 'lite' with highlights), as that guide recommends.
 
-The endpoint returns one formatted string of code snippets and examples with their sources from GitHub repositories, documentation and Stack Overflow, plus the result count, search time, output token count and cost. Tokens Num sets the response size: 'dynamic' (default) or a token count such as 5000 or 10000. The run is billed from the dollar cost Exa reports, at 100 credits per US dollar.
+The endpoint returns one formatted string of code snippets and examples with their sources from GitHub repositories, documentation and Stack Overflow, plus the result count, search time, output token count and cost. Tokens Num sets the response size: 'dynamic' (default) or a token count such as 5000 or 10000. The run is billed from the dollar cost Exa reports, at 150 credits per US dollar.
 <!-- END MANUAL -->
 
 ### Inputs

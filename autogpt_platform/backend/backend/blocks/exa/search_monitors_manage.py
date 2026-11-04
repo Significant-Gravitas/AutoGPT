@@ -2,6 +2,7 @@
 Exa Search Monitor blocks: get, list and delete.
 """
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -75,6 +76,7 @@ class ExaGetSearchMonitorBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "GET", f"{MONITORS_URL}/{path_segment(input_data.monitor_id)}"
         )
@@ -156,6 +158,7 @@ class ExaListSearchMonitorsBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "GET", MONITORS_URL, params=list_params(input_data)
         )
@@ -221,6 +224,7 @@ class ExaDeleteSearchMonitorBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "DELETE",

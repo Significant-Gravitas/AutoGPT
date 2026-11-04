@@ -10,7 +10,7 @@ Get an Exa Search Monitor run's status, new results and synthesized findings
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends `GET /monitors/{monitor_id}/runs/{run_id}` to Exa once; it does not poll. A run's status is `pending`, `running`, `completed`, `failed` or `cancelled`, and its results, synthesized `content` and `grounding` stay empty until it completes. `content` is plain text, or JSON when the monitor has an object output schema, and `fail_reason` explains failures such as `insufficient_credits`. The block also outputs each new result one at a time. If Exa's response reports a `costDollars` total, the block bills it at 100 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
+This block sends `GET /monitors/{monitor_id}/runs/{run_id}` to Exa once; it does not poll. A run's status is `pending`, `running`, `completed`, `failed` or `cancelled`, and its results, synthesized `content` and `grounding` stay empty until it completes. `content` is plain text, or JSON when the monitor has an object output schema, and `fail_reason` explains failures such as `insufficient_credits`. The block also outputs each new result one at a time. If Exa's response reports a `costDollars` total, the block bills it at 150 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -91,7 +91,7 @@ Run an Exa Search Monitor now; results go to its webhook and can also be read wi
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends `POST /monitors/{monitor_id}/trigger` to Exa to start a run straight away, outside the schedule; it works for active and paused monitors. It returns once Exa accepts the request, with `triggered` reporting whether a run started, and does not wait for the run to finish. The results go to the monitor's webhook and can also be read with List or Get Search Monitor Runs. If Exa's response reports a `costDollars` total, the block bills it at 100 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
+This block sends `POST /monitors/{monitor_id}/trigger` to Exa to start a run straight away, outside the schedule; it works for active and paused monitors. It returns once Exa accepts the request, with `triggered` reporting whether a run started, and does not wait for the run to finish. The results go to the monitor's webhook and can also be read with List or Get Search Monitor Runs. If Exa's response reports a `costDollars` total, the block bills it at 150 credits per USD; otherwise the call is free. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
 <!-- END MANUAL -->
 
 ### Inputs

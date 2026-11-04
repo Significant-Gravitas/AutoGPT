@@ -12,7 +12,7 @@ Deprecated by Exa: prefer the Exa Search block with a query describing the sourc
 <!-- MANUAL: how_it_works -->
 Exa has deprecated Find Similar; for new workflows, use the Exa Search block with a query that describes the source page. This block sends the URL to Exa's `/findSimilar` endpoint in one request and returns pages similar to it, each with up to 10,000 characters of page text unless you change Contents.
 
-You can filter by domain, published date, category and (deprecated by Exa) text, and leave out the source URL's own domain. Legacy categories are translated as in Exa Search ('research paper' to 'publication', 'linkedin profile' to 'people'), the crawl dates are never sent because Exa ignores them, and Moderation is still sent when enabled although Exa no longer documents it here. The run is billed from the dollar cost Exa reports, at 100 credits per US dollar.
+You can filter by domain, published date, category and (deprecated by Exa) text, and leave out the source URL's own domain. Legacy categories are translated as in Exa Search ('research paper' to 'publication', 'linkedin profile' to 'people'), the crawl dates are never sent because Exa ignores them, and Moderation is still sent when enabled although Exa no longer documents it here. The run is billed from the dollar cost Exa reports, at 150 credits per US dollar.
 <!-- END MANUAL -->
 
 ### Inputs

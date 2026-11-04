@@ -4,6 +4,7 @@ Exa Search Monitor run blocks: trigger a run, list runs and get one run.
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -68,6 +69,7 @@ class ExaTriggerSearchMonitorBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "POST",
@@ -140,6 +142,7 @@ class ExaListSearchMonitorRunsBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         params: QueryParams = []
         add_param(params, "limit", input_data.limit)
         add_param(params, "cursor", input_data.cursor)
@@ -226,6 +229,7 @@ class ExaGetSearchMonitorRunBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials,
             "GET",

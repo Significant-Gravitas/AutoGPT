@@ -9,6 +9,7 @@ the "Exa Search Monitor Trigger" block, whose webhook URL goes in
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -168,6 +169,7 @@ class ExaCreateSearchMonitorBlock(SearchMonitorApiMixin, Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         data = await self.call_exa(
             credentials, "POST", MONITORS_URL, body=build_create_body(input_data)
         )

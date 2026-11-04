@@ -7,6 +7,7 @@ the data itself can't be changed after upload (create a new import instead).
 
 from typing import Any
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -86,6 +87,7 @@ class ExaUpdateImportBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         payload: dict[str, Any] = {}
         if input_data.title:
             payload["title"] = input_data.title

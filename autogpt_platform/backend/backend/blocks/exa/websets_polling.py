@@ -13,6 +13,7 @@ from typing import Any
 from exa_py import AsyncExa
 from pydantic import BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -126,6 +127,7 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         try:
             if input_data.target_status in IDLE_TARGETS:
@@ -261,6 +263,7 @@ class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         interval: float = input_data.check_interval
         max_interval = 30
@@ -368,6 +371,7 @@ class ExaWaitForEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30

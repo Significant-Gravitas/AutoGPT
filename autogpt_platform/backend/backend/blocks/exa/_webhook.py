@@ -25,12 +25,12 @@ from enum import Enum
 from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
+from backend.blocks._platform_credentials import is_platform_credential
 from backend.data.integrations import WebhookWithRelations
 from backend.data.model import Credentials
 from backend.sdk import APIKeyCredentials, BaseWebhooksManager, ProviderName, Webhook
 
 from ._exa_rest import WEBSETS_API_BASE, ExaApiError, exa_request, path_segment
-from ._platform_key import require_own_exa_key
 
 logger = logging.getLogger(__name__)
 
@@ -180,9 +180,13 @@ class ExaWebhookManager(BaseWebhooksManager):
         """Create a Websets webhook pointing at our ingress URL."""
         if not isinstance(credentials, APIKeyCredentials):
             raise TypeError("Exa webhooks require API key credentials")
-        # A Websets webhook receives every event in the Exa team, which on the
-        # shared platform key would include other users' websets.
-        require_own_exa_key(credentials, "The Exa Webset trigger")
+        if is_platform_credential(credentials.id):
+            # A Websets webhook receives every event in the Exa team, which on
+            # the shared platform key would include other users' websets.
+            raise ValueError(
+                "Exa webhooks can't use the platform's shared Exa key. "
+                "Connect your own Exa API key and select it instead."
+            )
         exa_events = exa_event_names(events)
         if not exa_events:
             raise ValueError(
