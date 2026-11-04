@@ -49,6 +49,7 @@ def render_auth_email(
     email_type: AuthEmailType,
     action_url: str | None,
     recipient: str,
+    new_email: str | None = None,
     *,
     reason: str | None = None,
     preheader: str | None = None,
@@ -65,6 +66,8 @@ def render_auth_email(
         "content": content,
         "action_url": action_url,
         "recipient": recipient,
+        # The address an email change moves the account to, when known.
+        "new_email": new_email,
         "assets": assets,
         "otto_asset_url": otto_asset_url(assets),
         "urls": build_urls(""),
@@ -126,11 +129,13 @@ def _deletion_reason(source: AccountDeletionSource) -> str:
             assert_never(source)
 
 
-# Often the first email a new user gets, and the one confirming a new address,
-# so they have their own fuller layouts. The rest use the compact auth layout.
+# Often the first email a new user gets, and the two emails of an address
+# change, so they have their own fuller layouts. The rest use the compact auth
+# layout.
 _TEMPLATES: dict[AuthEmailType, str] = {
     "verify_email": "auth_verify",
     "verify_new_email": "auth_verify_new",
+    "change_email": "auth_change_email",
 }
 
 
@@ -183,14 +188,20 @@ _CONTENT: dict[AuthEmailType, AuthEmailContent] = {
         reason="This link was requested from your AutoGPT account settings.",
         expiry="24 hours",
     ),
+    # Sent to the account's current address, which has to approve a change
+    # before the new address is sent its own link.
     "change_email": AuthEmailContent(
-        subject="Confirm your new AutoGPT Platform email",
-        eyebrow="ACCOUNT · CONFIRM EMAIL",
-        headline="Confirm your new email address",
-        intro="An email address change was requested for your AutoGPT account.",
-        preheader="Use the button below to confirm your new email address.",
-        action="Confirm email",
+        subject="Approve the email change on your AutoGPT account",
+        eyebrow="ACCOUNT · EMAIL CHANGE",
+        headline="Approve your email change",
+        intro=(
+            "A request was made to move your AutoGPT account from this email "
+            "address to a new one. If it was you, approve the change."
+        ),
+        preheader="Approve moving your AutoGPT account to a new email address.",
+        action="Approve change",
         reason="This link was requested from your AutoGPT account settings.",
+        expiry="24 hours",
     ),
     # Sent for an unverified account when a sign-up or resend can't safely send
     # a verification link, so the email has to say why it came.

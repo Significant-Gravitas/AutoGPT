@@ -41,6 +41,9 @@ class AuthEmailRequest(BaseModel):
     type: AuthLinkEmailType
     to: EmailStr
     url: str
+    # For change_email: the address the account is moving to, shown to the
+    # current address so its owner can check the request before approving it.
+    new_email: EmailStr | None = None
 
 
 class AuthEmailSuppressionRequest(BaseModel):
@@ -78,7 +81,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    email = render_auth_email(request.type, request.url, request.to)
+    email = render_auth_email(request.type, request.url, request.to, request.new_email)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
