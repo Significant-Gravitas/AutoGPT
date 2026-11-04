@@ -5,9 +5,11 @@ import type { ReactNode } from "react";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StepIndicator } from "../../components/StepIndicator";
 import OnboardingLayout from "../../layout";
+import { PAYWALL_LAST_STEPS } from "../../store";
 import { IntroStep } from "./IntroStep";
 
-const TOTAL_STEPS = 6;
+// The hosted wizard's step count, as useOnboardingLayout derives it.
+const TOTAL_STEPS = PAYWALL_LAST_STEPS.preparing - 1;
 
 // The onboarding page's own chrome around a step (layout.tsx and page.tsx),
 // fixed over Storybook's padded canvas so the slide sits where it does in
