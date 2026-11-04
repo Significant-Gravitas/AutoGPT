@@ -39,7 +39,8 @@ one condition on that ID stops them:
   consent from the cookie banner. The filter drops browser events sent after
   sign-in, but not session recordings, events before sign-in, or events from
   the marketing site. The user stops those by withdrawing consent in the
-  cookie banner.
+  cookie banner on both `platform.agpt.co` and `agpt.co`: Cookiebot keeps one
+  answer per domain.
 
 Say what still applies in the reply (step 5), so it promises only what we did.
 
@@ -58,21 +59,28 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    already there. If the top level is an AND group, put it and the new
    condition inside a new OR group. If there is no filter yet, create one.
    Add a test case with any event name, the user ID as `distinct_id`, and the
-   expected result "drop". Save, and check the mode reads Live: PostHog saves
-   a filter whose tests fail as Dry run, which drops nothing. A dropped event
-   can't be recovered.
+   expected result "drop". Save, and check the mode reads Live: Dry run only
+   counts matches and drops nothing. A failing test case blocks the save. A
+   dropped event can't be recovered.
 
    The API for the same config is `GET` and `POST
    /api/projects/117338/event_filter/` (scopes `event_filter:read` and
    `event_filter:write`). `GET` answers `204` when there is no filter. A `POST`
    replaces each field it sends, so send the whole `filter_tree` with the new
    condition added, the whole `test_cases` list, and `"mode": "live"` (a new
-   filter starts `disabled`).
+   filter starts `disabled`). A failing test case gets `400` with the case
+   named, and nothing is saved. To take a condition out again, send the tree
+   without it; `"mode": "disabled"` with an empty `or` group switches the
+   filter off.
 
-3. **Wait until the filter is live.** Ingestion picks up a change within a
-   minute or two. Wait a few minutes, then check that no new events arrive
-   for the user ID, or that the filter's metrics count dropped events. Only
-   then delete, or events already on their way recreate the person.
+3. **Wait 10 minutes before deleting.** Ingestion picks up a change within
+   two minutes: on the dev project, an event sent 10 seconds after the save
+   was stored, and one sent 100 seconds after was dropped. Neither a quiet
+   account nor the filter's metrics prove this user's condition is live (the
+   metrics count drops for the whole filter), and don't send a test event
+   with their ID: if the filter isn't live yet, it recreates the person. So
+   wait the full 10 minutes, or events already on their way recreate the
+   person after you delete it.
 
 4. **Delete past data, if they asked and confirmed.** Delete the PostHog
    person with their events and recordings, the call the account erasure in
