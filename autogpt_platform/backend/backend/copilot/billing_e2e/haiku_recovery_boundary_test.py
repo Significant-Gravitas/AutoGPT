@@ -24,11 +24,13 @@ MODEL = "claude-haiku-5-5"
 @pytest.mark.parametrize(
     "answer_words,fail_followup", [(70_000, False), (12_000, True), (200, True)]
 )
+@pytest.mark.parametrize("successful_requests", [1, 2])
 async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
     monkeypatch: pytest.MonkeyPatch,
     ledger: PlatformLedger,
     answer_words: int,
     fail_followup: bool,
+    successful_requests: int,
 ):
     config = baseline.config.model_copy(
         update={
@@ -39,7 +41,9 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
             "baseline_prompt_cache_ttl": "1h",
         }
     )
-    async with GrowingConversationProvider(answer_words, fail_followup) as provider:
+    async with GrowingConversationProvider(
+        answer_words, fail_followup, successful_requests
+    ) as provider:
         run_turn = BaselineTurns(
             monkeypatch,
             config,
@@ -51,7 +55,11 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=TOOL_NAME,
-                output=" ".join(f"entry{i}" for i in range(12_000)),
+                output=(
+                    " ".join(f"entry{i}" for i in range(12_000))
+                    if tool_call_id.startswith(f"call_recovery_{successful_requests}_")
+                    else "The fact is 42."
+                ),
             )
 
         monkeypatch.setattr(
@@ -67,15 +75,15 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
         finally:
             await run_turn.aclose()
 
-        first_request = provider.bodies[0]
-        prompt_tokens = estimate_token_count(first_request["messages"], model=MODEL)
-        tool_tokens = estimate_token_count_str(first_request["tools"], model=MODEL)
+        last_request = provider.bodies[successful_requests - 1]
+        prompt_tokens = estimate_token_count(last_request["messages"], model=MODEL)
+        tool_tokens = estimate_token_count_str(last_request["tools"], model=MODEL)
         output_tokens = estimate_token_count_str(provider.answer, model=MODEL)
         assert 0 < tool_tokens < 100_000 - prompt_tokens
-        assert len(provider.bodies) == (2 if fail_followup else 1)
+        assert len(provider.bodies) == successful_requests + int(fail_followup)
         if fail_followup:
             assert (
-                estimate_token_count(provider.bodies[1]["messages"], model=MODEL)
+                estimate_token_count(provider.bodies[-1]["messages"], model=MODEL)
                 > 100_000
             )
         else:
@@ -88,15 +96,18 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
 
 
 class GrowingConversationProvider(FakeProvider):
-    def __init__(self, answer_words: int, fail_followup: bool):
+    def __init__(
+        self, answer_words: int, fail_followup: bool, successful_requests: int
+    ):
         super().__init__()
         self.answer = " amber" * answer_words
         self.fail_followup = fail_followup
+        self.successful_requests = successful_requests
         self.bodies: list[dict[str, Any]] = []
 
     async def _chat(self, request: web.Request, route: Route) -> web.StreamResponse:
         self.bodies.append(await request.json())
-        if len(self.bodies) > 1:
+        if len(self.bodies) > self.successful_requests:
             return web.json_response(
                 {"error": {"message": "Planned follow-up refusal"}}, status=400
             )
@@ -106,21 +117,26 @@ class GrowingConversationProvider(FakeProvider):
             "created": 0,
             "model": MODEL,
         }
-        delta: dict[str, Any] = {"role": "assistant", "content": self.answer}
-        if self.fail_followup:
+        final_request = len(self.bodies) == self.successful_requests
+        calls_tools = not final_request or self.fail_followup
+        delta: dict[str, Any] = {
+            "role": "assistant",
+            "content": self.answer if final_request else "",
+        }
+        if calls_tools:
             delta["tool_calls"] = [
                 {
                     "index": i,
-                    "id": f"call_recovery_{i}",
+                    "id": f"call_recovery_{len(self.bodies)}_{i}",
                     "type": "function",
                     "function": {
                         "name": TOOL_NAME,
                         "arguments": json.dumps({"query": f"item-{i}"}),
                     },
                 }
-                for i in range(3)
+                for i in range(3 if final_request else 1)
             ]
-        finish = "tool_calls" if self.fail_followup else "stop"
+        finish = "tool_calls" if calls_tools else "stop"
         chunks = [
             {
                 **base,

@@ -553,7 +553,7 @@ class _BaselineStreamState:
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
     provider_request_count: int = 0
-    first_request_prompt_tokens: int | None = None
+    last_request_prompt_tokens: int | None = None
     cost_usd: float | None = None
     # Tracks whether we've already warned about a missing `cost` field in
     # the usage chunk this stream, so non-OpenRouter providers don't
@@ -1144,14 +1144,10 @@ async def _baseline_llm_caller(
                 await response.close()
             except Exception:
                 pass
-            if (
-                baseline_provider == "anthropic"
-                and state.provider_request_count == 1
-                and state.cost_usd is None
-            ):
+            if baseline_provider == "anthropic" and state.cost_usd is None:
                 # The updater adds output and tool results after this returns.
                 # Freeze the sent prompt before those can change its price tier.
-                state.first_request_prompt_tokens = max(
+                state.last_request_prompt_tokens = max(
                     estimate_token_count(final_messages, model=state.model)
                     + (
                         estimate_token_count_str(list(tools), model=state.model)
@@ -3018,9 +3014,9 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # For one direct-Anthropic request, use its frozen prompt estimate;
+        # Direct-Anthropic recovery uses the last successfully sent prompt;
         # the final transcript can contain output or an unsent tool follow-up.
-        # Other turns retain the accumulated-conversation estimate.
+        # Other transports retain the accumulated-conversation estimate.
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
         if (
@@ -3029,9 +3025,8 @@ async def stream_chat_completion_baseline(
             and not (_stream_error and not state.assistant_text)
         ):
             state.turn_prompt_tokens = (
-                state.first_request_prompt_tokens
-                if state.provider_request_count == 1
-                and state.first_request_prompt_tokens is not None
+                state.last_request_prompt_tokens
+                if state.last_request_prompt_tokens is not None
                 else max(estimate_token_count(openai_messages, model=active_model), 1)
             )
             state.turn_completion_tokens = estimate_token_count_str(
