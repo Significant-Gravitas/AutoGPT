@@ -1,8 +1,12 @@
+import json
+import logging
+import re
 from urllib.parse import quote
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -18,6 +22,13 @@ from backend.blocks.search import GetRequest
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
 from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
+
+logger = logging.getLogger(__name__)
+
+_NO_RESULTS_MESSAGE_PATTERN = re.compile(
+    r"no\s+search\s+results\s+available(?:\s+for\s+query\b.*)?",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -44,6 +55,7 @@ class SearchTheWebBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("results", "search content"),
             test_mock={"get_request": lambda *args, **kwargs: "search content"},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -63,6 +75,15 @@ class SearchTheWebBlock(Block, GetRequest):
             results = await self.get_request(
                 jina_search_url, headers=headers, json=False
             )
+        except HTTPClientError as e:
+            if _is_no_results_error(e):
+                yield "results", ""
+                return
+            raise BlockExecutionError(
+                message=f"Search failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Search failed: {e}",
@@ -112,6 +133,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("content", "scraped content"),
             test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -155,3 +177,39 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             return
 
         yield "content", content
+
+
+def _is_no_results_error(error: HTTPClientError) -> bool:
+    if error.status_code != 422:
+        return False
+
+    raw = str(error)
+    body = _extract_json_body(raw)
+    if body is not None:
+        for key in ("message", "detail", "error"):
+            value = body.get(key)
+            if isinstance(value, str) and _NO_RESULTS_MESSAGE_PATTERN.fullmatch(
+                value.strip()
+            ):
+                return True
+    else:
+        _, marker, message = raw.partition("Body: ")
+        if not marker:
+            message = raw.removeprefix("HTTP 422 Error: Unprocessable Entity - ")
+        if _NO_RESULTS_MESSAGE_PATTERN.fullmatch(message.strip()):
+            return True
+
+    logger.warning("Jina returned 422 without a recognized no-results message")
+    return False
+
+
+def _extract_json_body(error_str: str) -> dict[str, object] | None:
+    # Requests embeds Jina's {"message": "No search results available for query ..."}.
+    _, marker, body = error_str.partition("Body: ")
+    if not marker:
+        return None
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None

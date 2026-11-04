@@ -27,6 +27,7 @@ __all__ = [
     "ExpertPodNameTakenError",
     "ExpertPodNotFoundError",
     "ExpertTemplateNotFoundError",
+    "ExpertScheduleCleanupError",
     "RaisedExpertLifetimeLimitExceededError",
 ]
 
@@ -34,6 +35,10 @@ __all__ = [
 # bounds durable rows when users repeatedly raise and archive experts.
 ACTIVE_EXPERT_LIMIT = 20
 LIFETIME_RAISED_EXPERT_LIMIT = 100
+
+
+class ExpertScheduleCleanupError(RuntimeError):
+    pass
 
 
 class ExpertPodNotFoundError(Exception):

@@ -10,13 +10,13 @@ export function getHomeStatusLine(dashboard: HomeDashboardResponse): string {
   const attention = dashboard.attention.length;
   const active = dashboard.active_tasks.length;
   if (attention > 0 && active > 0) {
-    return `${attention} ${attention === 1 ? "decision" : "decisions"} waiting · ${active} ${active === 1 ? "agent is" : "agents are"} working now`;
+    return `${attention} ${attention === 1 ? "decision" : "decisions"} waiting · ${active} ${active === 1 ? "workflow is" : "workflows are"} running now`;
   }
   if (attention > 0) {
     return `${attention} ${attention === 1 ? "decision needs" : "decisions need"} you`;
   }
   if (active > 0) {
-    return `All clear · ${active} ${active === 1 ? "agent is" : "agents are"} working now`;
+    return `All clear · ${active} ${active === 1 ? "workflow is" : "workflows are"} running now`;
   }
   return "Nothing needs you right now";
 }
@@ -40,22 +40,6 @@ export function formatHeaderDate(
       day: "numeric",
     }).format(date),
   };
-}
-
-// The briefing card anchors on the persisted 9am briefing and keeps appending
-// runs that finish through the day, so its span is only "the last 24 hours"
-// first thing in the morning. Name the actual start instead of a fixed window.
-export function formatBriefingWindowStart(
-  value: Date,
-  timeZone: string,
-  locale?: string,
-): string {
-  return new Intl.DateTimeFormat(locale, {
-    timeZone,
-    weekday: "long",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
 }
 
 export function formatDuration(totalSeconds: number): string {

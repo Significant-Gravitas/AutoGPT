@@ -195,7 +195,7 @@ class TestLibraryUUIDLookup:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_trigger_info_surfaced_without_graph(self):
         """A webhook-trigger agent surfaces structured trigger_info (provider +
-        config_schema) so AutoPilot need not fetch/parse the full graph, plus a
+        config_schema) so Otto need not fetch/parse the full graph, plus a
         message steering it to setup_agent_webhook_trigger."""
         mock_agent = self._make_mock_library_agent()
         mock_agent.has_external_trigger = True

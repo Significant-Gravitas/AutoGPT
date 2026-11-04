@@ -3,12 +3,13 @@ import urllib.parse
 from typing import ClassVar, Optional
 
 from backend.data.model import OAuth2Credentials, ProviderName
-from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.util.request import Requests
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
     PROVIDER_NAME = ProviderName.TWITTER
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "tweet.read",
         "tweet.write",
@@ -92,7 +93,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             refresh_token=tokens.get("refresh_token"),
             access_token_expires_at=int(time.time()) + tokens["expires_in"],
             refresh_token_expires_at=None,
-            scopes=scopes,
+            scopes=parse_granted_scopes(tokens.get("scope"), fallback=scopes),
         )
 
     async def _get_username(self, access_token: str) -> str:

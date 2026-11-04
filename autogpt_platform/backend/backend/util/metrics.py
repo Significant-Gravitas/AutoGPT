@@ -1,34 +1,31 @@
-import logging
+import os
 import re
+import sys
+from collections import deque
 from enum import Enum
 from types import TracebackType
+from typing import Any
 
 from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
-from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
 
 try:
     from sentry_sdk.integrations.anthropic import AnthropicIntegration
 except ImportError:
     AnthropicIntegration = None  # type: ignore[assignment,misc]
 
-try:
-    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-except ImportError:
-    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
-
-from backend.util import feature_flag
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
+from backend.util.tracing import traces_sampler
+from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
-logger = logging.getLogger(__name__)
 
 
 class DiscordChannel(str, Enum):
@@ -94,9 +91,19 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "verification_url",
     }
 )
-_SENTRY_EVENT_SCRUBBER = EventScrubber(
-    denylist=_SENTRY_SENSITIVE_FIELDS,
-    recursive=True,
+# A user is known to Sentry by their id only, so their email and IP address are
+# filtered wherever else they turn up, such as in extras or a frame's locals.
+# Exact names only: keys like ``email_verified`` stay readable.
+_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
+# Matched case-insensitively against every key in the event, as sentry's
+# EventScrubber does (with its PII list, since send_default_pii is off).
+_SENTRY_SENSITIVE_KEYS = frozenset(
+    field.lower()
+    for field in (
+        *_SENTRY_SENSITIVE_FIELDS,
+        *DEFAULT_PII_DENYLIST,
+        *_SENTRY_PERSONAL_FIELDS,
+    )
 )
 _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
@@ -107,31 +114,97 @@ _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
 )
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
-    r"\beyJ[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
+    # Matches what \beyJ... matched, entered once from the start of each base64url run.
+    r"(?<![a-z0-9_-])(?>[a-z0-9_-]*?\beyJ)"
+    r"[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\.[a-z0-9_-]{5,}\b|"
     r"\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,})"
 )
 _FILTERED_VALUE = "[Filtered]"
-
-
-def _scrub_embedded_secret_values(value: object) -> object:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            value[key] = _scrub_embedded_secret_values(nested)
-        return value
-    if isinstance(value, list):
-        for index, nested in enumerate(value):
-            value[index] = _scrub_embedded_secret_values(nested)
-        return value
-    if isinstance(value, str) and (
-        _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(value)
-    ):
-        return _FILTERED_VALUE
-    return value
+# Three bounds in the order the SDK applies them: ``custom_repr`` caps a frame local
+# before it is repr()'d, ``max_value_length`` then cuts every string in the event, and
+# the ``before_send`` scrubber searches what is left.
+_MAX_LOCAL_REPR = 1024
+# The SDK cuts every string in an event to this length before ``before_send``.
+_SENTRY_MAX_VALUE_LENGTH = 8 * 1024
+# Characters of text the scrubber searches per event; strings past it are filtered.
+_SENTRY_SCRUB_BUDGET = 512 * 1024
+# Sentry lists breadcrumbs, chained exceptions and frames oldest or outermost first;
+# the scrubber walks them from the end so the budget goes to the newest.
+_OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
 
 
 def _scrub_sentry_event(event: dict) -> None:
-    _SENTRY_EVENT_SCRUBBER.scrub_dict(event)
-    _scrub_embedded_secret_values(event)
+    """Scrub sensitive keys and secret-shaped values from an outgoing event.
+
+    ``before_send`` sees the event after the SDK has serialized it, and the
+    transport then ``json.dumps`` it as is. So every replacement must be plain
+    JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
+    those here made the SDK drop the whole event as an internal error. ``_meta``
+    is the SDK's own annotation tree and is left alone.
+
+    It searches at most ``_SENTRY_SCRUB_BUDGET`` characters per event and filters
+    any string beyond that rather than send it unsearched; it walks breadth-first,
+    newest breadcrumb and innermost frame first, and the breadcrumbs get only what
+    the rest of the event left.
+    """
+    _redact_request_urls(event)
+    keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
+    budget = _scrub_breadth_first([(event, key) for key in keys], _SENTRY_SCRUB_BUDGET)
+    if "breadcrumbs" in event:
+        _scrub_breadth_first([(event, "breadcrumbs")], budget)
+
+
+def _scrub_breadth_first(roots: list[tuple[dict[Any, Any], Any]], budget: int) -> int:
+    """Scrub the values under ``roots`` and return the budget left over."""
+    queue: deque[tuple[dict[Any, Any] | list[Any], Any]] = deque(roots)
+    while queue:
+        parent, key = queue.popleft()
+        value = parent[key]
+        if isinstance(value, dict):
+            for nested_key in value:
+                if (
+                    isinstance(nested_key, str)
+                    and nested_key.lower() in _SENTRY_SENSITIVE_KEYS
+                ):
+                    value[nested_key] = _FILTERED_VALUE
+                else:
+                    queue.append((value, nested_key))
+        elif isinstance(value, list):
+            indices = range(len(value))
+            if key in _OLDEST_FIRST_LISTS:
+                indices = indices[::-1]
+            queue.extend((value, index) for index in indices)
+        elif isinstance(value, str):
+            if len(value) > budget:
+                parent[key] = _FILTERED_VALUE
+                continue
+            budget -= len(value)
+            if _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(
+                value
+            ):
+                parent[key] = _FILTERED_VALUE
+    return budget
+
+
+def _redact_request_urls(event: dict) -> None:
+    """Mask credentials in the request URL the ASGI integration attaches.
+
+    EventScrubber only scrubs a request's headers, cookies and body, so the
+    query string, which for the WebSocket holds the user's session JWT, and
+    the path secrets in ``url`` would otherwise be sent with every event.
+    """
+    request = event.get("request") or {}
+    if isinstance(request.get("url"), str):
+        request["url"] = redact_url(request["url"])
+    # The SDK has already decoded the query, so a %26 inside a value reads as a
+    # separator and the rest of the value as a key. None of it can be kept.
+    if request.get("query_string"):
+        request["query_string"] = REDACTED
+    # A request no route matched is named after its raw URL.
+    transaction = event.get("transaction")
+    source = (event.get("transaction_info") or {}).get("source")
+    if source == "url" and isinstance(transaction, str):
+        event["transaction"] = redact_url(transaction)
 
 
 # FalkorDB (Graphiti CoPilot memory) connection-teardown noise. graphiti-core's
@@ -255,18 +328,86 @@ def _before_send(event, hint):
         if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
     _scrub_sentry_event(event)
     return event
 
 
+def _before_send_transaction(event, hint):
+    """Transactions skip ``before_send`` but carry the same request data, and
+    every WebSocket connection is one."""
+    _strip_user_pii(event)
+    _strip_ip_headers(event)
+    _redact_request_urls(event)
+    return event
+
+
+# Sentry knows a user by their id only: never their email, name or IP
+# address, whichever code put them on the scope.
+_SENTRY_USER_FIELDS = frozenset({"id"})
+
+
+def _strip_user_pii(event: dict) -> None:
+    user = event.get("user")
+    if user is None:
+        return
+    kept = {
+        field: value for field, value in user.items() if field in _SENTRY_USER_FIELDS
+    }
+    if kept:
+        event["user"] = kept
+    else:
+        del event["user"]
+
+
+# Request headers that carry the visitor's IP address or the location derived
+# from it. The backends sit behind Cloudflare, which adds ``Cf-Connecting-Ip``
+# and its ``Cf-Ip*`` location headers to every request; sentry-sdk only drops
+# ``X-Forwarded-For`` and ``X-Real-Ip`` with PII off.
+_IP_HEADER_MARKERS = (
+    "forwarded",
+    "proxied_for",
+    "real_ip",
+    "connecting_ip",
+    "client_ip",
+    "vercel_ip",
+)
+
+
+def _is_ip_header(name: str) -> bool:
+    key = name.lower().replace("-", "_")
+    return key.startswith("cf_ip") or any(m in key for m in _IP_HEADER_MARKERS)
+
+
+def _strip_ip_headers(event: dict) -> None:
+    request = event.get("request")
+    if not isinstance(request, dict):
+        return
+    headers = request.get("headers")
+    if not isinstance(headers, dict):
+        return
+    request["headers"] = {
+        name: value for name, value in headers.items() if not _is_ip_header(name)
+    }
+
+
+def _sentry_environment() -> str:
+    """The environment events are tagged with. A deployment that names itself
+    (a PR preview, say) takes precedence over the one computed from the app
+    environment and behaviour mode. A blank name counts as none."""
+    config = settings.config
+    return (
+        config.sentry_environment.strip()
+        or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
+    )
+
+
 def sentry_init():
+    if _running_under_pytest():
+        return
+
     sentry_dsn = settings.secrets.sentry_dsn
-    integrations = []
-    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
-        try:
-            integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
-        except DidNotEnable as e:
-            logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
     optional_integrations = (
         [AnthropicIntegration(include_prompts=False)]
         if AnthropicIntegration is not None
@@ -275,16 +416,42 @@ def sentry_init():
     _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
+        traces_sampler=traces_sampler,
+        # Traces reach our own services only, through the RPC client's headers
+        # (backend.util.service); outbound calls to third parties, such as a
+        # block's request to a user-supplied URL, carry no Sentry headers.
+        trace_propagation_targets=[],
         profiles_sample_rate=1.0,
-        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
+        release=settings.config.sentry_release.strip() or None,
+        environment=_sentry_environment(),
+        # The SDK default, pinned: no IP address, request headers with
+        # personal data or cookies.
+        send_default_pii=False,
+        max_value_length=_SENTRY_MAX_VALUE_LENGTH,
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
+        custom_repr=_bounded_repr,
         integrations=[
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
-        + optional_integrations
-        + integrations,
+        + optional_integrations,
     )
+
+
+def _bounded_repr(value: object) -> str | None:
+    """The SDK repr()s frame locals in full while holding the GIL, which takes seconds
+    and gigabytes when a traceback holds a large upload."""
+    if isinstance(value, (str, bytes, bytearray)) and len(value) > _MAX_LOCAL_REPR:
+        return f"{value[:_MAX_LOCAL_REPR]!r}... ({len(value):,} long)"
+    return None
+
+
+def _running_under_pytest() -> bool:
+    """sentry_init() runs at import time (AppProcess class body), before pytest
+    sets PYTEST_CURRENT_TEST; the env var covers spawned service subprocesses,
+    which do not inherit sys.modules. Self-hosted instances match neither."""
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
 def sentry_capture_error(error: BaseException):

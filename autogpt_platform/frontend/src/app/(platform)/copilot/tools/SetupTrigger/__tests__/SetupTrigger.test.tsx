@@ -105,7 +105,7 @@ describe("SetupTriggerTool", () => {
       />,
     );
     expect(screen.getByText("Webhook trigger ready.")).toBeDefined();
-    expect(screen.getByText(url)).toBeDefined();
+    expect(screen.getByText(url).closest(".ph-no-capture")).not.toBeNull();
     expect(screen.getByLabelText("Copy webhook URL")).toBeDefined();
   });
 

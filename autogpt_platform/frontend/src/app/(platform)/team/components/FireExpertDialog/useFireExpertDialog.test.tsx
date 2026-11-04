@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFireExpertDialog } from "./useFireExpertDialog";
 
 type Props = {
@@ -172,4 +172,8 @@ describe("useFireExpertDialog invalidation", () => {
     act(() => result.current.handleFire());
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(1));
   });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

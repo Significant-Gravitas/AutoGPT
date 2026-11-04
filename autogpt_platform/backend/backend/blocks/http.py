@@ -25,11 +25,12 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.file import (
     MediaFileType,
+    check_total_file_size,
     get_exec_file_path,
     get_mime_type,
     store_media_file,
 )
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 
 logger = logging.getLogger(name=__name__)
 
@@ -131,6 +132,7 @@ class SendWebRequestBlock(Block):
         if graph_exec_id is None:
             raise ValueError("graph_exec_id is required for file operations")
 
+        total_size = 0
         for media in files:
             # Normalise to a list so we can repeat the same key
             rel_path = await store_media_file(
@@ -139,6 +141,8 @@ class SendWebRequestBlock(Block):
                 return_format="for_local_processing",
             )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             async with aiofiles.open(abs_path, "rb") as f:
                 content = await f.read()
                 handle = BytesIO(content)
@@ -148,7 +152,12 @@ class SendWebRequestBlock(Block):
         return files_payload
 
     async def run(
-        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+        self,
+        input_data: Input,
+        *,
+        execution_context: ExecutionContext,
+        sensitive_headers: frozenset[str] = frozenset(),
+        **kwargs,
     ) -> BlockOutput:
         # ─── Parse/normalise body ────────────────────────────────────
         body = input_data.body
@@ -195,6 +204,7 @@ class SendWebRequestBlock(Block):
         response = await Requests(
             raise_for_status=False,
             retry_max_attempts=1,  # allow callers to handle HTTP errors immediately
+            sensitive_headers=sensitive_headers,
         ).request(
             input_data.method.value,
             input_data.url,
@@ -206,11 +216,7 @@ class SendWebRequestBlock(Block):
             json=body if (input_data.json_format and not use_files) else None,
         )
 
-        # Decide how to parse the response
-        if response.headers.get("content-type", "").startswith("application/json"):
-            result = None if response.status == 204 else response.json()
-        else:
-            result = response.text()
+        result = _parse_response_body(response, input_data.method)
 
         # Yield according to status code bucket
         if 200 <= response.status < 300:
@@ -219,6 +225,25 @@ class SendWebRequestBlock(Block):
             yield "client_error", result
         else:
             yield "server_error", result
+
+
+def _parse_response_body(response: Response, method: HttpMethod):
+    if method == HttpMethod.HEAD or response.status in {204, 205}:
+        return None
+
+    content_type = (
+        response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    )
+    main_type, _, subtype = content_type.partition("/")
+    is_json = content_type == "application/json" or (
+        bool(main_type) and len(subtype) > len("+json") and subtype.endswith("+json")
+    )
+    if is_json:
+        try:
+            return response.json()
+        except ValueError:
+            return response.text()
+    return response.text()
 
 
 class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
@@ -232,6 +257,7 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         Block.__init__(
             self,
             id="fff86bcd-e001-4bad-a7f6-2eae4720c8dc",
+            capability_kind="primitive",
             description="Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart).",
             categories={BlockCategory.OUTPUT},
             input_schema=SendAuthenticatedWebRequestBlock.Input,
@@ -273,8 +299,11 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         # Merge with user-provided headers (user headers take precedence)
         base_input.headers = {**extra_headers, **input_data.headers}
 
-        # Use parent class run method
+        # Name the credential's headers so a cross-origin redirect drops them.
         async for output_name, output_data in super().run(
-            base_input, execution_context=execution_context, **kwargs
+            base_input,
+            execution_context=execution_context,
+            sensitive_headers=frozenset(extra_headers),
+            **kwargs,
         ):
             yield output_name, output_data

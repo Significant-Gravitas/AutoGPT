@@ -19,6 +19,8 @@ export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
 export type OAuthPopupResult = {
   code: string;
   state: string;
+  /** RFC 9207 issuer identifier from the authorization response, if sent. */
+  iss?: string;
 };
 
 export type OAuthPopupOptions = {
@@ -215,7 +217,11 @@ export function openOAuthPopup(
       if (!data.success) {
         reject(new Error(data.message || "OAuth authentication failed"));
       } else {
-        resolve({ code: data.code, state: data.state });
+        resolve({
+          code: data.code,
+          state: data.state,
+          iss: typeof data.iss === "string" ? data.iss : undefined,
+        });
       }
 
       controller.abort("completed");

@@ -294,7 +294,10 @@ async def ensure_attachment_host_is_external(url: str) -> None:
     except socket.gaierror as exc:
         raise ValueError(f"attachment host {host!r} does not resolve") from exc
     addresses = {info[4][0] for info in infos}
-    if not addresses or any(_is_internal_host(address) for address in addresses):
+    if not addresses or any(
+        not isinstance(address, str) or _is_internal_host(address)
+        for address in addresses
+    ):
         raise ValueError(f"attachment host {host!r} resolves inside our network")
 
 

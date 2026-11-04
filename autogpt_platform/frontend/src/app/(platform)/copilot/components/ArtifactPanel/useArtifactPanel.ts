@@ -9,6 +9,7 @@ import { classifyArtifactRef } from "./helpers";
 
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
+  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
   const showFilesTab = useCopilotUIStore((s) => s.showFilesTab);
@@ -16,6 +17,7 @@ export function useArtifactPanel() {
   const setArtifactPanelWidth = useCopilotUIStore(
     (s) => s.setArtifactPanelWidth,
   );
+  const setArtifactPanelMode = useCopilotUIStore((s) => s.setArtifactPanelMode);
 
   const [isSourceView, setIsSourceView] = useState(false);
 
@@ -84,6 +86,7 @@ export function useArtifactPanel() {
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,
@@ -92,5 +95,8 @@ export function useArtifactPanel() {
     handleDownload,
     artifactPanelWidth,
     setArtifactPanelWidth,
+    mode: artifactPanel.mode,
+    isComputerOpen: artifactPanel.isComputerOpen,
+    setArtifactPanelMode,
   };
 }

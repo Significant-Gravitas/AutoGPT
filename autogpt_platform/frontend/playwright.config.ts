@@ -7,7 +7,6 @@ import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import { buildCookieConsentStorageState } from "./src/playwright/credentials/storage-state";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
 
@@ -16,7 +15,6 @@ const configuredBaseURL =
   process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const parsedBaseURL = new URL(configuredBaseURL);
 const baseURL = parsedBaseURL.toString().replace(/\/$/, "");
-const baseOrigin = parsedBaseURL.origin;
 const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
 const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
   ? Number(process.env.PLAYWRIGHT_WORKERS)
@@ -121,9 +119,6 @@ export default defineConfig({
     /* Helps debugging failures */
     trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
     video: process.env.CI ? "off" : "retain-on-failure",
-
-    /* Auto-accept cookies in all tests to prevent banner interference */
-    storageState: buildCookieConsentStorageState(baseOrigin),
   },
   /* Maximum time one test can run for */
   timeout: 25000,

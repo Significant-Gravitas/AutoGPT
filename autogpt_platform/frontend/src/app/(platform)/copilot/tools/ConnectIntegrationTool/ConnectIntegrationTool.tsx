@@ -8,6 +8,7 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
+import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   part: ToolUIPart;
@@ -83,22 +84,24 @@ export function ConnectIntegrationTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-body text-foreground-tertiary">
         <MorphingTextAnimation
           text={label}
-          className={isError ? "text-red-500" : undefined}
+          className={isError ? "text-error" : undefined}
         />
       </div>
 
       {isError && errorMessage && (
-        <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
+        <Text variant="body-tight" tone="error" className="mt-1">
+          {errorMessage}
+        </Text>
       )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
-          AutoPilot to retry connecting {providerName}.
-        </p>
+          your expert to retry connecting {providerName}.
+        </Text>
       )}
 
       {output && (

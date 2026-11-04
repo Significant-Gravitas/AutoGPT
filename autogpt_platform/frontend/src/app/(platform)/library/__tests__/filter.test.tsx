@@ -13,7 +13,6 @@ import {
   getGetV2ListLibraryFoldersResponseMock,
 } from "@/app/api/__generated__/endpoints/folders/folders.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentList } from "../components/LibraryAgentList/LibraryAgentList";
 import { FavoriteAnimationProvider } from "../context/FavoriteAnimationContext";
@@ -24,7 +23,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: (flag: Flag) => flag === "agent-briefing",
+    useGetFlag: () => false,
   };
 });
 

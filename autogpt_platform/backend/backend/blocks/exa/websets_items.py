@@ -18,10 +18,12 @@ from exa_py.websets.types import (
 )
 from pydantic import AnyUrl, BaseModel
 
+from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -172,11 +174,13 @@ class ExaGetWebsetItemBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetItemBlock.Input,
             output_schema=ExaGetWebsetItemBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         sdk_item = await aexa.websets.items.get(
@@ -255,11 +259,13 @@ class ExaListWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetItemsBlock.Input,
             output_schema=ExaListWebsetItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         if input_data.wait_for_items:
@@ -336,11 +342,14 @@ class ExaDeleteWebsetItemBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteWebsetItemBlock.Input,
             output_schema=ExaDeleteWebsetItemBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         deleted_item = await aexa.websets.items.delete(
@@ -399,12 +408,14 @@ class ExaBulkWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaBulkWebsetItemsBlock.Input,
             output_schema=ExaBulkWebsetItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         all_items: List[WebsetItemModel] = []
@@ -472,12 +483,14 @@ class ExaWebsetItemsSummaryBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetItemsSummaryBlock.Input,
             output_schema=ExaWebsetItemsSummaryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         webset = await aexa.websets.get(id=input_data.webset_id)
@@ -567,12 +580,14 @@ class ExaGetNewItemsBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.DATA},
             input_schema=ExaGetNewItemsBlock.Input,
             output_schema=ExaGetNewItemsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
+        refuse_platform_credentials(self, credentials)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get items starting from cursor

@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer
 
+from backend.copilot.config import CopilotLLMModel
+
 # File content that survives the JSON service RPC. Raw bytes stay bytes
 # in-process, but the wire format is base64 — plain ``bytes`` fields are
 # strict-UTF-8-decoded by JSON serialization, which fails on binary content.
@@ -137,6 +139,19 @@ class BotChatRequest(BaseModel):
         max_length=20,
         description="Workspace file IDs (already uploaded) to attach to the turn.",
     )
+    expert_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Hired expert to run the turn as. DM context only; it must "
+        "be a live hire of the conversation owner. A cached session bound to "
+        "another expert is replaced by a new one.",
+    )
+    model: CopilotLLMModel | None = Field(
+        default=None,
+        description="Model tier: 'standard' or 'advanced'. Advanced falls back "
+        "to standard when the owner doesn't hold it. None = server default.",
+    )
 
 
 class WorkspaceUploadRequest(BaseModel):
@@ -152,7 +167,7 @@ class WorkspaceUploadRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(min_length=1, max_length=255)
     content: Base64EncodedBytes
-    # Write into this session's folder (/sessions/<id>/) so AutoPilot reads the
+    # Write into this session's folder (/sessions/<id>/) so Otto reads the
     # file during the turn, same as a web upload. Resolved by the caller before
     # uploading (see ``ensure_chat_session``).
     session_id: str | None = Field(default=None, min_length=1, max_length=255)
@@ -191,6 +206,10 @@ class LinkTokenInfoResponse(BaseModel):
 
 class ResolveResponse(BaseModel):
     linked: bool
+    # Masked email of the linked AutoGPT account (e.g. "b***@agpt.co"), only
+    # filled when the caller asks for it, so the bot can tell a user which
+    # account their DMs run as without exposing the full address.
+    account_hint: str | None = None
 
 
 class PlatformLinkInfo(BaseModel):
@@ -235,6 +254,9 @@ class BotPlatformInfo(BaseModel):
     # the UI never calls a Slack workspace a server.
     server_noun: str = "server"
     add_bot_url: str | None = None
+    # Opens a DM with the bot (currently only Telegram). The settings page
+    # leads with it: DMing the bot is the quickest way to link.
+    dm_url: str | None = None
     dm_link: PlatformUserLinkInfo | None = None
     server_links: list[PlatformLinkInfo] = Field(default_factory=list)
     # Set while an install by this user awaits its account link (currently
@@ -273,7 +295,7 @@ class TurnDenial(BaseModel):
     directly into the executor.
     """
 
-    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    reason: Literal["banned", "paywalled", "rate_limited", "unavailable"]
     message: str
     button_label: str | None = None
     button_url: str | None = None
@@ -291,6 +313,14 @@ class EnsureSessionResult(BaseModel):
     denial: TurnDenial | None = None
 
 
+class BotExpert(BaseModel):
+    """A hired expert the bot can route a turn to."""
+
+    id: str
+    name: str
+    role: str
+
+
 class ChatTurnHandle(BaseModel):
     """Subscribe keys for a pending copilot turn.
 
@@ -304,6 +334,39 @@ class ChatTurnHandle(BaseModel):
     user_id: str
     subscribe_from: str = "0-0"
     denial: TurnDenial | None = None
+    # One line for the user about how the turn was adjusted (e.g. Advanced
+    # unavailable, so it ran on Standard). Shown ahead of the reply.
+    notice: str | None = None
+
+
+class ChannelCard(BaseModel):
+    """A held call's card for the channel: each option's button carries
+    ``token`` and the option's index."""
+
+    token: str
+    text: str
+    options: list[str]
+
+
+class CardAnswer(BaseModel):
+    """What a click on a card's button did.
+
+    ``follow`` is set only when the click answered the row: the answer woke
+    the turn that carries the result, for the bot to stream where the card
+    was. ``text`` then replaces the buttons; otherwise only the clicker is
+    shown it.
+    """
+
+    text: str
+    follow: "CardTurn | None" = None
+
+
+class CardTurn(BaseModel):
+    """The card a click answered, whose wake the bot carries into the channel."""
+
+    session_id: str
+    user_id: str
+    review_id: str
 
 
 class ChatSessionSummary(BaseModel):

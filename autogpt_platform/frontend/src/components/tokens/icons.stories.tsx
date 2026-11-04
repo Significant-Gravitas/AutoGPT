@@ -1,6 +1,5 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { StoryCode } from "./helpers/StoryCode";
 import {
   Alert01Icon,
@@ -23,6 +22,7 @@ import {
   InstagramIcon,
   Key01Icon,
   LibraryIcon,
+  LinkSquare01Icon,
   Linkedin01Icon,
   Logout03Icon,
   Menu01Icon,
@@ -190,10 +190,10 @@ export function AllVariants() {
       {/* Icons System Documentation */}
       <div className="space-y-8">
         <div>
-          <Text variant="h1" className="mb-4 text-zinc-800">
+          <Text variant="h1" className="mb-4 text-foreground-emphasis">
             Icons System
           </Text>
-          <Text variant="large" className="text-zinc-600">
+          <Text variant="large" className="text-foreground-secondary">
             Our icon system uses Hugeicons to provide a consistent, modern, and
             comprehensive set of icons across all components. Icons ship as data
             and are rendered through the Icon atom, which applies the
@@ -205,40 +205,44 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Hugeicons
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <a
                   href="https://hugeicons.com/icons/stroke-rounded"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Hugeicons Library{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   A comprehensive icon family; we use the stroke-rounded variant
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-foreground-emphasis">
                   @hugeicons/core-free-icons → icon data
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <Text
                   variant="body-medium"
-                  className="mb-2 font-semibold text-zinc-800"
+                  className="mb-2 font-semibold text-foreground-emphasis"
                 >
                   Stroke Width
                 </Text>
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   There is a single stroke width, owned by the Icon atom - never
                   override it per call site
                 </Text>
-                <div className="space-y-1 font-mono text-sm text-zinc-800">
+                <div className="space-y-1 font-mono text-body text-foreground-emphasis">
                   <div>2px</div>
                 </div>
               </div>
@@ -248,19 +252,19 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Usage Guidelines
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border-2 border-dashed border-blue-200 bg-blue-50 p-4">
+              <div className="rounded-lg border-2 border-dashed border-info/30 bg-info-surface p-4">
                 <Text
                   variant="body-medium"
-                  className="mb-2 font-semibold text-blue-800"
+                  className="mb-2 font-semibold text-info-foreground"
                 >
                   ✅ Always Use Hugeicons
                 </Text>
-                <div className="space-y-2 text-blue-700">
+                <div className="space-y-2 text-info-foreground">
                   <Text variant="body">
                     • Import icon data from @hugeicons/core-free-icons
                   </Text>
@@ -281,11 +285,11 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-zinc-800"
+                  className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
                 >
                   🎨 Design Consistency
                 </Text>
-                <div className="space-y-2 text-zinc-600">
+                <div className="space-y-2 text-foreground-secondary">
                   <Text variant="body">
                     • Follow the exact specifications from design team
                   </Text>
@@ -307,24 +311,24 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Matching Design Specifications
           </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
+          <Text variant="body" className="mb-6 text-foreground-secondary">
             When implementing icons, always reference the design specifications
             provided by the design team to ensure proper sizing and weight.
           </Text>
         </div>
 
-        <div className="rounded-lg border-2 border-dashed border-amber-200 bg-amber-50 p-6">
+        <div className="rounded-lg border-2 border-dashed border-warning-border bg-warning-surface p-6">
           <Text
             variant="body-medium"
-            className="mb-3 font-semibold text-amber-800"
+            className="mb-3 font-semibold text-warning-foreground"
           >
             🎨 Always Match Figma Designs
           </Text>
-          <div className="space-y-3 text-amber-700">
+          <div className="space-y-3 text-warning-foreground">
             <Text variant="body">
               • Check the Figma designs for exact icon sizes (16px, 20px, 24px,
               etc.)
@@ -342,28 +346,56 @@ export function AllVariants() {
           </div>
         </div>
 
-        <div className="flex items-center gap-8 rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-8 rounded-lg border border-border-base p-6">
           <div className="flex items-center gap-4">
-            <Icon icon={Alien01Icon} size={16} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Icon
+              icon={Alien01Icon}
+              size={16}
+              className="text-foreground-secondary"
+            />
+            <Text
+              variant="small"
+              className="font-mono text-foreground-tertiary"
+            >
               16px
             </Text>
           </div>
           <div className="flex items-center gap-4">
-            <Icon icon={Alien01Icon} size={20} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Icon
+              icon={Alien01Icon}
+              size={20}
+              className="text-foreground-secondary"
+            />
+            <Text
+              variant="small"
+              className="font-mono text-foreground-tertiary"
+            >
               20px
             </Text>
           </div>
           <div className="flex items-center gap-4">
-            <Icon icon={Alien01Icon} size={24} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Icon
+              icon={Alien01Icon}
+              size={24}
+              className="text-foreground-secondary"
+            />
+            <Text
+              variant="small"
+              className="font-mono text-foreground-tertiary"
+            >
               24px
             </Text>
           </div>
           <div className="flex items-center gap-4">
-            <Icon icon={Alien01Icon} size={32} className="text-zinc-600" />
-            <Text variant="small" className="font-mono text-zinc-500">
+            <Icon
+              icon={Alien01Icon}
+              size={32}
+              className="text-foreground-secondary"
+            />
+            <Text
+              variant="small"
+              className="font-mono text-foreground-tertiary"
+            >
               32px
             </Text>
           </div>
@@ -375,11 +407,11 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Icon Categories
           </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
+          <Text variant="body" className="mb-6 text-foreground-secondary">
             Our curated icon set organized by functional categories. Each icon
             is carefully selected to maintain consistency and semantic clarity.
           </Text>
@@ -390,24 +422,28 @@ export function AllVariants() {
             <div>
               <Text
                 variant="h3"
-                className="mb-1 text-lg font-semibold text-zinc-800"
+                className="mb-1 text-lead font-semibold text-foreground-emphasis"
               >
                 {category.name}
               </Text>
-              <Text variant="body" className="text-zinc-600">
+              <Text variant="body" className="text-foreground-secondary">
                 {category.description}
               </Text>
             </div>
-            <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-200 p-4 md:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-4 rounded-lg border border-border-base p-4 md:grid-cols-3 lg:grid-cols-6">
               {category.icons.map((entry) => (
                 <div
                   key={entry.name}
-                  className="flex flex-col items-center space-y-2 rounded-lg p-3 hover:bg-gray-50"
+                  className="flex flex-col items-center space-y-2 rounded-lg p-3 hover:bg-surface-muted"
                 >
-                  <Icon icon={entry.icon} size={24} className="text-zinc-600" />
+                  <Icon
+                    icon={entry.icon}
+                    size={24}
+                    className="text-foreground-secondary"
+                  />
                   <Text
                     variant="small"
-                    className="text-center font-mono text-zinc-500"
+                    className="text-center font-mono text-foreground-tertiary"
                   >
                     {entry.hugeiconsName}
                   </Text>
@@ -423,11 +459,11 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Usage Examples
           </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
+          <Text variant="body" className="mb-6 text-foreground-secondary">
             How to properly implement Hugeicons in your React components.
           </Text>
         </div>
@@ -448,14 +484,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 <Icon icon={UserIcon} size={32} />  // Extra large
 
 // With custom colors
-<Icon icon={FavouriteIcon} className="text-red-500" />
-<Icon icon={StarIcon} className="text-yellow-500" />
+<Icon icon={FavouriteIcon} className="text-error" />
+<Icon icon={StarIcon} className="text-yellow" />
 
 // Interactive states
 <Icon
   icon={BellIcon}
   size={20}
-  className={hasNotifications ? "text-blue-500" : "text-gray-400"}
+  className={hasNotifications ? "text-info" : "text-foreground-subtle"}
 />
 
 // In buttons

@@ -16,14 +16,12 @@ vi.mock("../../helpers", () => ({
 }));
 
 describe("queueFollowUpMessage", () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    global.fetch = vi.fn();
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -60,7 +58,34 @@ describe("queueFollowUpMessage", () => {
       message: "hello",
       context: null,
       file_ids: null,
+      message_id: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
     });
+  });
+
+  it("sends a fresh idempotency key for every queued message", async () => {
+    const fetchMock = vi.mocked(global.fetch);
+    for (let i = 0; i < 2; i++) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            buffer_length: i + 1,
+            max_buffer_length: 10,
+            turn_in_flight: true,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+
+    await queueFollowUpMessage("sess-1", "same text");
+    await queueFollowUpMessage("sess-1", "same text");
+
+    const ids = fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(init?.body as string).message_id,
+    );
+    expect(ids[0]).not.toEqual(ids[1]);
   });
 
   it("treats a 200 inactive response as not active", async () => {

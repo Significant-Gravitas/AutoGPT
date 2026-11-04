@@ -8,10 +8,28 @@ import {
   getChainHeading,
   isChainPart,
   isLiftedSetupRow,
+  isToolCallPending,
   markSupersededSubSessionRows,
   toChainRow,
   type ChainRow,
 } from "../helpers";
+
+function toolCallPart(
+  state:
+    | "input-streaming"
+    | "input-available"
+    | "approval-requested"
+    | "approval-responded"
+    | "output-available"
+    | "output-error"
+    | "output-denied",
+): MessagePart {
+  return {
+    type: "tool-run_block",
+    state,
+    toolCallId: "call-1",
+  } as unknown as MessagePart;
+}
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -246,12 +264,37 @@ describe("toChainRow", () => {
     });
   });
 
+  it("marks a gated tool call as requiring action, not as a result", () => {
+    const row = toChainRow(
+      toolPart(
+        "bash_exec",
+        { command: "ls" },
+        {
+          type: "approval_required",
+          tool_name: "bash_exec",
+          reason: "why",
+          ask: "Run a command in the sandbox",
+        },
+      ),
+      0,
+    );
+
+    expect(row?.requiresAction).toBe(true);
+    expect(row?.text).toBe("Run a command in the sandbox");
+  });
+
   it.each([
     [
       { type: "review_required", block_name: "Send Email" },
       "Review Send Email",
     ],
     [{ type: "review_required" }, "Review this action"],
+    [
+      { type: "approval_required", tool_name: "post_to_chat_platform" },
+      "Run post to chat platform",
+    ],
+    [{ type: "approval_required" }, "Run block"],
+    [{ type: "approval_required", tool_name: "   " }, "Run block"],
     [{ type: "suggested_goal" }, "Review the suggested goal"],
     [{ type: "need_login", message: "Log in first" }, "Log in first"],
     [{ type: "need_login" }, "Action required"],
@@ -543,6 +586,25 @@ describe("markSupersededSubSessionRows", () => {
     ]);
   });
 
+  it("supersedes the delegation card when the poll ran through run_capability", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      {
+        ...subRow("b", "run_capability", "sub-1"),
+        input: {
+          id: "tool:get_sub_session_result",
+          input: { sub_session_id: "sub-1" },
+        },
+      },
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
   it("keeps the answer of a run a re-delegation reuses the session for", () => {
     // Re-delegation deliberately reuses the sub-session, so keying on the id
     // alone would drop the first run's response from the transcript.
@@ -579,4 +641,25 @@ describe("markSupersededSubSessionRows", () => {
     const marked = markSupersededSubSessionRows(rows);
     expect(marked.every((r) => !r.supersededSubSession)).toBe(true);
   });
+});
+
+describe("isToolCallPending", () => {
+  // A tool paused on human-in-the-loop approval has no result either — the
+  // same class of bug the chain's once-only send already guards against for
+  // input-streaming/input-available.
+  it.each([
+    "input-streaming",
+    "input-available",
+    "approval-requested",
+    "approval-responded",
+  ] as const)("treats %s as pending", (state) => {
+    expect(isToolCallPending(toolCallPart(state))).toBe(true);
+  });
+
+  it.each(["output-available", "output-error", "output-denied"] as const)(
+    "treats %s as settled",
+    (state) => {
+      expect(isToolCallPending(toolCallPart(state))).toBe(false);
+    },
+  );
 });

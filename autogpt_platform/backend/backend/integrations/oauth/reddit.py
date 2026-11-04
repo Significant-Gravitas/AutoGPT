@@ -5,12 +5,34 @@ from typing import ClassVar, Optional
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
 settings = Settings()
+
+
+def _granted_scopes(raw_scope: object, requested_scopes: list[str]) -> list[str]:
+    """
+    Resolve the scopes Reddit actually granted from a token response.
+
+    Parsing and the empty-response fallback are shared with every other handler
+    via `parse_granted_scopes`. The one Reddit-specific bit is the wildcard `*`,
+    which Reddit uses to mean "every scope this app may request" -- storing it
+    verbatim would leave the credential with a scope no block can ever match.
+    """
+    granted = parse_granted_scopes(
+        raw_scope if isinstance(raw_scope, str) else None, fallback=requested_scopes
+    )
+    if "*" in granted:
+        return requested_scopes
+    return granted
+
+
+def _union_scopes(existing: list[str], granted: list[str]) -> list[str]:
+    """Existing scopes plus any newly granted ones, in a stable order."""
+    return existing + [s for s in granted if s not in existing]
 
 
 class RedditOAuthHandler(BaseOAuthHandler):
@@ -28,6 +50,10 @@ class RedditOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName.REDDIT
+    # Baseline scopes granted to every Reddit connection. Elevated moderator
+    # scopes are NOT listed here on purpose: blocks that need them declare them
+    # per-block via `RedditCredentialsField(required_scopes=...)`, so a user who
+    # only posts or reads is never asked to grant ban/remove/modmail authority.
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "identity",  # Get username, verify auth
         "read",  # Access posts and comments
@@ -110,7 +136,10 @@ class RedditOAuthHandler(BaseOAuthHandler):
             refresh_token=tokens.get("refresh_token"),
             access_token_expires_at=int(time.time()) + tokens.get("expires_in", 3600),
             refresh_token_expires_at=None,  # Reddit refresh tokens don't expire
-            scopes=scopes,
+            # Persist what Reddit granted, not what we asked for: a non-moderator
+            # who authorizes a moderation block must not end up with a credential
+            # that falsely claims mod scopes it never received.
+            scopes=_granted_scopes(tokens.get("scope"), scopes),
         )
 
     async def _get_username(self, access_token: str) -> str:
@@ -183,7 +212,16 @@ class RedditOAuthHandler(BaseOAuthHandler):
             refresh_token=refresh_token,
             access_token_expires_at=int(time.time()) + tokens.get("expires_in", 3600),
             refresh_token_expires_at=None,
-            scopes=credentials.scopes,
+            # Union, never replace. The credentials store refuses an update whose
+            # scopes aren't a superset of the stored ones (`credentials_store.py`,
+            # `issuperset` guard), so persisting a narrower set here would make the
+            # refreshed token unstorable and leave every later run re-failing on the
+            # stale one. Reddit narrowing a refresh response is not a revocation, so
+            # widening back to what's on record is the safe reading.
+            scopes=_union_scopes(
+                credentials.scopes,
+                _granted_scopes(tokens.get("scope"), credentials.scopes),
+            ),
         )
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

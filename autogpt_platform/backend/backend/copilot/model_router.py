@@ -1,8 +1,8 @@
-"""Model selection for the copilot: LaunchDarkly → registry cell → env.
+"""Model selection for the copilot: feature flag → registry cell → env.
 
 Each cell of the ``(mode, tier)`` matrix resolves through three layers:
 
-1. The JSON-valued LaunchDarkly flag ``copilot-model-routing`` (per-user —
+1. The JSON-valued PostHog flag ``copilot-model-routing`` (per-user —
    cohort experiments and rollouts live here, and the flag returns model
    slugs directly).
 2. The catalog's routing cell (``catalog.py`` ``routing`` section, surface
@@ -88,10 +88,14 @@ class ResolvedCodexModel(NamedTuple):
 
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
-    ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT5_6_TERRA.value,
+    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard bootstrap
+    # default (2026-09); gpt-5.6-luna remains a selectable catalog model,
+    # it's just no longer the default fallback here or in catalog.py's
+    # routing cell.
+    ("fast", "standard"): LLMModel.GPT6_LUNA.value,
+    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
-    ("thinking", "advanced"): LLMModel.GPT5_6_SOL.value,
+    ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
 }
 
 _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
@@ -106,7 +110,7 @@ def catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
-    (``claude-opus-4-7``) while LaunchDarkly payloads and env defaults use
+    (``claude-opus-4-7``) while flag payloads and env defaults use
     OpenRouter forms (``anthropic/claude-opus-4.6``). Gate on the model,
     not the spelling: try the exact slug, then the ``anthropic/``-stripped
     tail, then its dots→dashes form.
