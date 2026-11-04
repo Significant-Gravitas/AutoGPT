@@ -307,6 +307,7 @@ def test_preserve_clipboard_restores_when_changecount_advanced_by_one(
 
     monkeypatch.setattr(b, "_write_pasteboard_text", _write)
     monkeypatch.setattr(b, "_read_pasteboard_text", lambda: (state["content"], state["seq"]))
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: ["public.utf8-plain-text"])
     fake_pg = MagicMock()
     fake_pg.FAILSAFE = True
     monkeypatch.setitem(sys.modules, "pyautogui", fake_pg)
@@ -316,6 +317,7 @@ def test_preserve_clipboard_restores_when_changecount_advanced_by_one(
     # After the paste sequence: snapshot at seq=10, then we write
     # (seq=11), then we restore to PREVIOUS (seq=12). The clipboard
     # content should be PREVIOUS again.
+    fake_pg.hotkey.assert_called_once_with("command", "v")
     assert state["content"] == "PREVIOUS"
 
 
@@ -783,10 +785,13 @@ def test_display_info_reads_the_backing_pixels_of_a_retina_display(tmp_path, mon
 
 def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeypatch) -> None:
     """CGWindowListCreateImage returns backing pixels, twice the window's
-    800x600-point bounds on a Retina display."""
+    800x600-point bounds on a Retina display. It must leave out the window's
+    shadow, or the image covers more than the bounds that `origin`,
+    `logical_size` and `display_scale` describe."""
     from autogpt_local_executor.computer_use.backends import macos as macos_backend
 
-    monkeypatch.setitem(sys.modules, "Quartz", MagicMock())
+    quartz = MagicMock()
+    monkeypatch.setitem(sys.modules, "Quartz", quartz)
     monkeypatch.setitem(sys.modules, "Cocoa", MagicMock())
     pil = MagicMock()
     pil.Image.open.return_value = SimpleNamespace(width=1600, height=1200)
@@ -802,6 +807,8 @@ def test_a_window_capture_reports_its_scale_and_size_in_points(tmp_path, monkeyp
     assert result.origin == (100, 50)
     assert result.logical_size == (800, 600)
     assert result.display_scale == 2.0
+    image_option = quartz.CGWindowListCreateImage.call_args.args[3]
+    assert image_option is quartz.kCGWindowImageBoundsIgnoreFraming
 
 
 _SIDE_BY_SIDE_RETINA = [
@@ -936,26 +943,59 @@ def test_the_quartz_display_mode_names_exist() -> None:
         "CGDisplayModeGetPixelHeight",
         "CGDisplayModeGetPixelWidth",
         "NSEvent",
+        "kCGWindowImageBoundsIgnoreFraming",
     ):
         assert hasattr(quartz, name), name
 
 
-def test_pasting_onto_an_empty_clipboard_leaves_it_empty(tmp_path, monkeypatch) -> None:
-    """The restore has no text to put back, so it must clear the pasted text
-    rather than leave it for every other app to read."""
+@pytest.mark.parametrize(
+    ("content", "types", "read"),
+    [
+        (None, (), None),
+        ("user text", ("public.utf8-plain-text",), (None, None)),
+    ],
+    ids=["empty", "unreadable"],
+)
+def test_a_clipboard_with_no_text_to_put_back_is_left_alone_and_the_text_typed(
+    tmp_path, monkeypatch, content, types, read
+) -> None:
+    """With nothing to restore, a paste would either leave the pasted text
+    for other apps or clear it before a slow app has pasted; and a clipboard
+    whose text can't be read would be lost. Typing leaves it as it was."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content=content, types=types)
+    if read is not None:
+        monkeypatch.setattr(b, "_read_pasteboard_text", lambda: read)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    assert clipboard["content"] == content
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, monkeypatch) -> None:
+    """A copy that lands between our write and our read of the change count
+    is counted as ours; the pasteboard no longer holding our text gives it away."""
     b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
     monkeypatch.setattr(b, "_ax_trusted", lambda: True)
     monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
-    clipboard = _fake_pasteboard(b, monkeypatch, content=None, types=())
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user text")
 
-    def clear() -> int:
-        clipboard["content"] = None
-        clipboard["seq"] += 1
+    def write_then_someone_copies(text: str) -> int:
+        clipboard["writes"].append(text)
+        clipboard["content"] = "copied in the gap"
+        clipboard["seq"] += 2
         return clipboard["seq"]
 
-    monkeypatch.setattr(b, "_clear_pasteboard", clear)
+    monkeypatch.setattr(b, "_write_pasteboard_text", write_then_someone_copies)
 
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
     assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
-    assert clipboard["content"] is None
+    assert clipboard["content"] == "copied in the gap"

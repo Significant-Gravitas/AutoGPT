@@ -401,12 +401,19 @@ def _cmd_audit(config, args) -> int:
         return _audit_tail(config.audit_log_path)
     if sub == "show":
         return _audit_show(config.audit_log_path, args.seq)
-    if sub == "verify":
-        return _audit_verify(config.audit_log_path)
-    if sub == "verify-all":
-        return _audit_verify_all(config.audit_log_path)
-    if sub == "export":
-        return _audit_export(config.audit_log_path, args.output)
+    if sub in ("verify", "verify-all", "export"):
+        from .audit import AuditLockError
+
+        try:
+            if sub == "verify":
+                return _audit_verify(config.audit_log_path)
+            if sub == "verify-all":
+                return _audit_verify_all(config.audit_log_path)
+            return _audit_export(config.audit_log_path, args.output)
+        except AuditLockError as exc:
+            # Reading without the writers' lock could meet a half-written record.
+            print(f"Could not lock the audit log: {exc}", file=sys.stderr)
+            return 2
     if sub == "rotate":
         return _audit_rotate(config.audit_log_path)
     if sub == "prune":
@@ -486,24 +493,31 @@ def _audit_verify(current: Path) -> int:
     return _print_violations(current, violations)
 
 
+def _audit_files(current: Path) -> list[Path]:
+    """The current log, if there is one, then its rotated files, oldest first."""
+    from .audit import list_rotated_files
+
+    files = [current] if current.is_file() else []
+    files.extend(list_rotated_files(current))
+    return files
+
+
 def _audit_verify_all(current: Path) -> int:
-    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock, list_rotated_files
+    from .audit import AuditWriter, get_or_create_audit_key, holding_log_lock
 
     try:
         key = get_or_create_audit_key()
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    files: list[Path] = []
-    if current.is_file():
-        files.append(current)
-    files.extend(list_rotated_files(current))
-    if not files:
-        print("No audit logs found.")
-        return 0
     failures = 0
-    # Hold off appends and rotations while the files are read.
+    # Hold off appends and rotations while the files are listed and read: a
+    # rotation after the listing would move records to a name it lacks.
     with holding_log_lock(current):
+        files = _audit_files(current)
+        if not files:
+            print("No audit logs found.")
+            return 0
         for path in files:
             violations = AuditWriter.verify(path, key)
             if violations:
@@ -533,7 +547,6 @@ def _audit_export(current: Path, output: Path | None) -> int:
         KEYCHAIN_AUDIT_KEY_USERNAME,
         get_or_create_audit_key,
         holding_log_lock,
-        list_rotated_files,
     )
 
     try:
@@ -541,14 +554,6 @@ def _audit_export(current: Path, output: Path | None) -> int:
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-
-    files: list[Path] = []
-    if current.is_file():
-        files.append(current)
-    files.extend(list_rotated_files(current))
-    if not files:
-        print("Nothing to export — no audit logs present.")
-        return 1
 
     if output is None:
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -559,17 +564,23 @@ def _audit_export(current: Path, output: Path | None) -> int:
         "files": [],
         "key_username": KEYCHAIN_AUDIT_KEY_USERNAME,
     }
-    # Hold off appends and rotations so the export is one consistent set.
-    with holding_log_lock(current), zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in files:
-            data = path.read_bytes()
-            digest = hashlib.sha256(data).hexdigest()
-            manifest["files"].append({"name": path.name, "size": len(data), "sha256": digest})
-            zf.writestr(path.name, data)
-        manifest_bytes = json.dumps(manifest, sort_keys=True).encode("utf-8")
-        signature = hmac.new(key, manifest_bytes, hashlib.sha256).hexdigest()
-        zf.writestr("manifest.json", manifest_bytes)
-        zf.writestr("manifest.sig", signature)
+    # Hold off appends and rotations while the files are listed and read, so
+    # the export is one consistent set.
+    with holding_log_lock(current):
+        files = _audit_files(current)
+        if not files:
+            print("Nothing to export — no audit logs present.")
+            return 1
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in files:
+                data = path.read_bytes()
+                digest = hashlib.sha256(data).hexdigest()
+                manifest["files"].append({"name": path.name, "size": len(data), "sha256": digest})
+                zf.writestr(path.name, data)
+            manifest_bytes = json.dumps(manifest, sort_keys=True).encode("utf-8")
+            signature = hmac.new(key, manifest_bytes, hashlib.sha256).hexdigest()
+            zf.writestr("manifest.json", manifest_bytes)
+            zf.writestr("manifest.sig", signature)
     print(f"Wrote {output}")
     print(f"  files: {len(files)}")
     print(f"  signature (HMAC-SHA256): {signature}")

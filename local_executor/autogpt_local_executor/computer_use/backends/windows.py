@@ -674,19 +674,6 @@ class WindowsBackend(ComputerUseBackend):
             raise ClipboardWriteError(str(exc)) from exc
         return self._clipboard_sequence()
 
-    def _clear_clipboard(self) -> int | None:
-        try:
-            import win32clipboard  # type: ignore[import-not-found]
-
-            win32clipboard.OpenClipboard()
-            try:
-                win32clipboard.EmptyClipboard()
-            finally:
-                win32clipboard.CloseClipboard()
-        except Exception as exc:
-            raise ClipboardWriteError(str(exc)) from exc
-        return self._clipboard_sequence()
-
     def _clipboard_sequence(self) -> int | None:
         try:
             import ctypes
@@ -729,44 +716,46 @@ class WindowsBackend(ComputerUseBackend):
         import pyautogui  # type: ignore[import-untyped]
 
         if paste and len(text) >= PASTE_THRESHOLD_CHARS and self._clipboard_enabled:
-            # The restore puts back text only. A clipboard holding anything
-            # else (an image, a CF_PRIVATE secret), or one whose formats can't
-            # be read, is left alone and the text is typed.
-            if not (preserve_clipboard and not self._clipboard_is_plain_text()):
-                self._do_paste(text, preserve_clipboard=preserve_clipboard)
+            if not preserve_clipboard:
+                self._do_paste(text, restore=None)
                 return
+            # The restore puts back text only, so paste only with that text in
+            # hand. A clipboard holding anything else (an image, a CF_PRIVATE
+            # secret), one that can't be read, or an empty one (clearing it
+            # after the paste could beat a slow app to the text) is left alone
+            # and the text typed.
+            if self._clipboard_is_plain_text():
+                previous, _ = self._read_clipboard_text()
+                if previous is not None:
+                    self._do_paste(text, restore=previous)
+                    return
         pyautogui.write(text, interval=0.02)
 
-    def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
+    def _do_paste(self, text: str, *, restore: str | None) -> None:
+        """Paste `text`, then put `restore` back unless something else has
+        written the clipboard since. With `restore=None` the text stays."""
         import pyautogui  # type: ignore[import-untyped]
 
-        snapshot: tuple[str | None, int | None] | None = None
-        was_empty = False
-        if preserve_clipboard:
-            snapshot = self._read_clipboard_text()
-            was_empty = self._clipboard_formats() == set()
         written_seq = self._write_clipboard_text(text)
         self.clipboard_writeback.record_write(text, sequence=written_seq)
         pyautogui.hotkey("ctrl", "v")
-        if preserve_clipboard and snapshot is not None:
-            previous = snapshot[0]
-            time.sleep(0.05)
-            _, current_seq = self._read_clipboard_text()
-            # Restore only if nothing has changed the clipboard since our
-            # write. EmptyClipboard and SetClipboardData each advance the
-            # sequence number, so compare with what our write left behind.
-            if written_seq is not None and current_seq == written_seq:
-                # The restored contents are the user's, not ours, so they are
-                # not recorded as a writeback: a writeback-only read refuses them.
-                # An empty clipboard is emptied again, so the pasted text is
-                # not left for other apps to read.
-                try:
-                    if previous is not None:
-                        self._write_clipboard_text(previous)
-                    elif was_empty:
-                        self._clear_clipboard()
-                except ClipboardWriteError:
-                    logger.warning("Could not restore the clipboard after pasting", exc_info=True)
+        if restore is None:
+            return
+        time.sleep(0.05)
+        current, current_seq = self._read_clipboard_text()
+        # Restore only if the clipboard still holds exactly our write. A
+        # changed sequence number means the user copied during the paste;
+        # EmptyClipboard and SetClipboardData each advance it, so compare with
+        # what our write left behind. That number is read after CloseClipboard,
+        # so a copy landing in between counts as ours: the text check catches
+        # it, whenever Windows advances the number.
+        if written_seq is not None and current_seq == written_seq and current == text:
+            # The restored contents are the user's, not ours, so they are
+            # not recorded as a writeback: a writeback-only read refuses them.
+            try:
+                self._write_clipboard_text(restore)
+            except ClipboardWriteError:
+                logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 

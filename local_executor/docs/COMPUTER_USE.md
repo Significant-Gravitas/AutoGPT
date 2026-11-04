@@ -303,26 +303,32 @@ trips IME/autocomplete on web forms.
    explicitly asks, the shim snapshots the clipboard before pasting and
    restores it afterwards — **but skips the restore if the OS
    `changeCount` / clipboard-sequence-number changed after the shim's
-   own write.** A changed number means the user (or another app) copied
-   something during the paste, and clobbering that with the pre-paste
-   snapshot would lose their action. The comparison is with the number
+   own write, or the clipboard no longer holds the pasted text.** A
+   changed number means the user (or another app) copied something
+   during the paste, and clobbering that with the pre-paste snapshot
+   would lose their action; the text check catches a copy that lands
+   before the shim reads the number, which would otherwise count as its
+   own. The comparison is with the number
    the shim's write left, since one write can advance it by more than
    one (Windows counts `EmptyClipboard` and `SetClipboardData`). The restored contents
    are still the user's: they are not recorded as a shim write, so a
    writeback-only `CLIPBOARD_READ` refuses them. The restore puts back
-   plain text only, so a clipboard holding anything else (an image, rich
-   text, a concealed marker such as `ConcealedType` / `CF_PRIVATE`), or
-   one whose formats can't be read, is never read or replaced; the text
-   is typed instead. A clipboard that was empty is emptied again after
-   the paste. A `CLIPBOARD_READ` whose formats can't be read counts as
-   concealed.
+   plain text only, so the shim pastes only with that text in hand. A
+   clipboard holding anything else (an image, rich text, a concealed
+   marker such as `ConcealedType` / `CF_PRIVATE`), one whose formats or
+   text can't be read, or an empty one is never replaced; the text is
+   typed instead. (Clearing an empty clipboard after the paste could beat
+   a slow app to the text.) A `CLIPBOARD_READ` whose formats can't be
+   read counts as concealed.
 4. **Race window.** Snapshot → write → hotkey → wait-for-paste → restore
    is 50–500 ms wall-time depending on OS and target app. During that
    window other apps see the pasted text on the clipboard. This is **not
    papered over**: it's a security-relevant trade-off and the user
    accepts it by enabling `--enable-clipboard`. The `preserve_clipboard`
    path adds a slim "user-action-during-paste cancels restore"
-   protection but does not close the snooping window itself.
+   protection but does not close the snooping window itself. The restore
+   runs 50 ms after the paste hotkey, so an app that handles the paste
+   later than that pastes the restored contents instead of the text.
 
 ```json
 {

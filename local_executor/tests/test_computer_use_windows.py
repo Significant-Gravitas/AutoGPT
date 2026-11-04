@@ -340,24 +340,51 @@ def test_the_clipboard_is_not_restored_over_a_copy_made_during_the_paste(
     assert clipboard["content"] == "copied during the paste"
 
 
-def test_pasting_onto_an_empty_clipboard_leaves_it_empty(tmp_path, monkeypatch) -> None:
-    """The restore has no text to put back, so it must clear the pasted text
-    rather than leave it for every other app to read."""
+@pytest.mark.parametrize(
+    ("content", "formats", "read"),
+    [(None, set(), None), ("user text", {13}, (None, None))],
+    ids=["empty", "unreadable"],
+)
+def test_a_clipboard_with_no_text_to_put_back_is_left_alone_and_the_text_typed(
+    tmp_path, monkeypatch, content, formats, read
+) -> None:
+    """With nothing to restore, a paste would either leave the pasted text
+    for other apps or clear it before a slow app has pasted; and a clipboard
+    whose text can't be read would be lost. Typing leaves it as it was."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content=content)
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: formats)
+    if read is not None:
+        monkeypatch.setattr(b, "_read_clipboard_text", lambda: read)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == []
+    assert clipboard["content"] == content
+    pyautogui.write.assert_called_once_with(text, interval=0.02)
+    pyautogui.hotkey.assert_not_called()
+
+
+def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, monkeypatch) -> None:
+    """The sequence number is read after CloseClipboard, so a copy landing in
+    that gap is counted as ours; the clipboard no longer holding our text
+    gives it away."""
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
     monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
-    clipboard = _fake_clipboard(b, monkeypatch, content=None)
-    monkeypatch.setattr(
-        b, "_clipboard_formats", lambda: set() if clipboard["content"] is None else {13}
-    )
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
 
-    def clear() -> int:
-        clipboard["content"] = None
-        clipboard["seq"] += 1
+    def write_then_someone_copies(text: str) -> int:
+        clipboard["writes"].append(text)
+        clipboard["content"] = "copied in the gap"
+        clipboard["seq"] += 3
         return clipboard["seq"]
 
-    monkeypatch.setattr(b, "_clear_clipboard", clear)
+    monkeypatch.setattr(b, "_write_clipboard_text", write_then_someone_copies)
 
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
     assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
-    assert clipboard["content"] is None
+    assert clipboard["content"] == "copied in the gap"

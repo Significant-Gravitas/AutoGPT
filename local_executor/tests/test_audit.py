@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import hashlib
 import hmac
@@ -623,3 +624,140 @@ async def test_a_rotation_whose_new_log_cannot_be_created_starts_a_fresh_chain(
     first = json.loads(writer.path.read_text().splitlines()[0])
     assert (first["request_id"], first["seq"], first["prev_hmac"]) == ("b", 1, None)
     assert AuditWriter.verify(writer.path, KEY) == []
+
+
+def _lock_is_held(lock: Path) -> bool:
+    import fcntl
+
+    with open(lock, "rb") as probe:
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(probe, fcntl.LOCK_UN)
+        return False
+
+
+_posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX file locks and modes")
+_not_root = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes"
+)
+
+
+@_posix_only
+@_not_root
+def test_a_reader_that_cannot_write_the_lock_file_still_takes_the_lock(tmp_path: Path) -> None:
+    """A read-only lock file (another account's log, a read-only volume) still
+    has to keep the reader out while a writer appends."""
+    log = tmp_path / "audit.log"
+    lock = tmp_path / ".audit.log.lock"
+    lock.touch()
+    lock.chmod(0o400)
+
+    with audit_module.holding_log_lock(log):
+        assert _lock_is_held(lock)
+
+
+@_posix_only
+@_not_root
+def test_a_lock_file_the_reader_cannot_open_stops_the_read(tmp_path: Path) -> None:
+    """A writer may hold a lock the reader can't open; reading anyway could
+    meet a half-written record, so the read stops."""
+    log = tmp_path / "audit.log"
+    lock = tmp_path / ".audit.log.lock"
+    lock.touch()
+    lock.chmod(0)
+    try:
+        with pytest.raises(audit_module.AuditLockError):
+            with audit_module.holding_log_lock(log):
+                pytest.fail("read without the lock")
+    finally:
+        lock.chmod(0o600)
+
+
+@_posix_only
+@_not_root
+def test_a_missing_lock_file_that_cannot_be_created_lets_the_read_go_ahead(
+    tmp_path: Path,
+) -> None:
+    """Every writer creates the lock file before it appends, so when it
+    doesn't exist and can't be made, no writer holds it."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    logs.chmod(0o500)
+    entered = False
+    try:
+        with audit_module.holding_log_lock(logs / "audit.log"):
+            entered = True
+    finally:
+        logs.chmod(0o700)
+
+    assert entered
+
+
+def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch, capsys) -> None:
+    @contextlib.contextmanager
+    def refuse(_log: Path):
+        raise audit_module.AuditLockError("permission denied")
+        yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", refuse)
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    log = tmp_path / "audit.log"
+    log.write_text("")
+    config = types.SimpleNamespace(audit_log_path=log)
+
+    for command in ("verify", "verify-all", "export"):
+        args = types.SimpleNamespace(audit_command=command, output=tmp_path / "out.zip")
+        assert cli._cmd_audit(config, args) == 2
+        assert "Could not lock the audit log" in capsys.readouterr().err
+
+
+def _rotate_before_the_lock(monkeypatch, writer: AuditWriter) -> None:
+    """A rotation that lands after a reader lists the files but before it
+    gets the lock moves the records to a name it never listed."""
+    real_lock = audit_module.holding_log_lock
+
+    @contextlib.contextmanager
+    def rotate_then_lock(log: Path):
+        writer.force_rotate()
+        with real_lock(log):
+            yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", rotate_then_lock)
+
+
+@pytest.mark.asyncio
+async def test_verify_all_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    verified: list[Path] = []
+    real_verify = AuditWriter.verify
+
+    def verify(path: Path, key: bytes) -> list:
+        verified.append(path)
+        return real_verify(path, key)
+
+    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
+    _rotate_before_the_lock(monkeypatch, writer)
+
+    assert cli._audit_verify_all(writer.path) == 0
+    assert [p for p in verified if p != writer.path] == list_rotated_files(writer.path) != []
+
+
+@pytest.mark.asyncio
+async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
+    import zipfile
+
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    _rotate_before_the_lock(monkeypatch, writer)
+    output = tmp_path / "export.zip"
+
+    assert cli._audit_export(writer.path, output) == 0
+    rotated = list_rotated_files(writer.path)
+    with zipfile.ZipFile(output) as zf:
+        names = set(zf.namelist())
+    assert rotated and {p.name for p in rotated} <= names

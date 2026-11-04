@@ -594,31 +594,39 @@ class LinuxBackend(ComputerUseBackend):
             and self._clipboard_enabled
             and (self._has_xclip or self._has_wlcopy)
         ):
-            self._do_paste(text, preserve_clipboard=preserve_clipboard)
-            return
+            if not preserve_clipboard:
+                self._do_paste(text, restore=None)
+                return
+            # The restore puts back text only, so paste only with that text in
+            # hand. An empty clipboard, or one the tools can't read as text (an
+            # image, say), is left alone and the text typed.
+            previous, _ = self._read_clipboard_text()
+            if previous is not None:
+                self._do_paste(text, restore=previous)
+                return
         pyautogui.write(text, interval=0.02)
 
-    def _do_paste(self, text: str, *, preserve_clipboard: bool) -> None:
+    def _do_paste(self, text: str, *, restore: str | None) -> None:
+        """Paste `text`, then put `restore` back. With `restore=None` the
+        text stays."""
         import pyautogui  # type: ignore[import-untyped]
 
-        snapshot: tuple[str | None, int | None] | None = None
-        if preserve_clipboard:
-            snapshot = self._read_clipboard_text()
         self._write_clipboard_text(text)
         self.clipboard_writeback.record_write(text)
         pyautogui.hotkey("ctrl", "v")
-        if preserve_clipboard and snapshot is not None and snapshot[0] is not None:
-            time.sleep(0.05)
-            # We don't have a reliable sequence number on X11/Wayland from
-            # the CLI utilities; the changeCount-skip-restore protection
-            # falls back to "restore unconditionally" here. Documented in
-            # COMPUTER_USE.md Q4 as a race window.
-            # The restored contents are the user's, not ours, so they are not
-            # recorded as a writeback: a writeback-only read refuses them.
-            try:
-                self._write_clipboard_text(snapshot[0])
-            except ClipboardWriteError:
-                logger.warning("Could not restore the clipboard after pasting", exc_info=True)
+        if restore is None:
+            return
+        time.sleep(0.05)
+        # We don't have a reliable sequence number on X11/Wayland from
+        # the CLI utilities; the changeCount-skip-restore protection
+        # falls back to "restore unconditionally" here. Documented in
+        # COMPUTER_USE.md Q4 as a race window.
+        # The restored contents are the user's, not ours, so they are not
+        # recorded as a writeback: a writeback-only read refuses them.
+        try:
+            self._write_clipboard_text(restore)
+        except ClipboardWriteError:
+            logger.warning("Could not restore the clipboard after pasting", exc_info=True)
 
     # ── Permissions ──────────────────────────────────────────────────
 
