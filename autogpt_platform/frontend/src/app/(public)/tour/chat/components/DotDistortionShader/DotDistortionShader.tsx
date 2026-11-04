@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { resolveCanvasColour } from "./helpers";
 
 interface DotDistortionShaderProps {
   className?: string;
@@ -109,19 +110,8 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resolveColor = (color: string) => {
-      if (color.startsWith("var(")) {
-        const varName = color.match(/var\(([^)]+)\)/)?.[1];
-        if (varName) {
-          const value = getComputedStyle(container)
-            .getPropertyValue(varName)
-            .trim();
-          // A colour role is an RGB triplet (src/app/tokens/theme.css).
-          return /^\d+ \d+ \d+$/.test(value) ? `rgb(${value})` : value;
-        }
-      }
-      return color;
-    };
+    const resolveColor = (color: string) =>
+      resolveCanvasColour(color, container);
 
     let stopped = false;
     const dpr = Math.max(1, window.devicePixelRatio || 1);

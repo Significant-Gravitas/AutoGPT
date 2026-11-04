@@ -193,10 +193,15 @@ tester.run("no-hex-colours", rule("no-hex-colours"), {
       ],
     },
     {
-      // `bg-[#123456]` is no-arbitrary-colour's.
-      code: `<div className="bg-[#123456] [mask:linear-gradient(#000_0,#0000)]" />`,
+      // `bg-[#123456]` and `[color:#fff]` are no-arbitrary-colour's; the
+      // same hex in the mask is still this rule's.
+      code: `<div className="bg-[#123456] [color:#fff] [mask:linear-gradient(#123456_0,#fff,#0000)]" />`,
       filename: FILE,
-      errors: [{ message: /"#000"/ }, { message: /"#0000"/ }],
+      errors: [
+        { message: /"#123456"/ },
+        { message: /"#fff"/ },
+        { message: /"#0000"/ },
+      ],
     },
   ],
 });

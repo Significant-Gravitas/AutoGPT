@@ -768,12 +768,16 @@ const noHexColours: Rule.RuleModule = {
     const file = relativeToFrontend(context.filename);
     if (isWholeFileExempt(file)) return {};
     return stringNodes((node, text) => {
-      // A hex that is a class's whole arbitrary value (`bg-[#fff]`) is
-      // no-arbitrary-colour's, which names the role to use.
-      const inClass = arbitraryColours(text).map((match) => match.whole);
-      for (const hex of hexColours(text)) {
+      // A hex that is a class's whole arbitrary value (`bg-[#fff]`,
+      // `[color:#fff]`) is no-arbitrary-colour's, which names the role to
+      // use; the same hex elsewhere in the string is still this rule's.
+      const owned = new Set(
+        arbitraryColours(text).map((match) => match.valueIndex),
+      );
+      for (const match of text.matchAll(HEX_COLOUR)) {
+        const hex = match[0];
         if (isExempt(file, hex)) continue;
-        if (inClass.some((whole) => whole.includes(`[${hex}]`))) continue;
+        if (owned.has(match.index)) continue;
         context.report({
           node,
           message: `"${hex}" hardcodes a colour. Use a role: a class (bg-surface, text-foreground-secondary) or, where a string needs a colour, rgb(var(--color-<role>)). Artwork, logos and chart series go in ds-colour-exempt.json, with a reason.`,
@@ -798,17 +802,17 @@ const ARBITRARY_COLOUR_PROPERTY = new RegExp(
   "gi",
 );
 
+/** Each arbitrary colour in `text`, with where its colour value starts. */
 export function arbitraryColours(text: string) {
   return [
-    ...[...text.matchAll(ARBITRARY_COLOUR_CLASS)].map((match) => ({
-      whole: match[0],
-      value: match[3],
-    })),
-    ...[...text.matchAll(ARBITRARY_COLOUR_PROPERTY)].map((match) => ({
-      whole: match[0],
-      value: match[3],
-    })),
-  ];
+    ...text.matchAll(ARBITRARY_COLOUR_CLASS),
+    ...text.matchAll(ARBITRARY_COLOUR_PROPERTY),
+  ].map((match) => ({
+    whole: match[0],
+    value: match[3],
+    // The value is the last bracketed part of the match.
+    valueIndex: match.index + match[0].lastIndexOf(`${match[3]}]`),
+  }));
 }
 
 const noArbitraryColour: Rule.RuleModule = {
