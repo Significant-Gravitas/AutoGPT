@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from .chat_env import ChatEnvironmentError, chat_environment_problems
+from .chat_env import chat_environment_problems
 from .config import ChatConfig
 
 # Env vars ChatConfig or its validators read, cleared so they don't override the
@@ -56,11 +56,10 @@ class TestPlatformRoute:
         assert cfg.route_row is not None and cfg.route_row.name == "openrouter"
         assert cfg.openrouter_api_key == "sk-or"
 
-    def test_an_invalid_explicit_route_is_refused(self, monkeypatch):
-        """Standalone CLI settings use the same environment validation."""
+    def test_an_invalid_explicit_route_reads_as_disabled(self, monkeypatch):
+        """Only startup validation raises for invalid chat settings."""
         monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "open_router")
-        with pytest.raises(ChatEnvironmentError, match="CHAT_PLATFORM_ROUTE"):
-            ChatConfig()
+        assert ChatConfig().platform_route == "disabled"
 
     @pytest.mark.parametrize(
         "selector",
@@ -80,8 +79,7 @@ class TestPlatformRoute:
         if accepted:
             assert ChatConfig().platform_route == selector.strip()
         else:
-            with pytest.raises(ChatEnvironmentError):
-                ChatConfig()
+            assert ChatConfig().platform_route == "disabled"
 
     @pytest.mark.parametrize(
         "selector", ["openai_chat", " anthropic_passthrough\n", "Ollama"]
@@ -105,14 +103,14 @@ class TestPlatformRoute:
         if accepted:
             assert ChatConfig().local_adapter == selector.strip()
         else:
-            with pytest.raises(ChatEnvironmentError):
-                ChatConfig()
+            assert ChatConfig().local_adapter is None
 
-    def test_an_unknown_adapter_and_unreadable_window_are_refused(self, monkeypatch):
+    def test_an_unknown_adapter_and_unreadable_window_read_as_unset(self, monkeypatch):
         monkeypatch.setenv("CHAT_LOCAL_ADAPTER", "ollama")
         monkeypatch.setenv("CHAT_LOCAL_CONTEXT_TOKENS", "64k")
-        with pytest.raises(ChatEnvironmentError):
-            ChatConfig()
+        cfg = ChatConfig()
+        assert cfg.local_adapter is None
+        assert cfg.local_context_tokens is None
 
     def test_a_keyword_that_is_no_setting_is_refused(self):
         with pytest.raises(TypeError, match="use_openrouter"):

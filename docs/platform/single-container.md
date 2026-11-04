@@ -364,8 +364,12 @@ AutoGPT deployment modes.
 CHAT_PLATFORM_ROUTE selects one route and each route takes its own key.
 When this selector is explicit, integration keys serve blocks and memory,
 never the chat. Existing dev configurations without a selector migrate
-automatically: the subscription/local/OpenRouter switches choose a route;
+automatically: the local/subscription/OpenRouter switches choose a route;
 CHAT_API_KEY and dev's integration-key fallbacks supply credentials.
+OpenRouter needs a resolved key and an HTTP(S) endpoint; otherwise the legacy
+route falls back to direct Anthropic, and disables its own model only when
+neither API can be configured. Integration keys remain block settings: warnings
+only describe their use as chat fallbacks and never call them deprecated.
 New names always win over old names, even across environment/dotenv sources.
 
 The image and release installer run the same migration check. Old names
@@ -373,8 +377,9 @@ produce deprecation warnings instead of blocking deployment. With no usable
 legacy credential, the backend starts with its own model disabled and an
 error naming the settings to supply. Invalid explicit route/adapter names,
 an invalid or too-small explicit local window, an explicitly selected remote
-route missing its key, and subscriptions with BEHAVE_AS=cloud still stop
-startup. Diagnostics contain names only. Local legacy configurations default
+route missing its key, an explicit local route missing its URL or standard
+model, an explicit model incompatible with an Anthropic route, and subscriptions
+with BEHAVE_AS=cloud still stop startup. Migrated-only requirements warn. Diagnostics contain names only. Local legacy configurations default
 to openai_chat and a 65,536-token window unless the old CLI window is set;
 configure the server's real window.
 

@@ -1,12 +1,12 @@
 """Chat route settings, including automatic dev-name migration.
 
-All entry points share the names-only migration through a settings source;
-run_processes also exports supplied names before launching child services.
+All entry points share memoised migration through a settings source using
+Pydantic's parsed settings. Construction does not run startup preflight.
+run_processes validates and exports supplied names before launching services.
 """
 
 import logging
 import os
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -17,12 +17,10 @@ from pydantic_settings import (
 )
 
 from backend.copilot.chat_env import (
-    check_chat_environment,
-    log_chat_notes,
-    migrate_chat_settings,
+    cached_chat_migration,
+    migration_input,
     parse_local_adapter,
     parse_platform_route,
-    read_chat_settings,
 )
 from backend.copilot.route_table import (
     DEFAULT_ADVANCED_MODEL,
@@ -68,21 +66,15 @@ class ChatConfig(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[Any, ...]:
         def migrated() -> dict[str, Any]:
-            files = getattr(dotenv_settings, "env_file", None)
-            paths = [files] if isinstance(files, (str, os.PathLike)) else (files or [])
-            raw = read_chat_settings(os.environ, [Path(path) for path in paths])
-            initial = init_settings()
-            raw.update(
+            raw = migration_input(
+                getattr(dotenv_settings, "env_vars", {}),
+                getattr(env_settings, "env_vars", {}),
                 {
-                    f"CHAT_{key.upper()}": str(value)
-                    for key, value in initial.items()
-                    if value is not None
-                }
+                    f"CHAT_{key.upper()}": value
+                    for key, value in init_settings().items()
+                },
             )
-            supplied, notes = migrate_chat_settings(raw)
-            if "platform_route" not in initial:
-                notes = check_chat_environment(raw, [])
-            log_chat_notes(notes)
+            supplied = cached_chat_migration(raw)
             return {
                 name.removeprefix("CHAT_").lower(): value
                 for name, value in supplied.items()
@@ -523,7 +515,10 @@ class ChatConfig(BaseSettings):
         if isinstance(v, int):
             return v
         text = str(v or "").strip()
-        return int(text) if text.isdigit() else None
+        try:
+            return int(text) if text.isdecimal() else None
+        except ValueError:
+            return None
 
     @property
     def route_row(self) -> RouteRow | None:
@@ -704,22 +699,19 @@ class ChatConfig(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _refuse_claude_subscription_on_cloud(self) -> "ChatConfig":
+    def _disable_claude_subscription_on_cloud(self) -> "ChatConfig":
         """A Claude subscription stays on a self-hosted deployment.
 
         The subscription route carries one person's Claude OAuth token for
         every user of the deployment, so the hosted platform must never run
-        it.  Failing at load keeps a stray env var from turning it on.
+        it. Startup rejects the setting; construction fails closed without raising.
         """
         if self.platform_route != "subscription":
             return self
         if settings.config.behave_as != BehaveAs.CLOUD:
             return self
-        raise ValueError(
-            "CHAT_PLATFORM_ROUTE=subscription is not allowed when "
-            "BEHAVE_AS=cloud: a Claude subscription may only be used on a "
-            "self-hosted deployment."
-        )
+        object.__setattr__(self, "platform_route", "disabled")
+        return self
 
     # --- Voice mode TTS (see ``copilot/speech.py``) ---
     voice_tts_model: str = Field(

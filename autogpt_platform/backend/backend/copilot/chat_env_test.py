@@ -52,7 +52,7 @@ def test_registries_match_config():
     [
         (
             {"CHAT_USE_CLAUDE_CODE_SUBSCRIPTION": "true", "CHAT_USE_LOCAL": "true"},
-            "subscription",
+            "local",
         ),
         (
             {
@@ -197,10 +197,11 @@ def test_mapping_rows(old, new, route, value, expected):
     ],
 )
 def test_legacy_integration_fallbacks(source, target, extra):
-    result, _ = resolved({**extra, source: "fallback"})
-    assert result[target] == "fallback"
+    value = "https://fallback.example" if "URL" in source else "fallback"
+    result, _ = resolved({**extra, source: value})
+    assert result[target] == value
     explicit, _ = resolved(
-        {**extra, source: "fallback", "CHAT_PLATFORM_ROUTE": "openrouter"}
+        {**extra, source: value, "CHAT_PLATFORM_ROUTE": "openrouter"}
     )
     assert target not in explicit
 
@@ -390,3 +391,135 @@ def test_logs_once_per_name_and_error_when_disabled(monkeypatch, caplog):
         r.levelname == "ERROR" and r.message.startswith("CHAT_PLATFORM_ROUTE ")
         for r in caplog.records
     )
+
+
+@pytest.mark.parametrize(
+    "env,route",
+    [
+        ({"ANTHROPIC_API_KEY": "ant"}, "direct_anthropic"),
+        ({"CHAT_DIRECT_ANTHROPIC_API_KEY": "ant"}, "direct_anthropic"),
+        ({"CHAT_API_KEY": "router", "ANTHROPIC_API_KEY": "ant"}, "openrouter"),
+        (
+            {
+                "CHAT_API_KEY": "router",
+                "CHAT_BASE_URL": "ftp://wrong",
+                "ANTHROPIC_API_KEY": "ant",
+            },
+            "direct_anthropic",
+        ),
+        (
+            {
+                "CHAT_API_KEY": "router",
+                "CHAT_BASE_URL": "not-http",
+                "ANTHROPIC_API_KEY": "ant",
+            },
+            "direct_anthropic",
+        ),
+        ({"CHAT_API_KEY": "router", "CHAT_BASE_URL": "ftp://wrong"}, "disabled"),
+        (
+            {
+                "CHAT_USE_OPENROUTER": "false",
+                "CHAT_API_KEY": "router",
+                "ANTHROPIC_API_KEY": "ant",
+            },
+            "direct_anthropic",
+        ),
+    ],
+)
+def test_dev_fallback_ladder(env, route):
+    assert resolved(env)[0]["CHAT_PLATFORM_ROUTE"] == route
+
+
+@pytest.mark.parametrize(
+    "source,target,env",
+    [
+        ("OPEN_ROUTER_API_KEY", "CHAT_OPENROUTER_API_KEY", {}),
+        ("OPENAI_API_KEY", "CHAT_OPENROUTER_API_KEY", {}),
+        ("ANTHROPIC_API_KEY", "CHAT_ANTHROPIC_API_KEY", {}),
+        ("OPENROUTER_BASE_URL", "CHAT_OPENROUTER_BASE_URL", {"CHAT_API_KEY": "chat"}),
+        ("OPENAI_BASE_URL", "CHAT_OPENROUTER_BASE_URL", {"CHAT_API_KEY": "chat"}),
+        ("ANTHROPIC_BASE_URL", "CHAT_ANTHROPIC_BASE_URL", {"ANTHROPIC_API_KEY": "ant"}),
+    ],
+)
+def test_integration_fallback_is_not_a_deprecation(source, target, env):
+    value = "https://endpoint.example" if "URL" in source else "integration-key"
+    _, notes = resolved({**env, source: value})
+    matching = [note for note in notes if source in note]
+    assert len(matching) == 1
+    assert matching[0].startswith(target + " is not set")
+    assert "as dev did" in matching[0]
+    assert "deprecated" not in matching[0]
+    assert value not in str(notes)
+    _, unused = resolved({**env, source: value, "CHAT_PLATFORM_ROUTE": "disabled"})
+    assert not any(source in note for note in unused)
+
+
+@pytest.mark.parametrize("missing", ["CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL"])
+def test_explicit_local_requirements(missing):
+    env = {
+        "CHAT_PLATFORM_ROUTE": "local",
+        "CHAT_LOCAL_BASE_URL": "http://local/v1",
+        "CHAT_STANDARD_MODEL": "local-model",
+    }
+    env.pop(missing)
+    assert any(missing in problem for problem in chat_environment_problems(env)[0])
+    legacy = {"CHAT_USE_LOCAL": "true"}
+    problems, notes = chat_environment_problems(legacy)
+    assert not problems
+    assert any("CHAT_LOCAL_BASE_URL" in note for note in notes)
+
+
+@pytest.mark.parametrize(
+    "tier,old",
+    [
+        ("CHAT_STANDARD_MODEL", "CHAT_THINKING_STANDARD_MODEL"),
+        ("CHAT_ADVANCED_MODEL", "CHAT_THINKING_ADVANCED_MODEL"),
+    ],
+)
+@pytest.mark.parametrize("route", ["direct_anthropic", "subscription"])
+def test_anthropic_model_requirements_depend_on_origin(tier, old, route):
+    env = {"CHAT_PLATFORM_ROUTE": route, "CHAT_ANTHROPIC_API_KEY": "ant"}
+    problems, _ = chat_environment_problems({**env, tier: "other-vendor/model"})
+    assert any(tier in problem for problem in problems)
+    problems, notes = chat_environment_problems({**env, old: "other-vendor/model"})
+    assert not problems
+    assert any(tier in note and "Anthropic" in note for note in notes)
+
+
+def test_migration_cached_and_no_extra_dotenv_read(
+    clean_settings, monkeypatch, tmp_path
+):
+    from unittest.mock import Mock
+
+    chat_env._cached_chat_migration.cache_clear()
+    file = tmp_path / ".env"
+    file.write_text("CHAT_API_KEY=chat-one\n")
+    spy = Mock(wraps=chat_env.migrate_chat_settings)
+    monkeypatch.setattr(chat_env, "migrate_chat_settings", spy)
+    monkeypatch.setattr(
+        chat_env,
+        "read_chat_settings",
+        Mock(side_effect=AssertionError("extra dotenv read")),
+    )
+    monkeypatch.setattr(
+        chat_env,
+        "check_chat_environment",
+        Mock(side_effect=AssertionError("constructor preflight")),
+    )
+    assert ChatConfig(_env_file=file).openrouter_api_key == "chat-one"
+    assert ChatConfig(_env_file=file).openrouter_api_key == "chat-one"
+    assert spy.call_count == 1
+    monkeypatch.setenv("CHAT_SESSION_TTL", "123")
+    assert ChatConfig(_env_file=file).openrouter_api_key == "chat-one"
+    assert spy.call_count == 1
+    file.write_text("CHAT_API_KEY=chat-two\n")
+    assert ChatConfig(_env_file=file).openrouter_api_key == "chat-two"
+    assert spy.call_count == 2
+    chat_env._cached_chat_migration.cache_clear()
+
+
+def test_constructor_does_not_run_preflight(clean_settings, monkeypatch):
+    monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "not-a-route")
+    assert ChatConfig().platform_route == "disabled"
+    with pytest.raises(ChatEnvironmentError):
+        check_chat_environment(dict(os.environ), [])

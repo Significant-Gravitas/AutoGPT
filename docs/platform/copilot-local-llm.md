@@ -65,14 +65,16 @@ your settings stay authoritative. See
 Every backend service migrates dev's chat settings before it starts. Old
 names still work and produce one deprecation warning per name; explicit
 new names always win, including new names in a dotenv file. Without
-an explicit route, dev's subscription/local/OpenRouter selectors and
+an explicit route, dev's local/subscription/OpenRouter selectors and
 integration-key fallbacks select the route. If no usable credential is
 available, the backend starts with its own chat model disabled and logs
 which names to configure. Explicit route selections use only chat credentials.
 
-Only an unknown explicit route or adapter, an invalid or too-small explicit
-context window, a selected remote route without its own key, or a cloud
-subscription stops startup. Diagnostics name settings, never values.
+Startup rejects unknown explicit routes/adapters, invalid explicit context
+windows, remote routes without their own keys, an explicit local route missing
+its URL or standard model, and explicit models an Anthropic route cannot serve.
+Requirements originating only from migrated values warn. Cloud subscriptions
+always stop startup. Diagnostics name settings, never values.
 For local legacy installs, the adapter defaults to OpenAI Chat Completions
 and the context window comes from the old CLI window or 65,536 tokens;
 set the server's actual window. Local model tiers replace the fast tiers;

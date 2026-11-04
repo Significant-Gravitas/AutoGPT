@@ -1,10 +1,10 @@
 """Config-load guard for the Claude subscription route."""
 
 import pytest
-from pydantic import ValidationError
 
 from backend.util.settings import BehaveAs
 
+from .chat_env import ChatEnvironmentError, check_chat_environment
 from .config import ChatConfig, settings
 from .config_test import _ENV_VARS_TO_CLEAR
 
@@ -21,14 +21,16 @@ class TestClaudeSubscriptionRefusedOnCloud:
 
     def test_refused_when_behaving_as_cloud(self, mocker):
         mocker.patch.object(settings.config, "behave_as", BehaveAs.CLOUD)
-        with pytest.raises(ValidationError, match="BEHAVE_AS=cloud"):
-            ChatConfig(platform_route="subscription")
+        assert ChatConfig(platform_route="subscription").platform_route == "disabled"
+        with pytest.raises(ChatEnvironmentError, match="BEHAVE_AS=cloud"):
+            check_chat_environment(
+                {"CHAT_PLATFORM_ROUTE": "subscription", "BEHAVE_AS": "cloud"}, []
+            )
 
     def test_refused_from_the_environment(self, mocker, monkeypatch):
         mocker.patch.object(settings.config, "behave_as", BehaveAs.CLOUD)
         monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "subscription")
-        with pytest.raises(ValidationError, match="self-hosted deployment"):
-            ChatConfig()
+        assert ChatConfig().platform_route == "disabled"
 
     def test_allowed_on_a_self_hosted_deployment(self, mocker):
         mocker.patch.object(settings.config, "behave_as", BehaveAs.LOCAL)

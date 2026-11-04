@@ -3,8 +3,8 @@
 Environment overrides dotenv; a new name in either source wins over aliases.
 The pure migration supplies new names and names-only deprecation notes.
 run_processes exports those names to its children; ChatConfig uses the same
-migration as a settings source. Unusable legacy routes disable platform chat
-with an error note. Invalid explicit route settings and cloud subscriptions
+migration as a settings source. Legacy API fallbacks with no usable credential disable platform chat
+with an error note. Local configuration gaps inherited from dev only warn. Invalid explicit route settings and cloud subscriptions
 still stop startup.
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Iterable, Mapping
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -286,6 +287,19 @@ def chat_environment_problems(
             and settings.get("CHAT_TEST_MODE", "").lower() not in _TRUE
         ):
             problems.append(f"CHAT_PLATFORM_ROUTE needs {key}")
+    if route == "local":
+        for name in ("CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL"):
+            if not settings.get(name, "").strip():
+                note = f"CHAT_PLATFORM_ROUTE needs {name}"
+                (problems if "CHAT_PLATFORM_ROUTE" in original else warnings).append(
+                    note
+                )
+    if route in ("direct_anthropic", "subscription"):
+        for name in ("CHAT_STANDARD_MODEL", "CHAT_ADVANCED_MODEL"):
+            model = settings.get(name, "").strip()
+            if model and not model.startswith(("anthropic/", "claude-")):
+                note = f"{name} must name an Anthropic model"
+                (problems if name in original else warnings).append(note)
     return problems, warnings
 
 
@@ -309,7 +323,7 @@ def migrate_chat_settings(
             (name for name in sources if settings.get(name, "").strip()), None
         )
         for name in sources:
-            if name in settings:
+            if name in settings and name in RETIRED_CHAT_SETTINGS:
                 notes[name] = f"{name} deprecated; ignored in favour of {target}"
         if chosen is None:
             return
@@ -319,22 +333,48 @@ def migrate_chat_settings(
             if value.endswith("/v1"):
                 value = value[:-3]
         if target in settings:
-            if settings[target] != value:
+            if settings[target] != value and chosen in RETIRED_CHAT_SETTINGS:
                 notes[chosen] = (
                     f"{chosen} deprecated; conflicts with {target}; {target} wins"
                 )
         else:
             supplied[target] = value
-            notes[chosen] = f"{chosen} deprecated; use {target}"
+            notes[chosen] = (
+                f"{chosen} deprecated; use {target}"
+                if chosen in RETIRED_CHAT_SETTINGS
+                else f"{target} is not set; chat uses {chosen} as dev did; set {target}"
+            )
 
-    if get("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION").strip().lower() in _TRUE:
-        old_route = "subscription"
-    elif get("CHAT_USE_LOCAL").strip().lower() in _TRUE:
+    def first(target: str, *aliases: str, default: str = "") -> str:
+        if target in settings:
+            return settings[target]
+        return next((settings[name] for name in aliases if settings.get(name)), default)
+
+    router_key = first(
+        "CHAT_OPENROUTER_API_KEY",
+        "CHAT_API_KEY",
+        "OPEN_ROUTER_API_KEY",
+        "OPENAI_API_KEY",
+    )
+    router_url = first(
+        "CHAT_OPENROUTER_BASE_URL",
+        "CHAT_BASE_URL",
+        "OPENROUTER_BASE_URL",
+        "OPENAI_BASE_URL",
+        default="https://openrouter.ai/api",
+    )
+    if get("CHAT_USE_LOCAL").strip().lower() in _TRUE:
         old_route = "local"
-    elif get("CHAT_USE_OPENROUTER").strip().lower() in ("false", "0", "no", "off"):
-        old_route = "direct_anthropic"
-    else:
+    elif get("CHAT_USE_CLAUDE_CODE_SUBSCRIPTION").strip().lower() in _TRUE:
+        old_route = "subscription"
+    elif (
+        get("CHAT_USE_OPENROUTER").strip().lower() not in ("false", "0", "no", "off")
+        and router_key
+        and router_url.startswith(("http://", "https://"))
+    ):
         old_route = "openrouter"
+    else:
+        old_route = "direct_anthropic"
     route = old_route if legacy else get("CHAT_PLATFORM_ROUTE").strip()
     if legacy:
         supplied["CHAT_PLATFORM_ROUTE"] = route
@@ -447,18 +487,16 @@ def migrate_chat_settings(
                 if "CHAT_CLAUDE_AGENT_CONTEXT_WINDOW" in settings
                 else "CHAT_LOCAL_CONTEXT_TOKENS defaulted; set the server window"
             )
-    if legacy:
-        key = {
-            "openrouter": "CHAT_OPENROUTER_API_KEY",
-            "direct_anthropic": "CHAT_ANTHROPIC_API_KEY",
-        }.get(route)
-        if (key and not get(key).strip()) or (
-            local and not get("CHAT_LOCAL_BASE_URL").strip()
-        ):
-            supplied["CHAT_PLATFORM_ROUTE"] = "disabled"
-            notes["CHAT_PLATFORM_ROUTE"] = (
-                f"CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and {key or 'CHAT_LOCAL_BASE_URL'}"
-            )
+    if (
+        legacy
+        and route == "direct_anthropic"
+        and not get("CHAT_ANTHROPIC_API_KEY").strip()
+    ):
+        supplied["CHAT_PLATFORM_ROUTE"] = "disabled"
+        notes["CHAT_PLATFORM_ROUTE"] = (
+            "CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and "
+            "CHAT_ANTHROPIC_API_KEY or CHAT_OPENROUTER_API_KEY"
+        )
     return supplied, [notes[name] for name in sorted(notes)]
 
 
@@ -489,6 +527,53 @@ def log_chat_notes(notes: Iterable[str]) -> None:
                 logging.ERROR if name == "CHAT_PLATFORM_ROUTE" else logging.WARNING,
                 note,
             )
+
+
+_MIGRATION_NAMES = (
+    frozenset(RETIRED_CHAT_SETTINGS)
+    | frozenset(_OTHER_SETTINGS)
+    | frozenset(
+        {
+            "CHAT_PLATFORM_ROUTE",
+            "CHAT_OPENROUTER_API_KEY",
+            "CHAT_OPENROUTER_BASE_URL",
+            "CHAT_ANTHROPIC_API_KEY",
+            "CHAT_ANTHROPIC_BASE_URL",
+            "CHAT_LOCAL_API_KEY",
+            "CHAT_LOCAL_BASE_URL",
+            "CHAT_LOCAL_ADAPTER",
+            "CHAT_LOCAL_CONTEXT_TOKENS",
+            "CHAT_STANDARD_MODEL",
+            "CHAT_ADVANCED_MODEL",
+            "CHAT_AGENT_MAX_TURNS",
+        }
+    )
+)
+
+
+def migration_input(*sources: Mapping[str, object]) -> dict[str, str]:
+    """Use already parsed settings sources; do not read dotenv again."""
+    merged: dict[str, str] = {}
+    for source in sources:
+        for name in _MIGRATION_NAMES:
+            value = source.get(name, source.get(name.lower()))
+            if value is not None:
+                merged[name] = str(value)
+    return merged
+
+
+@lru_cache(maxsize=32)
+def _cached_chat_migration(
+    pid: int, snapshot: tuple[tuple[str, str], ...]
+) -> tuple[tuple[str, str], ...]:
+    supplied, notes = migrate_chat_settings(dict(snapshot))
+    log_chat_notes(notes)
+    return tuple(supplied.items())
+
+
+def cached_chat_migration(settings: Mapping[str, str]) -> dict[str, str]:
+    """Memoise migration per process and relevant settings, logging on misses."""
+    return dict(_cached_chat_migration(os.getpid(), tuple(sorted(settings.items()))))
 
 
 def apply_chat_environment() -> None:
