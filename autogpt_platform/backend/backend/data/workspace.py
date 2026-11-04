@@ -192,7 +192,7 @@ async def create_workspace_file(
             tx, workspace_id, size_bytes, storage_limit_bytes, replacing=[path]
         )
         if replacing_file_id is not None:
-            await tx.userworkspacefile.update_many(
+            retired = await tx.userworkspacefile.update_many(
                 where={
                     "id": replacing_file_id,
                     "workspaceId": workspace_id,
@@ -201,6 +201,11 @@ async def create_workspace_file(
                 },
                 data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
             )
+            if not retired:
+                # It moved off the path after the count, so it still counts.
+                await require_storage_room(
+                    tx, workspace_id, size_bytes, storage_limit_bytes
+                )
         file = await tx.userworkspacefile.create(
             data={
                 "id": file_id,

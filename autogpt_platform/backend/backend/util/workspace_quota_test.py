@@ -149,6 +149,38 @@ async def test_an_overwrite_keeps_a_file_renamed_away_while_it_was_scanned(
     assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_overwrite_counts_a_file_renamed_away_after_the_quota_read(
+    manager: WorkspaceManager, tmp_path: Path
+):
+    """The rename commits between the quota read and the retire, so the old
+    copy stays live and the new one is counted beside it."""
+    with _real_storage(tmp_path):
+        old = await manager.write_file(b"o" * 600, "a.bin")
+        read = workspace_data._live_size
+        renamed = False
+
+        async def rename_after_reading(*args, **kwargs) -> int:
+            nonlocal renamed
+            used = await read(*args, **kwargs)
+            if not renamed:
+                renamed = True
+                await workspace_data.rename_workspace_file(
+                    old.id, manager.workspace_id, "b.bin"
+                )
+            return used
+
+        with (
+            patch.object(workspace_data, "_live_size", rename_after_reading),
+            pytest.raises(ValueError, match="Storage limit exceeded"),
+        ):
+            await manager.write_file(b"n" * 600, "a.bin", overwrite=True)
+
+    live = await _live_files(manager)
+    assert [f.path for f in live] == ["/b.bin"]
+    assert len([p for p in tmp_path.rglob("*") if p.is_file()]) == len(live)
+
+
 @contextmanager
 def _real_storage(tmp_path: Path) -> Iterator[None]:
     storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
