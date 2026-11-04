@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import itertools
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -202,11 +204,15 @@ def _fake_clipboard(b: WindowsBackend, monkeypatch, *, content: str, private=Fal
 
 def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypatch) -> None:
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
-    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     clipboard = _fake_clipboard(b, monkeypatch, content="user secret")
+    text = "x" * PASTE_THRESHOLD_CHARS
 
-    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
+    assert clipboard["writes"] == [text, "user secret"]
     assert clipboard["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
@@ -245,37 +251,94 @@ def test_a_failed_clipboard_write_is_an_error_and_never_pastes(tmp_path, monkeyp
     pyautogui.hotkey.assert_not_called()
 
 
-def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) -> None:
-    """PrintWindow returns 0 when the window did not render; the bitmap is
-    then blank, so it must not be sent as a screenshot."""
+def _capturable_window(tmp_path, monkeypatch, *, rect=(0, 0, 100, 50)) -> SimpleNamespace:
+    """A responding window that _screenshot_window captures, with every native
+    call faked; a test changes one fake to make a step fail."""
     import ctypes
+
+    from autogpt_local_executor.computer_use.backends import windows as windows_backend
 
     b = WindowsBackend(_config(tmp_path))
     fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
     window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
     monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
+    width, height = rect[2] - rect[0], rect[3] - rect[1]
     win32gui = MagicMock()
     win32gui.IsWindow.return_value = True
-    win32gui.GetWindowRect.return_value = (0, 0, 100, 50)
+    win32gui.GetWindowRect.return_value = rect
     monkeypatch.setitem(sys.modules, "win32gui", win32gui)
-    monkeypatch.setitem(sys.modules, "win32ui", MagicMock())
-    monkeypatch.setitem(sys.modules, "PIL", MagicMock())
+    win32ui = MagicMock()
+    win32ui.CreateBitmap.return_value.GetInfo.return_value = {"bmWidth": width, "bmHeight": height}
+    monkeypatch.setitem(sys.modules, "win32ui", win32ui)
+    monkeypatch.setitem(sys.modules, "mss", MagicMock())
+    pil = MagicMock()
+    pil.Image.frombuffer.return_value = SimpleNamespace(width=width, height=height)
+    monkeypatch.setitem(sys.modules, "PIL", pil)
     windll = MagicMock()
-    windll.user32.PrintWindow.return_value = 0
+    windll.user32.IsHungAppWindow.return_value = 0
+    windll.user32.PrintWindow.return_value = 1
     monkeypatch.setattr(ctypes, "windll", windll, raising=False)
+    monkeypatch.setattr(windows_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    return SimpleNamespace(
+        backend=b,
+        window_id=window_id,
+        hwnd=0x1234,
+        win32gui=win32gui,
+        win32ui=win32ui,
+        user32=windll.user32,
+    )
+
+
+def test_a_window_printwindow_cannot_capture_is_an_error(tmp_path, monkeypatch) -> None:
+    """PrintWindow returns 0 when the window did not render; the bitmap is
+    then blank, so it must not be sent as a screenshot. Everything is still
+    freed, the bitmap only after the DC it is selected into: GDI does not
+    delete a bitmap that a DC still holds."""
+    window = _capturable_window(tmp_path, monkeypatch)
+    window.user32.PrintWindow.return_value = 0
+    mfc_dc = window.win32ui.CreateDCFromHandle.return_value
+    freed = MagicMock()
+    freed.attach_mock(mfc_dc.CreateCompatibleDC.return_value.DeleteDC, "delete_save_dc")
+    freed.attach_mock(mfc_dc.DeleteDC, "delete_mfc_dc")
+    freed.attach_mock(window.win32gui.DeleteObject, "delete_object")
+    freed.attach_mock(window.win32gui.ReleaseDC, "release_dc")
 
     with pytest.raises(FeatureNotSupportedError, match="could not capture"):
-        b._screenshot_window(window_id, quality=75, format="jpeg")
+        window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
 
-    win32gui.ReleaseDC.assert_called_once()
+    bitmap = window.win32ui.CreateBitmap.return_value.GetHandle.return_value
+    hwnd_dc = window.win32gui.GetWindowDC.return_value
+    assert freed.mock_calls == [
+        call.delete_save_dc(),
+        call.delete_mfc_dc(),
+        call.delete_object(bitmap),
+        call.release_dc(window.hwnd, hwnd_dc),
+    ]
 
 
-@pytest.mark.parametrize("formats", [None, {8}], ids=["unreadable", "image"])
+def test_a_window_that_is_not_responding_is_not_captured(tmp_path, monkeypatch) -> None:
+    """PrintWindow asks the window to paint itself and waits for it, so a hung
+    window held the capture's thread, and its request slot, for good."""
+    window = _capturable_window(tmp_path, monkeypatch)
+    window.user32.IsHungAppWindow.return_value = 1
+
+    with pytest.raises(FeatureNotSupportedError, match="not responding"):
+        window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
+
+    window.user32.IsHungAppWindow.assert_called_once_with(window.hwnd)
+    window.user32.PrintWindow.assert_not_called()
+    window.win32gui.GetWindowDC.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "formats", [None, {8}, {13, 8}], ids=["unreadable", "image", "text-and-image"]
+)
 def test_preserving_a_clipboard_a_text_restore_cannot_rebuild_types_instead(
     tmp_path, monkeypatch, formats
 ) -> None:
-    """The restore puts back text only, so pasting over an image (CF_DIB) or a
-    clipboard whose formats can't be read would lose it."""
+    """The restore puts back text only, so pasting over an image (CF_DIB), even
+    one with text beside it, or a clipboard whose formats can't be read would
+    lose it."""
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
     pyautogui = MagicMock()
     monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
@@ -306,7 +369,8 @@ def test_the_clipboard_is_restored_however_far_our_write_moves_the_sequence(
     """EmptyClipboard and SetClipboardData each advance the sequence number,
     so one write of ours moves it by more than one."""
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
-    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     clipboard = _fake_clipboard(b, monkeypatch, content="user text")
 
     def write(text: str) -> int:
@@ -316,9 +380,12 @@ def test_the_clipboard_is_restored_however_far_our_write_moves_the_sequence(
         return clipboard["seq"]
 
     monkeypatch.setattr(b, "_write_clipboard_text", write)
+    text = "x" * PASTE_THRESHOLD_CHARS
 
-    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
+    assert clipboard["writes"][:1] == [text]
     assert (clipboard["content"] == "user text") is restored
 
 
@@ -335,9 +402,12 @@ def test_the_clipboard_is_not_restored_over_a_copy_made_during_the_paste(
         clipboard["seq"] += 1
 
     pyautogui.hotkey.side_effect = user_copies
+    text = "x" * PASTE_THRESHOLD_CHARS
 
-    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
+    assert clipboard["writes"] == [text]
     assert clipboard["content"] == "copied during the paste"
 
 
@@ -374,7 +444,8 @@ def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, mon
     that gap is counted as ours; the clipboard no longer holding our text
     gives it away."""
     b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
-    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     clipboard = _fake_clipboard(b, monkeypatch, content="user text")
 
     def write_then_someone_copies(text: str) -> int:
@@ -387,6 +458,7 @@ def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, mon
 
     b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
     assert clipboard["writes"] == ["x" * PASTE_THRESHOLD_CHARS]
     assert clipboard["content"] == "copied in the gap"
 
@@ -395,33 +467,13 @@ def test_the_clipboard_is_not_restored_over_a_copy_counted_as_ours(tmp_path, mon
 def test_a_window_capture_draws_the_cursor_only_when_asked(
     tmp_path, monkeypatch, include_cursor
 ) -> None:
-    import ctypes
-
-    from autogpt_local_executor.computer_use.backends import windows as windows_backend
-
-    b = WindowsBackend(_config(tmp_path))
-    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
-    window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
-    monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
-    win32gui = MagicMock()
-    win32gui.IsWindow.return_value = True
-    win32gui.GetWindowRect.return_value = (40, 30, 140, 80)
-    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
-    win32ui = MagicMock()
-    win32ui.CreateBitmap.return_value.GetInfo.return_value = {"bmWidth": 100, "bmHeight": 50}
-    monkeypatch.setitem(sys.modules, "win32ui", win32ui)
-    monkeypatch.setitem(sys.modules, "mss", MagicMock())
-    pil = MagicMock()
-    pil.Image.frombuffer.return_value = SimpleNamespace(width=100, height=50)
-    monkeypatch.setitem(sys.modules, "PIL", pil)
-    windll = MagicMock()
-    windll.user32.PrintWindow.return_value = 1
-    monkeypatch.setattr(ctypes, "windll", windll, raising=False)
-    monkeypatch.setattr(windows_backend, "image_to_base64", lambda *_a, **_k: (b"", "image/png"))
+    window = _capturable_window(tmp_path, monkeypatch, rect=(40, 30, 140, 80))
     drawn: list[tuple[int, int]] = []
-    monkeypatch.setattr(b, "_composite_cursor", lambda _img, origin: drawn.append(origin))
+    monkeypatch.setattr(
+        window.backend, "_composite_cursor", lambda _img, origin: drawn.append(origin)
+    )
 
-    b.screenshot(window_id=window_id, include_cursor=include_cursor)
+    window.backend.screenshot(window_id=window.window_id, include_cursor=include_cursor)
 
     assert drawn == ([(40, 30)] if include_cursor else [])
 
@@ -432,12 +484,13 @@ def test_the_clipboard_is_restored_when_the_paste_hotkey_raises(tmp_path, monkey
     pyautogui.hotkey.side_effect = RuntimeError("fail-safe")
     monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+    text = "x" * PASTE_THRESHOLD_CHARS
 
     with pytest.raises(RuntimeError, match="fail-safe"):
-        b.input_action(
-            "type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True
-        )
+        b.input_action("type", text=text, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("ctrl", "v")
+    assert clipboard["writes"] == [text, "user text"]
     assert clipboard["content"] == "user text"
 
 
@@ -445,27 +498,18 @@ def test_a_window_capture_releases_what_it_acquired_when_a_step_fails(
     tmp_path, monkeypatch
 ) -> None:
     """The DCs were acquired outside the try, so a failing bitmap leaked them."""
-    b = WindowsBackend(_config(tmp_path))
-    fp = WindowFingerprint(pid=7, class_name="Notepad", creation_timestamp=None)
-    window_id = b.window_registry.mint(0x1234, fp, extra={"monitor": 0})
-    monkeypatch.setattr(b, "_live_fingerprint", lambda _hwnd: fp)
-    win32gui = MagicMock()
-    win32gui.IsWindow.return_value = True
-    win32gui.GetWindowRect.return_value = (0, 0, 100, 50)
-    monkeypatch.setitem(sys.modules, "win32gui", win32gui)
-    win32ui = MagicMock()
-    win32ui.CreateBitmap.return_value.CreateCompatibleBitmap.side_effect = RuntimeError("no GDI")
-    monkeypatch.setitem(sys.modules, "win32ui", win32ui)
-    monkeypatch.setitem(sys.modules, "PIL", MagicMock())
+    window = _capturable_window(tmp_path, monkeypatch)
+    bitmap = window.win32ui.CreateBitmap.return_value
+    bitmap.CreateCompatibleBitmap.side_effect = RuntimeError("no GDI")
 
     with pytest.raises(RuntimeError, match="no GDI"):
-        b._screenshot_window(window_id, quality=75, format="jpeg")
+        window.backend._screenshot_window(window.window_id, quality=75, format="jpeg")
 
-    mfc_dc = win32ui.CreateDCFromHandle.return_value
+    mfc_dc = window.win32ui.CreateDCFromHandle.return_value
     mfc_dc.CreateCompatibleDC.return_value.DeleteDC.assert_called_once()
     mfc_dc.DeleteDC.assert_called_once()
-    win32gui.ReleaseDC.assert_called_once()
-    win32gui.DeleteObject.assert_not_called()
+    window.win32gui.ReleaseDC.assert_called_once()
+    window.win32gui.DeleteObject.assert_not_called()
 
 
 def test_a_clipboard_read_refuses_a_private_format_that_lands_between_reads(
@@ -502,3 +546,70 @@ def test_typing_refuses_text_it_cannot_type_instead_of_dropping_it(tmp_path, mon
         b.input_action("type", text="Grüße, 世界")
 
     pyautogui.write.assert_not_called()
+
+
+@pytest.mark.parametrize("restore_fails", [False, True], ids=["restored", "restore-fails"])
+def test_a_paste_whose_write_fails_puts_the_users_text_back(
+    tmp_path, monkeypatch, caplog, restore_fails
+) -> None:
+    """EmptyClipboard runs before SetClipboardData, so a failed write left the
+    clipboard empty and the user's text gone. A restore that fails too is
+    logged, and the write's own error is the one reported."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True))
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_clipboard(b, monkeypatch, content="user text")
+
+    def write(text: str) -> int:
+        clipboard["writes"].append(text)
+        # EmptyClipboard goes through, then SetClipboardData fails: for the
+        # paste, and for the restore too when asked.
+        clipboard["content"] = None
+        clipboard["seq"] += 1
+        if len(clipboard["writes"]) == 1 or restore_fails:
+            raise ClipboardWriteError(
+                f"SetClipboardData failed on write {len(clipboard['writes'])}"
+            )
+        clipboard["content"] = text
+        clipboard["seq"] += 1
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_write_clipboard_text", write)
+    caplog.set_level(logging.WARNING, logger=WindowsBackend.__module__)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    with pytest.raises(ClipboardWriteError, match="write 1"):
+        b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == [text, "user text"]
+    assert clipboard["content"] == (None if restore_fails else "user text")
+    pyautogui.hotkey.assert_not_called()
+    warning = (
+        WindowsBackend.__module__,
+        logging.WARNING,
+        "Could not restore the clipboard after a failed write",
+    )
+    assert (warning in caplog.record_tuples) is restore_fails
+
+
+def test_a_clipboard_read_that_cannot_be_read_consistently_says_so(tmp_path, monkeypatch) -> None:
+    """A read that fails disagrees with one that works, so readings that never
+    match are no proof the clipboard kept changing."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    reads = itertools.cycle([(None, None), ("user text", 4)])
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: next(reads))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
+
+    with pytest.raises(ClipboardConcealedError, match="could not be read consistently"):
+        b.clipboard_read()
+
+
+def test_a_clipboard_whose_reads_keep_failing_is_refused(tmp_path, monkeypatch) -> None:
+    """Two failed reads looked alike, so a foreign read returned "" for a
+    clipboard it never read."""
+    b = WindowsBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_read_clipboard_text", lambda: (None, None))
+    monkeypatch.setattr(b, "_clipboard_formats", lambda: {13})
+
+    with pytest.raises(ClipboardConcealedError):
+        b.clipboard_read()

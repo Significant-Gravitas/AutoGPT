@@ -8,6 +8,7 @@ we monkeypatch every imported native call.
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -456,11 +457,15 @@ def test_a_clipboard_restored_after_a_paste_stays_unreadable(tmp_path, monkeypat
     a writeback-only read must not return it."""
     b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
     monkeypatch.setattr(b, "_ax_trusted", lambda: True)
-    monkeypatch.setitem(sys.modules, "pyautogui", MagicMock())
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
     clipboard = _fake_pasteboard(b, monkeypatch, content="user secret")
+    text = "x" * PASTE_THRESHOLD_CHARS
 
-    b.input_action("type", text="x" * PASTE_THRESHOLD_CHARS, paste=True, preserve_clipboard=True)
+    b.input_action("type", text=text, paste=True, preserve_clipboard=True)
 
+    pyautogui.hotkey.assert_called_once_with("command", "v")
+    assert clipboard["writes"] == [text, "user secret"]
     assert clipboard["content"] == "user secret"
     with pytest.raises(ClipboardConcealedError):
         b.clipboard_read()
@@ -685,25 +690,55 @@ def test_bundle_launch_reports_an_app_open_cannot_find(tmp_path, monkeypatch) ->
 
 
 @pytest.mark.parametrize(
-    ("include_minimized", "include_offscreen", "on_screen_only"),
-    [(False, False, True), (True, False, False), (False, True, False)],
+    ("include_minimized", "include_offscreen", "listed"),
+    [
+        (False, False, ["Report"]),
+        (True, False, ["Report", "Notes"]),
+        (False, True, ["Report", "Notes"]),
+        (True, True, ["Report", "Notes"]),
+    ],
 )
-def test_window_list_asks_for_off_screen_windows_when_minimized_ones_are_wanted(
-    tmp_path, monkeypatch, include_minimized, include_offscreen, on_screen_only
+def test_window_list_lists_off_screen_windows_when_minimized_ones_are_wanted(
+    tmp_path, monkeypatch, displays_1080p, include_minimized, include_offscreen, listed
 ) -> None:
     """Minimized windows are off screen, so on-screen-only listing never has them."""
+    on_screen = {
+        "kCGWindowNumber": 11,
+        "kCGWindowOwnerPID": 100,
+        "kCGWindowOwnerName": "Editor",
+        "kCGWindowName": "Report",
+        "kCGWindowBounds": {"X": 0, "Y": 25, "Width": 800, "Height": 600},
+    }
+    minimized = {
+        "kCGWindowNumber": 12,
+        "kCGWindowOwnerPID": 100,
+        "kCGWindowOwnerName": "Editor",
+        "kCGWindowName": "Notes",
+        "kCGWindowBounds": {"X": 40, "Y": 65, "Width": 800, "Height": 600},
+    }
     fake_qz = MagicMock()
     fake_qz.kCGWindowListExcludeDesktopElements = 0x10
     fake_qz.kCGWindowListOptionOnScreenOnly = 0x1
-    fake_qz.CGWindowListCopyWindowInfo.return_value = []
+    fake_qz.kCGNullWindowID = 0
+
+    def copy_window_info(options: int, _relative_to: int) -> list[dict]:
+        # Like CoreGraphics: on-screen-only leaves the minimized window out.
+        if options & fake_qz.kCGWindowListOptionOnScreenOnly:
+            return [on_screen]
+        return [on_screen, minimized]
+
+    fake_qz.CGWindowListCopyWindowInfo.side_effect = copy_window_info
     monkeypatch.setitem(sys.modules, "Quartz", fake_qz)
     b = MacOSBackend(_config(tmp_path))
     monkeypatch.setattr(b, "_focused_pid", lambda: None)
+    monkeypatch.setattr(b, "_bundle_for_pid", lambda _pid: None)
+    monkeypatch.setattr(b, "display_info", lambda: displays_1080p)
 
-    b.window_list(include_minimized=include_minimized, include_offscreen=include_offscreen)
+    windows = b.window_list(
+        include_minimized=include_minimized, include_offscreen=include_offscreen
+    )
 
-    options = fake_qz.CGWindowListCopyWindowInfo.call_args.args[0]
-    assert bool(options & 0x1) is on_screen_only
+    assert [w.title for w in windows] == listed
 
 
 @pytest.mark.parametrize(
@@ -1137,3 +1172,72 @@ def test_short_text_that_cannot_be_typed_is_pasted_when_asked(tmp_path, monkeypa
     assert clipboard["writes"] == ["café"]
     pyautogui.hotkey.assert_called_once_with("command", "v")
     pyautogui.write.assert_not_called()
+
+
+@pytest.mark.parametrize("restore_fails", [False, True], ids=["restored", "restore-fails"])
+def test_a_paste_whose_write_fails_puts_the_users_text_back(
+    tmp_path, monkeypatch, caplog, restore_fails
+) -> None:
+    """clearContents runs before setString_forType_, so a refused write left
+    the pasteboard empty and the user's text gone. A restore that fails too is
+    logged, and the write's own error is the one reported."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True))
+    monkeypatch.setattr(b, "_ax_trusted", lambda: True)
+    pyautogui = MagicMock()
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    clipboard = _fake_pasteboard(b, monkeypatch, content="user text")
+
+    def write(text: str) -> int:
+        clipboard["writes"].append(text)
+        # clearContents goes through, then the pasteboard refuses the text:
+        # for the paste, and for the restore too when asked.
+        clipboard["content"] = None
+        clipboard["seq"] += 1
+        if len(clipboard["writes"]) == 1 or restore_fails:
+            raise ClipboardWriteError(f"the pasteboard refused write {len(clipboard['writes'])}")
+        clipboard["content"] = text
+        return clipboard["seq"]
+
+    monkeypatch.setattr(b, "_write_pasteboard_text", write)
+    caplog.set_level(logging.WARNING, logger=MacOSBackend.__module__)
+    text = "x" * PASTE_THRESHOLD_CHARS
+
+    with pytest.raises(ClipboardWriteError, match="write 1"):
+        b.input_action("type", text=text, paste=True, preserve_clipboard=True)
+
+    assert clipboard["writes"] == [text, "user text"]
+    assert clipboard["content"] == (None if restore_fails else "user text")
+    pyautogui.hotkey.assert_not_called()
+    warning = (
+        MacOSBackend.__module__,
+        logging.WARNING,
+        "Could not restore the clipboard after a failed write",
+    )
+    assert (warning in caplog.record_tuples) is restore_fails
+
+
+def test_a_clipboard_read_that_cannot_be_read_consistently_says_so(tmp_path, monkeypatch) -> None:
+    """Reads that fail give no change count, which a snapshot also refuses, so
+    the refusal must not claim the contents kept changing."""
+    b = MacOSBackend(_config(tmp_path, enable_clipboard=True, enable_clipboard_read_foreign=True))
+    monkeypatch.setattr(b, "_read_pasteboard_text", lambda: (None, None))
+    monkeypatch.setattr(b, "_read_pasteboard_types", lambda: ["public.utf8-plain-text"])
+
+    with pytest.raises(ClipboardConcealedError, match="could not be read consistently"):
+        b.clipboard_read()
+
+
+def test_raising_a_window_fails_when_it_cannot_be_made_main(tmp_path, monkeypatch) -> None:
+    """The result of setting AXMain was ignored, so WINDOW_FOCUS answered ACK
+    while another window of the app could come forward on activation."""
+    success, failure = 0, -25200
+    services = SimpleNamespace(
+        AXUIElementPerformAction=lambda _window, _action: success,
+        AXUIElementSetAttributeValue=lambda _window, _name, _value: failure,
+        kAXErrorSuccess=success,
+        kAXMainAttribute="AXMain",
+        kAXRaiseAction="AXRaise",
+    )
+    monkeypatch.setitem(sys.modules, "ApplicationServices", services)
+
+    assert MacOSBackend(_config(tmp_path))._ax_raise(object()) is False

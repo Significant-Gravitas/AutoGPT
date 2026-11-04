@@ -831,8 +831,9 @@ class MacOSBackend(ComputerUseBackend):
 
             if AXUIElementPerformAction(window, kAXRaiseAction) != kAXErrorSuccess:
                 return False
-            AXUIElementSetAttributeValue(window, kAXMainAttribute, True)
-            return True
+            # Activating the app brings its main window forward, so a window
+            # that couldn't be made main isn't the one that gets focus.
+            return AXUIElementSetAttributeValue(window, kAXMainAttribute, True) == kAXErrorSuccess
         except Exception:
             return False
 
@@ -946,7 +947,7 @@ class MacOSBackend(ComputerUseBackend):
             raise ClipboardConcealedError(
                 "concealed_type",
                 marker="unknown",
-                message="clipboard contents not readable: they kept changing while being read",
+                message="the clipboard could not be read consistently",
             )
         text, seq, markers = snapshot
         # Concealed-marker check first. Types that can't be read could be
@@ -1087,7 +1088,19 @@ class MacOSBackend(ComputerUseBackend):
         written the pasteboard since. With `restore=None` the text stays."""
         import pyautogui  # type: ignore[import-untyped]
 
-        written_count = self._write_pasteboard_text(text)
+        try:
+            written_count = self._write_pasteboard_text(text)
+        except ClipboardWriteError:
+            # clearContents may have gone through before the write failed,
+            # taking the user's text with it.
+            if restore is not None:
+                try:
+                    self._write_pasteboard_text(restore)
+                except ClipboardWriteError:
+                    logger.warning(
+                        "Could not restore the clipboard after a failed write", exc_info=True
+                    )
+            raise
         # Re-record writeback so the inner read sees us as the writer.
         self.clipboard_writeback.record_write(text, sequence=written_count)
         try:
