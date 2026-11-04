@@ -718,8 +718,12 @@ async def update_user_notification_preference(
             "alertsEnabled": data.alerts_enabled,
             "notifyOnStoreVerdict": data.store_verdicts_enabled,
         }
-        if data.email:
-            update_data["email"] = data.email
+        # `data.email` is deliberately not written: nothing here proves the
+        # caller owns that address. Writing it let any signed-in user point
+        # their account at someone else's address, learn from the unique
+        # index whether it was registered, and accept that person's
+        # organization invitations, which bind to User.email. The verified
+        # change-email flow is the only path that moves an account's address.
         # `is not None`, not truthiness: 0 is the documented "send nothing"
         # value that one-click unsubscribe writes, and a falsy check silently
         # kept the previous limit instead.
