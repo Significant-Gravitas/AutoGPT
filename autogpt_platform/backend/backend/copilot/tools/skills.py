@@ -28,10 +28,10 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -2927,8 +2927,9 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        # Independent reads: the owner's skill files and the paused names.
-        owned, paused = await asyncio.gather(
+        # A cold listing can copy or update the owner's skills but never
+        # pauses or resumes one, so the paused names need not wait for it.
+        owned, paused = await _side_by_side(
             list_user_skills(user_id, expert_id, scope),
             paused_skill_names(user_id, expert_id),
         )
@@ -3072,11 +3073,7 @@ async def build_skills_update_notice(
     try:
         if not await is_skills_feature_enabled(user_id):
             return ""
-        # The registry and the session's skill versions are independent reads.
-        current, session_versions = await asyncio.gather(
-            list_all_skills(user_id, expert_id, require_complete=True),
-            _session_skill_versions(user_id, expert_id, session_id),
-        )
+        current = await list_all_skills(user_id, expert_id, require_complete=True)
     except Exception:
         logger.exception("[skills] failed to diff skills for update notice")
         return ""
@@ -3084,11 +3081,13 @@ async def build_skills_update_notice(
     seen = previously_seen_skill_slugs(prior_contents)
     added = sorted(slug for slug in current_slugs if slug not in seen)
     removed = sorted(slug for slug in seen if slug not in current_slugs)
-    updated = [
-        slug
-        for slug in await _consume_updated(user_id, expert_id)
-        if slug in current_slugs and slug not in added
-    ]
+    # Both wait for the registry read: a cold one can update a marketplace
+    # copy, which queues its name and records its new version.
+    queued, session_versions = await _side_by_side(
+        _consume_updated(user_id, expert_id),
+        _session_skill_versions(user_id, expert_id, session_id),
+    )
+    updated = [slug for slug in queued if slug in current_slugs and slug not in added]
     if session_id and session_versions is not None:
         heads, previous = session_versions
         try:
@@ -3152,17 +3151,40 @@ async def _session_skill_versions(
     user_id: str, expert_id: str | None, session_id: str | None
 ) -> tuple[list[SkillHeadRecord], str | None] | None:
     """The owner's skill heads and the versions this chat last saw, or
-    ``None`` without a session or when the heads can't be read."""
+    ``None`` without a session or when the heads can't be read.
+
+    Only after the registry read: heads read while it updates a copy would
+    mark the old version seen, and the next turn would repeat the update.
+    """
     if not session_id:
         return None
     try:
-        return await asyncio.gather(
+        return await _side_by_side(
             skill_versions_db().list_heads(user_id, owner_key_for(expert_id)),
             read_seen_index_revision(session_id),
         )
     except Exception:
         logger.warning("[skills] could not check session skill versions", exc_info=True)
         return None
+
+
+_First = TypeVar("_First")
+_Second = TypeVar("_Second")
+
+
+async def _side_by_side(
+    first: Awaitable[_First], second: Awaitable[_Second]
+) -> tuple[_First, _Second]:
+    """Await both at once and return only once both have ended (a cancelled
+    caller cancels both and waits for them too), so neither runs on behind
+    the caller. Then the first one's failure is raised, else the second's:
+    the error the caller got when they ran one after another."""
+    one, two = await asyncio.gather(first, second, return_exceptions=True)
+    if isinstance(one, BaseException):
+        raise one
+    if isinstance(two, BaseException):
+        raise two
+    return one, two
 
 
 # ---------------------------------------------------------------------------
