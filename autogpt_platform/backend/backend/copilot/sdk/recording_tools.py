@@ -32,11 +32,13 @@ from backend.api.features.local_executor.state import (
     get_recording_state,
     list_recording_states,
 )
+from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
     get_current_sandbox,
     get_execution_context,
     is_local_pc_executor,
 )
+from backend.copilot.sdk.computer_use_policy import local_pc_tool_names_for_features
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimConnectionGuard,
@@ -54,6 +56,12 @@ from backend.copilot.tools.recording_skill import (
 )
 
 logger = logging.getLogger(__name__)
+
+_chat_config = ChatConfig()
+
+# The input tools a dry run replays through. It calls the shim directly, so
+# it must hold every grant those tools would check for themselves.
+_REPLAY_TOOLS = frozenset({"local_pc_type", "local_pc_click"})
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +237,42 @@ async def _require_computer_use_consent(
     return guard, None
 
 
+async def _require_replay_input(
+    shim: LocalPCShim,
+) -> tuple[ShimConnectionGuard | None, dict[str, Any] | None]:
+    """What the input tools need before replay drives the mouse and keyboard:
+    the deployment allowing computer use, the `computer_use` capability, the
+    replayed tools among the granted features, and the session's consent."""
+    if not _chat_config.allow_computer_use:
+        return None, _err(
+            "COMPUTER_USE_DISABLED",
+            "Computer control is turned off on this deployment, so a recorded "
+            "skill can't be replayed.",
+        )
+    if "computer_use" not in shim.capability_set:
+        return None, _err(
+            "CAPABILITY_NOT_GRANTED",
+            "The connected shim did not advertise the `computer_use` capability, "
+            "which replaying a skill needs.",
+            details={"capabilities": list(shim.capabilities or [])},
+        )
+    guard, consent_error = await _require_computer_use_consent(shim)
+    if consent_error:
+        return None, consent_error
+    assert guard is not None
+    granted = local_pc_tool_names_for_features(
+        guard.computer_use_features_coarse, guard.computer_use_features
+    )
+    missing = sorted(_REPLAY_TOOLS - granted)
+    if missing:
+        return None, _err(
+            "CAPABILITY_NOT_GRANTED",
+            "The connected Local PC executor did not grant the input a replay needs.",
+            details={"missing": missing},
+        )
+    return guard, None
+
+
 def _handle_shim_error(exc: ShimRecordingError) -> dict[str, Any]:
     return _err(exc.code, str(exc), exc.details)
 
@@ -377,9 +421,9 @@ async def _h_dry_run_skill(args: dict[str, Any]) -> dict[str, Any]:
     if shim is None:
         assert gate is not None
         return gate
-    connection_guard, consent_error = await _require_computer_use_consent(shim)
-    if consent_error:
-        return consent_error
+    connection_guard, refusal = await _require_replay_input(shim)
+    if refusal:
+        return refusal
     assert connection_guard is not None
     recording_id = args.get("recording_id")
     if not isinstance(recording_id, str) or not recording_id:

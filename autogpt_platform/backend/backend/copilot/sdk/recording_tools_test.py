@@ -33,12 +33,13 @@ def _parse(result: dict) -> dict:
     return json.loads(result["content"][0]["text"])
 
 
-def _shim(*, capabilities=("recording",)):
+def _shim(*, capabilities=("recording", "computer_use")):
     # spec=LocalPCShim so the handler's isinstance(sb, LocalPCShim) gate passes.
     shim = MagicMock(spec=LocalPCShim)
     shim.sandbox_id = "sess-1"
     shim.machine_id = "machine-1"
     shim.capabilities = list(capabilities)
+    shim.capability_set = frozenset(capabilities)
     shim.computer_use_features_coarse = ["screenshot", "input"]
     shim.computer_use_features = ["screenshot.capture", "input.click"]
     guard = ShimConnectionGuard(
@@ -60,6 +61,9 @@ def _shim(*, capabilities=("recording",)):
 
 def _install(monkeypatch, shim):
     monkeypatch.setattr(rt, "get_current_sandbox", lambda: shim)
+    monkeypatch.setattr(
+        rt, "_chat_config", SimpleNamespace(allow_computer_use=True), raising=False
+    )
     monkeypatch.setattr(
         rt,
         "get_execution_context",
@@ -358,6 +362,58 @@ class TestDryRunSkill:
 
         assert out["isError"] is True
         assert _parse(out)["code"] == "COMPUTER_USE_CONSENT_REQUIRED"
+
+    @pytest.mark.asyncio
+    async def test_dry_run_refuses_when_the_deployment_turns_computer_use_off(
+        self, monkeypatch
+    ):
+        """Replay drives the mouse and keyboard, but it checked only the
+        session's consent, so it ran with computer use turned off."""
+        shim = _shim()
+        _install(monkeypatch, shim)
+        monkeypatch.setattr(
+            rt, "_chat_config", SimpleNamespace(allow_computer_use=False), raising=False
+        )
+
+        out = await rt._h_dry_run_skill(
+            {"recording_id": "rec_x", "data_rows": [{"a": 1}]}
+        )
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "COMPUTER_USE_DISABLED"
+
+    @pytest.mark.asyncio
+    async def test_dry_run_refuses_a_shim_without_computer_use(self, monkeypatch):
+        shim = _shim(capabilities=("recording",))
+        _install(monkeypatch, shim)
+
+        out = await rt._h_dry_run_skill(
+            {"recording_id": "rec_x", "data_rows": [{"a": 1}]}
+        )
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "CAPABILITY_NOT_GRANTED"
+
+    @pytest.mark.asyncio
+    async def test_dry_run_refuses_without_the_input_it_replays(self, monkeypatch):
+        """The input tools check their grant themselves; replay calls the
+        shim directly, so a session granted only screenshots could type."""
+        shim = _shim()
+        shim.capture_connection_guard.return_value = ShimConnectionGuard(
+            generation=1,
+            machine_id="machine-1",
+            computer_use_features_coarse=("screenshot",),
+            computer_use_features=("screenshot.capture",),
+        )
+        _install(monkeypatch, shim)
+
+        out = await rt._h_dry_run_skill(
+            {"recording_id": "rec_x", "data_rows": [{"a": 1}]}
+        )
+
+        body = _parse(out)
+        assert body["code"] == "CAPABILITY_NOT_GRANTED"
+        assert body["details"]["missing"] == ["local_pc_click", "local_pc_type"]
 
     @pytest.mark.asyncio
     async def test_dry_run_requires_generated_skill(self, monkeypatch):
