@@ -1,6 +1,6 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink } from "@/lib/auth-redirect";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -36,8 +36,10 @@ export function useSignupPage() {
   const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  // `/signup?next=https://phishing.site` cannot redirect users elsewhere. A
+  // default landing (`next=/home`) is dropped too, so a new account goes to
+  // onboarding instead of Home (SECRT-3384).
+  const nextUrl = getAuthDeepLink(searchParams.get("next"));
 
   useEffect(() => {
     isMounted.current = true;
