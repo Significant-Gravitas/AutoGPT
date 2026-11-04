@@ -1817,6 +1817,19 @@ class ShimDaemon:
 
     async def _preflight_or_raise(self) -> None:
         """Reject incomplete previews or unverified required OS permissions."""
+        try:
+            Platform(platform_info.detect_platform())
+            Arch(platform_info.detect_arch())
+        except ValueError as exc:
+            # HELLO can't name this machine, so every connect would fail the
+            # same way; stop here instead of retrying forever.
+            await self._fail_preflight(
+                f"This computer can't run the shim: {exc}. It supports macOS, Linux, "
+                "WSL2 and Windows on x86_64 or arm64.",
+                missing_permissions=["supported_platform"],
+                error_code=ErrorCode.UNSUPPORTED_ARCH,
+                permanent=True,
+            )
         if self.config.enable_local_llm:
             await self._fail_preflight(
                 "Local model routing remains disabled until platform routing and "
