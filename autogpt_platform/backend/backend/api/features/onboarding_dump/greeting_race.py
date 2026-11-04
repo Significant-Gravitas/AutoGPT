@@ -49,7 +49,8 @@ async def race(
     """The first full reply from ``primary`` or ``backup``; failing that, the
     first reply with a greeting; failing that, an empty one.
 
-    ``generate`` never raises: a failed call is an empty reply.
+    ``generate`` should not raise; if it does, that attempt is an empty
+    reply and the other still gets its turn.
     """
     started = time.monotonic()
     running = {asyncio.create_task(generate(primary.model, primary.timeout)): primary}
@@ -58,9 +59,11 @@ async def race(
     try:
         done, _ = await asyncio.wait(running, timeout=hedge_after)
         while True:
-            for task in done:
+            # Sonnet first when both finished in the same pass: its copy is the
+            # one we prefer.
+            for task in sorted(done, key=lambda t: running[t] is not primary):
                 attempt = running.pop(task)
-                reply = task.result()
+                reply = _reply_of(task, attempt)
                 if reply.full:
                     logger.info(
                         "Brain dump greeting from %s in %.1f s",
@@ -82,3 +85,17 @@ async def race(
             task.cancel()
         # Let the losing call finish cancelling, so nothing outlives the race.
         await asyncio.gather(*running, return_exceptions=True)
+
+
+def _reply_of(task: "asyncio.Task[IntroReply]", attempt: Attempt) -> IntroReply:
+    """``task``'s reply, or an empty one when it raised."""
+    error = task.exception()
+    if error is None:
+        return task.result()
+    logger.warning(
+        "Brain dump greeting from %s raised: %s: %s",
+        attempt.model,
+        type(error).__name__,
+        error,
+    )
+    return IntroReply()

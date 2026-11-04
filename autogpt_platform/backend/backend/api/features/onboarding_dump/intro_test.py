@@ -247,3 +247,27 @@ async def test_when_both_models_fail_the_template_answers(client: MagicMock):
 
     assert await intro.generate_intro(TRANSCRIPT) == intro.fallback_intro(TRANSCRIPT)
     assert client.chat.completions.create.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        # A choice with no message, as OpenRouter sends with finish_reason
+        # "error".
+        SimpleNamespace(choices=[SimpleNamespace(message=None, finish_reason="error")]),
+        # A 2xx HTML error page, which the SDK hands back as a plain string.
+        "<html>Bad gateway</html>",
+    ],
+    ids=["no message", "html body"],
+)
+async def test_a_malformed_sonnet_reply_still_gets_the_backup_s_greeting(
+    client: MagicMock, malformed: object
+):
+    completion = client.chat.completions.create.return_value
+    client.chat.completions.create.side_effect = [malformed, completion]
+
+    greeting, _ = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == GENERATION["greeting"]
+    assert client.chat.completions.create.await_count == 2

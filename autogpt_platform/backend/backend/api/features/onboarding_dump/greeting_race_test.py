@@ -120,11 +120,46 @@ async def test_a_full_backup_answer_beats_a_sonnet_one_with_too_few_tasks():
 
 @pytest.mark.asyncio
 async def test_with_no_full_answer_the_first_greeting_is_kept():
-    models = Models({"sonnet": SHORT, "haiku": EMPTY})
+    haiku_short = IntroReply(greeting="Haiku's greeting, also short of tasks.")
+    models = Models({"sonnet": SHORT, "haiku": haiku_short})
 
     reply = await _race(models, hedge_after=NEVER)
 
     assert reply == SHORT
+    assert models.called == ["sonnet", "haiku"]
+
+
+@pytest.mark.asyncio
+async def test_an_attempt_that_raises_still_leaves_the_other_its_turn():
+    async def generate(model: str, timeout: float) -> IntroReply:
+        if model == "sonnet":
+            raise AttributeError("'NoneType' object has no attribute 'content'")
+        return HAIKU_FULL
+
+    reply = await asyncio.wait_for(
+        race(SONNET, HAIKU, generate, hedge_after=NEVER), timeout=10
+    )
+
+    assert reply == HAIKU_FULL
+
+
+@pytest.mark.asyncio
+async def test_sonnet_wins_when_both_answer_at_the_same_moment():
+    # Both calls are running after the hedge and come back together.
+    release = asyncio.Event()
+
+    async def generate(model: str, timeout: float) -> IntroReply:
+        await release.wait()
+        return {"sonnet": FULL, "haiku": HAIKU_FULL}[model]
+
+    for _ in range(20):
+        release.clear()
+        racing = asyncio.create_task(race(SONNET, HAIKU, generate, hedge_after=0))
+        while not release.is_set():
+            # Until the race is waiting on both calls.
+            await asyncio.sleep(0.01)
+            release.set()
+        assert await asyncio.wait_for(racing, timeout=10) == FULL
 
 
 @pytest.mark.asyncio

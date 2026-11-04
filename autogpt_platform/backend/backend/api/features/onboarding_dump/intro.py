@@ -14,6 +14,7 @@ import logging
 import os
 
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
 
 from backend.api.features.onboarding_dump.greeting_race import Attempt, IntroReply, race
 from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
@@ -216,7 +217,8 @@ async def _generate(
     client: AsyncOpenAI, content: str, model: str, timeout: float
 ) -> IntroReply:
     """One model's greeting for ``content``. Never raises: a failed call or
-    an unusable answer is logged with the model and comes back empty."""
+    an unusable answer, however malformed, is logged with the model and
+    comes back empty, so the other model still gets its turn."""
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
@@ -231,19 +233,31 @@ async def _generate(
             ),
             timeout=timeout,
         )
+        return _read_reply(response, model)
     except Exception as e:  # the other model, or the template, answers instead
         # The type too: a timeout's message is empty.
         logger.warning(
             "Brain dump greeting from %s failed: %s: %s", model, type(e).__name__, e
         )
         return IntroReply()
-    answer = ""
-    if response.choices:
-        answer = response.choices[0].message.content or ""
+
+
+def _read_reply(response: ChatCompletion, model: str) -> IntroReply:
+    """The greeting and tasks in ``response``, or why there are none."""
+    choice = response.choices[0] if response.choices else None
+    message = choice.message if choice else None
+    answer = (message.content if message else None) or ""
     data = parse_response_json(answer)
     if data is None:
+        # Why it stopped and any error the gateway sent, never the content:
+        # a reply cut off at the token cap reads "length".
         logger.warning(
-            "Brain dump greeting from %s: non-JSON output, %s chars", model, len(answer)
+            "Brain dump greeting from %s: no JSON (finish_reason=%s, %s chars, "
+            "error=%s)",
+            model,
+            choice.finish_reason if choice else None,
+            len(answer),
+            (response.model_extra or {}).get("error"),
         )
         return IntroReply()
     greeting = data.get("greeting")
