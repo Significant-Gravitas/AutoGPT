@@ -591,6 +591,14 @@
     height: 8px;
   }
 }
+/* The right edge of a row that scrolls sideways: what is past it blurs out
+   into the page, so it reads as "more this way". */
+@utility edge-blur-right {
+  backdrop-filter: blur(6px);
+  background: linear-gradient(to right, rgb(252 252 252 / 0), rgb(252 252 252 / 0.85));
+  mask-image: linear-gradient(to right, transparent, black 60%);
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

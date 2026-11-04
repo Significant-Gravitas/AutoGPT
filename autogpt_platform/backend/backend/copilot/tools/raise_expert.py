@@ -35,7 +35,7 @@ from .expert_proposal import (
     store_proposal,
     user_turn_watermark,
 )
-from .hire_task import track_proposed_hire, tracked_note
+from .hire_task import park_on_work_task, parked_note, track_proposed_hire, tracked_note
 from .models import (
     ErrorResponse,
     ExpertChangePreview,
@@ -266,6 +266,15 @@ class RaiseExpertTool(BaseTool):
                 board_task_id=board_task.id if board_task else None,
             ),
         )
+        work_task = await park_on_work_task(
+            user_id,
+            session,
+            confirmation_id,
+            "raise",
+            preview.name,
+            preview.role,
+            preview.tagline or "",
+        )
         return ExpertChangeProposedResponse(
             message=(
                 "Nothing created yet. The user is looking at this charter on "
@@ -274,6 +283,7 @@ class RaiseExpertTool(BaseTool):
                 "Only after they explicitly approve, call "
                 "tool:confirm_expert_change with this confirmation_id."
                 + tracked_note(board_task)
+                + parked_note(work_task)
             ),
             session_id=session_id,
             preview=preview,

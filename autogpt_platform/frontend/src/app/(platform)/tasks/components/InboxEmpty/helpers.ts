@@ -22,6 +22,10 @@ export const EMPTY_COPY: Record<InboxTab, EmptyCopy> = {
     title: "Nothing finished yet",
     body: "Finished tasks land here with what came out of them.",
   },
+  cancelled: {
+    title: "Nothing cancelled",
+    body: "Tasks you cancel move here, with what was done before they stopped.",
+  },
 };
 
 export const FILTERED_COPY: EmptyCopy = {

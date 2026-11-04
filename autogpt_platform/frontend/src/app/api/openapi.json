@@ -20484,6 +20484,52 @@
           }
         }
       }
+    },
+    "/api/tasks/{task_id}/approvals": {
+      "post": {
+        "tags": ["v2", "tasks"],
+        "summary": "Answer Task Approvals",
+        "description": "Approve or decline the hire and raise cards the task waits on, the\nsame as clicking them in the task's chat, and let the worker go on.",
+        "operationId": "answer_task_approvals",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ApprovalsAnswer" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -23953,6 +23999,11 @@
               { "$ref": "#/components/schemas/Blocker" },
               { "type": "null" }
             ]
+          },
+          "approvals": {
+            "items": { "$ref": "#/components/schemas/CardApproval" },
+            "type": "array",
+            "title": "Approvals"
           }
         },
         "type": "object",
@@ -38120,6 +38171,11 @@
               { "type": "null" }
             ]
           },
+          "approvals": {
+            "items": { "$ref": "#/components/schemas/CardApproval" },
+            "type": "array",
+            "title": "Approvals"
+          },
           "contract_version": {
             "type": "integer",
             "title": "Contract Version",
@@ -38413,6 +38469,11 @@
               { "$ref": "#/components/schemas/Blocker" },
               { "type": "null" }
             ]
+          },
+          "approvals": {
+            "items": { "$ref": "#/components/schemas/CardApproval" },
+            "type": "array",
+            "title": "Approvals"
           },
           "contract_version": {
             "type": "integer",
@@ -41834,6 +41895,45 @@
         "required": ["content"],
         "title": "WriteSummary",
         "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
+      },
+      "ApprovalsAnswer": {
+        "properties": {
+          "decisions": {
+            "items": { "$ref": "#/components/schemas/CardDecision" },
+            "type": "array",
+            "minItems": 1,
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": ["decisions"],
+        "title": "ApprovalsAnswer"
+      },
+      "CardApproval": {
+        "properties": {
+          "confirmation_id": { "type": "string", "title": "Confirmation Id" },
+          "kind": { "type": "string", "title": "Kind", "default": "hire" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role", "default": "" },
+          "tagline": { "type": "string", "title": "Tagline", "default": "" }
+        },
+        "type": "object",
+        "required": ["confirmation_id", "name"],
+        "title": "CardApproval",
+        "description": "A hire or raise card proposed in the task's work chat, waiting on the\nuser's Approve. Answered from the board through ``/approvals``."
+      },
+      "CardDecision": {
+        "properties": {
+          "confirmation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Confirmation Id"
+          },
+          "approved": { "type": "boolean", "title": "Approved" }
+        },
+        "type": "object",
+        "required": ["confirmation_id", "approved"],
+        "title": "CardDecision"
       }
     },
     "securitySchemes": {

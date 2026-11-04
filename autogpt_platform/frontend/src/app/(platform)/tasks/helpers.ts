@@ -12,7 +12,7 @@ import type {
 export const TASK_VIEWS = ["list", "board"] as const;
 export type TasksView = (typeof TASK_VIEWS)[number];
 
-export const LANES = ["needs_you", "working", "done"] as const;
+export const LANES = ["needs_you", "working", "done", "cancelled"] as const;
 export type Lane = (typeof LANES)[number];
 
 export const INBOX_TABS = ["all", ...LANES] as const;
@@ -23,6 +23,7 @@ export const INBOX_TAB_LABELS: Record<InboxTab, string> = {
   needs_you: "Needs you",
   working: "Working",
   done: "Done",
+  cancelled: "Cancelled",
 };
 
 const LANE_OF: Record<TaskState, Lane> = {
@@ -30,16 +31,17 @@ const LANE_OF: Record<TaskState, Lane> = {
   stuck: "needs_you",
   working: "working",
   done: "done",
-  stopped: "done",
+  stopped: "cancelled",
 };
 
 const LANE_STATES: Record<Lane, TaskState[]> = {
   needs_you: ["needs_you", "stuck"],
   working: ["working"],
-  done: ["done", "stopped"],
+  done: ["done"],
+  cancelled: ["stopped"],
 };
 
-export const BOARD_MIN_WIDTH = 620;
+export const BOARD_MIN_WIDTH = 820;
 
 export function laneOf(task: Task) {
   return LANE_OF[task.state];
@@ -51,7 +53,12 @@ export function tabCount(counts: TaskCounts | undefined, tab: InboxTab) {
   return LANE_STATES[tab].reduce((n, s) => n + (counts.by_state[s] ?? 0), 0);
 }
 
-const LANE_RANK: Record<Lane, number> = { needs_you: 0, working: 1, done: 2 };
+const LANE_RANK: Record<Lane, number> = {
+  needs_you: 0,
+  working: 1,
+  done: 2,
+  cancelled: 3,
+};
 
 function byLaneThenRecent(a: Task, b: Task) {
   const lane = LANE_RANK[laneOf(a)] - LANE_RANK[laneOf(b)];
@@ -193,4 +200,9 @@ export function toggleValue<T>(list: T[], value: T) {
 export function isTypingShortcutTarget(el: Element | null) {
   if (!el) return false;
   return !!el.closest("[role='dialog'], [role='menu'], [role='listbox']");
+}
+
+/** A task that is working or waiting on the user can still be cancelled. */
+export function isCancellable(state: TaskState) {
+  return state === "working" || state === "needs_you" || state === "stuck";
 }

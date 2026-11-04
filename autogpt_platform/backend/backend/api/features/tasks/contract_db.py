@@ -17,6 +17,7 @@ import prisma.models
 from prisma import Json
 from pydantic import BaseModel
 
+from backend.api.features.tasks import approvals as card_approvals
 from backend.api.features.tasks import contract as c
 from backend.api.features.tasks import db
 from backend.api.features.tasks.converters import (
@@ -32,6 +33,7 @@ from backend.api.features.tasks.models import (
     Actor,
     Assignee,
     Attachment,
+    CardApproval,
     ContractState,
     PendingInput,
     Plan,
@@ -456,6 +458,40 @@ async def ask(
         },
     )
     return _update(written, activity=activity, status_event="task_needs_input")
+
+
+async def add_approval(
+    user_id: str, task_id: str, card: CardApproval, actor: Actor
+) -> ContractUpdate:
+    """Keep a hire or raise card proposed in the task's chat on the task and
+    move it to Needs you, so the user can answer it from the board."""
+    written = await _patch(
+        user_id, task_id, lambda base, _task: card_approvals.add_approval(base, card)
+    )
+    if not written.patches:
+        return _update(written)
+    written.task = await _set_status(user_id, written.task, TaskStatus.BLOCKED, actor)
+    verb = "Hire" if card.kind == "hire" else "Create"
+    activity = await _log(
+        user_id,
+        task_id,
+        ActivityKind.INPUT_REQUESTED,
+        actor,
+        body=f"{verb} {card.name}? Approve the card to go on.",
+        data={"confirmation_id": card.confirmation_id, "version": written.version},
+    )
+    return _update(written, activity=activity, status_event="task_needs_input")
+
+
+async def drop_approvals(
+    user_id: str, task_id: str, confirmation_ids: list[str]
+) -> ContractUpdate:
+    """Forget cards that were answered (on the board or in the chat)."""
+    ids = set(confirmation_ids)
+    written = await _patch(
+        user_id, task_id, lambda base, _task: card_approvals.drop_approvals(base, ids)
+    )
+    return _update(written)
 
 
 async def close_ask(user_id: str, task_id: str) -> None:

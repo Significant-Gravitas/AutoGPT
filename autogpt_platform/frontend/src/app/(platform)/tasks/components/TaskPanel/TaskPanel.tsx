@@ -1,11 +1,13 @@
 "use client";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ActivityCheckpoints } from "./components/ActivityCheckpoints/ActivityCheckpoints";
 import { AttentionCard } from "./components/AttentionCard/AttentionCard";
 import { unmetChecks } from "./components/AttentionCard/helpers";
 import { CommentComposer } from "./components/CommentComposer/CommentComposer";
 import { DoneWhen } from "./components/DoneWhen/DoneWhen";
 import { GoalLine } from "./components/GoalLine/GoalLine";
+import { PanelApprovals } from "./components/PanelApprovals/PanelApprovals";
 import { PanelSkeleton } from "./components/PanelSkeleton/PanelSkeleton";
 import { Progress } from "./components/Progress/Progress";
 import { ResultCard } from "./components/ResultCard/ResultCard";
@@ -28,6 +30,7 @@ export function TaskPanel({ taskId, onOpenTask }: Props) {
   const rawStatus = summary?.raw_status ?? task?.raw_status;
   const state = summary?.state ?? task?.state;
   const settled = state === "done" || state === "stopped";
+  const cards = settled ? [] : (contract?.approvals ?? task?.approvals ?? []);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -58,8 +61,16 @@ export function TaskPanel({ taskId, onOpenTask }: Props) {
                   />
                 ) : null}
               </div>
-              {!settled &&
-              (ask || blocker || rawStatus === "awaiting_accept") ? (
+              {cards.length && task ? (
+                <div className="px-1.5 py-4">
+                  <PanelApprovals
+                    taskId={task.id}
+                    askerName={task.assignee?.name ?? "Otto"}
+                    cards={cards}
+                  />
+                </div>
+              ) : !settled &&
+                (ask || blocker || rawStatus === "awaiting_accept") ? (
                 <div className="px-1.5 py-4">
                   <AttentionCard
                     key={ask?.id ?? blocker?.what_stopped_it ?? "accept"}
@@ -88,6 +99,11 @@ export function TaskPanel({ taskId, onOpenTask }: Props) {
                 <ResultCard taskId={task.id} contract={contract} />
               ) : null}
               <SubtaskList task={task} onOpenTask={onOpenTask} />
+              <ActivityCheckpoints
+                taskId={task.id}
+                title={task.title}
+                running={summary?.live?.running ?? task.state === "working"}
+              />
               <ShowWork task={task} experts={experts} />
             </div>
             <div className="shrink-0 border-t border-border-hairline px-1.5 pt-3 pb-1">

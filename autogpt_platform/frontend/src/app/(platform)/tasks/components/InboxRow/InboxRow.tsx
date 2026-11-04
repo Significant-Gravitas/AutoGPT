@@ -5,6 +5,9 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { taskKey } from "../../data/helpers";
 import type { Task } from "../../data/types";
+import { isCancellable } from "../../helpers";
+import { CancelTask } from "../CancelTask/CancelTask";
+import { CardApprovals } from "../CardApprovals/CardApprovals";
 import { StateDot } from "../StateDot/StateDot";
 import { RowAssignee } from "./components/RowAssignee";
 import { openLabel } from "./helpers";
@@ -25,7 +28,8 @@ export function InboxRow({
 }: Props) {
   const row = useInboxRow(task);
   const board = variant === "board";
-  const ask = task.ask;
+  const cards = row.cards;
+  const ask = cards.length ? null : task.ask;
 
   return (
     <div
@@ -100,7 +104,7 @@ export function InboxRow({
           </span>
         ) : null}
       </button>
-      {ask || row.action ? (
+      {ask || row.action || cards.length ? (
         <div
           className={cn(
             "flex flex-col gap-2 rounded-control bg-surface-wash p-2.5",
@@ -112,23 +116,32 @@ export function InboxRow({
               {ask.question}
             </Text>
           ) : null}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {row.action ? (
-              <Button
-                variant="primary"
-                size="xs"
-                className="max-w-full"
-                title={row.action.label}
-                loading={row.busy}
-                onClick={row.runAction}
-              >
-                <span className="truncate">{row.action.label}</span>
+          {cards.length ? (
+            <CardApprovals taskId={task.id} cards={cards} />
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {row.action ? (
+                <Button
+                  variant="primary"
+                  size="xs"
+                  className="max-w-full"
+                  title={row.action.label}
+                  loading={row.busy}
+                  onClick={row.runAction}
+                >
+                  <span className="truncate">{row.action.label}</span>
+                </Button>
+              ) : null}
+              <Button variant="ghost-muted" size="xs" onClick={onOpen}>
+                {openLabel(task, !!row.action)}
               </Button>
-            ) : null}
-            <Button variant="ghost-muted" size="xs" onClick={onOpen}>
-              {openLabel(task, !!row.action)}
-            </Button>
-          </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+      {isCancellable(task.state) ? (
+        <div className={cn("flex", board ? "px-3 pb-2.5" : "mr-4 mb-2.5 ml-9")}>
+          <CancelTask taskId={task.id} />
         </div>
       ) : null}
     </div>

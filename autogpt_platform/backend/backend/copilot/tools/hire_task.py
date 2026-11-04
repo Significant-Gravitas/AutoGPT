@@ -15,10 +15,14 @@ The board is bookkeeping here: a failure to track never blocks the hire.
 import logging
 
 from backend.api.features.tasks.access import tasks_store
-from backend.api.features.tasks.events import publish_task_event
+from backend.api.features.tasks.events import (
+    publish_contract_update,
+    publish_task_event,
+)
 from backend.api.features.tasks.models import (
     Actor,
     AssigneeType,
+    CardApproval,
     Task,
     TaskCreate,
     TaskStatus,
@@ -70,6 +74,75 @@ async def track_proposed_hire(
     except Exception:
         logger.exception("Could not put a proposed hire on the task board")
         return None
+
+
+async def park_on_work_task(
+    user_id: str,
+    session: ChatSession,
+    confirmation_id: str,
+    kind: str,
+    name: str,
+    role: str,
+    tagline: str = "",
+) -> Task | None:
+    """In a chat working a task, keep the card on that task so the user can
+    approve it from the board (``tasks/approvals.py``). The task, or None."""
+    try:
+        if not await is_feature_enabled(Flag.TASKS_V1, user_id, default=False):
+            return None
+        task = await find_work_task(user_id, session)
+        if task is None:
+            return None
+        card = CardApproval(
+            confirmation_id=confirmation_id,
+            kind=kind,
+            name=name,
+            role=role,
+            tagline=tagline,
+        )
+        actor = await caller_actor(user_id, session)
+        update = await tasks_store().contract_add_approval(
+            user_id, task.id, card, actor
+        )
+        await publish_contract_update(user_id, update)
+        await publish_task_event(user_id, "task_updated", update.task, task_id=task.id)
+        return task
+    except Exception:
+        logger.exception("Could not keep a proposed hire on its task")
+        return None
+
+
+def parked_note(task: Task | None) -> str:
+    """What the proposal tells the worker when the card is on its task."""
+    if task is None:
+        return ""
+    return (
+        f" The card is also on task {task.key} in the user's Needs you list, "
+        "where they can approve it; their answer arrives as a new message "
+        "with the Approved line. Don't call ask_user about this card."
+    )
+
+
+async def forget_card(
+    user_id: str, session_id: str, confirmation_ids: list[str]
+) -> None:
+    """Take an answered card off the task its chat works. A hire carries two
+    ids (plain / hire and start), so both are passed."""
+    try:
+        found = await tasks_store().get_task_for_work_session(session_id)
+        if found is None:
+            return
+        owner, task = found
+        ids = [i for i in confirmation_ids if i]
+        if owner != user_id or not any(
+            a.confirmation_id in ids for a in task.approvals
+        ):
+            return
+        update = await tasks_store().contract_drop_approvals(user_id, task.id, ids)
+        await publish_contract_update(user_id, update)
+        await publish_task_event(user_id, "task_updated", update.task, task_id=task.id)
+    except Exception:
+        logger.exception("Could not take an answered card off its task")
 
 
 async def complete_hire(user_id: str, task_id: str, name: str, role: str) -> None:

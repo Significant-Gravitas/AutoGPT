@@ -44,7 +44,10 @@ export function useInboxRow(task: Task) {
     );
   }
 
+  const open = task.state !== "done" && task.state !== "stopped";
+
   return {
+    cards: open ? (task.approvals ?? []) : [],
     ago: shortAgo(task.updated_at),
     action,
     busy: answer.isPending || act.isPending,

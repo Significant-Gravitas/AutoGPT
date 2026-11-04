@@ -701,6 +701,12 @@ class DatabaseManager(AppService):
         tasks_contract_db.add_evidence, name="tasks_contract_add_evidence"
     )
     tasks_contract_ask = _(tasks_contract_db.ask, name="tasks_contract_ask")
+    tasks_contract_add_approval = _(
+        tasks_contract_db.add_approval, name="tasks_contract_add_approval"
+    )
+    tasks_contract_drop_approvals = _(
+        tasks_contract_db.drop_approvals, name="tasks_contract_drop_approvals"
+    )
     tasks_contract_fill_from_turn = _(
         tasks_contract_db.fill_from_turn, name="tasks_contract_fill_from_turn"
     )
@@ -1299,6 +1305,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     tasks_contract_update_task = d.tasks_contract_update_task
     tasks_contract_add_evidence = d.tasks_contract_add_evidence
     tasks_contract_ask = d.tasks_contract_ask
+    tasks_contract_add_approval = d.tasks_contract_add_approval
+    tasks_contract_drop_approvals = d.tasks_contract_drop_approvals
     tasks_contract_fill_from_turn = d.tasks_contract_fill_from_turn
     tasks_contract_get_summary = d.tasks_contract_get_summary
 

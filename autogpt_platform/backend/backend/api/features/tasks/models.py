@@ -140,6 +140,26 @@ class Blocker(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class CardApproval(BaseModel):
+    """A hire or raise card proposed in the task's work chat, waiting on the
+    user's Approve. Answered from the board through ``/approvals``."""
+
+    confirmation_id: str
+    kind: str = "hire"
+    name: str
+    role: str = ""
+    tagline: str = ""
+
+
+class CardDecision(BaseModel):
+    confirmation_id: str = Field(min_length=1)
+    approved: bool
+
+
+class ApprovalsAnswer(BaseModel):
+    decisions: list[CardDecision] = Field(min_length=1)
+
+
 class Contract(BaseModel):
     goal: str
     # Set when the scope changed after work was planned, so the change shows.
@@ -150,6 +170,7 @@ class Contract(BaseModel):
     result: Result | None = None
     ask: Ask | None = None
     blocker: Blocker | None = None
+    approvals: list[CardApproval] = Field(default_factory=list)
 
 
 class PlanStatus(str, Enum):
@@ -313,6 +334,7 @@ class Task(BaseModel):
     now: str = ""
     ask: Ask | None = None
     blocker: Blocker | None = None
+    approvals: list[CardApproval] = Field(default_factory=list)
     contract_version: int = 0
 
 

@@ -5,6 +5,7 @@ import fastapi
 from fastapi import APIRouter, Depends, Query, Security
 
 from backend.api.features.tasks import contract_db, db, dispatch, events, inbox
+from backend.api.features.tasks.approvals_answer import answer_cards
 from backend.api.features.tasks.contract import brief
 from backend.api.features.tasks.contract_db import EvidenceDetail, TaskSummary
 from backend.api.features.tasks.models import (
@@ -12,6 +13,7 @@ from backend.api.features.tasks.models import (
     ActivityListResponse,
     Actor,
     AnswerCreate,
+    ApprovalsAnswer,
     AskAnswer,
     AssigneeType,
     Attachment,
@@ -35,6 +37,8 @@ from backend.api.features.tasks.models import (
     TaskStatus,
     TaskUpdate,
 )
+from backend.copilot import turn_queue
+from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -503,6 +507,30 @@ async def answer_task_ask(
 
 
 @router.post(
+    "/{task_id}/approvals",
+    dependencies=_GATE,
+    operation_id="answer_task_approvals",
+    response_model=TaskSummary,
+)
+async def answer_task_approvals(
+    task_id: str,
+    body: ApprovalsAnswer,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> TaskSummary:
+    """Approve or decline the hire and raise cards the task waits on, the
+    same as clicking them in the task's chat, and let the worker go on."""
+    try:
+        message = await answer_cards(user_id, task_id, body.decisions)
+    except LookupError:
+        raise fastapi.HTTPException(status_code=404, detail="Task not found")
+    except ValueError as e:
+        raise _bad_request(e)
+    await _emit(user_id, "task_updated", await db.get_task(user_id, task_id))
+    await _resume(user_id, task_id, message)
+    return await get_task_summary(task_id, user_id)
+
+
+@router.post(
     "/{task_id}/actions/{action}",
     dependencies=_GATE,
     operation_id="take_task_action",
@@ -529,6 +557,20 @@ async def take_task_action(
     return await get_task_summary(task_id, user_id)
 
 
+async def _stop_work_turn(user_id: str, task: Task) -> None:
+    """Stop the expert's queued or running turn too, the way Stop in the chat
+    does; otherwise it keeps working and can mark a cancelled task done."""
+    session_id = task.work_session_id
+    if not session_id:
+        return
+    try:
+        if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
+            return
+        await enqueue_cancel_task(session_id)
+    except Exception:
+        logger.exception(f"Could not stop the work turn of task {task.id}")
+
+
 async def _apply_action(
     user_id: str, task: Task, action: str, body: TaskActionRequest
 ) -> None:
@@ -553,6 +595,7 @@ async def _apply_action(
     if action == TaskActionName.STOP:
         await log(f"You stopped it.{note}")
         await settle(TaskStatus.CANCELLED)
+        await _stop_work_turn(user_id, task)
         return
     if action == TaskActionName.ACCEPT:
         if contract.result is None:

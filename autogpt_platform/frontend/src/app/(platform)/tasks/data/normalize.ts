@@ -1,5 +1,6 @@
 import type { Ask } from "@/app/api/__generated__/models/ask";
 import type { Blocker } from "@/app/api/__generated__/models/blocker";
+import type { CardApproval } from "@/app/api/__generated__/models/cardApproval";
 import type { TaskSummary } from "@/app/api/__generated__/models/taskSummary";
 import type {
   ExpertOption,
@@ -175,6 +176,7 @@ export function toTask(v: unknown): Task {
       now: t.now ?? "",
       ask: t.ask ?? null,
       blocker: t.blocker ?? null,
+      approvals: t.approvals ?? [],
       elapsed_ms: t.elapsed_ms ?? null,
       started_at: t.started_at ?? null,
       completed_at: t.completed_at ?? null,
@@ -231,6 +233,9 @@ export function toTask(v: unknown): Task {
     now: str(r.now) ?? "",
     ask: r.ask ? (r.ask as Ask) : null,
     blocker: r.blocker ? (r.blocker as Blocker) : null,
+    approvals: Array.isArray(r.approvals)
+      ? (r.approvals as CardApproval[])
+      : [],
     elapsed_ms: typeof r.elapsed_ms === "number" ? r.elapsed_ms : null,
     started_at: str(r.started_at),
     completed_at: str(r.completed_at),
@@ -416,6 +421,7 @@ export function summaryFromTask(task: Task): TaskSummary {
       goal: task.title,
       ask: task.ask,
       blocker: task.blocker,
+      approvals: task.approvals,
       result: task.outcome_summary ? { summary: task.outcome_summary } : null,
     },
     live: {

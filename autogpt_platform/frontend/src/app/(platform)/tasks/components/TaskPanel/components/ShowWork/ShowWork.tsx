@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 import type { ExpertOption, TaskDetail } from "../../../../data/types";
-import { ActivityFeed } from "../ActivityFeed/ActivityFeed";
 import { Fold } from "../Fold/Fold";
 import { useShowWork } from "./useShowWork";
 
@@ -17,9 +16,9 @@ interface Props {
 }
 
 /** Everything behind the summary, folded away: the brief, what was used,
- *  attachments, the work chat and the full log. */
+ *  attachments and the work chat. The log is ActivityCheckpoints. */
 export function ShowWork({ task, experts }: Props) {
-  const work = useShowWork(task.id);
+  const work = useShowWork();
   const tools = task.inbox.tools_used;
   const bodyID = `show-work-${task.id}`;
 
@@ -98,16 +97,6 @@ export function ShowWork({ task, experts }: Props) {
               Open the work chat
             </Link>
           ) : null}
-          <Block label="Activity">
-            <ActivityFeed
-              items={work.items}
-              isLoading={work.isLoading}
-              experts={experts}
-              hasMore={work.hasMore}
-              isLoadingMore={work.isLoadingMore}
-              onLoadMore={work.loadMore}
-            />
-          </Block>
         </div>
       </Fold>
     </section>

@@ -1,5 +1,6 @@
 import type { Ask } from "@/app/api/__generated__/models/ask";
 import type { Blocker } from "@/app/api/__generated__/models/blocker";
+import type { CardApproval } from "@/app/api/__generated__/models/cardApproval";
 
 export type TaskStatus =
   | "backlog"
@@ -116,6 +117,7 @@ export interface Task {
   now: string;
   ask: Ask | null;
   blocker: Blocker | null;
+  approvals: CardApproval[];
   elapsed_ms: number | null;
   started_at: string | null;
   completed_at: string | null;

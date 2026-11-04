@@ -77,6 +77,7 @@ function base(
     now: "",
     ask: null,
     blocker: null,
+    approvals: [],
     elapsed_ms: null,
     started_at: null,
     completed_at: null,

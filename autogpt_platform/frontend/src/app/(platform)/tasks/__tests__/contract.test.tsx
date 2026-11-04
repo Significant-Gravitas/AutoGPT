@@ -233,6 +233,87 @@ describe("task cards", () => {
     expect(calls[0].url).toMatch(/\/api\/tasks\/t3\/actions\/allow$/);
   });
 
+  test("hire cards a task waits on are approved from its card", async () => {
+    server.use(
+      http.get("*/api/tasks/experts", () => HttpResponse.json({ experts: [] })),
+      http.get("*/api/tasks", () =>
+        HttpResponse.json({
+          tasks: [
+            row("t6", 6, {
+              title: "Raise a developer and a marketer",
+              status: "blocked",
+              raw_status: "asked",
+              state: "needs_you",
+              now: "Waiting on your answer",
+              ask: {
+                id: "ask-6",
+                question: "Click Approve on the cards, then reply done.",
+                options: ["Done, approved both"],
+                default_option: "Done, approved both",
+              },
+              approvals: [
+                {
+                  confirmation_id: "c-devin",
+                  kind: "hire",
+                  name: "Devin",
+                  role: "Web Development",
+                  tagline: "Builds and ships website changes.",
+                },
+                { confirmation_id: "c-maya", kind: "raise", name: "Maya" },
+              ],
+            }),
+          ],
+        }),
+      ),
+    );
+    const calls = capture("post", "*/api/tasks/t6/approvals");
+    const user = userEvent.setup();
+    render(<TasksWorkspace />);
+
+    const card = (
+      await screen.findByText("Raise a developer and a marketer")
+    ).closest("[data-testid='inbox-row']") as HTMLElement;
+    expect(within(card).getByText("Hire Devin · Web Development")).toBeTruthy();
+    expect(within(card).getByText("Create Maya")).toBeTruthy();
+    // The cards replace the worker's own "reply done" question.
+    expect(
+      within(card).queryByRole("button", { name: "Done, approved both" }),
+    ).toBeNull();
+
+    await user.click(
+      within(card).getByRole("button", { name: "Approve both" }),
+    );
+
+    await waitFor(() =>
+      expect(calls.map((c) => c.body)).toEqual([
+        {
+          decisions: [
+            { confirmation_id: "c-devin", approved: true },
+            { confirmation_id: "c-maya", approved: true },
+          ],
+        },
+      ]),
+    );
+  });
+
+  test("a working task is cancelled from its card after one confirm", async () => {
+    serveBoard();
+    const calls = capture("post", "*/api/tasks/t1/actions/:action");
+    const user = userEvent.setup();
+    render(<TasksWorkspace />);
+
+    const card = (await screen.findByText("Check competitor pricing")).closest(
+      "[data-testid='inbox-row']",
+    ) as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: "Cancel task" }));
+    expect(calls).toHaveLength(0);
+
+    await user.click(within(card).getByRole("button", { name: "Yes, cancel" }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].url).toMatch(/\/api\/tasks\/t1\/actions\/stop$/);
+  });
+
   test("a stopped card offers no way out", async () => {
     server.use(
       http.get("*/api/tasks/experts", () => HttpResponse.json({ experts: [] })),
@@ -258,6 +339,9 @@ describe("task cards", () => {
     ) as HTMLElement;
     expect(within(card).getByText("Stopped")).toBeTruthy();
     expect(within(card).queryByRole("button", { name: "Allow" })).toBeNull();
+    expect(
+      within(card).queryByRole("button", { name: "Cancel task" }),
+    ).toBeNull();
   });
 });
 

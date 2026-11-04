@@ -36,6 +36,8 @@ import {
   getAssigneeLabel,
   isTaskOverdue,
 } from "../../helpers";
+import { isCancellable } from "../../../../helpers";
+import { CancelTask } from "../../../CancelTask/CancelTask";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 
 interface Props {
@@ -199,6 +201,7 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
             Open work thread
           </Button>
         ) : null}
+        {isCancellable(task.state) ? <CancelTask taskId={task.id} /> : null}
       </div>
     </div>
   );

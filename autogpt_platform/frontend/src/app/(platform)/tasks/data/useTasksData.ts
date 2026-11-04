@@ -1,3 +1,4 @@
+import type { CardDecision } from "@/app/api/__generated__/models/cardDecision";
 import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
 import {
   useInfiniteQuery,
@@ -185,6 +186,20 @@ export function useAnswerAsk() {
       answer: string;
       askId?: string;
     }) => tasksApi.answerAsk(id, answer, askId),
+    onSuccess: () => invalidateTasks(queryClient),
+  });
+}
+
+export function useAnswerApprovals() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      decisions,
+    }: {
+      id: string;
+      decisions: CardDecision[];
+    }) => tasksApi.answerApprovals(id, decisions),
     onSuccess: () => invalidateTasks(queryClient),
   });
 }

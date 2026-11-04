@@ -78,6 +78,7 @@ def board():
         patch.object(hire_task, "tasks_store", return_value=store),
         patch.object(hire_task, "get_redis_async", AsyncMock(return_value=redis)),
         patch.object(hire_task, "is_feature_enabled", AsyncMock(return_value=True)),
+        patch.object(hire_task, "is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(hire_task, "find_work_task", AsyncMock(return_value=None)),
         patch.object(hire_task, "caller_actor", AsyncMock()),
         patch.object(hire_task, "publish_task_event", AsyncMock()),
@@ -186,3 +187,90 @@ async def test_a_board_failure_never_blocks_the_hire(board):
         task = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
 
     assert task is None
+
+
+class CardStore:
+    """A task's card list, the way contract_db keeps it."""
+
+    def __init__(self, task: Task) -> None:
+        self.task = task
+        self.added: list = []
+        self.dropped: list[list[str]] = []
+
+    async def get_task_for_work_session(self, session_id):
+        return ("user-1", self.task) if session_id == "work-chat" else None
+
+    async def contract_add_approval(self, user_id, task_id, card, actor):
+        self.added.append(card)
+        self.task = self.task.model_copy(update={"approvals": [card]})
+        return SimpleNamespace(task=self.task, status_event="task_needs_input")
+
+    async def contract_drop_approvals(self, user_id, task_id, ids):
+        self.dropped.append(ids)
+        return SimpleNamespace(task=self.task, status_event=None)
+
+
+def _work_task() -> Task:
+    return Task(
+        id="task-9",
+        number=9,
+        key="T-9",
+        title="Raise two experts",
+        priority=TaskPriority.NONE,
+        status=TaskStatus.IN_PROGRESS,
+        work_session_id="work-chat",
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_card_proposed_in_a_task_chat_waits_on_that_task():
+    store = CardStore(_work_task())
+    session = SimpleNamespace(session_id="work-chat", expert_id=None)
+    with (
+        patch.object(hire_task, "tasks_store", return_value=store),
+        patch.object(hire_task, "is_feature_enabled", AsyncMock(return_value=True)),
+        patch.object(hire_task, "find_work_task", AsyncMock(return_value=store.task)),
+        patch.object(hire_task, "caller_actor", AsyncMock()),
+        patch.object(hire_task, "publish_contract_update", AsyncMock()),
+        patch.object(hire_task, "publish_task_event", AsyncMock()),
+    ):
+        task = await hire_task.park_on_work_task(
+            "user-1", session, "c-devin", "hire", "Devin", "Web Development"
+        )
+
+    assert task is not None and task.key == "T-9"
+    assert [c.confirmation_id for c in store.added] == ["c-devin"]
+    assert "T-9" in hire_task.parked_note(task)
+
+
+@pytest.mark.asyncio
+async def test_a_chat_with_no_task_keeps_no_card():
+    store = CardStore(_work_task())
+    session = SimpleNamespace(session_id="plain-chat", expert_id=None)
+    with (
+        patch.object(hire_task, "tasks_store", return_value=store),
+        patch.object(hire_task, "find_work_task", AsyncMock(return_value=None)),
+    ):
+        task = await hire_task.park_on_work_task(
+            "user-1", session, "c-devin", "hire", "Devin", ""
+        )
+
+    assert task is None
+    assert store.added == []
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_hire_leaves_its_task_whichever_id_was_used():
+    store = CardStore(_work_task())
+    card = hire_task.CardApproval(confirmation_id="c-start", name="Devin")
+    store.task = store.task.model_copy(update={"approvals": [card]})
+    with (
+        patch.object(hire_task, "tasks_store", return_value=store),
+        patch.object(hire_task, "publish_contract_update", AsyncMock()),
+        patch.object(hire_task, "publish_task_event", AsyncMock()),
+    ):
+        await hire_task.forget_card("user-1", "work-chat", ["c-plain", "c-start"])
+
+    assert store.dropped == [["c-plain", "c-start"]]

@@ -136,6 +136,7 @@ def row_to_task(row: prisma.models.Task) -> Task:
         now=now_line(raw, contract, row.liveStep, (sub_done, len(subtasks))),
         ask=contract.ask if contract else _pending_ask(pending),
         blocker=card_blocker(contract, raw, status),
+        approvals=contract.approvals if contract else [],
         contract_version=row.contractVersion,
     )
 

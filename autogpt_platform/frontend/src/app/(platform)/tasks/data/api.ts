@@ -1,3 +1,4 @@
+import type { CardDecision } from "@/app/api/__generated__/models/cardDecision";
 import type { EvidenceDetail } from "@/app/api/__generated__/models/evidenceDetail";
 import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
 import type { TaskSummary } from "@/app/api/__generated__/models/taskSummary";
@@ -145,6 +146,12 @@ export const tasksApi = {
       `/api/tasks/${id}/ask/answer`,
       json("POST", { answer, ask_id: askId }),
       () => summaryFromTask(mockApi.answer(id, answer)),
+    ),
+  answerApprovals: (id: string, decisions: CardDecision[]) =>
+    call<TaskSummary>(
+      `/api/tasks/${id}/approvals`,
+      json("POST", { decisions }),
+      () => summaryFromTask(mockApi.answer(id, "Answered the cards")),
     ),
   action: (id: string, action: string, body: TaskActionRequest = {}) =>
     call<TaskSummary>(
