@@ -1,27 +1,25 @@
+import { statusOf } from "../../../data/helpers";
 import type { TaskState } from "../../../data/types";
 import styles from "../board.module.css";
-import { STATE_WORD } from "../helpers";
 
 interface Props {
   state: TaskState;
-  clock: string | null;
+  age: string | null;
 }
 
-/** The card's state: a turning ring while it runs, a triangle when it
- *  waits on you, a dot when done, then the word and how long. */
-export function StateBadge({ state, clock }: Props) {
+/** The card's one status mark: a turning ring while it works, a triangle
+ *  when it waits on you, a red mark when it failed, then the word and age. */
+export function StateBadge({ state, age }: Props) {
+  const status = statusOf(state);
   return (
-    <span className={styles.state}>
+    <span className={styles.state} data-testid="task-status">
       <span aria-hidden className={styles.stateIcon} data-state={state}>
         <StateGlyph state={state} />
       </span>
-      <span className={styles.stateWord}>
-        {!clock
-          ? STATE_WORD[state]
-          : state === "done"
-            ? `Done in ${clock}`
-            : `${STATE_WORD[state]} · ${clock}`}
+      <span className={styles.stateWord} data-state={state}>
+        {status.word}
       </span>
+      {age ? <span className={styles.stateAge}>· {age}</span> : null}
     </span>
   );
 }
@@ -61,7 +59,7 @@ function StateGlyph({ state }: { state: TaskState }) {
           <circle cx="6" cy="6" r="4.8" fill="currentColor" />
           <path
             d="M6 3.5v3M6 8.4v.1"
-            stroke="white"
+            stroke="var(--board-card)"
             strokeWidth="1.5"
             strokeLinecap="round"
           />

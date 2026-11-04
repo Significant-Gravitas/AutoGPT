@@ -181,6 +181,14 @@ def test_is_onboarding_completed_true_when_complete_step_present(mocker):
     assert response.json()["is_completed"] is True
 
 
+def _team_of(mocker, size: int):
+    experts = mocker.MagicMock()
+    experts.count_active_experts = AsyncMock(return_value=size)
+    mocker.patch(
+        "backend.api.features.onboarding.routes.experts_db", return_value=experts
+    )
+
+
 def test_is_onboarding_completed_false_without_complete_step(mocker):
     mock_get = mocker.patch(
         "backend.api.features.onboarding.routes.get_user_onboarding",
@@ -189,11 +197,28 @@ def test_is_onboarding_completed_false_without_complete_step(mocker):
     mock_get.return_value = UserOnboarding.model_construct(
         completedSteps=[OnboardingStep.WELCOME],
     )
+    _team_of(mocker, 0)
 
     response = client.get("/onboarding/completed")
 
     assert response.status_code == 200
     assert response.json()["is_completed"] is False
+
+
+def test_a_user_who_already_has_a_team_skips_onboarding(mocker):
+    mock_get = mocker.patch(
+        "backend.api.features.onboarding.routes.get_user_onboarding",
+        new_callable=AsyncMock,
+    )
+    mock_get.return_value = UserOnboarding.model_construct(
+        completedSteps=[OnboardingStep.WELCOME],
+    )
+    _team_of(mocker, 2)
+
+    response = client.get("/onboarding/completed")
+
+    assert response.status_code == 200
+    assert response.json()["is_completed"] is True
 
 
 def test_user_onboarding_response_model_accepts_deprecated_stored_values():

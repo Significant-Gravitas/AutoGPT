@@ -13,7 +13,11 @@ from backend.api.features.tasks.contract import (
     turn_blocker_reason,
     unrecovered_failure,
 )
-from backend.api.features.tasks.dispatch import on_task_assigned, resume_task
+from backend.api.features.tasks.dispatch import (
+    assignee_actor,
+    on_task_assigned,
+    resume_task,
+)
 from backend.api.features.tasks.events import (
     publish_contract_update,
     publish_task_event,
@@ -27,12 +31,16 @@ from backend.api.features.tasks.models import (
     Task,
     TaskStatus,
 )
+from backend.api.features.tasks.outcome_text import ask_line, result_line
 from backend.copilot.model import ChatMessage, get_chat_session
 
 logger = logging.getLogger(__name__)
 
 OTTO_WAKE_INTERVAL_SECONDS = 60
 _PREVIEW = 200
+# The ``why`` of an ask opened because a turn stopped on something in the
+# task's chat (a card, a question); the user may answer it right there.
+CHAT_WAIT_WHY = "Waiting for you in the task's chat."
 _last_wake: dict[str, float] = {}
 _pending_children: dict[str, dict[str, str]] = {}
 _wake_tasks: dict[str, asyncio.Task] = {}
@@ -84,10 +92,11 @@ async def finish_work_turn(session_id: str, status: str) -> None:
     await publish_task_event(user_id, "task_updated", task, task_id=task.id)
     if activity is not None:
         await publish_task_event(user_id, "task_activity", task, activity, task.id)
+    task = await _reopen_after_chat_reply(user_id, task)
     await _fill_contract(user_id, task, session_id, status, turn)
     task = await store.get_task(user_id, task.id) or task
-    waiting = await _ended_waiting_on_user(session_id, user_id)
-    task = await _settle_unfinished(user_id, task, status, waiting)
+    waiting, last_reply = await _turn_ending(session_id, user_id)
+    task = await _settle_unfinished(user_id, task, status, waiting, last_reply)
     await _start_next_for_expert(user_id, task)
     await _maybe_wake_otto(user_id, task)
 
@@ -143,47 +152,94 @@ def _turn_calls(messages: list[ChatMessage]) -> list[tuple[str, str | None]]:
     return calls
 
 
-async def _ended_waiting_on_user(session_id: str, user_id: str) -> bool:
-    """Whether the turn stopped on a card or a question for the user."""
+async def _turn_ending(session_id: str, user_id: str) -> tuple[bool, str | None]:
+    """Whether the turn stopped on a card or a question for the user, and the
+    worker's last words in it."""
     session = await get_chat_session(session_id, user_id)
     if session is None:
-        return False
+        return False, None
     last_user = max(
         (i for i, m in enumerate(session.messages) if m.role == "user"), default=-1
     )
-    turn = [(m.role, m.content) for m in session.messages[last_user + 1 :]]
-    return turn_attention(turn) == "needs_you"
+    messages = session.messages[last_user + 1 :]
+    turn = [(m.role, m.content) for m in messages]
+    reply = next(
+        (
+            m.content
+            for m in reversed(messages)
+            if m.role == "assistant" and isinstance(m.content, str) and m.content
+        ),
+        None,
+    )
+    return turn_attention(turn) == "needs_you", reply
 
 
 async def _settle_unfinished(
-    user_id: str, task: Task, status: str, waiting: bool = False
+    user_id: str,
+    task: Task,
+    status: str,
+    waiting: bool = False,
+    last_reply: str | None = None,
 ) -> Task:
-    """A turn that ended with the task still open: a failed turn needs the
-    user, one that stopped on a card or a question waits for them, and a
-    quiet expert turn goes to review. A quiet Otto turn stays open, since
-    Otto may be waiting on its sub-tasks."""
-    a = task.assignee
-    if task.status != TaskStatus.IN_PROGRESS or a is None:
+    """A turn that ended with the task still open, its worker never having
+    set the status. One that stopped on a card or a question becomes the
+    task's ask; a failed one gets a blocker; a quiet one finished the work,
+    so its last message becomes the result (or the blocker, when it says the
+    work couldn't be done). A task waiting on its sub-tasks stays open."""
+    if task.status != TaskStatus.IN_PROGRESS or task.assignee is None:
         return task
-    failed = status != "completed"
-    if a.type != AssigneeType.EXPERT and not failed and not waiting:
+    if task.raw_status == "waiting_on_subtasks" and status == "completed":
         return task
     store = tasks_store()
-    if failed:
-        note = f"{a.name}'s work turn stopped with an error. Restart it when ready."
-    elif waiting:
-        note = f"{a.name} is waiting for you in the task's chat."
+    actor = assignee_actor(task)
+    if waiting and status == "completed":
+        update = await store.contract_ask(
+            user_id,
+            task.id,
+            ask_line(last_reply) or "Reply in the task's chat to go on.",
+            actor,
+            why=CHAT_WAIT_WHY,
+        )
     else:
-        note = f"{a.name} finished a turn without marking the task done. Review it."
-    new_status = TaskStatus.BLOCKED if failed or waiting else TaskStatus.IN_REVIEW
-    fresh = await store.set_task_status(
-        user_id, task.id, new_status, Actor.system(), note=note
+        update = await store.contract_update_task(
+            user_id, task.id, _closing_patch(status, last_reply), actor
+        )
+    await publish_contract_update(user_id, update)
+    return update.task
+
+
+async def _reopen_after_chat_reply(user_id: str, task: Task) -> Task:
+    """A task still holding the ask its last turn opened from the chat ran
+    this turn because the user answered in the chat, so the ask is closed
+    and the turn settles like any other."""
+    ask = task.ask
+    if task.status != TaskStatus.BLOCKED or ask is None or ask.why != CHAT_WAIT_WHY:
+        return task
+    store = tasks_store()
+    await store.answer_input(
+        user_id, task.id, "In the task's chat", ask.id, Actor.user(user_id)
     )
-    activity = await store.add_activity(
-        user_id, task.id, ActivityKind.SYSTEM, Actor.system(), body=note
-    )
-    await publish_task_event(user_id, "task_needs_input", fresh, activity, task.id)
-    return fresh
+    return await store.get_task(user_id, task.id) or task
+
+
+def _closing_patch(status: str, last_reply: str | None) -> dict[str, Any]:
+    """What a turn that never set the status amounts to."""
+    line = result_line(last_reply)
+    if status != "completed":
+        return {
+            "blocker": {
+                "what_stopped_it": "The work stopped with an error.",
+                "cause": "external_error",
+            }
+        }
+    if not line:
+        return {
+            "blocker": {
+                "what_stopped_it": "It stopped without saying what it found.",
+                "next_actions": ["retry_failed_part"],
+            }
+        }
+    return {"result": {"summary": line}}
 
 
 async def _running_turn(user_id: str, task_id: str) -> ActivityEvent | None:

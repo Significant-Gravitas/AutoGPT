@@ -14,6 +14,8 @@ interface Props {
    *  sits on its baseline. */
   nameAlign?: "center" | "baseline";
   areaClassName?: string;
+  /** The role's colour: `secondary-soft` quiets it, as in the sidebar. */
+  areaTone?: "secondary" | "secondary-soft";
   /** Category colour for the title on the name line: a gradient fill with
    *  a soft glow in that colour (card and page sizes only). */
   areaColor?: string;
@@ -28,6 +30,7 @@ export function ExpertIdentityDetails({
   nameAccessory,
   nameAlign = "center",
   areaClassName,
+  areaTone = "secondary",
   areaColor,
 }: Props) {
   const compact = size === "compact";
@@ -75,7 +78,7 @@ export function ExpertIdentityDetails({
           <Text
             as="span"
             variant={size === "card" ? "body-sm-medium-inherit" : "body"}
-            tone="secondary"
+            tone={areaTone}
             weight={size === "card" ? "normal" : undefined}
             data-slot="expert-identity-title"
             className={cn(
@@ -131,7 +134,7 @@ export function ExpertIdentityDetails({
           as="span"
           variant="small-tight"
           data-slot="expert-identity-area"
-          tone="secondary"
+          tone={areaTone}
           // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName
           className={cn("truncate", areaClassName)}
           title={area}

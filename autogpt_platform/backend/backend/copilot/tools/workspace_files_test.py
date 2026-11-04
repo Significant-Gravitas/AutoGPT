@@ -696,7 +696,9 @@ class TestWriteWorkspaceFileToolWorkingFiles:
             result = await tool._execute(
                 user_id="user-1", session=session, filename=filename, content="{}"
             )
-        return tool.activity_event(session=session, result=result, filename=filename)
+        return tool.activity_event(
+            session=session, result=result, args={"filename": filename}
+        )
 
     async def test_a_working_file_leaves_no_activity(self):
         assert await self._write("build_state.json", is_internal=True) is None

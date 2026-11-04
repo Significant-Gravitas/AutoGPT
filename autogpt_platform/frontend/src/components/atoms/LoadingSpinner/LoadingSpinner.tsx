@@ -37,6 +37,7 @@ export function LoadingSpinner({
   variant = "default",
   className,
   cover = false,
+  tone = "inherit",
   ...restProps
 }: LoadingSpinnerProps) {
   const spinner = (
@@ -44,7 +45,7 @@ export function LoadingSpinner({
       data-slot="loading-spinner"
       icon={iconMap[variant]}
       spin
-      tone="inherit"
+      tone={tone}
       className={cn(
         size === "small" && "h-4 w-4",
         size === "medium" && "h-6 w-6",

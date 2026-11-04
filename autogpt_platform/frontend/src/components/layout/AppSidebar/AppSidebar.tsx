@@ -35,7 +35,6 @@ import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/Collapsibl
 import { ExpertsNavSection } from "./components/ExpertsNavSection/ExpertsNavSection";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
-import { useNavItemClassName } from "./useNavItemClassName";
 
 type NavLink = {
   name: string;
@@ -75,7 +74,8 @@ function NavLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-sidebar-foreground/90"
+      tone="sidebar-soft"
+      className="ml-auto !size-4 shrink-0"
     />
   );
 }
@@ -87,7 +87,8 @@ function HomeIcon() {
     return (
       <LoadingSpinner
         size="small"
-        className="!size-4 shrink-0 text-sidebar-foreground/90"
+        tone="sidebar-soft"
+        className="!size-4 shrink-0"
       />
     );
   }
@@ -97,15 +98,14 @@ function HomeIcon() {
 
 function HomeItem() {
   const pathname = usePathname();
-  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
+        size="shell"
         tooltip="Home"
         isActive={isLinkActive(pathname, "/home")}
-        className={navItemClassName}
       >
         <Link href="/home">
           <HomeIcon />
@@ -123,15 +123,14 @@ interface NavItemProps {
 
 function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
-  const navItemClassName = useNavItemClassName();
 
   return (
     <SidebarMenuItem {...(link.tourTarget && tourTarget(link.tourTarget))}>
       <SidebarMenuButton
         asChild
+        size="shell"
         tooltip={link.name}
         isActive={isLinkActive(pathname, link.href)}
-        className={navItemClassName}
       >
         <Link href={link.href}>
           <Icon icon={link.icon} tone="inherit" className="size-4" />
@@ -151,7 +150,7 @@ function NavMenu({
   leading?: ReactNode;
 }) {
   return (
-    <SidebarMenu className="gap-1">
+    <SidebarMenu>
       {leading}
       {links.map((link) => (
         <NavItem key={link.href} link={link} />
@@ -210,7 +209,7 @@ export function AppSidebar(props: Props) {
           className="flex shrink-0 flex-col"
         >
           <motion.div variants={itemVariants}>
-            <SidebarGroup className="mt-0 px-2.5 py-0 pt-2.5 group-data-[collapsible=icon]:px-2">
+            <SidebarGroup size="shell" className="mt-0">
               <SidebarGroupContent>
                 <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
@@ -229,6 +228,7 @@ export function AppSidebar(props: Props) {
             <motion.div
               variants={itemVariants}
               className="group-data-[collapsible=icon]:hidden"
+              {...tourTarget("chats")}
             >
               {/* ExpertsNavSection reads useSearchParams(), which Next.js
                   requires to sit under a Suspense boundary. */}

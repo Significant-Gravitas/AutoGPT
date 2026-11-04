@@ -17,6 +17,10 @@ import {
   getSentDecisions,
   SentDecisionsContext,
 } from "../../ToolChain/sentDecisions";
+import {
+  getLatestPlanId,
+  LatestPlanContext,
+} from "../../../tools/TaskPlan/latestPlan";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -46,11 +50,14 @@ export function PendingAnswerContexts({
   const answeredQuestions = useEqualValue(getAnsweredQuestions(messages));
   const heldOutcomes = useEqualValue(getHeldOutcomesOrNone(messages));
   const sentDecisions = useEqualValue(getSentDecisions(messages));
+  const latestPlanId = getLatestPlanId(messages);
   if (readOnly) {
     return (
       <AnsweredQuestionsContext.Provider value={answeredQuestions}>
         <SentDecisionsContext.Provider value={sentDecisions}>
-          {children}
+          <LatestPlanContext.Provider value={latestPlanId}>
+            {children}
+          </LatestPlanContext.Provider>
         </SentDecisionsContext.Provider>
       </AnsweredQuestionsContext.Provider>
     );
@@ -64,7 +71,9 @@ export function PendingAnswerContexts({
           <HeldOutcomesContext.Provider value={heldOutcomes}>
             <SentDecisionsContext.Provider value={sentDecisions}>
               <CurrentPauseContext.Provider value={getCurrentPause(messages)}>
-                {children}
+                <LatestPlanContext.Provider value={latestPlanId}>
+                  {children}
+                </LatestPlanContext.Provider>
               </CurrentPauseContext.Provider>
             </SentDecisionsContext.Provider>
           </HeldOutcomesContext.Provider>

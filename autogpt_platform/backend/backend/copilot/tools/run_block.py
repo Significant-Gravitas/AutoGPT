@@ -87,7 +87,7 @@ class RunBlockTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         # Only a credentialed execution is an integration action; schema
         # lookups, dry runs and credential-less blocks leave no audit trail.

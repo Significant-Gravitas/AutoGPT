@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import {
   getCurrentUser,
@@ -33,18 +33,16 @@ const user: User = {
   role: "user",
   user_metadata: {},
 };
-const sessionsRequest = vi.fn(() => ({
-  sessions: [
-    {
-      id: "session-1",
-      title: "My real conversation",
-      is_processing: false,
-      created_at: "2026-06-30T00:00:00Z",
-      updated_at: "2026-06-30T00:00:00Z",
-    },
-  ],
-  total: 1,
-}));
+const identitiesRequest = vi.fn(() => [
+  {
+    id: "expert-maria",
+    name: "Maria Ruiz",
+    avatar_url: null,
+    role: "Marketing",
+    job_title: "Growth Lead",
+    is_archived: false,
+  },
+]);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -68,10 +66,9 @@ function renderSidebar() {
   );
 }
 
-function expectNoRecentChats() {
-  expect(screen.queryByText("Recent chats")).toBeNull();
-  expect(screen.queryByText("My real conversation")).toBeNull();
-  expect(screen.queryByText(/no conversations yet/i)).toBeNull();
+function expectNoExperts() {
+  expect(screen.queryByText("Experts")).toBeNull();
+  expect(screen.queryByText("Maria Ruiz")).toBeNull();
 }
 
 beforeEach(() => {
@@ -81,7 +78,7 @@ beforeEach(() => {
   vi.mocked(getCurrentUser).mockResolvedValue({ user: null });
   vi.mocked(validateSession).mockResolvedValue({ user: null, isValid: false });
   vi.mocked(serverLogout).mockResolvedValue({ success: true });
-  server.use(getGetV2ListSessionsMockHandler200(sessionsRequest));
+  server.use(getListExpertIdentitiesMockHandler(identitiesRequest));
 });
 
 afterEach(() => {
@@ -90,14 +87,14 @@ afterEach(() => {
 });
 
 describe("AppSidebar auth state", () => {
-  it("does not fetch or show chats while auth loads or after finding no user", async () => {
+  it("does not fetch or show experts while auth loads or after finding no user", async () => {
     const auth = deferred<Awaited<ReturnType<typeof getCurrentUser>>>();
     vi.mocked(getCurrentUser).mockReturnValue(auth.promise);
     renderSidebar();
 
     expect(useAuthStore.getState().isUserLoading).toBe(true);
-    expectNoRecentChats();
-    expect(sessionsRequest).not.toHaveBeenCalled();
+    expectNoExperts();
+    expect(identitiesRequest).not.toHaveBeenCalled();
 
     await act(async () => {
       auth.resolve({ user: null });
@@ -105,15 +102,15 @@ describe("AppSidebar auth state", () => {
     });
 
     expect(useAuthStore.getState().isUserLoading).toBe(false);
-    expectNoRecentChats();
-    expect(sessionsRequest).not.toHaveBeenCalled();
+    expectNoExperts();
+    expect(identitiesRequest).not.toHaveBeenCalled();
   });
 
-  it("fetches chats only after the server returns an authenticated user", async () => {
+  it("fetches the expert roster only after the server returns an authenticated user", async () => {
     const auth = deferred<Awaited<ReturnType<typeof getCurrentUser>>>();
     vi.mocked(getCurrentUser).mockReturnValue(auth.promise);
     renderSidebar();
-    expect(sessionsRequest).not.toHaveBeenCalled();
+    expect(identitiesRequest).not.toHaveBeenCalled();
 
     await act(async () => {
       auth.resolve({ user });
@@ -121,17 +118,17 @@ describe("AppSidebar auth state", () => {
     });
 
     expect(useAuthStore.getState().isUserLoading).toBe(false);
-    expect(await screen.findByText("My real conversation")).toBeDefined();
-    expect(screen.getByText("Recent chats")).toBeDefined();
-    expect(sessionsRequest).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Maria Ruiz")).toBeDefined();
+    expect(screen.getByText("Experts")).toBeDefined();
+    expect(identitiesRequest).toHaveBeenCalledOnce();
   });
 
-  it("removes chats when background validation rejects the session", async () => {
+  it("removes experts when background validation rejects the session", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ user });
     const validation = deferred<Awaited<ReturnType<typeof validateSession>>>();
     vi.mocked(validateSession).mockReturnValue(validation.promise);
     renderSidebar();
-    await screen.findByText("My real conversation");
+    await screen.findByText("Maria Ruiz");
 
     let validating!: Promise<boolean>;
     act(() => {
@@ -147,16 +144,16 @@ describe("AppSidebar auth state", () => {
       await validating;
     });
 
-    expectNoRecentChats();
-    expect(sessionsRequest).toHaveBeenCalledOnce();
+    expectNoExperts();
+    expect(identitiesRequest).toHaveBeenCalledOnce();
   });
 
-  it("keeps chats until the server confirms the sign-out, then removes them", async () => {
+  it("keeps experts until the server confirms the sign-out, then removes them", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ user });
     const logout = deferred<Awaited<ReturnType<typeof serverLogout>>>();
     vi.mocked(serverLogout).mockReturnValue(logout.promise);
     renderSidebar();
-    await screen.findByText("My real conversation");
+    await screen.findByText("Maria Ruiz");
 
     let loggingOut!: Promise<void>;
     act(() => {
@@ -171,14 +168,14 @@ describe("AppSidebar auth state", () => {
       await loggingOut;
     });
     expect(useAuthStore.getState().user).toBeNull();
-    expectNoRecentChats();
-    expect(sessionsRequest).toHaveBeenCalledOnce();
+    expectNoExperts();
+    expect(identitiesRequest).toHaveBeenCalledOnce();
   });
 
-  it("removes chats when another tab logs out", async () => {
+  it("removes experts when another tab logs out", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ user });
     renderSidebar();
-    await screen.findByText("My real conversation");
+    await screen.findByText("Maria Ruiz");
 
     act(() => {
       window.dispatchEvent(
@@ -187,7 +184,7 @@ describe("AppSidebar auth state", () => {
     });
 
     expect(useAuthStore.getState().user).toBeNull();
-    expectNoRecentChats();
-    expect(sessionsRequest).toHaveBeenCalledOnce();
+    expectNoExperts();
+    expect(identitiesRequest).toHaveBeenCalledOnce();
   });
 });

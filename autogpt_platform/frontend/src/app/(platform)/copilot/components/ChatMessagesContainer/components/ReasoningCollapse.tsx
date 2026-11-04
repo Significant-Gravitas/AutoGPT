@@ -21,9 +21,15 @@ interface Props {
    * "thinking" when it isn't.
    */
   isActive?: boolean;
+  /** The trigger's label; raw data folded out of a reply reads "Show work". */
+  label?: string;
 }
 
-export function ReasoningCollapse({ children, isActive = false }: Props) {
+export function ReasoningCollapse({
+  children,
+  isActive = false,
+  label = "Reasoning",
+}: Props) {
   const [value, setValue] = useState("");
 
   return (
@@ -54,7 +60,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
                 className="shrink-0 group-data-[state=open]:rotate-90"
               />
             )}
-            Reasoning
+            {label}
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
         <AccordionContent className="pt-0 pb-1 font-sans text-sm text-foreground-tertiary [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-sm [&_pre]:whitespace-pre-wrap [&_pre]:text-foreground-tertiary">

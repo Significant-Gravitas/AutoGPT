@@ -29,6 +29,7 @@ import type {
   Task,
   ExpertOption,
   TaskAssignee,
+  TaskState,
   TaskStatus,
 } from "../../data/types";
 
@@ -247,4 +248,41 @@ export function formatClock(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+export type PanelCard = "outcome" | "attention" | null;
+
+interface PanelCardArgs {
+  state: TaskState | undefined;
+  hasResult: boolean;
+  hasAsk: boolean;
+  hasBlocker: boolean;
+  awaitingAccept: boolean;
+  approvals: number;
+}
+
+/** The one card under the ask: the result when done, the failure when it
+ *  failed, the hire cards or the question when it needs you. */
+export function panelCard({
+  state,
+  hasResult,
+  hasAsk,
+  hasBlocker,
+  awaitingAccept,
+  approvals,
+}: PanelCardArgs): PanelCard {
+  if (state === "stopped") return null;
+  if (state === "done") return hasResult ? "outcome" : null;
+  if (state === "stuck") return "attention";
+  if (approvals > 0 || hasAsk || hasBlocker || awaitingAccept)
+    return "attention";
+  return null;
+}
+
+/** Every piece of proof, the main one first, each once. */
+export function orderedEvidence(contract: Contract) {
+  const all = contract.evidence ?? [];
+  const primaryID = contract.result?.primary_evidence_id;
+  const primary = all.find((e) => e.id === primaryID);
+  return primary ? [primary, ...all.filter((e) => e !== primary)] : all;
 }

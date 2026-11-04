@@ -153,7 +153,7 @@
     "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx": {
-    "no-restyle": 59,
+    "no-restyle": 51,
     "require-static-classes": 22
   },
   "src/app/(platform)/copilot/components/ChatInput/components/AudioWaveform.tsx": {
@@ -478,18 +478,17 @@
     "require-static-classes": 2
   },
   "src/components/layout/AppSidebar/AppSidebar.tsx": {
-    "no-restyle": 5,
-    "require-static-classes": 2
+    "no-restyle": 1
   },
   "src/components/layout/AppSidebar/components/AppSidebarHeader/AppSidebarHeader.tsx": {
-    "no-restyle": 4
+    "no-restyle": 2
   },
   "src/components/layout/AppSidebar/components/ChatsRailItem/ChatsRailItem.tsx": {
     "no-restyle": 2,
     "require-static-classes": 1
   },
   "src/components/layout/AppSidebar/components/CollapsibleNavGroup/CollapsibleNavGroup.tsx": {
-    "no-restyle": 6
+    "no-restyle": 3
   },
   "src/components/layout/AppSidebar/components/RecentChats/RecentChats.tsx": {
     "no-restyle": 2

@@ -195,7 +195,7 @@ describe("toChainRow", () => {
     expect(settled).toMatchObject({ text: "Thought", state: "done" });
   });
 
-  it("drops a settled reasoning part that has no text", () => {
+  it("drops a reasoning part that has no text", () => {
     expect(
       toChainRow(
         { type: "reasoning", text: "", state: "done" } as MessagePart,
@@ -207,7 +207,7 @@ describe("toChainRow", () => {
         { type: "reasoning", text: "", state: "streaming" } as MessagePart,
         0,
       ),
-    ).toMatchObject({ text: "Thinking…" });
+    ).toBeNull();
   });
 
   it("marks failed tool calls with their error detail", () => {
@@ -402,6 +402,14 @@ describe("getChainHeading", () => {
     ];
 
     expect(getChainHeading(rows, true)).toBe("Searching docs");
+  });
+
+  it("leaves Thinking to a live reasoning row instead of repeating it", () => {
+    const rows: ChainRow[] = [
+      { key: "1", category: "reasoning", text: "Thinking…", state: "running" },
+    ];
+
+    expect(getChainHeading(rows, true)).toBe("Working…");
   });
 
   it("summarizes distinct settled categories", () => {

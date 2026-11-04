@@ -49,6 +49,9 @@ MAX_AUTO_EVIDENCE = 20
 _WRITE_ATTEMPTS = 8
 _ATTACHABLE = {"link": "url", "file": "file", "screenshot": "file"}
 _SETTLED = (TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.IN_REVIEW)
+# A failure that makes a result reported in the same turn untrue: what the
+# work needed wasn't there, or the worker wasn't let at it.
+_REOPENING_CAUSES = frozenset({"missing_input", "permission"})
 
 
 class ContractUpdate(BaseModel):
@@ -305,8 +308,9 @@ async def update_task(
             },
         )
     task = written.task
+    reported = change.blocker is not None or change.result is not None
     if change.result is not None and contract.result is not None:
-        finished = c.all_met(contract) or not contract.done_when
+        finished = c.finishes(contract, task.review_required)
         task = await db.set_task_status(
             user_id,
             task_id,
@@ -315,7 +319,7 @@ async def update_task(
             outcome_summary=contract.result.summary,
         )
         status_event = "task_completed" if finished else "task_needs_input"
-    elif change.blocker is not None and contract.blocker is not None:
+    elif reported and contract.blocker is not None:
         task = await _set_status(user_id, task, TaskStatus.BLOCKED, actor)
         activity = await _log(
             user_id,
@@ -593,17 +597,36 @@ async def _add_auto_evidence(
 async def _auto_block(
     user_id: str, task_id: str, reason: str, tool: str | None
 ) -> ContractUpdate | None:
-    """A failed turn's blocker, unless the task is settled, already stuck, or
-    waiting on the user's answer."""
+    """A failed turn's blocker, unless the task was stopped, is already stuck,
+    or waits on the user's answer. A task the turn marked done fails instead
+    when a tool failure it never got past is behind it (the file it was to
+    read wasn't there), since that result can't be true."""
     skipped: dict[str, bool] = {}
+    reopened: dict[str, bool] = {}
 
     def apply(base: c.Contract, task: Task):
-        if task.status in _SETTLED or base.blocker is not None or base.ask:
+        reopen = (
+            tool is not None
+            and task.status in (TaskStatus.DONE, TaskStatus.IN_REVIEW)
+            and c.classify_error(reason) in _REOPENING_CAUSES
+        )
+        if (
+            (task.status in _SETTLED and not reopen)
+            or base.blocker is not None
+            or base.ask
+        ):
             skipped["yes"] = True
             return base, []
-        return c.set_blocker(base, c.make_blocker(base, reason, tool_name=tool))
+        blocker = c.make_blocker(base, reason, tool_name=tool)
+        reopened["yes"] = reopen
+        if reopen:
+            return c.reopen_as_blocked(base, blocker)
+        return c.set_blocker(base, blocker)
 
-    written = await _patch(user_id, task_id, apply)
+    def extra(_contract: c.Contract) -> dict[str, Any]:
+        return {"outcomeSummary": None} if reopened.get("yes") else {}
+
+    written = await _patch(user_id, task_id, apply, extra)
     if skipped or written.contract.blocker is None:
         return None
     blocker = written.contract.blocker

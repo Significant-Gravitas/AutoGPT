@@ -29,6 +29,7 @@ import {
   ConfirmTaskPlanTool,
   ProposePlanTool,
 } from "../../../tools/TaskPlan/TaskPlan";
+import { CreateTaskTool } from "../../../tools/CreateTask/CreateTask";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
@@ -302,6 +303,8 @@ export function MessagePartRenderer({
       return <ProposePlanTool key={key} part={part as ToolUIPart} />;
     case "tool-confirm_task_plan":
       return <ConfirmTaskPlanTool key={key} part={part as ToolUIPart} />;
+    case "tool-create_task":
+      return <CreateTaskTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":

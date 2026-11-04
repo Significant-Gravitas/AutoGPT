@@ -7,6 +7,7 @@ import { useTasksPage } from "../../useTasksPage";
 import { InboxPane } from "../InboxPane/InboxPane";
 import { NewTaskDialog } from "../NewTaskDialog/NewTaskDialog";
 import { TaskPanel } from "../TaskPanel/TaskPanel";
+import { SheetCloseBar } from "./components/SheetCloseBar";
 
 const PANEL_WIDTH = 420;
 
@@ -38,11 +39,14 @@ export function TasksWorkspace({
         width={PANEL_WIDTH}
       >
         {page.taskID ? (
-          <TaskPanel
-            key={page.taskID}
-            taskId={page.taskID}
-            onOpenTask={page.openTask}
-          />
+          <>
+            <SheetCloseBar onClose={page.closeTask} />
+            <TaskPanel
+              key={page.taskID}
+              taskId={page.taskID}
+              onOpenTask={page.openTask}
+            />
+          </>
         ) : null}
       </InsetSidePanel>
       <NewTaskDialog

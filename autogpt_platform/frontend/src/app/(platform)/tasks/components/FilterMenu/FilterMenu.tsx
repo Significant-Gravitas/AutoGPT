@@ -4,18 +4,19 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { FilterHorizontalIcon } from "@hugeicons/core-free-icons";
-import { PRIORITY_LABELS, STATUS_LABELS } from "../../data/helpers";
+import { PRIORITY_LABELS } from "../../data/helpers";
 import type { ExpertOption } from "../../data/types";
 import {
   ALL_PRIORITIES,
-  ALL_STATUSES,
   DUE_LABELS,
+  expertChoices,
   toggleValue,
   type DueFilter,
   type PageFilters,
@@ -47,30 +48,34 @@ export function FilterMenu({ filters, onChange, experts }: Props) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuCheckboxItem
+          checked={filters.mine}
+          onSelect={keepOpen}
+          onCheckedChange={(checked) =>
+            onChange({ ...filters, mine: checked === true })
+          }
+        >
+          Mine
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>Expert</DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
-            {experts.length === 0 ? (
-              <DropdownMenuCheckboxItem disabled checked={false}>
-                No experts yet
+            {expertChoices(experts).map((choice) => (
+              <DropdownMenuCheckboxItem
+                key={choice.id}
+                checked={filters.assigneeIDs.includes(choice.id)}
+                onSelect={keepOpen}
+                onCheckedChange={() =>
+                  onChange({
+                    ...filters,
+                    assigneeIDs: toggleValue(filters.assigneeIDs, choice.id),
+                  })
+                }
+              >
+                {choice.name}
               </DropdownMenuCheckboxItem>
-            ) : (
-              experts.map((expert) => (
-                <DropdownMenuCheckboxItem
-                  key={expert.id}
-                  checked={filters.assigneeIDs.includes(expert.id)}
-                  onSelect={keepOpen}
-                  onCheckedChange={() =>
-                    onChange({
-                      ...filters,
-                      assigneeIDs: toggleValue(filters.assigneeIDs, expert.id),
-                    })
-                  }
-                >
-                  {expert.name}
-                </DropdownMenuCheckboxItem>
-              ))
-            )}
+            ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
@@ -89,26 +94,6 @@ export function FilterMenu({ filters, onChange, experts }: Props) {
                 }
               >
                 {PRIORITY_LABELS[priority]}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Status</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            {ALL_STATUSES.map((status) => (
-              <DropdownMenuCheckboxItem
-                key={status}
-                checked={filters.status.includes(status)}
-                onSelect={keepOpen}
-                onCheckedChange={() =>
-                  onChange({
-                    ...filters,
-                    status: toggleValue(filters.status, status),
-                  })
-                }
-              >
-                {STATUS_LABELS[status]}
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuSubContent>

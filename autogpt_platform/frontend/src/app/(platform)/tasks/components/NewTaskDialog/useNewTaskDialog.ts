@@ -27,7 +27,8 @@ export function useNewTaskDialog({ experts, onOpenChange, onCreated }: Args) {
   const createTask = useCreateTask();
   const choices = assigneeChoices(experts);
   const assignee = resolveChoice(choices, picked);
-  const canSubmit = text.trim().length > 0 && !createTask.isPending;
+  const isEmpty = text.trim().length === 0;
+  const canSubmit = !isEmpty && !createTask.isPending;
 
   function pickAssignee(value: string) {
     setPicked(value);
@@ -72,6 +73,7 @@ export function useNewTaskDialog({ experts, onOpenChange, onCreated }: Args) {
     assignee,
     pickAssignee,
     canSubmit,
+    isEmpty,
     isSubmitting: createTask.isPending,
     submit,
     onKeyDown,

@@ -10,8 +10,12 @@ export const tones = {
   emphasis: "text-foreground-emphasis", // #3E3E43
   // emphasis at 90%: the sidebar's navigation icons.
   "emphasis-soft": "text-foreground-emphasis/90",
+  // The sidebar's own text at 90%: its loading spinners.
+  "sidebar-soft": "text-sidebar-foreground/90",
   body: "text-foreground-body", // #505057
   secondary: "text-foreground-secondary", // #68686F
+  // secondary at 70%: an expert's role under their name in the sidebar.
+  "secondary-soft": "text-foreground-secondary/70",
   muted: "text-foreground-tertiary", // #83838C
   subtle: "text-foreground-subtle", // #ADADB3
   disabled: "text-foreground-disabled", // #C5C5C9

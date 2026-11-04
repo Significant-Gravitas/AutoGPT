@@ -42,6 +42,7 @@ from backend.api.features.tasks.models import (
     Task,
     TaskStatus,
 )
+from backend.api.features.tasks.outcome_text import plain, reads_as_failure
 
 logger = logging.getLogger(__name__)
 
@@ -515,7 +516,7 @@ _CAUSE_LABELS = {
     "missing_input": "Missing something only you have",
     "external_error": "A site or service didn't respond",
     "limit": "Hit a limit",
-    "no_signal": "No response for a while",
+    "no_signal": "No progress for a while",
 }
 
 
@@ -540,7 +541,9 @@ def make_blocker(
     """A blocker in plain words. Whatever the caller leaves out is filled in:
     the cause from the message, what got done from the plan and evidence, and
     the next actions from the cause."""
-    reason = one_line(what_stopped_it) or "The work stopped with an error."
+    reason = one_line(" ".join(plain(what_stopped_it))) or (
+        "The work stopped with an error."
+    )
     chosen = (
         one_line(cause, 60).lower().replace(" ", "_")
         if cause
@@ -563,13 +566,31 @@ def make_blocker(
 
 
 _ACTION_KEY = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
+# A button label of up to three words ("Upload file") reads as its key.
+_ACTION_WORDS = 3
+_ACTION_ALIASES = {
+    "retry": "retry_failed_part",
+    "try_again": "retry_failed_part",
+    "retry_the_failed_part": "retry_failed_part",
+    "skip_it": "skip",
+    "cancel": "stop",
+}
 
 
 def action_keys(actions: list[str] | None) -> list[str]:
     """The entries that are action keys. Cards render each one as a button
-    and post it back to the actions route, so sentences are dropped."""
-    keys = (a.strip().lower() for a in actions or [])
+    and post it back to the actions route, so sentences are dropped; a short
+    label becomes its key."""
+    keys = (_action_key(a) for a in actions or [])
     return list(dict.fromkeys(k for k in keys if _ACTION_KEY.match(k)))
+
+
+def _action_key(action: str) -> str:
+    words = re.sub(r"[^a-z0-9_\s-]", "", action.strip().lower()).split()
+    if not words or len(words) > _ACTION_WORDS:
+        return ""
+    key = "_".join(w.replace("-", "_") for w in words)
+    return _ACTION_ALIASES.get(key, key)
 
 
 def apply_patch(
@@ -591,8 +612,8 @@ def apply_patch(
         contract = take(
             mark_criterion(contract, change.id, change.status, change.evidence_ids)
         )
-    if patch.blocker is not None:
-        b = patch.blocker
+    b = patch.blocker or _failure_blocker(patch.result)
+    if b is not None:
         blocker = make_blocker(
             contract,
             b.what_stopped_it,
@@ -600,12 +621,66 @@ def apply_patch(
             done_so_far=b.done_so_far,
             next_actions=b.next_actions,
         )
+        contract = take(unprove(contract))
         contract = take(set_blocker(contract, blocker))
-    if patch.result is not None:
+    elif patch.result is not None:
         contract = take(
             complete(contract, patch.result.summary, patch.result.primary_evidence_id)
         )
     return contract, _squash(patches)
+
+
+def _failure_blocker(result: ResultInput | None) -> BlockerInput | None:
+    """A result that says the work couldn't be done (the file wasn't there,
+    the site wouldn't open) is a blocker: the task fails with that reason
+    instead of reading as done."""
+    if result is None or not reads_as_failure(result.summary):
+        return None
+    reason = one_line(result.summary)
+    cause = classify_error(reason)
+    return BlockerInput(
+        what_stopped_it=reason,
+        cause="missing_input" if cause == "unknown" else cause,
+    )
+
+
+def unprove(contract: Contract) -> tuple[Contract, list[ContractPatch]]:
+    """A check marked met with no proof doesn't count once the work failed."""
+    criteria = [
+        (
+            c.model_copy(update={"status": CriterionStatus.UNMET})
+            if c.status == CriterionStatus.MET and not c.evidence_ids
+            else c
+        )
+        for c in contract.done_when
+    ]
+    if criteria == contract.done_when:
+        return contract, []
+    updated = contract.model_copy(update={"done_when": criteria})
+    return updated, [ContractPatch(field="done_when", value=_dump(criteria))]
+
+
+def reopen_as_blocked(
+    contract: Contract, blocker: Blocker
+) -> tuple[Contract, list[ContractPatch]]:
+    """A task marked done whose work hit a failure it never got past: the
+    result goes and the blocker takes its place."""
+    unproven, patches = unprove(contract)
+    blocked, more = set_blocker(unproven, blocker)
+    patches = [*patches, *more]
+    if blocked.result is not None:
+        blocked = blocked.model_copy(update={"result": None})
+        patches.append(ContractPatch(field="result"))
+    return blocked, patches
+
+
+def finishes(contract: Contract, review_required: bool = False) -> bool:
+    """Whether a result ends the task as done. Only a check the worker marked
+    unmet, or a task the user asked to review, waits on the user's OK; checks
+    left unmarked don't hold a finished task open."""
+    if review_required:
+        return False
+    return not any(x.status == CriterionStatus.UNMET for x in contract.done_when)
 
 
 def _squash(patches: list[ContractPatch]) -> list[ContractPatch]:
@@ -657,6 +732,8 @@ def raw_status(
         return "blocked"
     if (contract is not None and contract.ask is not None) or pending is not None:
         return "asked"
+    if contract is not None and contract.approvals:
+        return "asked"
     if status == TaskStatus.IN_REVIEW:
         return "awaiting_accept"
     if status == TaskStatus.BLOCKED:
@@ -693,7 +770,7 @@ def card_blocker(
     if raw == "no_signal":
         return make_blocker(
             contract,
-            f"No response for over {NO_SIGNAL_MINUTES} minutes.",
+            f"No progress for {NO_SIGNAL_MINUTES} minutes.",
             cause="no_signal",
         )
     if raw == "blocked" and status == TaskStatus.BLOCKED:
@@ -712,19 +789,22 @@ def now_line(
     plan = contract.plan if contract else []
     criteria = contract.done_when if contract else []
     if raw == "done":
-        met = sum(1 for c in criteria if c.status in _CLOSED)
-        return f"{met} of {len(criteria)} checks met" if criteria else "Done"
+        result = contract.result if contract else None
+        return result.summary.splitlines()[0] if result else "Done"
     if raw == "cancelled":
-        return "Stopped"
+        return "Cancelled"
     if raw in ("blocked", "no_signal"):
         blocker = card_blocker(contract, raw, TaskStatus.BLOCKED)
-        return blocker.short if blocker else "Stuck"
+        return blocker.short if blocker else "Failed"
     if raw == "asked":
-        return "Waiting on your answer"
+        if contract is not None and contract.ask is None and contract.approvals:
+            return "Needs your approval"
+        return "Needs your answer"
     if raw == "awaiting_accept":
-        return "Waiting on your OK"
+        unmet = next((x for x in criteria if x.status == CriterionStatus.UNMET), None)
+        return f"Needs your OK: {unmet.text} (not met)" if unmet else "Needs your OK"
     if raw == "queued":
-        return "Not started"
+        return "Starting soon"
     if raw == "waiting_on_subtasks":
         done, total = subtasks
         return f"Waiting on sub-tasks · {done} of {total} done"
@@ -873,7 +953,7 @@ _NEXT_ACTIONS = {
     "missing_input": ["change_goal", "retry_failed_part", "take_over"],
     "limit": ["retry_failed_part", "change_goal", "take_over"],
     "external_error": ["retry_failed_part", "skip", "take_over"],
-    "no_signal": ["retry_failed_part", "take_over", "stop"],
+    "no_signal": ["retry_failed_part"],
 }
 _DEFAULT_ACTIONS = ["retry_failed_part", "skip", "take_over"]
 
@@ -937,7 +1017,7 @@ def turn_blocker_reason(
     ):
         return failure[1], failure[0]
     if turn_failed:
-        return "The work turn stopped with an error.", None
+        return "The work stopped with an error.", None
     return None
 
 

@@ -12,6 +12,7 @@ from backend.api.features.tasks import contract as c
 from backend.api.features.tasks.models import (
     Actor,
     Attachment,
+    CardApproval,
     ContractState,
     PendingInput,
     Plan,
@@ -325,7 +326,7 @@ def test_only_a_failure_retrying_cant_fix_stops_a_finished_turn():
     )
     assert c.turn_blocker_reason(False, ("web_search", "timed out")) is None
     assert c.turn_blocker_reason(True, None) == (
-        "The work turn stopped with an error.",
+        "The work stopped with an error.",
         None,
     )
 
@@ -501,7 +502,9 @@ def test_skipped_checks_count_as_closed():
     )
 
     assert c.all_met(contract)
-    assert c.now_line("done", contract) == "2 of 2 checks met"
+    assert c.now_line("done", contract) == "Done"
+    finished = _patch(contract, result={"summary": "Use Linear.\nIt is fast."})
+    assert c.now_line("done", finished) == "Use Linear."
 
 
 def test_an_ask_with_options_always_has_a_default():
@@ -566,19 +569,18 @@ def test_a_quiet_task_shows_a_blocker_with_a_retry():
     assert blocker is not None
     assert blocker.cause == "no_signal"
     assert blocker.next_actions[0] == "retry_failed_part"
-    assert (
-        c.now_line("no_signal", None)
-        == f"No response for over {c.NO_SIGNAL_MINUTES} minutes."
-    )
+    assert blocker.next_actions == ["retry_failed_part"]
+    assert c.now_line("no_signal", None) == "No progress for 15 minutes."
 
 
 @pytest.mark.parametrize(
     "raw,line",
     [
-        ("asked", "Waiting on your answer"),
-        ("awaiting_accept", "Waiting on your OK"),
-        ("queued", "Not started"),
-        ("cancelled", "Stopped"),
+        ("asked", "Needs your answer"),
+        ("awaiting_accept", "Needs your OK"),
+        ("queued", "Starting soon"),
+        ("cancelled", "Cancelled"),
+        ("blocked", "The work stopped before it finished."),
     ],
 )
 def test_the_line_about_now(raw, line):
@@ -595,3 +597,108 @@ def test_a_long_reason_gets_a_label_never_half_a_sentence():
     assert c.short_reason("Site timed out. Retried twice.", "external_error") == (
         "Site timed out."
     )
+
+
+# --- a result that says the work wasn't done fails the task ----------------
+
+
+def test_a_result_saying_the_file_was_missing_is_a_blocker_not_done():
+    contract = _start("Summarize the Q3 report PDF", done_when=["Summary written"])
+
+    contract = _patch(
+        contract,
+        criteria=[{"id": "d1", "status": "met"}],
+        result={"summary": "I couldn't find the **Q3 report PDF**; none is attached."},
+    )
+
+    assert contract.result is None
+    assert contract.blocker is not None
+    assert contract.blocker.cause == "missing_input"
+    assert contract.blocker.short == (
+        "I couldn't find the Q3 report PDF; none is attached."
+    )
+    assert contract.done_when[0].status == c.CriterionStatus.UNMET
+    assert c.now_line("blocked", contract) == contract.blocker.short
+
+
+def test_a_blocker_and_a_result_in_one_call_keep_the_blocker():
+    contract = _patch(
+        _start("x"),
+        blocker={"what_stopped_it": "The export wasn't found."},
+        result={"summary": "Done."},
+    )
+
+    assert contract.result is None
+    assert contract.blocker is not None
+
+
+def test_a_check_with_proof_stays_met_when_the_work_fails():
+    contract, evidence, _ = c.add_evidence(
+        _start("x", done_when=["A", "B"]), "file", "a.md", "A", criterion_ids=["d1"]
+    )
+    contract = _patch(
+        contract,
+        criteria=[
+            {"id": "d1", "status": "met", "evidence_ids": [evidence.id]},
+            {"id": "d2", "status": "met"},
+        ],
+    )
+
+    reopened, _ = c.reopen_as_blocked(contract, c.make_blocker(contract, "No access"))
+
+    assert [x.status for x in reopened.done_when] == [
+        c.CriterionStatus.MET,
+        c.CriterionStatus.UNMET,
+    ]
+
+
+def test_a_plain_result_still_finishes():
+    contract = _patch(_start("x"), result={"summary": "Use Linear; no issues found."})
+
+    assert contract.result is not None
+    assert contract.blocker is None
+
+
+@pytest.mark.parametrize(
+    "statuses,review,done",
+    [
+        ([], False, True),
+        (["pending"], False, True),
+        (["met", "skipped"], False, True),
+        (["met", "unmet"], False, False),
+        (["met"], True, False),
+    ],
+)
+def test_only_an_unmet_check_or_a_review_holds_a_result(statuses, review, done):
+    contract = _start("x", done_when=[f"c{i}" for i in range(len(statuses))])
+    contract = _patch(
+        contract,
+        criteria=[
+            {"id": f"d{i + 1}", "status": s}
+            for i, s in enumerate(statuses)
+            if s != "pending"
+        ],
+    )
+
+    assert c.finishes(contract, review) is done
+
+
+def test_short_action_labels_become_keys():
+    assert c.action_keys(["Retry", "Upload file", "skip", "Book a quick call now"]) == [
+        "retry_failed_part",
+        "upload_file",
+        "skip",
+    ]
+
+
+def test_open_approvals_need_the_user():
+    contract = c.Contract(
+        goal="Hire",
+        approvals=[CardApproval(confirmation_id="x", name="Sam")],
+    )
+
+    raw = c.raw_status(TaskStatus.BLOCKED, contract, None)
+
+    assert raw == "asked"
+    assert c.state_of(raw) == ContractState.NEEDS_YOU
+    assert c.now_line(raw, contract) == "Needs your approval"

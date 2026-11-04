@@ -14,6 +14,7 @@ from backend.api.features.tasks.models import (
     TaskFilters,
     TaskStatus,
 )
+from backend.api.features.tasks.outcome_text import reads_as_failure
 from backend.copilot.model import ChatSession
 
 from .models import TaskListToolResponse, TaskUpdatedToolResponse, ToolResponseBase
@@ -107,6 +108,18 @@ def _task_line(task: Task, *, with_assignee: bool) -> str:
     return f"{line}, assigned to {task.assignee.name if task.assignee else 'no one'}"
 
 
+def _stated_failure(
+    status: TaskStatus, summary: str | None, note: str | None
+) -> str | None:
+    """The blocker a status change amounts to: the reason a task is moved to
+    blocked, or a done summary that says the work wasn't done."""
+    if status == TaskStatus.BLOCKED:
+        return (note or "").strip() or "Stopped before it finished."
+    if status == TaskStatus.DONE and reads_as_failure(summary):
+        return (summary or "").strip()
+    return None
+
+
 class UpdateTaskStatusTool(TaskToolBase):
     @property
     def name(self) -> str:
@@ -153,6 +166,19 @@ class UpdateTaskStatusTool(TaskToolBase):
         if status == TaskStatus.DONE and not summary:
             raise TaskToolError("Pass outcome_summary when marking a task done.")
         actor = await caller_actor(user_id, session)
+        reason = _stated_failure(status, summary, kwargs.get("note"))
+        if reason is not None:
+            # A stop says why, and a "done" that says the work couldn't be
+            # done fails instead, so the card never reads green or blank.
+            update = await tasks_store().contract_update_task(
+                user_id, task.id, {"blocker": {"what_stopped_it": reason}}, actor
+            )
+            await publish_contract_update(user_id, update)
+            return TaskUpdatedToolResponse(
+                message=f"{task.key} is blocked: {reason} End your turn.",
+                session_id=session.session_id,
+                task=dump(update.task),
+            )
         updated = await tasks_store().set_task_status(
             user_id,
             task.id,

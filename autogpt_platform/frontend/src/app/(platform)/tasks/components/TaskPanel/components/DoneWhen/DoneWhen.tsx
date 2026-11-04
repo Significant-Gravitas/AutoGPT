@@ -13,12 +13,15 @@ import { ProofLine } from "../ProofLine/ProofLine";
 interface Props {
   taskId: string;
   contract: Contract;
+  /** False when the Outcome card already shows the proof. */
+  withProof: boolean;
 }
 
-/** The checks that say the task is done, each with the proof behind it. */
-export function DoneWhen({ taskId, contract }: Props) {
+/** The checks that say the task is done, each with the proof behind it
+ *  unless the Outcome card shows that proof. */
+export function DoneWhen({ taskId, contract, withProof }: Props) {
   const criteria = contract.done_when ?? [];
-  const loose = looseEvidence(contract);
+  const loose = withProof ? looseEvidence(contract) : [];
   if (!criteria.length && !loose.length) return null;
   const byId = evidenceById(contract);
 
@@ -31,7 +34,7 @@ export function DoneWhen({ taskId, contract }: Props) {
         <ul className="flex flex-col gap-2.5">
           {criteria.map((criterion) => {
             const glyph = CRITERION_GLYPH[criterion.status ?? "pending"];
-            const proof = (criterion.evidence_ids ?? [])
+            const proof = (withProof ? (criterion.evidence_ids ?? []) : [])
               .map((id) => byId.get(id))
               .filter((e) => e !== undefined);
             return (

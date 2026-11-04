@@ -228,7 +228,7 @@ async def test_expert_requests_a_grant_and_leaves_a_pending_question(experts):
     assert session.metadata.pending_question is not None
     assert "cred-9" in session.metadata.pending_question.text
     chat.set_session_pending_question.assert_awaited_once()
-    event = RequestCredentialGrantTool().activity_event(session, result)
+    event = RequestCredentialGrantTool().activity_event(session, result, {})
     assert event is not None and event.category == "INTEGRATION"
     assert event.expert_id == "expert-a" and event.object_id == "cred-9"
 

@@ -1055,14 +1055,14 @@ class WriteWorkspaceFileTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         # A working file is Otto's bookkeeping, not work delivered.
         if not isinstance(result, WorkspaceWriteResponse) or result.is_internal:
             return None
         return ActivityEventDraft(
             category="FILE",
-            event_type="file.updated" if kwargs.get("overwrite") else "file.created",
+            event_type="file.updated" if args.get("overwrite") else "file.created",
             title=result.name,
             object_id=result.file_id,
             data={
@@ -1286,14 +1286,14 @@ class DeleteWorkspaceFileTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         if not isinstance(result, WorkspaceDeleteResponse) or not result.success:
             return None
         return ActivityEventDraft(
             category="FILE",
             event_type="file.deleted",
-            title=kwargs.get("path") or "Workspace file",
+            title=args.get("path") or "Workspace file",
             object_id=result.file_id,
         )
 

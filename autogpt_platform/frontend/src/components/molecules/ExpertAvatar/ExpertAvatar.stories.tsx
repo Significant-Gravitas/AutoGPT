@@ -78,6 +78,29 @@ export const TopicSurfaces: Story = {
 /** Every managed identity at the sizes the product uses, grouped by palette
  *  family: category peers share one material color and differ in silhouette
  *  and cream route. */
+export const Shapes: Story = {
+  render: function Shapes() {
+    const identity = MANAGED_IDENTITIES[0];
+    return (
+      <div className="flex items-end gap-4">
+        <ExpertAvatar name={identity.name} avatarUrl={identity.url} size={56} />
+        <ExpertAvatar
+          name={identity.name}
+          avatarUrl={identity.url}
+          size={56}
+          shape="tile"
+        />
+        <ExpertAvatar
+          name={identity.name}
+          avatarUrl={identity.url}
+          size={32}
+          shape="soft"
+        />
+      </div>
+    );
+  },
+};
+
 export const Family: Story = {
   render: function Family() {
     const families = Array.from(

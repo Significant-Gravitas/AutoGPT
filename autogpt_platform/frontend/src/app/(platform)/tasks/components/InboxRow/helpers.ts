@@ -1,12 +1,6 @@
 import type { Tone } from "@/components/styles/tones";
+import { statusOf } from "../../data/helpers";
 import type { InboxState, Task } from "../../data/types";
-
-export const STATE_LABEL: Record<InboxState, string> = {
-  running: "Running",
-  waiting: "Waiting",
-  done: "Done",
-  failed: "Failed",
-};
 
 export const STATE_TONE: Record<InboxState, Tone> = {
   running: "info",
@@ -15,9 +9,14 @@ export const STATE_TONE: Record<InboxState, Tone> = {
   failed: "error",
 };
 
+/** The task's one status word, from the shared vocabulary. */
 export function statusLabel(task: Task) {
-  if (task.inbox.needs_you) return "Needs you";
-  return STATE_LABEL[task.inbox.state];
+  return statusOf(task).word;
+}
+
+/** The colour that goes with `statusLabel`. */
+export function statusTone(task: Task): Tone {
+  return statusOf(task).tone;
 }
 
 /** The quiet button beside a card's main one, which opens the panel. */

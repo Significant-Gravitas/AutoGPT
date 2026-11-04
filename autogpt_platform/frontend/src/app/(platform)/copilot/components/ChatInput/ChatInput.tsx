@@ -473,13 +473,15 @@ export const ChatInput = memo(function ChatInput({
           in the middle, quiet toggles + mic + send on the right. items-end
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
+        // Card composer: a soft-shadowed card instead of the pill's deep
+        // shadow; the tray around it is the form.
+        variant={stacked ? "card" : "default"}
         className={cn(
           // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
-          // Card composer: a hairline-edged card instead of the pill's deep
-          // shadow; the tray around it is the form.
-          stacked &&
-            "gap-4 !rounded-panel border-transparent bg-surface pt-3.5 pr-2.5 pb-2 pl-3.5 shadow-card has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-card-hover",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          // The pill's edge; the card variant has none.
+          !stacked &&
+            "border-border-base has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
             "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&

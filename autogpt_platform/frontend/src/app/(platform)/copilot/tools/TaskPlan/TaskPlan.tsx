@@ -5,12 +5,14 @@ import { Task01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { formatCost } from "@/app/(platform)/tasks/data/helpers";
 import type { TaskPlan } from "@/app/(platform)/tasks/data/types";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
 import { ToolIcon } from "../DecomposeGoal/helpers";
 import { PlanStartedCard } from "./components/PlanStartedCard";
+import { PlanStepEditRow } from "./components/PlanStepEditRow";
 import { PlanStepRow } from "./components/PlanStepRow";
 import {
   getConfirmedPlan,
@@ -87,7 +89,12 @@ export function PlanCard({ plan }: { plan: TaskPlan }) {
 
   return (
     <div className="flex flex-col gap-2 py-2">
-      <div className="flex flex-col gap-3 rounded-card bg-surface p-4 shadow-card">
+      <div
+        className={cn(
+          "flex flex-col gap-3 rounded-card bg-surface p-4 shadow-card transition-opacity duration-150",
+          card.isSuperseded && "opacity-60",
+        )}
+      >
         <div className="flex items-start gap-2.5">
           <span className="flex h-5 shrink-0 items-center">
             <Icon icon={Task01Icon} size={16} tone="quiet" aria-hidden />
@@ -108,30 +115,59 @@ export function PlanCard({ plan }: { plan: TaskPlan }) {
         </div>
 
         <ol className="divide-y divide-border-hairline border-y border-border-hairline">
-          {plan.steps.map((step, i) => (
-            <PlanStepRow key={`${i}-${step.title}`} step={step} index={i} />
-          ))}
+          {card.steps.map((step, i) =>
+            card.isEditing ? (
+              <PlanStepEditRow
+                key={i}
+                planId={plan.id}
+                step={step}
+                index={i}
+                canRemove={card.steps.length > 1}
+                onTitleChange={card.handleStepTitle}
+                onRemove={card.handleRemoveStep}
+              />
+            ) : (
+              <PlanStepRow key={`${i}-${step.title}`} step={step} index={i} />
+            ),
+          )}
         </ol>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Text variant="inbox" tone="quiet" tabular>
-            {getPlanShapeLabel(plan)}
+            {getPlanShapeLabel({ ...plan, steps: card.steps })}
             {plan.budget_usd !== null
               ? ` · Budget ${formatCost(plan.budget_usd)}`
               : ""}
           </Text>
-          {!card.isStarted && !card.isCancelled ? (
-            <Button
-              variant="primary"
-              size="small"
-              loading={card.isApproving}
-              disabled={card.isApproving}
-              onClick={card.handleApprove}
-            >
-              Approve & start
-            </Button>
+          {card.canAct ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost-muted"
+                size="small"
+                disabled={card.isApproving}
+                onClick={
+                  card.isEditing ? card.handleCancelEdit : card.handleEdit
+                }
+              >
+                {card.isEditing ? "Cancel" : "Edit steps"}
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                loading={card.isApproving}
+                disabled={card.isApproving || !card.hasSteps}
+                onClick={card.handleApprove}
+              >
+                Approve & start
+              </Button>
+            </div>
           ) : null}
-          {card.isCancelled ? (
+          {card.isSuperseded ? (
+            <Text variant="inbox-medium" tone="quiet">
+              Replaced by newer plan
+            </Text>
+          ) : null}
+          {card.isCancelled && !card.isSuperseded ? (
             <Text variant="inbox-medium" tone="quiet">
               Plan cancelled
             </Text>

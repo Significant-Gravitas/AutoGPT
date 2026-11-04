@@ -190,6 +190,9 @@ async def create_task(
 
 
 async def _create(user_id: str, body: TaskCreate) -> TaskDetail:
+    if not (body.description or "").strip():
+        # A task typed as one prompt keeps that prompt as what was asked.
+        body = body.model_copy(update={"description": body.title.strip()})
     try:
         detail = await db.create_task(user_id, body, Actor.user(user_id))
     except ValueError as e:

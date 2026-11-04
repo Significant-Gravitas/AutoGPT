@@ -835,10 +835,7 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
       "setup-task",
       page.getByRole("button", { name: /^Set up your run$/i }).first(),
     ],
-    [
-      "new-task",
-      page.getByRole("button", { name: /^New run$/i }).first(),
-    ],
+    ["new-task", page.getByRole("button", { name: /^New run$/i }).first()],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
 

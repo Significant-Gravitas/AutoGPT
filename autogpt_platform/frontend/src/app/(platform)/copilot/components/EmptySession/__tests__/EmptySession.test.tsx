@@ -3,10 +3,13 @@ import { http, HttpResponse } from "msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
 import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   normalizeWhitespace,
   render,
   screen,
@@ -127,36 +130,81 @@ describe("EmptySession — recipient-aware intro", () => {
   });
 });
 
-beforeEach(() => {
+let dashboardReads = 0;
+
+function serveHome(respond: () => Response) {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
-      HttpResponse.json(makeDashboard([])),
-    ),
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () => {
+      dashboardReads += 1;
+      return respond();
+    }),
   );
+}
+
+/** Lets Home's dashboard answer render, so the prompt shown is the final one. */
+async function settleDashboard() {
+  await waitFor(() => expect(dashboardReads).toBeGreaterThan(0));
+  await act(async () => {});
+}
+
+function makeSession(
+  id: string,
+  title: string,
+  expertId: string | null,
+): SessionSummaryResponse {
+  return {
+    id,
+    title,
+    created_at: "2026-11-03T10:00:00Z",
+    updated_at: "2026-11-03T10:00:00Z",
+    chat_status: "idle",
+    is_processing: false,
+    expert_id: expertId,
+  };
+}
+
+beforeEach(() => {
+  dashboardReads = 0;
+  serveHome(() => HttpResponse.json(makeDashboard([])));
 });
 
-it("shows the task prompt above the home recap", async () => {
+it("shows the prompt above the recipient's recent chats", async () => {
+  server.use(
+    getGetV2ListSessionsMockHandler200({
+      sessions: [
+        makeSession("session-otto", "Weekly report", null),
+        makeSession("session-maria", "Launch plan", "expert-maria"),
+      ],
+      total: 2,
+    }),
+  );
   renderEmptySession("");
   const prompt = await screen.findByPlaceholderText(/What's your role/);
-  const recap = await screen.findByRole("heading", { name: "Your recap" });
+  const recent = await screen.findByRole("heading", { name: "Recent chats" });
   expect(
-    prompt.compareDocumentPosition(recap) & Node.DOCUMENT_POSITION_FOLLOWING,
+    prompt.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
+  expect(
+    screen.getByRole("link", { name: /Weekly report/ }).getAttribute("href"),
+  ).toBe("/home?sessionId=session-otto");
+  expect(screen.queryByRole("link", { name: /Launch plan/ })).toBeNull();
 });
 
-it("keeps the prompt usable when the recap fails to load", async () => {
+it("keeps the prompt usable when Home's data fails to load", async () => {
+  serveHome(() => HttpResponse.json({ detail: "failed" }, { status: 500 }));
+  let sessionReads = 0;
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
-      HttpResponse.json({ detail: "failed" }, { status: 500 }),
-    ),
+    http.get("/api/proxy/api/chat/sessions", () => {
+      sessionReads += 1;
+      return HttpResponse.json({ detail: "failed" }, { status: 500 });
+    }),
   );
   const onSend = vi.fn();
   const user = userEvent.setup();
   renderEmptySession("", onSend);
-  await screen.findByText("Your Home briefing could not be loaded");
+  await settleDashboard();
+  await waitFor(() => expect(sessionReads).toBeGreaterThan(0));
+  expect(screen.queryByRole("heading", { name: "Recent chats" })).toBeNull();
   await user.type(
     screen.getByPlaceholderText(/What's your role/),
     "Plan my day{Enter}",
@@ -230,18 +278,14 @@ const teamPlaceholder =
   "What should the team work on? e.g. 'Follow up with yesterday's leads'";
 
 function mockDashboard(dashboard: HomeDashboardResponse) {
-  server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
-      HttpResponse.json(dashboard),
-    ),
-  );
+  serveHome(() => HttpResponse.json(dashboard));
 }
 
 it("keeps the discovery prompt without starter pills or suggestion requests for an empty account", async () => {
   const fetchSuggestions = vi.fn(() => HttpResponse.json({ themes: [] }));
   server.use(http.get("*/api/chat/suggested-prompts", fetchSuggestions));
   renderEmptySession("");
-  await screen.findByRole("heading", { name: "Your recap" });
+  await settleDashboard();
   expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();
   for (const name of ["Learn", "Create", "Automate", "Organize"]) {
     expect(screen.queryByRole("button", { name })).toBeNull();
@@ -342,7 +386,7 @@ it("keeps the chosen expert's prompt for an existing account", async () => {
     team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
   });
   renderEmptySession("?expertId=expert-maria");
-  await screen.findByRole("heading", { name: "Your recap" });
+  await settleDashboard();
   expect(
     await screen.findByPlaceholderText("What should Maria work on?"),
   ).toBeDefined();

@@ -7,24 +7,43 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+const inputGroupVariants = cva(
+  [
+    "group/input-group relative flex w-full items-center rounded-xlarge border border-border-base bg-surface shadow-sm transition-[color,box-shadow] outline-none",
+    "min-w-0 has-[>textarea]:h-auto",
+
+    // Variants based on alignment.
+    "has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col",
+    "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col",
+
+    // Focus state.
+    "has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-border-strong",
+  ],
+  {
+    variants: {
+      variant: {
+        default: "",
+        // The card composer: a white card on the panel radius with a clear
+        // edge and a soft shadow that deepens on focus, 16px between rows.
+        card: "gap-4 !rounded-panel border-transparent pt-3.5 pr-2.5 pb-2 pl-3.5 shadow-card has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-card-hover",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
+function InputGroup({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupVariants>) {
   return (
     <div
       data-slot="input-group"
       role="group"
-      className={cn(
-        "group/input-group relative flex w-full items-center rounded-xlarge border border-border-base bg-surface shadow-sm transition-[color,box-shadow] outline-none",
-        "min-w-0 has-[>textarea]:h-auto",
-
-        // Variants based on alignment.
-        "has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col",
-        "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col",
-
-        // Focus state.
-        "has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-border-strong",
-
-        className,
-      )}
+      className={cn(inputGroupVariants({ variant }), className)}
       {...props}
     />
   );

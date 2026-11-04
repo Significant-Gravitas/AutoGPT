@@ -1,7 +1,8 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useNowMinute } from "@/hooks/useNowMinute";
 import { useRouter } from "next/navigation";
-import { cardAction, shortAgo } from "../../data/helpers";
+import { useState } from "react";
+import { cardAction, statusAge, statusLine } from "../../data/helpers";
 import type { Task } from "../../data/types";
 import { useAnswerAsk, useTaskAction } from "../../data/useTasksData";
 
@@ -21,6 +22,7 @@ export function useInboxRow(task: Task) {
   const answer = useAnswerAsk();
   const act = useTaskAction();
   const action = cardAction(task);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   function runAction() {
     if (!action) return;
@@ -48,7 +50,11 @@ export function useInboxRow(task: Task) {
 
   return {
     cards: open ? (task.approvals ?? []) : [],
-    ago: shortAgo(task.updated_at),
+    line: statusLine(task),
+    age: statusAge(task),
+    isRenaming,
+    startRename: () => setIsRenaming(true),
+    stopRename: () => setIsRenaming(false),
     action,
     busy: answer.isPending || act.isPending,
     runAction,

@@ -16,8 +16,8 @@ export function EmptyTriggers() {
           No triggers yet
         </Text>
         <Text variant="large" tone="body">
-          Set up automatic triggers for your workflow to run automatically
-          — they&apos;ll show up here.
+          Set up automatic triggers for your workflow to run automatically —
+          they&apos;ll show up here.
         </Text>
       </div>
     </div>

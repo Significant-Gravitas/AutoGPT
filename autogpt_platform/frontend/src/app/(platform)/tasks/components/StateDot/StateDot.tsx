@@ -1,31 +1,34 @@
 import { cn } from "@/lib/utils";
-import { STATE_LABELS } from "../../data/helpers";
+import { statusOf } from "../../data/helpers";
 import type { TaskState } from "../../data/types";
 
 const DOT: Record<TaskState, string> = {
-  working: "size-2 bg-info animate-pulse motion-reduce:animate-none",
-  needs_you: "size-2 bg-status-waiting",
-  stuck: "size-1.5 bg-warning",
-  done: "size-2 bg-status-ok",
-  stopped: "size-2 bg-foreground-faint",
+  working: "bg-info animate-pulse motion-reduce:animate-none",
+  needs_you: "bg-status-waiting",
+  stuck: "bg-error",
+  done: "bg-status-ok",
+  stopped: "bg-foreground-faint",
 };
 
 interface Props {
   state: TaskState;
   className?: string;
+  /** Beside a visible status word, the dot is decoration only. */
+  decorative?: boolean;
 }
 
-export function StateDot({ state, className }: Props) {
+export function StateDot({ state, className, decorative = false }: Props) {
   return (
     <span
-      role="img"
-      aria-label={STATE_LABELS[state]}
+      role={decorative ? undefined : "img"}
+      aria-label={decorative ? undefined : statusOf(state).word}
+      aria-hidden={decorative || undefined}
       className={cn(
         "inline-flex size-4 shrink-0 items-center justify-center",
         className,
       )}
     >
-      <span aria-hidden className={cn("rounded-full", DOT[state])} />
+      <span aria-hidden className={cn("size-2 rounded-full", DOT[state])} />
     </span>
   );
 }

@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useTaskEvidence } from "../../../../data/useTasksData";
 import { attachmentHref, evidenceContent, evidenceIcon } from "../../helpers";
 import { Fold } from "../Fold/Fold";
+import { PanelMarkdown } from "../PanelMarkdown/PanelMarkdown";
 
 interface Props {
   taskId: string;
@@ -31,9 +32,9 @@ export function ProofLine({ taskId, evidence }: Props) {
           className="mt-0.5 shrink-0"
           aria-hidden
         />
-        <Text variant="small" tone="quiet" className="min-w-0 flex-1">
+        <PanelMarkdown inline variant="small" tone="quiet">
           {evidence.summary || evidence.title}
-        </Text>
+        </PanelMarkdown>
         <Button
           variant="ghost-muted"
           size="inline-xs"
@@ -71,9 +72,11 @@ function EvidenceView({ taskId, evidence }: Props) {
   return (
     <div className="flex flex-col gap-2">
       {content ? (
-        <pre className="max-h-64 overflow-auto rounded-control bg-surface-wash p-2.5 font-mono text-caption break-words whitespace-pre-wrap text-foreground-body">
-          {content}
-        </pre>
+        <div className="max-h-64 overflow-auto rounded-control bg-surface-wash p-2.5">
+          <PanelMarkdown variant="small" tone="body">
+            {content}
+          </PanelMarkdown>
+        </div>
       ) : null}
       {href ? (
         <Link

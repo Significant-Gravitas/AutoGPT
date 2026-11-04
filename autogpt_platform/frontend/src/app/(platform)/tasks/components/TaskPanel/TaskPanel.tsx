@@ -3,11 +3,8 @@
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ActivityCheckpoints } from "./components/ActivityCheckpoints/ActivityCheckpoints";
 import { AttentionCard } from "./components/AttentionCard/AttentionCard";
-import { unmetChecks } from "./components/AttentionCard/helpers";
 import { CommentComposer } from "./components/CommentComposer/CommentComposer";
-import { DoneWhen } from "./components/DoneWhen/DoneWhen";
-import { GoalLine } from "./components/GoalLine/GoalLine";
-import { PanelApprovals } from "./components/PanelApprovals/PanelApprovals";
+import { OriginalAsk } from "./components/OriginalAsk/OriginalAsk";
 import { PanelSkeleton } from "./components/PanelSkeleton/PanelSkeleton";
 import { Progress } from "./components/Progress/Progress";
 import { ResultCard } from "./components/ResultCard/ResultCard";
@@ -21,16 +18,11 @@ interface Props {
   onOpenTask(id: string): void;
 }
 
+/** Top to bottom: the title, what was asked, one card (the outcome, what it
+ *  needs from you, or why it failed), the feed, and Show work. */
 export function TaskPanel({ taskId, onOpenTask }: Props) {
-  const { task, summary, isLoading, isError, retry, experts, update } =
-    useTaskPanel(taskId);
-  const contract = summary?.contract;
-  const ask = contract?.ask ?? task?.ask ?? null;
-  const blocker = contract?.blocker ?? task?.blocker ?? null;
-  const rawStatus = summary?.raw_status ?? task?.raw_status;
-  const state = summary?.state ?? task?.state;
-  const settled = state === "done" || state === "stopped";
-  const cards = settled ? [] : (contract?.approvals ?? task?.approvals ?? []);
+  const panel = useTaskPanel(taskId);
+  const { task, view } = panel;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -38,76 +30,83 @@ export function TaskPanel({ taskId, onOpenTask }: Props) {
         key={taskId}
         className="flex min-h-0 flex-1 animate-inbox-enter flex-col"
       >
-        {isLoading || (!task && !isError) ? (
+        {panel.isLoading || (!task && !panel.isError) ? (
           <PanelSkeleton />
-        ) : isError || !task ? (
+        ) : panel.isError || !task || !view ? (
           <div className="p-4">
             <ErrorCard
               context="task"
               httpError={{ message: "This task could not be loaded." }}
-              onRetry={retry}
+              onRetry={panel.retry}
             />
           </div>
         ) : (
           <>
             <div className="min-h-0 flex-1 divide-y divide-border-hairline overflow-y-auto">
               <div className="flex flex-col gap-3 px-1.5 py-5">
-                <TaskHeader task={task} experts={experts} onUpdate={update} />
-                {contract ? (
-                  <GoalLine
-                    title={task.title}
-                    goal={contract.goal}
-                    previousGoal={contract.previous_goal}
-                  />
-                ) : null}
+                <TaskHeader
+                  task={task}
+                  experts={panel.experts}
+                  onUpdate={panel.update}
+                />
+                <OriginalAsk
+                  title={task.title}
+                  description={task.description}
+                />
               </div>
-              {cards.length && task ? (
-                <div className="px-1.5 py-4">
-                  <PanelApprovals
-                    taskId={task.id}
-                    askerName={task.assignee?.name ?? "Otto"}
-                    cards={cards}
-                  />
-                </div>
-              ) : !settled &&
-                (ask || blocker || rawStatus === "awaiting_accept") ? (
-                <div className="px-1.5 py-4">
-                  <AttentionCard
-                    key={ask?.id ?? blocker?.what_stopped_it ?? "accept"}
-                    taskId={task.id}
-                    goal={contract?.goal ?? task.title}
-                    askerName={task.assignee?.name ?? "Otto"}
-                    ask={ask}
-                    blocker={blocker}
-                    awaitingAccept={rawStatus === "awaiting_accept"}
-                    resultSummary={contract?.result?.summary}
-                    unmet={unmetChecks(contract?.done_when)}
-                  />
-                </div>
-              ) : null}
-              {contract ? (
-                <DoneWhen taskId={task.id} contract={contract} />
-              ) : null}
-              {contract && task.state !== "done" ? (
-                <Progress
-                  plan={contract.plan ?? []}
-                  now={summary?.now ?? task.now}
-                  state={summary?.state ?? task.state}
+              {view.card === "outcome" ? (
+                <ResultCard
+                  taskId={task.id}
+                  summary={view.resultSummary}
+                  evidence={view.evidence}
                 />
               ) : null}
-              {contract && task.state === "done" ? (
-                <ResultCard taskId={task.id} contract={contract} />
+              {view.card === "attention" ? (
+                <div className="px-1.5 py-4">
+                  <AttentionCard
+                    key={
+                      view.ask?.id ?? view.blocker?.what_stopped_it ?? "wait"
+                    }
+                    taskId={task.id}
+                    goal={view.contract?.goal ?? task.title}
+                    askerName={task.assignee?.name ?? "Otto"}
+                    failed={view.failed}
+                    ask={view.ask}
+                    blocker={view.blocker}
+                    approvals={view.approvals}
+                    awaitingAccept={view.awaitingAccept}
+                    resultSummary={view.resultSummary}
+                    unmet={view.unmet}
+                    proof={view.awaitingAccept ? view.evidence : []}
+                    workChatHref={view.workChatHref}
+                  />
+                </div>
               ) : null}
-              <SubtaskList task={task} onOpenTask={onOpenTask} />
+              {view.contract && view.state === "working" ? (
+                <Progress
+                  plan={view.contract.plan ?? []}
+                  now={view.now}
+                  state={view.state}
+                />
+              ) : null}
               <ActivityCheckpoints
                 taskId={task.id}
                 title={task.title}
-                running={summary?.live?.running ?? task.state === "working"}
+                running={view.running}
+                resultSummary={view.resultSummary}
               />
-              <ShowWork task={task} experts={experts} />
+              <SubtaskList task={task} onOpenTask={onOpenTask} />
+              <ShowWork
+                task={task}
+                contract={view.contract}
+                state={view.state}
+                now={view.now}
+                running={view.running}
+                proofInCard={view.proofInCard}
+              />
             </div>
             <div className="shrink-0 border-t border-border-hairline px-1.5 pt-3 pb-1">
-              <CommentComposer taskId={task.id} experts={experts} />
+              <CommentComposer taskId={task.id} experts={panel.experts} />
             </div>
           </>
         )}

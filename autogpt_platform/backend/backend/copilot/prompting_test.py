@@ -416,6 +416,12 @@ class TestReplyStyle:
         assert "### Reply style" in prompting.SHARED_TOOL_NOTES
         assert "never its length" in prompting.SHARED_TOOL_NOTES
 
+    def test_replies_never_carry_tool_internals(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Never put tool names, tool lists" in notes
+        assert "don't repeat it in text" in notes
+        assert "Only describe buttons, menus and pages you know exist" in notes
+
     def test_the_rules_do_not_model_the_dashes_they_forbid(self):
         start = prompting.SHARED_TOOL_NOTES.index("### Reply style")
         end = prompting.SHARED_TOOL_NOTES.index("### Math")

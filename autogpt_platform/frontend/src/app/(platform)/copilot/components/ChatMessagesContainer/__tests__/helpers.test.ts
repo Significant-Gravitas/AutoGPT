@@ -12,6 +12,7 @@ import {
   resolveWorkspaceUrls,
   workspaceLinkFileID,
 } from "../helpers";
+import { isRawDataText } from "../rawDataText";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 
@@ -552,5 +553,23 @@ describe("extractReviewTargets", () => {
         toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
       ]),
     ).toEqual({ chat: false, runs: [{ graphExecId: "exec-b" }] });
+  });
+});
+
+describe("isRawDataText", () => {
+  it.each([
+    '{"type": "task_updated", "task": {"id": "t-1"}}',
+    '  [{"name": "create_task"}, {"name": "list_my_tasks"}]  ',
+  ])("folds a reply that is only JSON: %s", (text) => {
+    expect(isRawDataText(text)).toBe(true);
+  });
+
+  it.each([
+    "I put it on your board.",
+    '```json\n{"a": 1}\n```',
+    "{not json}",
+    "[1] is the first source.",
+  ])("keeps written replies: %s", (text) => {
+    expect(isRawDataText(text)).toBe(false);
   });
 });

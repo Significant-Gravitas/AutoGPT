@@ -3,6 +3,7 @@ import type { EvidenceDetail } from "@/app/api/__generated__/models/evidenceDeta
 import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
 import type { TaskSummary } from "@/app/api/__generated__/models/taskSummary";
 import { customMutator } from "@/app/api/mutators/custom-mutator";
+import { matchesAssignees, OTTO_FILTER_ID } from "./helpers";
 import { mockApi } from "./mocks";
 import {
   summaryFromTask,
@@ -14,13 +15,14 @@ import {
   toTaskDetail,
 } from "./normalize";
 
-const ACTIVITY_PAGE = 50;
 import type {
   CreateTaskInput,
   TaskFilters,
   TaskPlan,
   UpdateTaskInput,
 } from "./types";
+
+const ACTIVITY_PAGE = 50;
 
 // Thin client for the Tasks v1 routes (see autogpt_platform/TASKS_V1_CONTRACT.md).
 // Until the backend serves them, a 404 or network failure falls back to the
@@ -54,6 +56,28 @@ async function call<T>(
   }
 }
 
+/** Like `call`, for writes that must reach the server: a missing route is a
+ *  failure the caller rolls back, not a reason to switch to the mocks. */
+async function send<T>(url: string, init: RequestInit, mock: () => T) {
+  if (useMocks) return mock();
+  const res = await customMutator<Envelope<T>>(url, init);
+  return res.data;
+}
+
+/** The API filters by one expert; Otto or several are narrowed here. */
+function narrowsLocally(filters: TaskFilters) {
+  const ids = filters.assignee_ids ?? [];
+  return ids.length > 1 || ids.includes(OTTO_FILTER_ID);
+}
+
+function narrow<T extends Parameters<typeof matchesAssignees>[0]>(
+  tasks: T[],
+  filters: TaskFilters,
+) {
+  if (!narrowsLocally(filters)) return tasks;
+  return tasks.filter((t) => matchesAssignees(t, filters.assignee_ids ?? []));
+}
+
 function json(method: string, body?: unknown): RequestInit {
   return {
     method,
@@ -69,7 +93,7 @@ function toQuery(filters: TaskFilters, { withHidden = false } = {}) {
     params.set("include_hidden", "true");
   if (filters.priority?.length)
     params.set("priority", filters.priority.join(","));
-  if (filters.assignee_ids?.length === 1)
+  if (filters.assignee_ids?.length === 1 && !narrowsLocally(filters))
     params.set("assignee_id", filters.assignee_ids[0]);
   if (filters.due) params.set("due", filters.due);
   if (filters.mine) params.set("mine", "true");
@@ -86,28 +110,18 @@ export const tasksApi = {
       () => ({ tasks: mockApi.list(filters) }),
     ).then((r) => {
       const all = r.tasks.map(toTask);
-      const tasks =
-        filters.assignee_ids && filters.assignee_ids.length > 1
-          ? all.filter((t) =>
-              filters.assignee_ids!.includes(t.assignee?.id ?? ""),
-            )
-          : all;
-      return { tasks, counts: toTaskCounts(r.counts, all) };
+      if (!narrowsLocally(filters)) {
+        return { tasks: all, counts: toTaskCounts(r.counts, all) };
+      }
+      const tasks = narrow(all, filters);
+      return { tasks, counts: toTaskCounts(undefined, tasks) };
     }),
   list: (filters: TaskFilters) =>
     call<{ tasks: unknown[] }>(
       `/api/tasks${toQuery(filters)}`,
       json("GET"),
       () => ({ tasks: mockApi.list(filters) }),
-    ).then((r) => {
-      const tasks = r.tasks.map(toTask);
-      // The API filters by one assignee; narrow to several here.
-      return filters.assignee_ids && filters.assignee_ids.length > 1
-        ? tasks.filter((t) =>
-            filters.assignee_ids!.includes(t.assignee?.id ?? ""),
-          )
-        : tasks;
-    }),
+    ).then((r) => narrow(r.tasks.map(toTask), filters)),
   needsYou: () =>
     call<{ tasks: unknown[] }>(`/api/tasks/needs-you`, json("GET"), () => ({
       tasks: mockApi.list({ status: ["blocked", "in_review"] }),
@@ -167,6 +181,14 @@ export const tasksApi = {
     call<unknown>(`/api/tasks/${id}`, json("PATCH", input), () =>
       mockApi.update(id, input),
     ).then(toTask),
+  rename: (id: string, title: string) =>
+    send<unknown>(`/api/tasks/${id}`, json("PATCH", { title }), () =>
+      mockApi.update(id, { title }),
+    ).then(toTask),
+  remove: (id: string) =>
+    send<unknown>(`/api/tasks/${id}`, json("DELETE"), () =>
+      mockApi.remove(id),
+    ).then(() => undefined),
   start: (id: string) =>
     call<unknown>(`/api/tasks/${id}/start`, json("POST", {}), () =>
       mockApi.update(id, { status: "in_progress" }),

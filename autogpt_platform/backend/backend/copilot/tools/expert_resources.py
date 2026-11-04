@@ -582,7 +582,10 @@ class RequestCredentialGrantTool(BaseTool):
         return True
 
     def activity_event(
-        self, session: ChatSession, result: ToolResponseBase, **kwargs
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         if not isinstance(result, CredentialGrantRequestedResponse):
             return None

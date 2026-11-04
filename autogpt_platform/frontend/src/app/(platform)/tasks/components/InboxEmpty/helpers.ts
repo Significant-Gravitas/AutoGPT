@@ -28,6 +28,11 @@ export const EMPTY_COPY: Record<InboxTab, EmptyCopy> = {
   },
 };
 
+export const NEW_USER_COPY: EmptyCopy = {
+  title: "Hand off your first task",
+  body: "A task is work Otto or an expert on your team does in the background. Describe what you need, and you'll see its progress, its result, and anything it needs from you right here.",
+};
+
 export const FILTERED_COPY: EmptyCopy = {
   title: "No tasks match",
   body: "Try removing a filter to see more.",

@@ -422,15 +422,29 @@ const SidebarInset = React.forwardRef<
 });
 SidebarInset.displayName = "SidebarInset";
 
+const sidebarHeaderVariants = cva("flex flex-col gap-2", {
+  variants: {
+    size: {
+      default: "p-2",
+      // The app shell's header: 10px at the sides (8px in the icon rail),
+      // 8px above and 4px below.
+      shell: "px-2.5 pt-2 pb-1 group-data-[collapsible=icon]:px-2",
+    },
+  },
+  defaultVariants: {
+    size: "default",
+  },
+});
+
 const SidebarHeader = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & VariantProps<typeof sidebarHeaderVariants>
+>(({ className, size, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn(sidebarHeaderVariants({ size }), className)}
       {...props}
     />
   );
@@ -470,36 +484,71 @@ const SidebarContent = React.forwardRef<
 });
 SidebarContent.displayName = "SidebarContent";
 
+const sidebarGroupVariants = cva("relative flex w-full min-w-0 flex-col", {
+  variants: {
+    size: {
+      default: "p-2",
+      // The app shell's first group: 10px at the sides (8px in the icon
+      // rail) and 10px above, flush below.
+      shell: "px-2.5 pt-2.5 pb-0 group-data-[collapsible=icon]:px-2",
+      // A labelled section under it: 20px above (4px in the icon rail).
+      "shell-section":
+        "px-2.5 pt-5 pb-0 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:pt-1",
+    },
+  },
+  defaultVariants: {
+    size: "default",
+  },
+});
+
 const SidebarGroup = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & VariantProps<typeof sidebarGroupVariants>
+>(({ className, size, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="group"
-      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      className={cn(sidebarGroupVariants({ size }), className)}
       {...props}
     />
   );
 });
 SidebarGroup.displayName = "SidebarGroup";
 
+const sidebarGroupLabelVariants = cva(
+  [
+    "flex h-8 shrink-0 items-center rounded-md px-2 text-caption leading-4 font-medium text-sidebar-foreground/70 ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear outline-none focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+    "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
+  ],
+  {
+    variants: {
+      variant: {
+        default: "",
+        // The app shell's section labels: the subtle shell text, the line
+        // height of the Text inside and 2px lifted off the bottom.
+        shell: "pb-0.5 leading-inherit text-shell-foreground-subtle",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  },
+);
+
 const SidebarGroupLabel = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> & { asChild?: boolean }
->(({ className, asChild = false, ...props }, ref) => {
+  React.ComponentProps<"div"> & { asChild?: boolean } & VariantProps<
+      typeof sidebarGroupLabelVariants
+    >
+>(({ className, asChild = false, variant, ...props }, ref) => {
   const Comp = asChild ? Slot : "div";
 
   return (
     <Comp
       ref={ref}
       data-sidebar="group-label"
-      className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-caption leading-4 font-medium text-sidebar-foreground/70 ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear outline-none focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
-        "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
-        className,
-      )}
+      className={cn(sidebarGroupLabelVariants({ variant }), className)}
       {...props}
     />
   );
@@ -582,6 +631,10 @@ const sidebarMenuButtonVariants = cva(
         default: "h-8 text-body leading-5",
         sm: "h-7 text-caption leading-4",
         lg: "h-12 text-body leading-5 group-data-[collapsible=icon]:!p-0",
+        // The app shell's navigation rows: 8px rounded, 6px tall padding,
+        // the hover fill kept on the current row, larger on phones.
+        shell:
+          "h-auto gap-2 rounded-lg px-2 py-1.5 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-2 hover:!bg-sidebar-accent [&>svg]:size-4 max-md:gap-3 max-md:py-2.5 max-md:text-base max-md:[&>svg]:size-5 data-[active=true]:!bg-sidebar-accent data-[active=true]:hover:!bg-sidebar-accent",
       },
     },
     defaultVariants: {

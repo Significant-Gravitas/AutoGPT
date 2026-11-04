@@ -90,7 +90,11 @@ def stubs(monkeypatch: pytest.MonkeyPatch):
     db.answer_input = AsyncMock()
     contract_db = MagicMock()
     contract_db.drop_approvals = AsyncMock(return_value=MagicMock(patches=[]))
+    db.set_live = AsyncMock()
+    db.set_task_status = AsyncMock()
     record = AsyncMock()
+    monkeypatch.setattr(approvals_answer, "hire_chat", AsyncMock(return_value=None))
+    monkeypatch.setattr(approvals_answer, "run_copilot_turn_via_queue", AsyncMock())
     monkeypatch.setattr(approvals_answer, "db", db)
     monkeypatch.setattr(approvals_answer, "contract_db", contract_db)
     monkeypatch.setattr(approvals_answer, "record_card_decisions", record)
@@ -149,3 +153,63 @@ async def test_a_task_without_a_work_chat_is_refused(stubs):
         )
 
     record.assert_not_awaited()
+
+
+def _hire_task() -> Task:
+    """A hire proposed in a plain chat: its own task, with no work chat."""
+    return _task(title="Hire Devin", work_session_id=None, approvals=[DEVIN])
+
+
+@pytest.mark.asyncio
+async def test_declining_a_hire_task_on_the_board_cancels_it(stubs, monkeypatch):
+    db, _, record = stubs
+    db.get_task.return_value = _hire_task()
+    monkeypatch.setattr(approvals_answer, "hire_chat", AsyncMock(return_value="s-chat"))
+
+    await approvals_answer.answer_cards(
+        "u-1", "t-1", [CardDecision(confirmation_id="c-devin", approved=False)]
+    )
+
+    line = (
+        "Not approved: do not hire Devin, discard that proposal "
+        "(confirmation_id: c-devin)."
+    )
+    record.assert_awaited_once_with("u-1", "s-chat", line)
+    assert db.set_task_status.await_args.args[2] == TaskStatus.CANCELLED
+    db.set_live.assert_not_awaited()
+    # The chat with the card hears the answer, as if it were clicked there.
+    wake = approvals_answer.run_copilot_turn_via_queue
+    assert wake.await_args.kwargs["session_id"] == "s-chat"
+    assert wake.await_args.kwargs["message"] == line
+
+
+@pytest.mark.asyncio
+async def test_approving_a_hire_task_on_the_board_hires_in_its_chat(stubs, monkeypatch):
+    db, _, record = stubs
+    db.get_task.return_value = _hire_task()
+    monkeypatch.setattr(approvals_answer, "hire_chat", AsyncMock(return_value="s-chat"))
+
+    await approvals_answer.answer_cards(
+        "u-1", "t-1", [CardDecision(confirmation_id="c-devin", approved=True)]
+    )
+
+    line = "Approved: hire Devin (confirmation_id: c-devin)."
+    record.assert_awaited_once_with("u-1", "s-chat", line)
+    # Running, so the resume after it never opens a work chat for it; the
+    # confirm in the chat completes it.
+    assert db.set_live.await_args.args[:3] == ("t-1", True, "Hiring Devin")
+    db.set_task_status.assert_not_awaited()
+    wake = approvals_answer.run_copilot_turn_via_queue
+    assert wake.await_args.kwargs["message"] == line
+
+
+@pytest.mark.asyncio
+async def test_a_task_with_a_work_chat_is_not_settled_as_a_hire(stubs):
+    db, _, _ = stubs
+
+    await approvals_answer.answer_cards(
+        "u-1", "t-1", [CardDecision(confirmation_id="c-devin", approved=False)]
+    )
+
+    db.set_task_status.assert_not_awaited()
+    approvals_answer.run_copilot_turn_via_queue.assert_not_awaited()

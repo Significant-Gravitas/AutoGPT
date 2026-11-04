@@ -35,7 +35,13 @@ from .expert_proposal import (
     store_proposal,
     user_turn_watermark,
 )
-from .hire_task import park_on_work_task, parked_note, track_proposed_hire, tracked_note
+from .hire_task import (
+    park_on_work_task,
+    parked_note,
+    track_proposed_hire,
+    tracked_note,
+    wait_on_hire_card,
+)
 from .models import (
     ErrorResponse,
     ExpertChangePreview,
@@ -265,6 +271,16 @@ class RaiseExpertTool(BaseTool):
                 user_turn_watermark=user_turn_watermark(session),
                 board_task_id=board_task.id if board_task else None,
             ),
+        )
+        await wait_on_hire_card(
+            user_id,
+            session,
+            board_task,
+            confirmation_id,
+            "raise",
+            preview.name,
+            preview.role,
+            preview.tagline or "",
         )
         work_task = await park_on_work_task(
             user_id,

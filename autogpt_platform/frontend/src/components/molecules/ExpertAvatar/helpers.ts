@@ -11,6 +11,14 @@ export const EXPERT_PALETTE = catalog.palette;
 export const DEFAULT_EXPERT_AVATAR_URL = catalog.default_url;
 const MANAGED_LOGICAL_SIZES = [24, 32, 40, 48, 64, 96, 128, 256, 512];
 
+/** Corner radius over the avatar's own: a managed image is 12px, anything
+ *  else is square (round with a backgroundColor). */
+export const AVATAR_SHAPES = {
+  soft: "rounded-lg", // 8px: small avatars in a list row or a line of copy
+  tile: "rounded-2xl", // 16px: a large avatar heading a panel
+} as const;
+export type AvatarShape = keyof typeof AVATAR_SHAPES;
+
 type ManagedIdentity = (typeof catalog.identities)[number];
 export type VisualCategory = keyof typeof catalog.palette;
 

@@ -80,6 +80,29 @@ export const COLOR_ROLE_GROUPS = [
     ],
   },
   {
+    name: "Inbox",
+    description:
+      "The tasks inbox and board (AffectUI's clean palette): black at set opacities, swapped by palette-classic.",
+    roles: [
+      "surface-tray",
+      "surface-wash",
+      "border-hairline",
+      "border-card",
+      "foreground-black",
+      "foreground-ink",
+      "foreground-text",
+      "foreground-quiet",
+      "foreground-faint",
+      "status-waiting",
+      "status-ok",
+      "status-ok-surface",
+      "focus-inbox",
+      "action-inbox",
+      "action-inbox-hover",
+      "action-inbox-foreground",
+    ],
+  },
+  {
     name: "Builder",
     description: "The flow editor's canvas, nodes, edges and handles.",
     roles: [

@@ -15,7 +15,23 @@ const HANDOFF_PREAMBLE = new RegExp(
     "them\\.\\]\\r?\\n\\r?\\n",
 );
 
-export function getVisibleUserMessageParts(parts: UIMessage["parts"]) {
+// gate/card_approval.py reads the confirmation id off the sent decision line
+// (ToolChain/ExpertCards decisionLine), so the message keeps it. The bubble
+// only shows the decision.
+const DECISION_LINE =
+  /^(Approved|Not approved): (?:do not )?(.+?)(?:, discard that proposal)? \(confirmation_id: [^)\s]+\)\.?$/gm;
+
+function withoutDecisionIds(text: string) {
+  return text.replace(
+    DECISION_LINE,
+    (_line, verdict: string, action: string) =>
+      verdict === "Approved"
+        ? `Approved ✓ ${action}`
+        : `Not approved: ${action}`,
+  );
+}
+
+function withoutPreamble(parts: UIMessage["parts"]) {
   const firstTextIndex = parts.findIndex((part) => part.type === "text");
   const firstText = parts[firstTextIndex];
   if (firstText?.type !== "text") return parts;
@@ -30,5 +46,19 @@ export function getVisibleUserMessageParts(parts: UIMessage["parts"]) {
 
   return parts.map((part, index) =>
     index === firstTextIndex ? { ...firstText, text } : part,
+  );
+}
+
+export function getVisibleUserMessageParts(parts: UIMessage["parts"]) {
+  const visible = withoutPreamble(parts);
+  const hasDecision = visible.some(
+    (part) =>
+      part.type === "text" && withoutDecisionIds(part.text) !== part.text,
+  );
+  if (!hasDecision) return visible;
+  return visible.map((part) =>
+    part.type === "text"
+      ? { ...part, text: withoutDecisionIds(part.text) }
+      : part,
   );
 }

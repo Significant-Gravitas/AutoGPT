@@ -111,6 +111,7 @@ class ConfirmExpertChangeTool(BaseTool):
                 user_id,
                 session_id,
                 [confirmation_id, proposal.sibling_confirmation_id or ""],
+                proposal.board_task_id,
             )
         if proposal.board_task_id and isinstance(applied, ExpertChangeAppliedResponse):
             await complete_hire(

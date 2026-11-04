@@ -9,6 +9,7 @@ from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
 from backend.api.features.store.model import StoreAgentDetails
+from backend.data.db_accessors import experts_db
 from backend.data.model import UserOnboarding
 from backend.data.onboarding import (
     FrontendOnboardingStep,
@@ -128,10 +129,12 @@ async def is_onboarding_completed(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OnboardingStatusResponse:
     user_onboarding = await get_user_onboarding(user_id)
-    return OnboardingStatusResponse(
-        is_completed=OnboardingStep.ONBOARDING_COMPLETE
-        in user_onboarding.completedSteps,
-    )
+    if OnboardingStep.ONBOARDING_COMPLETE in user_onboarding.completedSteps:
+        return OnboardingStatusResponse(is_completed=True)
+    # Someone who already has a team (seeded, or hired before the wizard
+    # existed) has nothing left to set up, so login sends them to the app.
+    has_team = await experts_db().count_active_experts(user_id) > 0
+    return OnboardingStatusResponse(is_completed=has_team)
 
 
 @router.post(

@@ -1,5 +1,6 @@
 import type { ToolUIPart } from "ai";
 import { isTaskPlanPart } from "../../tools/TaskPlan/helpers";
+import { isCreatedTaskPart } from "../../tools/CreateTask/helpers";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
@@ -214,7 +215,8 @@ export function isChainPart(part: MessagePart): boolean {
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
     isExpertChangePart(part) ||
-    isTaskPlanPart(part)
+    isTaskPlanPart(part) ||
+    isCreatedTaskPart(part)
   ) {
     return false;
   }
@@ -268,7 +270,9 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
     // row over an empty panel — the model never actually wrote any.
     const hasText =
       "text" in part && typeof part.text === "string" && !!part.text.trim();
-    if (!isStreaming && !hasText) return null;
+    // No text yet: the transcript's one Thinking indicator covers the wait,
+    // so an empty row would only stack a second "Thinking…" under it.
+    if (!hasText) return null;
     return {
       key: `reasoning-${index}`,
       category: "reasoning",
@@ -383,6 +387,8 @@ export function getChainHeading(
 ): string {
   if (isStreaming) {
     const running = rows.findLast((r) => r.state === "running");
+    // A live reasoning row already says "Thinking…" itself.
+    if (running?.category === "reasoning") return "Working…";
     if (running) return running.text;
   }
   const error = rows.findLast((row) => row.state === "error");

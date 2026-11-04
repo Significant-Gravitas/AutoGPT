@@ -11,8 +11,8 @@ import { formatTimeAgo } from "@/lib/utils/time";
 import { taskKey } from "@/app/(platform)/tasks/data/helpers";
 import type { Task } from "@/app/(platform)/tasks/data/types";
 import {
-  STATE_TONE,
   statusLabel,
+  statusTone,
 } from "@/app/(platform)/tasks/components/InboxRow/helpers";
 import type { Tone } from "@/components/styles/tones";
 import {
@@ -21,7 +21,7 @@ import {
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { RecipientOption } from "../../../../ChatInput/components/RecipientChip";
 import { getAvatarGlow } from "../../../helpers";
 import { getWorkInfo, type PanelSchedule } from "../helpers";
@@ -39,17 +39,19 @@ export function InfoHeader({ recipient, role, description }: HeaderProps) {
   return (
     <header className="flex flex-col gap-3">
       <span
-        className="inline-flex self-start rounded-2xl"
-        style={{ boxShadow: getAvatarGlow(recipient, 24) }}
+        className="inline-flex self-start rounded-2xl shadow-(--avatar-glow)"
+        style={
+          { "--avatar-glow": getAvatarGlow(recipient, 24) } as CSSProperties
+        }
       >
         {recipient.id === null ? (
-          <AutopilotAvatar size={56} className="rounded-2xl" />
+          <AutopilotAvatar size={56} shape="tile" />
         ) : (
           <ExpertAvatar
             name={recipient.name}
             avatarUrl={recipient.avatarUrl}
             size={56}
-            className="rounded-2xl"
+            shape="tile"
           />
         )}
       </span>
@@ -402,15 +404,7 @@ export function TasksGroup({ tasks, isLoading, isTeam = false }: TasksProps) {
                 .filter(Boolean)
                 .join(" · ")}
               trailing={
-                <Pill
-                  tone={
-                    task.inbox.needs_you
-                      ? "waiting"
-                      : STATE_TONE[task.inbox.state]
-                  }
-                >
-                  {statusLabel(task)}
-                </Pill>
+                <Pill tone={statusTone(task)}>{statusLabel(task)}</Pill>
               }
             />
           ))}

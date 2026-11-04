@@ -144,7 +144,28 @@ def test_the_kickoff_names_the_task_it_starts():
     }
 
 
-async def test_an_otto_turn_that_stops_on_hire_cards_waits_for_the_user():
+def _settle_store() -> MagicMock:
+    store = MagicMock()
+    update = SimpleNamespace(task="settled-task")
+    store.contract_ask = AsyncMock(return_value=update)
+    store.contract_update_task = AsyncMock(return_value=update)
+    store.set_task_status = AsyncMock()
+    return store
+
+
+async def _settle(task: Task, status: str, waiting: bool, reply: str | None):
+    store = _settle_store()
+    with (
+        patch.object(dispatch_finish, "tasks_store", return_value=store),
+        patch.object(dispatch_finish, "publish_contract_update", AsyncMock()),
+    ):
+        settled = await dispatch_finish._settle_unfinished(
+            "user-1", task, status, waiting, reply
+        )
+    return settled, store
+
+
+async def test_an_otto_turn_that_stops_on_hire_cards_asks_the_user():
     proposal = json.dumps({"type": "expert_change_proposed", "message": "..."})
     session = SimpleNamespace(
         messages=[
@@ -153,37 +174,74 @@ async def test_an_otto_turn_that_stops_on_hire_cards_waits_for_the_user():
             SimpleNamespace(role="assistant", content="Approve the hires above."),
         ]
     )
-    store = MagicMock()
-    store.set_task_status = AsyncMock(return_value="blocked-task")
-    store.add_activity = AsyncMock(return_value="note")
-    with (
-        patch.object(
-            dispatch_finish, "get_chat_session", AsyncMock(return_value=session)
-        ),
-        patch.object(dispatch_finish, "tasks_store", return_value=store),
-        patch.object(dispatch_finish, "publish_task_event", AsyncMock()),
+    with patch.object(
+        dispatch_finish, "get_chat_session", AsyncMock(return_value=session)
     ):
-        waiting = await dispatch_finish._ended_waiting_on_user("chat-1", "user-1")
-        settled = await dispatch_finish._settle_unfinished(
-            "user-1", _task(AssigneeType.OTTO), "completed", waiting
-        )
+        waiting, reply = await dispatch_finish._turn_ending("chat-1", "user-1")
+    settled, store = await _settle(
+        _task(AssigneeType.OTTO, raw_status="running"), "completed", waiting, reply
+    )
 
     assert waiting is True
-    assert settled == "blocked-task"
-    assert store.set_task_status.await_args.args[2] == TaskStatus.BLOCKED
+    assert settled == "settled-task"
+    assert store.contract_ask.await_args.args[2] == "Approve the hires above."
+    store.set_task_status.assert_not_awaited()
 
 
-async def test_a_quiet_otto_turn_leaves_the_task_open():
-    store = MagicMock()
-    store.set_task_status = AsyncMock()
-    task = _task(AssigneeType.OTTO)
-    with patch.object(dispatch_finish, "tasks_store", return_value=store):
-        settled = await dispatch_finish._settle_unfinished(
-            "user-1", task, "completed", False
-        )
+async def test_a_quiet_turn_finishes_the_task_with_its_last_words():
+    task = _task(AssigneeType.EXPERT, raw_status="running")
+
+    settled, store = await _settle(
+        task, "completed", False, "## Pick\n**Linear** fits a team of 8. It is fast."
+    )
+
+    assert settled == "settled-task"
+    assert store.contract_update_task.await_args.args[2] == {
+        "result": {"summary": "Linear fits a team of 8."}
+    }
+
+
+async def test_a_quiet_turn_with_nothing_said_fails_with_a_reason():
+    _, store = await _settle(
+        _task(AssigneeType.EXPERT, raw_status="running"), "completed", False, None
+    )
+
+    blocker = store.contract_update_task.await_args.args[2]["blocker"]
+    assert blocker["what_stopped_it"]
+    assert blocker["next_actions"] == ["retry_failed_part"]
+
+
+async def test_a_task_waiting_on_its_subtasks_stays_open():
+    task = _task(AssigneeType.OTTO, raw_status="waiting_on_subtasks")
+
+    settled, store = await _settle(task, "completed", False, "Started 3 sub-tasks.")
 
     assert settled is task
-    store.set_task_status.assert_not_awaited()
+    store.contract_update_task.assert_not_awaited()
+
+
+async def test_the_work_chat_is_named_after_its_task():
+    created = SimpleNamespace(session_id="chat-1")
+    title = AsyncMock(return_value=True)
+    with (
+        patch.object(dispatch, "tasks_store", return_value=_store(Actor.otto())),
+        patch.object(dispatch, "create_chat_session", AsyncMock(return_value=created)),
+        patch.object(dispatch, "update_session_title", title),
+    ):
+        await dispatch._ensure_work_session("user-1", _task(AssigneeType.EXPERT))
+
+    title.assert_awaited_once_with(
+        "chat-1", "user-1", "Hire a developer and a marketer", only_if_empty=True
+    )
+
+
+def test_the_kickoff_says_how_every_turn_ends():
+    message = dispatch.kickoff_message(
+        _task(AssigneeType.EXPERT, description=None, parent_key=None)
+    )
+
+    assert "blocker" in message and "Never send a result" in message
+    assert message.count("Hire a developer and a marketer") == 1
 
 
 async def test_a_task_over_budget_says_so_on_its_card():
@@ -209,3 +267,29 @@ async def test_a_task_over_budget_says_so_on_its_card():
         "Paused: this task reached its budget of $2.00 (spent $7.17)."
     )
     publish.assert_awaited_once_with("user-1", "update")
+
+
+async def test_a_reply_in_the_chat_closes_the_ask_the_chat_opened():
+    ask = SimpleNamespace(id="ask-1", why=dispatch_finish.CHAT_WAIT_WHY)
+    task = _task(AssigneeType.EXPERT, ask=ask)
+    task.status = TaskStatus.BLOCKED
+    store = MagicMock()
+    store.answer_input = AsyncMock()
+    store.get_task = AsyncMock(return_value="reopened")
+    with patch.object(dispatch_finish, "tasks_store", return_value=store):
+        reopened = await dispatch_finish._reopen_after_chat_reply("user-1", task)
+
+    assert reopened == "reopened"
+    assert store.answer_input.await_args.args[3] == "ask-1"
+
+
+async def test_an_ask_the_worker_opened_stays_open():
+    ask = SimpleNamespace(id="ask-1", why="Needed to pick a vendor.")
+    task = _task(AssigneeType.EXPERT, ask=ask)
+    task.status = TaskStatus.BLOCKED
+    store = MagicMock()
+    store.answer_input = AsyncMock()
+    with patch.object(dispatch_finish, "tasks_store", return_value=store):
+        assert await dispatch_finish._reopen_after_chat_reply("user-1", task) is task
+
+    store.answer_input.assert_not_awaited()

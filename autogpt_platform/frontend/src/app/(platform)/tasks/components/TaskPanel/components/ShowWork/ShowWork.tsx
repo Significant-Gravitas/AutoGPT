@@ -5,22 +5,43 @@ import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import type { Contract } from "@/app/api/__generated__/models/contract";
 import type { ReactNode } from "react";
-import type { ExpertOption, TaskDetail } from "../../../../data/types";
+import { formatMetrics } from "../../../../data/helpers";
+import type { TaskDetail, TaskState } from "../../../../data/types";
+import { ActivityCheckpoints } from "../ActivityCheckpoints/ActivityCheckpoints";
+import { DoneWhen } from "../DoneWhen/DoneWhen";
 import { Fold } from "../Fold/Fold";
+import { GoalLine } from "../GoalLine/GoalLine";
+import { Progress } from "../Progress/Progress";
 import { useShowWork } from "./useShowWork";
 
 interface Props {
   task: TaskDetail;
-  experts: ExpertOption[];
+  contract: Contract | null;
+  state: TaskState;
+  now: string;
+  running: boolean;
+  /** The card at the top already shows the proof. */
+  proofInCard: boolean;
 }
 
-/** Everything behind the summary, folded away: the brief, what was used,
- *  attachments and the work chat. The log is ActivityCheckpoints. */
-export function ShowWork({ task, experts }: Props) {
+/** Everything a person wouldn't say out loud, folded away: the goal and its
+ *  checks, the plan, every step with its cost, what was used, attachments
+ *  and the work chat. */
+export function ShowWork({
+  task,
+  contract,
+  state,
+  now,
+  running,
+  proofInCard,
+}: Props) {
   const work = useShowWork();
   const tools = task.inbox.tools_used;
   const bodyID = `show-work-${task.id}`;
+  const metrics = task.metrics;
+  const spent = metrics.tokens > 0 || metrics.cost_usd > 0;
 
   return (
     <section aria-label="Show work" className="px-1.5 py-3">
@@ -45,14 +66,33 @@ export function ShowWork({ task, experts }: Props) {
       </button>
       <Fold open={work.open} id={bodyID}>
         <div className="flex flex-col gap-4 pt-3">
-          {task.description ? (
-            <Block label="Brief">
-              <Text
-                variant="inbox"
-                tone="text"
-                className="break-words whitespace-pre-wrap"
-              >
-                {task.description}
+          {contract ? (
+            <GoalLine
+              title={task.title}
+              goal={contract.goal}
+              previousGoal={contract.previous_goal}
+            />
+          ) : null}
+          {contract ? (
+            <DoneWhen
+              taskId={task.id}
+              contract={contract}
+              withProof={!proofInCard}
+            />
+          ) : null}
+          {contract && state !== "working" ? (
+            <Progress plan={contract.plan ?? []} now={now} state={state} />
+          ) : null}
+          <ActivityCheckpoints
+            taskId={task.id}
+            title={task.title}
+            running={running}
+            all
+          />
+          {spent ? (
+            <Block label="Cost">
+              <Text variant="small" tone="quiet" tabular>
+                {formatMetrics(metrics)}
               </Text>
             </Block>
           ) : null}

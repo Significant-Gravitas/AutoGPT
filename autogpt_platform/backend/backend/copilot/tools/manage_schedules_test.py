@@ -683,7 +683,7 @@ async def test_a_no_op_toggle_leaves_no_activity_event(
 
     assert isinstance(result, ScheduleToggledResponse)
     assert result.changed is changed
-    assert (tool.activity_event(session, result) is not None) is expect_event
+    assert (tool.activity_event(session, result, {}) is not None) is expect_event
 
 
 # ── Prisma disconnected (the copilot executor) ─────────────────────

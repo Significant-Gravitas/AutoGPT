@@ -37,19 +37,18 @@ class CreateTaskTool(TaskToolBase):
     @property
     def description(self) -> str:
         return (
-            "Put one piece of work on the user's task board and optionally "
-            "assign it to a teammate by name or 'otto'. An expert or "
-            "Otto assignee starts working it right away. In a chat that is "
-            "working a task, or with parent_task_id, it is a sub-task (one "
-            "level only). Several clearly different deliverables (one per "
-            "channel, language or stage) are a split propose_plan, not one "
-            "create_task. For a tracked outcome that outlives this turn, or "
-            "when the user asks to track something ('add to my tasks'). "
-            "Never for an answer, a lookup, a short draft or one setting "
-            "change. A message about an open task updates that task instead. "
-            "Work asked for 'every…' or 'when…' is a routine "
-            "(tool:schedule_routine). A hire goes through tool:hire_expert, "
-            "which tracks it as one task."
+            "Put one piece of work on the user's task board, optionally "
+            "assigned to an expert or 'otto', who starts it right away. In a "
+            "chat that is working a task, or with parent_task_id, it is a "
+            "sub-task (one level only). Several clearly different "
+            "deliverables (one per channel, language or stage) are a split "
+            "propose_plan, not one create_task. For a tracked outcome that "
+            "outlives this turn, or when the user asks to track something "
+            "('add to my tasks'). Never for an answer, a lookup, a short "
+            "draft or one setting change. A message about an open task "
+            "updates that task instead. Work asked for 'every…' or 'when…' "
+            "is a routine (tool:schedule_routine). A hire is never a task: "
+            "tool:hire_expert's card puts it on the board."
         )
 
     @property
@@ -64,7 +63,10 @@ class CreateTaskTool(TaskToolBase):
                         "new top-level task in a chat not working one."
                     ),
                 },
-                "title": {"type": "string", "description": "Short outcome."},
+                "title": {
+                    "type": "string",
+                    "description": "Short outcome in the user's words, never an invented name.",
+                },
                 "description": {
                     "type": "string",
                     "description": "Details, including anything still unknown.",
@@ -112,11 +114,16 @@ class CreateTaskTool(TaskToolBase):
         detail = await tasks_store().create_task(user_id, data, actor)
         await publish_task_event(user_id, "task_created", detail, task_id=detail.id)
         await dispatch.on_task_assigned(user_id, detail.id)
+        created = (
+            f"Created {detail.key} under {parent.key}."
+            if parent
+            else f"Created {detail.key}."
+        )
         return TaskUpdatedToolResponse(
             message=(
-                f"Created {detail.key} under {parent.key}."
-                if parent
-                else f"Created {detail.key}."
+                f"{created} The user sees a link to it in the chat: confirm "
+                f'in one line by its title "{detail.title}", without its key '
+                "or fields."
             ),
             session_id=session.session_id,
             task=dump(detail),
@@ -216,7 +223,9 @@ class ProposePlanTool(TaskToolBase):
         return TaskPlanToolResponse(
             message=(
                 f"Plan proposed as {shape}. The user approves it on the plan "
-                "card; wait for them before starting anything."
+                "card; wait for them before starting anything. Any older plan "
+                "in this chat is replaced and can't be approved, so describe "
+                "only this one, without repeating the steps the card shows."
             ),
             session_id=session.session_id,
             plan=plan.model_dump(mode="json"),

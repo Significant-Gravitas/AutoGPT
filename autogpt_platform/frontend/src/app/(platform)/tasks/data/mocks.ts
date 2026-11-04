@@ -311,7 +311,8 @@ export const mockApi = {
         return false;
       if (
         filters.assignee_ids?.length &&
-        !filters.assignee_ids.includes(t.assignee?.id ?? "")
+        !filters.assignee_ids.includes(t.assignee?.id ?? "") &&
+        !(filters.assignee_ids.includes("otto") && t.assignee?.type === "otto")
       )
         return false;
       if (filters.mine && t.assignee?.type !== "user") return false;
@@ -372,6 +373,10 @@ export const mockApi = {
         : t,
     );
     return tasks.find((t) => t.id === id)!;
+  },
+  remove(id: string) {
+    tasks = tasks.filter((t) => t.id !== id);
+    return null;
   },
   comment(id: string, body: string): TaskActivity {
     const mentions = MOCK_EXPERTS.filter((e) =>

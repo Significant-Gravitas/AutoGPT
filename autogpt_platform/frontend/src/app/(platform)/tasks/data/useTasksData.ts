@@ -1,6 +1,8 @@
 import type { CardDecision } from "@/app/api/__generated__/models/cardDecision";
 import type { TaskActionRequest } from "@/app/api/__generated__/models/taskActionRequest";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -8,8 +10,16 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { tasksApi } from "./api";
+import {
+  optimisticAssignee,
+  patchTaskCaches,
+  restoreTaskCaches,
+  type CacheEdit,
+} from "./optimistic";
 import type {
   CreateTaskInput,
+  ExpertOption,
+  Task,
   TaskFilters,
   TaskPlan,
   UpdateTaskInput,
@@ -51,6 +61,9 @@ export function useTaskInbox(
     queryKey: [...tasksKeys.list(filters), "inbox"],
     queryFn: () => tasksApi.listWithCounts(filters),
     enabled,
+    // Switching tabs or filters keeps the last list on screen until the
+    // next one lands, so the inbox never blanks.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -101,12 +114,74 @@ export function useCreateTask() {
   });
 }
 
-export function useUpdateTask() {
+/** Edit every cached copy of a task at once, undo it if the server says no. */
+function useOptimisticTaskEdit<TVars, TResult>({
+  mutationFn,
+  edit,
+  errorTitle,
+}: {
+  mutationFn: (vars: TVars) => Promise<TResult>;
+  edit: (vars: TVars, queryClient: QueryClient) => { id: string } & CacheEdit;
+  errorTitle: string;
+}) {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationFn,
+    onMutate: async (vars: TVars) => {
+      await queryClient.cancelQueries({ queryKey: tasksKeys.all });
+      const { id, ...change } = edit(vars, queryClient);
+      return { snapshot: patchTaskCaches(queryClient, id, change) };
+    },
+    onError: (error, _vars, context) => {
+      if (context) restoreTaskCaches(queryClient, context.snapshot);
+      toast({
+        title: errorTitle,
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    },
+    onSettled: () => invalidateTasks(queryClient),
+  });
+}
+
+function changesFor(
+  input: UpdateTaskInput,
+  queryClient: QueryClient,
+): Partial<Task> {
+  const { assignee, ...rest } = input;
+  if (assignee === undefined) return rest;
+  const experts = queryClient.getQueryData<ExpertOption[]>(tasksKeys.experts);
+  return { ...rest, assignee: optimisticAssignee(assignee, experts ?? []) };
+}
+
+/** Status, priority and reassign: shown at once, rolled back on error. */
+export function useUpdateTask() {
+  return useOptimisticTaskEdit({
     mutationFn: ({ id, input }: { id: string; input: UpdateTaskInput }) =>
       tasksApi.update(id, input),
-    onSuccess: () => invalidateTasks(queryClient),
+    edit: ({ id, input }, queryClient) => ({
+      id,
+      kind: "update",
+      changes: changesFor(input, queryClient),
+    }),
+    errorTitle: "Couldn't save the change",
+  });
+}
+
+export function useRenameTask() {
+  return useOptimisticTaskEdit({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      tasksApi.rename(id, title),
+    edit: ({ id, title }) => ({ id, kind: "update", changes: { title } }),
+    errorTitle: "Couldn't rename the task",
+  });
+}
+
+export function useDeleteTask() {
+  return useOptimisticTaskEdit({
+    mutationFn: (id: string) => tasksApi.remove(id),
+    edit: (id) => ({ id, kind: "remove" }),
+    errorTitle: "Couldn't delete the task",
   });
 }
 

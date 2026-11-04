@@ -129,6 +129,7 @@
 
 .titleRow {
   display: flex;
+  padding-right: 28px;
   align-items: flex-start;
   gap: 10px;
   min-width: 0;
@@ -199,6 +200,29 @@
 .stateWord {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.stateWord[data-state="needs_you"] {
+  color: var(--board-amber);
+}
+
+.stateWord[data-state="stuck"] {
+  color: var(--board-red);
+  font-weight: 500;
+}
+
+.stateAge {
+  color: var(--board-muted);
+}
+
+.menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.renaming {
+  padding: 8px 44px 8px 8px;
 }
 
 .stateIcon {

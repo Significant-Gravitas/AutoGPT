@@ -7,7 +7,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { TaskPanel } from "../components/TaskPanel/TaskPanel";
 import { TasksWorkspace } from "../components/TasksWorkspace/TasksWorkspace";
 
@@ -186,7 +186,10 @@ describe("task cards", () => {
       await screen.findByText("Check competitor pricing")
     ).closest("[data-testid='inbox-row']") as HTMLElement;
     expect(within(pricing).getByText("Pricing 4 of 6 tools")).toBeTruthy();
-    expect(within(pricing).getByText("· 1m")).toBeTruthy();
+    expect(within(pricing).getByText("· 1m ago")).toBeTruthy();
+    expect(within(pricing).getByTestId("task-status").textContent).toBe(
+      "Working",
+    );
 
     const tabs = screen.getByRole("radiogroup", { name: "Show tasks" });
     expect(within(tabs).getByText("Needs you")).toBeTruthy();
@@ -204,7 +207,10 @@ describe("task cards", () => {
     expect(
       within(card).getByText("Publish the pricing page now?"),
     ).toBeTruthy();
-    expect(within(card).getByText("Waiting on your OK")).toBeTruthy();
+    expect(within(card).getByTestId("task-status").textContent).toBe(
+      "Needs you",
+    );
+    expect(within(card).queryByText("Waiting on your OK")).toBeNull();
 
     await user.click(within(card).getByRole("button", { name: "Publish now" }));
 
@@ -215,7 +221,7 @@ describe("task cards", () => {
     );
   });
 
-  test("a stuck card offers its first way out", async () => {
+  test("a failed card is red, says why and offers its first way out", async () => {
     serveBoard();
     const calls = capture("post", "*/api/tasks/t3/actions/:action");
     const user = userEvent.setup();
@@ -224,7 +230,7 @@ describe("task cards", () => {
     const card = (await screen.findByText("Hire 5 experts")).closest(
       "[data-testid='inbox-row']",
     ) as HTMLElement;
-    expect(within(card).getByRole("img", { name: "Stuck" })).toBeTruthy();
+    expect(within(card).getByTestId("task-status").textContent).toBe("Failed");
     expect(within(card).getByText(BLOCKER.short)).toBeTruthy();
 
     await user.click(within(card).getByRole("button", { name: "Allow" }));
@@ -337,7 +343,9 @@ describe("task cards", () => {
     const card = (await screen.findByText("Summarise #support")).closest(
       "[data-testid='inbox-row']",
     ) as HTMLElement;
-    expect(within(card).getByText("Stopped")).toBeTruthy();
+    expect(within(card).getByTestId("task-status").textContent).toBe(
+      "Cancelled",
+    );
     expect(within(card).queryByRole("button", { name: "Allow" })).toBeNull();
     expect(
       within(card).queryByRole("button", { name: "Cancel task" }),
@@ -346,6 +354,16 @@ describe("task cards", () => {
 });
 
 describe("task panel", () => {
+  // An unserved route flips the client to its in-memory mocks for the rest
+  // of the file, so every panel test serves an (empty) log.
+  beforeEach(() => {
+    server.use(
+      http.get("*/api/tasks/:id/activity", () =>
+        HttpResponse.json({ events: [], next_cursor: null }),
+      ),
+    );
+  });
+
   function servePanel() {
     server.use(
       http.get("*/api/tasks/experts", () => HttpResponse.json({ experts: [] })),
@@ -370,41 +388,100 @@ describe("task panel", () => {
     );
   }
 
-  test("shows the goal, what stopped it, the checks with proof and the parallel rows", async () => {
+  test("a failed task says why in full, offers Retry, and keeps the bookkeeping under Show work", async () => {
     servePanel();
     const calls = capture("post", "*/api/tasks/t3/actions/:action");
     const user = userEvent.setup();
     render(<TaskPanel taskId="t3" onOpenTask={vi.fn()} />);
 
+    const failed = await screen.findByRole("region", { name: "Failed" });
+    expect(within(failed).getByText("Why:")).toBeTruthy();
+    expect(within(failed).getByText(BLOCKER.what_stopped_it)).toBeTruthy();
+    expect(
+      within(failed).getByText("So far: 2 of 5 experts hired."),
+    ).toBeTruthy();
+
+    // The ask is empty, so nothing stands in for it; the goal, checks and
+    // plan are bookkeeping and wait under Show work.
+    expect(screen.queryByRole("region", { name: "What was asked" })).toBeNull();
+    expect(screen.queryByText(SUMMARY.contract.goal)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Done when" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Progress" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Sub-tasks" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show work" }));
     expect(await screen.findByText(SUMMARY.contract.goal)).toBeTruthy();
     expect(
       screen.getByText("Goal updated · was “Hire 4 experts”"),
     ).toBeTruthy();
-
-    const stuck = screen.getByRole("region", { name: "What stopped it" });
-    expect(within(stuck).getByText(BLOCKER.what_stopped_it)).toBeTruthy();
-    expect(
-      within(stuck).getByText("So far: 2 of 5 experts hired."),
-    ).toBeTruthy();
-
     const checks = screen.getByRole("region", { name: "Done when" });
     expect(within(checks).getByText("1 of 2 met")).toBeTruthy();
     expect(within(checks).getByLabelText("Met")).toBeTruthy();
     await user.click(within(checks).getByRole("button", { name: "View" }));
     expect(await within(checks).findByText(/Designer: Ada/)).toBeTruthy();
-
     const progress = screen.getByRole("region", { name: "Progress" });
     expect(within(progress).getByText("2 of 3")).toBeTruthy();
     expect(within(progress).getByText("Analyst")).toBeTruthy();
 
-    expect(screen.queryByRole("region", { name: "Sub-tasks" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Description" })).toBeNull();
-
-    await user.click(
-      within(stuck).getByRole("button", { name: "Retry the failed part" }),
-    );
+    await user.click(within(failed).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0].url).toMatch(/\/actions\/retry_failed_part$/);
+  });
+
+  test("a failure that needs a file offers Retry and Upload file", async () => {
+    const reason =
+      "Leo's turn failed: the billing export wasn't found. Upload the CSV from Stripe and retry, and Leo will pick it up from there without starting over.";
+    const blocker = {
+      done_so_far: "",
+      what_stopped_it: reason,
+      short: "The billing export wasn't found.",
+      next_actions: ["Retry", "Upload file"],
+    };
+    server.use(
+      http.get("*/api/tasks/experts", () => HttpResponse.json({ experts: [] })),
+      http.get("*/api/tasks/t8/summary", () =>
+        HttpResponse.json({
+          ...SUMMARY,
+          id: "t8",
+          work_session_id: "chat-8",
+          contract: {
+            ...SUMMARY.contract,
+            done_when: [],
+            plan: [],
+            evidence: [],
+            blocker,
+          },
+        }),
+      ),
+      http.get("*/api/tasks/t8", () =>
+        HttpResponse.json({
+          ...row("t8", 8, {
+            title: "Summarize the billing export",
+            description: "Summarize the attached billing export",
+            status: "blocked",
+            raw_status: "blocked",
+            state: "stuck",
+            blocker,
+          }),
+          attachments: [],
+          subtasks: [],
+        }),
+      ),
+    );
+    render(<TaskPanel taskId="t8" onOpenTask={vi.fn()} />);
+
+    const asked = await screen.findByRole("region", { name: "What was asked" });
+    expect(
+      within(asked).getByText("Summarize the attached billing export"),
+    ).toBeTruthy();
+    const failed = screen.getByRole("region", { name: "Failed" });
+    expect(within(failed).getByText(reason)).toBeTruthy();
+    expect(within(failed).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(
+      within(failed)
+        .getByRole("link", { name: "Upload file" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=chat-8");
   });
 
   test("a stopped task no longer asks for anything", async () => {
@@ -421,10 +498,10 @@ describe("task panel", () => {
     );
     render(<TaskPanel taskId="t3" onOpenTask={vi.fn()} />);
 
-    expect(await screen.findByText(SUMMARY.contract.goal)).toBeTruthy();
     expect(
-      screen.queryByRole("region", { name: "What stopped it" }),
-    ).toBeNull();
+      await screen.findByRole("heading", { name: "Hire 5 experts" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Failed" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 
@@ -472,5 +549,152 @@ describe("task panel", () => {
       within(card).getByText("Not met: Email saved as a Gmail draft"),
     ).toBeTruthy();
     expect(within(card).getByRole("button", { name: "Accept" })).toBeTruthy();
+  });
+
+  test("a done task shows its outcome once, in markdown, over a short feed", async () => {
+    const MAYA = { type: "expert", id: "maya", name: "Maya" };
+    const USER = { type: "user", id: "u1", name: "Abhi" };
+    const result = "Picked **Linear** for the design team.";
+    const done = {
+      ...SUMMARY,
+      id: "t7",
+      status: "done",
+      state: "done",
+      raw_status: "done",
+      metrics: { tool_calls: 2, tokens: 9000, cost_usd: 0.03, duration_ms: 0 },
+      contract: {
+        ...SUMMARY.contract,
+        previous_goal: null,
+        done_when: [{ id: "c1", text: "A tool picked", status: "met" }],
+        plan: [],
+        evidence: [
+          {
+            id: "e9",
+            kind: "link",
+            title: "Comparison",
+            summary: "Compared **3** tools",
+          },
+        ],
+        result: { summary: result, primary_evidence_id: "e9" },
+        blocker: null,
+      },
+    };
+    const at = (n: number) => minutesAgo(10 - n);
+    const turn = (id: string, n: number, summary: string | null) => ({
+      id,
+      kind: "turn",
+      created_at: at(n),
+      actor: MAYA,
+      data: {
+        summary,
+        tool_calls: 1,
+        cost_usd: 0.01,
+        tokens: 3000,
+        tool_call_cards: [{ id: `${id}-c`, title: "Read file", status: "ok" }],
+      },
+    });
+    server.use(
+      http.get("*/api/tasks/experts", () => HttpResponse.json({ experts: [] })),
+      http.get("*/api/tasks/t7/summary", () => HttpResponse.json(done)),
+      http.get("*/api/tasks/t7/activity", () =>
+        HttpResponse.json({
+          events: [
+            {
+              id: "a1",
+              kind: "created",
+              created_at: at(0),
+              actor: USER,
+              body: "",
+            },
+            {
+              id: "a2",
+              kind: "status_changed",
+              created_at: at(1),
+              actor: MAYA,
+              data: { from: "todo", to: "in_progress" },
+            },
+            {
+              id: "a3",
+              kind: "contract_set",
+              created_at: at(2),
+              actor: MAYA,
+              body: "Pick a tool",
+            },
+            {
+              id: "a4",
+              kind: "contract_set",
+              created_at: at(3),
+              actor: MAYA,
+              body: "Pick a tool",
+            },
+            turn("a5", 4, null),
+            turn("a6", 5, "Drafted a **shortlist** of three tools for T-12"),
+            {
+              id: "a7",
+              kind: "step_updated",
+              created_at: at(6),
+              actor: MAYA,
+              body: "Compare",
+              data: { status: "done" },
+            },
+            turn("a8", 7, result),
+            {
+              id: "a9",
+              kind: "outcome",
+              created_at: at(8),
+              actor: MAYA,
+              body: result,
+            },
+          ],
+          next_cursor: null,
+        }),
+      ),
+      http.get("*/api/tasks/t7", () =>
+        HttpResponse.json({
+          ...row("t7", 7, {
+            title: "Pick a project tool",
+            description: "Pick a project tool for the design team",
+            status: "done",
+            raw_status: "done",
+            state: "done",
+            outcome_summary: result,
+            metrics: done.metrics,
+          }),
+          attachments: [],
+          subtasks: [],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    render(<TaskPanel taskId="t7" onOpenTask={vi.fn()} />);
+
+    const outcome = await screen.findByRole("region", { name: "Outcome" });
+    expect(await within(outcome).findByText("Linear")).toBeTruthy();
+    expect(within(outcome).getByText("3")).toBeTruthy();
+    expect(outcome.textContent).not.toContain("**");
+    expect(screen.getAllByRole("button", { name: "View" })).toHaveLength(1);
+
+    const feed = await screen.findByRole("list", {
+      name: "Activity on Pick a project tool",
+    });
+    await waitFor(() =>
+      expect(within(feed).getAllByRole("listitem")).toHaveLength(3),
+    );
+    const lines = within(feed)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent ?? "");
+    expect(lines[0]).toMatch(/^You created the task/);
+    expect(lines[1]).toMatch(/^Maya drafted a shortlist of three tools for/);
+    expect(lines[2]).toMatch(/^Maya finished the task/);
+    expect(lines.join(" ")).not.toMatch(/\*\*|Moved to|Read file|T-12|\$/);
+    expect(screen.queryByText(/9k tokens/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show work" }));
+    expect(await screen.findByText(/9k tokens · \$0\.03/)).toBeTruthy();
+    const steps = await screen.findByRole("list", {
+      name: "Every step on Pick a project tool",
+    });
+    expect(within(steps).getAllByRole("listitem").length).toBeGreaterThan(5);
+    expect(screen.getAllByRole("button", { name: "View" })).toHaveLength(1);
   });
 });

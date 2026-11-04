@@ -1,7 +1,6 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { formatCost } from "../../../../data/helpers";
 import { CheckpointRow } from "./CheckpointRow";
 import styles from "./trail.module.css";
 import { useActivityCheckpoints } from "./useActivityCheckpoints";
@@ -10,17 +9,32 @@ interface Props {
   taskId: string;
   title: string;
   running: boolean;
+  /** Every step with its cost, for Show work; otherwise checkpoints only. */
+  all?: boolean;
+  resultSummary?: string | null;
 }
 
 /** What happened on the task, oldest first, as stops on one line: who did
- *  what, when, and what each work turn cost. The newest one is blue, and
- *  shimmers while the work goes on. */
-export function ActivityCheckpoints({ taskId, title, running }: Props) {
-  const activity = useActivityCheckpoints(taskId, running);
+ *  what and when. The newest one is blue, and shimmers while the work goes
+ *  on. Show work passes `all` for every step and what each one cost. */
+export function ActivityCheckpoints({
+  taskId,
+  title,
+  running,
+  all = false,
+  resultSummary,
+}: Props) {
+  const activity = useActivityCheckpoints({
+    taskId,
+    running,
+    all,
+    resultSummary,
+  });
   const count = activity.checkpoints.length;
+  const label = all ? "Every step" : "Activity";
 
   return (
-    <section aria-label="Activity" className="px-1.5 py-4">
+    <section aria-label={label} className={all ? undefined : "px-1.5 py-4"}>
       <div className={styles.tray}>
         <div className={styles.head}>
           <span aria-hidden className={styles.mark}>
@@ -35,12 +49,10 @@ export function ActivityCheckpoints({ taskId, title, running }: Props) {
               />
             </svg>
           </span>
-          <span className={styles.title}>Activity</span>
-          <span className={styles.task}>{title}</span>
-          {count ? (
+          <span className={styles.title}>{label}</span>
+          {count && all ? (
             <span className={styles.sum}>
               {count} {count === 1 ? "step" : "steps"}
-              {activity.spent > 0 ? ` · ${formatCost(activity.spent)}` : ""}
             </span>
           ) : null}
         </div>
@@ -61,11 +73,12 @@ export function ActivityCheckpoints({ taskId, title, running }: Props) {
             <Skeleton className="h-6 w-2/3" />
           </div>
         ) : count ? (
-          <ol aria-label={`Activity on ${title}`} className={styles.list}>
+          <ol aria-label={`${label} on ${title}`} className={styles.list}>
             {activity.checkpoints.map((checkpoint, i) => (
               <CheckpointRow
                 key={checkpoint.id}
                 checkpoint={checkpoint}
+                showCost={all}
                 first={i === 0}
                 last={i === count - 1}
               />

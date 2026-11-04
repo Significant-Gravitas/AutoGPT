@@ -73,3 +73,31 @@ describe("getVisibleUserMessageParts", () => {
     expect(getVisibleUserMessageParts(parts)).toBe(parts);
   });
 });
+
+describe("getVisibleUserMessageParts decision lines", () => {
+  it("hides the confirmation id of an approved card", () => {
+    const parts: UIMessage["parts"] = [
+      {
+        type: "text",
+        text: "Approved: hire Devin (confirmation_id: abc-123).",
+      },
+    ];
+
+    expect(getVisibleUserMessageParts(parts)).toEqual([
+      { type: "text", text: "Approved ✓ hire Devin" },
+    ]);
+  });
+
+  it("hides the confirmation id of a declined card", () => {
+    const parts: UIMessage["parts"] = [
+      {
+        type: "text",
+        text: "Not approved: do not hire Devin, discard that proposal (confirmation_id: abc-123).",
+      },
+    ];
+
+    expect(getVisibleUserMessageParts(parts)).toEqual([
+      { type: "text", text: "Not approved: hire Devin" },
+    ]);
+  });
+});

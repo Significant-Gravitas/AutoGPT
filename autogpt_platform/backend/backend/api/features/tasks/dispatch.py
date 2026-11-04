@@ -29,7 +29,11 @@ from backend.api.features.tasks.models import (
     Task,
     TaskStatus,
 )
-from backend.copilot.model import create_chat_session, get_chat_session
+from backend.copilot.model import (
+    create_chat_session,
+    get_chat_session,
+    update_session_title,
+)
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,18 @@ MAX_RESUMES_PER_WINDOW = 6
 _STARTABLE = (TaskStatus.BACKLOG, TaskStatus.TODO)
 _recent_starts: dict[str, list[float]] = {}
 
+# How every turn of task work ends; the harness settles a turn that forgets.
+FINISH_RULES = (
+    "End every turn by setting the task's status with one line: "
+    "update_task(result={'summary': ...}) when it is done (the outcome, not "
+    "what you did), ask_user when you need the user, or "
+    "update_task(blocker={'what_stopped_it': ..., 'next_actions': [...]}) "
+    "when you can't go on. If something the work needs is missing (a file, a "
+    "link, an account) or a tool keeps failing, report a blocker with a "
+    'one-line reason, such as "The Q3 report PDF isn\'t attached.", and '
+    "next_actions such as upload_file or retry_failed_part. Never send a "
+    "result, or mark a check met, for work you couldn't do."
+)
 TOOL_HINT = (
     "Task tools: update_task, add_evidence, ask_user, comment_on_task, "
     "list_my_tasks, create_task. If a tool is not in your tool list, call it "
@@ -199,8 +215,8 @@ def _guard_refusal(task: Task) -> str | None:
         )
     if task.metrics.turns >= MAX_TURNS_PER_TASK:
         return (
-            f"Paused after {task.metrics.turns} work turns so it does not loop. "
-            "Check the progress and restart it if it should keep going."
+            f"Paused after {task.metrics.turns} rounds of work so it doesn't "
+            "loop. Check the progress and retry if it should keep going."
         )
     cutoff = time.monotonic() - RESUME_WINDOW_SECONDS
     recent = [t for t in _recent_starts.get(task.id, []) if t >= cutoff]
@@ -266,7 +282,19 @@ async def _ensure_work_session(user_id: str, task: Task) -> str:
         user_id, dry_run=False, expert_id=expert_id, origin=origin
     )
     await tasks_store().set_work_session(task.id, session.session_id)
+    await _title_work_session(user_id, session.session_id, task)
     return session.session_id
+
+
+async def _title_work_session(user_id: str, session_id: str, task: Task) -> None:
+    """Name the work chat after its task, before its first turn would title
+    it from the kickoff ("You are assigned task T-28: …")."""
+    try:
+        await update_session_title(
+            session_id, user_id, task.title.strip(), only_if_empty=True
+        )
+    except Exception:
+        logger.warning("Could not title the work chat of %s", task.id, exc_info=True)
 
 
 async def _user_drives(user_id: str, task: Task) -> bool:
@@ -306,14 +334,16 @@ def assignee_actor(task: Task) -> Actor:
 
 def kickoff_message(task: Task) -> str:
     parts = [f"You are assigned task {task.key}: {task.title}"]
-    if task.description:
+    if task.description and task.description.strip() != task.title.strip():
         parts.append(task.description)
     if task.parent_key:
         parts.append(f"This is a sub-task of {task.parent_key}.")
     parts.append(
         "Work it now. Start with update_task (goal, done_when, plan), keep its "
-        "steps current, record proof with add_evidence, and finish with "
-        "update_task(result=...). If you need the user, call ask_user.\n" + TOOL_HINT
+        "steps current and record proof with add_evidence.\n"
+        + FINISH_RULES
+        + "\n"
+        + TOOL_HINT
     )
     return "\n\n".join(parts)
 

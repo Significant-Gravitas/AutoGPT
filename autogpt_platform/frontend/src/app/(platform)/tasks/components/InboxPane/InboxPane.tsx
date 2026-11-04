@@ -1,11 +1,10 @@
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { describeLiveCounts } from "../../helpers";
-import { useContainerWidth } from "../../useContainerWidth";
 import type { useTasksPage } from "../../useTasksPage";
 import { InboxBoard } from "../InboxBoard/InboxBoard";
 import { InboxEmpty } from "../InboxEmpty/InboxEmpty";
+import { InboxError } from "../InboxEmpty/InboxError";
 import { InboxFilters } from "../InboxFilters/InboxFilters";
 import { InboxHeader } from "../InboxHeader/InboxHeader";
 import { InboxList } from "../InboxList/InboxList";
@@ -24,11 +23,11 @@ interface Props {
 }
 
 export function InboxPane({ page, viewSwitch }: Props) {
-  const { attach, isWide } = useContainerWidth();
-  const isBoard = (viewSwitch != null || page.view === "board") && isWide;
+  // The board scrolls sideways, so it works at any width.
+  const isBoard = viewSwitch != null || page.view === "board";
 
   return (
-    <div ref={attach} className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {viewSwitch != null ? (
         <InboxToolbar page={page} viewSwitch={viewSwitch} />
       ) : (
@@ -65,13 +64,11 @@ interface BodyProps {
 }
 
 function InboxBody({ page, isBoard }: BodyProps) {
-  if (page.error) {
+  if (page.error && !page.hasData) {
     return (
-      <ErrorCard
-        context="tasks"
-        responseError={{ message: page.error.message }}
-        onRetry={() => page.refetch()}
-      />
+      <InboxCard>
+        <InboxError onRetry={() => page.refetch()} />
+      </InboxCard>
     );
   }
   if (page.isLoading) return <InboxListSkeleton />;
@@ -80,8 +77,10 @@ function InboxBody({ page, isBoard }: BodyProps) {
       <InboxCard>
         <InboxEmpty
           tab={page.tab}
+          isNewUser={page.isNewUser}
           hasFilters={page.filterChips.length > 0}
           onClearFilters={page.clearFilters}
+          onNewTask={() => page.setIsCreateOpen(true)}
         />
       </InboxCard>
     );
@@ -97,6 +96,7 @@ function InboxBody({ page, isBoard }: BodyProps) {
   }
   return (
     <InboxList
+      key={page.tab}
       tasks={page.tasks}
       selectedID={page.taskID}
       onOpen={page.openTask}

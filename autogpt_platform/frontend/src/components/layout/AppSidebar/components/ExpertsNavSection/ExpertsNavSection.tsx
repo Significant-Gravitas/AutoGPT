@@ -9,11 +9,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/molecules/Sidebar/Sidebar";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { CollapsibleNavGroup } from "../CollapsibleNavGroup/CollapsibleNavGroup";
-import { useNavItemClassName } from "../../useNavItemClassName";
 import { getNewChatHref } from "../RecentChats/helpers";
 
 interface RowProps {
@@ -35,25 +33,30 @@ function ExpertRow({
   isOtto,
   isActive,
 }: RowProps) {
-  const navItemClassName = useNavItemClassName();
-
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
+        size="shell"
         tooltip={name}
         isActive={isActive}
-        className={cn(navItemClassName, "gap-2.5")}
       >
         <Link href={href}>
           {isOtto ? (
-            <AutopilotAvatar size={AVATAR_SIZE} className="rounded-lg" />
+            // The row's gap is 8px (12px on phones); on desktop the avatar
+            // sits 2px further off the name.
+            <AutopilotAvatar
+              size={AVATAR_SIZE}
+              shape="soft"
+              className="mr-0.5 max-md:mr-0"
+            />
           ) : (
             <ExpertAvatar
               name={name}
               avatarUrl={avatarUrl}
               size={AVATAR_SIZE}
-              className="rounded-lg"
+              shape="soft"
+              className="mr-0.5 max-md:mr-0"
             />
           )}
           <ExpertIdentityDetails
@@ -61,7 +64,7 @@ function ExpertRow({
             name={name}
             role={role}
             size="compact"
-            areaClassName="opacity-70"
+            areaTone="secondary-soft"
           />
         </Link>
       </SidebarMenuButton>
@@ -78,7 +81,7 @@ export function ExpertsNavSection() {
 
   return (
     <CollapsibleNavGroup label="Experts">
-      <SidebarMenu className="gap-1">
+      <SidebarMenu>
         <ExpertRow
           href={getNewChatHref(null, activeExpertIds) ?? "/home"}
           name="Otto"

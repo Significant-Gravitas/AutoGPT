@@ -1,4 +1,5 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
+import { isRawDataText } from "../rawDataText";
 import type { ToolUIPart } from "ai";
 import { useContext, useMemo } from "react";
 import { HeldOutcomesContext } from "../HeldOutcomesContext";
@@ -11,6 +12,7 @@ import type {
   CompactionStats,
 } from "../../CompactionCard/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
+import { ReasoningCollapse } from "./ReasoningCollapse";
 
 interface Props {
   parts: MessagePart[];
@@ -60,6 +62,21 @@ export function ChainMessageParts({
           readOnly={readOnly}
         />
       );
+    }
+    if (segment.kind === "part" && segment.part.type === "text") {
+      const text = segment.part.text;
+      if (isRawDataText(text)) {
+        return (
+          <ReasoningCollapse
+            key={`${messageID}-${segment.index}`}
+            label="Show work"
+          >
+            <pre className="text-sm whitespace-pre-wrap text-foreground-body">
+              {text.trim()}
+            </pre>
+          </ReasoningCollapse>
+        );
+      }
     }
     // Outside the chain a part renders from its held call's outcome; chain rows
     // keep the stub, which applyHeldOutcome words.

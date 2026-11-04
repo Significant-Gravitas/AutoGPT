@@ -1,4 +1,12 @@
-import { PRIORITY_LABELS, STATUS_LABELS } from "./data/helpers";
+import {
+  BUCKET_LABELS,
+  bucketOf,
+  PRIORITY_LABELS,
+  statesIn,
+  STATUS_BUCKETS,
+  OTTO_FILTER_ID,
+  type StatusBucket,
+} from "./data/helpers";
 import type {
   ExpertOption,
   Task,
@@ -6,51 +14,30 @@ import type {
   TaskFilters,
   TaskPriority,
   TaskState,
-  TaskStatus,
 } from "./data/types";
 
 export const TASK_VIEWS = ["list", "board"] as const;
 export type TasksView = (typeof TASK_VIEWS)[number];
 
-export const LANES = ["needs_you", "working", "done", "cancelled"] as const;
-export type Lane = (typeof LANES)[number];
+export const LANES = STATUS_BUCKETS;
+export type Lane = StatusBucket;
 
 export const INBOX_TABS = ["all", ...LANES] as const;
 export type InboxTab = (typeof INBOX_TABS)[number];
 
 export const INBOX_TAB_LABELS: Record<InboxTab, string> = {
   all: "All",
-  needs_you: "Needs you",
-  working: "Working",
-  done: "Done",
-  cancelled: "Cancelled",
+  ...BUCKET_LABELS,
 };
-
-const LANE_OF: Record<TaskState, Lane> = {
-  needs_you: "needs_you",
-  stuck: "needs_you",
-  working: "working",
-  done: "done",
-  stopped: "cancelled",
-};
-
-const LANE_STATES: Record<Lane, TaskState[]> = {
-  needs_you: ["needs_you", "stuck"],
-  working: ["working"],
-  done: ["done"],
-  cancelled: ["stopped"],
-};
-
-export const BOARD_MIN_WIDTH = 820;
 
 export function laneOf(task: Task) {
-  return LANE_OF[task.state];
+  return bucketOf(task);
 }
 
 export function tabCount(counts: TaskCounts | undefined, tab: InboxTab) {
   if (!counts) return 0;
   if (tab === "all") return counts.all;
-  return LANE_STATES[tab].reduce((n, s) => n + (counts.by_state[s] ?? 0), 0);
+  return statesIn(tab).reduce((n, s) => n + (counts.by_state[s] ?? 0), 0);
 }
 
 const LANE_RANK: Record<Lane, number> = {
@@ -99,28 +86,18 @@ export function describeLiveCounts(counts: TaskCounts | undefined) {
 export type DueFilter = "overdue" | "today" | "week";
 
 export interface PageFilters {
-  status: TaskStatus[];
+  mine: boolean;
   priority: TaskPriority[];
   assigneeIDs: string[];
   due: DueFilter | null;
 }
 
 export const EMPTY_FILTERS: PageFilters = {
-  status: [],
+  mine: false,
   priority: [],
   assigneeIDs: [],
   due: null,
 };
-
-export const ALL_STATUSES: TaskStatus[] = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "blocked",
-  "in_review",
-  "done",
-  "cancelled",
-];
 
 export const ALL_PRIORITIES: TaskPriority[] = [
   "urgent",
@@ -136,9 +113,18 @@ export const DUE_LABELS: Record<DueFilter, string> = {
   week: "Due this week",
 };
 
+export function hasFilters(filters: PageFilters) {
+  return (
+    filters.mine ||
+    filters.priority.length > 0 ||
+    filters.assigneeIDs.length > 0 ||
+    filters.due !== null
+  );
+}
+
 export function buildListFilters(filters: PageFilters): TaskFilters {
   return {
-    status: filters.status.length ? filters.status : undefined,
+    mine: filters.mine || undefined,
     priority: filters.priority.length ? filters.priority : undefined,
     assignee_ids: filters.assigneeIDs.length ? filters.assigneeIDs : undefined,
     due: filters.due,
@@ -156,11 +142,11 @@ export function describeFilters(
   experts: ExpertOption[],
 ): FilterChip[] {
   const chips: FilterChip[] = [];
-  for (const s of filters.status) {
+  if (filters.mine) {
     chips.push({
-      id: `status-${s}`,
-      label: `Status: ${STATUS_LABELS[s]}`,
-      next: { ...filters, status: filters.status.filter((x) => x !== s) },
+      id: "mine",
+      label: "Mine",
+      next: { ...filters, mine: false },
     });
   }
   for (const p of filters.priority) {
@@ -171,7 +157,10 @@ export function describeFilters(
     });
   }
   for (const id of filters.assigneeIDs) {
-    const name = experts.find((e) => e.id === id)?.name ?? "Expert";
+    const name =
+      id === OTTO_FILTER_ID
+        ? "Otto"
+        : (experts.find((e) => e.id === id)?.name ?? "Expert");
     chips.push({
       id: `assignee-${id}`,
       label: `Expert: ${name}`,
@@ -189,6 +178,14 @@ export function describeFilters(
     });
   }
   return chips;
+}
+
+/** The Expert filter's choices: Otto first, then the team. */
+export function expertChoices(experts: ExpertOption[]) {
+  return [
+    { id: OTTO_FILTER_ID, name: "Otto" },
+    ...experts.map((e) => ({ id: e.id, name: e.name })),
+  ];
 }
 
 export function toggleValue<T>(list: T[], value: T) {

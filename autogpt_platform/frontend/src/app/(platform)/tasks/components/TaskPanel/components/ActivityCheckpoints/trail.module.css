@@ -100,8 +100,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
-  padding: 0 14px 0 38px;
+  min-height: 32px;
+  padding: 6px 14px 6px 38px;
   color: var(--trail-strong);
   animation: row-rise 180ms ease both;
 }
@@ -183,12 +183,21 @@
     0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
+/* A feed line is markdown: up to two lines, then an ellipsis. */
 .name {
-  flex: 0 1 auto;
+  display: -webkit-box;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.name p {
+  display: inline;
+  margin: 0;
 }
 
 .row[data-status="running"] .name {

@@ -32,7 +32,9 @@ export function hireTitle(
 ): string {
   if (isPending) return HIRE_TITLE_PENDING;
   if ((team?.experts?.length ?? 0) === 0) {
-    return team?.diagnosis ? HIRE_TITLE_EMPTY : HIRE_TITLE_EMPTY_NO_READ;
+    return team?.diagnosis?.trim()
+      ? HIRE_TITLE_EMPTY
+      : HIRE_TITLE_EMPTY_NO_READ;
   }
   return team?.source === "llm" ? HIRE_TITLE_LLM : HIRE_TITLE_FALLBACK;
 }

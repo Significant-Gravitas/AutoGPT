@@ -192,17 +192,20 @@ class RunCapabilityTool(BaseTool):
         return {**args, "input": resolved}
 
     def activity_event(
-        self, session: ChatSession, result: ToolResponseBase, **kwargs
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
-        entry = resolve_entry(get_registry(), str(kwargs.get("id", "")))
+        entry = resolve_entry(get_registry(), str(args.get("id", "")))
         if entry is None:
             return None
         if entry.kind == "block":
-            return RunBlockTool().activity_event(session, result)
+            return RunBlockTool().activity_event(session, result, {})
         if entry.kind == "tool":
             tool = configured_tool(entry.implementations[0].ref)
-            payload = kwargs.get("input") or {}
-            return tool.activity_event(session, result, **payload) if tool else None
+            payload = args.get("input") or {}
+            return tool.activity_event(session, result, payload) if tool else None
         return None
 
     async def _execute(

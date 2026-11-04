@@ -9,6 +9,7 @@ import {
   describeFilters,
   EMPTY_FILTERS,
   filterInbox,
+  hasFilters,
   INBOX_TABS,
   inboxRowID,
   isTypingShortcutTarget,
@@ -76,6 +77,11 @@ export function useTasksPage({
     experts,
     tasks: filterInbox(inboxQuery.data?.tasks ?? [], tab),
     counts: inboxQuery.data?.counts,
+    hasData: inboxQuery.data !== undefined,
+    isNewUser:
+      inboxQuery.data !== undefined &&
+      inboxQuery.data.counts.all === 0 &&
+      !hasFilters(filters),
     isLoading: inboxQuery.isLoading,
     error: inboxQuery.error,
     refetch: inboxQuery.refetch,

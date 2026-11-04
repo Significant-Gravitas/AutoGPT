@@ -9,6 +9,7 @@ import prisma.models
 import prisma.types
 from prisma import Json
 
+from backend.api.features.tasks.contract import parse_contract
 from backend.api.features.tasks.converters import (
     TASK_INCLUDE,
     expert_assignee,
@@ -323,6 +324,8 @@ async def set_task_status(
         raise LookupError("Task not found")
     previous = str(getattr(row.status, "value", row.status))
     now = datetime.now(UTC)
+    if status == TaskStatus.DONE and outcome_summary is None:
+        outcome_summary = _result_summary(row)
     patch: dict[str, Any] = {"status": status.value}
     if status == TaskStatus.IN_PROGRESS and row.startedAt is None:
         patch["startedAt"] = now
@@ -352,6 +355,15 @@ async def set_task_status(
     task = await get_task(user_id, task_id)
     assert task is not None
     return task
+
+
+def _result_summary(row: prisma.models.Task) -> str | None:
+    """The result recorded on the contract, for a task marked done without
+    a summary of its own, so every done task carries its one line."""
+    if row.outcomeSummary:
+        return None
+    contract = parse_contract(row.contract)
+    return contract.result.summary if contract and contract.result else None
 
 
 async def add_activity(

@@ -148,10 +148,6 @@ function events(name: string) {
     .map(([, properties]) => properties);
 }
 
-async function findBlock() {
-  return screen.findByRole("region", { name: "Suggested first tasks" });
-}
-
 /** Lets the list's answer render, so an absence is not just "not loaded yet". */
 async function settleList() {
   await waitFor(() => expect(reads).toBe(1));
@@ -389,95 +385,22 @@ describe("Suggested first tasks — while the greeting is being written", () => 
 });
 
 describe("Suggested first tasks — Home after the first message", () => {
-  it("shows the rest of the list, and the started one as in progress", async () => {
+  // Home lists the recipient's recent chats under the composer; the stored
+  // list stays on the greeting page, where it is started and hidden.
+  it("keeps a stored list off Home, open and started rows alike", async () => {
     stored[0] = { ...stored[0], state: "sent", session_id: "session-1" };
     renderHome();
 
-    const block = await findBlock();
-    const started = within(block).getByRole("link", {
-      name: /Chase unpaid Shopify invoices/,
-    });
-    expect(started.getAttribute("href")).toBe("/copilot?sessionId=session-1");
-    expect(within(started).getByText("In progress")).toBeDefined();
-    expect(
-      within(block).getByRole("button", { name: TASKS[1].title }),
-    ).toBeDefined();
-    expect(
-      within(block).getByRole("button", { name: TASKS[2].title }),
-    ).toBeDefined();
-  });
-
-  it("hides a row, and Undo puts it back", async () => {
-    renderHome();
-    const block = await findBlock();
-
-    await userEvent.click(
-      within(block).getByRole("button", { name: `Hide: ${TASKS[1].title}` }),
-    );
-
-    await waitFor(() =>
-      expect(
-        within(block).queryByRole("button", { name: TASKS[1].title }),
-      ).toBeNull(),
-    );
-    await waitFor(() =>
-      expect(writes).toEqual([{ task_ids: ["1"], state: "dismissed" }]),
-    );
-    expect(events("home_suggestion_dismissed")).toEqual([
-      { position: 1, surface: "home", remaining: 2, scope: "one" },
-    ]);
-
-    await screen.findByText("Suggestion hidden");
-    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByPlaceholderText(/What's your role/);
+    await settleList();
 
     expect(
-      await within(block).findByRole("button", { name: TASKS[1].title }),
-    ).toBeDefined();
-    await waitFor(() =>
-      expect(writes.at(-1)).toEqual({ task_ids: ["1"], state: "open" }),
-    );
-    expect(events("home_suggestion_dismissed")).toHaveLength(1);
-  });
-
-  it("stays hidden after a reload", async () => {
-    stored[2] = { ...stored[2], state: "dismissed" };
-    renderHome();
-
-    const block = await findBlock();
-
-    expect(within(block).getAllByTestId("suggested-task")).toHaveLength(2);
-    expect(
-      within(block).queryByRole("button", { name: TASKS[2].title }),
+      screen.queryByRole("region", { name: "Suggested first tasks" }),
     ).toBeNull();
-  });
-
-  it("Hide all empties the block in one write, and Undo restores it", async () => {
-    renderHome();
-    const block = await findBlock();
-
-    await userEvent.click(
-      within(block).getByRole("button", { name: "Hide all" }),
-    );
-
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("region", { name: "Suggested first tasks" }),
-      ).toBeNull(),
-    );
-    await waitFor(() =>
-      expect(writes).toEqual([
-        { task_ids: ["0", "1", "2"], state: "dismissed" },
-      ]),
-    );
-    expect(events("home_suggestion_dismissed")).toEqual([
-      { position: null, surface: "home", remaining: 0, scope: "all" },
-    ]);
-
-    await screen.findByText("Suggestions hidden");
-    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
-
-    const restored = await findBlock();
-    expect(within(restored).getAllByTestId("suggested-task")).toHaveLength(3);
+    for (const task of TASKS) {
+      expect(screen.queryByText(task.title)).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: "Hide all" })).toBeNull();
   });
 
   it("leaves the generic starters off Home for a user who never got a list", async () => {

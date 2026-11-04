@@ -13,6 +13,8 @@ async def create_plan(
     session_id: str | None,
     split: bool = True,
 ) -> Plan:
+    if session_id:
+        await supersede_open_plans(user_id, session_id)
     row = await prisma.models.TaskPlan.prisma().create(
         data={
             "userId": user_id,
@@ -44,3 +46,16 @@ async def cancel_plan(user_id: str, plan_id: str) -> Plan | None:
     )
     assert row is not None
     return row_to_plan(row)
+
+
+async def supersede_open_plans(user_id: str, session_id: str) -> None:
+    """A newer plan in the chat replaces any still awaiting approval, so the
+    old card can never start (``confirm_plan`` only takes a proposed plan)."""
+    await prisma.models.TaskPlan.prisma().update_many(
+        where={
+            "userId": user_id,
+            "sessionId": session_id,
+            "status": PlanStatus.PROPOSED.value,
+        },
+        data={"status": PlanStatus.CANCELLED.value},
+    )

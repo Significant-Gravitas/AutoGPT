@@ -70,8 +70,8 @@ class UpdateTaskTool(_ContractTool):
         return (
             "Keep this task's record; send only what changed. goal, done_when "
             "and plan replace those lists. steps and criteria set statuses by "
-            "id (s1, d1). blocker: why it can't go on. result: finishes it, "
-            "done if every check is met, else the user accepts it."
+            "id (s1, d1). End each turn with result or blocker (missing "
+            "input, an error); never a result for undone work."
         )
 
     @property

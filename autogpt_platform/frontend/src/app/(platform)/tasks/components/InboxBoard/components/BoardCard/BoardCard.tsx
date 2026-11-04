@@ -9,8 +9,9 @@ import {
 } from "../../../TaskAssigneeAvatar/TaskAssigneeAvatar";
 import { approveLabel, cardLine } from "../../../CardApprovals/helpers";
 import styles from "../../board.module.css";
+import { RenameField } from "../../../TaskMenu/components/RenameField/RenameField";
+import { TaskMenu } from "../../../TaskMenu/TaskMenu";
 import { StateBadge } from "../StateBadge";
-import { StepTrail } from "./StepTrail";
 import { useBoardCard } from "./useBoardCard";
 import { useCardActions } from "./useCardActions";
 
@@ -22,8 +23,8 @@ interface Props {
   onOpen(): void;
 }
 
-/** One task on the board. A click unfolds it in place: who works it, its
- *  last steps, what it needs from you, and Cancel / Open. */
+/** One task on the board. A click unfolds it in place: who works it, the
+ *  full line, and the buttons for what it needs from you. */
 export function BoardCard({ task, isOpen, selected, onToggle, onOpen }: Props) {
   const motionProps = useInboxMotion(`board-task-${task.id}`);
   const card = useBoardCard(task);
@@ -39,36 +40,48 @@ export function BoardCard({ task, isOpen, selected, onToggle, onOpen }: Props) {
       data-selected={selected ? "" : undefined}
       className={styles.card}
     >
-      <button
-        type="button"
-        id={`inbox-row-${task.id}`}
-        aria-expanded={isOpen}
-        aria-controls={foldID}
-        onClick={onToggle}
-        className={styles.main}
-      >
-        <span className={styles.titleRow}>
-          <span className={styles.avatar}>
-            <TaskAssigneeAvatar assignee={task.assignee} size={24} />
+      {card.isRenaming ? (
+        <div className={styles.renaming}>
+          <RenameField
+            taskId={task.id}
+            title={task.title}
+            onDone={card.stopRename}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          id={`inbox-row-${task.id}`}
+          aria-expanded={isOpen}
+          aria-controls={foldID}
+          onClick={onToggle}
+          className={styles.main}
+        >
+          <span className={styles.titleRow}>
+            <span className={styles.avatar}>
+              <TaskAssigneeAvatar assignee={task.assignee} size={24} />
+            </span>
+            <span className={styles.title} title={task.title}>
+              {task.title}
+            </span>
           </span>
-          <span className={styles.title} title={task.title}>
-            {task.title}
-          </span>
-        </span>
-        {task.now ? <span className={styles.desc}>{task.now}</span> : null}
-        <span className={styles.foot}>
-          <StateBadge state={task.state} clock={card.clock} />
-          {task.metrics.tool_calls ? (
-            <span
-              className={styles.meta}
-              title={`Tool calls: ${task.metrics.tool_calls}`}
-            >
-              <WrenchGlyph />
-              {task.metrics.tool_calls}
+          {card.line ? (
+            <span className={styles.desc} title={card.line}>
+              {card.line}
             </span>
           ) : null}
-        </span>
-      </button>
+          <span className={styles.foot}>
+            <StateBadge state={task.state} age={card.age} />
+          </span>
+        </button>
+      )}
+      <div className={styles.menu}>
+        <TaskMenu
+          taskId={task.id}
+          title={task.title}
+          onRename={card.startRename}
+        />
+      </div>
 
       <div
         id={foldID}
@@ -81,7 +94,6 @@ export function BoardCard({ task, isOpen, selected, onToggle, onOpen }: Props) {
             <div className={styles.who}>
               {task.assignee ? assigneeLabel(task.assignee) : "Otto"}
             </div>
-            {card.steps.length ? <StepTrail steps={card.steps} /> : null}
             {act.cards.length ? (
               <div className={styles.hire}>
                 {act.cards.map((c) => (
@@ -93,8 +105,6 @@ export function BoardCard({ task, isOpen, selected, onToggle, onOpen }: Props) {
                   </div>
                 ))}
               </div>
-            ) : act.question ? (
-              <div className={styles.question}>{act.question}</div>
             ) : null}
             <div className={styles.actions}>
               {act.canCancel ? (
@@ -144,19 +154,5 @@ export function BoardCard({ task, isOpen, selected, onToggle, onOpen }: Props) {
         </div>
       </div>
     </motion.li>
-  );
-}
-
-function WrenchGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-      <path
-        d="M7.5 1.7a2.5 2.5 0 0 0-2.3 3.4L1.8 8.5a1 1 0 0 0 1.5 1.5l3.4-3.4a2.5 2.5 0 0 0 3.4-2.3L8.7 5.4l-1.4-.4-.4-1.4 1.1-1.5-.5-.4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

@@ -17,7 +17,7 @@ export function InboxList({ tasks, selectedID, onOpen }: Props) {
     <InboxCard>
       <LayoutGroup id="inbox-list">
         <ul aria-label="Tasks" className="divide-y divide-border-hairline">
-          <AnimatePresence initial={false}>
+          <AnimatePresence initial={false} mode="popLayout">
             {tasks.map((task) => (
               <motion.li key={task.id} {...motionProps}>
                 <InboxRow

@@ -1,15 +1,24 @@
 import { useTaskActivityLog } from "../../../../data/useTasksData";
 import { toCheckpoints } from "./helpers";
 
-export function useActivityCheckpoints(taskId: string, running: boolean) {
+interface Args {
+  taskId: string;
+  running: boolean;
+  all: boolean;
+  resultSummary?: string | null;
+}
+
+export function useActivityCheckpoints({
+  taskId,
+  running,
+  all,
+  resultSummary,
+}: Args) {
   const log = useTaskActivityLog(taskId, { enabled: true });
   const items = log.data?.pages.flatMap((p) => p.items) ?? [];
 
-  const checkpoints = toCheckpoints(items, running);
-
   return {
-    checkpoints,
-    spent: checkpoints.reduce((sum, c) => sum + (c.cost ?? 0), 0),
+    checkpoints: toCheckpoints(items, running, { all, resultSummary }),
     isLoading: log.isLoading,
     hasMore: !!log.hasNextPage,
     isLoadingMore: log.isFetchingNextPage,

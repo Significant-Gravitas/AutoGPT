@@ -17,19 +17,29 @@ from backend.api.features.tasks.models import (
     TaskInbox,
     TaskStatus,
 )
+from backend.api.features.tasks.outcome_text import result_line
 from backend.data.db import query_raw_with_schema
 
 MAX_STEPS = 5
 SNIPPET_LENGTH = 140
 NEEDS_YOU_STATES = {ContractState.NEEDS_YOU, ContractState.STUCK}
+# The one set of status words every surface uses: Working, Needs you, Done,
+# Cancelled, and Failed for a stuck task (its state, not a status).
 STATUS_LABELS = {
-    "backlog": "Backlog",
-    "todo": "To do",
-    "in_progress": "In progress",
+    "backlog": "Working",
+    "todo": "Working",
+    "in_progress": "Working",
     "blocked": "Needs you",
-    "in_review": "In review",
+    "in_review": "Needs you",
     "done": "Done",
     "cancelled": "Cancelled",
+}
+_INBOX_STATES = {
+    ContractState.WORKING: InboxState.RUNNING,
+    ContractState.NEEDS_YOU: InboxState.WAITING,
+    ContractState.STUCK: InboxState.FAILED,
+    ContractState.DONE: InboxState.DONE,
+    ContractState.STOPPED: InboxState.FAILED,
 }
 
 _RECENT_SQL = """
@@ -37,13 +47,6 @@ SELECT "taskId", kind, "actorName", body, data, "createdAt" FROM (
   SELECT a.*, row_number() OVER (PARTITION BY a."taskId" ORDER BY a."createdAt" DESC) AS rn
   FROM {schema_prefix}"TaskActivity" a WHERE a."taskId" = ANY($1::text[])
 ) recent WHERE rn <= $2 ORDER BY "createdAt" ASC
-"""
-
-_LAST_TURN_SQL = """
-SELECT DISTINCT ON ("taskId") "taskId", data->>'status' AS status
-FROM {schema_prefix}"TaskActivity"
-WHERE "taskId" = ANY($1::text[]) AND kind = 'turn'
-ORDER BY "taskId", "createdAt" DESC
 """
 
 _TOOLS_SQL = """
@@ -60,7 +63,6 @@ async def with_inbox(tasks: list[Task]) -> list[Task]:
         return tasks
     ids = [t.id for t in tasks]
     recent = await query_raw_with_schema(_RECENT_SQL, ids, MAX_STEPS)
-    last_turns = await _last_turn_statuses(ids)
     tools = await query_raw_with_schema(_TOOLS_SQL, ids)
     by_task: dict[str, list[dict[str, Any]]] = {}
     for row in recent:
@@ -75,13 +77,7 @@ async def with_inbox(tasks: list[Task]) -> list[Task]:
             )
         )
     return [
-        _decorate(
-            t,
-            by_task.get(t.id, []),
-            last_turns.get(t.id),
-            tools_by_task.get(t.id, []),
-        )
-        for t in tasks
+        _decorate(t, by_task.get(t.id, []), tools_by_task.get(t.id, [])) for t in tasks
     ]
 
 
@@ -93,13 +89,12 @@ async def count_tasks(user_id: str, filters: TaskFilters) -> TaskCounts:
     scope = filters.model_copy(update={"status": None, "include_hidden": True})
     scope.limit = 500
     tasks = await db.list_tasks(user_id, scope)
-    last_turns = await _last_turn_statuses([t.id for t in tasks])
     counts = TaskCounts(
         by_status={s.value: 0 for s in TaskStatus},
         by_state={s.value: 0 for s in ContractState},
     )
     for task in tasks:
-        state = inbox_state(task.status, last_turns.get(task.id))
+        state = inbox_state(task.state)
         counts.all += 1
         setattr(counts, state.value, getattr(counts, state.value) + 1)
         counts.needs_you += int(task.state in NEEDS_YOU_STATES)
@@ -108,27 +103,15 @@ async def count_tasks(user_id: str, filters: TaskFilters) -> TaskCounts:
     return counts
 
 
-def inbox_state(status: TaskStatus, last_turn_status: str | None) -> InboxState:
-    if status == TaskStatus.DONE:
-        return InboxState.DONE
-    if status == TaskStatus.CANCELLED or last_turn_status == "failed":
-        return InboxState.FAILED
-    if status == TaskStatus.IN_PROGRESS:
-        return InboxState.RUNNING
-    return InboxState.WAITING
-
-
-async def _last_turn_statuses(ids: list[str]) -> dict[str, str | None]:
-    if not ids:
-        return {}
-    rows = await query_raw_with_schema(_LAST_TURN_SQL, ids)
-    return {r["taskId"]: r["status"] for r in rows}
+def inbox_state(state: ContractState) -> InboxState:
+    """The inbox bucket, from the same state the board's lanes use, so every
+    task sits in exactly one."""
+    return _INBOX_STATES.get(state, InboxState.RUNNING)
 
 
 def _decorate(
     task: Task,
     events: list[dict[str, Any]],
-    last_turn_status: str | None,
     tools: list[InboxTool],
 ) -> Task:
     steps = _dedupe([step for event in events for step in _event_steps(event)])
@@ -141,10 +124,10 @@ def _decorate(
                 status="running",
             )
         )
-    last = events[-1] if events else None
+    last = next((e for e in reversed(events) if _event_label(e)), None)
     task.elapsed_ms = _elapsed_ms(task)
     task.inbox = TaskInbox(
-        state=inbox_state(task.status, last_turn_status),
+        state=inbox_state(task.state),
         needs_you=task.state in NEEDS_YOU_STATES,
         last_activity=(
             InboxActivity(
@@ -185,10 +168,13 @@ def _event_steps(event: dict[str, Any]) -> list[InboxStep]:
             for card in data.get("tool_call_cards") or []
             if isinstance(card, dict)
         ]
+    label = _event_label(event)
+    if not label:
+        return steps
     status = data.get("status") if event["kind"] == "turn" else None
     steps.append(
         InboxStep(
-            label=_snippet(_event_label(event)),
+            label=_snippet(label),
             time=at,
             kind=event["kind"],
             status=status,
@@ -204,10 +190,10 @@ def _event_label(event: dict[str, Any]) -> str:
     data = _data(event)
     if kind == "created":
         return "Created"
-    if kind == "status_changed" and body:
-        return body
     if kind == "status_changed":
-        return f"Moved to {STATUS_LABELS.get(str(data.get('to')), 'a new status')}"
+        # A move between statuses is what the badge shows, not a step; only
+        # a stated reason is worth a line.
+        return body
     if kind == "assigned":
         to = data.get("to") or {}
         return f"Assigned to {to.get('name')}" if to.get("name") else "Unassigned"
@@ -237,12 +223,9 @@ def _turn_label(actor: str, data: dict[str, Any]) -> str:
     if status == "running":
         return f"{actor} is working"
     if status == "failed":
-        return f"{actor}'s turn failed"
-    if data.get("summary"):
-        return str(data["summary"])
-    calls = int(data.get("tool_calls") or 0)
-    noun = "tool call" if calls == 1 else "tool calls"
-    return f"{actor} finished a turn · {calls} {noun}"
+        return f"{actor} hit an error"
+    summary = result_line(data.get("summary"))
+    return summary or f"{actor} worked on it"
 
 
 def _elapsed_ms(task: Task) -> int | None:

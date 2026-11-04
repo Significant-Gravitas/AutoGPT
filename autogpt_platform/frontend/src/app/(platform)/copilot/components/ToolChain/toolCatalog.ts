@@ -1,6 +1,7 @@
 import { isEmptyResult } from "./resultHelpers";
 import { AGENT_TOOL_CATALOG } from "./toolCatalog.agent";
 import { PLATFORM_TOOL_CATALOG } from "./toolCatalog.platform";
+import { TASK_TOOL_CATALOG } from "./toolCatalog.tasks";
 import type {
   ChainCategory,
   ToolDisplayContext,
@@ -13,6 +14,7 @@ export type { ChainCategory } from "./toolCatalog.shared";
 export const COPILOT_TOOL_CATALOG: Record<string, ToolMeta> = {
   ...AGENT_TOOL_CATALOG,
   ...PLATFORM_TOOL_CATALOG,
+  ...TASK_TOOL_CATALOG,
 };
 
 export function getCatalogLabel(

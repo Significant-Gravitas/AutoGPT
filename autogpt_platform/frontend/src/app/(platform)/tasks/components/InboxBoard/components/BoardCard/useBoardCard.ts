@@ -1,13 +1,18 @@
 import { useNowMinute } from "@/hooks/useNowMinute";
+import { useState } from "react";
+import { statusAge, statusLine } from "../../../../data/helpers";
 import type { Task } from "../../../../data/types";
-import { cardClock, lastSteps } from "../../helpers";
 
 export function useBoardCard(task: Task) {
   const live = task.state === "working" || task.state === "needs_you";
   useNowMinute(live);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   return {
-    clock: cardClock(task, Date.now()),
-    steps: lastSteps(task),
+    line: statusLine(task),
+    age: statusAge(task),
+    isRenaming,
+    startRename: () => setIsRenaming(true),
+    stopRename: () => setIsRenaming(false),
   };
 }

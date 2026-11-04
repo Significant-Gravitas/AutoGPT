@@ -281,7 +281,7 @@ class DeleteScheduleTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         if not isinstance(result, ScheduleDeletedResponse):
             return None
@@ -453,7 +453,7 @@ class _ToggleScheduleTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         # Halting an expert's automation is the one new action here that stops
         # work, so it belongs in the owner's feed beside schedule.deleted.

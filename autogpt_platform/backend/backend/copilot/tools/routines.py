@@ -238,7 +238,7 @@ class ScheduleRoutineTool(BaseTool):
         self,
         session: ChatSession,
         result: ToolResponseBase,
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         if not isinstance(result, RoutineResponse):
             return None

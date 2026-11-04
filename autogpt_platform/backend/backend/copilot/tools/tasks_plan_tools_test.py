@@ -82,7 +82,7 @@ async def test_a_plain_chat_creates_one_top_level_task(store):
     result = await _create("Hire a sales rep")
 
     assert isinstance(result, TaskUpdatedToolResponse)
-    assert result.message == "Created T-7."
+    assert result.message.startswith("Created T-7. ")
     assert store.create_task.await_args.args[1].parent_id is None
 
 
@@ -93,7 +93,7 @@ async def test_a_task_chat_still_creates_a_sub_task(store):
     result = await _create("Write the announcement")
 
     assert isinstance(result, TaskUpdatedToolResponse)
-    assert result.message == "Created T-7 under T-3."
+    assert result.message.startswith("Created T-7 under T-3. ")
     assert store.create_task.await_args.args[1].parent_id == "task-3"
 
 

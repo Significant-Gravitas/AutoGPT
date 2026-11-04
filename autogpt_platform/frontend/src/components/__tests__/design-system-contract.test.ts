@@ -27,15 +27,19 @@ function declaredColors(selector: string) {
   return names;
 }
 
-// Colours the `@theme` blocks register, each as `rgb(var(--color-<name>) / 1)`
-// so the class reads the triplet of the same name on `:root`.
+// Colours the `@theme` blocks register, each as `rgb(var(--color-<name>) / a)`
+// so the class reads the triplet of the same name on `:root`. The alpha is
+// `1`, a fixed opacity (the inbox's black washes) or `var(--alpha-<name>)`,
+// which a scoped palette such as `palette-classic` can swap.
 function registeredColors() {
   const names = new Set<string>();
   for (const [, block] of globalsCss.matchAll(/^@theme[^{]*\{([^}]*)\}/gm)) {
-    for (const [, name, read] of block.matchAll(
-      /--color-([a-z-]+):\s*rgb\(\s*var\(--color-([a-z-]+)\) \/ 1\s*\);/g,
+    for (const [, name, read, alpha] of block.matchAll(
+      /--color-([a-z-]+):\s*rgb\(\s*var\(--color-([a-z-]+)\)\s*\/\s*(1|0?\.\d+|var\(--alpha-[a-z-]+\))\s*\);/g,
     )) {
       expect(read, name).toBe(name);
+      if (alpha.startsWith("var("))
+        expect(alpha, name).toBe(`var(--alpha-${name})`);
       names.add(name);
     }
   }

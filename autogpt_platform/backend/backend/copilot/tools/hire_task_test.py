@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.api.features.tasks.models import (
+    Ask,
     Assignee,
     AssigneeType,
     Task,
@@ -22,6 +23,7 @@ class FakeStore:
 
     def __init__(self) -> None:
         self.tasks: dict[str, Task] = {}
+        self.attachments: dict[str, list] = {}
 
     async def create_task(self, user_id, data, actor):
         number = len(self.tasks) + 1
@@ -40,22 +42,47 @@ class FakeStore:
         self.tasks[task.id] = task
         return task
 
+    async def add_attachment(self, user_id, task_id, data, actor):
+        self.attachments.setdefault(task_id, []).append(data)
+
     async def get_task(self, user_id, task_id):
         return self.tasks.get(task_id)
 
+    async def get_task_for_work_session(self, session_id):
+        return None
+
     async def update_task(self, user_id, task_id, data, actor):
-        task = self.tasks[task_id].model_copy(
-            update=data.model_dump(exclude_unset=True)
-        )
-        self.tasks[task_id] = task
-        return task
+        return self._set(task_id, **data.model_dump(exclude_unset=True))
 
     async def set_task_status(
         self, user_id, task_id, status, actor, note=None, outcome_summary=None
     ):
-        task = self.tasks[task_id].model_copy(
-            update={"status": status, "outcome_summary": outcome_summary}
-        )
+        return self._set(task_id, status=status, outcome_summary=outcome_summary)
+
+    async def set_live(self, task_id, running, current_step=None):
+        task = self.tasks[task_id]
+        live = task.live.model_copy(update={"running": running})
+        return self._set(task_id, live=live)
+
+    async def contract_add_approval(self, user_id, task_id, card, actor):
+        kept = [a for a in self.tasks[task_id].approvals if a.name != card.name]
+        task = self._set(task_id, approvals=[*kept, card], status=TaskStatus.BLOCKED)
+        return SimpleNamespace(task=task, contract=task)
+
+    async def contract_ask(self, user_id, task_id, question, actor, why=None):
+        ask = Ask(id="ask-1", question=question, why=why)
+        task = self._set(task_id, ask=ask, status=TaskStatus.BLOCKED)
+        return SimpleNamespace(task=task, contract=task)
+
+    async def contract_drop_approvals(self, user_id, task_id, ids):
+        approvals = [
+            a for a in self.tasks[task_id].approvals if a.confirmation_id not in ids
+        ]
+        task = self._set(task_id, approvals=approvals)
+        return SimpleNamespace(task=task, contract=task)
+
+    def _set(self, task_id, **fields):
+        task = self.tasks[task_id].model_copy(update=fields)
         self.tasks[task_id] = task
         return task
 
@@ -78,9 +105,10 @@ def board():
         patch.object(hire_task, "tasks_store", return_value=store),
         patch.object(hire_task, "get_redis_async", AsyncMock(return_value=redis)),
         patch.object(hire_task, "is_feature_enabled", AsyncMock(return_value=True)),
-        patch.object(hire_task, "is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(hire_task, "find_work_task", AsyncMock(return_value=None)),
         patch.object(hire_task, "caller_actor", AsyncMock()),
+        patch.object(hire_task, "remember_hire_chat", AsyncMock()),
+        patch.object(hire_task, "publish_contract_update", AsyncMock()),
         patch.object(hire_task, "publish_task_event", AsyncMock()),
     ):
         yield store
@@ -90,63 +118,101 @@ def _session(session_id: str = "chat-1"):
     return SimpleNamespace(session_id=session_id, expert_id=None)
 
 
+async def _propose(name: str, role: str, confirmation_id: str, chat: str = "chat-1"):
+    """What hire_expert does: track the hire, then put its card on the task."""
+    task = await hire_task.track_proposed_hire("u", _session(chat), name, role)
+    await hire_task.wait_on_hire_card(
+        "u", _session(chat), task, confirmation_id, "hire", name, role
+    )
+    return task
+
+
 @pytest.mark.asyncio
-async def test_a_proposed_hire_goes_on_the_board_as_one_task(board):
+async def test_a_proposed_hire_goes_on_the_board_as_its_own_task(board):
     task = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
 
     assert task is not None
     assert task.title == "Hire Maya"
-    assert task.description == "- [ ] Hire Maya (Editor)"
+    assert task.description == "Hire Maya (Editor)"
     assert task.assignee is not None
     assert task.assignee.type == AssigneeType.OTTO
-    assert task.status == TaskStatus.IN_REVIEW
-    assert "T-1" in hire_task.tracked_note(task)
+    note = hire_task.tracked_note(task)
+    assert "T-1" in note
+    assert f"task_id {task.id} and status cancelled" in note
 
 
 @pytest.mark.asyncio
-async def test_more_hires_in_the_same_chat_join_that_task(board):
-    first = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
-    second = await hire_task.track_proposed_hire("u", _session(), "Leo", "Designer")
-
-    assert first is not None and second is not None
-    assert second.id == first.id
-    assert len(board.tasks) == 1
-    assert second.title == "Hire 2 experts"
-    assert second.description == "- [ ] Hire Maya (Editor)\n- [ ] Hire Leo (Designer)"
-
-
-@pytest.mark.asyncio
-async def test_proposing_the_same_hire_again_adds_nothing(board):
-    await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
-    again = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
-
-    assert again is not None
-    assert again.description == "- [ ] Hire Maya (Editor)"
-
-
-@pytest.mark.asyncio
-async def test_a_hire_in_another_chat_is_its_own_task(board):
-    await hire_task.track_proposed_hire("u", _session("chat-1"), "Maya", "Editor")
-    await hire_task.track_proposed_hire("u", _session("chat-2"), "Leo", "Designer")
-
-    assert len(board.tasks) == 2
-
-
-@pytest.mark.asyncio
-async def test_approving_each_hire_ticks_it_and_the_last_completes_the_task(board):
+async def test_a_hire_task_links_the_chat_with_its_card(board):
     task = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
-    await hire_task.track_proposed_hire("u", _session(), "Leo", "Designer")
+
+    assert task is not None
+    [link] = board.attachments[task.id]
+    assert (link.kind, link.ref_id) == ("chat", "chat-1")
+    hire_task.remember_hire_chat.assert_awaited_once_with(task.id, "chat-1")
+
+
+@pytest.mark.asyncio
+async def test_a_waiting_hire_says_what_it_waits_for(board):
+    task = await _propose("Sam", "Support", "c-sam")
     assert task is not None
 
-    await hire_task.complete_hire("u", task.id, "Maya", "Editor")
-    halfway = board.tasks[task.id]
-    await hire_task.complete_hire("u", task.id, "Leo", "Designer")
-    done = board.tasks[task.id]
+    waiting = board.tasks[task.id]
+    assert waiting.status == TaskStatus.BLOCKED
+    assert waiting.ask is not None
+    assert waiting.ask.question == "Waiting for your OK on Sam's hire card"
+    assert [a.confirmation_id for a in waiting.approvals] == ["c-sam"]
 
-    assert halfway.status == TaskStatus.IN_REVIEW
-    assert halfway.description == "- [x] Hire Maya (Editor)\n- [ ] Hire Leo (Designer)"
+
+@pytest.mark.asyncio
+async def test_each_hire_in_one_chat_is_its_own_task(board):
+    tess = await _propose("Tess", "Support", "c-tess")
+    sam = await _propose("Sam", "Support", "c-sam")
+
+    assert tess is not None and sam is not None
+    assert tess.id != sam.id
+    assert [t.title for t in board.tasks.values()] == ["Hire Tess", "Hire Sam"]
+
+
+@pytest.mark.asyncio
+async def test_proposing_the_same_hire_again_keeps_its_task(board):
+    first = await _propose("Maya", "Editor", "c-1")
+    again = await _propose("Maya", "Senior Editor", "c-2")
+
+    assert first is not None and again is not None
+    assert again.id == first.id
+    assert len(board.tasks) == 1
+    task = board.tasks[first.id]
+    assert task.description == "Hire Maya (Senior Editor)"
+    assert [a.confirmation_id for a in task.approvals] == ["c-2"]
+
+
+@pytest.mark.asyncio
+async def test_confirming_a_hire_completes_only_its_own_task(board):
+    tess = await _propose("Tess", "Support", "c-tess")
+    sam = await _propose("Sam", "Support", "c-sam")
+    assert tess is not None and sam is not None
+
+    await hire_task.forget_card("u", "chat-1", ["c-tess"], tess.id)
+    await hire_task.complete_hire("u", tess.id, "Tess", "Support")
+
+    done, waiting = board.tasks[tess.id], board.tasks[sam.id]
     assert done.status == TaskStatus.DONE
-    assert done.outcome_summary == "Hire Maya (Editor); Hire Leo (Designer)"
+    assert done.outcome_summary == "Hired Tess (Support)"
+    assert done.approvals == []
+    assert waiting.status == TaskStatus.BLOCKED
+    assert waiting.ask is not None and "Sam" in waiting.ask.question
+
+
+@pytest.mark.asyncio
+async def test_a_hire_approved_on_the_board_stops_hiring_when_done(board):
+    task = await _propose("Sam", "Support", "c-sam")
+    assert task is not None
+    await board.set_live(task.id, True)
+
+    await hire_task.complete_hire("u", task.id, "Sam", "Support")
+
+    assert board.tasks[task.id].live.running is False
+    assert board.tasks[task.id].status == TaskStatus.DONE
 
 
 @pytest.mark.asyncio
@@ -155,7 +221,7 @@ async def test_a_hire_after_the_task_is_done_starts_a_new_task(board):
     assert task is not None
     await hire_task.complete_hire("u", task.id, "Maya", "Editor")
 
-    later = await hire_task.track_proposed_hire("u", _session(), "Leo", "Designer")
+    later = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
 
     assert later is not None and later.id != task.id
 
@@ -164,6 +230,9 @@ async def test_a_hire_after_the_task_is_done_starts_a_new_task(board):
 async def test_a_chat_working_a_task_adds_no_hire_task(board):
     with patch.object(hire_task, "find_work_task", AsyncMock(return_value=object())):
         task = await hire_task.track_proposed_hire("u", _session(), "Maya", "Editor")
+    await hire_task.wait_on_hire_card(
+        "u", _session(), task, "c-maya", "hire", "Maya", "Editor"
+    )
 
     assert task is None
     assert board.tasks == {}

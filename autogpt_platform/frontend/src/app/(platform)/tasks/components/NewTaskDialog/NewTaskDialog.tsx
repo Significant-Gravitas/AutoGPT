@@ -1,9 +1,12 @@
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import type { ExpertOption } from "../../data/types";
 import { AssigneeChip } from "./components/AssigneeChip/AssigneeChip";
 import { useNewTaskDialog } from "./useNewTaskDialog";
+
+const HINT_ID = "new-task-hint";
 
 interface Props {
   isOpen: boolean;
@@ -23,7 +26,7 @@ export function NewTaskDialog({
   return (
     <Dialog
       title="New task"
-      className="max-w-xl"
+      className="max-w-xl max-lg:inset-x-0 max-lg:mx-auto"
       controlled={{
         isOpen,
         set: (open) => (open ? onOpenChange(true) : form.close()),
@@ -50,16 +53,30 @@ export function NewTaskDialog({
               choices={form.choices}
               onChange={form.pickAssignee}
             />
-            <Button
-              type="submit"
-              variant="primary"
-              size="icon-sm"
-              shape="pill"
-              aria-label="Create task"
-              leadingIcon={ArrowUp02Icon}
-              disabled={!form.canSubmit}
-              loading={form.isSubmitting}
-            />
+            <span className="flex items-center gap-2">
+              {form.isEmpty ? (
+                <Text
+                  as="span"
+                  id={HINT_ID}
+                  variant="small"
+                  tone="faint"
+                  aria-live="polite"
+                >
+                  Describe the task
+                </Text>
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                size="icon-sm"
+                shape="pill"
+                aria-label="Create task"
+                leadingIcon={ArrowUp02Icon}
+                disabled={!form.canSubmit}
+                loading={form.isSubmitting}
+                aria-describedby={form.isEmpty ? HINT_ID : undefined}
+              />
+            </span>
           </div>
         </form>
       </Dialog.Content>

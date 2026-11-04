@@ -64,6 +64,7 @@ export function SegmentedControl<T extends string>({
   return (
     <LayoutGroup id={groupId}>
       <div
+        data-slot="segmented-control"
         role="radiogroup"
         aria-label={ariaLabel}
         onKeyDown={handleKeyDown}
@@ -77,6 +78,7 @@ export function SegmentedControl<T extends string>({
           return (
             <button
               key={option.value}
+              data-slot="segmented-control-option"
               ref={(el) => {
                 buttons.current[index] = el;
               }}

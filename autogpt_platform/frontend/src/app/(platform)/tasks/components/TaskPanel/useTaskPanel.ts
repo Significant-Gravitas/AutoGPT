@@ -5,6 +5,7 @@ import {
   useUpdateTask,
 } from "../../data/useTasksData";
 import type { UpdateTaskInput } from "../../data/types";
+import { panelView } from "./panelView";
 
 export function useTaskPanel(taskId: string) {
   const detail = useTaskDetail(taskId);
@@ -23,7 +24,7 @@ export function useTaskPanel(taskId: string) {
 
   return {
     task: detail.data,
-    summary: summary.data,
+    view: panelView(detail.data, summary.data),
     isLoading: detail.isLoading,
     isError: detail.isError,
     retry,

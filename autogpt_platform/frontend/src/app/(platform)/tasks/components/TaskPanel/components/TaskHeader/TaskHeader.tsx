@@ -6,7 +6,8 @@ import {
   Calendar03Icon,
   Flag02Icon,
 } from "@hugeicons/core-free-icons";
-import { Fragment } from "react";
+import { useQueryState } from "nuqs";
+import { Fragment, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -38,6 +39,8 @@ import {
 } from "../../helpers";
 import { isCancellable } from "../../../../helpers";
 import { CancelTask } from "../../../CancelTask/CancelTask";
+import { RenameField } from "../../../TaskMenu/components/RenameField/RenameField";
+import { TaskMenu } from "../../../TaskMenu/TaskMenu";
 import { AssigneeAvatar } from "../AssigneeAvatar/AssigneeAvatar";
 
 interface Props {
@@ -68,15 +71,40 @@ export function TaskHeader({ task, experts, onUpdate }: Props) {
   const status = STATUS_ICONS[task.status];
   const choices = getAssigneeChoices(experts);
   const isOverdue = isTaskOverdue(task.due_date, task.status);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [, setTaskID] = useQueryState("task");
 
   return (
     <div className="flex flex-col gap-2">
       <Text variant="small-mono" tone="faint">
         {taskKey(task.number)}
       </Text>
-      <Text variant="large-medium" as="h2" tone="ink" className="text-pretty">
-        {task.title}
-      </Text>
+      <div className="flex min-w-0 items-start gap-2">
+        {isRenaming ? (
+          <RenameField
+            taskId={task.id}
+            title={task.title}
+            onDone={() => setIsRenaming(false)}
+            className="text-body"
+          />
+        ) : (
+          <Text
+            variant="large-medium"
+            as="h2"
+            tone="ink"
+            className="min-w-0 flex-1 text-pretty"
+          >
+            {task.title}
+          </Text>
+        )}
+        <TaskMenu
+          taskId={task.id}
+          title={task.title}
+          onRename={() => setIsRenaming(true)}
+          onDeleted={() => setTaskID(null)}
+          className="shrink-0"
+        />
+      </div>
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

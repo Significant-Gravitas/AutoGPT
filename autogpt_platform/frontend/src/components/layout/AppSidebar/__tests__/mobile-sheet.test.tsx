@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   SidebarProvider,
   SidebarTrigger,
@@ -78,19 +78,16 @@ function openSheet() {
 
 beforeEach(() => {
   server.use(
-    getGetV2ListSessionsMockHandler200({
-      sessions: [
-        {
-          id: "session-1",
-          title: "Plan the launch",
-          is_processing: false,
-          is_pinned: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      total: 1,
-    }),
+    getListExpertIdentitiesMockHandler([
+      {
+        id: "expert-maria",
+        name: "Maria Ruiz",
+        avatar_url: null,
+        role: "Marketing",
+        job_title: "Growth Lead",
+        is_archived: false,
+      },
+    ]),
   );
 });
 
@@ -99,13 +96,11 @@ afterEach(() => {
 });
 
 describe("AppSidebar on mobile", () => {
-  it("closes the sheet when a chat is tapped", async () => {
+  it("closes the sheet when an expert is tapped", async () => {
     renderMobileSidebar();
     openSheet();
 
-    fireEvent.click(
-      await screen.findByRole("link", { name: /plan the launch/i }),
-    );
+    fireEvent.click(await screen.findByRole("link", { name: /^Maria Ruiz/ }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -130,13 +125,16 @@ describe("AppSidebar on mobile", () => {
     expect(screen.getByRole("dialog")).toBeDefined();
   });
 
-  it("keeps the sheet open when a chat's actions menu opens", async () => {
+  it("keeps the sheet open when the Experts group is folded", async () => {
     renderMobileSidebar();
     openSheet();
 
-    await screen.findByRole("link", { name: /plan the launch/i });
-    fireEvent.click(screen.getByRole("button", { name: /chat actions/i }));
+    await screen.findByRole("link", { name: /^Maria Ruiz/ });
+    fireEvent.click(screen.getByRole("button", { name: "Experts" }));
 
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: /^Maria Ruiz/ })).toBeNull(),
+    );
     expect(screen.getByRole("dialog")).toBeDefined();
   });
 });

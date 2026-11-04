@@ -330,7 +330,7 @@ async def _record_activity(
     that produced it, so every failure is swallowed after a warning.
     """
     try:
-        draft = tool.activity_event(session=session, result=result, **kwargs)
+        draft = tool.activity_event(session=session, result=result, args=kwargs)
         if draft is None:
             return
         draft.session_id = draft.session_id or session.session_id
@@ -484,7 +484,7 @@ class BaseTool:
         self,
         session: ChatSession,
         result: "ToolResponseBase",
-        **kwargs,
+        args: dict[str, Any],
     ) -> ActivityEventDraft | None:
         """Describe the durable work this call performed.
 

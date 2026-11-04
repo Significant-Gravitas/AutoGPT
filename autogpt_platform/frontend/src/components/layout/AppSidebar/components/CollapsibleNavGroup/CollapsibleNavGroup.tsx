@@ -35,10 +35,11 @@ export function CollapsibleNavGroup({
       onOpenChange={onOpenChange}
       className="group/collapsible"
     >
-      <SidebarGroup className="px-2.5 pt-5 pb-0 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:pt-1">
+      <SidebarGroup size="shell-section">
         <SidebarGroupLabel
           asChild
-          className="h-7 pb-0.5 leading-inherit text-shell-foreground-subtle group-data-[collapsible=icon]:hidden max-md:h-11"
+          variant="shell"
+          className="h-7 group-data-[collapsible=icon]:hidden max-md:h-11"
         >
           <CollapsibleTrigger>
             <Text

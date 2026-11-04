@@ -46,7 +46,8 @@
   --color-status-ok: 26 154 82; /* #1A9A52, done */
   --color-status-ok-surface: 26 154 82; /* rgba(26,154,82,.08) */
   --color-focus-inbox: 0 96 226; /* rgba(0,96,226,.35), focus ring */
-  --color-action-inbox: 0 0 0; /* rgba(0,0,0,.88) primary fill, .8 on hover */
+  --color-action-inbox: 0 0 0; /* rgba(0,0,0,.88) primary fill */
+  --color-action-inbox-hover: 0 0 0; /* rgba(0,0,0,.8) */
   --color-action-inbox-foreground: 252 252 252; /* #FCFCFC */
   /* Their opacities, so a palette can swap them (see palette-classic). */
   --alpha-surface-tray: 0.03;
@@ -204,7 +205,7 @@
   --color-status-ok-surface: rgb(var(--color-status-ok-surface) / 0.08);
   --color-focus-inbox: rgb(var(--color-focus-inbox) / 0.35);
   --color-action-inbox: rgb(var(--color-action-inbox) / 0.88);
-  --color-action-inbox-hover: rgb(var(--color-action-inbox) / 0.8);
+  --color-action-inbox-hover: rgb(var(--color-action-inbox-hover) / 0.8);
   --color-action-inbox-foreground: rgb(
     var(--color-action-inbox-foreground) / 1
   );
@@ -628,7 +629,11 @@
 
 @utility edge-blur-right {
   backdrop-filter: blur(6px);
-  background: linear-gradient(to right, rgb(252 252 252 / 0), rgb(252 252 252 / 0.85));
+  background: linear-gradient(
+    to right,
+    rgb(252 252 252 / 0),
+    rgb(252 252 252 / 0.85)
+  );
   mask-image: linear-gradient(to right, transparent, black 60%);
 }
 

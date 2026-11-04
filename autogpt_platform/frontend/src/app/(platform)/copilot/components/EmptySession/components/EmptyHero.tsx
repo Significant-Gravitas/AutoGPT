@@ -2,6 +2,7 @@
 
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import type { CSSProperties } from "react";
 import type { RecipientOption } from "../../ChatInput/components/RecipientChip";
 import { TextGenerateEffect } from "./TextGenerateEffect/TextGenerateEffect";
 import { getAvatarGlow, getExpertIntroSuffix } from "../helpers";
@@ -33,17 +34,19 @@ export function EmptyHero({ intro, recipient, isExpert, expertRole }: Props) {
         {isExpert ? "I'm" : "Tell"}{" "}
         <span className="ml-1.5 inline-flex items-center gap-2 align-middle">
           <span
-            className="inline-flex rounded-lg"
-            style={{ boxShadow: getAvatarGlow(recipient) }}
+            className="inline-flex rounded-lg shadow-(--avatar-glow)"
+            style={
+              { "--avatar-glow": getAvatarGlow(recipient) } as CSSProperties
+            }
           >
             {recipient.id === null && !recipient.avatarUrl ? (
-              <AutopilotAvatar size={32} className="rounded-lg" />
+              <AutopilotAvatar size={32} shape="soft" />
             ) : (
               <ExpertAvatar
                 name={recipient.name}
                 avatarUrl={recipient.avatarUrl}
                 size={32}
-                className="rounded-lg"
+                shape="soft"
               />
             )}
           </span>

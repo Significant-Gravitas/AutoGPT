@@ -29,9 +29,6 @@ export function useCardActions(task: Task) {
 
   return {
     cards: row.cards,
-    question: row.cards.length
-      ? null
-      : (task.ask?.question ?? task.blocker?.short ?? null),
     action: row.cards.length ? null : row.action,
     runAction: row.runAction,
     busy: row.busy || approvals.pending !== null || stop.isPending,
