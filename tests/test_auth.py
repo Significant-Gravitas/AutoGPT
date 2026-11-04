@@ -326,24 +326,96 @@ def test_callback_wait_gives_up_at_its_deadline(tmp_path: Path) -> None:
         flow._wait_for_callback(server, codes, errors, timeout=0.2)
 
 
-def test_callback_rejects_state_mismatch(tmp_path: Path) -> None:
+def test_a_callback_for_another_sign_in_is_refused_without_ending_the_wait(
+    tmp_path: Path,
+) -> None:
+    """A request to /callback with another state, or none, ended the sign-in
+    with an error, so any page the browser loaded could end it by requesting
+    that URL, and a tab left from an earlier attempt ended the new one. Such
+    a request is refused, and the wait goes on for this sign-in's redirect."""
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+    statuses: list[int] = []
+
+    def browse() -> None:
+        for query in (
+            "code=planted&state=wrong-state",
+            "code=planted",
+            "error=access_denied&state=wrong-state",
+            "code=planted&state=%C3%A9",  # compare_digest refuses non-ASCII str
+        ):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/callback?{query}", timeout=30)
+            except urllib.error.HTTPError as exc:
+                statuses.append(exc.code)
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
+        ) as response:
+            statuses.append(response.status)
+
+    thread = threading.Thread(target=browse)
+    thread.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=60) == "the-code"
+    finally:
+        thread.join(timeout=30)
+    assert statuses == [400, 400, 400, 400, 200]
+    assert errors == []
+
+
+def test_a_denial_for_this_sign_in_still_ends_the_wait(tmp_path: Path) -> None:
     flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
     server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
 
-    def send_callback() -> None:
+    def deny() -> None:
         try:
             urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/callback?code=the-code&state=wrong-state",
-                timeout=2,
+                f"http://127.0.0.1:{port}/callback?error=access_denied&state=right-state",
+                timeout=30,
             )
         except urllib.error.HTTPError:
             pass
 
-    thread = threading.Thread(target=send_callback)
+    thread = threading.Thread(target=deny)
     thread.start()
-    with pytest.raises(ValueError, match="state did not match"):
-        flow._wait_for_callback(server, codes, errors)
-    thread.join(timeout=2)
+    try:
+        with pytest.raises(ValueError, match="access_denied"):
+            flow._wait_for_callback(server, codes, errors, timeout=60)
+    finally:
+        thread.join(timeout=30)
+
+
+@pytest.mark.parametrize(("platform", "exclusive"), [("win32", True), ("linux", False)])
+def test_the_callback_takes_its_port_exclusively_on_windows(
+    monkeypatch: pytest.MonkeyPatch, platform: str, exclusive: bool
+) -> None:
+    """HTTPServer sets SO_REUSEADDR, with which a Windows socket binds a port
+    another socket is already listening on: the fallback to the next port
+    never ran, and the redirect could reach the other listener. Elsewhere it
+    only lets a new sign-in bind over the last one's closed connections."""
+    import sys
+    from http.server import BaseHTTPRequestHandler
+
+    import autogpt_local_executor.auth as auth_module
+
+    server = auth_module._CallbackServer(
+        ("127.0.0.1", 0), BaseHTTPRequestHandler, bind_and_activate=False
+    )
+    real_socket = server.socket
+    fake_socket = MagicMock()
+    fake_socket.getsockname.return_value = ("127.0.0.1", 41899)
+    server.socket = fake_socket
+    monkeypatch.setattr(socket, "SO_EXCLUSIVEADDRUSE", -7, raising=False)
+    monkeypatch.setattr(sys, "platform", platform)
+    try:
+        server.server_bind()
+    finally:
+        monkeypatch.undo()
+        real_socket.close()
+
+    options = [option.args[1] for option in fake_socket.setsockopt.call_args_list]
+    assert (-7 in options) is exclusive
+    assert (socket.SO_REUSEADDR in options) is not exclusive
 
 
 def test_callback_uses_next_port_when_first_is_busy(tmp_path: Path) -> None:

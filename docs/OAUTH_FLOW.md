@@ -42,7 +42,12 @@ to `0.0.0.0`. See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#
 The server takes one connection at a time, so each read waits at most 10
 seconds and a whole request at most 20 before the connection is dropped: a
 browser's preconnect that never sends, or a client that sends a byte now and
-then, can't hold off the redirect.
+then, can't hold off the redirect. A request to `/callback` whose `state` isn't
+this sign-in's is refused with 400 and doesn't end the wait, so neither a tab
+left from an earlier attempt nor a page that requests the URL can end the
+sign-in. On Windows the server takes its port exclusively
+(`SO_EXCLUSIVEADDRUSE`), so a port another program listens on counts as busy
+and the next one is tried.
 
 ### Operator setup (per-environment)
 

@@ -16,6 +16,7 @@ import io
 import json
 import secrets
 import socket
+import sys
 import time
 import urllib.parse
 import webbrowser
@@ -64,6 +65,21 @@ class _DeadlineReader(io.RawIOBase):
             raise TimeoutError("the request took too long to arrive")
         self._sock.settimeout(min(self._per_read, remaining))
         return self._sock.recv_into(buffer)
+
+
+class _CallbackServer(HTTPServer):
+    """The OAuth callback's server. On Windows it takes its port
+    exclusively: there SO_REUSEADDR, which HTTPServer sets, binds a port
+    another socket is already listening on, so the fallback to the next
+    port never ran and the redirect could reach the other listener.
+    Elsewhere SO_REUSEADDR stays; it only lets a new sign-in bind over the
+    last one's closed connections."""
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32":
+            self.allow_reuse_address = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class CredentialScopeError(ValueError):
@@ -325,7 +341,7 @@ class OAuthFlow:
 
     def _bind_callback_server(
         self, *, expected_state: str
-    ) -> tuple[HTTPServer, list[str], list[str], int]:
+    ) -> tuple[_CallbackServer, list[str], list[str], int]:
         auth_code: list[str] = []
         oauth_error: list[str] = []
 
@@ -350,10 +366,16 @@ class OAuthFlow:
                 if parsed.path != "/callback":
                     self.send_response(404)
                     message = b"Not found"
-                elif not secrets.compare_digest(state, expected_state):
-                    oauth_error.append("OAuth callback state did not match")
+                elif not secrets.compare_digest(state.encode(), expected_state.encode()):
+                    # Not this sign-in's redirect: a tab left from an earlier
+                    # attempt, or any page the browser loaded requesting this
+                    # URL. Refused, and the wait goes on, so neither can end
+                    # the sign-in.
                     self.send_response(400)
-                    message = b"Authentication failed: invalid state."
+                    message = (
+                        b"This sign-in link is not from the current attempt. "
+                        b"Finish signing in from the newest browser tab."
+                    )
                 elif "error" in params:
                     oauth_error.append(params["error"][0])
                     self.send_response(400)
@@ -375,7 +397,7 @@ class OAuthFlow:
         first_port = self.config.oauth_redirect_port
         for port in range(first_port, first_port + 12):
             try:
-                server = HTTPServer(("127.0.0.1", port), CallbackHandler)
+                server = _CallbackServer(("127.0.0.1", port), CallbackHandler)
                 return server, auth_code, oauth_error, port
             except OSError:
                 continue
@@ -383,7 +405,7 @@ class OAuthFlow:
 
     @staticmethod
     def _wait_for_callback(
-        server: HTTPServer,
+        server: _CallbackServer,
         auth_code: list[str],
         oauth_error: list[str],
         *,
