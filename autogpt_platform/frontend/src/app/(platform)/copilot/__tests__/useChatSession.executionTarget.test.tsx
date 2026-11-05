@@ -300,7 +300,9 @@ describe("useChatSession execution target", () => {
     };
 
     const session = renderChatSession(selected);
+    useCopilotUIStore.getState().setNewChatExecutionTarget(selected);
     const before = useCopilotUIStore.getState().newChatExecutionTarget;
+    expect(before).toEqual(selected);
     await act(async () => {
       await expect(session.result.current.createSession()).rejects.toThrow();
     });

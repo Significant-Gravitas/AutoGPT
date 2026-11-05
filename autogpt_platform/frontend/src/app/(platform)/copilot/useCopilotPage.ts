@@ -169,10 +169,7 @@ function useCopilotPageSession() {
     sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
-    executionTarget:
-      isLocalPCEnabled || newChatExecutionTarget.kind === "local"
-        ? newChatExecutionTarget
-        : undefined,
+    executionTarget: isLocalPCEnabled ? newChatExecutionTarget : undefined,
     expertId,
     adoptLatestExpertThread: !newThreadParam,
   });
