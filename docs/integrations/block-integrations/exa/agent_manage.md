@@ -53,7 +53,7 @@ Permanently delete a stored Exa Agent run and its output. It can no longer be fe
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls `DELETE /agent/runs/{id}` to permanently remove a stored run and its output, and returns the run ID with `deleted` true when Exa confirms. A deleted run can no longer be fetched or used as a previous run ID for a follow-up. Deleting cannot be undone.
+This block calls `DELETE /agent/runs/{id}` to permanently remove a stored run and its output, and returns the run ID with `deleted` true once Exa accepts the delete, including an empty 204 response; only an explicit `deleted: false` from Exa reports false. A failed delete fails the block, and the delete is sent once, never retried. A deleted run can no longer be fetched or used as a previous run ID for a follow-up. Deleting cannot be undone.
 <!-- END MANUAL -->
 
 ### Inputs

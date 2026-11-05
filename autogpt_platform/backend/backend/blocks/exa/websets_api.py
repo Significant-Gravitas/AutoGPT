@@ -61,19 +61,27 @@ class ExaWebsetsBlockBase(Block):
         webset_id: str,
         timeout: float,
         poll_interval: float = 5,
+        max_interval: float = 30,
     ) -> ApiWebset:
-        """Poll a webset until it is idle; raise ``TimeoutError`` past ``timeout``."""
+        """Poll a webset until it is idle; raise ``TimeoutError`` past ``timeout``.
+
+        The gap between checks starts at ``poll_interval`` and grows by half
+        each time up to ``max_interval``, and never runs past the deadline.
+        """
         deadline = monotonic() + timeout
+        interval = poll_interval
         while True:
             webset = await self._get_webset(credentials, webset_id)
             if webset.status == "idle":
                 return webset
-            if monotonic() >= deadline:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
                 raise TimeoutError(
                     f"Webset {webset_id} was still '{webset.status}' after "
                     f"{timeout:g} seconds."
                 )
-            await sleep(poll_interval)
+            await sleep(min(interval, remaining))
+            interval = min(interval * 1.5, max(max_interval, poll_interval))
 
 
 def query_params(params: dict[str, Any] | None) -> QueryParams:

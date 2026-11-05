@@ -24,9 +24,11 @@ def test_path_segment_keeps_ids_inside_one_segment():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method, attempts",
-    [("GET", 3), ("DELETE", 3), ("POST", 1), ("PATCH", 1)],
+    [("GET", 3), ("HEAD", 3), ("DELETE", 1), ("POST", 1), ("PATCH", 1)],
 )
-async def test_writes_are_sent_once_and_the_key_never_leaves_exa(method, attempts):
+async def test_writes_and_deletes_are_sent_once_and_the_key_never_leaves_exa(
+    method, attempts
+):
     response = MagicMock(ok=True, content=b"")
 
     async def request(*_, **__):

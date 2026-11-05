@@ -19,10 +19,12 @@ WEBSETS_API_BASE = "https://api.exa.ai/websets/v0"
 QueryParams = list[tuple[str, str]]
 
 API_KEY_HEADER = "x-api-key"
-# Reads and deletes are safe to repeat; a retried POST or PATCH could create or
-# change a resource twice when Exa did it but answered with a retryable status.
-IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
-# Attempts for an idempotent request that Exa answers with 429 or a 5xx.
+# Only reads are retried. A retried POST or PATCH could create or change a
+# resource twice when Exa did it but answered with a retryable status, and a
+# retried DELETE that Exa already carried out answers 404, failing a delete
+# that succeeded.
+RETRIED_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# Attempts for a read that Exa answers with 429 or a 5xx.
 READ_RETRY_ATTEMPTS = 3
 
 
@@ -64,11 +66,11 @@ async def exa_request(
 
     Raises ``ExaApiError`` carrying Exa's own error message on any non-2xx
     response, so the block run fails with something the user can act on.
-    Idempotent requests are retried a bounded number of times on 429 and 5xx;
-    writes are sent once. The API key is dropped on a cross-origin redirect.
+    Reads are retried a bounded number of times on 429 and 5xx; writes and
+    deletes are sent once. The API key is dropped on a cross-origin redirect.
     """
     headers = {API_KEY_HEADER: credentials.api_key.get_secret_value()}
-    attempts = READ_RETRY_ATTEMPTS if method.upper() in IDEMPOTENT_METHODS else 1
+    attempts = READ_RETRY_ATTEMPTS if method.upper() in RETRIED_METHODS else 1
     response = await Requests(
         raise_for_status=False,
         retry_max_attempts=attempts,

@@ -143,6 +143,7 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
                     input_data.webset_id,
                     timeout=input_data.timeout,
                     poll_interval=input_data.check_interval,
+                    max_interval=input_data.max_interval,
                 )
                 timed_out = False
             else:

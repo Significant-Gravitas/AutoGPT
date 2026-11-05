@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks.exa import _exa_rest, agent_api
-from backend.blocks.exa._test import TEST_CREDENTIALS
+from backend.blocks.exa._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.exa.agent_api import AgentRunRequest, build_create_payload
 from backend.blocks.exa.agent_fixtures import (
     SAMPLE_COMPLETED_RUN,
@@ -14,6 +14,7 @@ from backend.blocks.exa.agent_fixtures import (
     SAMPLE_QUEUED_RUN,
     SAMPLE_RUN_ID,
 )
+from backend.blocks.exa.agent_manage import ExaDeleteAgentRunBlock
 from backend.blocks.exa.agent_models import AgentDataSource, AgentEffort, parse_run
 
 
@@ -296,3 +297,33 @@ class TestDescribeFailure:
                 TEST_CREDENTIALS, parse_run(SAMPLE_FAILED_RUN)
             )
         assert message == f"Exa Agent run {SAMPLE_RUN_ID} failed: stop reason 'error'"
+
+
+class TestDeleteAgentRunBlock:
+    @pytest.mark.parametrize(
+        "response, deleted",
+        [
+            ({}, True),  # 204 No Content: exa_request returns {}
+            ({"id": SAMPLE_RUN_ID, "deleted": True}, True),
+            ({"id": SAMPLE_RUN_ID, "deleted": False}, False),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_deleted_follows_the_2xx_unless_exa_says_otherwise(
+        self, response, deleted
+    ):
+        block = ExaDeleteAgentRunBlock()
+        with patch.object(block, "delete_run", AsyncMock(return_value=response)):
+            outputs = dict(
+                [
+                    output
+                    async for output in block.run(
+                        block.input_schema(
+                            credentials=TEST_CREDENTIALS_INPUT, run_id=SAMPLE_RUN_ID
+                        ),
+                        credentials=TEST_CREDENTIALS,
+                    )
+                ]
+            )
+
+        assert outputs == {"run_id": SAMPLE_RUN_ID, "deleted": deleted}

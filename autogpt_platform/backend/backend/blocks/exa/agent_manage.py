@@ -247,9 +247,12 @@ class ExaDeleteAgentRunBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         refuse_platform_credentials(self, credentials)
+        # exa_request raises on any non-2xx, so reaching here means Exa accepted
+        # the delete. A 204 has no body; only an explicit "deleted": false
+        # says otherwise.
         data = await self.delete_run(credentials, input_data.run_id)
-        yield "run_id", data.get("id", input_data.run_id)
-        yield "deleted", bool(data.get("deleted", False))
+        yield "run_id", data.get("id") or input_data.run_id
+        yield "deleted", data.get("deleted") is not False
 
 
 class ExaListAgentRunEventsBlock(Block):

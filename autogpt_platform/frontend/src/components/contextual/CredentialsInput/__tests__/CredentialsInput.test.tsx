@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   cleanup,
@@ -626,8 +627,20 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
       />,
     );
 
-    // Let the auto-select effect run before asserting it chose nothing.
-    await waitFor(() => expect(mockUseCredentials).toHaveBeenCalled());
+    // The hook has loaded this block's schema, and the provider's credentials
+    // have reached the component...
+    await waitFor(() =>
+      expect(
+        mockUseCredentials.mock.calls.some(
+          ([schema]) => schema?.refuses_platform_credentials === true,
+        ),
+      ).toBe(true),
+    );
+    // ...then flush every pending effect and task, so the auto-select effect
+    // has had its chance to run, before asserting it chose nothing.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
