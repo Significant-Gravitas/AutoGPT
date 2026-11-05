@@ -313,19 +313,21 @@ async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
     except (DriverUnavailable, McpError, TimeoutError) as exc:
         return CheckResult("WARN", "display", f"cua-driver could not read the screen: {exc}")
     structured = raw.get("structuredContent")
-    if raw.get("isError") or not isinstance(structured, dict) or "width" not in structured:
+    size = structured if isinstance(structured, dict) else {}
+    width, height, scale = size.get("width"), size.get("height"), size.get("scale_factor", 1)
+    if raw.get("isError") or not all(_is_number(value) for value in (width, height, scale)):
+        content = raw.get("content")
         text = " ".join(
             str(block.get("text") or "")
-            for block in raw.get("content") or []
+            for block in (content if isinstance(content, list) else [])
             if isinstance(block, dict)
         )
         return CheckResult("WARN", "display", f"cua-driver could not read the screen: {text}")
-    return CheckResult(
-        "OK",
-        "display",
-        f"{structured['width']:g}x{structured['height']:g} "
-        f"(scale {structured.get('scale_factor', 1):g})",
-    )
+    return CheckResult("OK", "display", f"{width:g}x{height:g} (scale {scale:g})")
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 async def _check_macos_permissions(bridge: CuaDriverBridge) -> list[CheckResult]:

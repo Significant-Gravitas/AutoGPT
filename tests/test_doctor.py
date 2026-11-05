@@ -249,6 +249,31 @@ def test_doctor_reports_a_driver_error_instead_of_crashing(
     assert lines["permissions"][0] == "FAIL"
 
 
+@pytest.mark.parametrize(
+    "screen",
+    [
+        '{"width": 1920}',
+        '{"width": "1920", "height": "1080"}',
+        '{"width": null, "height": 1080}',
+        '{"width": 1920, "height": 1080, "scale_factor": "2x"}',
+    ],
+    ids=["no-height", "strings", "null-width", "string-scale"],
+)
+async def test_doctor_warns_on_a_screen_size_it_cannot_read(
+    fake_log, monkeypatch: pytest.MonkeyPatch, screen: str
+) -> None:
+    """A size with a width and no height raised KeyError, and one that
+    isn't a number broke the format, so doctor ended in a traceback."""
+    monkeypatch.setenv("FAKE_CUA_SCREEN", screen)
+    bridge = fake_bridge()
+    try:
+        check = await doctor._check_screen(bridge)
+    finally:
+        await bridge.close()
+
+    assert (check.marker, check.label) == ("WARN", "display")
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 
