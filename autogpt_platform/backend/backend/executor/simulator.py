@@ -164,9 +164,10 @@ async def _call_llm_for_simulation(
 
     Handles client acquisition, retries on invalid JSON, logging, and platform
     cost tracking.  The dry-run simulator calls the platform route's own model
-    rather than a user's own API credentials, so every successful call is
-    recorded against the triggering ``user_id``'s rate-limit counter via
-    ``persist_and_record_usage`` (same rails as every copilot turn).
+    rather than a user's own API credentials, so the triggering ``user_id``'s
+    allowance is checked first and every response is recorded once, as it
+    arrives, against its rate-limit counter via ``persist_and_record_usage``
+    (same rails as every copilot turn).
 
     When *output_validator* is provided, parsed outputs that fail it are fed
     back to the LLM as a correction message and retried within the same
@@ -174,7 +175,8 @@ async def _call_llm_for_simulation(
     anyway (a structurally imperfect simulation beats failing the dry run).
 
     Raises:
-        RuntimeError: If the platform route has no API to simulate on.
+        RuntimeError: If the platform route has no API to simulate on, or the
+            user's allowance is used up.
         ValueError: If all retry attempts are exhausted without parseable JSON.
     """
     if refusal := await platform_spend_refusal(user_id):
@@ -265,26 +267,6 @@ async def _call_llm_for_simulation(
                 ]
                 continue
 
-            usage = response.usage
-            if usage is not None:
-                logger.debug(
-                    "simulate(%s): attempt=%d tokens=%d/%d",
-                    label,
-                    attempt + 1,
-                    usage.prompt_tokens,
-                    usage.completion_tokens,
-                )
-            else:
-                logger.debug(
-                    "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
-                )
-
-            await _track_simulator_cost(
-                usage=usage,
-                user_id=user_id,
-                model=model,
-                provider=chat_cfg.aux_provider_label,
-            )
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:

@@ -840,6 +840,8 @@ class TestSimulatorCostTracking:
         assert create_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
         assert create_kwargs["extra_body"] == {"usage": {"include": True}}
 
+        # One response, one record: a usable response is not charged again.
+        mock_track.assert_awaited_once()
         track_kwargs = mock_track.await_args.kwargs
         # The platform route's label: this class runs on OpenRouter.
         assert track_kwargs["provider"] == "open_router"

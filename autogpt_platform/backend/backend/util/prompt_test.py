@@ -749,6 +749,34 @@ class TestCompressContext:
         assert result.messages_summarized == 0
 
     @pytest.mark.asyncio
+    async def test_the_current_messages_image_stays_an_image(self):
+        """An LLM block sends the provider what compression returns, so the
+        last message keeps its parts: the image stays an image, and only its
+        text is shortened."""
+        image = {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="},
+        }
+        request = "describe this picture in detail " * 1500
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "x" * 20000},
+            {"role": "assistant", "content": "Response"},
+            {"role": "user", "content": [{"type": "text", "text": request}, image]},
+        ]
+
+        result = await compress_context(
+            messages, target_tokens=1000, client=None, reserve=100
+        )
+
+        assert result.was_compacted is True
+        last = result.messages[-1]
+        assert isinstance(last["content"], list)
+        assert image in last["content"]
+        [text] = [part["text"] for part in last["content"] if part["type"] == "text"]
+        assert len(text) < len(request)
+
+    @pytest.mark.asyncio
     async def test_final_tool_trim_updates_token_count(self):
         """Keep incremental accounting accurate when Step 5 trims a tool result."""
         enc = encoding_for_model("gpt-4o")

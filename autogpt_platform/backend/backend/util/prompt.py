@@ -1256,7 +1256,12 @@ async def compress_context(
             protected.add(id(m))
 
     # ---- 2. structured content of non-tool messages becomes text -------------
-    for m in msgs:
+    # Except the first and the last message: a system prompt in parts, or the
+    # current request's images, go to the provider as they came. Truncation
+    # still shortens their text parts.
+    for i, m in enumerate(msgs):
+        if i == 0 or i == len(msgs) - 1:
+            continue
         c = m.get("content")
         if c is not None and not isinstance(c, str) and not _is_tool_message(m):
             m["content"] = json.dumps(c, separators=(",", ":"))
