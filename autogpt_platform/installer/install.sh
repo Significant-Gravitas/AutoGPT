@@ -375,7 +375,7 @@ check_chat_settings() {
 	step 'Checking the AutoPilot chat settings'
 	docker run --rm --network none --env-file "$ENV_FILE" --entrypoint /bin/sh "$IMAGE_DIGEST" -c '
 		[ -f /app/autogpt_platform/backend/backend/copilot/chat_env.py ] || exit 0
-		CHAT_PLATFORM_ROUTE="${CHAT_PLATFORM_ROUTE:-disabled}" exec python3 \
+		exec python3 \
 			/opt/autogpt/single-container/runtime_config.py check-chat-env \
 			--backend-env /app/autogpt_platform/backend/.env' ||
 		die "Update the chat settings named above in ${ENV_FILE}, then re-run the installer. See docs/platform/single-container.md."

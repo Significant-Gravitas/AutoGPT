@@ -353,9 +353,10 @@ process toggle in this distribution. Graphiti memory is enabled by the image's
 default feature configuration.
 
 The image does not include model-provider credentials. This does not block
-startup, authentication, Builder, or provider-free blocks. Without a chat
-route the image runs connection-only (`CHAT_PLATFORM_ROUTE=disabled`, the
-default): users chat over the accounts they connect, and the platform runs
+startup, authentication, Builder, or provider-free blocks. With no chat
+settings the image runs connection-only (`CHAT_PLATFORM_ROUTE=disabled`, which
+the release installer writes into a new configuration): users chat over the
+accounts they connect, and the platform runs
 no chat model of its own. Configure one of the following profiles for the
 platform's own AutoPilot and memory extraction; until then,
 provider-backed requests return the same missing-credential errors as other
