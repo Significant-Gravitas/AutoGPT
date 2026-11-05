@@ -1583,6 +1583,28 @@ def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path)
     assert rotated.exists()
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        # math.isfinite raises OverflowError for an int past a float's range.
+        '{"seq": 1, "ts": ' + "9" * 400 + "}",
+        # json.loads raises RecursionError for a line nested this deep.
+        "[" * 100_000 + "]" * 100_000,
+    ],
+)
+def test_prune_keeps_a_log_it_cannot_judge_without_a_traceback(
+    tmp_path: Path, line: str
+) -> None:
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20200101-000000"
+    rotated.write_text(line + "\n")
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert rotated.exists()
+
+
 @_posix_only
 @pytest.mark.asyncio
 async def test_an_existing_log_is_made_owner_only(tmp_path: Path) -> None:

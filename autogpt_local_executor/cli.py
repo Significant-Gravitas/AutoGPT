@@ -1021,7 +1021,6 @@ def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
     past any fixed window (an EXECUTE_COMMAND with a long command, say), so
     every line is read whole."""
     import json
-    import math
 
     try:
         newest_ts: float | None = None
@@ -1037,16 +1036,27 @@ def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
                     return None
                 # The writer writes a finite number. float() would turn
                 # -Infinity, as a JSON token or a string, into a time older
-                # than any cutoff, and delete the file.
-                if not isinstance(ts, int | float) or isinstance(ts, bool) or not math.isfinite(ts):
+                # than any cutoff, and delete the file; an integer past a
+                # float's range raises OverflowError instead.
+                if not isinstance(ts, int | float) or isinstance(ts, bool) or not _finite(ts):
                     print(f"Kept {path.name}: a record in it has a timestamp that isn't a time.")
                     return None
                 newest_ts = float(ts) if newest_ts is None else max(newest_ts, float(ts))
         if newest_ts is None:
             return None
         return (info.st_dev, info.st_ino, info.st_size), newest_ts
-    except (OSError, TypeError, ValueError):
+    except (OSError, TypeError, ValueError, RecursionError):
+        # RecursionError: a line nested past Python's limit, read as unreadable.
         return None
+
+
+def _finite(number: int | float) -> bool:
+    import math
+
+    try:
+        return math.isfinite(number)
+    except OverflowError:
+        return False
 
 
 def _parse_duration(s: str) -> float | None:
