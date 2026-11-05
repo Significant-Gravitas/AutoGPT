@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fireEvent,
   render,
@@ -10,7 +10,27 @@ import { IntroStep } from "../IntroStep";
 import { INTRO_SLIDES } from "../helpers";
 import { TEAM } from "../components/teamSceneHelpers";
 
-beforeEach(() => useOnboardingWizardStore.getState().reset());
+const motionPreference = vi.hoisted(() => ({ reduced: false }));
+
+vi.mock("framer-motion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("framer-motion")>()),
+  useReducedMotion: () => motionPreference.reduced,
+}));
+
+beforeEach(() => {
+  motionPreference.reduced = false;
+  useOnboardingWizardStore.getState().reset();
+});
+
+function membersWaitingToEnter() {
+  const team = screen.getByRole("list", { name: "Your team" });
+  return within(team)
+    .getAllByRole("listitem")
+    .filter((member) => {
+      const entrance = member.firstElementChild as HTMLElement;
+      return entrance.style.opacity === "0";
+    });
+}
 
 describe("IntroStep", () => {
   it("welcomes the user on the team slide and moves on to Otto", () => {
@@ -48,6 +68,17 @@ describe("IntroStep", () => {
     expect(within(team).getByText("Marketing")).toBeDefined();
     expect(within(team).getByText("Devon")).toBeDefined();
     expect(within(team).getByText("Security")).toBeDefined();
+  });
+
+  it("brings the team in with an entrance animation", () => {
+    render(<IntroStep slide="team" />);
+    expect(membersWaitingToEnter()).toHaveLength(TEAM.length);
+  });
+
+  it("shows the finished team at once for people who ask for reduced motion", () => {
+    motionPreference.reduced = true;
+    render(<IntroStep slide="team" />);
+    expect(membersWaitingToEnter()).toHaveLength(0);
   });
 
   it("shows the team without invented task states", () => {

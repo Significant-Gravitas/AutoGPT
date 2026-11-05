@@ -2,7 +2,7 @@
 // screen's width, while every vertical position is in pixels: names and roles
 // are text at a fixed size, so the rows keep the room their labels need on a
 // phone instead of shrinking with the drawing.
-export const STAGE_WIDTH = 600;
+const STAGE_WIDTH = 600;
 
 // A name over a role, from the top of the label to its last line.
 export const LABEL_GAP = 6;

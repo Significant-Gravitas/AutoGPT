@@ -15,7 +15,7 @@ export function TeamScene() {
       {TEAM_PARENTS.map((parent) => (
         <TeamBranch key={parent.asset} parent={parent} animate={animate} />
       ))}
-      <ul aria-label="Your team" className="absolute inset-0">
+      <ul role="list" aria-label="Your team" className="absolute inset-0">
         {TEAM.map((member) => (
           <TeamNode key={member.asset} member={member} animate={animate} />
         ))}
