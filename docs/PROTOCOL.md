@@ -621,7 +621,9 @@ An entry's `size_bytes` and `mtime` are its own (an `lstat`). For a symlink,
 `is_file` and `is_dir` describe its target only when the target is inside
 the allowed root; for one outside, missing or unreadable, both are false,
 so a listing never says whether a path outside the root exists. A recursive
-listing never enters a symlink or a Windows junction.
+listing never enters a symlink or a Windows junction. An entry whose name
+isn't valid UTF-8 (possible on Linux) is left out: JSON can't carry it, and
+no request could name it.
 
 `truncated` is true only when something was left out: a match past
 `max_entries` (which is capped at 10,000), a match that would take the

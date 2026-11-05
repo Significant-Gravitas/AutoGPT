@@ -220,6 +220,15 @@ def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
 
 
+def _sendable(text: str) -> bool:
+    """Whether `text` can go on the wire: JSON is UTF-8."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _jailed_link_target_mode(link: Path, allowed_root: str | os.PathLike[str]) -> int | None:
     """The mode of what `link` points to, when that's inside the jail; None
     for a target outside it, a missing one, or one that can't be stat'ed."""
@@ -1172,6 +1181,11 @@ class FileHandler:
                 if hidden and not payload.include_hidden:
                     continue
                 if not _matches(p.name):
+                    continue
+                if not _sendable(str(p)):
+                    # A POSIX name whose bytes aren't UTF-8 decodes to lone
+                    # surrogates, which JSON can't carry; no request could
+                    # name the file either.
                     continue
                 if len(entries) >= limit:
                     truncated = True

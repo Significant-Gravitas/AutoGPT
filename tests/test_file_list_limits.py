@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -268,3 +269,19 @@ async def test_a_link_into_a_folder_that_cannot_be_searched_is_listed(tmp_path: 
     kinds = {e.name: (e.is_file, e.is_dir, e.is_symlink) for e in response.payload.entries}
     assert kinds["link"] == (False, False, True)
     assert kinds["plain.txt"] == (True, False, False)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="a name that isn't UTF-8 needs Linux")
+@pytest.mark.asyncio
+async def test_a_name_that_is_not_utf8_is_left_out_of_the_listing(tmp_path: Path) -> None:
+    """A POSIX name whose bytes aren't UTF-8 decodes to lone surrogates,
+    which JSON can't carry, so model_dump_json raised and the whole
+    FILE_LIST failed. The platform couldn't name that file anyway."""
+    with open(os.path.join(os.fsencode(tmp_path), b"bad-\xff.txt"), "w"):
+        pass
+    (tmp_path / "good.txt").write_text("")
+
+    response = await _listing(tmp_path)
+
+    assert [entry.name for entry in response.payload.entries] == ["good.txt"]
+    dump_message(response)  # the reply can be sent
