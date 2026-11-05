@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,9 +27,13 @@ from backend.copilot.sdk.local_pc_file_tools import (
     stat_via_shim,
 )
 from backend.copilot.tool_image import MAX_IMAGE_BYTES
+from backend.copilot.tools.local_pc_machine import MachineNotConnectedError
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
+    OpUnconfirmedError,
     ShimHello,
+    ShimOverloadedError,
+    ShimProtocolError,
     _CommandsProxy,
     _FilesProxy,
 )
@@ -343,6 +348,36 @@ class TestLocalPCGlob:
         text = _text(result)
         assert text.startswith('[\n  "/Users/test/ws/a.py"\n]')
         assert ("more matches exist" in text) is truncated
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ShimOverloadedError("The computer is busy"),
+            ShimProtocolError("The reply did not match the request"),
+            OpUnconfirmedError("FILE_LIST", "w1"),
+            MachineNotConnectedError("MACHINE_NOT_CONNECTED", "The computer left"),
+        ],
+        ids=["overloaded", "protocol", "unconfirmed", "disconnected"],
+    )
+    async def test_a_failed_listing_is_a_tool_error(
+        self, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ):
+        """A busy, broken or lost connection is a glob error like any other
+        file tool's, not an exception out of the tool."""
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(side_effect=error)
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_glob({"pattern": "*.py"})
+
+        assert result["isError"] is True
+        assert json.loads(_text(result)) == {
+            "error": f"Glob failed: {error}",
+            "type": "error",
+        }
 
 
 def _contents(data: bytes) -> dict:

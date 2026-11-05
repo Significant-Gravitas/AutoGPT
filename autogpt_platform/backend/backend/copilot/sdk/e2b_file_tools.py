@@ -811,7 +811,7 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
                 recursive=True,
                 max_entries=_GLOB_MAX_ENTRIES,
             )
-        except OSError as exc:
+        except Exception as exc:
             return _mcp(f"Glob failed: {exc}", error=True)
         files = [e.get("path", "") for e in resp.get("entries", []) if e.get("is_file")]
         text = json.dumps(files, indent=2)
