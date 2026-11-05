@@ -1,5 +1,6 @@
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
+import { useAutopilotModeStore } from "../../autopilotModeStore";
 import { useExpertMap } from "../../useExpertMap";
 import type { RecipientOption } from "../ChatInput/components/RecipientChip";
 
@@ -16,7 +17,7 @@ export function useRecipientPicker() {
     activeExpertIds,
     hasExpertsSettled,
     hasExpertsLoaded,
-    hasExpertsErrored,
+    isExpertsError,
   } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
@@ -56,7 +57,7 @@ export function useRecipientPicker() {
     /** Fired experts too: who a started task's chat is with. */
     expertsById,
     isRosterLoaded: hasExpertsLoaded,
-    hasRosterFailed: hasExpertsErrored,
+    hasRosterFailed: isExpertsError,
     recipient:
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,
@@ -68,6 +69,12 @@ export function useRecipientPicker() {
     // against.
     isLoadingRecipient: !hasExpertsSettled && !!expertIdParam,
     selectRecipient(id: string | null) {
+      // A mode picked for one recipient must not reach another's new chat.
+      // Cleared now: a task sent on the switch reads it before
+      // useChatSession's own clear runs.
+      if (id !== expertIdParam) {
+        useAutopilotModeStore.getState().clearNewChatChoice();
+      }
       void setExpertIdParam(id);
     },
   };

@@ -1069,7 +1069,7 @@ async def _hire_expert_impl(
             expert = await _reload_expert(expert)
     elif state == "revived":
         _emit_expert_hired(user_id, expert, template.id, 0, surface, via)
-    return HireResult(expert=_to_model(expert))
+    return HireResult.of(_to_model(expert), joined=state != "existing")
 
 
 def _schedule_expert_memory(user_id: str, expert_id: str) -> None:

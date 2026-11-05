@@ -22,7 +22,8 @@ interface Pending {
 // composer's recipient becomes the owner (the ?expertId= param), and the
 // task goes out once the page has picked that up and can send, so the chat
 // is created for the owner. `restore` puts back the recipient the user had
-// when a task does not start after all.
+// when a task does not start after all, unless they have since picked
+// someone else.
 export function useTaskRecipient({
   recipientID,
   selectRecipient,
@@ -30,6 +31,13 @@ export function useTaskRecipient({
 }: Args) {
   const pending = useRef<Pending | null>(null);
   const previous = useRef<string | null>(null);
+  const target = useRef<string | null>(null);
+  // `restore` runs from a promise or a timer with an older render's closure.
+  const live = useRef(recipientID);
+
+  useEffect(() => {
+    live.current = recipientID;
+  }, [recipientID]);
 
   useEffect(() => {
     const next = pending.current;
@@ -47,6 +55,7 @@ export function useTaskRecipient({
 
   function sendTo(id: string | null, send: () => void, onGiveUp: () => void) {
     previous.current = recipientID;
+    target.current = id;
     if (id === recipientID && canSend) {
       send();
       return;
@@ -62,7 +71,8 @@ export function useTaskRecipient({
   }
 
   function restore() {
-    if (previous.current !== recipientID) selectRecipient(previous.current);
+    if (live.current !== target.current) return;
+    if (live.current !== previous.current) selectRecipient(previous.current);
   }
 
   return { sendTo, restore };

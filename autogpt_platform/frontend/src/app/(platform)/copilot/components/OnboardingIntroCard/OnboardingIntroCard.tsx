@@ -63,6 +63,8 @@ export function OnboardingIntroCard({
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
+  const hasTasks = suggestions.tasks.length > 0;
+  const isListHeld = hasTasks && !suggestions.isRosterLoaded;
   const { toast } = useToast();
 
   async function handleCopyTranscript() {
@@ -162,7 +164,7 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
-      {suggestions.tasks.length > 0 && (
+      {hasTasks && (
         <motion.div {...reveal(promptsStart)} className="mt-5">
           <SuggestedTasksBlock
             suggestions={suggestions}
@@ -173,11 +175,12 @@ export function OnboardingIntroCard({
         </motion.div>
       )}
 
-      {/* Folded away with the list: the composer below says the same. */}
-      {suggestions.tasks.length > 0 && collapse.isCollapsed ? null : (
+      {/* Folded away with the list, and held back with it while the team
+          can't be read: it would point at a list that isn't there. */}
+      {(hasTasks && collapse.isCollapsed) || isListHeld ? null : (
         <motion.div {...reveal(footerStart)}>
           <Text variant="body" tone="muted" className="mt-5">
-            {suggestions.tasks.length > 0
+            {hasTasks
               ? "Want to do something else? Just write it in the textbox below."
               : "Tell me what you'd like to start with in the textbox below."}
           </Text>

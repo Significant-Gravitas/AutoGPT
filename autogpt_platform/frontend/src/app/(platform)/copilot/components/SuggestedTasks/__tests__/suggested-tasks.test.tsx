@@ -25,6 +25,10 @@ import { http, HttpResponse } from "msw";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmptySession } from "../../EmptySession/EmptySession";
+import {
+  getAutopilotModeChoice,
+  useAutopilotModeStore,
+} from "../../../autopilotModeStore";
 
 const capture = vi.hoisted(() => vi.fn());
 vi.mock("posthog-js", () => ({ default: { capture } }));
@@ -447,6 +451,51 @@ describe("Suggested first tasks on Home — who takes each task", () => {
   });
 });
 
+describe("Suggested first tasks on Home — the approval mode", () => {
+  afterEach(() => {
+    useAutopilotModeStore.setState({ choices: {} });
+  });
+
+  function recordModeOnStart() {
+    const modes: (string | undefined)[] = [];
+    const onStartTask = vi.fn(async () => {
+      modes.push(getAutopilotModeChoice(null));
+      return "session-1";
+    });
+    return { modes, onStartTask };
+  }
+
+  it("does not carry a mode picked for Otto into the chat a task starts with Maria", async () => {
+    useAutopilotModeStore.getState().choose(null, "unsupervised");
+    const { modes, onStartTask } = recordModeOnStart();
+    renderHome({ onStartTask });
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: startName("Maria", TASKS[0]),
+      }),
+    );
+
+    await waitFor(() => expect(onStartTask).toHaveBeenCalledOnce());
+    expect(modes).toEqual([undefined]);
+  });
+
+  it("keeps a mode picked for Otto for one of Otto's own tasks", async () => {
+    useAutopilotModeStore.getState().choose(null, "unsupervised");
+    const { modes, onStartTask } = recordModeOnStart();
+    renderHome({ onStartTask });
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: startName("Otto", TASKS[1]),
+      }),
+    );
+
+    await waitFor(() => expect(onStartTask).toHaveBeenCalledOnce());
+    expect(modes).toEqual(["unsupervised"]);
+  });
+});
+
 describe("Suggested first tasks on Home — the rows", () => {
   it("marks only the first open row Start here, and moves it to the next open row once that one is started", async () => {
     renderHome();
@@ -855,6 +904,46 @@ describe("Suggested first tasks on Home — when to show them", () => {
     expect(within(block).getAllByTestId("suggested-task")).toHaveLength(3);
     expect(screen.queryByRole("list", { name: "Your team" })).toBeNull();
   });
+
+  it("holds the list while the team can't be read, rather than giving Maria's task to Otto", async () => {
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json({ detail: "down" }, { status: 500 }),
+      ),
+    );
+    // Addressed to Maria, so the recipient chip says when the read is over.
+    renderHome({ searchParams: "?expertId=expert-maria" });
+
+    await settleList();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("status", { name: "Loading recipient" }),
+      ).toBeNull(),
+    );
+
+    expect(
+      screen.queryByRole("region", { name: "Suggested first tasks" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: startName("Otto", TASKS[0]) }),
+    ).toBeNull();
+  });
+
+  it("still offers the tasks while the team can't be read when none names an expert", async () => {
+    stored = TASKS.map((task) => ({ ...task, expert_id: null }));
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json({ detail: "down" }, { status: 500 }),
+      ),
+    );
+    renderHome();
+
+    const block = await findBlock();
+
+    expect(
+      within(block).getByRole("button", { name: startName("Otto", TASKS[0]) }),
+    ).toBeDefined();
+  });
 });
 
 describe("Suggested first tasks — the greeting page", () => {
@@ -916,6 +1005,26 @@ describe("Suggested first tasks — the greeting page", () => {
       screen.getByRole("textbox", { name: "Chat message input" }),
     ).toBeDefined();
     expect(events("home_suggestions_collapsed")).toEqual([{ open: 3 }]);
+  });
+
+  it("doesn't point at a list it is holding while the team can't be read", async () => {
+    let teamReads = 0;
+    withGreeting();
+    server.use(
+      http.get("*/api/experts/identities", () => {
+        teamReads += 1;
+        return HttpResponse.json({ detail: "down" }, { status: 500 });
+      }),
+    );
+    renderHome();
+
+    const card = await screen.findByTestId("onboarding-intro-card");
+    await settleList();
+    await waitFor(() => expect(teamReads).toBeGreaterThan(0));
+    await act(async () => {});
+
+    expect(screen.queryByRole("list", { name: "Your first tasks" })).toBeNull();
+    expect(within(card).queryByText(SOMETHING_ELSE)).toBeNull();
   });
 
   it("sends the full prompt and records which chat it started", async () => {

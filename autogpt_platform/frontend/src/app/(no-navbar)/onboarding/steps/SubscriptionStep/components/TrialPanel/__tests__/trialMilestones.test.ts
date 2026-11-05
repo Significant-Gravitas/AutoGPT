@@ -1,6 +1,6 @@
 import { trialOffer } from "@/tests/integrations/trial-fixtures";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { formatAllowance, formatDay, getTrialMilestones } from "../helpers";
+import { formatDay, getTrialMilestones } from "../helpers";
 
 const NOW = new Date("2026-10-23T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -62,44 +62,17 @@ describe("getTrialMilestones", () => {
 });
 
 describe("the trial's first two rows", () => {
-  test("names the usage allowance included with the trial", () => {
-    const [today] = getTrialMilestones(
+  test("never prices the trial's allowance from the onboarding credit", () => {
+    for (const offer of [
+      trialOffer,
       { ...trialOffer, onboarding_credit_amount: 2000 },
-      NOW,
-    );
-
-    expect(today.detail).toBe(
-      "Full access from right now, with $20 of usage included.",
-    );
-  });
-
-  test("falls back to a plain allowance line when there is none", () => {
-    for (const amount of [0, -5]) {
-      const [today] = getTrialMilestones(
-        { ...trialOffer, onboarding_credit_amount: amount },
-        NOW,
-      );
+      { ...trialOffer, currency: "jpy", onboarding_credit_amount: 3000 },
+    ]) {
+      const [today] = getTrialMilestones(offer, NOW);
       expect(today.detail).toBe(
         "Full access from right now, within a trial usage allowance.",
       );
     }
-  });
-
-  test("formats the allowance in the offer's own currency", () => {
-    expect(
-      formatAllowance({
-        ...trialOffer,
-        currency: "eur",
-        onboarding_credit_amount: 550,
-      }),
-    ).toBe("€5.50");
-    expect(
-      formatAllowance({
-        ...trialOffer,
-        currency: "jpy",
-        onboarding_credit_amount: 3000,
-      }),
-    ).toBe("¥3,000");
   });
 
   test("says what the reminder email actually carries", () => {

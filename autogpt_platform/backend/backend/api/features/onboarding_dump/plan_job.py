@@ -66,7 +66,7 @@ async def _store(
         dump = await db.get_dump(user_id)
         if dump is None or dump.recordingId != recording_id:
             return
-        prompts = _rankable_prompts(dump.suggestedPrompts)
+        prompts = rankable_prompts(dump.suggestedPrompts)
         team = stored_team(dump.recommendedExperts)
         if not prompts or team is None:
             return
@@ -126,7 +126,7 @@ def _rows(prompts: list[SuggestedPrompt], order: list[int]) -> list[dict[str, An
     ]
 
 
-def _rankable_prompts(raw: object) -> list[SuggestedPrompt]:
+def rankable_prompts(raw: object) -> list[SuggestedPrompt]:
     """The greeting's prompts as written, or nothing when they are not.
 
     Rows that already carry a state have been worked on, so the job leaves

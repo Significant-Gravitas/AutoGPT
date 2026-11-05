@@ -4,10 +4,11 @@ Everything below the router (Prisma, Redis, cloud storage, OpenAI) is
 mocked at the point of use, so these run without a live stack.
 """
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
@@ -23,6 +24,7 @@ from backend.api.features.experts.models import Expert, HireResult
 from backend.api.features.onboarding_dump import (
     intro,
     plan,
+    plan_hire,
     plan_service,
     quality,
     recommend_experts,
@@ -45,6 +47,7 @@ from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
 from backend.util.exceptions import ExpertLimitExceededError
 from backend.util.gcs_utils_test import _gcs_http_error
+from backend.util.posthog_events import PostHogEvent
 
 app = fastapi.FastAPI()
 app.include_router(routes.router)
@@ -403,7 +406,7 @@ def quality_gate(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.fixture(autouse=True)
-def reads(mocker: MockerFixture) -> dict[str, AsyncMock]:
+def reads(mocker: MockerFixture) -> Iterator[dict[str, AsyncMock]]:
     """The reads below the dump row, and the team job's model call, in memory.
 
     By default a user with no wizard answers, an empty roster and nobody
@@ -417,7 +420,8 @@ def reads(mocker: MockerFixture) -> dict[str, AsyncMock]:
     test that fails it fails it everywhere. ``service.wizard_answers`` is
     left real: it is the degrading wrapper around ``read_wizard_answers``.
     The team job looks ``generate_expert_recommendations`` up on its
-    module when it runs, so that is where it is replaced.
+    module when it runs, so that is where it is replaced. The plan's
+    cached roster is cleared on both sides, so no test reads another's.
     """
     templates = AsyncMock(return_value=[])
     mocks = {
@@ -439,7 +443,9 @@ def reads(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "generate_expert_recommendations",
         new=mocks["generate_expert_recommendations"],
     )
-    return mocks
+    plan_service._roster.cache_clear()
+    yield mocks
+    plan_service._roster.cache_clear()
 
 
 def upload_part(
@@ -974,10 +980,11 @@ def plan_world(
 
     async def hire(user_id, template_id, name, surface=None, via=None):
         # Like the real hire, a template already hired comes back as is.
-        if template_id not in hired:
+        joined = template_id not in hired
+        if joined:
             template = next(t for t in ROSTER if t.id == template_id)
             hired[template_id] = _hire(template_id, template.name)
-        return HireResult(expert=hired[template_id])
+        return HireResult.of(hired[template_id], joined=joined)
 
     reads["list_templates"].return_value = ROSTER
     reads["read_wizard_answers"].return_value = ("Founder/CEO", [])
@@ -985,6 +992,12 @@ def plan_world(
     hire_expert = AsyncMock(side_effect=hire)
     mocker.patch.object(experts_db, "hire_expert", new=hire_expert)
     return {**reads, "hire_expert": hire_expert}
+
+
+@pytest.fixture
+def hire_events(mocker: MockerFixture) -> MagicMock:
+    """What the plan hire sends to PostHog."""
+    return mocker.patch.object(plan_hire, "emit_funnel_event")
 
 
 @pytest.fixture
@@ -1141,8 +1154,46 @@ def test_hiring_the_plan_hires_its_team_once(
     assert plan_world["hire_expert"].await_count == 3
 
 
+def test_the_plan_hire_reports_who_joined_once(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    hire_events: MagicMock,
+    test_user_id: str,
+):
+    """A repeat of the hire, as a reload of the preparing screen sends,
+    changes nothing and reports nothing."""
+    finalize(input_mode="skipped")
+
+    client.post(PLAN_HIRE_URL)
+    client.post(PLAN_HIRE_URL)
+
+    hire_events.assert_called_once_with(
+        test_user_id,
+        PostHogEvent.PLAN_EXPERTS_HIRED,
+        {"hired": 3, "already_on_team": 0, "failed": 0},
+    )
+
+
+def test_a_repeat_hire_that_cannot_read_the_roster_reports_nobody_joined(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    hire_events: MagicMock,
+):
+    """With the roster unreadable the repeat asks for every hire again, and
+    each comes back as the expert already on the team: nobody new joined."""
+    finalize(input_mode="skipped")
+    client.post(PLAN_HIRE_URL)
+    plan_world["list_experts"].side_effect = RuntimeError("roster read failed")
+
+    response = client.post(PLAN_HIRE_URL)
+
+    assert response.status_code == 200
+    assert plan_world["hire_expert"].await_count == 6
+    hire_events.assert_called_once()
+
+
 def test_a_failed_hire_is_reported_and_the_rest_still_join(
-    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
 ):
     finalize(input_mode="skipped")
     succeed = plan_world["hire_expert"].side_effect
@@ -1164,6 +1215,11 @@ def test_a_failed_hire_is_reported_and_the_rest_still_join(
         ],
         "failed": [{"template_id": "tpl-max", "name": "Max"}],
     }
+    hire_events.assert_called_once_with(
+        ANY,
+        PostHogEvent.PLAN_EXPERTS_HIRED,
+        {"hired": 2, "already_on_team": 0, "failed": 1},
+    )
 
 
 def test_a_user_still_behind_the_paywall_hires_nobody(
@@ -1185,7 +1241,7 @@ def test_a_user_still_behind_the_paywall_hires_nobody(
 
 
 def test_a_plan_with_nobody_on_its_team_hires_nobody(
-    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
 ):
     # A catalog with no template for the role: the plan is all Otto's.
     plan_world["list_templates"].return_value = []
@@ -1197,6 +1253,7 @@ def test_a_plan_with_nobody_on_its_team_hires_nobody(
     assert response.status_code == 200
     assert response.json() == {"hired": [], "failed": []}
     plan_world["hire_expert"].assert_not_awaited()
+    hire_events.assert_not_called()
 
 
 def test_the_expert_limit_stops_the_hire_and_reports_the_rest(
@@ -1291,7 +1348,7 @@ def test_a_brain_dump_becomes_a_ranked_owned_plan_and_a_hired_team_on_home(
 
 
 def test_the_expert_limit_still_reports_teammates_already_on_the_team(
-    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
 ):
     finalize(input_mode="skipped")
     # Max cannot join; Maria, later in the team, is already on it.
@@ -1311,6 +1368,12 @@ def test_the_expert_limit_still_reports_teammates_already_on_the_team(
             {"template_id": "tpl-mina", "name": "Mina"},
         ],
     }
+    # Maria was on the team before this hire, so she is not counted as hired.
+    hire_events.assert_called_once_with(
+        ANY,
+        PostHogEvent.PLAN_EXPERTS_HIRED,
+        {"hired": 0, "already_on_team": 1, "failed": 2},
+    )
 
 
 def test_a_failed_take_plans_and_hires_from_the_role_not_the_team_it_stored(
@@ -1495,6 +1558,119 @@ def test_a_plan_the_step_gave_up_on_is_what_the_trial_hires_and_home_lists(
     ]
 
 
+async def _greeting_stored(dumps: DumpStore) -> None:
+    """Yield to the greeting job running beside the caller until it has
+    stored the greeting and its tasks."""
+    for _ in range(100):
+        if dumps.row is not None and dumps.row.greeting:
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("The greeting job never stored its tasks")
+
+
+def test_a_plan_settled_after_the_greeting_wrote_its_tasks_keeps_them(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    generation: dict[str, AsyncMock],
+    test_user_id: str,
+):
+    """The wait runs out once the greeting has stored its tasks but while the
+    team job is still choosing: the step shows those tasks and what Otto
+    heard, with the role team, and the team job's answer, arriving after,
+    changes neither the plan, nor who is hired, nor Home's list."""
+    written = [f"Task {i}" for i in range(5)]
+    generation["generate_intro"].return_value = (
+        HEARD_GREETING,
+        [SuggestedPrompt(title=title, prompt="Do it.") for title in written],
+    )
+    seen: dict[str, Any] = {}
+
+    async def team_after_the_greeting(*args: Any, **kwargs: Any):
+        await _greeting_stored(dumps)
+        seen["shown"] = (await plan_service.settle_plan(test_user_id)).model_dump(
+            mode="json"
+        )
+        return _llm_team(ROSTER[2])
+
+    plan_world["generate_expert_recommendations"].side_effect = team_after_the_greeting
+
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    shown = seen["shown"]
+    after = client.get(PLAN_URL).json()
+    hired = client.post(PLAN_HIRE_URL).json()
+    home = client.get(SUGGESTED_TASKS_URL).json()["tasks"]
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert shown["source"] == "llm"
+    assert shown["heard"] == plan_service.heard_from(HEARD_GREETING)
+    assert [t["title"] for t in shown["tasks"]] == written
+    assert [e["name"] for e in shown["team"]] == ["Max", "Maria", "Mina"]
+    assert (after["tasks"], after["team"], after["heard"]) == (
+        shown["tasks"],
+        shown["team"],
+        shown["heard"],
+    )
+    assert [h["name"] for h in hired["hired"]] == ["Max", "Maria", "Mina"]
+    assert [t["title"] for t in home] == written
+
+
+def test_settling_while_the_plan_job_ranks_keeps_the_greetings_tasks_and_team(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    assert dumps.row is not None
+    written = [f"Task {i}" for i in range(5)]
+    dumps.row.greeting = HEARD_GREETING
+    dumps.row.suggestedPrompts = [
+        SuggestedPrompt(title=title, prompt="Do it.").model_dump() for title in written
+    ]
+    dumps.row.recommendedExperts = _llm_team(ROSTER[2]).model_dump()
+
+    settled = client.post(PLAN_SETTLE_URL).json()
+    again = client.get(PLAN_URL).json()
+
+    for body in (settled, again):
+        assert body["ready"] is True
+        assert body["source"] == "llm"
+        assert body["heard"] == plan_service.heard_from(HEARD_GREETING)
+        assert [t["title"] for t in body["tasks"]] == written
+        assert [e["name"] for e in body["team"]] == ["Mina"]
+    assert dumps.row.status == BrainDumpStatus.extracting
+    assert dumps.row.recommendedExperts["source"] == "llm"
+
+
+def test_settling_on_the_generic_starters_settles_on_the_role_plan(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    assert dumps.row is not None
+    dumps.row.greeting = GREETING
+    dumps.row.suggestedPrompts = [p.model_dump() for p in intro.fallback_prompts()]
+
+    settled = client.post(PLAN_SETTLE_URL).json()
+
+    assert settled["source"] == "fallback"
+    assert settled["heard"] is None
+    assert [t["title"] for t in settled["tasks"]] == FOUNDER_TITLES
+
+
+def test_polls_while_the_pipeline_runs_read_the_roster_once(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock]
+):
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    plan_world["list_templates"].reset_mock()
+
+    bodies = [client.get(PLAN_URL).json() for _ in range(3)]
+
+    assert [body["ready"] for body in bodies] == [False, False, False]
+    assert bodies[2]["tasks"] == bodies[0]["tasks"]
+    assert plan_world["list_templates"].await_count == 1
+
+
 def test_hiring_while_the_jobs_run_settles_the_plan_first(
     dumps: DumpStore, plan_world: dict[str, AsyncMock]
 ):
@@ -1644,6 +1820,8 @@ def test_a_dump_whose_team_was_never_stored_fails_the_hire_rather_than_hire_nobo
     shown = lenient_client.get(PLAN_URL).json()
     assert [e["name"] for e in shown["team"]] == ["Max", "Maria", "Mina"]
     plan_world[failing_read].side_effect = RuntimeError("database unavailable")
+    # The roster that read cached has expired by the time of the hire.
+    plan_service._roster.cache_clear()
 
     response = lenient_client.post(PLAN_HIRE_URL)
 

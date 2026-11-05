@@ -36,7 +36,8 @@ interface Args {
   /** False until the roster has answered: before then a hired owner would
    *  read as gone and the task would go to Otto. */
   isRosterLoaded: boolean;
-  /** The roster could not be read: owners are unknown, not gone. */
+  /** The roster's last read failed, a retry included: owners are unknown,
+   *  not gone. */
   hasRosterFailed: boolean;
   /** The composer's recipient, and how to change it: a task goes to its
    *  owner the way the recipient picker sends to an expert. */
@@ -67,6 +68,11 @@ export function useSuggestedTasks({
     enabled,
   });
   const shownTasks = getShownTasks(tasks);
+  // A roster that can't be read can't name a task's expert either: while one
+  // is named, the list waits as it does for a roster that hasn't answered.
+  const canNameOwners =
+    isRosterLoaded &&
+    !(hasRosterFailed && shownTasks.some((task) => task.expert_id));
 
   // A task that did not start: the composer goes back to whoever it was
   // addressed to, and focus to the row, which is enabled again.
@@ -76,7 +82,7 @@ export function useSuggestedTasks({
   }
 
   function sendTask(task: SuggestedTask) {
-    if (sendingId || !isRosterLoaded) return;
+    if (sendingId || !canNameOwners) return;
     setSendingId(task.id);
     const owner = getTaskOwner(task, experts);
     trackFunnel("home_suggestion_clicked", {
@@ -193,8 +199,8 @@ export function useSuggestedTasks({
     (task: SuggestedTask, owner: TaskOwner) => void startChat(task, owner),
   );
 
-  // The latest render's too: its restore sees the recipient the switch
-  // landed on, which the click's render has not seen yet.
+  // The latest render's too: its restore goes through the selectRecipient
+  // that knows the current recipient, which the click's render does not.
   const giveUp = useStableCallback((task: SuggestedTask) => {
     setSendingId(null);
     giveBack(task);
@@ -212,7 +218,7 @@ export function useSuggestedTasks({
     tasks: shownTasks,
     experts,
     expertsById,
-    isRosterLoaded,
+    isRosterLoaded: canNameOwners,
     sendingId,
     sendTask,
     removeTask,

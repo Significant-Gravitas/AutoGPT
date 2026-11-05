@@ -69,7 +69,7 @@ describe("TrialPanel", () => {
     ).toBeDefined();
   });
 
-  test("starts the trial today with the usage it includes", () => {
+  test("starts the trial today within a usage allowance", () => {
     renderTrial();
 
     const rows = getRows();
@@ -79,16 +79,6 @@ describe("TrialPanel", () => {
     expect(within(today).getByText("Your free trial starts")).toBeDefined();
     expect(
       within(today).getByText(
-        "Full access from right now, with $20 of usage included.",
-      ),
-    ).toBeDefined();
-  });
-
-  test("falls back to a plain allowance line when no credit comes with it", () => {
-    renderTrial({ offer: { ...OFFER, onboarding_credit_amount: 0 } });
-
-    expect(
-      within(getRows()[0]).getByText(
         "Full access from right now, within a trial usage allowance.",
       ),
     ).toBeDefined();

@@ -101,17 +101,14 @@ export const BrainDumpEvent = {
 } as const;
 
 // The onboarding plan (SECRT-3201): the plan + trial step, where the team
-// and the first tasks are proposed, and the hire of that team once the trial
-// is confirmed. The hires themselves are the backend's `expert_hired`
-// (`via: plan`).
+// and the first tasks are proposed. The hire of that team once the trial is
+// confirmed is an outcome, so the backend sends it (`plan_experts_hired`,
+// and `expert_hired` with `via: plan`).
 export const PlanEvent = {
   // Once per mount of the plan step, when the plan first renders. `gave_up`
   // is true when the 30 s wait ran out before a plan was shown (the step then
   // settles the plan); `plan_source` says whose plan that was.
   PLAN_VIEWED: "plan_viewed",
-  // The preparing screen hired the plan's team: how many joined and how
-  // many could not.
-  PLAN_EXPERTS_HIRED: "plan_experts_hired",
 } as const;
 
 // The guided first run over the real UI (SECRT-3149), opened by itself after

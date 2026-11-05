@@ -1,6 +1,11 @@
 import {
+  type getBrainDumpSuggestedTasksResponse,
+  useGetBrainDumpSuggestedTasks,
+} from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import {
   getGetBrainDumpPlanMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import type { PlanHireResponse } from "@/app/api/__generated__/models/planHireResponse";
 import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
@@ -14,6 +19,9 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../store";
 import { usePreparingStep } from "../usePreparingStep";
+
+const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
+vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast }));
 
 const START_DELAY_MS = 300;
 const GENERIC_TOTAL_MS = 4_000;
@@ -32,10 +40,9 @@ const DUMP_CHECKLIST = [
   "Finding tools for your work",
 ];
 
-function makeWrapper() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+function makeWrapper(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return createElement(QueryClientProvider, { client }, children);
   };
@@ -68,6 +75,7 @@ async function advance(ms: number) {
 }
 
 beforeEach(() => {
+  toast.mockClear();
   window.sessionStorage.clear();
   useOnboardingWizardStore.setState({ userID: null });
   mockRecommendations(true);
@@ -274,6 +282,9 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
 
 const HIRE_URL = "*/api/onboarding/brain-dump/plan/hire";
 const HIRE_MAX_WAIT_MS = 15_000;
+const PLAN_WAIT_MS = 10_000;
+const PLAN_POLL_MS = 1_000;
+const HIRE_RETRY_MS = 2_000;
 
 function teamPlan(names: string[]): PlanResponse {
   return {
@@ -410,40 +421,192 @@ describe("usePreparingStep — hiring the plan's team", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("never blocks Home on a failed hire, and reports it", async () => {
-    const capture = vi.spyOn(posthog, "capture");
-    mockHire(() => HttpResponse.json({ detail: "boom" }, { status: 500 }));
+  it("never blocks Home on a hire that keeps failing, and says who did not join", async () => {
+    const hires = mockHire(() =>
+      HttpResponse.json({ detail: "boom" }, { status: 500 }),
+    );
     const onComplete = vi.fn();
     renderPreparing({ onComplete, canHire: true });
 
-    await advance(START_DELAY_MS);
-    await advance(GENERIC_TOTAL_MS + 200);
+    await advance(START_DELAY_MS + HIRE_MAX_WAIT_MS + 500);
 
     expect(onComplete).toHaveBeenCalledTimes(1);
-    expect(capture).toHaveBeenCalledWith("plan_experts_hired", {
-      hired: 0,
-      failed: 3,
-      via: "preparing",
-    });
+    expect(hires.count).toBeGreaterThan(1);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't hire Maria, Max and Mina",
+        description:
+          "Otto takes on their tasks for now. You can hire experts any time.",
+        variant: "destructive",
+      }),
+    );
   });
 
-  it("reports how many joined and how many could not", async () => {
-    const capture = vi.spyOn(posthog, "capture");
+  it("tries the hire again when the server could not answer", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? HttpResponse.json(
+            { detail: "Subscription state temporarily unavailable" },
+            { status: 503 },
+          )
+        : HttpResponse.json({
+            hired: [
+              { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+            ],
+            failed: [],
+          });
+    });
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS + HIRE_RETRY_MS + 200);
+
+    expect(hires.count).toBe(2);
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("does not try a refused hire again", async () => {
+    const hires = mockHire(() =>
+      HttpResponse.json({ detail: "Payment required" }, { status: 402 }),
+    );
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS + HIRE_MAX_WAIT_MS);
+
+    expect(hires.count).toBe(1);
+  });
+
+  it("says who could not join when the rest did", async () => {
     mockHire(() =>
       HttpResponse.json({
         hired: [{ template_id: "tpl-maria", expert_id: "e-1", name: "Maria" }],
-        failed: [{ template_id: "tpl-max", name: "Max" }],
+        failed: [
+          { template_id: "tpl-max", name: "Max" },
+          { template_id: "tpl-mina", name: "Mina" },
+        ],
       }),
     );
     renderPreparing({ canHire: true });
 
     await advance(START_DELAY_MS + 100);
 
-    expect(capture).toHaveBeenCalledWith("plan_experts_hired", {
-      hired: 1,
-      failed: 1,
-      via: "preparing",
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't hire Max and Mina",
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("leaves reporting the hire to the backend", async () => {
+    const capture = vi.spyOn(posthog, "capture");
+    mockHire();
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS + 100);
+
+    expect(capture).not.toHaveBeenCalledWith(
+      "plan_experts_hired",
+      expect.anything(),
+    );
+  });
+
+  it("waits for the plan before hiring when the plan step showed none", async () => {
+    let asked = 0;
+    server.use(
+      getGetBrainDumpPlanMockHandler200(() => {
+        asked += 1;
+        const plan = teamPlan(["Maria", "Max", "Mina"]);
+        return asked < 3 ? { ...plan, ready: false } : plan;
+      }),
+    );
+    const hires = mockHire();
+    const { result } = renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS);
+    expect(hires.count).toBe(0);
+    expect(result.current.checklist[1]).toBe("Setting up your team");
+
+    await advance(PLAN_POLL_MS * 2);
+    expect(hires.count).toBe(1);
+    expect(result.current.checklist[1]).toBe("Hiring Maria, Max and Mina");
+  });
+
+  it("hires anyway once the wait for the plan runs out", async () => {
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ...teamPlan(["Maria", "Max", "Mina"]),
+        ready: false,
+      }),
+    );
+    const hires = mockHire();
+    const onComplete = vi.fn();
+    renderPreparing({ onComplete, canHire: true });
+
+    await advance(PLAN_WAIT_MS - 500);
+    expect(hires.count).toBe(0);
+
+    await advance(1_000);
+    expect(hires.count).toBe(1);
+
+    await advance(GENERIC_TOTAL_MS);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives Home's tasks to the new team when the hire lands after Home read them", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
     });
+    let expertID: string | null = null;
+    server.use(
+      getGetBrainDumpSuggestedTasksMockHandler200(() => ({
+        stored: true,
+        tasks: [
+          {
+            id: "0",
+            title: "Draft the launch post",
+            prompt: "Draft the launch post",
+            expert_template_id: "tpl-maria",
+            expert_name: "Maria",
+            expert_id: expertID,
+          },
+        ],
+      })),
+    );
+    let answer: (() => void) | undefined;
+    mockHire(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = () =>
+            resolve(
+              HttpResponse.json({
+                hired: [
+                  { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+                ],
+                failed: [],
+              }),
+            );
+        }),
+    );
+    const preparing = renderHook(
+      () => usePreparingStep({ onComplete: vi.fn(), canHire: true }),
+      { wrapper: makeWrapper(client) },
+    );
+    await advance(START_DELAY_MS + HIRE_MAX_WAIT_MS + 500);
+    preparing.unmount();
+
+    const home = renderHook(() => useGetBrainDumpSuggestedTasks(), {
+      wrapper: makeWrapper(client),
+    });
+    await advance(100);
+    expect(firstOwner(home.result.current.data)).toBeNull();
+
+    expertID = "e-1";
+    await act(async () => answer?.());
+    await advance(100);
+    expect(firstOwner(home.result.current.data)).toBe("e-1");
   });
 
   it("does not send a second hire when the screen is refreshed mid-hire", async () => {
@@ -457,4 +620,30 @@ describe("usePreparingStep — hiring the plan's team", () => {
 
     expect(hires.count).toBe(1);
   });
+
+  it("sends the hire again when the screen is refreshed between tries", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? HttpResponse.json({ detail: "busy" }, { status: 503 })
+        : new Promise<Response>(() => {});
+    });
+    const first = renderPreparing({ canHire: true });
+    await advance(START_DELAY_MS);
+    expect(hires.count).toBe(1);
+    first.unmount();
+
+    // Before the first screen's own retry would go out.
+    renderPreparing({ canHire: true });
+    await advance(HIRE_RETRY_MS - START_DELAY_MS - 500);
+
+    expect(hires.count).toBe(2);
+  });
 });
+
+function firstOwner(response: getBrainDumpSuggestedTasksResponse | undefined) {
+  return response?.status === 200
+    ? response.data.tasks?.[0]?.expert_id
+    : undefined;
+}

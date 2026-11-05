@@ -273,7 +273,7 @@
     "no-inline-styles": 2
   },
   "src/app/(platform)/copilot/components/SuggestedTasks/SuggestedTasksBlock.tsx": {
-    "no-restyle": 2
+    "no-restyle": 1
   },
   "src/app/(platform)/copilot/components/TaskProgressBar/components/StatusIcon/StatusIcon.tsx": {
     "no-restyle": 2

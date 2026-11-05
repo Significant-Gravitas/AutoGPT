@@ -36,7 +36,7 @@ export function SuggestedTasksBlock({
   const toggleID = useId();
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
   const count = suggestions.tasks.length;
-  // Owners are shown, and tasks sent, only once the roster has answered.
+  // Owners are shown, and tasks sent, only once the roster can name them.
   if (count === 0 || !suggestions.isRosterLoaded) return null;
   const isOpen = !collapse.isCollapsed;
 
@@ -57,7 +57,7 @@ export function SuggestedTasksBlock({
           aria-controls={listID}
           onClick={() => collapse.toggle(countOpenTasks(suggestions.allTasks))}
           tone="secondary"
-          className="gap-1 hover:text-foreground-body"
+          className="hover:text-foreground-body"
         >
           {isOpen
             ? "Hide"

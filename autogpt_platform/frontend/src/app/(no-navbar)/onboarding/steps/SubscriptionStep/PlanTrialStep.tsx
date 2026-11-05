@@ -69,7 +69,7 @@ function PaywallPlanStep() {
 }
 
 function PlanOnlyStep() {
-  const { plan, progress } = usePlan();
+  const { plan, progress, isPending } = usePlan();
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   return (
     <PlanStepCard labelledBy={PLAN_HEADING_ID} twoColumns={false}>
@@ -83,6 +83,7 @@ function PlanOnlyStep() {
             variant="primary"
             size="large"
             onClick={nextStep}
+            disabled={isPending}
             textSize="body-md"
             className="mt-1 h-12 w-full"
           >

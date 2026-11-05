@@ -1,8 +1,5 @@
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
-import {
-  formatPlanAmount,
-  formatWholeMoney,
-} from "@/components/organisms/TrialCard/helpers";
+import { formatPlanAmount } from "@/components/organisms/TrialCard/helpers";
 import {
   Calendar03Icon,
   Mail01Icon,
@@ -47,7 +44,7 @@ export function getTrialMilestones(
       icon: SquareUnlock02Icon,
       when: "Today",
       title: "Your free trial starts",
-      detail: trialAccessDetail(offer),
+      detail: "Full access from right now, within a trial usage allowance.",
     },
     {
       key: "reminder",
@@ -70,26 +67,6 @@ export function getTrialMilestones(
       detail: `Then ${formatCadencePrice(offer)}, plus any applicable tax. Cancel by ${formatDay(lastFreeDay)} to pay nothing.`,
     },
   ];
-}
-
-function trialAccessDetail(offer: TrialOfferResponse) {
-  const allowance = formatAllowance(offer);
-  if (!allowance)
-    return "Full access from right now, within a trial usage allowance.";
-  return `Full access from right now, with ${allowance} of usage included.`;
-}
-
-// The credit granted with the trial, in the offer's currency. Credits are
-// minor units, like `unit_amount`; zero-decimal currencies have none.
-export function formatAllowance(offer: TrialOfferResponse) {
-  const credit = offer.onboarding_credit_amount ?? 0;
-  if (credit <= 0) return null;
-  const decimals =
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: offer.currency,
-    }).resolvedOptions().maximumFractionDigits ?? 2;
-  return formatWholeMoney(credit / 10 ** decimals, offer.currency);
 }
 
 export function formatCadencePrice(offer: TrialOfferResponse) {

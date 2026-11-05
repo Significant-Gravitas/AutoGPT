@@ -236,6 +236,59 @@ describe("useSuggestedTasks — who takes a task", () => {
     expect(result.current.sendingId).toBeNull();
   });
 
+  it("keeps a recipient picked while the chat was being created when the task does not start", async () => {
+    let fail!: (error: Error) => void;
+    const onSend = vi.fn<OnSend>(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    const selectRecipient = vi.fn();
+    const { result, rerender, props } = await renderTasks({
+      onSend,
+      selectRecipient,
+    });
+
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
+    rerender({ ...props, selectRecipient, recipientID: MARIA.id });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+
+    rerender({ ...props, selectRecipient, recipientID: "expert-max" });
+    act(() => fail(new Error("The chat service is unavailable")));
+
+    expect(await screen.findByText(FAILURE_TITLE)).toBeDefined();
+    await waitFor(() => expect(result.current.sendingId).toBeNull());
+    expect(selectRecipient.mock.calls).toEqual([[MARIA.id]]);
+  });
+
+  it("keeps a recipient picked while waiting for the switch when the task gives up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onSend = vi.fn<OnSend>(async () => "session-1");
+    const selectRecipient = vi.fn();
+    const { result, rerender, props } = await renderTasks({
+      onSend,
+      selectRecipient,
+    });
+
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
+    rerender({
+      ...props,
+      selectRecipient,
+      recipientID: MARIA.id,
+      canSend: false,
+    });
+    rerender({ ...props, selectRecipient, recipientID: "expert-max" });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(await screen.findByText(FAILURE_TITLE)).toBeDefined();
+    expect(selectRecipient.mock.calls).toEqual([[MARIA.id]]);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("sends at once when the task's expert is already the recipient", async () => {
     const onSend = vi.fn<OnSend>(async () => "session-1");
     const selectRecipient = vi.fn();
@@ -395,8 +448,30 @@ describe("useSuggestedTasks — an expert who isn't on the team", () => {
     expect(screen.queryByText(/isn't on your team/)).toBeNull();
   });
 
+  it("starts nothing while the roster can't be read and a task names its expert", async () => {
+    // Maria is unknown then, not gone: her task must not go to Otto.
+    const onSend = vi.fn<OnSend>(async () => "session-1");
+    const selectRecipient = vi.fn();
+    const { result } = await renderTasks({
+      onSend,
+      selectRecipient,
+      experts: [],
+      hasRosterFailed: true,
+    });
+
+    expect(result.current.isRosterLoaded).toBe(false);
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t1")));
+    act(() => result.current.sendTask(shownTask(result.current.tasks, "t2")));
+
+    expect(result.current.sendingId).toBeNull();
+    expect(selectRecipient).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("says nothing about the team when the roster could not be read", async () => {
-    // Owners are unknown then, not gone: the task still goes to Otto.
+    // No task names a hire, so the list still works, but a left-the-team
+    // note can't be checked.
+    stored[1] = { ...stored[1], expert_id: null };
     const onSend = vi.fn<OnSend>(async () => "session-1");
     const { result } = await renderTasks({
       onSend,

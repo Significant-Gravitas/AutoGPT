@@ -12,6 +12,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 
 from backend.api.features.onboarding_dump import (
     db,
+    plan_hire,
     plan_service,
     service,
     storage,
@@ -262,10 +263,12 @@ async def settle_brain_dump_plan(
 ) -> PlanResponse:
     """The plan step stops waiting: the plan it shows becomes the plan.
 
-    While the background jobs are still running, the role plan the last
-    ``/plan`` answer carried is stored as the take's tasks and team, so the
-    trial hires, and Home lists, what the step showed; the jobs leave both
-    alone. Once a plan is ready this changes nothing and returns it.
+    While the background jobs are still running, the plan is stored as it
+    stands: the greeting's own tasks once it has written them, with the team
+    the team job chose (or the role team while it is still choosing), and
+    the role plan before that. The trial then hires, and Home lists, what
+    the step showed; the jobs leave both alone. Once a plan is ready this
+    changes nothing and returns it.
     """
     return await plan_service.settle_plan(user_id)
 
@@ -287,7 +290,7 @@ async def hire_brain_dump_plan(
     A hire that fails is reported in ``failed`` rather than failing the
     request, and the active expert limit stops the hiring where it is hit.
     """
-    return await plan_service.hire_plan(user_id)
+    return await plan_hire.hire_plan(user_id)
 
 
 @router.get("/suggested-tasks", operation_id="get_brain_dump_suggested_tasks")

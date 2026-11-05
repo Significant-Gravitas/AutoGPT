@@ -13137,7 +13137,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Settle Brain Dump Plan",
-        "description": "The plan step stops waiting: the plan it shows becomes the plan.\n\nWhile the background jobs are still running, the role plan the last\n``/plan`` answer carried is stored as the take's tasks and team, so the\ntrial hires, and Home lists, what the step showed; the jobs leave both\nalone. Once a plan is ready this changes nothing and returns it.",
+        "description": "The plan step stops waiting: the plan it shows becomes the plan.\n\nWhile the background jobs are still running, the plan is stored as it\nstands: the greeting's own tasks once it has written them, with the team\nthe team job chose (or the role team while it is still choosing), and\nthe role plan before that. The trial then hires, and Home lists, what\nthe step showed; the jobs leave both alone. Once a plan is ready this\nchanges nothing and returns it.",
         "operationId": "settle_brain_dump_plan",
         "responses": {
           "200": {

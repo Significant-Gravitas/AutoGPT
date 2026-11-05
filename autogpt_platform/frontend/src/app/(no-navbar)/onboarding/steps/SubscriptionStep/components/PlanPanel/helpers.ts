@@ -1,3 +1,4 @@
+import type { getBrainDumpPlanResponse } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import type { PlanProgress } from "@/app/api/__generated__/models/planProgress";
 import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import type { RecommendedExpert } from "@/app/api/__generated__/models/recommendedExpert";
@@ -6,9 +7,9 @@ import type { ChecklistState } from "../../../../components/ChecklistMark";
 
 export const PLAN_POLL_MS = 1_000;
 // The pipeline is done long before this on a good day. Past it the step stops
-// waiting and the role plan the last answer carried becomes the plan, for the
-// trial and Home too, so the cut-off is generous: what it costs is the plan
-// the brain dump would have written.
+// waiting and settles: the tasks written so far (the greeting's, else the
+// role plan's) become the plan, for the trial and Home too, so the cut-off is
+// generous: what it costs is the plan the pipeline would have finished.
 export const PLAN_MAX_WAIT_MS = 30_000;
 export const PLAN_STEP_TASKS = 3;
 
@@ -126,8 +127,10 @@ export function isCheckoutReturn(params: URLSearchParams) {
   );
 }
 
+// Only a plan the server stored: one it never stored may not be what the
+// trial hires, so a return asks again.
 export function rememberShownPlan(userID: string | null, plan: PlanResponse) {
-  if (!userID) return;
+  if (!userID || !plan.ready) return;
   try {
     sessionStorage.setItem(`${SHOWN_PLAN_KEY}${userID}`, JSON.stringify(plan));
   } catch {
@@ -151,10 +154,27 @@ export function readShownPlan(userID: string | null): PlanResponse | null {
     const plan = JSON.parse(
       sessionStorage.getItem(`${SHOWN_PLAN_KEY}${userID}`) ?? "null",
     );
-    return plan && Array.isArray(plan.tasks) && Array.isArray(plan.team)
+    return plan?.ready && Array.isArray(plan.tasks) && Array.isArray(plan.team)
       ? (plan as PlanResponse)
       : null;
   } catch {
     return null;
   }
+}
+
+interface PlanAnswer {
+  data?: getBrainDumpPlanResponse;
+  dataUpdatedAt: number;
+}
+
+// The server's plan, if it answered at or after `since`. An answer cached
+// before then, or kept through a refetch that failed, may be the take the
+// user went Back from.
+export function planAnsweredSince(answer: PlanAnswer, since: number) {
+  const { data, dataUpdatedAt } = answer;
+  return data?.status === 200 && dataUpdatedAt >= since ? data.data : null;
+}
+
+export function pause(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }

@@ -9,6 +9,9 @@ import {
 } from "@/tests/integrations/test-utils";
 import type { User } from "@/lib/auth/types";
 import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/onboardingWizardProgress";
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   installGtagShim,
   removeGtagShim,
@@ -66,13 +69,31 @@ vi.mock("../steps/IntroStep/IntroStep", () => ({
     </button>
   ),
 }));
-vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
-    <button data-testid="step-preparing" onClick={onComplete}>
-      Finish
-    </button>
-  ),
-}));
+// Finish stands in for the bar filling. With `realPreparing`, the real
+// screen runs beside it, so a test sees whether the plan's team is hired.
+let realPreparing = false;
+vi.mock("../steps/PreparingStep", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../steps/PreparingStep")>();
+  return {
+    PreparingStep: ({
+      onComplete,
+      canHire,
+    }: {
+      onComplete: () => void;
+      canHire?: boolean;
+    }) => (
+      <>
+        {realPreparing && (
+          <actual.PreparingStep onComplete={() => {}} canHire={canHire} />
+        )}
+        <button data-testid="step-preparing" onClick={onComplete}>
+          Finish
+        </button>
+      </>
+    ),
+  };
+});
 
 let params = new URLSearchParams();
 const routerReplace = vi.fn();
@@ -176,6 +197,7 @@ beforeEach(() => {
   revision = 0;
   serverDraft = null;
   trial = { ready: true, active: false, error: undefined, retry: vi.fn() };
+  realPreparing = false;
   localStorage.clear();
   sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
@@ -454,6 +476,61 @@ describe("onboarding before payment", () => {
     expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
     expect(clearSkippedRecordings).not.toHaveBeenCalled();
+  });
+});
+
+describe("hiring the plan's team", () => {
+  function serveHire() {
+    const hires = { count: 0 };
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ready: true,
+        source: "llm",
+        skipped_dump: false,
+        heard: "You run a bakery.",
+        team: [{ template_id: "tpl-maria", name: "Maria", role: "Sales" }],
+        tasks: [],
+      }),
+      http.post("*/api/onboarding/brain-dump/plan/hire", () => {
+        hires.count += 1;
+        return HttpResponse.json({
+          hired: [
+            { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+          ],
+          failed: [],
+        });
+      }),
+    );
+    return hires;
+  }
+
+  beforeEach(() => {
+    realPreparing = true;
+  });
+
+  it("hires the team once the trial is confirmed", async () => {
+    const hires = serveHire();
+    atPaywall();
+    params = new URLSearchParams("trial=success&step=preparing");
+    trial.active = true;
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Hiring Maria")).toBeDefined();
+    await waitFor(() => expect(hires.count).toBe(1));
+  });
+
+  it("hires nobody for a user who has not paid, even with a draft at preparing", async () => {
+    const hires = serveHire();
+    serverDraft = makeProgress({
+      currentStep: "preparing",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    params = new URLSearchParams("step=preparing");
+    render(<OnboardingPage />);
+
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(hires.count).toBe(0);
   });
 });
 

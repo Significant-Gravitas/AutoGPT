@@ -1,9 +1,12 @@
 """The plan: the greeting's suggested tasks ranked, each with an owner.
 
-After the greeting and the team are stored, one TypeSafe Jev call scores how
-much each task unblocks this person this week and picks who on the proposed
-team should take it (or Otto). No new LLM call: Jev answers typed questions
-in well under a second.
+After the greeting and the team are stored, one call to Jev, TypeSafe's
+hosted typed-decision model, scores how much each task unblocks this person
+this week and picks who on the proposed team should take it (or Otto). The
+request carries the wizard role and pain points, the tasks, the team and up
+to ``MAX_TRANSCRIPT_CHARS`` of the brain dump's transcript. It has 5.5 s
+(``_TIMEOUT_SECONDS`` plus half a second of outer wait) before the plan
+goes on without it.
 
 Same contract as ``copilot/gate/jev.py``: every failure returns None, and the
 caller falls through to ``plan_owners.fallback_assign``.

@@ -9,6 +9,7 @@ import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../../../../store";
@@ -36,6 +37,13 @@ vi.mock("next/navigation", () => ({
 
 const POLL_MS = 1_000;
 const MAX_WAIT_MS = 30_000;
+const SETTLE_URL = "*/api/onboarding/brain-dump/plan/settle";
+// Every settle attempt failing at once, with the pause between attempts.
+const ALL_SETTLES_FAIL_MS = 3 * POLL_MS;
+// Every settle attempt hanging until its own time limit.
+const ALL_SETTLES_HANG_MS = 3 * 5_000 + 2 * POLL_MS;
+// How long the give-up waits for a skip still on its way.
+const SKIP_WAIT_MS = 5_000;
 // Long enough for the first answer to land, short of the first poll after it.
 const FIRST_ANSWER_MS = 100;
 const USER_ID = "user-1";
@@ -119,6 +127,21 @@ function serveSettle(answer: PlanResponse | (() => Promise<PlanResponse>)) {
     getSettleBrainDumpPlanMockHandler200(async () => {
       requests.count += 1;
       return typeof answer === "function" ? answer() : answer;
+    }),
+  );
+  return requests;
+}
+
+// Fails the first `failures` settles, then stores `answer`.
+function serveFlakySettle(failures: number, answer: PlanResponse) {
+  const requests = { count: 0 };
+  server.use(
+    http.post(SETTLE_URL, () => {
+      requests.count += 1;
+      if (requests.count <= failures) {
+        return HttpResponse.json({ detail: "busy" }, { status: 502 });
+      }
+      return HttpResponse.json(answer);
     }),
   );
   return requests;
@@ -242,7 +265,7 @@ describe("usePlan giving up", () => {
     server.use(getSettleBrainDumpPlanMockHandler401());
     const { result } = renderPlan();
 
-    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
 
     expect(result.current.isPending).toBe(false);
     expect(result.current.plan).toEqual(WRITING);
@@ -255,10 +278,56 @@ describe("usePlan giving up", () => {
     );
     const { result } = renderPlan();
 
-    await advance(MAX_WAIT_MS + FIRST_ANSWER_MS);
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
 
     expect(result.current.isPending).toBe(false);
     expect(result.current.plan).toEqual(EMPTY_PLAN);
+  });
+
+  test("tries a failed settle again and shows the plan it stored", async () => {
+    servePlans(WRITING);
+    const settles = serveFlakySettle(1, SETTLED);
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
+
+    expect(settles.count).toBe(2);
+    expect(result.current.plan).toEqual(SETTLED);
+    expect(JSON.parse(sessionStorage.getItem(SHOWN_PLAN_KEY)!)).toEqual(
+      SETTLED,
+    );
+  });
+
+  test("does not remember a plan the settle did not store", async () => {
+    servePlans(WRITING);
+    const settles = serveFlakySettle(Infinity, SETTLED);
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
+
+    expect(settles.count).toBe(3);
+    expect(result.current.plan).toEqual(WRITING);
+    expect(sessionStorage.getItem(SHOWN_PLAN_KEY)).toBeNull();
+  });
+
+  test("stops waiting on a settle that never answers", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    servePlans(WRITING);
+    const settles = serveSettle(async () => {
+      await held;
+      return SETTLED;
+    });
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + ALL_SETTLES_HANG_MS + FIRST_ANSWER_MS);
+
+    expect(settles.count).toBe(3);
+    expect(result.current.plan).toEqual(WRITING);
+    release();
+    await advance(FIRST_ANSWER_MS);
   });
 
   test("stops polling after giving up and keeps the plan it showed", async () => {
@@ -335,6 +404,60 @@ describe("usePlan giving up", () => {
     await advance(FIRST_ANSWER_MS);
     expect(settles.count).toBe(1);
     expect(result.current.plan).toEqual(SETTLED);
+  });
+
+  test("shows and remembers the plan once the server recovers from a blip", async () => {
+    server.use(
+      getGetBrainDumpPlanMockHandler401(),
+      getSettleBrainDumpPlanMockHandler401(),
+    );
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
+    expect(result.current.plan).toEqual(EMPTY_PLAN);
+
+    servePlans(READY);
+    await advance(POLL_MS);
+
+    expect(result.current.plan).toEqual(READY);
+    expect(JSON.parse(sessionStorage.getItem(SHOWN_PLAN_KEY)!)).toEqual(READY);
+  });
+
+  test("swaps the role plan shown unstored for the pipeline's once it is ready", async () => {
+    servePlans(WRITING);
+    server.use(getSettleBrainDumpPlanMockHandler401());
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + ALL_SETTLES_FAIL_MS);
+    expect(result.current.plan).toEqual(WRITING);
+
+    servePlans(READY);
+    await advance(POLL_MS);
+
+    expect(result.current.plan).toEqual(READY);
+    expect(planViewedCalls()).toHaveLength(1);
+  });
+
+  test("lets the user on when a skip still on its way does not land", async () => {
+    let land!: () => void;
+    skip.current = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const requests = servePlans(READY);
+    const settles = serveSettle(SETTLED);
+    const { result } = renderPlan();
+
+    await advance(MAX_WAIT_MS + SKIP_WAIT_MS + FIRST_ANSWER_MS);
+
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.plan).toEqual(EMPTY_PLAN);
+    // Settling now would store the take the user went Back from.
+    expect(settles.count).toBe(0);
+    expect(requests.count).toBe(0);
+
+    land();
+    await advance(FIRST_ANSWER_MS);
+    expect(result.current.plan).toEqual(READY);
   });
 
   test("keeps a plan that lands while the settle is on its way", async () => {
@@ -474,6 +597,7 @@ describe("usePlan cached and remembered plans", () => {
       data: OTHER_READY,
       headers: new Headers(),
     });
+    vi.setSystemTime(Date.now() + 60_000);
     servePlans(WRITING, READY);
     const { result, seen } = renderPlan(client);
 
@@ -483,6 +607,27 @@ describe("usePlan cached and remembered plans", () => {
     await advance(FIRST_ANSWER_MS);
     expect(result.current.plan).toBeNull();
 
+    await advance(POLL_MS);
+    expect(result.current.plan).toEqual(READY);
+    expect(seen).not.toContainEqual(OTHER_READY);
+  });
+
+  test("does not show the last take's plan when the refetch after Back fails", async () => {
+    const client = makeClient();
+    client.setQueryData(getGetBrainDumpPlanQueryKey(), {
+      status: 200,
+      data: OTHER_READY,
+      headers: new Headers(),
+    });
+    vi.setSystemTime(Date.now() + 60_000);
+    server.use(getGetBrainDumpPlanMockHandler401());
+    const { result, seen } = renderPlan(client);
+
+    await advance(FIRST_ANSWER_MS);
+    expect(result.current.plan).toBeNull();
+    expect(sessionStorage.getItem(SHOWN_PLAN_KEY)).toBeNull();
+
+    servePlans(READY);
     await advance(POLL_MS);
     expect(result.current.plan).toEqual(READY);
     expect(seen).not.toContainEqual(OTHER_READY);
@@ -556,16 +701,33 @@ describe("usePlan cached and remembered plans", () => {
     expect(seen[0]).toBeNull();
   });
 
-  test("shows a remembered given-up plan at once on a checkout return", async () => {
+  test("shows a remembered settled plan at once on a checkout return", async () => {
     searchParams.current = new URLSearchParams("subscription=cancelled");
-    sessionStorage.setItem(SHOWN_PLAN_KEY, JSON.stringify(WRITING));
+    sessionStorage.setItem(SHOWN_PLAN_KEY, JSON.stringify(SETTLED));
     servePlans(WRITING);
     const { result, seen } = renderPlan();
 
-    expect(seen[0]).toEqual(WRITING);
+    expect(seen[0]).toEqual(SETTLED);
     await advance(1_000);
-    expect(result.current.plan).toEqual(WRITING);
+    expect(result.current.plan).toEqual(SETTLED);
   });
+
+  test.each([
+    ["the role plan", WRITING],
+    ["an empty plan", EMPTY_PLAN],
+  ])(
+    "asks the server again on a checkout return when %s was shown unstored",
+    async (_, unstored) => {
+      searchParams.current = new URLSearchParams("trial=cancelled");
+      sessionStorage.setItem(SHOWN_PLAN_KEY, JSON.stringify(unstored));
+      servePlans(READY);
+      const { result, seen } = renderPlan();
+
+      expect(seen[0]).toBeNull();
+      await advance(FIRST_ANSWER_MS);
+      expect(result.current.plan).toEqual(READY);
+    },
+  );
 
   test("keeps the remembered plan when the return's refetch answers another", async () => {
     searchParams.current = new URLSearchParams("subscription=cancelled");

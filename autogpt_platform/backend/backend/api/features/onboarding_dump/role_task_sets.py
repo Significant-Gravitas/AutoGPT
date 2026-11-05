@@ -262,7 +262,7 @@ ROLE_FALLBACK_TASKS: dict[str, list[RoleTask]] = {
         RoleTask(
             title="Get a sourced research brief on anything in minutes",
             owner_skills=("research", "competitors"),
-            prompt="I need research support. Let me give you a topic and send back a short brief with sources. Ask me what I am trying to learn about.",
+            prompt="I need research support. I'll give you a topic; send back a short brief with sources. Ask me what I am trying to learn about.",
             icon="magnifying-glass",
         ),
         RoleTask(

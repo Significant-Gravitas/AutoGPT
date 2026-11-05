@@ -90,6 +90,32 @@ test("shows the plan on its own, and Continue moves the wizard on", async () => 
   expect(wizard.completedSteps).toContain("subscription");
 });
 
+test("holds Continue until the plan is shown, so the team hired is the one seen", async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    getGetBrainDumpPlanMockHandler200(async () => {
+      await held;
+      return readyPlan;
+    }),
+  );
+  render(<PlanTrialStep hasPaywall={false} />);
+
+  const pending = screen.getByRole("button", { name: "Continue" });
+  expect(pending).toHaveProperty("disabled", true);
+  fireEvent.click(pending);
+  expect(useOnboardingWizardStore.getState().currentStep).toBe(PLAN_STEP);
+
+  release();
+  expect(await screen.findByText("Draft this week's update")).toBeDefined();
+  const shown = screen.getByRole("button", { name: "Continue" });
+  expect(shown).toHaveProperty("disabled", false);
+  fireEvent.click(shown);
+  expect(useOnboardingWizardStore.getState().currentStep).toBe(PLAN_STEP + 1);
+});
+
 test("names when the team joins: when the user continues", async () => {
   render(<PlanTrialStep hasPaywall={false} />);
 

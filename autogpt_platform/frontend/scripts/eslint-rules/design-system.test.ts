@@ -213,14 +213,15 @@ tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
     jsx(
       "bg-[rgb(var(--color-surface))] shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-[linear-gradient(90deg,rgb(var(--color-surface-hover))_25%,transparent)]",
     ),
-    // ds-colour-exempt.json: a user-picked palette, or one value a file may keep.
+    // ds-colour-exempt.json: a user-picked palette, or one value a file may
+    // keep, in any case.
     {
       code: `const note = "bg-[#ffc88a]";`,
       filename:
         "src/app/(platform)/build/components/FlowEditor/nodes/CustomNode/components/StickyNoteBlock.tsx",
     },
     {
-      code: `const fallback = "bg-[#020617]";`,
+      code: `const fallback = "bg-[#E2E8F0]";`,
       filename:
         "src/components/contextual/OutputRenderers/renderers/CodeRenderer.tsx",
     },

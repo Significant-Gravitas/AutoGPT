@@ -1,6 +1,6 @@
-// The onboarding plan's events: the plan step being seen, and its team being
-// hired once the trial is confirmed. Best-effort, like every funnel event: a
-// blocked analytics host must never hold up the step or the hire.
+// The onboarding plan's events: the plan step being seen. Its team being hired
+// is an outcome, sent by the backend. Best-effort, like every funnel event: a
+// blocked analytics host must never hold up the step.
 
 import { PlanEvent } from "@/services/analytics/posthog-events";
 import posthog from "posthog-js";
@@ -14,11 +14,6 @@ interface PlanEventProperties {
     experts: number;
     wait_ms: number;
     gave_up: boolean;
-  };
-  [PlanEvent.PLAN_EXPERTS_HIRED]: {
-    hired: number;
-    failed: number;
-    via: "preparing";
   };
 }
 
