@@ -357,13 +357,19 @@ def load_config(
                 file_overrides[key] = Path(file_overrides[key])
     # ShimConfig(**kwargs) ranks every kwarg above the environment, so the
     # environment is read here and layered over the file explicitly.
-    from_env = _environment_settings()
+    from_env = environment_settings()
     merged = {**file_overrides, **from_env, **overrides}
     return ShimConfig(**merged)
 
 
-def _environment_settings() -> dict[str, Any]:
-    """The AUTOGPT_SHIM_* variables, read the way pydantic-settings reads them."""
+def environment_variable(field: str) -> str:
+    """The environment variable that sets `field`."""
+    return ShimConfig.model_config["env_prefix"] + field.upper()
+
+
+def environment_settings() -> dict[str, Any]:
+    """The settings the AUTOGPT_SHIM_* variables give, by field, read the way
+    pydantic-settings reads them."""
     try:
         return EnvSettingsSource(ShimConfig)()
     except ValueError as exc:
@@ -372,7 +378,7 @@ def _environment_settings() -> dict[str, Any]:
         # ValidationError, so it got past the CLI as a traceback and status 1.
         field = re.search(r'field "([^"]+)"', str(exc))
         name = (
-            ShimConfig.model_config["env_prefix"] + field.group(1).upper()
+            environment_variable(field.group(1))
             if field
             else "An AUTOGPT_SHIM_ environment variable"
         )

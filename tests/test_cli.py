@@ -693,6 +693,120 @@ def test_install_carries_the_deployment_flags_into_the_service(
     )
 
 
+def _capture_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    from autogpt_local_executor import install
+
+    install_autostart = MagicMock()
+    install_autostart.return_value = SimpleNamespace(
+        target_path=tmp_path / "unit",
+        platform="linux",
+        enable_command=None,
+        disable_command=None,
+        notes=[],
+    )
+    monkeypatch.setattr(install, "install_autostart", install_autostart)
+    return install_autostart
+
+
+def test_install_carries_the_deployment_from_the_environment_into_the_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only flags reached the service. With the platform URL set in the
+    environment, auth signed in to that deployment and the service, which
+    doesn't get this shell's environment, looked for the default one's
+    credentials and failed at every start."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "https://platform.example.com")
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_OAUTH_URL", "https://login.example.com/auth")
+    monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", "files")
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--platform-url",
+        "https://platform.example.com",
+        "--platform-oauth-url",
+        "https://login.example.com/auth",
+        "--allowed-root",
+        str(tmp_path / "files"),
+    )
+
+
+def test_an_install_flag_outranks_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "https://other.example.com")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "autogpt-shim",
+            "--config",
+            str(_empty_config(tmp_path)),
+            "--platform-url",
+            "https://platform.example.com",
+            "install",
+        ],
+    )
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--platform-url",
+        "https://platform.example.com",
+    )
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("AUTOGPT_SHIM_PLATFORM_WS_URL", "wss://platform.example.com/ws/local-executor"),
+        ("AUTOGPT_SHIM_OAUTH_CLIENT_ID", "another-client"),
+    ],
+)
+def test_install_refuses_a_deployment_setting_only_the_environment_has(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    variable: str,
+    value: str,
+) -> None:
+    """These pick the saved credentials too, and no option carries them to
+    the service, so it would fail at every start."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv(variable, value)
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    assert variable in capsys.readouterr().err
+    install_autostart.assert_not_called()
+
+
+def test_install_names_settings_from_the_environment_the_service_will_not_get(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "true")
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    cli.main()
+
+    install_autostart.assert_called_once()
+    assert "AUTOGPT_SHIM_ENABLE_SHELL" in capsys.readouterr().out
+
+
 def test_a_bad_config_stops_the_launchagent_instead_of_looping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

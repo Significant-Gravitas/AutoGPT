@@ -64,8 +64,13 @@ location itself. `install` refuses a `--config` it can't load, such as one that
 names no file, since the service could never start with it; create the file
 before you install. The service also gets the `--platform-url`,
 `--platform-oauth-url`, `--allowed-root` and `--session-id` you give
-`install`: credentials are kept per deployment, so give it the same platform
-URLs you gave `auth`.
+`install`, or, for any you leave out, the `AUTOGPT_SHIM_` variable that sets
+it in `install`'s environment: credentials are kept per deployment, so give
+it the same platform URLs you gave `auth`. The service doesn't get any other
+setting from that environment, so `install` refuses
+`AUTOGPT_SHIM_PLATFORM_WS_URL` and `AUTOGPT_SHIM_OAUTH_CLIENT_ID` there (they
+choose the deployment too; put them in the config file) and names any other
+`AUTOGPT_SHIM_` setting the service won't see.
 
 The platform never sends an arbitrary host path to the shim. Folder navigation
 uses short-lived opaque references issued by the host, and selecting a folder

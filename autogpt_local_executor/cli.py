@@ -419,16 +419,43 @@ def _config_or_exit(load: Callable[[], ShimConfig]) -> ShimConfig:
     sys.exit(_config_error_exit_code())
 
 
+# The settings the service gets as options: the ones `install` was given,
+# else the ones this shell's environment sets, since the service never sees
+# that environment.
+_SERVICE_OPTIONS = (
+    ("--platform-url", "platform_url"),
+    ("--platform-oauth-url", "platform_oauth_url"),
+    ("--allowed-root", "allowed_root"),
+    ("--session-id", "session_id"),
+)
+# Settings that pick the deployment, and so its saved credentials, that no
+# option carries to the service.
+_UNCARRIED_DEPLOYMENT_SETTINGS = ("platform_ws_url", "oauth_client_id")
+
+
 def _cmd_install(args) -> None:
     from . import install as _install
+    from .config import environment_settings, environment_variable
 
     # The service starts with the same config file and options; a set it
     # can't load would stop it at every start, where nobody sees the error.
     _config_or_exit(lambda: _build_config(args))
+    environment = environment_settings()
+    config_file = args.config if args.config is not None else _install.default_config_path()
+    uncarried = [field for field in _UNCARRIED_DEPLOYMENT_SETTINGS if field in environment]
+    for field in uncarried:
+        print(
+            f"Configuration error: {environment_variable(field)} is set in this shell, but "
+            "the service doesn't get this shell's environment, so it would look for another "
+            f"deployment's credentials. Set it in {config_file} instead.",
+            file=sys.stderr,
+        )
+    if uncarried:
+        sys.exit(_config_error_exit_code())
     status = _install.install_autostart(
         at_login=args.at_login,
         config_path=args.config,
-        global_args=_service_global_args(args),
+        global_args=_service_global_args(args, environment),
     )
     print(f"Wrote autostart entry: {status.target_path}")
     print(f"Platform: {status.platform}")
@@ -440,22 +467,30 @@ def _cmd_install(args) -> None:
         print(f"  {status.disable_command}")
     for note in status.notes:
         print(f"\nNote: {note}")
+    carried = {field for _flag, field in _SERVICE_OPTIONS}
+    for field in sorted(set(environment) - carried):
+        print(
+            f"\nNote: {environment_variable(field)} is set in this shell, but the service "
+            f"doesn't get this shell's environment. Set it in {config_file} to keep it."
+        )
 
 
-def _service_global_args(args) -> tuple[str, ...]:
-    """The global options `install` was given that `start` needs too. Without
-    the platform URLs the service would talk to the default platform, with
-    credentials scoped to another one, and fail at every start."""
+def _service_global_args(args, environment: dict[str, object]) -> tuple[str, ...]:
+    """The global options `start` needs too, from `install`'s own or this
+    shell's environment. Without the platform URLs the service would talk to
+    the default platform, with credentials scoped to another one, and fail
+    at every start."""
     out: list[str] = []
-    for flag, value in (
-        ("--platform-url", args.platform_url),
-        ("--platform-oauth-url", args.platform_oauth_url),
-        # The service runs in another working directory.
-        ("--allowed-root", os.path.abspath(args.allowed_root) if args.allowed_root else None),
-        ("--session-id", args.session_id),
-    ):
-        if value is not None:
-            out += [flag, str(value)]
+    for flag, field in _SERVICE_OPTIONS:
+        value = getattr(args, field)
+        if value is None:
+            value = environment.get(field)
+        if value is None:
+            continue
+        if field == "allowed_root":
+            # The service runs in another working directory.
+            value = os.path.abspath(str(value))
+        out += [flag, str(value)]
     return tuple(out)
 
 
