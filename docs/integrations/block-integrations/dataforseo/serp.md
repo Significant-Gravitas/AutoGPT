@@ -31,7 +31,7 @@ Google now links results through an opaque `google.com/goto` redirect. DataForSE
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | organic_results | Unpaid results in order. position counts organic listings only (1 = first organic result). url_resolved is false when Google's redirect link could not be resolved; domain then comes from the result's breadcrumb | List[OrganicResult] |
-| ai_overview | Google's AI Overview as markdown, or empty if none showed | str |
+| ai_overview | Google's AI Overview as markdown, when DataForSEO captured one; empty does not prove Google showed none | str |
 | people_also_ask | Questions in the 'People also ask' box | List[str] |
 | related_searches | Searches Google suggests at the bottom of the page | List[str] |
 | result_types | Every kind of result on the page, e.g. organic, video, local_pack | List[str] |

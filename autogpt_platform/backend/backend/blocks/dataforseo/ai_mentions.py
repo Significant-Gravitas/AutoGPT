@@ -16,6 +16,7 @@ from backend.sdk import (
     SchemaField,
     UserPasswordCredentials,
 )
+from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, record_cost
 from ._config import dataforseo
@@ -141,10 +142,14 @@ class DataForSeoAiMentionsBlock(Block):
         self, input_data: Input, *, credentials: UserPasswordCredentials, **kwargs
     ) -> BlockOutput:
         if not input_data.domain.strip() and not input_data.keyword.strip():
-            raise ValueError("Give a domain, a keyword, or both")
+            raise BlockInputError(
+                message="Give a domain, a keyword, or both",
+                block_name=self.name,
+                block_id=self.id,
+            )
         client = DataForSeoClient(credentials)
         results = await self._fetch(client, input_data)
-        record_cost(self, client)
+        record_cost(self, client.last_cost_usd)
         page = results[0] if results else {}
         yield "mentions", [parse_mention(i) for i in page.get("items") or []]
         yield "total_count", page.get("total_count") or 0

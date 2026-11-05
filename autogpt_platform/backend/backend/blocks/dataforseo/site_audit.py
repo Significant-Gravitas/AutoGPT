@@ -4,6 +4,7 @@ DataForSEO Site Audit block: crawl a site and report its technical SEO issues.
 
 from asyncio import sleep
 from typing import Any
+from urllib.parse import urlparse
 
 from backend.sdk import (
     BaseModel,
@@ -17,8 +18,9 @@ from backend.sdk import (
     SchemaField,
     UserPasswordCredentials,
 )
+from backend.util.exceptions import BlockInputError
 
-from ._api import DataForSeoClient, record_cost
+from ._api import DataForSeoClient, DataForSeoError, record_cost
 from ._config import dataforseo
 
 TASK_POST_PATH = "/v3/on_page/task_post"
@@ -68,10 +70,14 @@ class DataForSeoSiteAuditBlock(Block):
             description="DataForSEO credentials (username and password)"
         )
         target: str = SchemaField(
-            description="Domain to crawl, without https:// or www. (e.g. 'example.com')"
+            description="Domain to crawl, e.g. 'example.com'. Not needed with task_id",
+            default="",
         )
         max_crawl_pages: int = SchemaField(
-            description="Most pages to crawl (billed per page crawled)",
+            description=(
+                "Most pages to crawl (billed per page crawled), and most pages "
+                "returned"
+            ),
             default=100,
             ge=1,
             le=1000,
@@ -86,7 +92,10 @@ class DataForSeoSiteAuditBlock(Block):
             le=900,
         )
         task_id: str = SchemaField(
-            description="Collect the results of an earlier crawl instead of starting one",
+            description=(
+                "Collect the results of an earlier crawl instead of starting one; "
+                "set max_crawl_pages to how many pages to return"
+            ),
             default="",
             advanced=True,
         )
@@ -135,23 +144,23 @@ class DataForSeoSiteAuditBlock(Block):
                 ("pages", [_TEST_AUDITED_PAGE]),
             ],
             test_mock={
-                "_start_crawl": lambda *args, **kwargs: "task-1",
+                "_start_crawl": lambda *args, **kwargs: ("task-1", 0.0),
                 "_summary": lambda *args, **kwargs: _TEST_SUMMARY,
                 "_pages": lambda *args, **kwargs: [_TEST_PAGE],
             },
             effect=BlockEffect.READ,
         )
 
-    async def _start_crawl(self, client: DataForSeoClient, input_data: Input) -> str:
+    async def _start_crawl(
+        self, client: DataForSeoClient, target: str, max_crawl_pages: int
+    ) -> tuple[str, float]:
+        """Post the crawl; return its ID and the USD DataForSEO took upfront."""
         await client.post_task(
-            TASK_POST_PATH,
-            {
-                "target": input_data.target.strip(),
-                "max_crawl_pages": input_data.max_crawl_pages,
-            },
+            TASK_POST_PATH, {"target": target, "max_crawl_pages": max_crawl_pages}
         )
-        record_cost(self, client)
-        return client.last_task_id
+        if not client.last_task_id:
+            raise DataForSeoError("DataForSEO did not create the crawl")
+        return client.last_task_id, client.last_cost_usd
 
     async def _summary(self, client: DataForSeoClient, task_id: str) -> dict:
         results = await client.get_task(SUMMARY_PATH.format(task_id=task_id))
@@ -169,22 +178,43 @@ class DataForSeoSiteAuditBlock(Block):
         self, input_data: Input, *, credentials: UserPasswordCredentials, **kwargs
     ) -> BlockOutput:
         client = DataForSeoClient(credentials)
-        task_id = input_data.task_id.strip() or await self._start_crawl(
-            client, input_data
-        )
-        summary = await self._wait_for_crawl(
-            client, task_id, input_data.max_wait_seconds
-        )
+        task_id = input_data.task_id.strip()
+        upfront_usd = 0.0
+        if not task_id:
+            target = self._target(input_data)
+            task_id, upfront_usd = await self._start_crawl(
+                client, target, input_data.max_crawl_pages
+            )
+        summary: dict = {}
+        try:
+            summary = await self._wait_for_crawl(
+                client, task_id, input_data.max_wait_seconds
+            )
+        finally:
+            # Bill even when polling fails: DataForSEO has already been paid.
+            record_cost(
+                self, crawl_cost(upfront_usd, input_data.max_crawl_pages, summary)
+            )
+        finished = summary.get("crawl_progress") == "finished"
+        crawled = (summary.get("crawl_status") or {}).get("pages_crawled") or 0
         pages = await self._pages(client, task_id, input_data.max_crawl_pages)
         metrics = summary.get("page_metrics") or {}
         yield "task_id", task_id
-        yield "finished", summary.get("crawl_progress") == "finished"
-        yield "pages_crawled", (summary.get("crawl_status") or {}).get(
-            "pages_crawled"
-        ) or 0
+        yield "finished", finished
+        yield "pages_crawled", crawled
         yield "onpage_score", metrics.get("onpage_score")
         yield "issue_counts", count_issues(metrics)
         yield "pages", [parse_page(p) for p in pages]
+
+    def _target(self, input_data: Input) -> str:
+        target = normalise_domain(input_data.target)
+        if not target:
+            raise BlockInputError(
+                message="Give a domain to crawl, or the task_id of an earlier crawl",
+                block_name=self.name,
+                block_id=self.id,
+            )
+        return target
 
     async def _wait_for_crawl(
         self, client: DataForSeoClient, task_id: str, max_wait_seconds: int
@@ -192,10 +222,31 @@ class DataForSeoSiteAuditBlock(Block):
         waited = 0
         summary = await self._summary(client, task_id)
         while summary.get("crawl_progress") != "finished" and waited < max_wait_seconds:
-            await sleep(POLL_INTERVAL_SECONDS)
-            waited += POLL_INTERVAL_SECONDS
+            interval = min(POLL_INTERVAL_SECONDS, max_wait_seconds - waited)
+            await sleep(interval)
+            waited += interval
             summary = await self._summary(client, task_id)
         return summary
+
+
+def crawl_cost(upfront_usd: float, max_crawl_pages: int, summary: dict) -> float:
+    """What the crawl really costs.
+
+    DataForSEO takes payment for max_crawl_pages when the crawl is posted and
+    refunds the pages it didn't crawl once the crawl finishes. Until then the
+    whole upfront amount is spent.
+    """
+    if summary.get("crawl_progress") != "finished":
+        return upfront_usd
+    crawled = (summary.get("crawl_status") or {}).get("pages_crawled") or 0
+    return upfront_usd / max_crawl_pages * min(crawled, max_crawl_pages)
+
+
+def normalise_domain(target: str) -> str:
+    """'https://www.example.com/shop' -> 'example.com', as On-Page expects."""
+    target = target.strip()
+    host = urlparse(target if "://" in target else f"//{target}").hostname or ""
+    return host.removeprefix("www.")
 
 
 def count_issues(metrics: dict[str, Any]) -> dict[str, int]:

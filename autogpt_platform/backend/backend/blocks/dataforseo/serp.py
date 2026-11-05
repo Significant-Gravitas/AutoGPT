@@ -71,7 +71,10 @@ class DataForSeoGoogleSearchResultsBlock(Block):
             )
         )
         ai_overview: str = SchemaField(
-            description="Google's AI Overview as markdown, or empty if none showed"
+            description=(
+                "Google's AI Overview as markdown, when DataForSEO captured one; "
+                "empty does not prove Google showed none"
+            )
         )
         people_also_ask: list[str] = SchemaField(
             description="Questions in the 'People also ask' box"
@@ -150,23 +153,24 @@ class DataForSeoGoogleSearchResultsBlock(Block):
     ) -> BlockOutput:
         client = DataForSeoClient(credentials)
         results = await self._fetch(client, input_data)
-        record_cost(self, client)
+        record_cost(self, client.last_cost_usd)
         page = results[0] if results else {}
         items = page.get("items") or []
         yield "organic_results", parse_organic(items)
         yield "ai_overview", next(
-            (i.get("markdown") or "" for i in items if i["type"] == "ai_overview"), ""
+            (i.get("markdown") or "" for i in items if i.get("type") == "ai_overview"),
+            "",
         )
         yield "people_also_ask", [
             q.get("title") or ""
             for i in items
-            if i["type"] == "people_also_ask"
+            if i.get("type") == "people_also_ask"
             for q in i.get("items") or []
         ]
         yield "related_searches", [
             s
             for i in items
-            if i["type"] == "related_searches"
+            if i.get("type") == "related_searches"
             for s in i.get("items") or []
         ]
         yield "result_types", page.get("item_types") or []

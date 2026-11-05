@@ -25,9 +25,8 @@ class DataForSeoClient:
             trusted_origins=["https://api.dataforseo.com"],
             raise_for_status=False,
         )
-        # USD cost reported by DataForSEO on the most recent successful call.
-        # Populated by keyword_suggestions / related_keywords so the caller
-        # can surface it via NodeExecutionStats.provider_cost for billing.
+        # USD cost reported by DataForSEO on the most recent successful call,
+        # so the caller can surface it via NodeExecutionStats.provider_cost.
         self.last_cost_usd: float = 0.0
         # ID of the most recent task, which a task_post caller polls with.
         self.last_task_id: str = ""
@@ -240,10 +239,8 @@ class DataForSeoError(ValueError):
     """DataForSEO refused a request or a task failed."""
 
 
-def record_cost(block: Block, client: DataForSeoClient) -> None:
-    """Bill the block for the USD cost DataForSEO reported on its last task."""
+def record_cost(block: Block, cost_usd: float) -> None:
+    """Bill the block for a USD cost DataForSEO reported."""
     block.merge_stats(
-        NodeExecutionStats(
-            provider_cost=client.last_cost_usd, provider_cost_type="cost_usd"
-        )
+        NodeExecutionStats(provider_cost=cost_usd, provider_cost_type="cost_usd")
     )

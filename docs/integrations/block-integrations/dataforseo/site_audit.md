@@ -19,10 +19,10 @@ Issues use DataForSEO's check names, keeping only the ones that signal a problem
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| target | Domain to crawl, without https:// or www. (e.g. 'example.com') | str | Yes |
-| max_crawl_pages | Most pages to crawl (billed per page crawled) | int | No |
+| target | Domain to crawl, e.g. 'example.com'. Not needed with task_id | str | No |
+| max_crawl_pages | Most pages to crawl (billed per page crawled), and most pages returned | int | No |
 | max_wait_seconds | How long to wait for the crawl. If it is still running, the pages crawled so far are returned; pass task_id to collect the rest later | int | No |
-| task_id | Collect the results of an earlier crawl instead of starting one | str | No |
+| task_id | Collect the results of an earlier crawl instead of starting one; set max_crawl_pages to how many pages to return | str | No |
 
 ### Outputs
 

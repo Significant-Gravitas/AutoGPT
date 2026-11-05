@@ -4,14 +4,23 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.util.exceptions import BlockInputError
+
 from ._api import DataForSeoClient, DataForSeoError
 from ._config import dataforseo
 from .ai_mentions import DataForSeoAiMentionsBlock
 from .ai_mentions import build_task as build_mentions_task
+from .backlinks import DataForSeoBacklinksSummaryBlock
 from .ranked_keywords import POSITION_FIELD, DataForSeoRankedKeywordsBlock
 from .ranked_keywords import build_task as build_ranked_task
 from .serp import parse_organic
-from .site_audit import DataForSeoSiteAuditBlock, count_issues, parse_page
+from .site_audit import (
+    DataForSeoSiteAuditBlock,
+    count_issues,
+    crawl_cost,
+    normalise_domain,
+    parse_page,
+)
 
 CREDS = dataforseo.get_test_credentials()
 CREDS_INPUT = CREDS.model_dump()
@@ -209,3 +218,90 @@ class TestSiteAudit:
         start.assert_not_awaited()
         assert outputs["task_id"] == "old"
         assert outputs["pages_crawled"] == 3
+
+
+class TestBilling:
+    async def test_live_blocks_bill_the_reported_cost(self):
+        block = DataForSeoBacklinksSummaryBlock()
+
+        async def post_task(client, path, task):
+            client.last_cost_usd = 0.024
+            return [{"rank": 1}]
+
+        with patch.object(DataForSeoClient, "post_task", post_task):
+            async for _ in block.run(
+                DataForSeoBacklinksSummaryBlock.Input(
+                    credentials=CREDS_INPUT, target="example.com"
+                ),
+                credentials=CREDS,
+            ):
+                pass
+        assert block.execution_stats.provider_cost == 0.024
+        assert block.execution_stats.provider_cost_type == "cost_usd"
+
+    def test_finished_crawl_bills_only_the_pages_crawled(self):
+        finished = {"crawl_progress": "finished", "crawl_status": {"pages_crawled": 1}}
+        assert crawl_cost(0.006, 40, finished) == pytest.approx(0.00015)
+
+    def test_unfinished_crawl_bills_the_upfront_amount(self):
+        running = {
+            "crawl_progress": "in_progress",
+            "crawl_status": {"pages_crawled": 1},
+        }
+        assert crawl_cost(0.006, 40, running) == 0.006
+        assert crawl_cost(0.006, 40, {}) == 0.006
+
+    async def test_crawl_is_billed_even_when_polling_fails(self):
+        block = DataForSeoSiteAuditBlock()
+        with (
+            patch.object(block, "_start_crawl", AsyncMock(return_value=("t1", 0.006))),
+            patch.object(
+                block, "_summary", AsyncMock(side_effect=DataForSeoError("x"))
+            ),
+            pytest.raises(DataForSeoError),
+        ):
+            async for _ in block.run(
+                DataForSeoSiteAuditBlock.Input(
+                    credentials=CREDS_INPUT, target="example.com"
+                ),
+                credentials=CREDS,
+            ):
+                pass
+        assert block.execution_stats.provider_cost == 0.006
+
+    async def test_resumed_crawl_bills_nothing(self):
+        block = DataForSeoSiteAuditBlock()
+        finished = {"crawl_progress": "finished", "crawl_status": {"pages_crawled": 3}}
+        with (
+            patch.object(block, "_summary", AsyncMock(return_value=finished)),
+            patch.object(block, "_pages", AsyncMock(return_value=[])),
+        ):
+            async for _ in block.run(
+                DataForSeoSiteAuditBlock.Input(credentials=CREDS_INPUT, task_id="old"),
+                credentials=CREDS,
+            ):
+                pass
+        assert block.execution_stats.provider_cost == 0
+
+
+@pytest.mark.parametrize(
+    "raw, domain",
+    [
+        ("example.com", "example.com"),
+        (" https://www.example.com/shop ", "example.com"),
+        ("www.example.com", "example.com"),
+        ("shop.example.com", "shop.example.com"),
+        ("", ""),
+    ],
+)
+def test_normalise_domain(raw, domain):
+    assert normalise_domain(raw) == domain
+
+
+async def test_site_audit_needs_a_target_or_task_id():
+    block = DataForSeoSiteAuditBlock()
+    with pytest.raises(BlockInputError, match="domain to crawl"):
+        async for _ in block.run(
+            DataForSeoSiteAuditBlock.Input(credentials=CREDS_INPUT), credentials=CREDS
+        ):
+            pass

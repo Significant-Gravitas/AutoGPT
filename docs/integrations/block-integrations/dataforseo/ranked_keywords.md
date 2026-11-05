@@ -22,8 +22,8 @@ Set `min_position` and `max_position` to keep only a range, e.g. 7 to 15 for key
 | target | Domain without https:// or www. (e.g. 'example.com') for the whole site, or a full page URL for one page. Works for any site, including competitors | str | Yes |
 | location_code | Location code for targeting (e.g., 2840 for USA) | int | No |
 | language_code | Language code (e.g., 'en' for English) | str | No |
-| min_position | Only keywords ranking at this position or lower, e.g. 7 | int | No |
-| max_position | Only keywords ranking at this position or higher, e.g. 15 | int | No |
+| min_position | Lowest position number to keep, e.g. 7 keeps positions 7, 8, 9 and on | int | No |
+| max_position | Highest position number to keep, e.g. 15 keeps positions 1 to 15 | int | No |
 | limit | Maximum keywords to return, highest estimated traffic first | int | No |
 
 ### Outputs

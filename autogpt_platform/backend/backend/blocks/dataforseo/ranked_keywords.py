@@ -16,6 +16,7 @@ from backend.sdk import (
     SchemaField,
     UserPasswordCredentials,
 )
+from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, record_cost
 from ._config import dataforseo
@@ -59,13 +60,13 @@ class DataForSeoRankedKeywordsBlock(Block):
             description="Language code (e.g., 'en' for English)", default="en"
         )
         min_position: int | None = SchemaField(
-            description="Only keywords ranking at this position or lower, e.g. 7",
+            description="Lowest position number to keep, e.g. 7 keeps positions 7, 8, 9 and on",
             default=None,
             ge=1,
             le=100,
         )
         max_position: int | None = SchemaField(
-            description="Only keywords ranking at this position or higher, e.g. 15",
+            description="Highest position number to keep, e.g. 15 keeps positions 1 to 15",
             default=None,
             ge=1,
             le=100,
@@ -139,10 +140,14 @@ class DataForSeoRankedKeywordsBlock(Block):
             and input_data.max_position
             and input_data.min_position > input_data.max_position
         ):
-            raise ValueError("min_position must not be greater than max_position")
+            raise BlockInputError(
+                message="min_position must not be greater than max_position",
+                block_name=self.name,
+                block_id=self.id,
+            )
         client = DataForSeoClient(credentials)
         results = await self._fetch(client, input_data)
-        record_cost(self, client)
+        record_cost(self, client.last_cost_usd)
         page = results[0] if results else {}
         yield "keywords", [parse_ranked_keyword(i) for i in page.get("items") or []]
         yield "total_count", page.get("total_count") or 0

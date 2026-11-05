@@ -122,7 +122,7 @@ class DataForSeoBacklinksSummaryBlock(Block):
     ) -> BlockOutput:
         client = DataForSeoClient(credentials)
         results = await self._fetch(client, input_data)
-        record_cost(self, client)
+        record_cost(self, client.last_cost_usd)
         data = results[0] if results else {}
         yield "summary", BacklinksSummary(
             rank=data.get("rank"),
@@ -220,7 +220,7 @@ class DataForSeoReferringDomainsBlock(Block):
     ) -> BlockOutput:
         client = DataForSeoClient(credentials)
         results = await self._fetch(client, input_data)
-        record_cost(self, client)
+        record_cost(self, client.last_cost_usd)
         page = results[0] if results else {}
         yield "referring_domains", [
             _referring_domain(i) for i in page.get("items") or []
