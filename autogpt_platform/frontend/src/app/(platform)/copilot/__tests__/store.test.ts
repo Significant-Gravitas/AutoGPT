@@ -96,6 +96,57 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  describe("followArtifactOverwrite", () => {
+    it("swaps the open file without opening a history entry", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const next = makeArtifact("v2", "report.md");
+
+      useCopilotUIStore.getState().followArtifactOverwrite("v1", next);
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toEqual({ ...next, replacedFileId: "v1" });
+      expect(s.history).toEqual([]);
+    });
+
+    it("swaps a file waiting in the back stack and leaves the open one", () => {
+      const other = makeArtifact("other");
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openArtifact(other);
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toBe(other);
+      expect(s.history.map((ref) => ref.id)).toEqual(["v2"]);
+    });
+
+    it("keeps the computer face showing", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openComputer();
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.mode).toBe("computer");
+    });
+
+    it("changes nothing when the panel holds no ref to the file", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+      const before = useCopilotUIStore.getState().artifactPanel;
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      expect(useCopilotUIStore.getState().artifactPanel).toBe(before);
+    });
+  });
+
   it("goBackArtifact is a no-op when history is empty", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);

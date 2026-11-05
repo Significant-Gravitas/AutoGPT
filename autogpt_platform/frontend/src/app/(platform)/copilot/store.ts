@@ -1,6 +1,9 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
-import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
+import {
+  clearContentCache,
+  forgetArtifactContent,
+} from "./components/ArtifactPanel/components/useArtifactContent";
 import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
@@ -56,6 +59,9 @@ export interface ArtifactRef {
   sizeBytes?: number;
   /** Set when the ref is an expert rather than a workspace file. */
   expert?: ExpertArtifact;
+  /** The file Otto overwrote to make this one. The panel treats the two as one
+   *  document: same place on the page, same source view. */
+  replacedFileId?: string;
 }
 
 /** The live desktop behind a chat, as `start_desktop` reports it. */
@@ -261,6 +267,9 @@ interface CopilotUIState {
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
+  /** Otto overwrote `replacedFileId`, whose id is now dead: every ref the panel
+   *  holds to it becomes `next`. Opens nothing and adds no history. */
+  followArtifactOverwrite: (replacedFileId: string, next: ArtifactRef) => void;
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
@@ -595,6 +604,23 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  followArtifactOverwrite: (replacedFileId, next) => {
+    const { activeArtifact, history } = get().artifactPanel;
+    const isHeld =
+      activeArtifact?.id === replacedFileId ||
+      history.some((ref) => ref.id === replacedFileId);
+    if (!isHeld) return;
+    forgetArtifactContent(replacedFileId);
+    const follow = (ref: ArtifactRef) =>
+      ref.id === replacedFileId ? { ...next, replacedFileId } : ref;
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        activeArtifact: activeArtifact && follow(activeArtifact),
+        history: history.map(follow),
+      },
+    }));
+  },
   toggleContextPanel: () =>
     set((state) => {
       const nextOpen = !state.artifactPanel.isOpen;
