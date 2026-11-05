@@ -1533,8 +1533,8 @@ class ComputerUseHandler:
         try:
             result = await self._relay(tool, arguments, msg.payload.timeout_seconds, approved)
         except asyncio.CancelledError:
-            # The action may have happened: the driver was told to stop,
-            # but it can't take back a click it already made.
+            # The action may have happened: the bridge stopped the driver to
+            # end it, but nothing takes back a click it already made.
             await self._emit(
                 msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
             )
@@ -1562,7 +1562,9 @@ class ComputerUseHandler:
             return make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
-                f"{tool} did not finish in time; the driver was told to stop it.",
+                f"{tool} did not finish in time, so the local executor stopped cua-driver "
+                "to end it. What it already did stays done, and the next call starts the "
+                "driver afresh: look at the window again before you act on it.",
                 details={
                     "tool": tool,
                     "timeout_seconds": msg.payload.timeout_seconds

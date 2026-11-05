@@ -200,6 +200,8 @@ class CuaDriverBridge:
         self._client: StdioMcpClient | None = None
         self._snapshot: DriverSnapshot | None = None
         self._lock = asyncio.Lock()
+        # Held for each tool call: the driver runs one at a time anyway.
+        self._turn = asyncio.Lock()
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
@@ -222,12 +224,29 @@ class CuaDriverBridge:
     async def call_tool(
         self, name: str, arguments: dict[str, Any], *, timeout: float
     ) -> dict[str, Any]:
-        client = await self._ensure_client()
+        """One tool call, within `timeout` seconds of waiting for its turn
+        and `timeout` more of running.
+
+        cua-driver 0.38 runs one request at a time and drops MCP's cancel
+        notice, so a call past its deadline, or one its caller gave up on,
+        would go on acting on the machine until it ended, and every request
+        sent after it would wait. The bridge sends one call at a time, so the
+        one the driver runs is the one that overran, and stops the driver to
+        end it; the next call starts a new one."""
+        async with asyncio.timeout(timeout):
+            await self._turn.acquire()
         try:
-            return await client.call_tool(name, arguments, timeout=timeout)
-        except McpClosedError as exc:
-            self._last_failure = str(exc)
-            raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
+            client = await self._ensure_client()
+            try:
+                return await client.call_tool(name, arguments, timeout=timeout)
+            except McpClosedError as exc:
+                self._last_failure = str(exc)
+                raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
+            except (TimeoutError, asyncio.CancelledError):
+                await asyncio.shield(self._stop_unfinished(client))
+                raise
+        finally:
+            self._turn.release()
 
     async def close(self) -> None:
         async with self._lock:
@@ -359,6 +378,19 @@ class CuaDriverBridge:
         if client is not None:
             with contextlib.suppress(Exception):
                 await client.close()
+
+    async def _stop_unfinished(self, client: StdioMcpClient) -> None:
+        """Stop a driver still running a call nobody waits for. Stopping it
+        is the shim's own doing, not the driver failing, so its start is
+        taken off the restart budget."""
+        async with self._lock:
+            if self._client is client:
+                self._client = None
+                if self._starts:
+                    self._starts.pop()
+        logger.info("Stopping cua-driver (pid %s) to end a call that overran", client.pid)
+        with contextlib.suppress(Exception):
+            await client.close(now=True)
 
 
 __all__ = [

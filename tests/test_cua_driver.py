@@ -120,21 +120,106 @@ async def test_the_tool_list_deadline_covers_every_page(fake_log, monkeypatch) -
     assert time.monotonic() - started < 3  # its own deadline, not the guard's
 
 
-async def test_a_request_past_its_deadline_is_cancelled_at_the_server(fake_log: Path) -> None:
+async def test_a_request_past_its_deadline_is_cancelled_as_mcp_has_it(
+    fake_log: Path, monkeypatch
+) -> None:
+    """The client sends the cancel notice; cua-driver 0.38 reads it only
+    once the request is done, and drops it. CuaDriverBridge deals with that
+    (test_a_call_past_its_deadline_stops_the_driver)."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "1")
     client = _fake_client([str(FAKE), "mcp"])
     await client.start(timeout=10)
     try:
         with pytest.raises(TimeoutError):
             await client.call_tool("drag", {"pid": -2}, timeout=0.3)
-        for _ in range(200):
-            if _records(fake_log, "slow_done"):
+        for _ in range(250):
+            if _records(fake_log, "notification_dropped")[1:]:
                 break
             await asyncio.sleep(0.02)
     finally:
         await client.close()
 
-    assert _records(fake_log, "cancelled")
-    assert _records(fake_log, "slow_done") == [{"event": "slow_done", "cancelled": True}]
+    assert _records(fake_log, "slow_done")
+    assert [r["method"] for r in _records(fake_log, "notification_dropped")] == [
+        "notifications/initialized",
+        "notifications/cancelled",
+    ]
+
+
+async def test_a_call_past_its_deadline_stops_the_driver(fake_log: Path, monkeypatch) -> None:
+    """cua-driver 0.38 can't cancel a request it is running, so a call past
+    its deadline went on acting on the machine after the shim had answered
+    COMMAND_TIMEOUT, and the next call waited behind it."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
+    bridge = fake_bridge()
+    try:
+        await bridge.snapshot()
+        first = bridge._client
+        assert first is not None
+        with pytest.raises(TimeoutError):
+            await bridge.call_tool("drag", {"pid": -2}, timeout=0.3)
+        assert first.alive is False
+        # One more start than the restart budget allows, all of them stops
+        # the shim made, not the driver failing.
+        for _ in range(driver.MAX_STARTS_PER_WINDOW):
+            with pytest.raises(TimeoutError):
+                await bridge.call_tool("drag", {"pid": -2}, timeout=0.3)
+        result = await bridge.call_tool("click", {"pid": 1}, timeout=10)
+        await asyncio.sleep(2.5)
+    finally:
+        await bridge.close()
+
+    assert result["structuredContent"] == {"arguments": {"pid": 1}}
+    assert _records(fake_log, "slow_done") == []
+    assert len(_records(fake_log, "initialize")) == driver.MAX_STARTS_PER_WINDOW + 2
+
+
+async def test_a_cancelled_call_stops_the_driver(fake_log: Path, monkeypatch) -> None:
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
+    bridge = fake_bridge()
+    try:
+        await bridge.snapshot()
+        first = bridge._client
+        assert first is not None
+        task = asyncio.create_task(bridge.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(100):
+            if _records(fake_log, "call"):
+                break
+            await asyncio.sleep(0.02)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert first.alive is False
+        await asyncio.sleep(2.5)
+    finally:
+        await bridge.close()
+
+    assert _records(fake_log, "slow_done") == []
+
+
+async def test_a_quick_call_waits_its_turn_rather_than_stopping_a_running_one(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A call that times out waiting for its turn never reached the driver,
+    so it must not stop the one the driver is running: HELLO's screen size
+    for one session would end another session's call."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "1.5")
+    bridge = fake_bridge()
+    try:
+        await bridge.snapshot()
+        slow = asyncio.create_task(bridge.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(100):
+            if _records(fake_log, "call"):
+                break
+            await asyncio.sleep(0.02)
+        with pytest.raises(TimeoutError):
+            await bridge.call_tool("get_screen_size", {}, timeout=0.3)
+        result = await slow
+    finally:
+        await bridge.close()
+
+    assert result["content"] == [{"type": "text", "text": "slow"}]
+    assert len(_records(fake_log, "initialize")) == 1
 
 
 async def test_a_driver_that_exits_fails_the_waiting_request(fake_log: Path) -> None:
@@ -926,20 +1011,43 @@ async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> 
 
 
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
-    make_handler, fake_log, tmp_path
+    make_handler, fake_log, monkeypatch
 ) -> None:
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "3")
     handler = make_handler()
 
     response = await handler.handle(_call("drag", {"pid": -2}, timeout_seconds=1))
+    after = await handler.handle(_call("click", {"pid": 1}))
+    await asyncio.sleep(2.5)
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert "stopped cua-driver" in response.payload.message
     assert response.payload.details == {"tool": "drag", "timeout_seconds": 1}
-    for _ in range(200):
-        if _records(fake_log, "cancelled"):
+    assert isinstance(after, ComputerToolResultMessage)
+    assert _records(fake_log, "slow_done") == []
+
+
+async def test_hello_skips_the_screen_size_rather_than_end_another_call(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "1.5")
+    monkeypatch.setattr(handlers, "SCREEN_SIZE_SECONDS", 0.3)
+    handler = make_handler()
+    slow = asyncio.create_task(handler.handle(_call("drag", {"pid": -2})))
+    for _ in range(250):
+        if _records(fake_log, "call"):
             break
         await asyncio.sleep(0.02)
-    assert _records(fake_log, "cancelled")
+
+    size = await handler.screen_size()
+    result = await slow
+
+    assert size is None
+    assert isinstance(result, ComputerToolResultMessage)
+    assert _records(fake_log, "slow_done")
 
 
 async def test_a_cancelled_call_is_still_audited(make_handler, tmp_path) -> None:

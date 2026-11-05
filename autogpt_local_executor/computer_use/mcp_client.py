@@ -151,16 +151,21 @@ class StdioMcpClient:
     def stderr_tail(self, lines: int = 20) -> str:
         return "\n".join(list(self._stderr_tail)[-lines:])
 
-    async def close(self) -> None:
+    async def close(self, *, now: bool = False) -> None:
         """Stop the server: close its stdin (an MCP server's cue to exit),
-        then terminate it, then kill it, each after a grace period."""
+        then terminate it, then kill it, each after a grace period. `now`
+        terminates it at once, for a server busy with a request it won't
+        stop: it reads its stdin only between requests."""
         process = self._process
         if process is not None and process.returncode is None:
-            if process.stdin is not None and not process.stdin.is_closing():
-                process.stdin.close()
-            try:
-                await asyncio.wait_for(process.wait(), CLOSE_GRACE_SECONDS)
-            except TimeoutError:
+            exited = False
+            if not now:
+                if process.stdin is not None and not process.stdin.is_closing():
+                    process.stdin.close()
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(process.wait(), CLOSE_GRACE_SECONDS)
+                    exited = True
+            if not exited:
                 with contextlib.suppress(ProcessLookupError):
                     process.terminate()
                 try:
@@ -184,7 +189,8 @@ class StdioMcpClient:
     ) -> dict[str, Any]:
         """Send one request and wait up to `timeout` seconds for its result.
         A request that times out or is cancelled is cancelled at the server
-        too, so a slow action doesn't keep running unseen."""
+        too, as MCP has it. cua-driver 0.38 runs one request at a time and
+        drops that notice, so CuaDriverBridge stops the driver as well."""
         if self._closed_error is not None:
             raise self._closed_error
         self._next_id += 1

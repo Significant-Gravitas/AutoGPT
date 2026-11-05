@@ -25,7 +25,11 @@ driver's last error until the five minutes are up.
 
 The shim speaks MCP to it over stdin and stdout
 (`autogpt_local_executor/computer_use/mcp_client.py`): initialize, list
-tools, call tools, and cancel a call that runs past its deadline.
+tools and call tools, one call at a time. cua-driver 0.38 runs one request
+at a time and drops MCP's cancel notice, so a call can't be cancelled while
+it runs: when one runs past its deadline, or its caller is cancelled, the
+shim stops the driver to end it (that restart doesn't count toward the
+three).
 
 **Which binary.** `cua_driver_path` from the config, when it's set. If no
 file is there, the shim doesn't fall back to another driver: with computer
@@ -149,7 +153,8 @@ sixteen tools; all of them are in the catalog, which
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
 - A deadline per call (120 s unless the platform asks for 1-600 s); past it
-  the driver is told to cancel.
+  the shim stops the driver, and the next call starts a new one. Its
+  sessions, element tokens and launched browsers' pages start over too.
 - One call at a time per machine.
 - An audit record for every call, refused ones too. An approved call's
   record names the approved arguments and keeps their paths whole.
@@ -239,8 +244,8 @@ the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`) replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
-`CANCELLED`: the driver was told to stop, but an action it already made
-stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
+`CANCELLED`: the shim stopped the driver to end it, but an action it
+already made stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
 
 ## Permissions and preflight
 
