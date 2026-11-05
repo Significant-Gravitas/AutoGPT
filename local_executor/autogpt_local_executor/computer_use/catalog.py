@@ -93,6 +93,8 @@ NOT_OFFERED_TOOLS = frozenset(
     {
         "browser_download",
         "check_for_update",
+        # Windows only: a diagnostic for cua-driver's developers.
+        "debug_window_info",
         "end_session",
         "escalate_session",
         "get_accessibility_tree",

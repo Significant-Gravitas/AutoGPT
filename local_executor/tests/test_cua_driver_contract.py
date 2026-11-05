@@ -24,6 +24,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 OFFERED = catalog.offered_tools(enable_clipboard=True)
+# Reviewed tools only the Windows driver has, all of them off.
+WINDOWS_ONLY = frozenset({"debug_window_info"})
 
 
 @pytest.fixture
@@ -78,7 +80,7 @@ async def test_every_tool_the_driver_has_was_reviewed() -> None:
     assert names <= reviewed, sorted(names - reviewed)
     assert not OFFERED & catalog.NOT_OFFERED_TOOLS
     if sys.platform.startswith("linux"):
-        assert names == reviewed
+        assert names == reviewed - WINDOWS_ONLY
 
 
 async def test_the_driver_enforces_the_shims_policy(bridge: CuaDriverBridge) -> None:

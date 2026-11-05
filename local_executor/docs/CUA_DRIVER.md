@@ -110,6 +110,7 @@ Not offered:
 | `page` | Runs arbitrary JavaScript in pages (cua-driver allows it only in `unrestricted` mode anyway). |
 | `parse_visual_regions` | Needs the `cua-perception` extension, which is AGPL. Never install it with the shim. |
 | `parallel_mouse_drag`, `get_accessibility_tree`, `health_report` | Not needed: `drag` and `get_window_state` cover them, and `autogpt-shim doctor` reports health. |
+| `debug_window_info` (Windows only) | A diagnostic for cua-driver's developers: `list_windows` and `get_window_state` cover what the agent needs. |
 
 ## Enforcement
 
