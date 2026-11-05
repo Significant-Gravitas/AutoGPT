@@ -39,8 +39,10 @@ list of TODOs / dates come back as the tool result.
    the task as the prompt, returns only the LLM's output.
 6. Claude sees the *output*, not the content.
 
-The platform never sees the raw bytes; the cloud LLM never sees the
-raw bytes; only the shim and the local LLM ever touch them.
+The shim never sends the raw bytes to the platform or the cloud LLM;
+only the shim and the local LLM read them. The local LLM's output is
+another matter: it goes back as the model wrote it, with whatever of the
+file the task asked for (see [Platform-side router](#platform-side-router)).
 
 ---
 
@@ -181,9 +183,16 @@ class PrivacyRouter:
 ```
 
 The router also strips file-content references from the conversation
-history that flows to Claude. The cloud LLM only ever sees
-`{stub_id, size, mime_type}` for privacy-mode files — never the file
-body, any part of it, or a hash of it.
+history that flows to Claude. For a privacy-mode file, the shim sends the
+cloud LLM only `{stub_id, size, mime_type}`: never the file body, any part
+of it, or a hash of it.
+
+That doesn't keep the content secret. `local_llm_query` returns the local
+model's output to Claude unfiltered, and a task such as "extract dates" or
+"quote the second paragraph" returns file text by design; one that asks
+for the whole file gets it. Nothing in this design bounds what the output
+may repeat, so until an enforced output control exists, privacy mode keeps
+the file from being uploaded, not its content from reaching the cloud.
 
 ---
 
