@@ -100,21 +100,24 @@ function nestedOutputProperties(
   seen: Set<object>,
 ): OutputProperties {
   const direct = getOutputProperties(schema);
-  if (Object.keys(direct).length > 0) return direct;
   if (
     !isSchemaObject(schema) ||
     depth >= MAX_OUTPUT_SCHEMA_DEPTH ||
     seen.has(schema)
   )
-    return {};
+    return direct;
 
-  const branches = [schema.allOf, schema.anyOf, schema.oneOf].filter(
-    (branch): branch is (RJSFSchema | boolean)[] => Array.isArray(branch),
+  const hasDirect = Object.keys(direct).length > 0;
+  const branches = [
+    schema.allOf,
+    ...(hasDirect ? [] : [schema.anyOf, schema.oneOf]),
+  ].filter((branch): branch is (RJSFSchema | boolean)[] =>
+    Array.isArray(branch),
   );
-  if (branches.length === 0) return {};
+  if (branches.length === 0) return direct;
 
   seen.add(schema);
-  const merged: OutputProperties = {};
+  const merged = copyOutputProperties(direct);
   for (const branch of branches) {
     for (const option of branch) {
       const nested = nestedOutputProperties(option, depth + 1, seen);

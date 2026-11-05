@@ -333,6 +333,92 @@ describe("dynamic output safety", () => {
         ],
       }),
     ).toEqual({ kept: { title: "Kept" } });
+    expect(
+      getNestedOutputProperties({
+        properties: { kept: { title: "Kept" } },
+        oneOf: [
+          { type: "object", properties: { ignored: { title: "Ignored" } } },
+        ],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+  });
+
+  it("merges additive allOf properties with direct properties", () => {
+    const schema = {
+      type: "object" as const,
+      properties: {
+        kept: { title: "Kept" },
+        profile: {
+          type: "object" as const,
+          title: "Profile",
+          properties: { name: { type: "string", title: "Name" } },
+        },
+      },
+      allOf: [
+        {
+          type: "object" as const,
+          properties: {
+            added: { title: "Added" },
+            kept: { title: "From allOf" },
+            profile: {
+              type: "object" as const,
+              properties: { email: { type: "string", title: "Email" } },
+            },
+          },
+        },
+      ],
+      anyOf: [
+        {
+          type: "object" as const,
+          properties: { ignored: { title: "Ignored" } },
+        },
+      ],
+      oneOf: [
+        {
+          type: "object" as const,
+          properties: { alsoIgnored: { title: "Also ignored" } },
+        },
+      ],
+    };
+    const before = JSON.stringify(schema);
+    expect(getNestedOutputProperties(schema)).toEqual({
+      kept: { title: "Kept" },
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          name: { type: "string", title: "Name" },
+          email: { type: "string", title: "Email" },
+        },
+      },
+      added: { title: "Added" },
+    });
+    expect(JSON.stringify(schema)).toBe(before);
+  });
+
+  it("keeps allOf-only fields visible after a direct field is connected", () => {
+    const expanded = augment(
+      {
+        properties: {
+          response: {
+            type: "object",
+            title: "Response",
+            properties: { text: { type: "string", title: "Text" } },
+            allOf: [
+              {
+                type: "object",
+                properties: { html: { type: "string", title: "Html" } },
+              },
+            ],
+          },
+        },
+      },
+      "response_#_text",
+    );
+    expect(getNestedOutputProperties(expanded.response)).toEqual({
+      text: { type: "string", title: "Text" },
+      html: { type: "string", title: "Html" },
+    });
   });
 
   it("keeps sibling fields when a oneOf or allOf field is connected", () => {
