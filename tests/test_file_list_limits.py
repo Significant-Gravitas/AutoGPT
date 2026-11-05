@@ -219,3 +219,52 @@ async def test_a_subfolder_that_cannot_be_read_marks_the_listing_truncated(
 
     assert {entry.name for entry in response.payload.entries} == {"open", "a.txt", "locked"}
     assert response.payload.truncated is True
+
+
+_symlinks = pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
+
+
+@_symlinks
+@pytest.mark.asyncio
+async def test_a_listing_says_nothing_about_where_a_link_outside_points(tmp_path: Path) -> None:
+    """is_file() and is_dir() follow a symlink, so a link to a path outside
+    the shared folder told the platform whether that path exists, and
+    whether it's a file or a folder."""
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "secret.txt").write_text("")
+    (tmp_path / "private").mkdir()
+    (root / "to-file").symlink_to(tmp_path / "secret.txt")
+    (root / "to-folder").symlink_to(tmp_path / "private")
+    (root / "inside").mkdir()
+    (root / "to-inside").symlink_to(root / "inside")
+
+    response = await _listing(root)
+
+    kinds = {e.name: (e.is_file, e.is_dir, e.is_symlink) for e in response.payload.entries}
+    assert kinds["to-file"] == (False, False, True)
+    assert kinds["to-folder"] == (False, False, True)
+    assert kinds["to-inside"] == (False, True, True)  # inside the jail: followed
+    assert kinds["inside"] == (False, True, False)
+
+
+@_symlinks
+@_posix_permissions
+@pytest.mark.asyncio
+async def test_a_link_into_a_folder_that_cannot_be_searched_is_listed(tmp_path: Path) -> None:
+    """is_file() raised PermissionError for a link into a folder the shim
+    can't search (Python 3.13 and earlier), and the whole FILE_LIST failed."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "target.txt").write_text("")
+    (tmp_path / "link").symlink_to(locked / "target.txt")
+    (tmp_path / "plain.txt").write_text("")
+    locked.chmod(0)
+    try:
+        response = await _listing(tmp_path)
+    finally:
+        locked.chmod(0o700)
+
+    kinds = {e.name: (e.is_file, e.is_dir, e.is_symlink) for e in response.payload.entries}
+    assert kinds["link"] == (False, False, True)
+    assert kinds["plain.txt"] == (True, False, False)

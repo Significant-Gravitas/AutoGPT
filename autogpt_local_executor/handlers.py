@@ -57,6 +57,7 @@ from .path_jail import (
     PathJailError,
     assert_entry_inside_jail,
     assert_inside_jail,
+    is_inside_jail,
     open_jail_file,
     write_jail_file,
 )
@@ -217,6 +218,17 @@ def _err_result(duration_ms: int, error_code: str, *, exit_code: int | None = No
 
 def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
+
+
+def _jailed_link_target_mode(link: Path, allowed_root: str | os.PathLike[str]) -> int | None:
+    """The mode of what `link` points to, when that's inside the jail; None
+    for a target outside it, a missing one, or one that can't be stat'ed."""
+    if not is_inside_jail(link, allowed_root):
+        return None
+    try:
+        return link.stat().st_mode
+    except OSError:
+        return None
 
 
 # How long a command's process group has to exit after SIGTERM before SIGKILL.
@@ -1168,12 +1180,17 @@ class FileHandler:
                     st = p.lstat()
                 except OSError:
                     continue
+                link = stat.S_ISLNK(st.st_mode)
+                # The entry's own type, from its lstat. A link is followed only
+                # to a target inside the jail: whether one outside exists, and
+                # what it is, isn't the platform's to learn.
+                mode = _jailed_link_target_mode(p, self.config.allowed_root) if link else st.st_mode
                 entry = FileEntry(
                     name=p.name,
                     path=str(p),
-                    is_file=p.is_file(),
-                    is_dir=p.is_dir(),
-                    is_symlink=p.is_symlink(),
+                    is_file=mode is not None and stat.S_ISREG(mode),
+                    is_dir=mode is not None and stat.S_ISDIR(mode),
+                    is_symlink=link,
                     size_bytes=st.st_size,
                     mtime=st.st_mtime,
                 )
