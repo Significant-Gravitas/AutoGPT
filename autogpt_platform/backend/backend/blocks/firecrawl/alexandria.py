@@ -83,12 +83,14 @@ async def call_alexandria(
     capability: str,
     options: dict[str, Any] | None = None,
     timeout_seconds: int | None = None,
+    request_id: str = "",
 ) -> dict[str, Any]:
     """Run one Alexandria capability and return its result entry.
 
     The entry carries ``data``, ``records`` and ``creditsCost``, or an
     ``error`` when the capability failed. Raises AlexandriaError when
-    Firecrawl refused the request.
+    Firecrawl refused the request. ``request_id`` resumes an earlier call
+    whose outcome Firecrawl couldn't confirm; empty starts a new one.
     """
     call: dict[str, Any] = {"provider": provider, "capability": capability}
     if options:
@@ -99,6 +101,7 @@ async def call_alexandria(
 
     # One request id across retries, so Firecrawl runs (and bills) a retried
     # paid call once.
+    request_id = request_id.strip() or str(uuid.uuid4())
     response = await Requests(
         raise_for_status=False,
         retry_max_attempts=MAX_ATTEMPTS,
@@ -107,7 +110,7 @@ async def call_alexandria(
         ALEXANDRIA_URL,
         headers={
             "Authorization": f"Bearer {api_key}",
-            "x-request-id": str(uuid.uuid4()),
+            "x-request-id": request_id,
         },
         json=body,
         timeout=REQUEST_TIMEOUT,
@@ -117,7 +120,7 @@ async def call_alexandria(
     except ValueError:
         payload = {}
     if not response.ok or not payload.get("success"):
-        raise AlexandriaError(_describe_refusal(response.status, payload))
+        raise AlexandriaError(_describe_refusal(response.status, payload, request_id))
 
     results = payload.get("data", {}).get("alexandria") or []
     if not results:
@@ -125,9 +128,16 @@ async def call_alexandria(
     return results[0]
 
 
-def _describe_refusal(status: int, payload: dict[str, Any]) -> str:
+def _describe_refusal(status: int, payload: dict[str, Any], request_id: str) -> str:
     message = payload.get("error") or f"HTTP {status}"
     code = payload.get("code")
+    if str(code).lower() == "request_unresolved":
+        # A new request id would run, and bill, the call again.
+        return (
+            f"{code}: {message}. Firecrawl couldn't confirm whether the call "
+            f"ran. To retry without paying twice, run again with request ID "
+            f"{request_id}."
+        )
     if code == "THIRD_PARTY_DATA_TERMS_REQUIRED":
         url = (payload.get("requiresAction") or {}).get("url")
         return (
@@ -341,6 +351,15 @@ class FirecrawlRunDataToolBlock(Block):
             le=MAX_TIMEOUT_SECONDS,
             advanced=True,
         )
+        request_id: str = SchemaField(
+            description=(
+                "Only when retrying a call Firecrawl couldn't confirm: the "
+                "request ID from its error, so the call isn't run and billed "
+                "twice. Leave empty for a new call."
+            ),
+            default="",
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         data: Any = SchemaField(description="The records the tool returned")
@@ -408,6 +427,7 @@ class FirecrawlRunDataToolBlock(Block):
             capability,
             input_data.options,
             input_data.timeout,
+            input_data.request_id,
         )
         credits = _charge(self, result)
         data = result.get("data")

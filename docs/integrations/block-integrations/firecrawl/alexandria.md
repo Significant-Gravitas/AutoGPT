@@ -68,6 +68,7 @@ The call is billed at the Firecrawl credits the response reports, including when
 | capability | Capability ID from 'Firecrawl Find Data Tools', e.g. 'people/search' | str | Yes |
 | options | The tool's inputs, exactly as its contract declares them (see the tool's options in 'Firecrawl Find Data Tools') | Dict[str, Any] | No |
 | timeout | Seconds to wait for the provider (at most 120) | int | No |
+| request_id | Only when retrying a call Firecrawl couldn't confirm: the request ID from its error, so the call isn't run and billed twice. Leave empty for a new call. | str | No |
 
 ### Outputs
 

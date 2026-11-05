@@ -79,6 +79,27 @@ async def test_call_alexandria_bounds_retries_and_waiting():
     assert timeout.total == 150
 
 
+async def test_call_alexandria_reuses_a_given_request_id():
+    body = {"success": True, "data": {"alexandria": [{"creditsCost": 0}]}}
+    with _patch_post(_response(200, body)) as requests_cls:
+        await call_alexandria("fc-key", "apollo", "x", request_id=" req-1 ")
+
+    headers = requests_cls.return_value.post.call_args.kwargs["headers"]
+    assert headers["x-request-id"] == "req-1"
+
+
+async def test_unresolved_call_names_the_request_id_to_retry_with():
+    body = {"success": False, "code": "request_unresolved", "error": "Unknown"}
+    with (
+        _patch_post(_response(503, body)) as requests_cls,
+        pytest.raises(AlexandriaError) as caught,
+    ):
+        await call_alexandria("fc-key", "apollo", "x")
+
+    sent = requests_cls.return_value.post.call_args.kwargs["headers"]["x-request-id"]
+    assert f"run again with request ID {sent}" in str(caught.value)
+
+
 def test_refusals_are_user_fixable_errors():
     # The executor treats ValueErrors as the user's to fix, not platform faults.
     assert issubclass(AlexandriaError, ValueError)
