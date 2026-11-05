@@ -225,6 +225,8 @@ def test_validate_tool_accepts_every_documented_form(tool):
         "intercom/../../orgs",
         "intercom/%2e%2e/orgs",
         "intercom%2F..",
+        "intercom/%252e%252e/orgs",
+        "intercom%252F..",
         "x.y?admin=1",
         "x.y#frag",
         "http://api.stripe.com/v1",

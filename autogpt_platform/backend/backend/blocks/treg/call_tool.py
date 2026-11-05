@@ -15,7 +15,7 @@ from backend.sdk import (
 from ._api import CATALOG_ID, HttpMethod, TregError, usd_header, validate_tool
 from ._base import MAX_COST_CEILING_USD, TregBlockBase, TregInput
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, is_platform_key
-from ._test import TEST_CALL_ID, mock_response
+from ._testdata import TEST_CALL_ID, mock_response
 
 
 class TregCallMethod(str, Enum):

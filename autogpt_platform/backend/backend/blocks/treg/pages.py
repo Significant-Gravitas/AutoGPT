@@ -13,7 +13,7 @@ from backend.sdk import (
 from ._api import TregError
 from ._base import TregBlockBase, TregRouted, TregRoutedInput, TregRoutedOutput, rows
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_routed, routed_details
+from ._testdata import mock_routed, routed_details
 
 # Where providers put a page's clean text, most useful first. A page with only
 # HTML has no clean text; its HTML stays in `pages`.

@@ -16,7 +16,7 @@ from ._base import (
     typed_fields,
 )
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_routed, routed_details
+from ._testdata import mock_routed, routed_details
 from .emails import verify_header
 
 PHONE_ADVICE = "This number was found, not confirmed live."

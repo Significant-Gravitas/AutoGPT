@@ -11,14 +11,19 @@ from backend.blocks.treg._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
 )
-from backend.blocks.treg._test import mock_miss, mock_response, mock_routed
+from backend.blocks.treg._testdata import mock_miss, mock_response, mock_routed
 from backend.blocks.treg.call_tool import TregCallToolBlock
 from backend.blocks.treg.catalog import TregGetToolBlock
-from backend.blocks.treg.emails import TregFindWorkEmailBlock
-from backend.blocks.treg.linkedin import linkedin_reference
+from backend.blocks.treg.emails import TregFindWorkEmailBlock, TregVerifyEmailBlock
+from backend.blocks.treg.linkedin import (
+    TregGetLinkedInCompanyBlock,
+    TregGetLinkedInProfileBlock,
+    linkedin_reference,
+)
 from backend.blocks.treg.pages import (
     TregExtractStructuredDataBlock,
     TregExtractWebPageBlock,
+    TregMapWebsiteBlock,
 )
 from backend.blocks.treg.people import TregSearchPeopleBlock
 from backend.blocks.treg.phone import TregFindPhoneNumberBlock
@@ -113,6 +118,76 @@ async def test_a_miss_is_not_found_rather_than_an_error_and_is_still_billed():
     }
     assert block.execution_stats.provider_cost == 0.012
     assert block.execution_stats.provider_cost_type == "cost_usd"
+
+
+MISS_DETAILS = {
+    "found": False,
+    "providers_tried": ["hunter"],
+    "cost_usd": 0.0,
+    "call_id": "call_01JTREGTEST0000000000000",
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "block, fields, inputs",
+    [
+        (
+            TregVerifyEmailBlock(),
+            ["valid", "status", "score"],
+            {"email": "nobody@example.com"},
+        ),
+        (
+            TregGetLinkedInProfileBlock(),
+            ["full_name", "headline"],
+            {"linkedin_url": "nobody"},
+        ),
+        (
+            TregGetLinkedInCompanyBlock(),
+            ["name", "employees"],
+            {"linkedin_url": "no-such-company"},
+        ),
+    ],
+)
+async def test_a_lookup_miss_yields_only_the_call_details(block, fields, inputs):
+    outputs = await run_block(block, FakeTreg(mock_miss(fields)), **inputs)
+    assert outputs == MISS_DETAILS
+
+
+@pytest.mark.asyncio
+async def test_a_verification_that_ran_counts_as_found_even_when_invalid():
+    # Treg's contract: only a null status is a miss; "invalid" is an answer.
+    fake = FakeTreg(mock_routed({"valid": False, "status": "invalid", "score": 0}))
+    outputs = await run_block(TregVerifyEmailBlock(), fake, email="x@example.com")
+    assert outputs["found"] is True
+    assert outputs["valid"] is False
+    assert outputs["status"] == "invalid"
+
+
+@pytest.mark.asyncio
+async def test_map_website_accepts_bare_urls_and_objects():
+    fake = FakeTreg(
+        mock_routed(
+            {"results": ["https://a.dev/x", {"url": "https://a.dev/y"}, {"t": 1}]}
+        )
+    )
+    outputs = await run_block(TregMapWebsiteBlock(), fake, url="a.dev")
+    assert outputs["urls"] == ["https://a.dev/x", "https://a.dev/y"]
+    assert outputs["count"] == 2
+    assert outputs["results"][0] == {"url": "https://a.dev/x"}
+    assert outputs["found"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("results", [None, [], "not-a-list"])
+async def test_map_website_with_no_list_is_not_found(results):
+    fake = FakeTreg(mock_miss(["results"]) if results is None else mock_miss([]))
+    if results is not None:
+        fake.response.body["output"] = {"results": results}
+    outputs = await run_block(TregMapWebsiteBlock(), fake, url="a.dev")
+    assert outputs["urls"] == []
+    assert outputs["count"] == 0
+    assert outputs["found"] is False
 
 
 @pytest.mark.asyncio

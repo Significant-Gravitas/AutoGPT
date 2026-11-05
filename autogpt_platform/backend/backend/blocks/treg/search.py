@@ -13,7 +13,7 @@ from backend.sdk import (
 
 from ._base import TregBlockBase, TregRoutedInput, TregRoutedOutput, rows
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_routed, routed_details
+from ._testdata import mock_routed, routed_details
 
 
 class TregSearchSource(str, Enum):

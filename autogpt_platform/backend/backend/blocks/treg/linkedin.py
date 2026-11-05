@@ -18,7 +18,7 @@ from ._base import (
     typed_fields,
 )
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_routed, routed_details
+from ._testdata import mock_routed, routed_details
 from .people import TEST_PERSON
 
 PROFILE_FIELDS: dict[str, type] = {

@@ -20,7 +20,7 @@ from ._base import (
     typed_fields,
 )
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_routed, routed_details
+from ._testdata import mock_routed, routed_details
 
 VERIFY_DESCRIPTION = (
     "Check that the address accepts mail in the same call (a fraction of a cent "

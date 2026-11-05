@@ -68,7 +68,8 @@ def validate_tool(tool: str) -> str:
     """Check a tool reference before it is put in a URL path.
 
     Rejects anything that could step out of ``/call/`` to another Treg route
-    with the user's token, such as ``../orgs/...`` or an encoded slash.
+    with the user's token, such as ``../orgs/...`` or an encoded (or
+    double-encoded) dot or slash.
     """
     tool = tool.strip()
     lowered = tool.lower()
@@ -79,6 +80,9 @@ def validate_tool(tool: str) -> str:
         or "%2e" in lowered
         or "%2f" in lowered
         or "%5c" in lowered
+        # A double-encoded dot or slash ("%252e") would decode to one of the
+        # above if anything on the way decodes the path twice.
+        or "%25" in lowered
     ):
         raise TregError(
             f"'{tool}' is not a Treg tool. Use a catalog id such as "

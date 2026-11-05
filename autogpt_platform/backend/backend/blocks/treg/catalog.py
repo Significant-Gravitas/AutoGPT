@@ -16,7 +16,7 @@ from backend.sdk import (
 from ._api import CATALOG_ID, TregError
 from ._base import TregBlockBase, TregInput
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from ._test import mock_response
+from ._testdata import mock_response
 
 
 class TregTool(BaseModel):
