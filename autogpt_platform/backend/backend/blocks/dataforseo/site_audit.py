@@ -59,8 +59,8 @@ class DataForSeoSiteAuditBlock(Block):
     class Output(BlockSchemaOutput):
         complete: bool = SchemaField(
             description=(
-                "False when the crawl was stopped at max_wait_seconds before "
-                "reaching every page up to max_crawl_pages"
+                "False when the crawl was stopped at max_wait_seconds, or failed, "
+                "before reaching every page up to max_crawl_pages"
             )
         )
         pages_crawled: int = SchemaField(description="How many pages were crawled")
@@ -99,7 +99,10 @@ class DataForSeoSiteAuditBlock(Block):
                 ("complete", True),
                 ("pages_crawled", 5),
                 ("onpage_score", 91.5),
-                ("issue_counts", {"no_image_alt": 5, "no_h1_tag": 1}),
+                (
+                    "issue_counts",
+                    {"no_image_alt": 5, "no_h1_tag": 1, "duplicate_title": 1},
+                ),
                 ("pages", [_TEST_AUDITED_PAGE]),
             ],
             test_mock={
@@ -150,12 +153,12 @@ class DataForSeoSiteAuditBlock(Block):
             )
         pages = await self._pages(client, task_id, input_data.max_crawl_pages)
         metrics = summary.get("page_metrics") or {}
-        yield "complete", _is_finished(summary) and not _was_stopped(summary)
+        yield "complete", _is_finished(summary) and not _ended_early(summary)
         yield "pages_crawled", (summary.get("crawl_status") or {}).get(
             "pages_crawled"
         ) or 0
         yield "onpage_score", metrics.get("onpage_score")
-        yield "issue_counts", count_issues(metrics)
+        yield "issue_counts", count_issues(metrics, pages)
         yield "pages", [parse_page(p) for p in pages]
 
     def _target(self, input_data: Input) -> str:
@@ -205,8 +208,9 @@ def _is_finished(summary: dict) -> bool:
     return summary.get("crawl_progress") == "finished"
 
 
-def _was_stopped(summary: dict) -> bool:
-    return summary.get("crawl_stop_reason") == "force_stopped"
+def _ended_early(summary: dict) -> bool:
+    """Stopped at the wait limit, or ended by a DataForSEO crawler failure."""
+    return summary.get("crawl_stop_reason") in ("force_stopped", "unexpected_exception")
 
 
 def crawl_cost(upfront_usd: float, max_crawl_pages: int, summary: dict) -> float:

@@ -28,7 +28,7 @@ Issues use DataForSEO's check names, keeping only the ones that signal a problem
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| complete | False when the crawl was stopped at max_wait_seconds before reaching every page up to max_crawl_pages | bool |
+| complete | False when the crawl was stopped at max_wait_seconds, or failed, before reaching every page up to max_crawl_pages | bool |
 | pages_crawled | How many pages were crawled | int |
 | onpage_score | Site score, 0-100, where 100 means no critical issues | float |
 | issue_counts | How many crawled pages have each issue, most common first | Dict[str, int] |

@@ -48,13 +48,22 @@ def normalise_domain(target: str) -> str:
     return host.removeprefix("www.")
 
 
-def count_issues(metrics: dict[str, Any]) -> dict[str, int]:
+def count_issues(
+    metrics: dict[str, Any], pages: list[dict[str, Any]]
+) -> dict[str, int]:
+    """Pages per issue: checks from the crawl summary, flags from the pages.
+
+    The summary's own duplicate and broken-link totals count links or pairs,
+    not pages, so the flags are counted over the pages instead.
+    """
     counts = {
         name: count
         for name, count in (metrics.get("checks") or {}).items()
         if name in ISSUE_CHECKS and count
     }
-    counts |= {flag: metrics[flag] for flag in PAGE_FLAGS if metrics.get(flag)}
+    for flag in PAGE_FLAGS:
+        if affected := sum(1 for page in pages if page.get(flag)):
+            counts[flag] = affected
     return dict(sorted(counts.items(), key=lambda kv: kv[1], reverse=True))
 
 
