@@ -252,6 +252,11 @@ export default function OnboardingProvider({
 
     hasInitialized.current = true;
 
+    function rerunForCurrentPage() {
+      hasInitialized.current = false;
+      setInitRetry((n) => n + 1);
+    }
+
     async function initializeOnboarding() {
       const requestUserID = latestUserID.current;
       try {
@@ -268,6 +273,14 @@ export default function OnboardingProvider({
               isCompleted: is_completed,
             }),
           );
+        }
+
+        // The user moved on while this was in flight (e.g. to /link/<token>
+        // or /logout, which must not be redirected). The answer above still
+        // stands; the current page runs its own check to decide where to go.
+        if (latestPathname.current !== pathname) {
+          rerunForCurrentPage();
+          return;
         }
 
         const redirectTarget = decideOnboardingRedirect({
@@ -294,6 +307,10 @@ export default function OnboardingProvider({
 
         const onboarding = await retryTransient(fetchOnboarding);
         if (latestUserID.current !== requestUserID) return;
+        if (latestPathname.current !== pathname) {
+          rerunForCurrentPage();
+          return;
+        }
 
         // Handle redirects for completed onboarding
         if (

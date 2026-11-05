@@ -277,6 +277,61 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
+  test("another account signed in straight over the last one gets its own answer", async () => {
+    mockPathname = "/marketplace";
+    backend.isCompleted = true;
+    const view = render(tree());
+    await waitFor(() => expect(completion()).toBe("true"));
+
+    backend.isCompleted = false;
+    mockUserID = "user-b";
+    view.rerender(tree());
+    expect(completion()).toBe("null");
+
+    await waitFor(() => expect(completion()).toBe("false"));
+    expect(backend.completionChecks).toBe(2);
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+  });
+
+  test("an unfinished user who opens an account link while the check is out stays on it", async () => {
+    mockPathname = "/marketplace";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    mockPathname = "/link/abc";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() => expect(completion()).toBe("false"));
+    await act(async () => {});
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(backend.completionChecks).toBe(1);
+  });
+
+  test("an unfinished user who leaves the wizard while its check is out is sent back to it", async () => {
+    mockPathname = "/onboarding";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    mockPathname = "/home";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    expect(backend.completionChecks).toBe(2);
+    expect(completion()).toBe("false");
+  });
+
   test("an admin impersonating an unfinished user is never sent into the target's wizard, and sees it finish", async () => {
     ImpersonationState.set("target-user", "user-a");
     mockPathname = "/admin/users";
