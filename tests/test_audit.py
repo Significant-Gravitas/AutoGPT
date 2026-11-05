@@ -927,6 +927,52 @@ def test_tail_follows_the_new_log_after_a_rotation(tmp_path: Path) -> None:
     assert seen == [b'{"seq": 1}\n', b'{"seq": 1, "new": true}\n']
 
 
+def test_tail_reads_a_record_appended_just_before_a_rotation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tail read to the end of the log and only then asked whether a
+    rotation had moved it. A record appended, and the log rotated, between
+    the two was in the old file it then stopped reading, and never printed."""
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1}\n')
+    real_open = cli._open_for_following
+    rotated = False
+
+    class WriterBetweenTheSteps:
+        def __init__(self, f) -> None:
+            self._f = f
+
+        def readline(self) -> bytes:
+            nonlocal rotated
+            chunk = self._f.readline()
+            if not chunk and not rotated:
+                rotated = True
+                with open(path, "ab") as f:
+                    f.write(b'{"seq": 2}\n')
+                path.rename(tmp_path / "audit.log.20200101-000000")
+                path.write_bytes(b'{"seq": 1, "new": true}\n')
+            return chunk
+
+        def __getattr__(self, name: str):
+            return getattr(self._f, name)
+
+    monkeypatch.setattr(cli, "_open_for_following", lambda p: WriterBetweenTheSteps(real_open(p)))
+    waits = 0
+
+    def wait() -> None:
+        nonlocal waits
+        waits += 1
+        if waits > 3:
+            raise _StopFollowing
+
+    seen: list[bytes] = []
+    with pytest.raises(_StopFollowing):
+        for line in cli._follow(path, wait):
+            seen.append(line)
+
+    assert seen == [b'{"seq": 1}\n', b'{"seq": 2}\n', b'{"seq": 1, "new": true}\n']
+
+
 def test_tail_waits_for_the_rest_of_a_record_being_written(tmp_path: Path) -> None:
     """A record caught mid-append used to print as two unparseable halves."""
     path = tmp_path / "audit.log"

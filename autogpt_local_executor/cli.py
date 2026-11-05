@@ -579,6 +579,11 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
     try:
         pending = b""
         while True:
+            # Asked before the read: nothing is written to a file once a
+            # rotation has moved it, so a read that comes back empty after
+            # the move has seen its last record. Asked after, a record and a
+            # rotation landing between the two were lost.
+            moved = _moved_away(path, f)
             chunk = f.readline()
             if chunk:
                 pending += chunk
@@ -592,7 +597,7 @@ def _follow(path: Path, wait) -> Iterator[bytes]:
                 f.seek(0)
                 pending = b""
                 continue
-            if _moved_away(path, f):
+            if moved:
                 try:
                     reopened = _open_for_following(path)
                 except FileNotFoundError:
