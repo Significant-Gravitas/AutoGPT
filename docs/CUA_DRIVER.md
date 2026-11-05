@@ -134,7 +134,10 @@ sixteen tools; all of them are in the catalog, which
   `files` on `browser_set_input_files` (hands files to a page), and
   `script` on `run_script`, so every script: its calls run inside the
   driver, where the shim can't check them, and one can save a screenshot to
-  a file. The tool list names them in each tool's `approval_arguments`. The platform
+  a file. So do `launch_app`'s `launch_path`, `path`,
+  `additional_arguments`, `urls` and `webkit_inspector_port`, which start a
+  program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
+  must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; without it the
   shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
@@ -179,9 +182,18 @@ Known gaps:
   arguments, and the shim can't see into scripts, so every script waits for
   the person's approval instead, on a card that shows it. A policy rule that
   forbids an argument belongs upstream; with one, scripts could run unasked.
-- `launch_app` accepts `launch_path` and `additional_arguments` (on Linux,
-  the `Exec=` line of a `.desktop` file), so it can start any program with
-  any arguments. Again no more than the GUI allows; each launch is audited.
+- `launch_app` can start any program with any arguments: `launch_path` (on
+  Linux the `Exec=` line of a `.desktop` file, run split at spaces), a
+  Windows `path`, and `additional_arguments`, where a Chromium flag such as
+  `--renderer-cmd-prefix` runs a command. `urls` open in whatever handles
+  them, a web page in the person's own signed-in browser. The driver starts
+  all of these in the background, with no window of their own, so unlike a
+  terminal the agent types into, nobody sees them: each is an approval
+  argument. On Linux the driver also runs `name` as a command line before
+  it looks for an app of that name, so the shim refuses a `name` whose first
+  word is a program, and on every OS a `name`, `bundle_id` or `aumid` with a
+  path, a URL scheme or a leading `-`. A plain launch, an app by its name or
+  id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
   `type_text` does the same in the background through the accessibility
   API; the shim audits both.

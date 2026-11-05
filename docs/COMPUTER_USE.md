@@ -107,10 +107,15 @@ A script (`run_script`) asks too, every time, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
 
-These approvals cover those arguments, not the apps. An app Otto drives,
-or starts with `launch_app` (which takes any program and arguments, and
-asks nothing), reads and writes files with your access, outside the shared
-folders too: a terminal or a file manager, say. See
+So does a `launch_app` call that runs more than an app by its name: a
+command line or a program's path, extra command-line arguments, links or
+files to open, or an inspector port. cua-driver starts those out of sight,
+with no window of their own, and opens a link in your own browser. Opening
+an app by its name or id asks nothing.
+
+These approvals cover those arguments, not the apps. An app Otto drives
+reads and writes files with your access, outside the shared folders too: a
+terminal or a file manager, say. See
 [CUA_DRIVER.md](CUA_DRIVER.md#residual-risk).
 
 ## What leaves this computer

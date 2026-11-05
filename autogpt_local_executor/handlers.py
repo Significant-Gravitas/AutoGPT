@@ -1834,6 +1834,9 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "when the task needs that file. A `run_script` script waits too, since its calls "
         "can save a screenshot to a file: use `run_steps` or single calls unless the flow "
         "needs a script's logic.",
+        "- Open an app with `launch_app` by its `name` (or `bundle_id`) alone. A command "
+        "line, a path, links or files to open, extra arguments or an inspector port wait "
+        "for the person's approval, since the program they start runs out of sight.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
         "recording, process control, downloads and page JavaScript are not.",

@@ -93,13 +93,19 @@ async def test_the_driver_enforces_the_shims_policy(bridge: CuaDriverBridge) -> 
 async def test_every_approval_argument_is_one_the_driver_takes(bridge: CuaDriverBridge) -> None:
     """An approval check on an argument the driver renamed would stop
     applying without anyone noticing."""
+    system = "linux" if sys.platform.startswith("linux") else sys.platform
     snapshot = await bridge.snapshot()
     for tool, arguments in catalog.APPROVAL_ARGUMENTS.items():
         spec = snapshot.tool(tool)
         if spec is None:
             continue
         properties = (spec.get("inputSchema") or {}).get("properties") or {}
-        assert set(arguments) <= set(properties), tool
+        here = {
+            argument
+            for argument in arguments
+            if system in catalog.APPROVAL_ARGUMENT_PLATFORMS.get((tool, argument), {system})
+        }
+        assert here <= set(properties), tool
 
 
 async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None:

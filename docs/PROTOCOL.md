@@ -881,15 +881,20 @@ arguments the person approved for this call. An argument in a tool's
 `approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
 `file_path` / `image_path`, `browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
-a file where the shim can't check them); a call that
+a file where the shim can't check them) or runs a program out of sight
+(`launch_app`'s `launch_path`, `path`, `additional_arguments`, `urls` and
+`webkit_inspector_port`); a call that
 uses one without naming it there gets `APPROVAL_REQUIRED` with
 `details.tool` and `details.argument`, and nothing reaches the driver. Only
 an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`, and any approval argument
-inside a `run_steps` step.
+accepts: `check_permissions` with `prompt: true`; any approval argument
+inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
+`bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
+a leading `-`, a control character, or on Linux a command line whose first
+word is a program).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json

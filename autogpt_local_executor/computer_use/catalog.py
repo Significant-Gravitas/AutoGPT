@@ -10,7 +10,10 @@ own check on each call before relaying it. See docs/CUA_DRIVER.md.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+import shutil
+import sys
+import unicodedata
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 # The cua-driver release this catalog was reviewed against. A driver of
@@ -154,7 +157,33 @@ APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
     "run_script": {
         "script": "runs this script, which drives apps and can save a screenshot to any file"
     },
+    # Each runs whatever it names, out of sight: the driver starts programs
+    # in the background with no window of their own, and opens links and
+    # files with whatever app handles them. A launch that only names an app
+    # (`name`, `bundle_id`, `aumid`) needs no approval; check_arguments
+    # holds those to an app's name or id.
+    "launch_app": {
+        "launch_path": "runs this command line",
+        "path": "runs this program",
+        "additional_arguments": "starts the app with these command-line arguments",
+        "urls": "opens these links or files, each in the app that handles it",
+        "webkit_inspector_port": "opens a debugging port into the app",
+    },
 }
+
+# Approval arguments the driver takes on some systems only (sys.platform,
+# with "linux" for every Linux); it takes each other one everywhere. The
+# contract tests check them against the driver of the system they run on.
+APPROVAL_ARGUMENT_PLATFORMS: dict[tuple[str, str], frozenset[str]] = {
+    ("launch_app", "launch_path"): frozenset({"linux", "win32"}),
+    ("launch_app", "path"): frozenset({"win32"}),
+    ("launch_app", "webkit_inspector_port"): frozenset({"darwin", "win32"}),
+}
+
+# The launch_app arguments that name an app rather than a program to run.
+_APP_IDENTITIES = ("name", "bundle_id", "aumid")
+# A path, a URL scheme or a drive letter: what an app's name or id never has.
+_NOT_IN_AN_APP_NAME = frozenset("/\\:")
 
 
 class ArgumentRefused(Exception):
@@ -186,10 +215,19 @@ def approval_arguments(tool: str, arguments: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def check_arguments(tool: str, arguments: Mapping[str, Any], approved: Iterable[str] = ()) -> None:
+def check_arguments(
+    tool: str,
+    arguments: Mapping[str, Any],
+    approved: Iterable[str] = (),
+    *,
+    platform: str | None = None,
+    on_path: Callable[[str], str | None] = shutil.which,
+) -> None:
     """Raise ApprovalRequired for a disk argument the person hasn't approved,
     and ArgumentRefused for one this machine never accepts, looking inside
-    `run_steps` too, whose steps the shim can see."""
+    `run_steps` too, whose steps the shim can see. `platform` and `on_path`
+    are the machine's (sys.platform, shutil.which) unless a test says
+    otherwise."""
     approved = set(approved)
     if unknown := approved - set(APPROVAL_ARGUMENTS.get(tool, {})):
         raise ArgumentRefused(
@@ -205,6 +243,8 @@ def check_arguments(tool: str, arguments: Mapping[str, Any], approved: Iterable[
             "permission prompts are raised by the person at this machine, "
             "with `autogpt-shim doctor`",
         )
+    if tool == "launch_app":
+        _check_app_identity(arguments, sys.platform if platform is None else platform, on_path)
     if tool == "clipboard_write":
         values = [name for name in ("text", "file_path", "image_path") if name in arguments]
         if len(values) != 1 or not isinstance(arguments[values[0]], str):
@@ -259,6 +299,45 @@ def _step_calls(step: Any) -> list[tuple[str, Mapping[str, Any]]]:
     ]
 
 
+def _check_app_identity(
+    arguments: Mapping[str, Any], platform: str, on_path: Callable[[str], str | None]
+) -> None:
+    """A launch that runs without approval names an app, by its name or id.
+    cua-driver also takes a path there (an executable, a `.app` bundle) and,
+    on Windows, hands the name to ShellExecuteEx, which opens files and URL
+    schemes; those go in `path`, `launch_path` or `urls`, which the person
+    approves."""
+    for argument in _APP_IDENTITIES:
+        value = arguments.get(argument)
+        if value is None:
+            continue
+        if (
+            not isinstance(value, str)
+            or value.startswith("-")
+            or any(char in _NOT_IN_AN_APP_NAME for char in value)
+            or any(unicodedata.category(char).startswith("C") for char in value)
+        ):
+            raise ArgumentRefused(
+                "launch_app",
+                argument,
+                "names an app by its name or id; a path or a link goes in launch_path, "
+                "path or urls, which the person approves",
+            )
+    # On Linux the driver runs `name` as a command line first, split at
+    # spaces, and matches it against the installed apps only if no program
+    # has its first word. A display name such as "Google Chrome" starts with
+    # no program's name and so reaches the match.
+    name = arguments.get("name")
+    words = name.split() if platform.startswith("linux") and isinstance(name, str) else []
+    if len(words) > 1 and on_path(words[0]):
+        raise ArgumentRefused(
+            "launch_app",
+            "name",
+            f"the driver would run {words[0]!r} with the rest as its arguments; pass a "
+            "command line as launch_path, which the person approves",
+        )
+
+
 def takes_session(schema: Mapping[str, Any]) -> bool:
     properties = schema.get("properties")
     return isinstance(properties, Mapping) and "session" in properties
@@ -283,6 +362,7 @@ def same_minor(version: str, reviewed: str = REVIEWED_DRIVER_VERSION) -> bool:
 __all__ = [
     "ACT_TOOLS",
     "APPROVAL_ARGUMENTS",
+    "APPROVAL_ARGUMENT_PLATFORMS",
     "BROWSER_TOOLS",
     "CLIPBOARD_TOOLS",
     "OBSERVE_TOOLS",
