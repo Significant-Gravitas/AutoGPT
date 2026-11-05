@@ -1556,6 +1556,31 @@ async def test_an_existing_log_is_made_owner_only(tmp_path: Path) -> None:
     assert stat.S_IMODE(w.path.stat().st_mode) == 0o600
 
 
+@_posix_only
+@pytest.mark.asyncio
+async def test_a_log_that_cannot_be_made_owner_only_is_warned_about(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A chmod that failed (another account's file, a filesystem without
+    POSIX modes) was logged at debug level, and the shim went on appending
+    to a log other accounts may read."""
+    w = _writer(tmp_path)
+    await w.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    real_chmod = os.chmod
+
+    def refuse(path, mode, *args, **kwargs):
+        if Path(path) == w.path:
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        return real_chmod(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(audit_module.os, "chmod", refuse)
+
+    with caplog.at_level("WARNING", logger=audit_module.__name__):
+        AuditWriter(path=w.path, audit_key=KEY)
+
+    assert any(str(w.path) in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+
 def test_prune_refuses_a_duration_too_long_to_convert(tmp_path: Path, capsys) -> None:
     """int() refuses a string of more than 4300 digits, and the ValueError
     ended `audit prune` with a traceback instead of the duration message."""

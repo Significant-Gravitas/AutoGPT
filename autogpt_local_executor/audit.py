@@ -205,7 +205,7 @@ class AuditWriter:
                         "Existing audit log failed verification; refusing to append"
                     )
             self._seq, self._prev_hmac = self._load_tail_state(self.path)
-            # 0600 on POSIX; on Windows the file inherits the user-only ACL.
+            # 0600 on POSIX; on Windows the file keeps its folder's ACL.
             if not self.path.exists():
                 # Create empty so first write can fsync against an existing inode
                 # and we can set 0600 once instead of after every append.
@@ -814,13 +814,21 @@ def _create_owner_only(path: Path) -> None:
 
 
 def _chmod_owner_only(path: Path) -> None:
-    """0600 on POSIX; no-op on Windows (the file inherits the user ACL)."""
+    """0600 on POSIX; no-op on Windows, where the file keeps its folder's ACL.
+
+    A failure is warned about, not fatal: a filesystem without POSIX modes
+    (exFAT, an SMB share) refuses every chmod, and the shim still writes the
+    log there, readable by whoever the filesystem lets read it."""
     if os.name == "nt":
         return
     try:
         os.chmod(path, 0o600)
-    except OSError:
-        logger.debug("chmod 0600 failed for %s", path, exc_info=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not make %s readable by its owner only (%s); other accounts may read it",
+            path,
+            exc,
+        )
 
 
 def _file_identity(path: Path) -> tuple[int, int, int] | None:

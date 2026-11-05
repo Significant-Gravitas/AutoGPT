@@ -22,9 +22,14 @@ Per [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-locat
 | WSL2 | Linux path |
 
 Permissions: created `0600` on POSIX (owner-only), and an existing log
-(one an older version made, say) is set to `0600` when the shim opens it;
-ACL'd to the running user on Windows. The shim refuses to start if the audit log can't be
-opened for append.
+(one an older version made, say) is set to `0600` when the shim opens it.
+Where that chmod fails (another account's file, or a filesystem without
+POSIX modes such as exFAT or an SMB share), the shim logs a warning and goes
+on writing the log, which others may then read. On Windows the shim sets no
+ACL of its own: the log keeps its folder's, which under the default
+`%LOCALAPPDATA%` lets only you and administrators in. Don't point
+`audit_log_path` at a folder other accounts can read. The shim refuses to
+start if the audit log can't be opened for append.
 
 ## Format
 
