@@ -67,8 +67,9 @@ const backend = vi.hoisted(() => ({
   holdOnce: null as Promise<void> | null,
   // Set to hold only the next onboarding state read.
   stateHoldOnce: null as Promise<void> | null,
-  // Set to fail only the next onboarding state read with this status.
-  stateFailsOnceWith: null as number | null,
+  // Set to fail only the next onboarding state read: an HTTP status, or a
+  // request cut off on the way.
+  stateFailsOnceWith: null as number | "abort" | null,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
@@ -89,6 +90,9 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     if (hold) await hold;
     const failure = backend.stateFailsOnceWith;
     backend.stateFailsOnceWith = null;
+    if (failure === "abort") {
+      throw new DOMException("The request was aborted", "AbortError");
+    }
     if (failure) {
       const { ApiError } = await import("@/lib/autogpt-server-api");
       throw new ApiError("State read failed", failure, {});
@@ -348,7 +352,40 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     expect(completion()).toBe("false");
   });
 
-  test("an unfinished user who leaves the wizard while its check is out is still sent back when their state can't be read", async () => {
+  test.each([
+    { finished: true, expected: "true" },
+    { finished: false, expected: "false" },
+  ])(
+    "a user who left the wizard is decided by a fresh check when the state read is cut off (finished: $finished)",
+    async ({ finished, expected }) => {
+      mockPathname = "/onboarding";
+      backend.holdOnce = new Promise<void>((resolve) => {
+        releaseHeld = resolve;
+      });
+      const view = render(tree());
+      await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+      // The held check read "not finished" before the wizard was left.
+      backend.isCompleted = finished;
+      backend.completedSteps = finished ? ["ONBOARDING_COMPLETE"] : [];
+      backend.stateFailsOnceWith = "abort";
+      mockPathname = "/home";
+      view.rerender(tree());
+      await act(async () => releaseHeld());
+
+      await waitFor(() => expect(completion()).toBe(expected));
+      expect(backend.completionChecks).toBe(2);
+      if (finished) {
+        expect(routerReplace).not.toHaveBeenCalledWith("/onboarding");
+      } else {
+        await waitFor(() =>
+          expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+        );
+      }
+    },
+  );
+
+  test("a user who finished the wizard is not sent back into it when the state read after it fails", async () => {
     mockPathname = "/onboarding";
     backend.holdOnce = new Promise<void>((resolve) => {
       releaseHeld = resolve;
@@ -356,16 +393,17 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     const view = render(tree());
     await waitFor(() => expect(backend.completionChecks).toBe(1));
 
+    backend.isCompleted = true;
+    backend.completedSteps = ["ONBOARDING_COMPLETE"];
     backend.stateFailsOnceWith = 403;
     mockPathname = "/home";
     view.rerender(tree());
     await act(async () => releaseHeld());
 
-    await waitFor(() =>
-      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
-    );
-    expect(backend.stateReads).toBe(1);
-    expect(completion()).toBe("false");
+    await waitFor(() => expect(backend.stateReads).toBe(1));
+    await act(async () => {});
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(completion()).not.toBe("false");
   });
 
   test("an unfinished user opening the app root is sent to the wizard on the first answer, though the root has already moved them to Home", async () => {

@@ -251,15 +251,9 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           !getOnboardingRoute(latestPathname.current).isOnOnboardingRoute;
         if (!is_completed && hasLeftWizard) {
-          // Unreadable, the answer in hand stands: Home must not stay up.
-          onboarding = await retryTransient(fetchOnboarding).catch(
-            (error: unknown) => {
-              if (error instanceof ApiError && error.status === 401) {
-                throw error;
-              }
-              return null;
-            },
-          );
+          // Unreadable, it goes to the catch, which asks again rather than
+          // guess: a finished user must not be sent back into the wizard.
+          onboarding = await retryTransient(fetchOnboarding);
           if (latestUserID.current !== requestUserID) return;
         }
         const isCompleted =
