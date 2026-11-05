@@ -1,6 +1,6 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { getAuthDeepLink } from "@/lib/auth-redirect";
+import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
 import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
@@ -37,10 +37,12 @@ export function useLoginPage() {
   const isCloudEnv = environment.isCloud();
 
   // Same-origin redirect target; off-site values are dropped so a crafted
-  // `/login?next=https://phishing.site` cannot redirect users elsewhere. A
-  // default landing (`next=/home`) is dropped too, so a user who has not
-  // finished onboarding goes there instead of Home (SECRT-3384).
-  const nextUrl = getAuthDeepLink(searchParams.get("next"));
+  // `/login?next=https://phishing.site` cannot redirect users elsewhere.
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
@@ -74,8 +76,8 @@ export function useLoginPage() {
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+      const callbackUrl = safeNext
+        ? `/auth/callback?next=${encodeURIComponent(safeNext)}`
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
@@ -119,7 +121,7 @@ export function useLoginPage() {
     clearImpersonationEverywhere();
 
     try {
-      const result = await loginAction(data.email, data.password, nextUrl);
+      const result = await loginAction(data.email, data.password, safeNext);
 
       if (result.error === "email_not_verified" && result.email) {
         setVerificationEmail(result.email);
@@ -136,7 +138,11 @@ export function useLoginPage() {
       // router.replace() does a soft navigation where the cookie store may not
       // immediately reflect cookies set by the server action, causing a blank page.
       // This matches the OAuth flow which also uses window.location.href.
-      window.location.href = getPostLoginPath(nextUrl, result.next);
+      window.location.href = getPostLoginPath({
+        nextUrl,
+        resultNext: result.next,
+        rawNext,
+      });
     } catch (error) {
       toast({
         title:
@@ -154,7 +160,7 @@ export function useLoginPage() {
   return {
     form,
     feedback: feedback ?? signInErrorNotice,
-    nextUrl,
+    nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
     showBannedNotice,
