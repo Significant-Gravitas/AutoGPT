@@ -42,8 +42,40 @@ def test_a_service_is_found_by_id_name_or_product(registry, name: str, key: str)
     assert found is not None and found.key == key
 
 
+def test_unsupported_keeps_the_names_we_cannot_connect_in_order(registry):
+    assert support.unsupported_services(
+        ["printify", "Shopify", "Etsy", "shopify", "Google Sheets", " "]
+    ) == ["Shopify", "Etsy"]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Photograph each gelato flavour for the menu", []),
+        ("Send the xero-gravity sticker sale to everyone", []),
+        ("Print the menu on Gelato and sell it", ["Gelato"]),
+        ("Sync invoices to Xero", ["Xero"]),
+    ],
+)
+def test_a_known_gap_counts_in_free_text_only_when_capitalised(
+    registry, text: str, expected: list[str]
+):
+    """ "A gelato flavour" is a dessert, not Gelato the print provider."""
+    assert support.unsupported_in_task([], text) == expected
+
+
 def test_a_known_gap_given_as_a_service_counts_in_any_case():
     assert support.canonical_name("shopify store") == "Shopify"
+
+
+def test_a_task_text_naming_known_unsupported_tools_is_read(registry):
+    text = "List each sticker on Shopify and Printful, then post it to Canva."
+    assert support.unsupported_in_task(None, text) == ["Shopify", "Printful"]
+
+
+def test_a_task_text_ignores_words_that_only_contain_a_name(registry):
+    text = "A wixed-up shopifyish idea for gelatos"
+    assert support.unsupported_in_task([], text) == []
 
 
 def test_live_registry_offers_printify_and_every_mcp_catalog_server():
@@ -60,6 +92,17 @@ def test_a_provider_counts_exactly_when_it_has_a_sign_in_here():
     configured = oauth_client_credentials("etsy") is not None
     assert bool(get_supported_auth_types("etsy")) == configured
     assert (found is not None) == configured
+
+
+def test_the_registry_is_read_once_per_batch(mocker: MockerFixture):
+    """Labelling a page of tasks must not rebuild the registry per name."""
+    read = mocker.patch.object(
+        support, "connectable_services", return_value=FAKE_REGISTRY
+    )
+
+    support.unsupported_services(["Shopify", "Printify", "Etsy", "Google Sheets"])
+
+    assert read.call_count == 1
 
 
 def test_a_known_tool_is_named_one_way_however_it_was_written(registry):
@@ -107,6 +150,7 @@ def test_a_legacy_connector_without_provider_metadata_is_connectable():
     found = support.find_connectable("Slack")
 
     assert found is not None and found.key == "slack"
+    assert support.unsupported_services(["Slack"]) == []
 
 
 def test_a_credential_type_counts_only_from_a_block_that_can_run(

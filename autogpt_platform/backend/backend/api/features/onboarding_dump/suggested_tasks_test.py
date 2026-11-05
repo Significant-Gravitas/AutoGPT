@@ -15,6 +15,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 from pytest_mock import MockerFixture
 
+from backend.api.features.integrations import support
 from backend.api.features.onboarding_dump import intro, routes
 from backend.api.rest_api import app as rest_app
 
@@ -257,3 +258,91 @@ def test_an_empty_id_list_is_refused(rows: RowStore):
     rows.put(STORED)
 
     assert update([], "dismissed").status_code == 422
+
+
+# The sticker shop from SECRT-3150: two tasks promise tools, one of which the
+# platform cannot connect. Support is read against the live registry, so a
+# connector that ships later clears the label on rows already stored.
+STICKER_SHOP = [
+    {
+        "title": "Turn every new sticker design into a listing draft",
+        "prompt": "Make a Printify product and a Shopify listing for each design.",
+        "icon": "shopping-cart",
+        "integrations": ["printify", "Shopify"],
+    },
+    {
+        "title": "Post each newly live sticker",
+        "prompt": "Post every new sticker to my socials.",
+        "icon": "megaphone",
+        "integrations": ["printify"],
+    },
+]
+
+
+@pytest.fixture
+def registry(mocker: MockerFixture) -> None:
+    mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[
+            support.ConnectableService(key="printify", name="Printify"),
+            support.ConnectableService(key="google", name="Google"),
+        ],
+    )
+
+
+def test_a_task_that_needs_a_tool_we_cannot_connect_names_it(
+    rows: RowStore, registry: None
+):
+    rows.put(STICKER_SHOP)
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert [t["unsupported"] for t in tasks] == [["Shopify"], []]
+
+
+def test_a_row_stored_before_the_label_existed_is_read_from_its_text(
+    rows: RowStore, registry: None
+):
+    rows.put(
+        [
+            {"title": "Sync Shopify orders", "prompt": "Pull my Shopify orders."},
+            {"title": "Weekly Printify report", "prompt": "Summarise Printify."},
+        ]
+    )
+
+    tasks = client.get(URL).json()["tasks"]
+
+    assert [t["unsupported"] for t in tasks] == [["Shopify"], []]
+
+
+def test_the_label_is_never_stored(rows: RowStore, registry: None):
+    rows.put(STICKER_SHOP)
+
+    update(["1"], "dismissed")
+
+    assert rows.row is not None
+    stored = rows.row.suggestedPrompts
+    assert [item.get("integrations") for item in stored] == [
+        ["printify", "Shopify"],
+        ["printify"],
+    ]
+    assert all("unsupported" not in item for item in stored)
+
+
+def test_a_page_of_tasks_reads_the_registry_once(rows: RowStore, mocker: MockerFixture):
+    """Labels for the whole list come from one read of the registry, not one
+    per task or per name."""
+    read = mocker.patch.object(
+        support,
+        "connectable_services",
+        return_value=[support.ConnectableService(key="printify", name="Printify")],
+    )
+    rows.put(
+        STICKER_SHOP
+        + [{"title": "Sync Shopify orders", "prompt": "Pull my Shopify orders."}]
+    )
+
+    client.get(URL)
+
+    assert read.call_count == 1
