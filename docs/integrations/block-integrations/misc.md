@@ -343,7 +343,7 @@ JSON has no `NaN` or `Infinity`. In JavaScript they arrive as `null`, the same a
 | code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | timeout | Execution timeout in seconds | int | No |
-| dispose_sandbox | Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires. | bool | No |
+| dispose_sandbox | Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires. On the platform's E2B credits it is always disposed, since this block returns no sandbox ID to reuse. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
 ### Outputs

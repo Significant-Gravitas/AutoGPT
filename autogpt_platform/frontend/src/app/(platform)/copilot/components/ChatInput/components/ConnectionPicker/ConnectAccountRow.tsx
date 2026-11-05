@@ -5,6 +5,7 @@ import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   onConnect: () => void;
@@ -24,18 +25,24 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
       type="button"
       variant="ghost"
       size="small"
+      shape="soft"
       aria-label="Connect a ChatGPT subscription"
       disabled={isConnecting}
       onClick={onConnect}
-      className="h-auto min-h-14 w-full justify-start gap-3 whitespace-normal rounded-lg px-3 py-2 text-left"
+      className="h-auto min-h-14 w-full justify-start gap-3 text-left whitespace-normal"
     >
       <IntegrationLogo provider="openai" size={20} />
-      <span className="min-w-0 flex-1 text-sm font-medium text-foreground-strong">
+      <Text
+        variant="body-medium-tight"
+        as="span"
+        tone="primary"
+        className="min-w-0 flex-1"
+      >
         <span className="block">ChatGPT subscription</span>
-        <span className="mt-1 block text-caption-sm font-normal leading-inherit text-foreground-secondary">
+        <span className="mt-1 block text-caption-sm leading-inherit font-normal text-foreground-secondary">
           Connect your existing account
         </span>
-      </span>
+      </Text>
       <span
         role={isConnecting ? "status" : undefined}
         aria-label={isConnecting ? "Connecting ChatGPT" : undefined}
@@ -45,7 +52,7 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
           icon={isConnecting ? Loading03Icon : PlusSignIcon}
           size={14}
           aria-hidden
-          className={isConnecting ? "animate-spin" : undefined}
+          spin={isConnecting}
         />
       </span>
     </Button>

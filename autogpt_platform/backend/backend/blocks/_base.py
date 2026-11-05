@@ -45,6 +45,8 @@ from backend.util.exceptions import (
 from backend.util.settings import Config
 from backend.util.text import split_camelcase
 
+from ._preview import ChangePreview
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -289,8 +291,10 @@ class BlockSchema(BaseModel):
         )
 
     @classmethod
-    def get_mismatch_error(cls, data: BlockInput) -> str | None:
-        return cls.validate_data(data)
+    def get_mismatch_error(
+        cls, data: BlockInput, exclude_fields: set[str] | None = None
+    ) -> str | None:
+        return cls.validate_data(data, exclude_fields=exclude_fields)
 
     # JSON-schema keywords whose violations are NOT already prevented at the
     # widget level (number bounds and length bounds are bypassable by typing
@@ -857,6 +861,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_name=self.name,
                     block_id=self.id,
                 ) from ex
+
+    def change_preview(self, input_data: BlockInput) -> ChangePreview | None:
+        """What these inputs would create or change in the user's connected
+        account, for an approval card to show before the block runs. None
+        where the inputs already say it plainly. Reads the model's raw call,
+        before validation, so it must not assume any input is well formed."""
+        return None
 
     async def is_block_exec_need_review(
         self,

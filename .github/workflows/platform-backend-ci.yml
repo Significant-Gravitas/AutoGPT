@@ -6,7 +6,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -22,7 +24,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -211,7 +215,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
@@ -293,11 +297,11 @@ jobs:
       # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
       # an unauthenticated PING.
-      # Pinned to a concrete release (unlike the local compose ``:latest``)
-      # so an upstream FalkorDB push can't start failing CI on unrelated
-      # PRs; bump deliberately alongside the compose stack.
+      # Pinned to the release the cloud runs (``serviceVersion`` in the infra
+      # repo's FalkorDB chart): older releases refuse Cypher newer ones run.
+      # Bump every FalkorDB pin together with that chart (OPEN-3746, #16224).
       falkordb:
-        image: falkordb/falkordb:v4.18.9
+        image: falkordb/falkordb:v4.12.5
         ports:
           - 6380:6379
         env:
@@ -554,7 +558,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Wait for isolated stateful services
         wait: stateful-services

@@ -17,12 +17,15 @@ from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
+from backend.util.user_regex import compile_user_regex
 
 formatter = text.TextFormatter()
 
-MAX_REGEX_PATTERN_LENGTH = 10_000
 MAX_REGEX_TEXT_LENGTH = 1_000_000
 REGEX_TIMEOUT_SECONDS = 1.0
+MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
+MAX_MATCH_LENGTH = 10_000  # Maximum length per match
+MAX_TEXT_OUTPUT_LENGTH = 10_000_000  # Maximum characters a text block may output
 
 
 class MatchTextPatternBlock(Block):
@@ -74,13 +77,6 @@ class MatchTextPatternBlock(Block):
         else:
             text = json.dumps(input_data.text)
 
-        if len(input_data.match) > MAX_REGEX_PATTERN_LENGTH:
-            raise ValueError(
-                f"Regex pattern is too large to evaluate safely "
-                f"({len(input_data.match)} characters; "
-                f"maximum {MAX_REGEX_PATTERN_LENGTH})."
-            )
-
         if len(text) > MAX_REGEX_TEXT_LENGTH:
             raise ValueError(
                 f"Text is too large to match safely ({len(text)} characters; "
@@ -88,8 +84,8 @@ class MatchTextPatternBlock(Block):
             )
 
         try:
-            matched = regex.search(
-                input_data.match, text, flags=flags, timeout=REGEX_TIMEOUT_SECONDS
+            matched = compile_user_regex(input_data.match, flags).search(
+                text, timeout=REGEX_TIMEOUT_SECONDS
             )
         except TimeoutError as error:
             raise ValueError("Regex evaluation timed out.") from error
@@ -175,11 +171,6 @@ class ExtractTextInformationBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Security fix: Add limits to prevent ReDoS and memory exhaustion
-        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
-        MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
-        MAX_MATCH_LENGTH = 10_000  # Maximum length per match
-
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -192,68 +183,27 @@ class ExtractTextInformationBlock(Block):
             txt = json.dumps(input_data.text)
 
         # Limit text size to prevent DoS
-        if len(txt) > MAX_TEXT_LENGTH:
-            txt = txt[:MAX_TEXT_LENGTH]
+        if len(txt) > MAX_REGEX_TEXT_LENGTH:
+            txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
-        # Validate regex pattern to prevent dangerous patterns
-        dangerous_patterns = [
-            r".*\+.*\+",  # Nested quantifiers
-            r".*\*.*\*",  # Nested quantifiers
-            r"(?=.*\+)",  # Lookahead with quantifier
-            r"(?=.*\*)",  # Lookahead with quantifier
-            r"\(.+\)\+",  # Group with nested quantifier
-            r"\(.+\)\*",  # Group with nested quantifier
-            r"\([^)]+\+\)\+",  # Nested quantifiers like (a+)+
-            r"\([^)]+\*\)\*",  # Nested quantifiers like (a*)*
-        ]
-
-        # Check if pattern is potentially dangerous
-        is_dangerous = any(
-            re.search(dangerous, input_data.pattern) for dangerous in dangerous_patterns
-        )
-
-        # Use regex module with timeout for dangerous patterns
-        # For safe patterns, use standard re module for compatibility
         try:
+            pattern = compile_user_regex(input_data.pattern, flags)
             matches = []
             match_count = 0
 
-            if is_dangerous:
-                # Use regex module with timeout (5 seconds) for dangerous patterns
-                # The regex module supports timeout parameter in finditer
-                try:
-                    for match in regex.finditer(
-                        input_data.pattern, txt, flags=flags, timeout=5.0
-                    ):
-                        if match_count >= MAX_MATCHES:
-                            break
-                        if input_data.group <= len(match.groups()):
-                            match_text = match.group(input_data.group)
-                            # Limit match length to prevent memory exhaustion
-                            if len(match_text) > MAX_MATCH_LENGTH:
-                                match_text = match_text[:MAX_MATCH_LENGTH]
-                            matches.append(match_text)
-                            match_count += 1
-                except regex.error as e:
-                    # Timeout occurred or regex error
-                    if "timeout" in str(e).lower():
-                        # Timeout - return empty results
-                        pass
-                    else:
-                        # Other regex error
-                        raise
-            else:
-                # Use standard re module for non-dangerous patterns
-                for match in re.finditer(input_data.pattern, txt, flags):
-                    if match_count >= MAX_MATCHES:
+            # Every pattern runs with a timeout, which covers the whole
+            # iteration; a timeout ends up in the empty result below
+            for match in pattern.finditer(txt, timeout=REGEX_TIMEOUT_SECONDS):
+                if input_data.group <= len(match.groups()):
+                    match_text = match.group(input_data.group)
+                    # Limit match length to prevent memory exhaustion
+                    if len(match_text) > MAX_MATCH_LENGTH:
+                        match_text = match_text[:MAX_MATCH_LENGTH]
+                    matches.append(match_text)
+                    match_count += 1
+                    # Stop before the next match is searched for
+                    if not input_data.find_all or match_count >= MAX_MATCHES:
                         break
-                    if input_data.group <= len(match.groups()):
-                        match_text = match.group(input_data.group)
-                        # Limit match length to prevent memory exhaustion
-                        if len(match_text) > MAX_MATCH_LENGTH:
-                            match_text = match_text[:MAX_MATCH_LENGTH]
-                        matches.append(match_text)
-                        match_count += 1
 
             if not input_data.find_all:
                 matches = matches[:1]
@@ -265,6 +215,9 @@ class ExtractTextInformationBlock(Block):
 
             yield "matched_results", matches
             yield "matched_count", len(matches)
+        except ValueError:
+            # A pattern too large to evaluate is an error, never "no match".
+            raise
         except Exception:
             # Return empty results on any regex error
             yield "negative", input_data.text
@@ -354,8 +307,12 @@ class CombineTextsBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        combined_text = input_data.delimiter.join(input_data.input)
-        yield "output", combined_text
+        texts, delimiter = input_data.input, input_data.delimiter
+        _check_output_length(
+            "Combined text",
+            sum(len(t) for t in texts) + max(len(texts) - 1, 0) * len(delimiter),
+        )
+        yield "output", delimiter.join(texts)
 
 
 class TextSplitBlock(Block):
@@ -425,7 +382,11 @@ class TextReplaceBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.text.replace(input_data.old, input_data.new)
+        text, old, new = input_data.text, input_data.old, input_data.new
+        _check_output_length(
+            "Replaced text", len(text) + text.count(old) * (len(new) - len(old))
+        )
+        yield "output", text.replace(old, new)
 
 
 class FileReadBlock(Block):
@@ -556,3 +517,11 @@ class FileReadBlock(Block):
                 yield "content", chunk
         else:
             yield "content", ""
+
+
+def _check_output_length(label: str, length: int) -> None:
+    if length > MAX_TEXT_OUTPUT_LENGTH:
+        raise ValueError(
+            f"{label} would be {length:,} characters, over the limit of "
+            f"{MAX_TEXT_OUTPUT_LENGTH:,} characters."
+        )

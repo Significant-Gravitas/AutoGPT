@@ -25,9 +25,52 @@ export function sanitizeAuthNext(
   if (rawNext.includes("\\")) return null;
   // The URL parser strips tab/CR/LF *before* parsing, so a tab-bearing value
   // could slip past the checks above and then resolve as "//evil.com".
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001F\u007F]/.test(rawNext)) return null;
+  if (hasControlCharacter(rawNext)) return null;
   // /copilot is only a server redirect to /home; a client navigation into that
   // redirect from a (no-navbar) page crashes the App Router (React #310).
   return rawNext.replace(/^\/copilot\/?(?=[?#]|$)/, "/home");
+}
+
+// Where a signed-in user lands when nothing else was asked for. The middleware
+// still sends a signed-out visit to `/` or `/home` through `/login?next=/home`,
+// so such a `next` names no page the user chose (SECRT-3384).
+const DEFAULT_LANDING_PATHS = new Set(["/", "/home", "/home/"]);
+
+/**
+ * True when `next` (already sanitized) only points at a default landing page:
+ * `/` or `/home` (which `/copilot` maps to) with no query or hash. Anything
+ * more specific, like `/home?sessionId=…`, is a real deep link.
+ */
+export function isDefaultLanding(next: string): boolean {
+  const url = new URL(next, "http://localhost");
+  return (
+    DEFAULT_LANDING_PATHS.has(url.pathname) && url.search === "" && !url.hash
+  );
+}
+
+/**
+ * The page an auth flow must send the user to instead of its usual
+ * destination, or `null` to route by onboarding state (`/onboarding` for a
+ * user who has not finished it, else `/home`). A default landing is `null`
+ * too: honouring `next=/home` would put a brand-new user on Home, with its
+ * paywall and out-of-credits prompts, before onboarding.
+ *
+ * Every place that decides whether a deep link is pending (the auth pages,
+ * `/auth/callback` and OnboardingProvider) must use this, or one of them
+ * waits on a redirect the other never makes.
+ */
+export function getAuthDeepLink(
+  rawNext: string | null | undefined,
+): string | null {
+  const next = sanitizeAuthNext(rawNext);
+  if (next === null || isDefaultLanding(next)) return null;
+  return next;
+}
+
+function hasControlCharacter(value: string) {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
 }

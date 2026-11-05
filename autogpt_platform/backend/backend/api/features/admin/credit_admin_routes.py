@@ -20,6 +20,7 @@ from backend.data.platform_cost import (
     get_copilot_weekly_usage_for_export,
 )
 from backend.util.json import SafeJson
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE
 
 from .model import AddUserCreditsResponse, UserHistoryResponse
 
@@ -66,8 +67,8 @@ async def add_user_credits(
 async def admin_get_all_user_history(
     admin_user_id: str = Security(get_user_id),
     search: typing.Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = Query(default=20, ge=1, le=MAX_PAGE_SIZE),
     transaction_filter: typing.Optional[CreditTransactionType] = None,
     include_inactive: bool = False,
 ):

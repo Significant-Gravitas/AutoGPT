@@ -17,6 +17,7 @@ import { useState } from "react";
 import { ExistingCredentialsView } from "./components/ExistingCredentialsView/ExistingCredentialsView";
 import type { ExistingCredentialsOffer } from "./helpers";
 import { useConnectCredentialDialog } from "./useConnectCredentialDialog";
+import { credentialService } from "../../service-identity";
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
   Object.values(AuthType),
@@ -72,6 +73,7 @@ export function ConnectCredentialDialog({
     isContinueDisabled,
     isConnecting,
     handleContinue,
+    connectOAuth,
     reset,
   } = useConnectCredentialDialog({
     provider,
@@ -138,16 +140,29 @@ export function ConnectCredentialDialog({
     ? (getHostFromUrl(discriminatorUrl) ?? undefined)
     : undefined;
 
+  const service = credentialService({
+    ...schema,
+    discriminator_values: discriminatorUrl
+      ? [discriminatorUrl]
+      : schema.discriminator_values,
+  });
   const connectable: ConnectableProvider = {
     id: provider,
     serviceId: provider,
-    name: displayName,
+    name: service?.name ?? displayName,
+    iconId: service?.icon,
     description: null,
     supportedAuthTypes: getConnectableCredentialTypes(
       schema.credentials_types ?? [],
     ).filter((t): t is AuthMethod => KNOWN_AUTH_METHODS.has(t as AuthMethod)),
     apiKeyUrl,
   };
+  const guided =
+    (connectable.supportedAuthTypes.includes(AuthType.oauth2) &&
+      connectable.supportedAuthTypes.every(
+        (method) => method === AuthType.oauth2 || method === AuthType.api_key,
+      )) ||
+    Boolean(service?.name);
 
   return (
     <Dialog
@@ -172,6 +187,11 @@ export function ConnectCredentialDialog({
             />
           ) : (
             <ConnectMethodView
+              workflowConnect={
+                guided
+                  ? { onSignIn: connectOAuth, isConnecting, service }
+                  : undefined
+              }
               provider={connectable}
               selectedMethod={selectedMethod}
               onSelectMethod={setSelectedMethod}
@@ -183,9 +203,8 @@ export function ConnectCredentialDialog({
           )}
           {showExisting && existing?.error && (
             <span
-              // TODO(tokens): no exact role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
               role="alert"
-              className="text-center text-xs text-red-600"
+              className="text-center text-caption text-error-foreground"
             >
               {existing.error}
             </span>
@@ -221,6 +240,7 @@ export function ConnectCredentialDialog({
                 </Button>
               </>
             ) : (
+              !guided &&
               showContinue && (
                 <Button
                   variant="primary"

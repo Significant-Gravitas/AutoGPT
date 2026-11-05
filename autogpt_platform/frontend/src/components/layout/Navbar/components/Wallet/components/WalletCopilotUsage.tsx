@@ -22,24 +22,15 @@ export function WalletCopilotUsage() {
 
   return (
     <section aria-label="Chat usage" className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <Text variant="large-medium" as="h2">
-            Chat usage
-          </Text>
-          {tierLabel && (
-            <Badge
-              variant="info"
-              size="small"
-              className={TIER_BADGE_CLASS_NAME}
-            >
-              {tierLabel === "Trial" ? "Free trial" : `${tierLabel} plan`}
-            </Badge>
-          )}
-        </div>
-        <Text variant="small" tone="secondary">
-          Your allowance for conversations with Otto and experts.
+      <div className="flex items-center justify-between gap-3">
+        <Text variant="large-medium" as="h2">
+          Chat usage
         </Text>
+        {tierLabel && (
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
+            {tierLabel === "Trial" ? "Free trial" : `${tierLabel} plan`}
+          </Badge>
+        )}
       </div>
       {usage ? (
         <UsageWindows usage={usage} />
@@ -94,18 +85,10 @@ function TrialUsage() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <Text
-          variant="body-medium"
-          // TODO(tokens): no exact role for text-neutral-700 (#404040)
-          className="text-neutral-700"
-        >
+        <Text variant="body-medium" tone="body">
           Trial allowance
         </Text>
-        <Text
-          variant="body"
-          // TODO(tokens): no exact role for text-neutral-500 (#737373)
-          className="tabular-nums text-neutral-500"
-        >
+        <Text variant="body" tone="muted" tabular>
           {formatTrialPercent(percent)} used
         </Text>
       </div>
@@ -117,17 +100,11 @@ function TrialUsage() {
         aria-valuemax={100}
         aria-valuenow={percent}
         className={cn(
-          // TODO(tokens): no exact role for bg-neutral-200 (#E5E5E5)
-          "bg-neutral-200 [&>div]:rounded-full",
-          // TODO(tokens): no exact role for [&>div]:bg-orange-500 (#FE8700)
-          percent >= 80 ? "[&>div]:bg-orange-500" : "[&>div]:bg-info",
+          "bg-surface-active [&>div]:rounded-full",
+          percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
         )}
       />
-      <Text
-        variant="small"
-        // TODO(tokens): no exact role for text-neutral-500 (#737373)
-        className="text-neutral-500"
-      >
+      <Text variant="small" tone="muted">
         {trial.active ? "Ends" : "Ended"} {formatTrialEnd(trial.ends_at)}
       </Text>
     </div>
@@ -171,9 +148,10 @@ function UsageUnavailable({ onRetry }: { onRetry: () => void }) {
       </Text>
       <Button
         variant="ghost"
-        size="small"
+        size="xs"
+        shape="pill"
         onClick={onRetry}
-        className="h-auto px-2 py-1 text-xs"
+        className="min-w-20"
       >
         Retry
       </Button>
