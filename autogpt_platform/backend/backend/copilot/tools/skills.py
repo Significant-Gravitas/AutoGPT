@@ -2927,12 +2927,8 @@ async def list_all_skills(
     """
     skills = get_default_skills_for_index()
     if user_id:
-        # A cold listing can copy or update the owner's skills but never
-        # pauses or resumes one, so the paused names need not wait for it.
-        owned, paused = await _side_by_side(
-            list_user_skills(user_id, expert_id, scope),
-            paused_skill_names(user_id, expert_id),
-        )
+        owned = await list_user_skills(user_id, expert_id, scope)
+        paused = await paused_skill_names(user_id, expert_id)
         if paused is None and require_complete:
             raise RuntimeError("Skill registry availability could not be verified")
         if paused is not None:
