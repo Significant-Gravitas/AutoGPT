@@ -6,9 +6,11 @@ from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, Secre
 
 # Treg bills each call from the team's prepaid balance at the provider's own
 # price (0% markup) and reports the charge in X-Treg-Cost-Micro. Every block
-# records that charge as provider_cost, and COST_USD bills platform-key runs
-# from it at 150 credits per USD (the 1.5x margin used by other COST_USD
-# blocks). Runs on a user's own Treg key are not billed by the platform.
+# records that charge as provider_cost. Treg blocks run only on the user's own
+# Treg key, which the platform doesn't bill: "treg" isn't in
+# RUNNABLE_SDK_DEFAULT_PROVIDERS, so a platform "treg-default" key is refused.
+# The COST_USD base cost (150 credits per USD) would only apply if Treg were
+# added there.
 treg = (
     ProviderBuilder("treg")
     .with_description(

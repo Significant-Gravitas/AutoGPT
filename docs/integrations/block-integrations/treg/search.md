@@ -1,6 +1,6 @@
 # Treg Search
 <!-- MANUAL: file_description -->
-Search the web, news, Google, research papers, YouTube and Google Maps through [Treg](https://treg.to), which picks the cheapest working search provider for each call. Needs a Treg API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
+Search the web, news, Google, research papers, YouTube and Google Maps through [Treg](https://treg.to), which picks the cheapest working search provider for each call. Needs a Treg API key from treg.to. Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. Treg blocks run on your own Treg key, and the platform charges no credits for them.
 <!-- END MANUAL -->
 
 ## Treg Google Maps Search

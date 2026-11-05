@@ -1,6 +1,6 @@
 # Treg Companies
 <!-- MANUAL: file_description -->
-Find and look up companies through [Treg](https://treg.to), which routes each request across company-data providers and bills per call with no provider signup. Needs a Treg API key from treg.to (`TREG_API_KEY` for a platform key). Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. On a platform-provided key the run is charged in credits from that same amount; on your own Treg key it is free on the platform.
+Find and look up companies through [Treg](https://treg.to), which routes each request across company-data providers and bills per call with no provider signup. Needs a Treg API key from treg.to. Every paid call is billed by Treg from your team's prepaid balance at the provider's price, and the block reports the charge as `cost_usd`. Treg blocks run on your own Treg key, and the platform charges no credits for them.
 <!-- END MANUAL -->
 
 ## Treg Enrich Company

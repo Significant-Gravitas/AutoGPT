@@ -1,6 +1,6 @@
 # Treg Catalog
 <!-- MANUAL: file_description -->
-Search [Treg](https://treg.to)'s catalog of 4,000+ tools across about 120 providers (SEO and backlinks, social, ads, people and company data, scraping, generation) and look up a tool's inputs, price and alternatives before calling it with Treg Call Tool. Both blocks are free. Needs a Treg API key from treg.to (`TREG_API_KEY` for a platform key).
+Search [Treg](https://treg.to)'s catalog of 4,000+ tools across about 120 providers (SEO and backlinks, social, ads, people and company data, scraping, generation) and look up a tool's inputs, price and alternatives before calling it with Treg Call Tool. Both blocks are free. Needs a Treg API key from treg.to.
 <!-- END MANUAL -->
 
 ## Treg Get Tool
