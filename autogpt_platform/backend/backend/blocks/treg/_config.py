@@ -1,5 +1,6 @@
 """Shared provider and credential configuration for Treg blocks."""
 
+from backend.data.model import is_sdk_default
 from backend.integrations.credentials_store import is_system_credential
 from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, SecretStr
 
@@ -24,9 +25,15 @@ PLATFORM_CREDENTIALS_ID = "treg-default"
 
 
 def is_platform_key(credentials: APIKeyCredentials) -> bool:
-    """True for a Treg key the platform provides rather than the user's own."""
-    return credentials.id == PLATFORM_CREDENTIALS_ID or is_system_credential(
-        credentials.id
+    """True for a Treg key the platform provides rather than the user's own.
+
+    Any SDK default id counts, not only the literal above, so a change in how
+    the SDK names its keys can't let the platform key through unrestricted.
+    """
+    return (
+        credentials.id == PLATFORM_CREDENTIALS_ID
+        or is_sdk_default(credentials.id)
+        or is_system_credential(credentials.id)
     )
 
 

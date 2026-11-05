@@ -9,7 +9,12 @@ import pytest
 
 from backend.blocks.treg import _api
 from backend.blocks.treg._api import TregError, TregResponse, error_message
-from backend.blocks.treg._config import TEST_CREDENTIALS
+from backend.blocks.treg._config import (
+    PLATFORM_CREDENTIALS_ID,
+    TEST_CREDENTIALS,
+    is_platform_key,
+)
+from backend.sdk import APIKeyCredentials, ProviderBuilder
 
 
 class FakeResponse:
@@ -263,3 +268,15 @@ async def test_send_reads_reservations_and_stale_archive_answers(
     response = await _api.send(TEST_CREDENTIALS, "POST", "call/treg.people.search")
     assert response.cost_usd == cost
     assert response.cached is cached
+
+
+def test_the_key_the_sdk_builds_counts_as_the_platform_key(monkeypatch):
+    # The team-tool restriction rests on recognising this key; if the SDK
+    # ever names it differently, this fails instead of the gate failing open.
+    monkeypatch.setenv("TREG_API_KEY", "treg-test-key")
+    # Not .build(): that would replace the registered Treg provider.
+    builder = ProviderBuilder("treg").with_api_key("TREG_API_KEY", "Treg API Key")
+    [built] = builder._default_credentials
+    assert isinstance(built, APIKeyCredentials)
+    assert built.id == PLATFORM_CREDENTIALS_ID
+    assert is_platform_key(built)
