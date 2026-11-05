@@ -110,9 +110,9 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
                 , reading your windows and using their controls directly.
               </Text>
               <Text variant="body-tight" tone="body">
-                Before Otto saves a screenshot to a file, or hands an app or a
-                web page a file from your computer, it asks you in this chat,
-                unless the chat runs Unsupervised.
+                Before Otto runs a script, saves a screenshot to a file, or
+                hands an app or a web page a file from your computer, it asks
+                you in this chat, unless the chat runs Unsupervised.
               </Text>
               <Text variant="body-tight" tone="body">
                 The shim writes operation records to its local audit log. Review

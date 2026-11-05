@@ -37,9 +37,12 @@ const TOOL_GROUPS: ToolGroup[] = [
       "mouse_drag",
       "invoke_menu",
       "run_steps",
-      "run_script",
     ],
     line: "Click, type, scroll, and use menus in your apps",
+  },
+  {
+    tools: ["run_script"],
+    line: "Run scripts that drive your apps, once you approve each one",
   },
   {
     tools: ["set_window_frame", "bring_to_front"],

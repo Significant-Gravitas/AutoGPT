@@ -216,6 +216,7 @@ describe("LocalPCComputerUseConsent", () => {
       "Click, type, scroll, and use menus in your apps",
       "Put text on your clipboard, or a file from your computer once you approve it",
       "Give web pages files from your computer to upload, once you approve each one",
+      "Run scripts that drive your apps, once you approve each one",
       "Move, resize, and bring forward your windows",
       "Control web pages in a browser it opens with its own profile",
       "Use other computer controls your Local PC offers",
@@ -248,6 +249,28 @@ describe("LocalPCComputerUseConsent", () => {
       ),
     ).toBeDefined();
     expect(screen.getByText(/it asks you in this chat/)).toBeDefined();
+  });
+
+  test("says each script waits for the user's approval", async () => {
+    server.use(
+      http.get(EXECUTOR_URL, () =>
+        HttpResponse.json(
+          executorStatus({ computer_use_tools: ["run_script"] }),
+        ),
+      ),
+    );
+
+    render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
+
+    expect(
+      await screen.findByText(
+        "Run scripts that drive your apps, once you approve each one",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.queryByText("Click, type, scroll, and use menus in your apps"),
+    ).toBeNull();
+    expect(screen.getByText(/Before Otto runs a script/)).toBeDefined();
   });
 
   test("still discloses a granted tool it has no wording for", async () => {

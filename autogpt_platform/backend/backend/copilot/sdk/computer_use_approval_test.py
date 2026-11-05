@@ -33,7 +33,7 @@ from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.json import sanitize_json
 
 _GATE = "backend.copilot.gate"
-_TOOLS = ["click", "clipboard_write", "get_window_state"]
+_TOOLS = ["click", "clipboard_write", "get_window_state", "run_script"]
 _CATALOG = {
     "driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "instructions": "cua-driver: background GUI automation.",
@@ -61,6 +61,15 @@ _CATALOG = {
             "name": "click",
             "description": "Click an element.",
             "input_schema": {"type": "object", "properties": {"element_token": {}}},
+        },
+        {
+            "name": "run_script",
+            "description": "Run a JavaScript program that drives apps.",
+            "input_schema": {"type": "object", "properties": {"script": {}}},
+            "approval_arguments": {
+                "script": "runs this script, which drives apps and can save a "
+                "screenshot to any file"
+            },
         },
     ],
 }
@@ -326,6 +335,37 @@ async def test_a_screenshot_saved_to_disk_warns_it_cannot_be_undone(rows, comput
     assert card.payload["subject"]["irreversible"] is True
 
 
+@pytest.mark.parametrize("mode", ["auto", "ask_first"])
+async def test_a_script_runs_once_the_user_approves_it(
+    rows, computer, supervisor, mode: AutopilotMode
+):
+    """The shim can't see a script's calls, and one can save a screenshot to
+    any file, so a script asks like a call that names a file, even in Auto,
+    where an ordinary call is left to the supervisor."""
+    session = _session(mode)
+    script = 'const app = await cua.getApp("Calculator");\n  return app.query({})'
+    run = {"tool": "run_script", "arguments": {"script": script}}
+
+    parked = await _call_as_otto(session, computer)(run)
+
+    assert json.loads(parked["content"][0]["text"])["type"] == "approval_required"
+    assert _sent(computer) == []
+    supervisor.assert_not_awaited()
+    (card,) = rows.rows.values()
+    headline = card.payload["headline"]
+    assert headline["ask"] == "Run a script on your computer"
+    assert (
+        headline["object"]
+        == 'const app = await cua.getApp("Calculator"); return app.query({})'
+    )
+    assert card.payload["subject"]["irreversible"] is False
+
+    rows.answer(ReviewStatus.APPROVED)
+    await _next_turn(session)
+
+    assert _sent(computer) == [("run_script", ["script"])]
+
+
 async def test_an_approved_screenshot_call_brings_its_image_back(rows, computer):
     session = _session("ask_first")
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 32).decode()
@@ -393,6 +433,10 @@ async def test_reading_the_tool_list_never_asks(rows, computer):
             "screenshot_out_file": "writes the screenshot to this file"
         },
         "click": None,
+        "run_script": {
+            "script": "runs this script, which drives apps and can save a "
+            "screenshot to any file"
+        },
     }
 
 

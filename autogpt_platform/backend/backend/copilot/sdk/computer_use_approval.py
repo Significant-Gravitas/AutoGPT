@@ -2,11 +2,13 @@
 
 The shim names each tool's approval arguments in its tool list
 (``approval_arguments``): ``screenshot_out_file``, clipboard ``file_path`` and
-``image_path``, ``browser_set_input_files.files``. A call that uses one is its
-own gate subject, an outward act, so it asks in Ask First and in Auto, on a
-card that shows the path. The handler sends the argument to the shim as
-approved only when the gate decided on that subject or the user approved the
-exact call (``mcp_seam.approved_for``), and the shim refuses it otherwise.
+``image_path``, ``browser_set_input_files.files``, and ``run_script.script``,
+whose calls inside the driver can save a screenshot to a file. A call that
+uses one is its own gate subject, an outward act, so it asks in Ask First and
+in Auto, on a card that shows the path or the script. The handler sends the
+argument to the shim as approved only when the gate decided on that subject
+or the user approved the exact call (``mcp_seam.approved_for``), and the shim
+refuses it otherwise.
 """
 
 from typing import Any
@@ -27,7 +29,10 @@ _ASKS: dict[tuple[str, str], str] = {
         "Copy an image on your computer to its clipboard"
     ),
     ("browser_set_input_files", "files"): "Give a web page files from your computer",
+    ("run_script", "script"): "Run a script on your computer",
 }
+# Arguments the card's headline shows on one line: a script's line breaks.
+_ONE_LINE = frozenset({"script"})
 # Arguments that write a file, which can replace one already there.
 _WRITES = frozenset({"screenshot_out_file"})
 _MAX_PATHS_CHARS = 300
@@ -69,7 +74,7 @@ def computer_subject(
             f"folders you shared, so {AUTOPILOT_NAME} asks first."
         ),
         irreversible=any(argument in _WRITES for argument in used),
-        preview=ChangePreview(ask=ask, object=_paths(arguments, used)),
+        preview=ChangePreview(ask=ask, object=_shown(arguments, used)),
     )
 
 
@@ -107,13 +112,17 @@ def tool_spec(catalog: dict[str, Any], tool: str) -> dict[str, Any] | None:
     )
 
 
-def _paths(arguments: dict[str, Any], used: list[str]) -> str:
+def _shown(arguments: dict[str, Any], used: list[str]) -> str:
+    """The paths, or the script, the card's headline names."""
     values: list[str] = []
     for name in used:
         value = arguments.get(name)
-        values += (
+        items = (
             [str(item) for item in value] if isinstance(value, list) else [str(value)]
         )
+        values += [
+            " ".join(item.split()) if name in _ONE_LINE else item for item in items
+        ]
     shown = ", ".join(values)
     if len(shown) <= _MAX_PATHS_CHARS:
         return shown
