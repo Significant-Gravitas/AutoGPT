@@ -9,6 +9,9 @@ interface Props {
   artifactID: string;
   artifactTitle: string;
   artifactType: string;
+  /** The text being rendered. New text gets a fresh try, even under the same
+   *  id, title and type. */
+  content?: string | null;
 }
 
 interface State {
@@ -41,7 +44,8 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
       this.state.error &&
       (prevProps.artifactID !== this.props.artifactID ||
         prevProps.artifactTitle !== this.props.artifactTitle ||
-        prevProps.artifactType !== this.props.artifactType)
+        prevProps.artifactType !== this.props.artifactType ||
+        prevProps.content !== this.props.content)
     ) {
       this.setState({ error: null });
     }

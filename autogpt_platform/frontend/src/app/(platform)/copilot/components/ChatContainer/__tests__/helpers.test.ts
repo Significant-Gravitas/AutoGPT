@@ -79,7 +79,11 @@ describe("getLatestTurnOverwrites", () => {
   });
 
   it("reads an output that arrives as a JSON string", () => {
-    const output = JSON.stringify({ file_id: "v2", replaced_file_id: "v1" });
+    const output = JSON.stringify({
+      file_id: "v2",
+      replaced_file_id: "v1",
+      name: "report.md",
+    });
     expect(
       replacedIds([message("assistant", write("v2", undefined, output))]),
     ).toEqual([["v1", "v2"]]);
@@ -101,6 +105,19 @@ describe("getLatestTurnOverwrites", () => {
           { type: "text", text: "Done" },
         ),
       ]),
+    ).toEqual([]);
+  });
+
+  it("leaves out a new version too big for the panel to preview", () => {
+    const output = {
+      file_id: "v2",
+      replaced_file_id: "v1",
+      name: "data.csv",
+      mime_type: "text/csv",
+      size_bytes: 11 * 1024 * 1024,
+    };
+    expect(
+      replacedIds([message("assistant", write("v2", undefined, output))]),
     ).toEqual([]);
   });
 

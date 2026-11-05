@@ -104,7 +104,32 @@ describe("artifactPanel store actions", () => {
       useCopilotUIStore.getState().followArtifactOverwrite("v1", next);
 
       const s = useCopilotUIStore.getState().artifactPanel;
-      expect(s.activeArtifact).toEqual({ ...next, replacedFileId: "v1" });
+      expect(s.activeArtifact).toEqual({ ...next, documentId: "v1" });
+      expect(s.history).toEqual([]);
+    });
+
+    it("keeps one document id across a chain of overwrites", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      const { followArtifactOverwrite } = useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+      followArtifactOverwrite("v2", makeArtifact("v3"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v3");
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("leaves no back entry to itself after an old card is clicked mid-turn", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v2"));
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
       expect(s.history).toEqual([]);
     });
 

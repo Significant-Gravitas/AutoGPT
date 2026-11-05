@@ -142,10 +142,10 @@ export function useArtifactContent(
   const [retryNonce, setRetryNonce] = useState(0);
   const scrollPositions = useRef(new Map<string, number>());
   const scrollRef = useRef<HTMLDivElement>(null);
-  // The file whose text is on screen. When Otto overwrites it, that text stays
-  // up until the new text lands, so the page keeps its scroll position instead
-  // of dropping to a skeleton.
-  const shownTextIdRef = useRef<string | null>(null);
+  // The document whose text is on screen. When Otto overwrites it, that text
+  // stays up until the new text lands, so the page keeps its scroll position
+  // instead of dropping to a skeleton.
+  const shownDocumentIdRef = useRef<string | null>(null);
 
   function retry() {
     // Drop any cached failure/content for this id so we actually re-fetch.
@@ -183,7 +183,7 @@ export function useArtifactContent(
 
   useEffect(() => {
     if (classification.type === "image" || classification.type === "video") {
-      shownTextIdRef.current = null;
+      shownDocumentIdRef.current = null;
       setContent(null);
       setPdfUrl(null);
       setError(null);
@@ -194,14 +194,14 @@ export function useArtifactContent(
     let cancelled = false;
     const replacesShownText =
       classification.type !== "pdf" &&
-      artifact.replacedFileId != null &&
-      artifact.replacedFileId === shownTextIdRef.current;
+      artifact.documentId != null &&
+      artifact.documentId === shownDocumentIdRef.current;
     setIsLoading(!replacesShownText);
     setError(null);
 
     if (classification.type === "pdf") {
       let objectUrl: string | null = null;
-      shownTextIdRef.current = null;
+      shownDocumentIdRef.current = null;
       setContent(null);
       setPdfUrl(null);
       fetchArtifactResponse(artifact.sourceUrl)
@@ -237,7 +237,7 @@ export function useArtifactContent(
     if (cached !== undefined) {
       cache.delete(artifact.id);
       cache.set(artifact.id, cached);
-      shownTextIdRef.current = artifact.id;
+      shownDocumentIdRef.current = artifact.documentId ?? artifact.id;
       setContent(cached);
       setIsLoading(false);
       return () => {
@@ -254,14 +254,14 @@ export function useArtifactContent(
             if (oldest !== undefined) cache.delete(oldest);
           }
           cache.set(artifact.id, text);
-          shownTextIdRef.current = artifact.id;
+          shownDocumentIdRef.current = artifact.documentId ?? artifact.id;
           setContent(text);
           setIsLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          shownTextIdRef.current = null;
+          shownDocumentIdRef.current = null;
           setError(err.message);
           setIsLoading(false);
         }
@@ -273,7 +273,7 @@ export function useArtifactContent(
   }, [
     artifact.id,
     artifact.sourceUrl,
-    artifact.replacedFileId,
+    artifact.documentId,
     classification.type,
     retryNonce,
   ]);

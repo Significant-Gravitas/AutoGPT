@@ -59,9 +59,10 @@ export interface ArtifactRef {
   sizeBytes?: number;
   /** Set when the ref is an expert rather than a workspace file. */
   expert?: ExpertArtifact;
-  /** The file Otto overwrote to make this one. The panel treats the two as one
-   *  document: same place on the page, same source view. */
-  replacedFileId?: string;
+  /** Set once Otto has overwritten the file: the id it had when the panel first
+   *  showed it. Versions sharing this are one document to the panel: same place
+   *  on the page, same source view. */
+  documentId?: string;
 }
 
 /** The live desktop behind a chat, as `start_desktop` reports it. */
@@ -612,12 +613,19 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     if (!isHeld) return;
     forgetArtifactContent(replacedFileId);
     const follow = (ref: ArtifactRef) =>
-      ref.id === replacedFileId ? { ...next, replacedFileId } : ref;
+      ref.id === replacedFileId
+        ? { ...next, documentId: ref.documentId ?? ref.id }
+        : ref;
+    const followedActive = activeArtifact && follow(activeArtifact);
     set((state) => ({
       artifactPanel: {
         ...state.artifactPanel,
-        activeArtifact: activeArtifact && follow(activeArtifact),
-        history: history.map(follow),
+        activeArtifact: followedActive,
+        // An old card clicked mid-turn pushes the new version onto the back
+        // stack; following would then leave Back going nowhere.
+        history: history
+          .map(follow)
+          .filter((ref) => ref.id !== followedActive?.id),
       },
     }));
   },

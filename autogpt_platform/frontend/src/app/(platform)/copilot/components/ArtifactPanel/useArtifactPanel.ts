@@ -29,13 +29,19 @@ export function useArtifactPanel() {
 
   // Reset source view when switching artifacts. A new version of the same
   // document, after Otto overwrites it, is not a switch.
-  const previousArtifactIdRef = useRef(activeArtifact?.id);
+  const artifactId = activeArtifact?.id;
+  const documentId = activeArtifact?.documentId ?? artifactId;
+  const previousRef = useRef({ artifactId, documentId });
   useEffect(() => {
-    if (activeArtifact?.replacedFileId !== previousArtifactIdRef.current) {
+    const previous = previousRef.current;
+    if (
+      artifactId !== previous.artifactId &&
+      documentId !== previous.documentId
+    ) {
       setIsSourceView(false);
     }
-    previousArtifactIdRef.current = activeArtifact?.id;
-  }, [activeArtifact?.id, activeArtifact?.replacedFileId]);
+    previousRef.current = { artifactId, documentId };
+  }, [artifactId, documentId]);
 
   // Escape-to-close is owned by the vaul Drawer.Root in ArtifactPanel — its
   // onOpenChange already routes to clearArtifactPreview. A manual document

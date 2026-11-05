@@ -1,5 +1,6 @@
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import type { ArtifactRef } from "../../store";
+import { classifyArtifactRef } from "../ArtifactPanel/helpers";
 import { defaultWorkspaceFileUrl } from "../ChatMessagesContainer/helpers";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
@@ -28,6 +29,9 @@ function partOverwrite(part: Message["parts"][number]) {
     sizeBytes:
       typeof output.size_bytes === "number" ? output.size_bytes : undefined,
   };
+  // Cards download a version too big to preview instead of opening it, so the
+  // panel doesn't open it either: it would fetch and render the whole file.
+  if (!classifyArtifactRef(next).openable) return null;
   return { replacedFileId, next };
 }
 
