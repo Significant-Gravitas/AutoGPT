@@ -443,15 +443,21 @@ def test_integration_fallback_is_not_a_deprecation(source, target, env):
     assert not any(source in note for note in unused)
 
 
-@pytest.mark.parametrize("missing", ["CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL"])
+@pytest.mark.parametrize(
+    "missing", ["CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL", "CHAT_ADVANCED_MODEL"]
+)
 def test_explicit_local_requirements(missing):
+    """The local route has no default models, so an explicit one needs both
+    tiers as well as its URL."""
     env = {
         "CHAT_PLATFORM_ROUTE": "local",
         "CHAT_LOCAL_BASE_URL": "http://local/v1",
         "CHAT_STANDARD_MODEL": "local-model",
+        "CHAT_ADVANCED_MODEL": "local-model",
     }
+    assert not chat_environment_problems(env)[0]
     env.pop(missing)
-    assert any(missing in problem for problem in chat_environment_problems(env)[0])
+    assert chat_environment_problems(env)[0] == [f"CHAT_PLATFORM_ROUTE needs {missing}"]
     legacy = {"CHAT_USE_LOCAL": "true"}
     problems, notes = chat_environment_problems(legacy)
     assert not problems

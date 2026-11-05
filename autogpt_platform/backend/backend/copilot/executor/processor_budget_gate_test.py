@@ -22,7 +22,11 @@ from backend.copilot.executor.processor import (
     RATE_LIMIT_UNAVAILABLE_MESSAGE,
     CoPilotProcessor,
 )
-from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.executor.utils import (
+    CoPilotExecutionEntry,
+    CoPilotLogMetadata,
+    ScheduledTurnOrigin,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import StreamStart, StreamTurnPaused
@@ -213,6 +217,35 @@ async def test_a_message_the_route_already_saved_is_not_saved_twice():
         "summarise my inbox"
     ]
     assert pause_of(turn.session.messages[-1]) == PAUSE
+
+
+@pytest.mark.asyncio
+async def test_a_refused_scheduled_fire_keeps_its_own_stamped_row():
+    """As a fire that runs does: the prompt row carries the schedule's stamp,
+    so this fire has a row of its own beside the last fire's identical one."""
+    earlier = ScheduledTurnOrigin(
+        schedule_id="sched-1", fired_at=datetime(2026, 11, 4, 9, tzinfo=UTC)
+    )
+    fired = earlier.model_copy(
+        update={"fired_at": datetime(2026, 11, 5, 9, tzinfo=UTC)}
+    )
+    turn = _Turn(
+        _session(
+            ChatMessage(
+                role="user",
+                content="summarise my inbox",
+                prompt_origin=earlier.prompt_origin(),
+            )
+        )
+    )
+
+    await turn.run(_entry(scheduled=fired), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    asked, marker = turn.session.messages[-2:]
+    assert asked.content == "summarise my inbox"
+    assert asked.prompt_origin == fired.prompt_origin()
+    assert pause_of(marker) == PAUSE
 
 
 @pytest.mark.asyncio

@@ -72,7 +72,7 @@ which names to configure. Explicit route selections use only chat credentials.
 
 Startup rejects unknown explicit routes/adapters, invalid explicit context
 windows, remote routes without their own keys, an explicit local route missing
-its URL or standard model, and explicit models an Anthropic route cannot serve.
+its URL or either model tier, and explicit models an Anthropic route cannot serve.
 Requirements originating only from migrated values warn. Cloud subscriptions
 always stop startup. Diagnostics name settings, never values.
 For local legacy installs, the adapter defaults to OpenAI Chat Completions

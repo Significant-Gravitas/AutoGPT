@@ -290,7 +290,12 @@ def chat_environment_problems(
         ):
             problems.append(f"CHAT_PLATFORM_ROUTE needs {key}")
     if route == "local":
-        for name in ("CHAT_LOCAL_BASE_URL", "CHAT_STANDARD_MODEL"):
+        # The local route has no default models: an unset tier has none.
+        for name in (
+            "CHAT_LOCAL_BASE_URL",
+            "CHAT_STANDARD_MODEL",
+            "CHAT_ADVANCED_MODEL",
+        ):
             if not settings.get(name, "").strip():
                 note = f"CHAT_PLATFORM_ROUTE needs {name}"
                 (problems if "CHAT_PLATFORM_ROUTE" in original else warnings).append(

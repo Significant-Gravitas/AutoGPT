@@ -334,7 +334,7 @@ async def test_codex_retry_after_disconnect_replays_without_a_second_invocation(
                 json=body,
                 headers={"x-api-key": gateway.auth_token},
             ) as response:
-                first = await response.content.readuntil(b"\\n\\n")
+                first = await response.content.readuntil(b"\n\n")
                 assert b"message_start" in first
             status, _, replayed = await _post(gateway, body)
             _, _, again = await _post(gateway, body)

@@ -383,7 +383,7 @@ async def _refuse_turn(
     pause part the engines end a landed turn with.
     """
     maybe_append_user_message(
-        session, entry.message or None, entry.is_user_message, entry.message_metadata
+        session, entry.message or None, entry.is_user_message, entry.row_metadata()
     )
     kind = SessionKind.for_turn(session, from_chat_platform=entry.from_chat_platform)
     tainted = (

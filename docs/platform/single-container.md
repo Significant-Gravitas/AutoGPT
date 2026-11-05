@@ -378,8 +378,8 @@ produce deprecation warnings instead of blocking deployment. With no usable
 legacy credential, the backend starts with its own model disabled and an
 error naming the settings to supply. Invalid explicit route/adapter names,
 an invalid or too-small explicit local window, an explicitly selected remote
-route missing its key, an explicit local route missing its URL or standard
-model, an explicit model incompatible with an Anthropic route, and subscriptions
+route missing its key, an explicit local route missing its URL or either
+model tier, an explicit model incompatible with an Anthropic route, and subscriptions
 with BEHAVE_AS=cloud still stop startup. Migrated-only requirements warn. Diagnostics contain names only. Local legacy configurations default
 to openai_chat and a 65,536-token window unless the old CLI window is set;
 configure the server's real window.
