@@ -816,8 +816,10 @@ async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch
     assert cli._audit_export(writer.path, output) == 0
     rotated = list_rotated_files(writer.path)
     with zipfile.ZipFile(output) as zf:
-        names = set(zf.namelist())
-    assert rotated and {p.name for p in rotated} <= names
+        archived = {name: zf.read(name) for name in zf.namelist()}
+    assert rotated and {p.name for p in rotated} <= archived.keys()
+    # The bytes too: an export that packed an empty or wrong body passed.
+    assert all(archived[p.name] == p.read_bytes() for p in rotated)
 
 
 @_posix_only
