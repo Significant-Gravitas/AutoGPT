@@ -1,4 +1,7 @@
+import json
 from typing import Any, List
+
+from fastapi.encoders import jsonable_encoder
 
 from backend.blocks._base import (
     Block,
@@ -9,7 +12,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
-from backend.util.json import loads
+from backend.util.json import dumps, loads
 from backend.util.mock import MockObject
 from backend.util.prompt import estimate_token_count_str
 
@@ -830,18 +833,27 @@ def _make_hashable(item: Any):
     """
     Create a hashable representation of any item for deduplication.
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
+    Dicts, lists and bools are tagged with their kind, so values of different
+    kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
+    ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
-        return tuple(
-            sorted(
-                ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
-                key=lambda x: (str(type(x[0])), str(x[0])),
-            )
+        return (
+            "dict",
+            tuple(
+                sorted(
+                    ((_make_hashable(k), _make_hashable(v)) for k, v in item.items()),
+                    key=lambda x: (str(type(x[0])), str(x[0])),
+                )
+            ),
         )
     if isinstance(item, (list, tuple)):
-        return tuple(_make_hashable(i) for i in item)
+        return ("list", tuple(_make_hashable(i) for i in item))
     if isinstance(item, set):
         return frozenset(_make_hashable(i) for i in item)
+    if isinstance(item, bool):
+        return ("bool", item)
     return item
 
 
@@ -1186,6 +1198,12 @@ class InterleaveListsBlock(Block):
         yield "length", len(result)
 
 
+# Most bytes a zipped result may add to its input, as JSON: the fill value
+# written into each padded cell, plus the separators around every cell and
+# group. Each input element appears in the result at most once.
+ZIP_LISTS_MAX_ADDED_BYTES = 4 * 1024 * 1024
+
+
 class ZipListsBlock(Block):
     """
     Zips multiple lists together into a list of grouped tuples/lists.
@@ -1291,6 +1309,17 @@ class ZipListsBlock(Block):
             yield "length", 0
             return
 
+        added_bytes = _zipped_added_bytes(
+            input_data.lists, input_data.pad_to_longest, input_data.fill_value
+        )
+        if added_bytes > ZIP_LISTS_MAX_ADDED_BYTES:
+            yield "error", (
+                f"The zipped result would add {added_bytes / 2**20:.1f} MiB to "
+                f"its input, more than the limit of "
+                f"{ZIP_LISTS_MAX_ADDED_BYTES / 2**20:g} MiB."
+            )
+            return
+
         if input_data.pad_to_longest:
             result = self._zip_pad(input_data.lists, input_data.fill_value)
         else:
@@ -1298,6 +1327,35 @@ class ZipListsBlock(Block):
 
         yield "zipped_list", result
         yield "length", len(result)
+
+
+def _zipped_added_bytes(
+    lists: list[list[Any]], pad_to_longest: bool, fill_value: Any
+) -> int:
+    """JSON bytes the zipped result adds to its input, computed without building it."""
+    lengths = [len(lst) for lst in lists if lst is not None]
+    if not lengths:
+        return 0
+    groups = max(lengths) if pad_to_longest else min(lengths)
+    cells = groups * len(lengths)
+    padded_cells = cells - sum(min(length, groups) for length in lengths)
+    fill_bytes = _json_bytes(fill_value) if padded_cells else 0
+    # A "," after each cell, "[]," around each group.
+    return padded_cells * fill_bytes + cells + groups * 3
+
+
+def _json_bytes(value: Any) -> int:
+    try:
+        return len(dumps(value).encode())
+    except TypeError:
+        # orjson stops at 64-bit integers; Python's json does not. Normalise
+        # first, as dumps does, so dates and models beside such an integer
+        # still serialize.
+        return len(
+            json.dumps(
+                jsonable_encoder(value), separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        )
 
 
 class ListDifferenceBlock(Block):

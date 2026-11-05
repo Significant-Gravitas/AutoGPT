@@ -30,6 +30,10 @@ export interface TriggerConfigRequiredOutput {
   message: string;
   missing_config: string[];
   config_schema: Record<string, unknown>;
+  // Required regular graph inputs (for agents with input nodes alongside the
+  // trigger). The LLM collects these and re-calls with `constant_inputs`.
+  missing_inputs?: string[];
+  input_schema?: Record<string, unknown> | null;
 }
 
 export type SetupTriggerToolOutput =
@@ -145,11 +149,10 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  // TODO(tokens): no exact role for neutral-400 #A3A3A3
-  return <Icon icon={WebhookIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={WebhookIcon} size={14} tone="subtle" />;
 }

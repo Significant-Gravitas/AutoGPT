@@ -62,14 +62,16 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
               <AttentionTitle item={item} />
             </Text>
             {item.priority === "high" ? (
-              <Text
-                variant="small-medium"
-                as="span"
-                // TODO(tokens): no exact role (ring-amber-600/10 #D97706)
-                className="rounded bg-warning-surface px-1.5 py-px text-warning-foreground ring-1 ring-inset ring-amber-600/10"
-              >
-                Waiting
-              </Text>
+              <span className="rounded bg-warning-surface px-1.5 py-px ring-1 ring-warning-foreground/10 ring-inset">
+                <Text
+                  variant="small-medium"
+                  tone="warning"
+                  as="span"
+                  className="block"
+                >
+                  Waiting
+                </Text>
+              </span>
             ) : null}
           </div>
           <Text

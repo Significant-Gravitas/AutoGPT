@@ -13,6 +13,7 @@ filesystem for self-hosted) — no DB column needed.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -31,9 +32,11 @@ from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_st
 
 from .cli_session_entry import rewrite_user_entry
 from .hidden_rows import visible_to_model
+from .host_fs import open_no_follow
 from .legacy_first_turn_memory import without_stored_first_turn_memory
 from .legacy_session_file import restore_session_file
 from .model import ChatMessage
+from .sandbox_status_transcript import rewrite_sandbox_status_entry
 
 logger = logging.getLogger(__name__)
 
@@ -271,8 +274,8 @@ def strip_stale_thinking_blocks(content: str) -> str:
 
 
 def strip_for_upload(content: str) -> str:
-    """Strip progress, mention attachments, stale thinking and matched-skill
-    hints in a single parse.
+    """Strip progress, mention attachments, stale thinking, matched-skill
+    hints and sandbox replacement notices in a single parse.
 
     Like ``strip_stale_thinking_blocks(strip_progress_entries(content))``, but
     it also drops ``MENTION_ATTACHMENT_TYPES`` attachments and parses the JSONL
@@ -383,6 +386,11 @@ def strip_for_upload(content: str) -> str:
             if rewritten is not None:
                 entry = rewritten
                 needs_reserialize = True
+
+        rewritten = rewrite_sandbox_status_entry(entry, line)
+        if rewritten is not None:
+            entry = rewritten
+            needs_reserialize = True
 
         if needs_reserialize:
             result_lines.append(json.dumps(entry, separators=(",", ":")))
@@ -716,7 +724,6 @@ def write_transcript_to_tempfile(
         return None
 
     try:
-        os.makedirs(real_cwd, exist_ok=True)
         safe_id = _sanitize_id(session_id, max_len=8)
         jsonl_path = os.path.realpath(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
@@ -725,7 +732,9 @@ def write_transcript_to_tempfile(
             logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
             return None
 
-        with open(jsonl_path, "w") as f:
+        with open(
+            jsonl_path, "w", opener=functools.partial(open_no_follow, make_parents=True)
+        ) as f:
             f.write(transcript_content)
 
         logger.info("[Transcript] Wrote resume file: %s", jsonl_path)

@@ -44,9 +44,7 @@ export function FieldValue({ name, value, clipped, format }: Props) {
           translate="no"
           data-slot="field-value-code"
           // max-h-64: twelve lines at leading-5 plus py-2.
-          // TODO(tokens): no foreground role for zinc-100 (#EFEFF0) on the
-          // dark code surface.
-          className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-action-hover px-3 py-2 font-mono text-body-sm leading-5 text-zinc-100"
+          className="max-h-64 overflow-auto rounded-lg bg-action-hover px-3 py-2 font-mono text-body-sm leading-5 whitespace-pre-wrap text-action-foreground"
         >
           {String(value)}
           {shortened}
@@ -103,7 +101,7 @@ export function FieldValue({ name, value, clipped, format }: Props) {
           </summary>
           <pre
             data-slot="field-value-json-body"
-            className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-xs text-foreground-emphasis"
+            className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-caption text-foreground-emphasis"
           >
             {JSON.stringify(value, null, 2)}
           </pre>
@@ -137,7 +135,7 @@ function LongText({ text, shortened }: LongTextProps) {
         className={cn(
           "w-full rounded-lg bg-surface-muted px-3 py-2",
           open &&
-            "max-h-96 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong",
+            "max-h-96 overflow-y-auto focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none",
         )}
       >
         <p
@@ -150,12 +148,7 @@ function LongText({ text, shortened }: LongTextProps) {
         </p>
       </div>
       {!open && (
-        <Button
-          variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
-          onClick={() => setOpen(true)}
-        >
+        <Button variant="link" size="inline" onClick={() => setOpen(true)}>
           {lineCount(text) > CLAMP_LINES
             ? `Show all ${lineCount(text)} lines`
             : "Show all"}
