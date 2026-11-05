@@ -1,5 +1,6 @@
 """The CLI environment each route profile launches with (``route_launch_env``)."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -66,6 +67,44 @@ def _codex(
 
 
 class TestSubscription:
+    @pytest.mark.parametrize(
+        "source",
+        ["constructor", "dotenv", "prefixed", "alias", "both", "empty-prefixed"],
+    )
+    def test_passes_effective_cli_setting_to_subscription_validation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+    ):
+        for name in ("CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"):
+            monkeypatch.delenv(name, raising=False)
+        cli = tmp_path / "2.1.284.exe"
+        cli.write_bytes(b"stand-in executable")
+        cli.chmod(0o755)
+        options = {"platform_route": "subscription", "_env_file": None}
+        if source == "constructor":
+            options["claude_agent_cli_path"] = str(cli)
+        elif source == "dotenv":
+            dotenv = tmp_path / ".env"
+            dotenv.write_text(f"CHAT_CLAUDE_AGENT_CLI_PATH={cli}\n", encoding="utf-8")
+            options["_env_file"] = dotenv
+        elif source == "prefixed":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "alias":
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "both":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-alias")
+        else:
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "")
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        cfg = _config(**options)
+        assert cfg.claude_agent_cli_path == str(cli)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription") as validate,
+        ):
+            route_launch_env(platform_profile(cfg, "claude-sonnet-4-6", "env"))
+        validate.assert_called_once_with(str(cli))
+
     @patch("backend.copilot.sdk.env.validate_subscription")
     def test_blanks_every_key_and_url(self, mock_validate):
         result = route_launch_env(_subscription())

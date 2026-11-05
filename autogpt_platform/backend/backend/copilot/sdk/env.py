@@ -199,7 +199,7 @@ def _credential_env(
             "no_proxy": no_proxy,
         }
     if profile.name == "subscription":
-        validate_subscription()
+        validate_subscription(config.claude_agent_cli_path)
         return subscription_env()
     key = profile.api_key.get_secret_value() if profile.api_key else ""
     if profile.name == "direct_anthropic":

@@ -1146,6 +1146,7 @@ SDK_SUBAGENT_TOOLS = ("Agent", "Task")
 # list is the second layer for a built-in that is declared anyway.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
+    "PowerShell",  # the CLI's Windows shell; same reason as Bash
     "WebFetch",
     "WebSearch",
     "AskUserQuestion",
