@@ -208,11 +208,27 @@ export function isExpertChangePart(part: MessagePart): boolean {
   return target !== null && EXPERT_CHANGE_TOOLS.has(target);
 }
 
+export const INTEGRATION_REQUEST_TOOL = "request_integration";
+
+// "This service isn't supported yet" is the answer to what the user asked,
+// so it renders as its own part: inside the chain it would fold away with
+// the steps that led to it.
+export function isIntegrationRequestPart(part: MessagePart): boolean {
+  if (part.type === `tool-${INTEGRATION_REQUEST_TOOL}`) return true;
+  return (
+    capabilityTargetToolName(
+      part.type,
+      "input" in part ? part.input : undefined,
+    ) === INTEGRATION_REQUEST_TOOL
+  );
+}
+
 export function isChainPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
-    isExpertChangePart(part)
+    isExpertChangePart(part) ||
+    isIntegrationRequestPart(part)
   ) {
     return false;
   }

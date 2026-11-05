@@ -39,7 +39,8 @@ from backend.integrations.credentials_store import (
     provider_matches,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.oauth.app_credentials import oauth_client_credentials
 from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import InvalidInputError
@@ -225,27 +226,8 @@ def _get_oauth_handler_for_external(
             detail="Connect Microsoft in AutoGPT's Settings, under Integrations.",
         )
 
-    # Check if this provider has custom OAuth credentials
-    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_name)
-
-    if oauth_credentials and not oauth_credentials.use_secrets:
-        import os
-
-        client_id = (
-            os.getenv(oauth_credentials.client_id_env_var)
-            if oauth_credentials.client_id_env_var
-            else None
-        )
-        client_secret = (
-            os.getenv(oauth_credentials.client_secret_env_var)
-            if oauth_credentials.client_secret_env_var
-            else None
-        )
-    else:
-        client_id = getattr(settings.secrets, f"{provider_name}_client_id", None)
-        client_secret = getattr(
-            settings.secrets, f"{provider_name}_client_secret", None
-        )
+    app = oauth_client_credentials(provider_name)
+    client_id, client_secret = app if app else (None, None)
 
     if not (client_id and client_secret):
         logger.error(f"Attempt to use unconfigured {provider_name} OAuth integration")

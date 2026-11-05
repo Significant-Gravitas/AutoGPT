@@ -1,11 +1,20 @@
 """Tests for SearchFeatureRequestsTool and CreateFeatureRequestTool."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.linear._api import LinearAPIException
+from backend.util.request import Requests
+
 from ._test_data import make_session
-from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feature_requests import (
+    LINEAR_MAX_ATTEMPTS,
+    CreateFeatureRequestTool,
+    SearchFeatureRequestsTool,
+    find_feature_request,
+)
 from .models import (
     ErrorResponse,
     FeatureRequestCreatedResponse,
@@ -608,3 +617,61 @@ class TestCreateFeatureRequestTool:
         assert isinstance(resp, ErrorResponse)
         assert resp.details is not None
         assert resp.details["issue_id"] == "issue-1"
+
+
+async def test_a_sustained_linear_outage_gives_up_after_a_few_attempts():
+    """Otto waits on these calls mid-turn: a Linear that keeps answering 503
+    must end in an error after a few tries, not keep the turn waiting."""
+    outage = MagicMock(status=503, ok=False)
+    outage.json.return_value = {"errors": [{"message": "Service unavailable"}]}
+    settings = MagicMock()
+    settings.secrets.copilot_linear_api_key = (
+        "fake-linear-key"  # pragma: allowlist secret
+    )
+    settings.secrets.linear_feature_request_project_id = _FAKE_PROJECT_ID
+    settings.secrets.linear_feature_request_team_id = _FAKE_TEAM_ID
+    with (
+        patch(
+            "backend.copilot.tools.feature_requests._get_settings",
+            return_value=settings,
+        ),
+        patch.object(Requests, "_request", AsyncMock(return_value=outage)) as sent,
+        pytest.raises(LinearAPIException),
+    ):
+        await asyncio.wait_for(
+            find_feature_request("Integration request: Gelato"), timeout=20
+        )
+
+    assert sent.await_count == LINEAR_MAX_ATTEMPTS
+
+
+class _LinearWithManyIntegrationRequests:
+    """Linear holding the wanted request plus ten more with the same prefix,
+    which out-rank it in a full-text search."""
+
+    WANTED = "Integration request: Big Cartel"
+
+    def __init__(self):
+        self.issues = [
+            {"id": f"issue-{i}", "title": f"Integration request: Big {i}"}
+            for i in range(10)
+        ] + [{"id": "issue-wanted", "title": self.WANTED}]
+
+    async def query(self, query: str, variables: dict) -> dict:
+        title = variables.get("filter", {}).get("title", {}).get("eqIgnoreCase")
+        if "issues(" in query and title is not None:
+            matches = [i for i in self.issues if i["title"].lower() == title.lower()]
+            return {"issues": {"nodes": [{"id": i["id"]} for i in matches[:1]]}}
+        first = variables.get("first", 50)
+        return {"searchIssues": {"nodes": self.issues[:first]}}
+
+
+async def test_the_request_is_found_however_many_share_its_prefix():
+    linear = _LinearWithManyIntegrationRequests()
+    with patch(
+        "backend.copilot.tools.feature_requests._get_linear_config",
+        return_value=(linear, _FAKE_PROJECT_ID, _FAKE_TEAM_ID),
+    ):
+        found = await find_feature_request("integration request: big cartel")
+
+    assert found == "issue-wanted"
