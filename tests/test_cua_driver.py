@@ -1092,6 +1092,22 @@ async def test_hello_names_the_driver_once_it_has_started(
     assert hello.payload.computer_use_tools == sorted(catalog.offered_tools(enable_clipboard=False))
 
 
+async def test_hello_goes_out_when_the_driver_refuses_the_screen_size(
+    tmp_path, fake_log, linux_with_display, monkeypatch
+) -> None:
+    """A JSON-RPC error from get_screen_size escaped HELLO, so the handshake
+    failed and the shim reconnected forever. The size is optional there."""
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR", "get_screen_size")
+    daemon = _daemon(tmp_path)
+    try:
+        hello = await daemon._build_hello()
+    finally:
+        await daemon._computer_handler.close()
+
+    assert "computer_use" in hello.payload.capabilities
+    assert hello.payload.screen_resolution is None
+
+
 async def test_hello_leaves_out_computer_use_a_driver_cannot_serve(
     tmp_path, fake_log, linux_with_display, monkeypatch
 ) -> None:

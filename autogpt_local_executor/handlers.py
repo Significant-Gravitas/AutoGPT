@@ -1446,7 +1446,8 @@ class ComputerUseHandler:
             raw = await self.driver.call_tool(
                 "get_screen_size", {"session": self.session_label}, timeout=SCREEN_SIZE_SECONDS
             )
-        except (DriverUnavailable, TimeoutError):
+        except (DriverUnavailable, McpError, TimeoutError):
+            # HELLO goes out without the size rather than not at all.
             return None
         structured = raw.get("structuredContent")
         if raw.get("isError") or not isinstance(structured, dict):
