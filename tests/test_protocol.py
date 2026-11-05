@@ -255,6 +255,33 @@ def test_parse_rejects_unknown_type() -> None:
         parse_message(raw)
 
 
+def _computer_call_frame(depth: int) -> str:
+    arguments = '{"a":' * depth + "1" + "}" * depth
+    return (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":' + arguments + "}}"
+    )
+
+
+@pytest.mark.parametrize("depth", [600, 200_000], ids=["deep", "past-the-json-parser"])
+def test_a_frame_nested_too_deeply_is_refused(depth: int) -> None:
+    """Arguments nested some hundreds of levels deep parsed, and a computer
+    tool call carrying them reached cua-driver while its audit record failed:
+    the audit writer, its canonicalizer and the argument redaction all
+    recurse. Past the JSON parser's own limit, RecursionError escaped."""
+    with pytest.raises(ValueError, match="nested"):
+        parse_message(_computer_call_frame(depth))
+
+
+def test_a_frame_nested_within_the_limit_parses() -> None:
+    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
+
+    # The envelope, the payload and the arguments object take three levels.
+    message = parse_message(_computer_call_frame(MAX_FRAME_NESTING - 3))
+
+    assert message.payload.tool == "click"
+
+
 def test_parse_rejects_missing_id() -> None:
     raw = json.dumps({"type": "PING", "ts": 1.0, "payload": {}})
     with pytest.raises(ValidationError):

@@ -67,7 +67,9 @@ payloads forbid fields they don't define, so a frame carrying one fails
 validation and is logged and dropped, never acted on: an older shim that
 ignored a newer field could act without a constraint the platform meant it
 to apply. The platform learns the shim's maximum from HELLO before it
-answers, so it must not send a newer minor's fields to an older shim.
+answers, so it must not send a newer minor's fields to an older shim. A
+frame whose objects and arrays nest more than 64 levels deep is logged and
+dropped the same way; no message comes close.
 
 ### Frame-level `version`
 

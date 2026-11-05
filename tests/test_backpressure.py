@@ -322,6 +322,31 @@ async def test_cancel_dispatch_tasks_resets_capacity_and_cancels_handlers(
     assert daemon._available_capacity() == 1
 
 
+async def test_a_frame_nested_too_deeply_is_dropped_before_any_handler(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handled: list[Any] = []
+
+    async def fake_handle(msg: Any, *, send: Any = None) -> AckMessage:
+        handled.append(msg)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", fake_handle)
+    daemon._semaphore = asyncio.Semaphore(daemon.config.max_concurrent)
+    arguments = '{"a":' * 600 + "1" + "}" * 600
+    frame = (
+        '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
+        '"payload":{"tool":"click","arguments":' + arguments + "}}"
+    )
+    ws = _FakeWS()
+
+    await daemon._on_frame(ws, frame)
+    await asyncio.gather(*tuple(daemon._dispatch_tasks))
+
+    assert handled == []
+    assert ws.sent == []
+
+
 def _child(shim_config: ShimConfig, machine: asyncio.Semaphore) -> ShimDaemon:
     audit = AuditWriter(path=shim_config.audit_log_path, audit_key=b"a" * 32)
     child = ShimDaemon(
