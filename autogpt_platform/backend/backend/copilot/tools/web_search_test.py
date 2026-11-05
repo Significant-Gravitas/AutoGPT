@@ -40,6 +40,8 @@ from .web_search import (
     _extract_results,
 )
 
+pytestmark = pytest.mark.usefixtures("clean_chat_settings")
+
 _SPENT_TODAY = TurnPause(
     reason="daily", resets_at=None, checkpoint_saved=False, started=False
 )

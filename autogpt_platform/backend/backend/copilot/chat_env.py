@@ -495,10 +495,17 @@ def migrate_chat_settings(
         and not get("CHAT_ANTHROPIC_API_KEY").strip()
     ):
         supplied["CHAT_PLATFORM_ROUTE"] = "disabled"
-        notes["CHAT_PLATFORM_ROUTE"] = (
-            "CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and "
-            "CHAT_ANTHROPIC_API_KEY or CHAT_OPENROUTER_API_KEY"
-        )
+        # Old chat settings with no usable key name what to set. A deployment
+        # that never set the chat up is off quietly, as a fresh install is.
+        if any(
+            value.strip()
+            for name, value in settings.items()
+            if name in RETIRED_CHAT_SETTINGS
+        ):
+            notes["CHAT_PLATFORM_ROUTE"] = (
+                "CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and "
+                "CHAT_ANTHROPIC_API_KEY or CHAT_OPENROUTER_API_KEY"
+            )
     return supplied, [notes[name] for name in sorted(notes)]
 
 
@@ -531,7 +538,9 @@ def log_chat_notes(notes: Iterable[str]) -> None:
             )
 
 
-_MIGRATION_NAMES = (
+# Every environment name the migration reads; a test clears them all to see
+# a configuration free of whatever the machine it runs on sets.
+MIGRATION_SETTING_NAMES = (
     frozenset(RETIRED_CHAT_SETTINGS)
     | frozenset(_OTHER_SETTINGS)
     | frozenset(
@@ -557,7 +566,7 @@ def migration_input(*sources: Mapping[str, object]) -> dict[str, str]:
     """Use already parsed settings sources; do not read dotenv again."""
     merged: dict[str, str] = {}
     for source in sources:
-        for name in _MIGRATION_NAMES:
+        for name in MIGRATION_SETTING_NAMES:
             value = source.get(name, source.get(name.lower()))
             if value is not None:
                 merged[name] = str(value)

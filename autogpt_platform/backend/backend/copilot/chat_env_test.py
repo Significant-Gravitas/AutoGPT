@@ -1,6 +1,7 @@
 """Legacy chat migration and names-only startup diagnostics."""
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from backend.copilot import chat_env
 from backend.copilot.chat_env import (
     ACCEPTED_CHAT_SETTINGS,
     CHAT_SETTINGS_READ_ELSEWHERE,
+    MIGRATION_SETTING_NAMES,
     MIN_LOCAL_CONTEXT_TOKENS,
     PLATFORM_ROUTES,
     RETIRED_CHAT_SETTINGS,
@@ -310,21 +312,8 @@ def test_stop_cases(env, name):
     assert "integration" not in str(exc.value)
 
 
-@pytest.fixture
-def clean_settings(monkeypatch):
-    for name in list(os.environ):
-        if name.startswith("CHAT_") or name in chat_env._OTHER_SETTINGS:
-            monkeypatch.delenv(name)
-    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
-    monkeypatch.setattr(chat_env, "backend_dotenv_paths", lambda: [])
-    yield
-    for name in list(os.environ):
-        if name.startswith("CHAT_") or name in chat_env._OTHER_SETTINGS:
-            os.environ.pop(name, None)
-
-
 def test_hosted_environment_starts_with_chat_and_batch_keys(
-    clean_settings, monkeypatch
+    clean_chat_settings, monkeypatch
 ):
     monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
     from backend.app import run_processes
@@ -360,7 +349,7 @@ def test_hosted_environment_starts_with_chat_and_batch_keys(
 
 
 @pytest.mark.parametrize("local", [False, True])
-def test_full_dev_dotenv_config(clean_settings, tmp_path, local):
+def test_full_dev_dotenv_config(clean_chat_settings, tmp_path, local):
     envfile = tmp_path / ".env"
     text = (
         "CHAT_USE_LOCAL=true\nCHAT_BASE_URL=http://localhost:11434/v1\n"
@@ -487,7 +476,7 @@ def test_anthropic_model_requirements_depend_on_origin(tier, old, route):
 
 
 def test_migration_cached_and_no_extra_dotenv_read(
-    clean_settings, monkeypatch, tmp_path
+    clean_chat_settings, monkeypatch, tmp_path
 ):
     from unittest.mock import Mock
 
@@ -518,8 +507,43 @@ def test_migration_cached_and_no_extra_dotenv_read(
     chat_env._cached_chat_migration.cache_clear()
 
 
-def test_constructor_does_not_run_preflight(clean_settings, monkeypatch):
+def test_constructor_does_not_run_preflight(clean_chat_settings, monkeypatch):
     monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "not-a-route")
     assert ChatConfig().platform_route == "disabled"
     with pytest.raises(ChatEnvironmentError):
         check_chat_environment(dict(os.environ), [])
+
+
+def test_a_chat_that_was_never_set_up_is_disabled_quietly():
+    supplied, notes = migrate_chat_settings(
+        {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": "", "OPEN_ROUTER_API_KEY": ""}
+    )
+    assert supplied["CHAT_PLATFORM_ROUTE"] == "disabled"
+    assert notes == []
+
+
+def test_old_chat_settings_with_no_key_name_what_to_set():
+    supplied, notes = migrate_chat_settings({"CHAT_USE_OPENROUTER": "false"})
+    assert supplied["CHAT_PLATFORM_ROUTE"] == "disabled"
+    assert [n for n in notes if n.startswith("CHAT_PLATFORM_ROUTE ")] == [
+        "CHAT_PLATFORM_ROUTE disabled; set CHAT_PLATFORM_ROUTE and "
+        "CHAT_ANTHROPIC_API_KEY or CHAT_OPENROUTER_API_KEY"
+    ]
+
+
+def test_the_compose_defaults_assign_no_chat_setting():
+    """Docker Compose loads backend/.env.default under backend/.env. A new
+    chat name assigned there, even blank, would win over the dev settings an
+    upgraded install keeps in its .env."""
+    defaults = Path(__file__).resolve().parents[2] / ".env.default"
+    assigned = {
+        line.split("=", 1)[0].strip()
+        for line in defaults.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    }
+    new_names = {
+        name
+        for name in MIGRATION_SETTING_NAMES
+        if name.startswith("CHAT_") and name not in RETIRED_CHAT_SETTINGS
+    }
+    assert assigned & new_names == set()

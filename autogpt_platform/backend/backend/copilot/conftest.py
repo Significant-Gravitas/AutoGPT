@@ -1,6 +1,11 @@
 """Fixtures shared by every copilot test."""
 
+import os
+
 import pytest
+
+from backend.copilot import chat_env
+from backend.copilot.config import ChatConfig
 
 
 @pytest.fixture(autouse=True)
@@ -29,3 +34,20 @@ class _NoCLIPrelaunch:
     @staticmethod
     async def start(options, log_prefix):
         return None
+
+
+@pytest.fixture
+def clean_chat_settings(monkeypatch):
+    """A ChatConfig built in the test sees only the settings the test sets:
+    no chat setting or integration key from the machine (CI sets
+    OPENAI_API_KEY, which dev's settings read as an OpenRouter key), and no
+    dotenv file."""
+    for name in list(os.environ):
+        if name.startswith("CHAT_") or name in chat_env.MIGRATION_SETTING_NAMES:
+            monkeypatch.delenv(name)
+    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
+    monkeypatch.setattr(chat_env, "backend_dotenv_paths", lambda: [])
+    yield
+    for name in list(os.environ):
+        if name.startswith("CHAT_") or name in chat_env.MIGRATION_SETTING_NAMES:
+            os.environ.pop(name, None)

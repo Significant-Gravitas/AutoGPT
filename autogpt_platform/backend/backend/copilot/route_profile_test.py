@@ -15,6 +15,8 @@ from backend.copilot.route_profile import (
 from backend.copilot.route_table import ROUTES
 from backend.copilot.sdk.context_window import CodexEngineWindow
 
+pytestmark = pytest.mark.usefixtures("clean_chat_settings")
+
 
 class TestModelNames:
     @pytest.mark.parametrize("route", ["openrouter", "local", "codex"])

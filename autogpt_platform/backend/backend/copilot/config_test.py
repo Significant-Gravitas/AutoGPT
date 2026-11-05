@@ -32,7 +32,7 @@ _ENV_VARS_TO_CLEAR = (
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_env(monkeypatch: pytest.MonkeyPatch, clean_chat_settings) -> None:
     for var in _ENV_VARS_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
     # pydantic-settings also reads backend/.env directly (``env_file``), so
