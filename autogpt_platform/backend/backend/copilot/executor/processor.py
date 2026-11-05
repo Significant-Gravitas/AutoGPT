@@ -1105,6 +1105,10 @@ class CoPilotProcessor:
                         entry.session_id,
                         error_message=error_msg,
                         error_code=error_code,
+                        skip_error_publish=(
+                            cancel.is_set()
+                            and error_msg == stream_registry.CANCELLED_MESSAGE
+                        ),
                         turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:

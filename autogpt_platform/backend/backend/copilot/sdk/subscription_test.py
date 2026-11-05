@@ -1,20 +1,24 @@
-"""The headless Claude credentials file: owner-only, never through a link.
+"""The subscription check and the headless Claude credentials file.
 
-Every credential here is fake.
+Every credential and account here is fake.
 """
 
 import json
+import logging
 import os
 import stat
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from . import subscription
+from backend.copilot.sdk import subscription
 
 _ACCESS = "sk-ant-oat01-FAKE-access"
 _REFRESH = "sk-ant-ort01-FAKE-refresh"
+ACCOUNT_EMAIL = "synthetic-account-privacy-16237@example.invalid"
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
 
 
@@ -116,29 +120,109 @@ def test_a_file_that_appears_mid_write_is_left_alone(
     assert _creds(home).read_text() == "raced"
 
 
-def test_the_auth_check_logs_no_account_identity(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-):
-    def run(args, **_kwargs):
-        stdout = (
+@pytest.fixture
+def cli_run() -> Iterator[MagicMock]:
+    subscription.validate_subscription.cache_clear()
+    try:
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(subscription, "provision_credentials_file") as provision,
+            patch.object(subscription, "find_bundled_cli", return_value="fake-claude"),
+            patch.object(subscription.subprocess, "run") as run,
+        ):
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "1.2.3", ""),
+                subprocess.CompletedProcess(
+                    [],
+                    0,
+                    json.dumps(
+                        {
+                            "loggedIn": True,
+                            "authMethod": "claude.ai",
+                            "email": ACCOUNT_EMAIL,
+                        }
+                    ),
+                    "",
+                ),
+            ]
+            yield run
+            provision.assert_called_once_with()
+    finally:
+        subscription.validate_subscription.cache_clear()
+
+
+def test_validate_subscription_keeps_auth_method_without_account_email(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+    assert "Claude Code subscription mode: CLI version 1.2.3" in caplog.messages
+    assert "Claude subscription auth: method=claude.ai" in caplog.messages
+
+
+@pytest.mark.parametrize(
+    "version_code, auth_code, logged_in, error, calls",
+    [
+        (1, 0, True, "Claude CLI check failed", 1),
+        (0, 1, True, "Claude CLI is not authenticated", 2),
+        (0, 0, False, "Claude CLI reports loggedIn=false", 2),
+    ],
+)
+def test_validate_subscription_still_rejects_failed_checks(
+    cli_run: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    version_code: int,
+    auth_code: int,
+    logged_in: bool,
+    error: str,
+    calls: int,
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], version_code, "1.2.3", "version unavailable"),
+        subprocess.CompletedProcess(
+            [],
+            auth_code,
             json.dumps(
                 {
-                    "loggedIn": True,
+                    "loggedIn": logged_in,
                     "authMethod": "claude.ai",
-                    "email": "person@example.com",
+                    "email": ACCOUNT_EMAIL,
                 }
-            )
-            if "auth" in args
-            else "2.1.284"
-        )
-        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+            ),
+            "",
+        ),
+    ]
+    with (
+        caplog.at_level(logging.INFO, logger=subscription.__name__),
+        pytest.raises(RuntimeError, match=error),
+    ):
+        subscription.validate_subscription()
 
-    monkeypatch.setattr(subscription, "find_bundled_cli", lambda: "claude-under-test")
-    monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
-    monkeypatch.setattr(subscription.subprocess, "run", run)
-    caplog.set_level("INFO", logger=subscription.logger.name)
+    assert cli_run.call_count == calls
+    assert subscription.validate_subscription.cache_info().currsize == 0
+    assert not any(
+        "Claude subscription auth:" in message for message in caplog.messages
+    )
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
 
-    subscription.validate_subscription.__wrapped__()
 
-    assert "method=claude.ai" in caplog.text
-    assert "person@example.com" not in caplog.text
+def test_validate_subscription_still_warns_on_unparseable_auth_status(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], 0, "1.2.3", ""),
+        subprocess.CompletedProcess([], 0, f"invalid JSON: {ACCOUNT_EMAIL}", ""),
+    ]
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert "Could not parse `claude auth status` output" in caplog.messages
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)

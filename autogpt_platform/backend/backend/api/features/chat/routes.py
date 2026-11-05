@@ -128,6 +128,7 @@ from backend.copilot.response_model import (
     StreamFinishStep,
     StreamFollowUpQueued,
     StreamHeartbeat,
+    StreamRecoveredError,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -2621,8 +2622,8 @@ def _resume_response(
     *,
     cursor: bool,
 ) -> StreamingResponse:
-    """Stream the queue as SSE. A ``cursor`` read writes no made-up frame: a
-    stream that stops without the turn's finish just ends the response."""
+    """Stream stored frames and id-less recovered terminal errors. A cursor
+    read that stops without a stored finish ends without inventing one."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
         chunk_count = 0
@@ -2638,7 +2639,7 @@ def _resume_response(
                 if (
                     cursor
                     and frame_id is None
-                    and not isinstance(chunk, StreamHeartbeat)
+                    and not isinstance(chunk, (StreamHeartbeat, StreamRecoveredError))
                 ):
                     break
                 if chunk_count < 3:
