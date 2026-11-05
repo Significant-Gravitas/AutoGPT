@@ -14,6 +14,8 @@ docs/CROSS_PLATFORM.md "Default allowed_root" and "Audit log location".
 from __future__ import annotations
 
 import ipaddress
+import json
+import re
 import socket
 import stat
 from pathlib import Path
@@ -308,7 +310,8 @@ class ShimConfig(BaseSettings):
 
 
 class ConfigFileError(ValueError):
-    """The config file exists but can't be read or isn't valid TOML."""
+    """The config file exists but can't be read or isn't valid TOML, or an
+    AUTOGPT_SHIM_* environment variable can't be read."""
 
 
 def load_config(
@@ -347,6 +350,25 @@ def load_config(
                 file_overrides[key] = Path(file_overrides[key])
     # ShimConfig(**kwargs) ranks every kwarg above the environment, so the
     # environment is read here and layered over the file explicitly.
-    from_env = EnvSettingsSource(ShimConfig)()
+    from_env = _environment_settings()
     merged = {**file_overrides, **from_env, **overrides}
     return ShimConfig(**merged)
+
+
+def _environment_settings() -> dict[str, Any]:
+    """The AUTOGPT_SHIM_* variables, read the way pydantic-settings reads them."""
+    try:
+        return EnvSettingsSource(ShimConfig)()
+    except ValueError as exc:
+        # pydantic-settings' SettingsError. A list setting takes JSON, so
+        # AUTOGPT_SHIM_RECORDING_CHANNELS=floor can't be read. It isn't a
+        # ValidationError, so it got past the CLI as a traceback and status 1.
+        field = re.search(r'field "([^"]+)"', str(exc))
+        name = (
+            ShimConfig.model_config["env_prefix"] + field.group(1).upper()
+            if field
+            else "An AUTOGPT_SHIM_ environment variable"
+        )
+        if isinstance(exc.__cause__, json.JSONDecodeError):
+            raise ConfigFileError(f"{name} must be JSON: {exc.__cause__}") from exc
+        raise ConfigFileError(f"{name}: {exc}") from exc
