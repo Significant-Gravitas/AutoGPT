@@ -335,6 +335,135 @@ describe("dynamic output safety", () => {
     ).toEqual({ kept: { title: "Kept" } });
   });
 
+  it("keeps sibling fields when a oneOf or allOf field is connected", () => {
+    const siblings = {
+      text: { type: "string", title: "Text" },
+      html: { type: "string", title: "Html" },
+    };
+    for (const keyword of ["oneOf", "allOf"] as const) {
+      const result = augment(
+        {
+          properties: {
+            response: {
+              title: "Response",
+              [keyword]: [
+                { type: "null" },
+                { type: "object", properties: siblings },
+              ],
+            },
+          },
+        },
+        "response_#_html",
+      );
+      expect((result.response as RJSFSchema).properties).toEqual(siblings);
+    }
+  });
+
+  it("resolves a connected field from a later anyOf alternative", () => {
+    const result = augment(
+      {
+        properties: {
+          response: {
+            anyOf: [
+              {
+                type: "object",
+                properties: { url: { type: "string", title: "Url" } },
+              },
+              {
+                type: "object",
+                properties: {
+                  profile: {
+                    type: "object",
+                    title: "Profile",
+                    properties: {
+                      first_name: { type: "string", title: "First Name" },
+                      last_name: { type: "string", title: "Last Name" },
+                    },
+                  },
+                  name: { type: "string", title: "Name" },
+                },
+              },
+            ],
+          },
+        },
+      },
+      "response_#_profile_#_first_name",
+    );
+    expect((result.response as RJSFSchema).properties).toEqual({
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          first_name: { type: "string", title: "First Name" },
+          last_name: { type: "string", title: "Last Name" },
+        },
+      },
+      name: { type: "string", title: "Name" },
+    });
+  });
+
+  it("merges nested properties when union branches share an object field", () => {
+    expect(
+      getNestedOutputProperties({
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              profile: {
+                type: "object",
+                title: "Profile",
+                properties: {
+                  first_name: { type: "string", title: "First Name" },
+                },
+              },
+            },
+          },
+          {
+            type: "object",
+            properties: {
+              profile: {
+                type: "object",
+                properties: {
+                  last_name: { type: "string", title: "Last Name" },
+                },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      profile: {
+        type: "object",
+        title: "Profile",
+        properties: {
+          first_name: { type: "string", title: "First Name" },
+          last_name: { type: "string", title: "Last Name" },
+        },
+      },
+    });
+    expect(
+      getNestedOutputProperties({
+        oneOf: [
+          {
+            type: "object",
+            properties: { value: { type: "string", title: "First" } },
+          },
+          {
+            type: "object",
+            properties: {
+              value: {
+                type: "object",
+                properties: { extra: { type: "string" } },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      value: { type: "string", title: "First" },
+    });
+  });
+
   it("treats prototype-like union keys as own properties", () => {
     const before = Object.getOwnPropertyDescriptors(Object.prototype);
     const schema = JSON.parse(
