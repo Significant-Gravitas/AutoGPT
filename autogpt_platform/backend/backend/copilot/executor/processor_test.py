@@ -1112,6 +1112,7 @@ async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
         error_message="This account has been banned.",
         error_code="account_banned",
         turn_id="turn-1",
+        skip_error_publish=False,
     )
     alert.assert_not_called()
 
@@ -1180,6 +1181,7 @@ async def test_unowned_expert_session_fails_before_engine_work() -> None:
         error_message="expert is not owned by user",
         error_code=None,
         turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -1257,6 +1259,7 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
         error_message=expected_message,
         error_code=None,
         turn_id="turn-1",
+        skip_error_publish=False,
     )
 
 
@@ -1496,6 +1499,7 @@ async def test_codex_release_failure_does_not_fail_successful_turn():
         error_message=None,
         error_code=None,
         turn_id="turn-codex",
+        skip_error_publish=False,
     )
 
 
@@ -1551,6 +1555,7 @@ async def test_codex_checkpoint_failure_fails_closed_after_successful_turn():
         error_message="codex_credential_checkpoint_failed",
         error_code=None,
         turn_id="turn-codex",
+        skip_error_publish=False,
     )
 
 
@@ -1587,6 +1592,7 @@ async def test_codex_queue_route_mismatch_fails_before_credential_acquire():
         error_message="codex_session_route_mismatch",
         error_code=None,
         turn_id="turn-codex",
+        skip_error_publish=False,
     )
 
 
@@ -1630,6 +1636,7 @@ async def test_codex_entitlement_is_checked_before_credential_acquire():
         error_message="Max plan required",
         error_code=None,
         turn_id="turn-codex",
+        skip_error_publish=False,
     )
 
 
@@ -1679,6 +1686,7 @@ async def test_codex_busy_credential_fails_closed_without_platform_fallback():
         error_message="codex_credential_busy",
         error_code=None,
         turn_id="turn-codex",
+        skip_error_publish=False,
     )
 
 
