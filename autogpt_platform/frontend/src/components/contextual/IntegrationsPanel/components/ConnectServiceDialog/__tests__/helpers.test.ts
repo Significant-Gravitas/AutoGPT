@@ -4,6 +4,7 @@ import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMe
 
 import {
   filterConnectableProviders,
+  getSignInFallbackLabel,
   popularProviders,
   sortByPopularity,
   toConnectableProviders,
@@ -255,6 +256,17 @@ describe("withArticle", () => {
     expect(withArticle("Etsy")).toBe("an Etsy");
     expect(withArticle("Airtable")).toBe("an Airtable");
     expect(withArticle("Printify")).toBe("a Printify");
+  });
+
+  it("is what the token fallback says", () => {
+    expect(
+      getSignInFallbackLabel({
+        id: "airtable",
+        serviceId: "airtable",
+        name: "Airtable",
+        supportedAuthTypes: [],
+      }),
+    ).toBe("Use an Airtable token instead");
   });
 });
 
