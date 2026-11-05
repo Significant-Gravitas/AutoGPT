@@ -791,6 +791,30 @@ async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, m
     assert not [b for b in response.payload.content if isinstance(b, ComputerImageContent)]
     assert any("too large" in b.text for b in response.payload.content
                if isinstance(b, ComputerTextContent))  # fmt: skip
+    # The audit record counted only images the rate limit held back, so it
+    # said none were withheld.
+    [record] = _audit(handler.config.audit_log_path.parent)
+    assert (record["details"]["images"], record["details"]["images_withheld"]) == (0, 1)
+
+
+async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> None:
+    """The budget counted a text block's raw UTF-8 bytes, but JSON writes a
+    control character as six bytes and a quote as two, so a result could
+    pass the budget and still exceed the frame limit, and the whole result
+    was then replaced with FILE_TOO_LARGE."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "MAX_WIRE_BASE64_CONTENT_BYTES", 1000)
+    monkeypatch.setattr(handlers, "MAX_WIRE_TEXT_CONTENT_BYTES", 100)
+    handler = make_handler()
+
+    payload, _summary = handler._result_payload(
+        "get_window_state", {"content": [{"type": "text", "text": "\x00" * 600}]}
+    )
+
+    texts = [b.text for b in payload.content if isinstance(b, ComputerTextContent)]
+    assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
+    assert any("cut down" in text for text in texts)
 
 
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(

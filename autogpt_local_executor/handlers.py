@@ -1699,6 +1699,7 @@ class ComputerUseHandler:
             images = [block for block in content if isinstance(block, ComputerImageContent)]
             content = [block for block in content if isinstance(block, ComputerTextContent)]
             size -= sum(_block_size(block) for block in images)
+            withheld += len(images)
             if images:
                 notes.append(
                     f"{len(images)} screenshot(s) left out: the result was too large to "
@@ -1777,9 +1778,11 @@ def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = Tru
 
 
 def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
+    """The block's bytes as JSON carries them: a control character takes six,
+    a quote or backslash two."""
     if isinstance(block, ComputerImageContent):
         return len(block.data)
-    return len(block.text.encode("utf-8"))
+    return len(json.dumps(block.text, ensure_ascii=False).encode("utf-8"))
 
 
 def _truncate_utf8(text: str, limit: int) -> str:
