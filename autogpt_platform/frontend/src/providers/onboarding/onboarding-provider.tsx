@@ -18,6 +18,7 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { hasImpersonation } from "@/lib/impersonation";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   isAbortError,
   isNetworkError,
@@ -329,7 +330,7 @@ export default function OnboardingProvider({
         // Only this check moves a signed-in user off a sign-in page's loader.
         // Home's own check takes over from there, and the prompts on Home
         // stay hidden until it answers.
-        if (getOnboardingRoute(latestPathname.current).isOnAuthRoute) {
+        function leaveAuthRouteAfterWait() {
           setTimeout(() => {
             const { isOnAuthRoute } = getOnboardingRoute(
               latestPathname.current,
@@ -344,11 +345,24 @@ export default function OnboardingProvider({
             }
           }, AUTH_ROUTE_FALLBACK_MS);
         }
+        const isOnAuthRouteNow = getOnboardingRoute(
+          latestPathname.current,
+        ).isOnAuthRoute;
 
         if (error instanceof ApiError && error.status === 401) {
           hasInitialized.current = false;
+          // A dead session is the auth store's to end, which brings back the
+          // sign-in form. Home is only for a session it still accepts.
+          if (isOnAuthRouteNow) {
+            const isValid = await useAuthStore
+              .getState()
+              .validateSession({ force: true });
+            if (isValid) leaveAuthRouteAfterWait();
+          }
           return;
         }
+
+        if (isOnAuthRouteNow) leaveAuthRouteAfterWait();
 
         // A fetch that still can't get through after the retries means the
         // user is offline or navigating away, not looking at a broken

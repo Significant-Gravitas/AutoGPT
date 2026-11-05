@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { ImpersonationState } from "@/lib/impersonation";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api";
 import OnboardingProvider, { useOnboarding } from "../onboarding-provider";
@@ -626,6 +627,42 @@ describe("OnboardingProvider isOnboardingComplete", () => {
         expect(routerReplace).toHaveBeenLastCalledWith("/onboarding"),
       );
       expect(backend.completionChecks).toBe(2);
+    });
+
+    test("a dead session goes back to the sign-in form, not Home", async () => {
+      backend.checkFailsOnceWith = 401;
+      const validateSession = vi.fn(async () => {
+        mockUserID = null;
+        return false;
+      });
+      const original = useAuthStore.getState().validateSession;
+      useAuthStore.setState({ validateSession });
+      try {
+        const view = render(tree());
+        await waitFor(() => expect(validateSession).toHaveBeenCalledTimes(1));
+        view.rerender(tree());
+        await failedCheckThenWait(3_500);
+
+        expect(routerReplace).not.toHaveBeenCalled();
+      } finally {
+        useAuthStore.setState({ validateSession: original });
+      }
+    });
+
+    test("a session the auth store still accepts goes Home after the wait", async () => {
+      backend.checkFailsOnceWith = 401;
+      const validateSession = vi.fn(async () => true);
+      const original = useAuthStore.getState().validateSession;
+      useAuthStore.setState({ validateSession });
+      try {
+        render(tree());
+        await waitFor(() => expect(validateSession).toHaveBeenCalledTimes(1));
+        await failedCheckThenWait(3_500);
+
+        expect(routerReplace).toHaveBeenCalledWith("/home?utm_source=ad");
+      } finally {
+        useAuthStore.setState({ validateSession: original });
+      }
     });
 
     test("nothing happens if the user signed out during the wait", async () => {
