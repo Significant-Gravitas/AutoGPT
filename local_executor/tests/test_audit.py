@@ -1455,18 +1455,57 @@ async def test_audit_show_reads_the_logs_under_the_writers_lock(
 
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
     held: list[bool] = []
-    real_open = builtins.open
+    printed: list[bool] = []
+    real_read = cli._read_audit_file
+    real_print = builtins.print
 
-    def open_(file, *args, **kwargs):
-        if str(file) == str(writer.path):
-            held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
-        return real_open(file, *args, **kwargs)
+    def read(path: Path) -> bytes | None:
+        held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_read(path)
 
-    monkeypatch.setattr(builtins, "open", open_)
+    def print_(*args, **kwargs) -> None:
+        printed.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        real_print(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "_read_audit_file", read)
+    monkeypatch.setattr(builtins, "print", print_)
 
     assert cli._audit_show(writer.path, 1) == 0
-    assert held == [True]
+    assert held == [True, True]
+    # A slow terminal or pager held the daemon's audit writes too.
+    assert printed and not any(printed)
+
+
+@pytest.mark.asyncio
+async def test_audit_show_skips_a_rotated_log_pruned_while_it_runs(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    [rotated] = list_rotated_files(writer.path)
+    real_lock = audit_module.holding_log_lock
+    holds = 0
+
+    @contextlib.contextmanager
+    def prune_after_the_first_hold(log: Path):
+        nonlocal holds
+        holds += 1
+        if holds == 2:
+            rotated.unlink()
+        with real_lock(log):
+            yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", prune_after_the_first_hold)
+
+    assert cli._audit_show(writer.path, 1) == 0
+    out = capsys.readouterr().out
+    assert f"# from {writer.path.name}" in out
+    assert rotated.name not in out
 
 
 @pytest.mark.asyncio
@@ -1538,6 +1577,26 @@ def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path)
     rotated = tmp_path / "audit.log.20200101-000000"
     records = [{"seq": 1, "ts": time.time()}, {"seq": 2, "ts": 1.0}]
     rotated.write_text("".join(json.dumps(record) + "\n" for record in records))
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert rotated.exists()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # math.isfinite raises OverflowError for an int past a float's range.
+        '{"seq": 1, "ts": ' + "9" * 400 + "}",
+        # json.loads raises RecursionError for a line nested this deep.
+        "[" * 100_000 + "]" * 100_000,
+    ],
+)
+def test_prune_keeps_a_log_it_cannot_judge_without_a_traceback(tmp_path: Path, line: str) -> None:
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20200101-000000"
+    rotated.write_text(line + "\n")
 
     assert cli._audit_prune(current, "1d") == 0
 

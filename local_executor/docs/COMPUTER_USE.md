@@ -83,7 +83,10 @@ WSL2 can't drive Windows apps; run the shim on Windows itself.
 read returns depends on a second setting:
 
 - **Default:** only text the agent itself put on the clipboard in the last
-  30 seconds. Anything you copied comes back as `CLIPBOARD_CONCEALED`.
+  30 seconds, from any chat on this computer: the clipboard is the
+  computer's, not one chat's. Anything else comes back as
+  `CLIPBOARD_CONCEALED`. The shim compares the text, so a copy you make of
+  the very same text reads back too.
 - **With `--enable-clipboard-read-foreign`:** whatever is on the clipboard,
   except what a password manager marked private (many mark their copies,
   KeePassXC among them). Those come back as
@@ -107,19 +110,27 @@ A script (`run_script`) asks too, every time, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
 
-These approvals cover those arguments, not the apps. An app Otto drives,
-or starts with `launch_app` (which takes any program and arguments, and
-asks nothing), reads and writes files with your access, outside the shared
-folders too: a terminal or a file manager, say. See
+So does a `launch_app` call that runs more than an app by its name: a
+command line or a program's path, extra command-line arguments, links or
+files to open, or an inspector port. cua-driver starts those out of sight,
+with no window of their own, and opens a link in your own browser. Opening
+an app by its name or id asks nothing.
+
+These approvals cover those arguments, not the apps. An app Otto drives
+reads and writes files with your access, outside the shared folders too: a
+terminal or a file manager, say. See
 [CUA_DRIVER.md](CUA_DRIVER.md#residual-risk).
 
 ## What leaves this computer
 
 Everything a tool returns goes to the platform and the model: accessibility
 trees, which can include the text of windows the agent reads, and
-screenshots. Each call, refused ones too, is recorded in the audit log,
-without the text the agent typed or scripted (see
-[AUDIT_LOG.md](AUDIT_LOG.md)). cua-driver's own telemetry is off for the
+screenshots. Each call the computer-use handler takes, refused ones too, is
+recorded in the audit log, without the text the agent typed or scripted
+(see [AUDIT_LOG.md](AUDIT_LOG.md)). Recording is best effort: a call goes
+ahead if its record can't be written, and a call refused before it reaches
+the handler (computer use off on this machine, or not granted to the
+session) is answered without one. cua-driver's own telemetry is off for the
 driver the shim starts.
 
 ## Troubleshooting

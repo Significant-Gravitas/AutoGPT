@@ -143,9 +143,9 @@ flag is enabled, until capture and interpretation are complete end to end.
   "version": "2.0",
   "payload": {
     "session_id": null,          // null on control; exact ID on data WS
-    "connection_id": null,       // optional platform presence generation
+    "connection_id": "conn-7f3a", // opaque presence generation; required on control
     "protocol_version": "2.0",     // max wire version this platform supports
-    "granted_capabilities": ["shell", "files"],  // subset platform approved
+    "granted_capabilities": ["directory_browse"],  // control; a data WS gets its subset, e.g. ["shell", "files"]
     "max_file_size_bytes": 10485760,
     "command_timeout_seconds": 30,
     "max_concurrent": 4                          // shim caps in-flight requests
@@ -505,10 +505,12 @@ below, it leaves a partial file instead). An existing file keeps its
 mode, except set-user-ID and set-group-ID, which a write drops so that new
 contents never run with the file owner's privileges (Linux drops them for an
 unprivileged writer; the shim drops them whatever it runs as); a new one gets
-the usual default (0o666 less the umask). Because the
-target gets a new inode, a hard link made to it from elsewhere keeps the
-old contents, and extended attributes and ACLs on the old file don't carry
-over. Where the directory takes no new entries, or (on Windows) another
+the usual default (0o666 less the umask). An existing file with more than
+one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
+refuses one: its other names may be outside the root, and the shim can't
+tell, so the write neither succeeds nor replaces it. Because a target the
+write does replace gets a new inode, extended attributes and ACLs on the
+old file don't carry over. Where the directory takes no new entries, or (on Windows) another
 program has the file open, the shim overwrites the file in place instead:
 it truncates the file and writes the content, so a write that fails part way
 there leaves a partial file, and the old contents are gone.
@@ -872,8 +874,10 @@ connection. Listing tools never waits for a running action.
 
 `tool` matches `^[a-z][a-z0-9_]{0,63}$`. `arguments` follows the tool's
 `input_schema`. `timeout_seconds` (1-600, default 120) bounds the call; at
-the deadline the shim tells the driver to stop it and answers
-`COMMAND_TIMEOUT`, though an action the driver already made stays made.
+the deadline the shim stops the driver, which can't cancel a call it is
+running, and answers `COMMAND_TIMEOUT`, though an action the driver already
+made stays made. The next call starts the driver afresh, without the
+element tokens and sessions of the old one.
 Calls from every session on a machine take turns: there is one screen.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
@@ -881,15 +885,20 @@ arguments the person approved for this call. An argument in a tool's
 `approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
 `file_path` / `image_path`, `browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
-a file where the shim can't check them); a call that
+a file where the shim can't check them) or runs a program out of sight
+(`launch_app`'s `launch_path`, `path`, `additional_arguments`, `urls` and
+`webkit_inspector_port`); a call that
 uses one without naming it there gets `APPROVAL_REQUIRED` with
 `details.tool` and `details.argument`, and nothing reaches the driver. Only
 an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`, and any approval argument
-inside a `run_steps` step.
+accepts: `check_permissions` with `prompt: true`; any approval argument
+inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
+`bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
+a leading `-`, a control character, or on Linux a command line whose first
+word is a program).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json

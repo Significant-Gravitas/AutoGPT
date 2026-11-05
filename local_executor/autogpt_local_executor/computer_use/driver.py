@@ -44,14 +44,30 @@ LIST_TIMEOUT_SECONDS = 30.0
 MAX_STARTS_PER_WINDOW = 3
 START_WINDOW_SECONDS = 300.0
 
-# Environment the driver never inherits from the shim's: an approval bypass,
-# or a capability manifest someone else approved.
-_SCRUBBED_ENVIRONMENT = (
-    "CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS",
-    "CUA_DRIVER_CAPABILITY_MANIFEST_FILE",
-    "CUA_DRIVER_CAPABILITY_MANIFEST_APPROVED",
-    "CUA_DRIVER_SESSION_POLICY_FILE",
-    "CUA_DRIVER_SESSION_POLICY_APPROVED",
+# The cua settings (CUA*) the driver may inherit from the shim's environment:
+# the ones cua's own SDK hands a driver it embeds (cua-driver-sdk's
+# `allowed_environment_name`: logging, the driver's home, accessibility and
+# Wayland switches, input pacing), and an administrator's managed policy,
+# which can only narrow what the driver allows. cua-driver reads well over a
+# hundred others, and among them some turn a protection off
+# (CUA_DRIVER_BROWSER_NO_SANDBOX, CUA_DRIVER_DISABLE_KEY_FOCUS_GUARD), open a
+# port (CUA_DRIVER_RS_MCP_HTTP_PORT), move what the driver owns
+# (CUA_DRIVER_BROWSER_PROFILE_ROOT), approve on the person's behalf
+# (CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS, a capability manifest) or exist
+# for cua's own tests. Those never reach the shim's driver.
+_INHERITED_CUA_SETTINGS = frozenset(
+    {
+        "CUA_LOG",
+        "CUA_DRIVER_RS_HOME",
+        "CUA_DRIVER_RS_ENABLE_WAYLAND",
+        "CUA_DRIVER_RS_DISABLE_A11Y_ADVERTISE",
+        "CUA_DRIVER_RS_A11Y_ADVERTISE_MODE",
+        "CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS",
+        "CUA_DRIVER_WINDOW_CHANGE_POLL_MS",
+        "CUA_DRIVER_KEY_GAP_MS",
+        "CUA_DRIVER_BATCH_PACING",
+        "CUA_DRIVER_MANAGED_POLICY_FILE",
+    }
 )
 
 Runtime = Literal["direct", "service"]
@@ -155,12 +171,15 @@ def driver_argv(binary: Path, runtime: Runtime, platform: str | None = None) -> 
 def driver_environment(
     policy_path: Path | None, base: Mapping[str, str] | None = None
 ) -> dict[str, str]:
-    """The driver's environment: the shim's own, less anything that would
-    widen what the driver may do, with telemetry and update checks off and,
-    for `mcp`, the shim's policy."""
-    env = dict(os.environ if base is None else base)
-    for name in _SCRUBBED_ENVIRONMENT:
-        env.pop(name, None)
+    """The driver's environment: the shim's own, which the driver and the
+    apps it launches need (the display, the session bus, the locale), with
+    only the reviewed cua settings, telemetry and update checks off and, for
+    `mcp`, the shim's policy."""
+    env = {
+        name: value
+        for name, value in (os.environ if base is None else base).items()
+        if not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS
+    }
     env.update(
         {
             "CUA_DRIVER_PERMISSION_MODE": "standard",
@@ -200,6 +219,8 @@ class CuaDriverBridge:
         self._client: StdioMcpClient | None = None
         self._snapshot: DriverSnapshot | None = None
         self._lock = asyncio.Lock()
+        # Held for each tool call: the driver runs one at a time anyway.
+        self._turn = asyncio.Lock()
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
@@ -222,12 +243,29 @@ class CuaDriverBridge:
     async def call_tool(
         self, name: str, arguments: dict[str, Any], *, timeout: float
     ) -> dict[str, Any]:
-        client = await self._ensure_client()
+        """One tool call, within `timeout` seconds of waiting for its turn
+        and `timeout` more of running.
+
+        cua-driver 0.38 runs one request at a time and drops MCP's cancel
+        notice, so a call past its deadline, or one its caller gave up on,
+        would go on acting on the machine until it ended, and every request
+        sent after it would wait. The bridge sends one call at a time, so the
+        one the driver runs is the one that overran, and stops the driver to
+        end it; the next call starts a new one."""
+        async with asyncio.timeout(timeout):
+            await self._turn.acquire()
         try:
-            return await client.call_tool(name, arguments, timeout=timeout)
-        except McpClosedError as exc:
-            self._last_failure = str(exc)
-            raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
+            client = await self._ensure_client()
+            try:
+                return await client.call_tool(name, arguments, timeout=timeout)
+            except McpClosedError as exc:
+                self._last_failure = str(exc)
+                raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
+            except (TimeoutError, asyncio.CancelledError):
+                await asyncio.shield(self._stop_unfinished(client))
+                raise
+        finally:
+            self._turn.release()
 
     async def close(self) -> None:
         async with self._lock:
@@ -359,6 +397,19 @@ class CuaDriverBridge:
         if client is not None:
             with contextlib.suppress(Exception):
                 await client.close()
+
+    async def _stop_unfinished(self, client: StdioMcpClient) -> None:
+        """Stop a driver still running a call nobody waits for. Stopping it
+        is the shim's own doing, not the driver failing, so its start is
+        taken off the restart budget."""
+        async with self._lock:
+            if self._client is client:
+                self._client = None
+                if self._starts:
+                    self._starts.pop()
+        logger.info("Stopping cua-driver (pid %s) to end a call that overran", client.pid)
+        with contextlib.suppress(Exception):
+            await client.close(now=True)
 
 
 __all__ = [

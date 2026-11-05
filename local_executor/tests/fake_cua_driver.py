@@ -1,7 +1,8 @@
 """A stand-in for `cua-driver mcp`, run as `python fake_cua_driver.py mcp`.
 
-It speaks MCP over stdio like the real driver and enforces the YAML policy
-named by CUA_DRIVER_POLICY_FILE (an `allow.tools` list) the same way. What
+It speaks MCP over stdio like the real driver, one request at a time and
+dropping every notification as cua-driver 0.38 does, and enforces the YAML
+policy named by CUA_DRIVER_POLICY_FILE (an `allow.tools` list) the same way. What
 it does is set through environment variables, and it logs what it saw, one
 JSON object per line, to FAKE_CUA_LOG:
 
@@ -15,6 +16,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_EXIT_AT_START exit before answering initialize
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
+  FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
 """
 
 from __future__ import annotations
@@ -40,7 +42,6 @@ CATALOG = [
 ]  # fmt: skip
 
 _write_lock = threading.Lock()
-_cancelled: set[int] = set()
 
 
 def log(**record: object) -> None:
@@ -145,11 +146,10 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
     if name == "zoom" and arguments.get("pid") == -1:
         return text_result("no such window", {"code": "stale"}, error=True)
     if name == "drag" and arguments.get("pid") == -2:
-        # A slow action: runs until cancelled.
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline and request_id not in _cancelled:
-            time.sleep(0.01)
-        log(event="slow_done", cancelled=request_id in _cancelled)
+        # A slow action, done at its end: nothing stops it but the process
+        # stopping, as in cua-driver 0.38.
+        time.sleep(float(os.environ.get("FAKE_CUA_SLOW_SECONDS", "30")))
+        log(event="slow_done")
         return text_result("slow")
     if name == "drag" and arguments.get("pid") == -3:
         log(event="exiting")
@@ -218,14 +218,12 @@ def handle(message: dict) -> None:
             send({"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": text}})
             return
 
-        def run() -> None:
-            result = call_tool(request_id, params["name"], params.get("arguments") or {})
-            send({"jsonrpc": "2.0", "id": request_id, "result": result})
-
-        threading.Thread(target=run, daemon=True).start()
-    elif method == "notifications/cancelled":
-        _cancelled.add(message["params"]["requestId"])
-        log(event="cancelled", request=message["params"]["requestId"])
+        # One request at a time, read off stdin only once the last is done.
+        result = call_tool(request_id, params["name"], params.get("arguments") or {})
+        send({"jsonrpc": "2.0", "id": request_id, "result": result})
+    elif request_id is None and isinstance(method, str) and method.startswith("notifications/"):
+        # cua-driver drops every notification, cancellation included.
+        log(event="notification_dropped", method=method)
     elif method == "ping-me":
         # Asks the client a question, as a server may.
         send({"jsonrpc": "2.0", "id": "server-1", "method": "ping"})

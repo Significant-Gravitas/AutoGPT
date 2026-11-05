@@ -157,6 +157,13 @@ class _SlidingWindowRateLimiter:
         self._events.append(now)
         return True
 
+    def available(self) -> int:
+        """How many more the window takes now, without taking one."""
+        cutoff = time.monotonic() - self.window_seconds
+        while self._events and self._events[0] <= cutoff:
+            self._events.popleft()
+        return max(self.limit - len(self._events), 0)
+
 
 class _BoundedCombinedOutput:
     """Retain a bounded stdout+stderr prefix while callers keep draining pipes."""
@@ -1533,8 +1540,8 @@ class ComputerUseHandler:
         try:
             result = await self._relay(tool, arguments, msg.payload.timeout_seconds, approved)
         except asyncio.CancelledError:
-            # The action may have happened: the driver was told to stop,
-            # but it can't take back a click it already made.
+            # The action may have happened: the bridge stopped the driver to
+            # end it, but nothing takes back a click it already made.
             await self._emit(
                 msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
             )
@@ -1562,7 +1569,9 @@ class ComputerUseHandler:
             return make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
-                f"{tool} did not finish in time; the driver was told to stop it.",
+                f"{tool} did not finish in time, so the local executor stopped cua-driver "
+                "to end it. What it already did stays done, and the next call starts the "
+                "driver afresh: look at the window again before you act on it.",
                 details={
                     "tool": tool,
                     "timeout_seconds": msg.payload.timeout_seconds
@@ -1670,6 +1679,11 @@ class ComputerUseHandler:
         content: list[ComputerTextContent | ComputerImageContent] = []
         notes: list[str] = []
         withheld = 0
+        # Images past the rate limit are left out here without spending any
+        # of it; the limiter is charged at the end, for the images sent. One
+        # left out below for size spent nothing, so it can't withhold the
+        # next screenshot, this session's or another's.
+        room = self._screenshot_rate.available()
         for block in raw.get("content") or []:
             if not isinstance(block, dict):
                 continue
@@ -1677,7 +1691,8 @@ class ComputerUseHandler:
             if kind == "text" and isinstance(block.get("text"), str):
                 content.append(ComputerTextContent(text=block["text"]))
             elif kind == "image" and isinstance(block.get("data"), str):
-                if self._screenshot_rate.allow():
+                if room > 0:
+                    room -= 1
                     content.append(
                         ComputerImageContent(
                             data=block["data"],
@@ -1724,6 +1739,9 @@ class ComputerUseHandler:
                     )
                 )
             notes.append("The result was cut down to fit the connection's message limit.")
+        for block in content:
+            if isinstance(block, ComputerImageContent):
+                self._screenshot_rate.allow()
         content.extend(ComputerTextContent(text=note) for note in notes)
 
         payload = ComputerToolResultPayload(
@@ -1819,8 +1837,8 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         )
     else:
         clipboard = (
-            "clipboard_read returns only text this session put on the clipboard in the "
-            "last 30 seconds."
+            "clipboard_read returns only text clipboard_write put on this computer's "
+            "clipboard, in this chat or another, in the last 30 seconds."
         )
     notes = [
         "",
@@ -1834,6 +1852,9 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "when the task needs that file. A `run_script` script waits too, since its calls "
         "can save a screenshot to a file: use `run_steps` or single calls unless the flow "
         "needs a script's logic.",
+        "- Open an app with `launch_app` by its `name` (or `bundle_id`) alone. A command "
+        "line, a path, links or files to open, extra arguments or an inspector port wait "
+        "for the person's approval, since the program they start runs out of sight.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
         "recording, process control, downloads and page JavaScript are not.",

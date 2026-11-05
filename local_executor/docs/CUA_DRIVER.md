@@ -25,7 +25,11 @@ driver's last error until the five minutes are up.
 
 The shim speaks MCP to it over stdin and stdout
 (`autogpt_local_executor/computer_use/mcp_client.py`): initialize, list
-tools, call tools, and cancel a call that runs past its deadline.
+tools and call tools, one call at a time. cua-driver 0.38 runs one request
+at a time and drops MCP's cancel notice, so a call can't be cancelled while
+it runs: when one runs past its deadline, or its caller is cancelled, the
+shim stops the driver to end it (that restart doesn't count toward the
+three).
 
 **Which binary.** `cua_driver_path` from the config, when it's set. If no
 file is there, the shim doesn't fall back to another driver: with computer
@@ -57,23 +61,30 @@ as the shim's child and leaves prompting to its host. `autogpt-shim doctor`
 requests them. The agent cursor overlay needs CuaDriver.app's AppKit host,
 so it shows on Windows and Linux but not on macOS.
 
-**Environment.** The driver gets the shim's environment (it needs `DISPLAY`,
-the session bus and the rest), with these changes:
+**Environment.** The driver gets the shim's environment (it and the apps it
+launches need `DISPLAY`, the session bus and the rest), with these changes:
 
+- Of cua's own settings (`CUA*`), only those cua's SDK hands a driver it
+  embeds pass: `CUA_LOG`, `CUA_DRIVER_RS_HOME`, the accessibility and
+  Wayland switches (`CUA_DRIVER_RS_ENABLE_WAYLAND`,
+  `CUA_DRIVER_RS_DISABLE_A11Y_ADVERTISE`, `CUA_DRIVER_RS_A11Y_ADVERTISE_MODE`)
+  and the pacing knobs (`CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS`,
+  `CUA_DRIVER_WINDOW_CHANGE_POLL_MS`, `CUA_DRIVER_KEY_GAP_MS`,
+  `CUA_DRIVER_BATCH_PACING`), plus an administrator's managed policy
+  (`CUA_DRIVER_MANAGED_POLICY_FILE`), which can only narrow what the driver
+  allows. The rest are dropped: among them are switches that turn a browser
+  sandbox or the key-focus guard off, an HTTP MCP port, the root of the
+  driver's browser profiles, `CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS`, and
+  capability manifests and session policies with their approvals (approving
+  one is the launcher's decision, and this launcher doesn't make it).
 - `CUA_DRIVER_PERMISSION_MODE=standard`, and `CUA_DRIVER_DISABLE_UNRESTRICTED=1`
   so nothing can switch it to `unrestricted`.
 - `CUA_DRIVER_POLICY_FILE`: the shim's tool policy (below), in a private
   temporary directory that lives as long as the driver.
-- Removed: `CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS` and any capability
-  manifest or session policy and its approval. Approving one is the
-  launcher's decision, and this launcher doesn't make it.
 - `DO_NOT_TRACK=1`, `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` and
   `CUA_DRIVER_RS_UPDATE_CHECK=false`. cua-driver sends content-free product
   telemetry by default; the shim's driver sends none and never checks for
   updates.
-
-A managed policy (`CUA_DRIVER_MANAGED_POLICY_FILE`) set by an administrator
-is left in place; it can only narrow what the driver allows.
 
 ## What the platform gets
 
@@ -134,18 +145,23 @@ sixteen tools; all of them are in the catalog, which
   `files` on `browser_set_input_files` (hands files to a page), and
   `script` on `run_script`, so every script: its calls run inside the
   driver, where the shim can't check them, and one can save a screenshot to
-  a file. The tool list names them in each tool's `approval_arguments`. The platform
+  a file. So do `launch_app`'s `launch_path`, `path`,
+  `additional_arguments`, `urls` and `webkit_inspector_port`, which start a
+  program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
+  must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; without it the
   shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
-  `run_steps` step may not use one at all.
+  `run_steps` step may not use one at all, and neither may the `observe`
+  that ends a batch, which the driver runs as a `get_window_state` call.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
 - A deadline per call (120 s unless the platform asks for 1-600 s); past it
-  the driver is told to cancel.
+  the shim stops the driver, and the next call starts a new one. Its
+  sessions, element tokens and launched browsers' pages start over too.
 - One call at a time per machine.
 - An audit record for every call, refused ones too. An approved call's
   record names the approved arguments and keeps their paths whole.
@@ -178,22 +194,35 @@ Known gaps:
   arguments, and the shim can't see into scripts, so every script waits for
   the person's approval instead, on a card that shows it. A policy rule that
   forbids an argument belongs upstream; with one, scripts could run unasked.
-- `launch_app` accepts `launch_path` and `additional_arguments` (on Linux,
-  the `Exec=` line of a `.desktop` file), so it can start any program with
-  any arguments. Again no more than the GUI allows; each launch is audited.
+- `launch_app` can start any program with any arguments: `launch_path` (on
+  Linux the `Exec=` line of a `.desktop` file, run split at spaces), a
+  Windows `path`, and `additional_arguments`, where a Chromium flag such as
+  `--renderer-cmd-prefix` runs a command. `urls` open in whatever handles
+  them, a web page in the person's own signed-in browser. The driver starts
+  all of these in the background, with no window of their own, so unlike a
+  terminal the agent types into, nobody sees them: each is an approval
+  argument. On Linux the driver also runs `name` as a command line before
+  it looks for an app of that name, so the shim refuses a `name` whose first
+  word is a program, and on every OS a `name`, `bundle_id` or `aumid` with a
+  path, a URL scheme or a leading `-`. A plain launch, an app by its name or
+  id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
   `type_text` does the same in the background through the accessibility
   API; the shim audits both.
 
 ## Clipboard
 
-Off unless `--enable-clipboard`. Then `clipboard_write` takes text only, and
-`clipboard_read` returns:
+Off unless `--enable-clipboard`. Then `clipboard_write` takes exactly one
+of `text`, `file_path` or `image_path`, the last two only once the person
+approves the call (see Enforcement), and `clipboard_read` returns:
 
-- by default, only text this shim wrote in the last 30 seconds: the shim
-  keeps the hash of its last write and compares it with what the driver
-  reads. Anything else is `CLIPBOARD_CONCEALED` (`writeback_only`, or
-  `writeback_overwritten` if something replaced the shim's text).
+- by default, only text this shim wrote in the last 30 seconds, for any of
+  its sessions: the clipboard is the computer's, so one record serves every
+  chat on the machine. The shim keeps the hash of its last text write and
+  compares it with what the driver reads, so the same text copied by the
+  person matches too. Anything else is `CLIPBOARD_CONCEALED`
+  (`writeback_only`, or `writeback_overwritten` if something replaced the
+  shim's text, a file or image the shim put there included).
 - with `--enable-clipboard-read-foreign`, whatever is there, except content a
   password manager marked private: macOS `org.nspasteboard.ConcealedType`,
   `TransientType` and `AutoGeneratedType`; Windows `CF_PRIVATE` formats and
@@ -226,8 +255,8 @@ the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`) replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
-`CANCELLED`: the driver was told to stop, but an action it already made
-stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
+`CANCELLED`: the shim stopped the driver to end it, but an action it
+already made stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
 
 ## Permissions and preflight
 
