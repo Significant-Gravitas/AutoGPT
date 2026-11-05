@@ -93,10 +93,37 @@ def test_paying_early_starts_the_paid_period_just_after_trial_end():
     assert qualifies(value, trial_end=200)
 
 
-def test_paid_period_before_trial_end_cannot_be_initial_activation():
+@pytest.mark.parametrize(
+    "billing_reason", ["subscription_cycle", "subscription_update"]
+)
+@pytest.mark.parametrize(
+    "gap, accepted",
+    [
+        (-1, False),
+        (0, True),
+        (1, True),
+        (60, True),
+        (61, False),
+        (30 * 86400, False),
+    ],
+)
+def test_only_a_period_starting_just_after_trial_end_is_the_first(
+    billing_reason, gap, accepted
+):
+    start = 200 + gap
     value = invoice()
-    value["lines"]["data"][0]["period"] = {"start": 199, "end": 300}
-    assert not qualifies(value)
+    value.update(billing_reason=billing_reason, created=max(200, start))
+    value["status_transitions"] = {"paid_at": max(200, start)}
+    value["lines"]["data"][0]["period"] = {"start": start, "end": start + 100}
+    assert qualifies(value) is accepted
+
+
+def test_paying_late_keeps_the_first_period_while_trial_end_stands():
+    value = invoice()
+    value.update(billing_reason="subscription_update", created=201)
+    value["status_transitions"] = {"paid_at": 201 + 3600}
+    value["lines"]["data"][0]["period"] = {"start": 201, "end": 301}
+    assert qualifies(value)
 
 
 def test_later_trial_renewal_cannot_be_initial_activation():
