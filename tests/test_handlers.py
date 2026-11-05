@@ -1609,15 +1609,27 @@ async def test_a_move_refuses_a_destination_that_appears_after_the_check_where_t
 
 
 def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
-    from autogpt_local_executor import fsops
+    """Whether this OS and filesystem refuse a replacing rename in the rename
+    itself, asked of the C library directly. Asked of the code under test, a
+    regression that made it report no support skipped these tests instead
+    of failing them."""
+    import ctypes
+    import ctypes.util
 
     src, dst = folder / ".probe-src", folder / ".probe-dst"
     src.write_text("")
     dst.write_text("")
     try:
-        return fsops._native_no_replace_rename(src, dst)
-    except FileExistsError:
-        return True
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        if sys.platform == "linux" and hasattr(libc, "renameat2"):
+            # renameat2(AT_FDCWD, src, AT_FDCWD, dst, RENAME_NOREPLACE)
+            result = libc.renameat2(-100, os.fsencode(src), -100, os.fsencode(dst), 1)
+        elif sys.platform == "darwin" and hasattr(libc, "renamex_np"):
+            # renamex_np(src, dst, RENAME_EXCL)
+            result = libc.renamex_np(os.fsencode(src), os.fsencode(dst), 4)
+        else:
+            return False
+        return result != 0 and ctypes.get_errno() == errno.EEXIST
     finally:
         src.unlink(missing_ok=True)
         dst.unlink(missing_ok=True)
