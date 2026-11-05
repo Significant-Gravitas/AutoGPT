@@ -375,6 +375,48 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
+  test.each(["/reset-password", "/logout", "/tour/chat"])(
+    "a finished user whose answer arrives on %s still gets their onboarding state",
+    async (exempt) => {
+      mockPathname = "/settings/account";
+      backend.isCompleted = true;
+      backend.completedSteps = ["ONBOARDING_COMPLETE"];
+      backend.holdOnce = new Promise<void>((resolve) => {
+        releaseHeld = resolve;
+      });
+      const view = render(tree());
+      await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+      mockPathname = exempt;
+      view.rerender(tree());
+      await act(async () => releaseHeld());
+
+      await waitFor(() => expect(backend.stateReads).toBe(1));
+      expect(completion()).toBe("true");
+      expect(routerReplace).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a user who finishes the wizard while its earlier check is out is not sent back into it", async () => {
+    mockPathname = "/onboarding";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    // The check read "not finished"; then the wizard posted its last step
+    // and moved the user to Home.
+    backend.isCompleted = true;
+    backend.completedSteps = ["ONBOARDING_COMPLETE"];
+    mockPathname = "/home";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() => expect(completion()).toBe("true"));
+    expect(routerReplace).not.toHaveBeenCalledWith("/onboarding");
+  });
+
   test("a finished user who opens the wizard while their onboarding state loads is sent Home", async () => {
     mockPathname = "/home";
     backend.isCompleted = true;

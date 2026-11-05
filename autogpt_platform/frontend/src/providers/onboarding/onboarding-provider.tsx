@@ -30,6 +30,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -142,8 +143,9 @@ export default function OnboardingProvider({
 
   useOnboardingTimezoneDetection();
 
-  // Another account signed in on this tab needs its own answer.
-  useEffect(() => {
+  // Another account signed in on this tab needs its own answer. Updated at
+  // commit, so an answer arriving straight after the switch can't miss it.
+  useLayoutEffect(() => {
     if (latestUserID.current !== userID) hasInitialized.current = false;
     latestUserID.current = userID;
   }, [userID]);
@@ -209,7 +211,9 @@ export default function OnboardingProvider({
     if (isKnownUnfinished) hasInitialized.current = false;
   }, [isKnownUnfinished, pathname]);
 
-  useEffect(() => {
+  // At commit, with the URL: a navigation's passive effects can run a task
+  // later, and an answer landing in between must see the new page.
+  useLayoutEffect(() => {
     latestPathname.current = pathname;
   }, [pathname]);
 
@@ -239,12 +243,24 @@ export default function OnboardingProvider({
         // Another account signed in while this was in flight; its own check
         // decides where it goes.
         if (latestUserID.current !== requestUserID) return;
+
+        // A "not finished" read in the wizard is out of date if the user has
+        // since finished it, so once they have left it their state decides.
+        let onboarding: UserOnboarding | null = null;
+        const hasLeftWizard =
+          isOnOnboardingRoute &&
+          !getOnboardingRoute(latestPathname.current).isOnOnboardingRoute;
+        if (!is_completed && hasLeftWizard) {
+          onboarding = await retryTransient(fetchOnboarding);
+          if (latestUserID.current !== requestUserID) return;
+        }
+        const isCompleted =
+          is_completed ||
+          (onboarding !== null &&
+            hasCompletedOnboarding(onboarding.completedSteps));
         if (isMounted.current) {
           setCompletion((prev) =>
-            withCompletion(prev, {
-              userID: requestUserID,
-              isCompleted: is_completed,
-            }),
+            withCompletion(prev, { userID: requestUserID, isCompleted }),
           );
         }
 
@@ -252,15 +268,16 @@ export default function OnboardingProvider({
         // skips their new page while it runs), so the page they are on now
         // decides, with the answer already in hand.
         const current = getOnboardingRoute(latestPathname.current);
-        if (current.isExempt) return;
-        const redirectTarget = decideOnboardingRedirect({
-          isCompleted: is_completed,
-          isOnOnboardingRoute: current.isOnOnboardingRoute,
-          isOnAuthRoute: current.isOnAuthRoute,
-          hasPendingAuthDeepLink: readPendingAuthDeepLink(
-            current.isOnAuthRoute,
-          ),
-        });
+        const redirectTarget = current.isExempt
+          ? null
+          : decideOnboardingRedirect({
+              isCompleted,
+              isOnOnboardingRoute: current.isOnOnboardingRoute,
+              isOnAuthRoute: current.isOnAuthRoute,
+              hasPendingAuthDeepLink: readPendingAuthDeepLink(
+                current.isOnAuthRoute,
+              ),
+            });
         // An admin impersonating an unfinished user is never sent into the
         // target's wizard; the answer is the target's, not theirs.
         const isAdminViewingTarget =
@@ -277,7 +294,7 @@ export default function OnboardingProvider({
           return;
         }
 
-        const onboarding = await retryTransient(fetchOnboarding);
+        onboarding ??= await retryTransient(fetchOnboarding);
         if (latestUserID.current !== requestUserID) return;
 
         const pathNow = latestPathname.current;
