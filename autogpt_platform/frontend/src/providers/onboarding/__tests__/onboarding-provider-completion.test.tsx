@@ -67,6 +67,8 @@ const backend = vi.hoisted(() => ({
   holdOnce: null as Promise<void> | null,
   // Set to hold only the next onboarding state read.
   stateHoldOnce: null as Promise<void> | null,
+  // Set to fail only the next onboarding state read with this status.
+  stateFailsOnceWith: null as number | null,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
@@ -85,6 +87,12 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     const hold = backend.stateHoldOnce;
     backend.stateHoldOnce = null;
     if (hold) await hold;
+    const failure = backend.stateFailsOnceWith;
+    backend.stateFailsOnceWith = null;
+    if (failure) {
+      const { ApiError } = await import("@/lib/autogpt-server-api");
+      throw new ApiError("State read failed", failure, {});
+    }
     return {
       status: 200,
       data: { completedSteps },
@@ -132,6 +140,7 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     backend.heldCheck = null;
     backend.holdOnce = null;
     backend.stateHoldOnce = null;
+    backend.stateFailsOnceWith = null;
     releaseHeld = () => {};
   });
 
@@ -336,6 +345,26 @@ describe("OnboardingProvider isOnboardingComplete", () => {
       expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
     );
     expect(backend.completionChecks).toBe(1);
+    expect(completion()).toBe("false");
+  });
+
+  test("an unfinished user who leaves the wizard while its check is out is still sent back when their state can't be read", async () => {
+    mockPathname = "/onboarding";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    backend.stateFailsOnceWith = 403;
+    mockPathname = "/home";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    expect(backend.stateReads).toBe(1);
     expect(completion()).toBe("false");
   });
 

@@ -251,7 +251,15 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           !getOnboardingRoute(latestPathname.current).isOnOnboardingRoute;
         if (!is_completed && hasLeftWizard) {
-          onboarding = await retryTransient(fetchOnboarding);
+          // Unreadable, the answer in hand stands: Home must not stay up.
+          onboarding = await retryTransient(fetchOnboarding).catch(
+            (error: unknown) => {
+              if (error instanceof ApiError && error.status === 401) {
+                throw error;
+              }
+              return null;
+            },
+          );
           if (latestUserID.current !== requestUserID) return;
         }
         const isCompleted =
