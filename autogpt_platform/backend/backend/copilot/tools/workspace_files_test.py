@@ -738,6 +738,52 @@ class TestWriteWorkspaceFileToolWorkingFiles:
         assert draft.title == "sticker-catalog.json"
 
 
+class TestWriteWorkspaceFileToolReplacedFile:
+    """The result names the file an overwrite replaced, so the panel can follow."""
+
+    async def _write(self, replaced_file_id: str | None) -> WorkspaceWriteResponse:
+        session = make_session("user-1")
+        record = WorkspaceFile(
+            id="new-id",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name="report.md",
+            path=f"/sessions/{session.session_id}/report.md",
+            storage_path="local://new-id",
+            mime_type="text/markdown",
+            size_bytes=2,
+            replaced_file_id=replaced_file_id,
+        )
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(return_value=record)
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            result = await WriteWorkspaceFileTool()._execute(
+                user_id="user-1",
+                session=session,
+                filename="report.md",
+                content="v2",
+                overwrite=True,
+            )
+        assert isinstance(result, WorkspaceWriteResponse), result.message
+        return result
+
+    async def test_an_overwrite_names_the_replaced_file(self):
+        output = json.loads(
+            (await self._write("old-id")).model_dump_json(exclude_none=True)
+        )
+        assert output["replaced_file_id"] == "old-id"
+
+    async def test_a_new_file_adds_nothing_to_the_output(self):
+        output = json.loads(
+            (await self._write(None)).model_dump_json(exclude_none=True)
+        )
+        assert "replaced_file_id" not in output
+
+
 class TestWriteWorkspaceFileToolErrorHandling:
     """Verify WriteWorkspaceFileTool returns proper ErrorResponse for exceptions."""
 

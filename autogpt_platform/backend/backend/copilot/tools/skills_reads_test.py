@@ -146,6 +146,7 @@ async def test_unreadable_versions_skip_only_the_version_check(
     mine = skills.ParsedSkill(name="mine", description="d", body="x")
     failure = AsyncMock(side_effect=OSError("registry unavailable"))
     monkeypatch.setattr(skills, "list_user_skills", AsyncMock(return_value=[mine]))
+    monkeypatch.setattr(skills, "paused_skill_names", AsyncMock(return_value=set()))
     monkeypatch.setattr(skills, "_consume_updated", AsyncMock(return_value=["mine"]))
     if unreadable == "heads":
         monkeypatch.setattr(fake_learning_store, "list_heads", failure)

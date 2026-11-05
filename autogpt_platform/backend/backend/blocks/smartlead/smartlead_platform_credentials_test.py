@@ -50,6 +50,12 @@ def test_discovery_finds_the_campaign_blocks():
     }
 
 
+@pytest.mark.parametrize("block_cls", CAMPAIGN_BLOCKS, ids=lambda c: c.__name__)
+def test_campaign_block_declares_the_refusal(block_cls: type[Block]):
+    # Graph validation reads the marker, so the graph fails before it runs.
+    assert block_cls.refuses_platform_credentials
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("block_cls", CAMPAIGN_BLOCKS, ids=lambda c: c.__name__)
 async def test_campaign_block_refuses_platform_key(
