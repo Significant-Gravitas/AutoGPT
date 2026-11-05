@@ -157,6 +157,13 @@ class _SlidingWindowRateLimiter:
         self._events.append(now)
         return True
 
+    def available(self) -> int:
+        """How many more the window takes now, without taking one."""
+        cutoff = time.monotonic() - self.window_seconds
+        while self._events and self._events[0] <= cutoff:
+            self._events.popleft()
+        return max(self.limit - len(self._events), 0)
+
 
 class _BoundedCombinedOutput:
     """Retain a bounded stdout+stderr prefix while callers keep draining pipes."""
@@ -1672,6 +1679,11 @@ class ComputerUseHandler:
         content: list[ComputerTextContent | ComputerImageContent] = []
         notes: list[str] = []
         withheld = 0
+        # Images past the rate limit are left out here without spending any
+        # of it; the limiter is charged at the end, for the images sent. One
+        # left out below for size spent nothing, so it can't withhold the
+        # next screenshot, this session's or another's.
+        room = self._screenshot_rate.available()
         for block in raw.get("content") or []:
             if not isinstance(block, dict):
                 continue
@@ -1679,7 +1691,8 @@ class ComputerUseHandler:
             if kind == "text" and isinstance(block.get("text"), str):
                 content.append(ComputerTextContent(text=block["text"]))
             elif kind == "image" and isinstance(block.get("data"), str):
-                if self._screenshot_rate.allow():
+                if room > 0:
+                    room -= 1
                     content.append(
                         ComputerImageContent(
                             data=block["data"],
@@ -1726,6 +1739,9 @@ class ComputerUseHandler:
                     )
                 )
             notes.append("The result was cut down to fit the connection's message limit.")
+        for block in content:
+            if isinstance(block, ComputerImageContent):
+                self._screenshot_rate.allow()
         content.extend(ComputerTextContent(text=note) for note in notes)
 
         payload = ComputerToolResultPayload(

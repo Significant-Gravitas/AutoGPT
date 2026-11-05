@@ -1009,6 +1009,32 @@ async def test_screenshots_are_relayed_up_to_the_rate_limit(make_handler) -> Non
                if isinstance(b, ComputerTextContent))  # fmt: skip
 
 
+async def test_an_image_left_out_for_size_spends_none_of_the_rate_limit(
+    make_handler, monkeypatch
+) -> None:
+    """The limiter, which every session on the machine shares, was charged
+    before the size check, so full-size captures that never left the
+    machine used it up and withheld the next screenshots, with a note
+    blaming the rate."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setenv("FAKE_CUA_IMAGE_BYTES", "4000")
+    handler = make_handler(max_screenshots_per_minute=2)
+
+    monkeypatch.setattr(handlers, "MAX_WIRE_BASE64_CONTENT_BYTES", 1000)
+    too_large = [await handler.handle(_call("get_window_state", {"pid": 1})) for _ in range(3)]
+    monkeypatch.setattr(handlers, "MAX_WIRE_BASE64_CONTENT_BYTES", 100_000)
+    small = await handler.handle(_call("get_window_state", {"pid": 1}))
+
+    for response in too_large:
+        assert isinstance(response, ComputerToolResultMessage)
+        texts = [b.text for b in response.payload.content if isinstance(b, ComputerTextContent)]
+        assert any("too large" in text for text in texts)
+        assert not any("a minute" in text for text in texts)
+    assert isinstance(small, ComputerToolResultMessage)
+    assert [b for b in small.payload.content if isinstance(b, ComputerImageContent)]
+
+
 async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, monkeypatch) -> None:
     from autogpt_local_executor import handlers
 
