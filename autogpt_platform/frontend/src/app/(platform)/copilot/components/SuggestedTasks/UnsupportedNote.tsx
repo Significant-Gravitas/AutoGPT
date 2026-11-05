@@ -12,7 +12,7 @@ export function UnsupportedNote({ services }: Props) {
   const label = formatUnsupported(services);
   if (!label) return null;
   return (
-    <span className="mt-0.5 flex items-start gap-1 text-sm text-foreground-tertiary">
+    <span className="mt-0.5 flex items-start gap-1 text-body text-foreground-tertiary">
       <Icon icon={Unlink04Icon} size={14} className="mt-[3px] shrink-0" />
       <span className="text-pretty">{label}</span>
     </span>

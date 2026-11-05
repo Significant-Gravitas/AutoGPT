@@ -27,17 +27,13 @@ export function IntegrationRequestCard({ part }: Props) {
   return (
     <div className="my-2 flex items-start gap-3 rounded-3xl border border-separator bg-surface px-4 py-3.5">
       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={Unlink04Icon}
-          size={16}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={Unlink04Icon} size={16} tone="secondary" />
       </span>
       <div className="flex min-w-0 flex-col gap-1 [overflow-wrap:anywhere]">
-        <Text variant="body-medium" className="text-foreground-strong">
+        <Text variant="body-medium" tone="primary">
           {service} isn&apos;t supported yet
         </Text>
-        <Text variant="small" className="text-foreground-secondary">
+        <Text variant="small" tone="secondary">
           Otto can&apos;t connect to {service}, so it can&apos;t do this step
           for you.{" "}
           {recorded

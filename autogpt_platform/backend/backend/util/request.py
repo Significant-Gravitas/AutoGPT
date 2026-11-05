@@ -41,9 +41,6 @@ class HTTPServerError(Exception):
         self.status_code = status_code
 
 
-# A file to upload as (form field, (file name, content, MIME type)).
-_Upload = tuple[str, tuple[str, bytes, str]]
-
 # Default User-Agent for all requests
 class ResponseTooLargeError(ValueError):
     """The response body is over the caller's size limit."""
@@ -60,6 +57,9 @@ DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravi
 # its size. Downloads share the file-size setting.
 DEFAULT_MAX_RESPONSE_BYTES = Config().max_file_size_mb * 1024 * 1024
 RESPONSE_READ_CHUNK_SIZE = 64 * 1024
+
+# A file to upload as (form field, (file name, content, MIME type)).
+_Upload = tuple[str, tuple[str, bytes, str]]
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
