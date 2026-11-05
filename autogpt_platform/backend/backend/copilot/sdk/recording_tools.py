@@ -248,12 +248,23 @@ async def stop_recording(
     saved before anything else, so a retry can recover from it. Raises
     ShimRecordingError, or RecordingSummaryUnavailable."""
     summary = await _saved_stop_summary(session_id, recording_id)
-    if summary is None:
+    if summary is not None:
+        return summary
+    try:
         summary = await shim.recording.stop(recording_id)
-        await mark_recording_stopped(
-            session_id, recording_id, summary=summary.to_dict()
+    except ShimRecordingError as exc:
+        # Another stop got there first: its STOP went through and it saved
+        # the summary, so the machine no longer knows the recording.
+        saved = (
+            await _saved_stop_summary(session_id, recording_id)
+            if exc.code == "RECORDING_NOT_FOUND"
+            else None
         )
-        register_recording_stopped(shim, recording_id, summary)
+        if saved is None:
+            raise
+        return saved
+    await mark_recording_stopped(session_id, recording_id, summary=summary.to_dict())
+    register_recording_stopped(shim, recording_id, summary)
     return summary
 
 

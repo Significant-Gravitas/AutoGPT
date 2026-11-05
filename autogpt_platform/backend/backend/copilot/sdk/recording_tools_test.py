@@ -315,6 +315,47 @@ class TestRecordingSharedState:
         assert _parse(again)["summary"]["step_count"] == 2
 
 
+class TestConcurrentStops:
+    @pytest.mark.asyncio
+    async def test_a_stop_that_lost_the_race_returns_the_saved_summary(
+        self, monkeypatch
+    ):
+        """Two stops both found no saved summary and both sent STOP; the
+        machine refused the second, so that request failed although the
+        first had saved the summary."""
+        summary = RecordingSummary(recording_id="rec_1", step_count=2)
+        shim = _shim()
+        shim.recording.stop = AsyncMock(
+            side_effect=ShimRecordingError("RECORDING_NOT_FOUND", "no such recording")
+        )
+        _install(monkeypatch, shim)
+        saved = RecordingState(
+            recording_id="rec_1", status="stopped", summary=summary.to_dict()
+        )
+        monkeypatch.setattr(
+            rt, "get_recording_state", AsyncMock(side_effect=[None, saved])
+        )
+
+        out = await rt._h_record_workflow({"action": "stop", "recording_id": "rec_1"})
+
+        assert out["isError"] is False
+        assert _parse(out)["summary"]["step_count"] == 2
+        rt.mark_recording_stopped.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_recording_nobody_stopped_is_still_not_found(self, monkeypatch):
+        shim = _shim()
+        shim.recording.stop = AsyncMock(
+            side_effect=ShimRecordingError("RECORDING_NOT_FOUND", "no such recording")
+        )
+        _install(monkeypatch, shim)
+
+        out = await rt._h_record_workflow({"action": "stop", "recording_id": "rec_1"})
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "RECORDING_NOT_FOUND"
+
+
 class TestGenerateSkill:
     @pytest.mark.asyncio
     async def test_shared_review_state_unblocks_separate_executor_process(
