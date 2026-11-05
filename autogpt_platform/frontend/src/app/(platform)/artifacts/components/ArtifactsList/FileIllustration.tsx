@@ -24,9 +24,50 @@ interface FileTypeConfig {
 
 const cardBase =
   // oxlint-disable-next-line design-system/no-arbitrary-values -- the folded corner scales with the card, so it is a percentage
-  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-surface shadow-md shadow-black/[0.065] ring-1 ring-border-base";
+  "relative h-28 overflow-hidden rounded-md rounded-tr-[15%] bg-surface shadow-md shadow-scrim/[0.065] ring-1 ring-border-base";
 
 const DEFAULT_BADGE_POSITION = "bottom-5 -right-2";
+
+interface GlyphProps {
+  text: string;
+  size: 5 | 6;
+  mono?: boolean;
+  /** A line box of 1em instead of the inherited 1.5. */
+  tight?: boolean;
+  className: string;
+}
+
+// The code glyphs (`{`, `:`, `</`) are drawn at the illustration's own scale,
+// 5-6px, below the type scale's smallest step, so they are SVG text in the
+// box the text took: the advance width by the line height, on its baseline.
+function Glyph({
+  text,
+  size,
+  mono = false,
+  tight = false,
+  className,
+}: GlyphProps) {
+  const width = text.length * size * (mono ? 0.6 : 0.3);
+  const height = size * (tight ? 1 : 1.5);
+  return (
+    <svg
+      aria-hidden
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className={cn("block shrink-0 overflow-visible", className)}
+    >
+      <text
+        y={size * (tight ? 0.85 : 1.1)}
+        fontSize={size}
+        fill="currentColor"
+        className={mono ? "font-mono" : "font-sans"}
+      >
+        {text}
+      </text>
+    </svg>
+  );
+}
 
 function GenericTextContent() {
   return (
@@ -81,58 +122,28 @@ function XlsContent() {
 function JsonContent() {
   return (
     <div className="space-y-1">
-      <div
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-        className="font-mono text-[6px] text-foreground-strong/40"
-      >
-        {"{"}
-      </div>
+      <Glyph text="{" size={6} mono className="text-foreground-strong/40" />
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-3 rounded-full bg-action-hover/30" />
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="text-[5px] text-foreground-strong/30"
-        >
-          :
-        </div>
+        <Glyph text=":" size={5} className="text-foreground-strong/30" />
         <div className="h-[3px] w-4 rounded-full bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-4 rounded-full bg-action-hover/30" />
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="text-[5px] text-foreground-strong/30"
-        >
-          :
-        </div>
+        <Glyph text=":" size={5} className="text-foreground-strong/30" />
         <div className="h-[3px] w-2 rounded-full bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-2.5 rounded-full bg-action-hover/30" />
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="text-[5px] text-foreground-strong/30"
-        >
-          :
-        </div>
+        <Glyph text=":" size={5} className="text-foreground-strong/30" />
         <div className="h-[3px] w-5 rounded-full bg-action-hover/15" />
       </div>
       <div className="flex items-center gap-1 pl-1.5">
         <div className="h-[3px] w-3.5 rounded-full bg-action-hover/30" />
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="text-[5px] text-foreground-strong/30"
-        >
-          :
-        </div>
+        <Glyph text=":" size={5} className="text-foreground-strong/30" />
         <div className="h-[3px] w-3 rounded-full bg-action-hover/15" />
       </div>
-      <div
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-        className="font-mono text-[6px] text-foreground-strong/40"
-      >
-        {"}"}
-      </div>
+      <Glyph text="}" size={6} mono className="text-foreground-strong/40" />
     </div>
   );
 }
@@ -153,19 +164,19 @@ function HtmlContent() {
   }) {
     return (
       <div className={cn("flex items-center gap-0.5", pl)}>
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="font-mono text-[5px] text-foreground-strong/40"
-        >
-          {closing ? "</" : "<"}
-        </div>
+        <Glyph
+          text={closing ? "</" : "<"}
+          size={5}
+          mono
+          className="text-foreground-strong/40"
+        />
         <div className={cn("h-[3px] rounded-full", color, w)} />
-        <div
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-          className="font-mono text-[5px] text-foreground-strong/40"
-        >
-          {selfClosing ? "/>" : ">"}
-        </div>
+        <Glyph
+          text={selfClosing ? "/>" : ">"}
+          size={5}
+          mono
+          className="text-foreground-strong/40"
+        />
       </div>
     );
   }
@@ -215,7 +226,7 @@ function ReactContent() {
   return (
     <div className="flex h-16 items-center justify-center">
       <svg viewBox="-12 -12 24 24" className="h-10 w-10" aria-hidden>
-        <circle r="2" className="fill-primary/55" />
+        <circle r="2" className="fill-action/55" />
         <g fill="none" className="stroke-action-hover/35" strokeWidth="1">
           <ellipse rx="10" ry="4" />
           <ellipse rx="10" ry="4" transform="rotate(60)" />
@@ -241,12 +252,13 @@ function CodeContent() {
     <div className="space-y-1.5">
       {lines.map((line, i) => (
         <div key={i} className={cn("flex items-center gap-1", line.pl)}>
-          <div
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- a glyph drawn at the illustration\'s scale; no type role is this small
-            className="font-mono text-[5px] leading-none text-foreground-strong/40"
-          >
-            {i === 0 ? "<" : i === lines.length - 1 ? "/>" : "·"}
-          </div>
+          <Glyph
+            text={i === 0 ? "<" : i === lines.length - 1 ? "/>" : "·"}
+            size={5}
+            mono
+            tight
+            className="text-foreground-strong/40"
+          />
           <div
             className={cn("h-[3px] rounded-full bg-action-hover/20", line.w)}
           />
@@ -313,18 +325,6 @@ export const FILE_TYPE_CONFIGS: Record<FileTypeKey, FileTypeConfig> = {
   },
 };
 
-export const FILE_TYPE_KEYS: FileTypeKey[] = [
-  "pdf",
-  "xls",
-  "json",
-  "img",
-  "html",
-  "video",
-  "react",
-  "code",
-  "generic",
-];
-
 export function pickFileTypeKey(
   mimeType: string | undefined,
   fileName?: string,
@@ -390,7 +390,7 @@ export function FileIllustration({
       <div className={cn(cardBase, config.cardClass)}>{config.content}</div>
       <span
         className={cn(
-          "absolute rounded-md bg-action px-2 py-1 text-caption-sm leading-inherit font-semibold tracking-wide text-action-foreground uppercase shadow-md shadow-black/10",
+          "absolute rounded-md bg-action px-2 py-1 text-caption-sm leading-inherit font-semibold tracking-wide text-action-foreground uppercase shadow-md shadow-scrim/10",
           config.badgePositionClass ?? DEFAULT_BADGE_POSITION,
           badgeClassName,
         )}

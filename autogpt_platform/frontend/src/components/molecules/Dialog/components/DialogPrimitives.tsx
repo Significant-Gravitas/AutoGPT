@@ -31,8 +31,6 @@ function isExternalPickerOpen(): boolean {
   return document.body.hasAttribute("data-google-picker-open");
 }
 
-// TODO(tokens): black (#141414) is held only by the `foreground-base` role,
-// a text colour, not a scrim (SECRT-3154).
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -42,7 +40,7 @@ const DialogOverlay = React.forwardRef<
     data-dialog-overlay
     data-slot="dialog-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-scrim/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -175,8 +173,7 @@ const DialogFooter = ({
 );
 DialogFooter.displayName = "DialogFooter";
 
-// TODO(tokens): no size role for text-lg (18px) and no tracking role for
-// tracking-tight (-0.025em).
+// TODO(tokens): no tracking role for tracking-tight (-0.025em).
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -185,7 +182,7 @@ const DialogTitle = React.forwardRef<
     ref={ref}
     data-slot="dialog-title"
     className={cn(
-      "text-lg leading-none font-semibold tracking-tight",
+      "text-lead leading-none font-semibold tracking-tight",
       className,
     )}
     {...props}

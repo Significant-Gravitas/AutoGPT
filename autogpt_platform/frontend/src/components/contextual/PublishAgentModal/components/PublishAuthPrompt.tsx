@@ -16,12 +16,7 @@ export const PublishAuthPrompt = () => {
           </Text>
         </div>
         <div className="flex flex-col items-center gap-3 sm:flex-row">
-          <Button
-            onClick={() => router.push("/login")}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            Log in
-          </Button>
+          <Button onClick={() => router.push("/login")}>Log in</Button>
           <Button onClick={() => router.push("/signup")} variant="secondary">
             Create account
           </Button>

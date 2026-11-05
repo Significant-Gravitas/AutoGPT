@@ -100,7 +100,7 @@ describe("edgeStore", () => {
       expect(result.markerEnd).toEqual({
         type: MarkerType.ArrowClosed,
         strokeWidth: 2,
-        color: "#555",
+        color: "rgb(var(--color-foreground-body))",
       });
     });
 

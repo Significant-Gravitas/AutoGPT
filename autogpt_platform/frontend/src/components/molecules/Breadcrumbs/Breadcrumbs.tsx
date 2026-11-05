@@ -39,7 +39,7 @@ export function Breadcrumbs({ items }: Props) {
             <Text
               variant="small-medium"
               data-slot="breadcrumbs-separator"
-              className="text-foreground-secondary"
+              tone="secondary"
             >
               /
             </Text>

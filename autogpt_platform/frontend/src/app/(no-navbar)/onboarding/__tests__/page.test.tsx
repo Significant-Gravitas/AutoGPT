@@ -139,11 +139,15 @@ vi.mock("@/services/trials/useTrialCheckoutReturn", () => ({
 }));
 let flags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ENABLE_PLATFORM_PAYMENT: "payment",
-  },
+  Flag: {},
   useGetFlag: (flag: string) => !!flags[flag],
   useFlagStatus: (flag: string) => ({ enabled: !!flags[flag], ready: true }),
+}));
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: !!flags.payment,
+    isResolved: true,
+  }),
 }));
 let local = false;
 vi.mock("@/services/environment", async (importOriginal) => {
