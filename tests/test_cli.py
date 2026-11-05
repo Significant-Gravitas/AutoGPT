@@ -884,6 +884,35 @@ async def test_a_temporary_preflight_failure_exits_75_for_a_restart(
     assert "Preflight failed: the disk is full" in capsys.readouterr().err
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("code", "status"), [("ENOSPC", 75), ("EIO", 78)])
+async def test_start_exits_by_how_the_audit_storage_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, status: int
+) -> None:
+    """The exit-status test raised a preflight error already marked
+    transient, so a full disk taken for a permanent failure where the
+    storage error is classified would still have passed it."""
+    import errno
+
+    import autogpt_local_executor.daemon as daemon_module
+
+    number = getattr(errno, code)
+
+    def refuse(**_kwargs) -> None:
+        raise OSError(number, os.strerror(number))
+
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+    monkeypatch.setattr(daemon_module, "AuditWriter", refuse)
+    monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+    assert await cli._cmd_start(config) == status
+
+
 def test_the_systemd_unit_restarts_a_temporary_failure() -> None:
     template = Path(cli.__file__).parent / "templates" / "systemd.service.template"
     [line] = [
