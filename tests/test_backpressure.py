@@ -457,15 +457,18 @@ async def test_status_ticker_emits_on_interval(
     daemon._ws = ws
 
     task = asyncio.create_task(daemon._status_ticker(ws))
-    # Let the ticker fire a couple of times.
-    await asyncio.sleep(0.05)
+    # Wait for two frames however slow the runner is: a fixed 50 ms sleep saw
+    # only one on a loaded macOS runner.
+    for _ in range(500):
+        if sum(json.loads(f)["type"] == "STATUS" for f in ws.sent) >= 2:
+            break
+        await asyncio.sleep(0.01)
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
 
-    # We should have several STATUS frames; assert at least 2 to avoid flakes.
     status_frames = [f for f in ws.sent if json.loads(f)["type"] == "STATUS"]
     assert len(status_frames) >= 2
     for raw in status_frames:
