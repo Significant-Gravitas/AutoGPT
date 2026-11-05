@@ -90,7 +90,7 @@ reviewed against cua-driver 0.38.0:
 | Group | Tools | Notes |
 |---|---|---|
 | Observe | `list_apps`, `list_windows`, `get_window_state`, `get_desktop_state`, `zoom`, `verify_state`, `get_screen_size`, `get_cursor_position`, `check_permissions`, `get_guide` | Read-only. `check_permissions` only reports. |
-| Act | `launch_app`, `click`, `double_click`, `right_click`, `type_text`, `press_key`, `hotkey`, `scroll`, `drag`, `set_value`, `invoke_menu`, `set_window_frame`, `bring_to_front`, `move_cursor`, `mouse_button_down`, `mouse_button_up`, `mouse_drag`, `run_steps`, `run_script` | `run_steps` batches input; `run_script` runs sandboxed JavaScript whose only API is the driver's. |
+| Act | `launch_app`, `click`, `double_click`, `right_click`, `type_text`, `press_key`, `hotkey`, `scroll`, `drag`, `set_value`, `invoke_menu`, `set_window_frame`, `bring_to_front`, `move_cursor`, `mouse_button_down`, `mouse_button_up`, `mouse_drag`, `run_steps`, `run_script` | `run_steps` batches input; `run_script` runs sandboxed JavaScript whose only API is the driver's, and every script needs approval (below). |
 | Browser | `get_browser_state`, `browser_prepare`, `browser_navigate`, `browser_click`, `browser_type`, `browser_select`, `browser_pointer`, `browser_dialog`, `browser_set_input_files` | Typed control of Chromium pages. In `standard` mode, without a grant, which the shim never gives, the driver reaches only a browser it launched with its own profile, never the person's signed-in one. `browser_set_input_files` hands files from the disk to a page, so every call needs approval (below). |
 | Clipboard | `clipboard_read`, `clipboard_write` | Only with `--enable-clipboard`; see [Clipboard](#clipboard). |
 
@@ -127,8 +127,10 @@ sixteen tools; all of them are in the catalog, which
   `screenshot_out_file` on `get_window_state` and `get_desktop_state`
   (writes the screenshot to a file), `file_path` and `image_path` on
   `clipboard_write` (puts a file from anywhere on disk on the clipboard),
-  and `files` on `browser_set_input_files` (hands files to a page). The
-  tool list names them in each tool's `approval_arguments`. The platform
+  `files` on `browser_set_input_files` (hands files to a page), and
+  `script` on `run_script`, so every script: its calls run inside the
+  driver, where the shim can't check them, and one can save a screenshot to
+  a file. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; without it the
   shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
@@ -167,11 +169,11 @@ sandbox around the GUI.
 Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
-  `get_window_state` inside the driver, writing a PNG where the script says,
-  without the approval a direct call needs. cua-driver 0.38's policy can
-  allow a tool but can't forbid one of its arguments, and the shim can't see
-  into scripts. This adds no power beyond the GUI, but the write is silent.
-  It belongs upstream, as a policy constraint that forbids an argument.
+  `get_window_state` inside the driver, writing a PNG where the script says.
+  cua-driver 0.38's policy can allow a tool but can't forbid one of its
+  arguments, and the shim can't see into scripts, so every script waits for
+  the person's approval instead, on a card that shows it. A policy rule that
+  forbids an argument belongs upstream; with one, scripts could run unasked.
 - `launch_app` accepts `launch_path` and `additional_arguments` (on Linux,
   the `Exec=` line of a `.desktop` file), so it can start any program with
   any arguments. Again no more than the GUI allows; each launch is audited.
@@ -241,7 +243,9 @@ prompt for the shim's app (the driver leaves prompting to its host).
    until reviewed; new arguments on offered tools need the same review as
    the approval arguments and refusals above, file paths especially.
 3. Check the new release's script and batch allowlists, its policy format,
-   and its permission modes.
+   and its permission modes. If its policy can forbid an argument, forbid
+   `screenshot_out_file` inside scripts and drop `run_script` from
+   `APPROVAL_ARGUMENTS`.
 4. Run `tests/test_cua_driver_contract.py` on macOS, Windows and Linux; CI
    does.
 5. Update this document's tables.

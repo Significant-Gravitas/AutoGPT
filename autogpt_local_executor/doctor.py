@@ -33,7 +33,8 @@ from pathlib import Path
 from . import platform_info
 from .computer_use import CuaDriverBridge, DriverUnavailable, find_driver_binary, offered_tools
 from .computer_use.catalog import REVIEWED_DRIVER_VERSION, same_minor
-from .computer_use.driver import driver_environment
+from .computer_use.driver import driver_environment, ensure_executable
+from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowser
 
@@ -223,6 +224,7 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
 def _driver_doctor(binary: Path) -> list[CheckResult]:
     """cua-driver's own probes: version, display server, AT-SPI, telemetry,
     and on macOS other copies of CuaDriver.app."""
+    ensure_executable(binary)
     try:
         completed = subprocess.run(
             [str(binary), "doctor", "--json"],
@@ -290,7 +292,7 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
 async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
     try:
         raw = await bridge.call_tool("get_screen_size", {}, timeout=PROBE_SECONDS)
-    except (DriverUnavailable, TimeoutError) as exc:
+    except (DriverUnavailable, McpError, TimeoutError) as exc:
         return CheckResult("WARN", "display", f"cua-driver could not read the screen: {exc}")
     structured = raw.get("structuredContent")
     if raw.get("isError") or not isinstance(structured, dict) or "width" not in structured:
@@ -372,7 +374,7 @@ def _request_macos_grants(missing: list[str]) -> None:
 async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
     try:
         raw = await bridge.call_tool("check_permissions", {"prompt": False}, timeout=PROBE_SECONDS)
-    except (DriverUnavailable, TimeoutError):
+    except (DriverUnavailable, McpError, TimeoutError):
         return None
     structured = raw.get("structuredContent")
     if raw.get("isError") or not isinstance(structured, dict):

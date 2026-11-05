@@ -1391,6 +1391,24 @@ async def test_a_write_that_fails_part_way_leaves_the_old_contents(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes any file")
+@pytest.mark.asyncio
+async def test_a_write_refuses_a_file_the_person_made_read_only(tmp_path: Path) -> None:
+    """A rename ignores the target's mode, so a read-only file was replaced
+    whole, though writing it in place would have been refused."""
+    target = tmp_path / "keep.txt"
+    target.write_text("the user's notes")
+    target.chmod(0o444)
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, ErrorMessage)
+    assert target.read_text() == "the user's notes"
+    assert target.stat().st_mode & 0o777 == 0o444
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["keep.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
 @pytest.mark.asyncio
 async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path: Path) -> None:
     existing = tmp_path / "private.txt"

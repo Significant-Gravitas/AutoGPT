@@ -25,8 +25,12 @@
       the daemon exits 78 (EX_CONFIG); a TCC.db change (user granting
       consent in System Settings) lets the next launch succeed.
       See docs/COMPUTER_USE.md "macOS" and docs/CROSS_PLATFORM.md "Autostart".
-      An authentication failure would restart just as often, so under
-      AUTOGPT_SHIM_SUPERVISOR=launchd (set below) `start` exits 0 for it.
+      A failure that no restart can fix (an authentication failure, a bad
+      config, a missing package or a setting that can't work) would restart
+      just as often, so under AUTOGPT_SHIM_SUPERVISOR=launchd (set below)
+      `start` exits 0 for it. A failure that can clear on its own (audit
+      storage full or not mounted yet, a keychain still locked) exits 75
+      and is restarted.
     -->
     <key>KeepAlive</key>
     <dict>

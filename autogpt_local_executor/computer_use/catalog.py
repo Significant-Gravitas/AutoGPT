@@ -101,10 +101,10 @@ def policy_document(tools: Iterable[str]) -> str:
     return json.dumps({"allow": {"tools": sorted(set(tools))}}, indent=2) + "\n"
 
 
-# Arguments that reach the computer's disk, per tool, with what each does
-# there. The shim runs a call that uses one only when the platform says the
-# person approved that call (`approved_arguments`); the platform asks on a
-# card that shows the path.
+# Arguments that can reach the computer's disk, per tool, with what each
+# does there. The shim runs a call that uses one only when the platform says
+# the person approved that call (`approved_arguments`); the platform asks on
+# a card that shows the path, or the script.
 APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
     "get_window_state": {"screenshot_out_file": "writes the screenshot to this file"},
     "get_desktop_state": {"screenshot_out_file": "writes the screenshot to this file"},
@@ -113,6 +113,12 @@ APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
         "image_path": "puts this image file on the clipboard",
     },
     "browser_set_input_files": {"files": "hands these files to the page, which can upload them"},
+    # A script's calls run inside the driver, where the shim can't check them,
+    # and one can pass `screenshot_out_file` to get_window_state: cua-driver
+    # 0.38's policy can allow a tool but can't forbid one of its arguments.
+    "run_script": {
+        "script": "runs this script, which drives apps and can save a screenshot to any file"
+    },
 }
 
 

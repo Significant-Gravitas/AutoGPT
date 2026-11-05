@@ -15,7 +15,7 @@ import pytest
 from autogpt_local_executor.audit import AuditWriter
 from autogpt_local_executor.computer_use import catalog, concealed, driver
 from autogpt_local_executor.computer_use.driver import CuaDriverBridge, DriverUnavailable
-from autogpt_local_executor.computer_use.mcp_client import McpClosedError
+from autogpt_local_executor.computer_use.mcp_client import McpClosedError, StdioMcpClient
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.handlers import ComputerUseHandler
 from autogpt_local_executor.protocol import (
@@ -201,6 +201,44 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     await bridge.close()
 
 
+async def test_a_start_cancelled_before_the_tool_list_stops_the_driver(fake_log) -> None:
+    """Shutdown cancels the task that is starting the driver. The process it
+    had started was left running, and the bridge didn't know it, so its
+    close() couldn't stop it."""
+    listing = asyncio.Event()
+    started: list[StdioMcpClient] = []
+
+    class StalledList(StdioMcpClient):
+        async def list_tools(self, *, timeout: float) -> list[dict[str, Any]]:
+            listing.set()
+            await asyncio.Event().wait()
+            return []
+
+    def stalled(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = StalledList([sys.executable, *argv], **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=stalled,
+    )
+    starting = asyncio.create_task(bridge.snapshot())
+    try:
+        await asyncio.wait_for(listing.wait(), 30)
+        starting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await starting
+        [client] = started
+        assert not client.alive
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
+
+
 async def test_the_driver_restarts_after_it_stops_then_gives_up(fake_log, monkeypatch) -> None:
     monkeypatch.setattr(driver, "MAX_STARTS_PER_WINDOW", 2)
     bridge = _bridge()
@@ -270,6 +308,9 @@ def test_clipboard_tools_are_offered_only_when_enabled() -> None:
         ("clipboard_write", {"file_path": "/etc/passwd"}, "file_path"),
         ("clipboard_write", {"image_path": "/a.png"}, "image_path"),
         ("browser_set_input_files", {"ref": "p1:2", "files": ["/home/me/cv.pdf"]}, "files"),
+        # The script's own calls run inside the driver, out of the shim's
+        # sight, and can pass screenshot_out_file to get_window_state.
+        ("run_script", {"script": "return 1"}, "script"),
     ],
 )  # fmt: skip
 def test_arguments_that_reach_the_disk_wait_for_approval(
@@ -304,6 +345,7 @@ def test_arguments_that_reach_the_disk_wait_for_approval(
             [],
             "steps[0].screenshot_out_file",
         ),
+        ("run_steps", {"steps": [{"run_script": {"script": "return 1"}}]}, [], "steps[0].script"),
     ],
 )  # fmt: skip
 def test_arguments_this_machine_never_takes_are_refused(
@@ -439,6 +481,7 @@ async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler
         "clipboard_write": ["file_path", "image_path"],
         "get_desktop_state": ["screenshot_out_file"],
         "get_window_state": ["screenshot_out_file"],
+        "run_script": ["script"],
     }
 
 
@@ -524,6 +567,31 @@ async def test_a_disk_argument_nobody_approved_never_reaches_the_driver(
     assert _records(fake_log, "call") == []
     [record] = _audit(tmp_path)
     assert record["result"]["error_code"] == ErrorCode.APPROVAL_REQUIRED.value
+
+
+async def test_a_script_runs_only_once_the_person_approves_it(
+    make_handler, fake_log, tmp_path
+) -> None:
+    """cua-driver 0.38's policy can't forbid one argument of a tool, and the
+    shim can't see a script's calls, so a script could save a screenshot
+    anywhere without the approval the same call needs on its own."""
+    handler = make_handler()
+    script = (
+        'await cua.call("get_window_state", '
+        '{pid: 1, window_id: 2, screenshot_out_file: "~/Desktop/shot.png"})'
+    )
+
+    waiting = await handler.handle(_call("run_script", {"script": script}))
+    approved = await handler.handle(
+        _call("run_script", {"script": script}, approved_arguments=["script"])
+    )
+
+    assert isinstance(waiting, ErrorMessage)
+    assert waiting.payload.code == ErrorCode.APPROVAL_REQUIRED
+    assert waiting.payload.details == {"tool": "run_script", "argument": "script"}
+    assert isinstance(approved, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["script"] == script
 
 
 async def test_an_approved_disk_argument_is_relayed_and_audited_whole(

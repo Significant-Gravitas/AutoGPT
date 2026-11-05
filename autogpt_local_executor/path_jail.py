@@ -10,6 +10,7 @@ here, update the doc first.
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
 import re
 import stat
@@ -323,6 +324,11 @@ def write_jail_file(
         mode = None
     else:
         _assert_safe_content_stat(existing)
+        # A rename ignores the target's mode, so a file the person made
+        # read-only would be replaced whole; refuse it, as writing it in
+        # place would be refused.
+        if not os.access(path, os.W_OK):
+            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), str(path))
         # New contents must not run with the file owner's privileges. Linux
         # drops these bits on a write by an unprivileged process; the shim
         # drops them itself, so a privileged one (root, say) does too.
