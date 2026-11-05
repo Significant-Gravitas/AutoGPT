@@ -351,6 +351,34 @@ def test_a_denial_for_this_sign_in_still_ends_the_wait(tmp_path: Path) -> None:
         thread.join(timeout=30)
 
 
+def test_a_denial_says_why_when_the_platform_does(tmp_path: Path) -> None:
+    """The platform refuses to link a computer outside the Local PC rollout
+    with a reason, but sign-in printed only `access_denied`. The reason is
+    kept to printable text: the terminal shows it."""
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+    reason = urllib.parse.quote("Local PC isn't available for this account yet.\x1b[2J")
+
+    def deny() -> None:
+        try:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/callback?error=access_denied"
+                f"&error_description={reason}&state=right-state",
+                timeout=30,
+            )
+        except urllib.error.HTTPError:
+            pass
+
+    thread = threading.Thread(target=deny)
+    thread.start()
+    try:
+        with pytest.raises(ValueError) as denied:
+            flow._wait_for_callback(server, codes, errors, timeout=60)
+    finally:
+        thread.join(timeout=30)
+    assert str(denied.value) == ("access_denied: Local PC isn't available for this account yet.[2J")
+
+
 @pytest.mark.parametrize(("platform", "exclusive"), [("win32", True), ("linux", False)])
 def test_the_callback_takes_its_port_exclusively_on_windows(
     monkeypatch: pytest.MonkeyPatch, platform: str, exclusive: bool

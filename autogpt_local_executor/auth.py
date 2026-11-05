@@ -199,6 +199,20 @@ class KeychainTokenStore:
         return {"access_token": record["access_token"], "refresh_token": record["refresh_token"]}
 
 
+# The longest reason from a denied sign-in the terminal shows.
+_OAUTH_ERROR_CHARS = 300
+
+
+def _oauth_error_text(params: dict[str, list[str]]) -> str:
+    """A denied sign-in's error code and, when the redirect gives one, its
+    reason ("Local PC isn't available for this account yet."), kept to
+    printable text, since the terminal shows it."""
+    error = params["error"][0]
+    reason = (params.get("error_description") or [""])[0]
+    text = f"{error}: {reason}" if reason else error
+    return "".join(char for char in text if char.isprintable())[:_OAUTH_ERROR_CHARS]
+
+
 class OAuthFlow:
     """
     Runs the Authorization Code + PKCE flow against the AutoGPT OAuth provider.
@@ -369,7 +383,7 @@ class OAuthFlow:
                         b"Finish signing in from the newest browser tab."
                     )
                 elif "error" in params:
-                    oauth_error.append(params["error"][0])
+                    oauth_error.append(_oauth_error_text(params))
                     self.send_response(400)
                     message = b"Authentication was denied or failed."
                 elif "code" in params and params["code"][0]:
