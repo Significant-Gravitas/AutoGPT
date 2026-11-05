@@ -24,9 +24,12 @@ from backend.copilot.model import (
     create_chat_session,
 )
 from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
-from backend.data.db import execute_raw_with_schema
-from backend.data.db import prisma as db_client
-from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db import (
+    execute_raw_with_schema,
+    prisma,
+    query_raw_with_schema,
+    transaction,
+)
 from backend.data.db_accessors import chat_db
 from backend.util.test import SpinTestServer
 
@@ -161,21 +164,29 @@ async def test_a_claim_on_a_row_a_cancel_moves_mid_admit_is_busy():
                 await cancel_may_commit.wait()
 
         cancelling = asyncio.create_task(cancel())
-        await cancel_holds_the_row.wait()
-        admitting = asyncio.create_task(
-            copilot_db.admit_chat_session_turn(
-                session_id=session.session_id,
-                user_id=user_id,
-                expect_status=CHAT_STATUS_QUEUED,
-                capacity=5,
+        admitting = None
+        try:
+            await asyncio.wait_for(cancel_holds_the_row.wait(), timeout=10)
+            admitting = asyncio.create_task(
+                copilot_db.admit_chat_session_turn(
+                    session_id=session.session_id,
+                    user_id=user_id,
+                    expect_status=CHAT_STATUS_QUEUED,
+                    capacity=5,
+                )
             )
-        )
-        await asyncio.sleep(0.5)
-        # Still queued in the admit's snapshot, so its flip waits on the row.
-        assert not admitting.done()
-        cancel_may_commit.set()
+            await asyncio.sleep(0.5)
+            # Still queued in the admit's snapshot, so its flip waits on the row.
+            assert not admitting.done()
+        finally:
+            cancel_may_commit.set()
+            await asyncio.gather(
+                cancelling,
+                *([admitting] if admitting is not None else []),
+                return_exceptions=True,
+            )
         await cancelling
-
+        assert admitting is not None
         assert await admitting == "busy"
         assert (
             await chat_db().get_chat_session_status(session.session_id)
@@ -208,21 +219,29 @@ async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
                 await release.wait()
 
         holder = asyncio.create_task(hold_the_users_lock())
-        await holding.wait()
-        admitting = asyncio.create_task(
-            copilot_db.admit_chat_session_turn(
-                session_id=session.session_id,
-                user_id=user_id,
-                expect_status=CHAT_STATUS_IDLE,
-                capacity=5,
+        admitting = None
+        try:
+            await asyncio.wait_for(holding.wait(), timeout=10)
+            admitting = asyncio.create_task(
+                copilot_db.admit_chat_session_turn(
+                    session_id=session.session_id,
+                    user_id=user_id,
+                    expect_status=CHAT_STATUS_IDLE,
+                    capacity=5,
+                )
             )
-        )
-        await asyncio.sleep(1.5)
-        assert not admitting.done()
-        released_at = datetime.now(UTC)
-        release.set()
+            await asyncio.sleep(1.5)
+            assert not admitting.done()
+        finally:
+            released_at = datetime.now(UTC)
+            release.set()
+            await asyncio.gather(
+                holder,
+                *([admitting] if admitting is not None else []),
+                return_exceptions=True,
+            )
         await holder
-
+        assert admitting is not None
         assert await admitting == "admitted"
         row = await copilot_db.PrismaChatSession.prisma().find_unique(
             where={"id": session.session_id}
@@ -369,7 +388,7 @@ async def absorb_a_stale_event_loop(server: SpinTestServer):
     """An earlier test can leave the shared Prisma client bound to a closed
     loop; only the first query on the new loop fails. Spend it here."""
     try:
-        await db_client.execute_raw("SELECT 1")
+        await prisma.execute_raw("SELECT 1")
     except RuntimeError as error:
         if "Event loop is closed" not in str(error):
             raise
