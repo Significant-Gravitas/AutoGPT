@@ -74,6 +74,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# The consent page sends the client's state to Approve and Deny alike, so
+# both take the same bound, far above any state a client sends.
+MAX_STATE_LENGTH = 16_384
+
 
 async def _push_shim_revocation(user_id: str, client_id: str) -> None:
     """Have this user's Local PC connections for the app recheck their tokens.
@@ -200,7 +204,9 @@ class AuthorizeRequest(BaseModel):
     client_id: str = Field(description="Client identifier")
     redirect_uri: str = Field(description="Redirect URI")
     scopes: list[str] = Field(description="List of scopes")
-    state: str = Field(description="Anti-CSRF token from client")
+    state: str = Field(
+        description="Anti-CSRF token from client", max_length=MAX_STATE_LENGTH
+    )
     response_type: str = Field(
         default="code", description="Must be 'code' for authorization code flow"
     )
@@ -226,9 +232,11 @@ class DenyAuthorizeRequest(BaseModel):
 
     client_id: str = Field(description="Client identifier", max_length=MAX_ID_LENGTH)
     redirect_uri: str = Field(description="Redirect URI", max_length=MAX_URL_LENGTH)
-    # It goes back to the client on the redirect URL. No cap: authorize takes
-    # a state of any length, and the consent page sends Deny the same one.
-    state: str = Field(description="Anti-CSRF token from client")
+    # It goes back to the client on the redirect URL. Approve's bound: the
+    # consent page sends Deny the same state.
+    state: str = Field(
+        description="Anti-CSRF token from client", max_length=MAX_STATE_LENGTH
+    )
 
 
 async def _get_valid_authorization_app(

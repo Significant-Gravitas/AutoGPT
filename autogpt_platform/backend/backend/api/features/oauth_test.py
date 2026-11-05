@@ -36,6 +36,7 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
 from pytest_mock import MockerFixture
 
+from backend.api.features.oauth import MAX_STATE_LENGTH
 from backend.api.rest_api import app
 from backend.data.auth.oauth import (
     ACCESS_TOKEN_PREFIX,
@@ -530,29 +531,53 @@ async def test_deny_authorization_uses_only_registered_redirect(
 async def test_deny_accepts_any_state_authorize_accepts(
     client: httpx.AsyncClient,
     test_oauth_app: dict,
+    pkce_credentials: tuple[str, str],
 ):
-    """Authorize takes a state of any length, and the consent page sends the
-    same state to Approve and Deny, so a long one could be approved but not
-    denied: Deny refused it with a 422 instead of telling the client."""
-    state = "s" * 3000
+    """The consent page sends the same state to Approve and Deny, so a long
+    one could be approved but not denied: Deny refused it with a 422 instead
+    of telling the client. Both take the same bound now."""
+    _verifier, challenge = pkce_credentials
+    state = "s" * MAX_STATE_LENGTH
+    approve_body = {
+        "client_id": test_oauth_app["client_id"],
+        "redirect_uri": test_oauth_app["redirect_uri"],
+        "scopes": ["EXECUTE_GRAPH"],
+        "response_type": "code",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+    deny_body = {
+        "client_id": test_oauth_app["client_id"],
+        "redirect_uri": test_oauth_app["redirect_uri"],
+    }
 
-    denied = await client.post(
-        "/api/oauth/authorize/deny",
-        json={
-            "client_id": test_oauth_app["client_id"],
-            "redirect_uri": test_oauth_app["redirect_uri"],
-            "state": state,
-        },
+    approved = await client.post(
+        "/api/oauth/authorize", json={**approve_body, "state": state}
     )
+    denied = await client.post(
+        "/api/oauth/authorize/deny", json={**deny_body, "state": state}
+    )
+    too_long = [
+        await client.post(path, json={**body, "state": state + "s"})
+        for path, body in (
+            ("/api/oauth/authorize", approve_body),
+            ("/api/oauth/authorize/deny", deny_body),
+        )
+    ]
 
+    assert approved.status_code == 200
     assert denied.status_code == 200
     query = parse_qs(urlparse(denied.json()["redirect_url"]).query)
     assert query["error"] == ["access_denied"]
     assert query["state"] == [state]
+    assert [response.status_code for response in too_long] == [422, 422]
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("field, length", [("client_id", 101), ("redirect_uri", 2049)])
+@pytest.mark.parametrize(
+    "field, length",
+    [("client_id", 101), ("redirect_uri", 2049), ("state", MAX_STATE_LENGTH + 1)],
+)
 async def test_deny_authorization_refuses_oversized_fields(
     client: httpx.AsyncClient,
     test_oauth_app: dict,
