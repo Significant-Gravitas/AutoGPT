@@ -8,6 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [October 27](october-27-2026.md) | A brain dump that helps you answer, a calmer trial welcome, a guided first run, hire and start in one click, what pays for what |
 | [October 23](october-23-2026.md) | Redesigned Team and Expert pages, an app that fits your phone, a lighter login, What's new in the app, Otto pauses at usage limits |
 | [October 8 – October 14](october-8-october-14-2026.md) | Redesigned wallet, trial cancel keeps access, verified email at signup, Chats in the collapsed sidebar, shorter replies |
 | [September 24 – September 30](september-24-september-30-2026.md) | A bigger roster, Clay & Rock avatars, nested folders, multi-select answers, free trial on the paywall |
