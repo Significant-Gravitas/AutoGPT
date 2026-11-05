@@ -323,8 +323,8 @@ async def _read_private_expert_check(user_id: str, expert_id: str) -> CheckedExp
         raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from error
     except RETRYABLE_SERVICE_ERRORS as error:
         # A database manager still on the release before check_private_expert
-        # has no such route, or the one attempt failed in transit: read the
-        # expert the way that release does, through routes every manager has.
+        # has no such route, or the first read failed with a retryable service
+        # error: use the separate reads that every manager serves.
         logger.warning(
             f"Expert #{expert_id} check read separately: {type(error).__name__}"
         )
@@ -1106,6 +1106,10 @@ class CoPilotProcessor:
                         entry.session_id,
                         error_message=error_msg,
                         error_code=error_code,
+                        skip_error_publish=(
+                            cancel.is_set()
+                            and error_msg == stream_registry.CANCELLED_MESSAGE
+                        ),
                         turn_id=entry.turn_id,
                     )
                 except Exception as mark_err:

@@ -156,7 +156,11 @@ export function useCredentialsInput({
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
-      const savedCreds = credentials.savedCredentials;
+      // A block that refuses the platform's shared keys would fail on a
+      // system credential, so only the user's own credentials are candidates.
+      const savedCreds = schema.refuses_platform_credentials
+        ? filterSystemCredentials(credentials.savedCredentials)
+        : credentials.savedCredentials;
       if (savedCreds.length === 0) return;
 
       if (hasAttemptedAutoSelect.current) return;
@@ -180,6 +184,7 @@ export function useCredentialsInput({
       readOnly,
       isOptional,
       onSelectCredential,
+      schema.refuses_platform_credentials,
     ],
   );
 
@@ -280,6 +285,7 @@ export function useCredentialsInput({
           cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          sameOriginFlow: provider === "codex",
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).
