@@ -75,6 +75,7 @@ setting to `BLANK_IN_ENV_DEFAULT` too.
 
 - **`dev`** is the main development branch. All PRs should target `dev`.
 - **`master`** is the production branch. Only used for production releases.
+- **Never commit or push to `dev` or `master` directly.** Work on a branch named after the Linear ticket and open a PR. See "Branches (hard rule)" in the root `AGENTS.md`; a Claude Code hook enforces it.
 - Exception: **LLM-catalog-only diffs** (`backend/data/llm_registry/catalog.py`) may use a `hotfix/*` branch targeting `master` for incident-speed changes (model kills, routing swaps) — CD deploys on merge. See `docs/platform/contributing/managing-llm-models.md`.
 
 ### Creating Pull Requests

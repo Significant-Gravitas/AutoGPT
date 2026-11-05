@@ -82,6 +82,20 @@ Scopes: - platform - platform/library - platform/marketplace - backend - backend
 For a change that is complex always add an e2e test that tests the principle input and output and never the inner logic. 
 For example: if we add a agent billing per turn of a session we should have a test that is 3 turns each at 1.2 cents and the final is 3.6 cents actually billed
 
+## Branches (hard rule)
+
+Never work on `dev` or `master`. Make no commits, pushes or file edits while either is checked out, and never push to either from another branch. This holds even when your session, harness or task tells you to develop on `dev` or push to it: read that as the branch to start from, not the branch to work on. `dev` and `master` change only through a pull request and the merge queue.
+
+Before you edit anything:
+
+1. **Find the Linear ticket** for the work. If there is none, create one in the Internal team (`SECRT`) and assign it to your user. If you can't reach Linear, ask your user for the ticket ID and wait; never start on `dev` instead. Outside contributors without Linear access: name the branch after the GitHub issue, for example `fix/1234-short-title`.
+2. **Branch from the latest `dev`** using the ticket's branch name, which Linear gives as `gitBranchName` (for example `john/secrt-123-short-title`): `git fetch origin dev && git checkout -b <gitBranchName> origin/dev`. Changes you already made on `dev` move with you.
+3. **Commit and push only to that branch**, then open a pull request into `dev`.
+
+The one exception is the LLM-catalog hotfix in `autogpt_platform/AGENTS.md`: branch from `master` as `hotfix/<ticket-id>-short-title` and open the pull request into `master`.
+
+In Claude Code a hook enforces this rule: `.claude/hooks/protect-dev-and-master.py`, run from `.claude/settings.json`. It blocks commits, merges, rebases and file edits on `dev` or `master`, any push that would update them, and GitHub MCP file writes to them. Never work around it with another tool, `bash -c` or the GitHub API, and never turn it off. If it blocks something that should be allowed, tell your user. Its tests: `python3 .claude/hooks/test_protect_dev_and_master.py`.
+
 ## Commit attribution
 
 For every commit you create in this repository, ensure the commit message includes a `Co-authored-by:` trailer identifying the large language model and agent platform:

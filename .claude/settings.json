@@ -6,5 +6,31 @@
       "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git worktree:*)",
       "Bash(tmux:*)", "Bash(sleep:*)", "Bash(branchlet:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-dev-and-master.py\" session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*__(create_or_update_file|push_files|delete_file)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-dev-and-master.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking the dev/master branch rule"
+          }
+        ]
+      }
+    ]
   }
 }
