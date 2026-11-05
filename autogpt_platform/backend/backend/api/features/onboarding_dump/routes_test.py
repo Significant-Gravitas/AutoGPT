@@ -1336,6 +1336,25 @@ def test_a_failed_hire_is_still_reported_when_redis_is_down(
     hire_events.assert_called_once()
 
 
+def test_a_redis_that_never_answers_does_not_hold_the_hire(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    hire_events: MagicMock,
+    mocker: MockerFixture,
+):
+    finalize(input_mode="skipped")
+    _max_cannot_join(plan_world)
+
+    async def hang():
+        await asyncio.Event().wait()
+
+    mocker.patch.object(plan_hire, "get_redis_async", new=hang)
+    mocker.patch.object(plan_hire, "_FAILURE_CLAIM_TIMEOUT_SECONDS", 0.01)
+
+    assert client.post(PLAN_HIRE_URL).status_code == 200
+    hire_events.assert_called_once()
+
+
 def test_a_user_still_behind_the_paywall_hires_nobody(
     dumps: DumpStore,
     plan_world: dict[str, AsyncMock],

@@ -702,13 +702,41 @@ describe("usePreparingStep — hiring the plan's team", () => {
     });
     await advance(START_DELAY_MS);
     await advance(HIRE_MAX_WAIT_MS + 100);
+    expect(onComplete).toHaveBeenCalledTimes(1);
 
-    expect(hires.count).toBeGreaterThan(1);
+    await advance(HIRE_MAX_WAIT_MS);
+
+    expect(hires.count).toBeGreaterThan(2);
     expect(toast).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: getGetBrainDumpSuggestedTasksQueryKey(),
     });
-    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps trying when the re-ask after a refresh is the one that does the hire", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      if (calls === 1) return new Promise<Response>(() => {});
+      return calls === 2
+        ? HttpResponse.json({ detail: "busy" }, { status: 503 })
+        : HttpResponse.json({
+            hired: [],
+            failed: [{ template_id: "tpl-max", name: "Max" }],
+          });
+    });
+    const first = renderPreparing({ canHire: true });
+    await advance(START_DELAY_MS);
+    first.unmount();
+
+    renderPreparing({ canHire: true });
+    await advance(HIRE_MAX_WAIT_MS);
+    await advance(HIRE_RETRY_MS + 100);
+
+    expect(hires.count).toBe(3);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't hire Max" }),
+    );
   });
 
   it("says who did not join when the plan never settles inside the window", async () => {

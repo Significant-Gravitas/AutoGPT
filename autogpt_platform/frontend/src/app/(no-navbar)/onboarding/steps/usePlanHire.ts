@@ -51,7 +51,9 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
     try {
       const response = await hireUntilAnswered(
         () => sendMarked(userID, () => hirePlan()),
-        mountedAt,
+        // A re-ask goes out with the bar's time nearly spent, and may be the
+        // only try that does the hire: it keeps trying from when it starts.
+        resumedFor === null ? mountedAt : Date.now(),
       );
       const failed = response.data.failed ?? [];
       if (failed.length > 0) toastHireFailed(failed.map((e) => e.name));

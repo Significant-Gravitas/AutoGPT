@@ -7,6 +7,7 @@ Otto's on Home. Each call that hired anyone is sent to PostHog as
 ``plan_experts_hired``, and so is the first one to fail anyone.
 """
 
+import asyncio
 import logging
 
 from pydantic import BaseModel
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 _FAILURE_REPORTED_KEY = "onboarding_dump:plan_hire_failure_reported"
 _FAILURE_REPORTED_TTL_SECONDS = 24 * 60 * 60
+# The hires are done by then: an unreachable Redis must not hold their answer.
+_FAILURE_CLAIM_TIMEOUT_SECONDS = 1.0
 
 
 async def hire_plan(user_id: str) -> PlanHireResponse:
@@ -121,18 +124,24 @@ async def _claim_failure_report(user_id: str) -> bool:
     """Whether this call is the first to report a failed hire. Fails open: a
     Redis blip costs a duplicate event, never a missing one."""
     try:
-        redis = await get_redis_async()
-        return bool(
-            await redis.set(
-                f"{_FAILURE_REPORTED_KEY}:{user_id}",
-                "1",
-                nx=True,
-                ex=_FAILURE_REPORTED_TTL_SECONDS,
-            )
+        return await asyncio.wait_for(
+            _set_failure_claim(user_id), timeout=_FAILURE_CLAIM_TIMEOUT_SECONDS
         )
     except Exception as e:
-        logger.warning(f"Plan hire failure claim unavailable, reporting anyway: {e}")
+        logger.warning(f"Plan hire failure claim unavailable, reporting anyway: {e!r}")
         return True
+
+
+async def _set_failure_claim(user_id: str) -> bool:
+    redis = await get_redis_async()
+    return bool(
+        await redis.set(
+            f"{_FAILURE_REPORTED_KEY}:{user_id}",
+            "1",
+            nx=True,
+            ex=_FAILURE_REPORTED_TTL_SECONDS,
+        )
+    )
 
 
 def _on_team(roster: dict[str, Expert]) -> dict[str, PlanHiredExpert]:
