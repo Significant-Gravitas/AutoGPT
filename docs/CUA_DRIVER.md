@@ -244,7 +244,9 @@ prompt for the shim's app (the driver leaves prompting to its host).
 1. Bump the pin in `pyproject.toml` and `REVIEWED_DRIVER_VERSION`.
 2. Diff the new release's `tools/list` against the old: new tools stay off
    until reviewed; new arguments on offered tools need the same review as
-   the approval arguments and refusals above, file paths especially.
+   the approval arguments and refusals above, file paths especially. The
+   contract tests fail on any tool the catalog doesn't name, offered or in
+   `NOT_OFFERED_TOOLS`.
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes. If its policy can forbid an argument, forbid
    `screenshot_out_file` inside scripts and drop `run_script` from

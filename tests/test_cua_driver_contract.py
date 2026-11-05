@@ -4,16 +4,23 @@ on every OS."""
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 
 import pytest
 
+from autogpt_local_executor import platform_info
 from autogpt_local_executor.computer_use import catalog, driver
 from autogpt_local_executor.computer_use.driver import CuaDriverBridge
+from autogpt_local_executor.computer_use.mcp_client import StdioMcpClient
 
+# Skipped only when the cua-driver package isn't there at all. Skipping
+# whenever its binary was missing let a wheel that installed without one
+# turn CI green with none of these run.
 pytestmark = pytest.mark.skipif(
-    driver.bundled_binary() is None, reason="the computer-use extra is not installed"
+    importlib.util.find_spec("cua_driver") is None,
+    reason="the computer-use extra is not installed",
 )
 
 OFFERED = catalog.offered_tools(enable_clipboard=True)
@@ -28,6 +35,10 @@ async def bridge():
         await bridge.close()
 
 
+def test_the_extra_brings_the_driver_binary() -> None:
+    assert driver.bundled_binary() is not None
+
+
 async def test_the_pinned_driver_is_the_reviewed_one(bridge: CuaDriverBridge) -> None:
     snapshot = await bridge.snapshot()
 
@@ -38,11 +49,36 @@ async def test_the_pinned_driver_is_the_reviewed_one(bridge: CuaDriverBridge) ->
 async def test_the_driver_offers_the_catalog(bridge: CuaDriverBridge) -> None:
     names = {tool["name"] for tool in (await bridge.snapshot()).tools}
 
-    assert names <= OFFERED
     if sys.platform.startswith("linux"):
         # Reviewed against the Linux tool list; another OS may lack a tool,
         # which the shim then simply doesn't offer there.
         assert names == OFFERED
+
+
+async def test_every_tool_the_driver_has_was_reviewed() -> None:
+    """The catalog test compared the bridge's tools with the catalog, but the
+    bridge and the shim's policy both drop any tool the catalog doesn't
+    list, so a release that added one still passed. Listed without the
+    policy, every tool must be offered or named as not offered."""
+    binary = driver.bundled_binary()
+    assert binary is not None
+    plat = platform_info.detect_platform()
+    client = StdioMcpClient(
+        driver.driver_argv(binary, driver.driver_runtime(plat), plat),
+        env=driver.driver_environment(None),
+        client_version="contract-test",
+    )
+    await client.start(timeout=30)
+    try:
+        names = {tool["name"] for tool in await client.list_tools(timeout=30)}
+    finally:
+        await client.close()
+
+    reviewed = OFFERED | catalog.NOT_OFFERED_TOOLS
+    assert names <= reviewed, sorted(names - reviewed)
+    assert not OFFERED & catalog.NOT_OFFERED_TOOLS
+    if sys.platform.startswith("linux"):
+        assert names == reviewed
 
 
 async def test_the_driver_enforces_the_shims_policy(bridge: CuaDriverBridge) -> None:
