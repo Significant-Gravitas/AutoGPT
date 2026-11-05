@@ -13,7 +13,7 @@ capability. Docs: https://docs.firecrawl.dev/features/alexandria
 import uuid
 from typing import Any
 
-from aiohttp import ClientTimeout
+from aiohttp import ClientError, ClientTimeout
 from pydantic import SecretStr
 
 from backend.data.model import NodeExecutionStats
@@ -102,19 +102,27 @@ async def call_alexandria(
     # One request id across retries, so Firecrawl runs (and bills) a retried
     # paid call once.
     request_id = request_id.strip() or str(uuid.uuid4())
-    response = await Requests(
-        raise_for_status=False,
-        retry_max_attempts=MAX_ATTEMPTS,
-        retry_max_wait=MAX_RETRY_WAIT_SECONDS,
-    ).post(
-        ALEXANDRIA_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "x-request-id": request_id,
-        },
-        json=body,
-        timeout=REQUEST_TIMEOUT,
-    )
+    try:
+        response = await Requests(
+            raise_for_status=False,
+            retry_max_attempts=MAX_ATTEMPTS,
+            retry_max_wait=MAX_RETRY_WAIT_SECONDS,
+        ).post(
+            ALEXANDRIA_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "x-request-id": request_id,
+            },
+            json=body,
+            timeout=REQUEST_TIMEOUT,
+        )
+    except (TimeoutError, ClientError) as e:
+        # Firecrawl may have received, and billed, the call before it failed.
+        raise AlexandriaError(
+            f"The call to Firecrawl failed before an answer came back ({e!r}). "
+            f"To retry without paying twice, run again with request ID "
+            f"{request_id}."
+        ) from e
     try:
         payload = response.json()
     except ValueError:
@@ -366,7 +374,8 @@ class FirecrawlRunDataToolBlock(Block):
         records: int = SchemaField(
             description=(
                 "How many records were returned, as Firecrawl reports it. If "
-                "it doesn't, the length of a list, or 1 for any other data"
+                "it doesn't, the length of a list, 0 for no data, or 1 for any "
+                "other data"
             )
         )
         credits_cost: float = SchemaField(

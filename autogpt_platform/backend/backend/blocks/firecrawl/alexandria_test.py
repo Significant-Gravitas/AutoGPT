@@ -115,6 +115,18 @@ async def test_call_alexandria_raises_when_there_is_no_result(body: dict[str, An
         await call_alexandria("fc-key", "apollo", "x")
 
 
+async def test_failed_call_names_the_request_id_to_retry_with():
+    requests = MagicMock()
+    requests.post = AsyncMock(side_effect=TimeoutError())
+    with (
+        patch("backend.blocks.firecrawl.alexandria.Requests", return_value=requests),
+        pytest.raises(AlexandriaError) as caught,
+    ):
+        await call_alexandria("fc-key", "apollo", "x", request_id="req-9")
+
+    assert "run again with request ID req-9" in str(caught.value)
+
+
 def test_refusals_are_user_fixable_errors():
     # The executor treats ValueErrors as the user's to fix, not platform faults.
     assert issubclass(AlexandriaError, ValueError)

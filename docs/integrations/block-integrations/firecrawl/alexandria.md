@@ -76,7 +76,7 @@ The call is billed at the Firecrawl credits the response reports, including when
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | data | The records the tool returned | Data |
-| records | How many records were returned, as Firecrawl reports it. If it doesn't, the length of a list, or 1 for any other data | int |
+| records | How many records were returned, as Firecrawl reports it. If it doesn't, the length of a list, 0 for no data, or 1 for any other data | int |
 | credits_cost | Firecrawl credits this call cost | float |
 
 ### Possible use case
