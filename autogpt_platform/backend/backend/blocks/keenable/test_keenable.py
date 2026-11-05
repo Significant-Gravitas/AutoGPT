@@ -294,10 +294,10 @@ def test_platform_cost_only_applies_in_api_key_mode():
     block_class = KeenableSearchBlock
     saved_costs = BLOCK_COSTS.get(block_class)
     saved_default_creds = keenable.default_credentials
-    BLOCK_COSTS.pop(block_class, None)
-    keenable.default_credentials = [KEENABLE_PLATFORM_KEY]
-    register_provider_costs_for_block(block_class)
     try:
+        BLOCK_COSTS.pop(block_class, None)
+        keenable.default_credentials = [KEENABLE_PLATFORM_KEY]
+        register_provider_costs_for_block(block_class)
         block = block_class()
         platform_key = {
             "auth": KeenableAuth.API_KEY.value,
