@@ -12,6 +12,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_CLIPBOARD_TYPES  comma-separated clipboard types
   FAKE_CUA_IMAGE_BYTES   size of the image get_window_state returns
   FAKE_CUA_EXIT_AT_START exit before answering initialize
+  FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
 """
 
 from __future__ import annotations
@@ -192,6 +193,15 @@ def handle(message: dict) -> None:
     elif method == "tools/call":
         params = message["params"]
         pid = (params.get("arguments") or {}).get("pid")
+        if params["name"] in os.environ.get("FAKE_CUA_RPC_ERROR", "").split(","):
+            send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32603, "message": f"{params['name']} broke"},
+                }
+            )
+            return
         if params["name"] == "set_window_frame" and pid in (-4, -5):
             # A JSON-RPC error instead of a tool result.
             code, text = (-32602, "width must be positive") if pid == -4 else (-32603, "boom")

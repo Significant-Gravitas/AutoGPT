@@ -98,6 +98,10 @@ shim runs the call only once you approve it (an Unsupervised chat doesn't
 ask). Without an approval the shim answers `APPROVAL_REQUIRED` and nothing
 happens.
 
+A script (`run_script`) asks too, every time, on a card that shows it: the
+shim can't check the calls a script makes inside cua-driver, and one of
+them can save a screenshot to a file.
+
 ## What leaves this computer
 
 Everything a tool returns goes to the platform and the model: accessibility

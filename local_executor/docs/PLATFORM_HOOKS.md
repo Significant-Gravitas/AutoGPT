@@ -187,7 +187,7 @@ def get_allowed_dirs(sandbox) -> tuple[str, ...]:
 
 ## 7. Computer Use Integration
 
-Superseded by the implementation in [§10.9](#109-computer-use-routing-implemented):
+Superseded by the implementation in [§10.9](#109-computer-use-routing-platform-side-in-13050):
 the shim relays cua-driver's tools ([CUA_DRIVER.md](CUA_DRIVER.md)) and the
 platform exposes them to Otto through two MCP tools, not the native
 `computer_20251124` tool sketched here.
@@ -361,15 +361,17 @@ The fixed port `41899` may be in use by another app. The OAuth flow doc
 OAuth client registration must accept ALL ports in that range as valid
 `redirect_uri`s for `client_id=autogpt-local-executor`, not just `41899`.
 
-### 10.9 Computer-use routing (implemented)
+### 10.9 Computer-use routing (platform side in #13050)
 
-End-to-end computer-use is wired. When all of —
+The platform side is written but not merged: it is on PR #13050 (branch
+`experimental/local-pc-executor`), and the platform files named below are
+on that branch, not on `dev`. Once it merges, when all of —
 `config.use_local_pc_executor` AND `config.allow_computer_use` AND
 the per-user `local-pc-executor` PostHog flag AND the connected
 shim advertised `"computer_use"` in its HELLO `capabilities` — are
 true, Otto's computer use runs on the user's shim through cua-driver.
 
-How the four sketched pieces actually landed:
+How the four sketched pieces land there:
 
 1. **CLI beta flag pass-through.**
    `backend/copilot/sdk/env.py::build_sdk_env(enable_computer_use_beta=…)`
@@ -415,7 +417,8 @@ How the four sketched pieces actually landed:
    changed. **The backend gate is the security boundary; the dialog makes
    it visible.**
 
-   A call that uses one of a tool's `approval_arguments` (disk paths) goes
+   A call that uses one of a tool's `approval_arguments` (disk paths, or a
+   `run_script` script) goes
    through the chat's approval gate on its own subject: the person approves
    it on a card that shows the path, and only then does the platform send it
    with `approved_arguments`. Where the gate can't ask, the platform refuses

@@ -910,14 +910,15 @@ def list_rotated_files(current: Path) -> list[Path]:
     """Return rotated audit files (oldest first) next to `current`: those
     named as rotation names them, `<log>.YYYYMMDD-HHMMSS` with a `-N` for a
     second rotation within the same second. Any other file is left alone, so
-    export doesn't pack it and prune doesn't delete it."""
+    export doesn't pack it and prune doesn't delete it, and so is a symlink
+    or anything else that isn't a regular file, whatever its name."""
     if not current.parent.is_dir():
         return []
     pattern = re.compile(re.escape(current.name) + r"\.(\d{8}-\d{6})(?:-(\d+))?")
     rotated = []
     for path in current.parent.iterdir():
         match = pattern.fullmatch(path.name)
-        if match is not None:
+        if match is not None and not path.is_symlink() and path.is_file():
             rotated.append((match.group(1), int(match.group(2) or 0), path))
     return [path for _stamp, _counter, path in sorted(rotated)]
 

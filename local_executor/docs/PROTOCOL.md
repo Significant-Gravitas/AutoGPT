@@ -865,8 +865,10 @@ Calls from every session on a machine take turns: there is one screen.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
 arguments the person approved for this call. An argument in a tool's
-`approval_arguments` reaches the disk (`screenshot_out_file`, clipboard
-`file_path` / `image_path`, `browser_set_input_files.files`); a call that
+`approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
+`file_path` / `image_path`, `browser_set_input_files.files`, and
+`run_script.script`, whose calls inside the driver can save a screenshot to
+a file where the shim can't check them); a call that
 uses one without naming it there gets `APPROVAL_REQUIRED` with
 `details.tool` and `details.argument`, and nothing reaches the driver. Only
 an approval argument of the called tool may be named.

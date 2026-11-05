@@ -1396,6 +1396,23 @@ def test_only_files_named_like_rotated_logs_are_rotated_logs(tmp_path: Path) -> 
     ]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_link_or_folder_named_like_a_rotated_log_is_not_one(tmp_path: Path) -> None:
+    """A symlink with a rotated log's name was listed, so export packed the
+    bytes of whatever it pointed at, under the link's name."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    current = logs / "audit.log"
+    current.write_text("")
+    elsewhere = tmp_path / "private.txt"
+    elsewhere.write_text("not an audit log")
+    (logs / "audit.log.20261104-060000").symlink_to(elsewhere)
+    (logs / "audit.log.20261104-060001").mkdir()
+    (logs / "audit.log.20261104-060002").write_text("")
+
+    assert [p.name for p in list_rotated_files(current)] == ["audit.log.20261104-060002"]
+
+
 def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path) -> None:
     """A clock that went back while the file was written leaves its last
     record older than one before it. Prune judged the file by its last

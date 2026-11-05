@@ -111,7 +111,7 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     return Path(found) if found else None
 
 
-def _ensure_executable(path: Path) -> None:
+def ensure_executable(path: Path) -> None:
     """pip can install the wheel's binary without its execute bit."""
     if sys.platform == "win32":
         return
@@ -250,7 +250,7 @@ class CuaDriverBridge:
                     code=ErrorCode.DEPENDENCY_MISSING,
                     details={"dependency": DRIVER_NAME},
                 )
-            _ensure_executable(binary)
+            ensure_executable(binary)
             runtime = driver_runtime(self._platform)
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
@@ -273,7 +273,9 @@ class CuaDriverBridge:
                         },
                     )
                 listed = await client.list_tools(timeout=LIST_TIMEOUT_SECONDS)
-            except DriverUnavailable:
+            except (DriverUnavailable, asyncio.CancelledError):
+                # The bridge doesn't hold this client yet, so close() can't
+                # stop it: a cancelled start (shutdown) stops it here.
                 await client.close()
                 raise
             except (OSError, McpError, McpClosedError, TimeoutError) as exc:

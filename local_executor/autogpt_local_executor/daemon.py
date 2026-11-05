@@ -43,6 +43,7 @@ from .audit import (
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
 from .computer_use import DriverUnavailable, find_driver_binary
+from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
 from .handlers import (
@@ -2069,6 +2070,13 @@ class ShimDaemon:
                 "cua-driver did not report its permissions in time. Run `autogpt-shim doctor`.",
                 missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=ErrorCode.PERMISSION_PENDING,
+            )
+        except McpError as exc:
+            await self._fail_preflight(
+                f"cua-driver could not check computer-use permissions: {exc.message}. "
+                "Run `autogpt-shim doctor`.",
+                missing_permissions=["accessibility_probe", "screen_recording_probe"],
+                error_code=ErrorCode.INTERNAL_ERROR,
             )
         structured = result.get("structuredContent")
         granted = {

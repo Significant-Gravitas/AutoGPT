@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -177,6 +178,39 @@ def test_doctor_fails_on_another_driver_version(
     assert "0.40.1" in capsys.readouterr().out
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX execute bit")
+def test_doctor_runs_a_driver_installed_without_its_execute_bit(tmp_path) -> None:
+    """pip can install the wheel's binary without its execute bit. The daemon
+    sets it before starting the driver; doctor ran the binary first and
+    reported Permission denied."""
+    binary = tmp_path / "cua-driver"
+    binary.write_text(f"#!/bin/sh\necho '{_driver_report(probes=[])}'\n")
+    binary.chmod(0o644)
+
+    [check] = doctor._driver_doctor(binary)
+
+    assert (check.marker, check.label) == ("OK", "cua-driver")
+
+
+def test_doctor_reports_a_driver_error_instead_of_crashing(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
+) -> None:
+    """The driver can answer a probe with a JSON-RPC error, which used to
+    end doctor in a traceback."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    a_fake_driver["platform"] = "darwin"
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR", "get_screen_size,check_permissions")
+    monkeypatch.setattr(doctor, "_request_macos_grants", lambda _missing: None)
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == doctor.EX_CONFIG
+    assert lines["display"][0] == "WARN"
+    assert "get_screen_size broke" in lines["display"][1]
+    assert lines["permissions"][0] == "FAIL"
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 
@@ -297,6 +331,29 @@ async def test_daemon_preflight_on_macos_needs_both_grants(
     )
     assert record["details"]["missing_permissions"] == missing
     assert record["result"]["error_code"] == ErrorCode.PERMISSION_PENDING.value
+
+
+async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(
+    tmp_path, monkeypatch, fake_log
+) -> None:
+    """A JSON-RPC error from the permission check left `start` with a
+    traceback, which launchd restarts, instead of the preflight's exit."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR", "check_permissions")
+    daemon = _daemon(_with_driver(tmp_path))
+    try:
+        with pytest.raises(DaemonPreflightError) as raised:
+            await daemon._preflight_or_raise()
+    finally:
+        await daemon._computer_handler.close()
+
+    assert raised.value.permanent is False
+    record = next(
+        json.loads(line)
+        for line in (tmp_path / "_audit.log").read_text().splitlines()
+        if "DAEMON_PREFLIGHT_FAILED" in line
+    )
+    assert record["result"]["error_code"] == ErrorCode.INTERNAL_ERROR.value
 
 
 async def test_daemon_preflight_on_macos_passes_with_both_grants(

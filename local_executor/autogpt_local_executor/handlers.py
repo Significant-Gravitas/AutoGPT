@@ -1762,7 +1762,9 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         f"{config.max_screenshots_per_minute} images a minute.",
         "- Arguments that read or write this computer's disk (each tool's "
         "`approval_arguments`) wait for the person's approval on every call. Use one only "
-        "when the task needs that file.",
+        "when the task needs that file. A `run_script` script waits too, since its calls "
+        "can save a screenshot to a file: use `run_steps` or single calls unless the flow "
+        "needs a script's logic.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
         "recording, process control, downloads and page JavaScript are not.",
