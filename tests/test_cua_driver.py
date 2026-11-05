@@ -286,6 +286,44 @@ async def test_the_driver_runs_under_the_shims_policy_and_without_telemetry(
     assert env["CUA_DRIVER_CAPABILITY_MANIFEST_FILE"] is None
 
 
+def test_the_driver_inherits_only_the_reviewed_cua_settings() -> None:
+    """The driver took the shim's whole environment but five names, so a
+    shell or service that had one of cua's own opt-outs set (from its test
+    suite, say) silently weakened the driver."""
+    base = {
+        "PATH": "/usr/bin",
+        "DISPLAY": ":0",
+        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        "CUA_LOG": "debug",
+        "CUA_DRIVER_MANAGED_POLICY_FILE": "/etc/cua/managed.yaml",
+        # Each of these weakens the driver or points it somewhere else.
+        "CUA_DRIVER_BROWSER_NO_SANDBOX": "1",
+        "CUA_E2E_BROWSER_NO_SANDBOX": "1",
+        "CUA_DRIVER_BROWSER_NO_SECCOMP_SANDBOX": "1",
+        "CUA_DRIVER_DISABLE_KEY_FOCUS_GUARD": "",
+        "CUA_DRIVER_RS_MCP_HTTP_PORT": "8765",
+        "CUA_DRIVER_BROWSER_PROFILE_ROOT": "/home/me/.config/google-chrome",
+        "cua_driver_allow_brief_foreground": "1",
+        "CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS": "1",
+        "CUA_DRIVER_PERMISSION_MODE": "unrestricted",
+    }
+
+    env = driver.driver_environment(Path("/tmp/policy.yaml"), base)
+
+    assert {name for name in env if name.upper().startswith("CUA")} == {
+        "CUA_LOG",
+        "CUA_DRIVER_MANAGED_POLICY_FILE",
+        "CUA_DRIVER_PERMISSION_MODE",
+        "CUA_DRIVER_DISABLE_UNRESTRICTED",
+        "CUA_DRIVER_RS_TELEMETRY_ENABLED",
+        "CUA_DRIVER_RS_UPDATE_CHECK",
+        "CUA_DRIVER_POLICY_FILE",
+    }
+    assert env["CUA_DRIVER_PERMISSION_MODE"] == "standard"
+    assert env["PATH"] == "/usr/bin" and env["DISPLAY"] == ":0"
+    assert env["DBUS_SESSION_BUS_ADDRESS"] == base["DBUS_SESSION_BUS_ADDRESS"]
+
+
 async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: Path) -> None:
     bridge = _bridge()
     await bridge.snapshot()

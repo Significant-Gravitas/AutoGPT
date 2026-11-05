@@ -61,23 +61,30 @@ as the shim's child and leaves prompting to its host. `autogpt-shim doctor`
 requests them. The agent cursor overlay needs CuaDriver.app's AppKit host,
 so it shows on Windows and Linux but not on macOS.
 
-**Environment.** The driver gets the shim's environment (it needs `DISPLAY`,
-the session bus and the rest), with these changes:
+**Environment.** The driver gets the shim's environment (it and the apps it
+launches need `DISPLAY`, the session bus and the rest), with these changes:
 
+- Of cua's own settings (`CUA*`), only those cua's SDK hands a driver it
+  embeds pass: `CUA_LOG`, `CUA_DRIVER_RS_HOME`, the accessibility and
+  Wayland switches (`CUA_DRIVER_RS_ENABLE_WAYLAND`,
+  `CUA_DRIVER_RS_DISABLE_A11Y_ADVERTISE`, `CUA_DRIVER_RS_A11Y_ADVERTISE_MODE`)
+  and the pacing knobs (`CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS`,
+  `CUA_DRIVER_WINDOW_CHANGE_POLL_MS`, `CUA_DRIVER_KEY_GAP_MS`,
+  `CUA_DRIVER_BATCH_PACING`), plus an administrator's managed policy
+  (`CUA_DRIVER_MANAGED_POLICY_FILE`), which can only narrow what the driver
+  allows. The rest are dropped: among them are switches that turn a browser
+  sandbox or the key-focus guard off, an HTTP MCP port, the root of the
+  driver's browser profiles, `CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS`, and
+  capability manifests and session policies with their approvals (approving
+  one is the launcher's decision, and this launcher doesn't make it).
 - `CUA_DRIVER_PERMISSION_MODE=standard`, and `CUA_DRIVER_DISABLE_UNRESTRICTED=1`
   so nothing can switch it to `unrestricted`.
 - `CUA_DRIVER_POLICY_FILE`: the shim's tool policy (below), in a private
   temporary directory that lives as long as the driver.
-- Removed: `CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS` and any capability
-  manifest or session policy and its approval. Approving one is the
-  launcher's decision, and this launcher doesn't make it.
 - `DO_NOT_TRACK=1`, `CUA_DRIVER_RS_TELEMETRY_ENABLED=false` and
   `CUA_DRIVER_RS_UPDATE_CHECK=false`. cua-driver sends content-free product
   telemetry by default; the shim's driver sends none and never checks for
   updates.
-
-A managed policy (`CUA_DRIVER_MANAGED_POLICY_FILE`) set by an administrator
-is left in place; it can only narrow what the driver allows.
 
 ## What the platform gets
 
