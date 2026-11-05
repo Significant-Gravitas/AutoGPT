@@ -16,11 +16,22 @@ from backend.blocks.keenable._api import (
     KeenableClient,
     results_from_response,
 )
+from backend.blocks.keenable._config import keenable
 from backend.blocks.keenable.fetch import KeenableFetchBlock
 from backend.blocks.keenable.search import KeenableSearchBlock
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
+from backend.executor.utils import block_usage_cost
 from backend.sdk import APIKeyCredentials
+from backend.sdk.cost_integration import register_provider_costs_for_block
 from backend.util.exceptions import BlockExecutionError
+
+KEENABLE_PLATFORM_KEY = APIKeyCredentials(
+    id="keenable-default",
+    provider="keenable",
+    api_key=SecretStr("platform-key"),
+    title="Keenable API Key",
+)
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -280,19 +291,20 @@ async def test_search_block_rejects_blank_key_in_api_key_mode():
 
 
 def test_platform_cost_only_applies_in_api_key_mode():
-    from backend.data.block_cost_config import BLOCK_COSTS
-    from backend.executor.utils import block_usage_cost
-    from backend.sdk.cost_integration import register_provider_costs_for_block
-
     block_class = KeenableSearchBlock
-    saved = BLOCK_COSTS.get(block_class)
+    saved_costs = BLOCK_COSTS.get(block_class)
+    saved_default_creds = keenable.default_credentials
     BLOCK_COSTS.pop(block_class, None)
+    keenable.default_credentials = [KEENABLE_PLATFORM_KEY]
     register_provider_costs_for_block(block_class)
     try:
         block = block_class()
         platform_key = {
             "auth": KeenableAuth.API_KEY.value,
-            "credentials": {"id": "keenable-default", "provider": "keenable"},
+            "credentials": {
+                "id": KEENABLE_PLATFORM_KEY.id,
+                "provider": "keenable",
+            },
         }
         assert block_usage_cost(block, platform_key)[0] == 1
         assert block_usage_cost(block, {"auth": KeenableAuth.ANONYMOUS.value})[0] == 0
@@ -303,7 +315,8 @@ def test_platform_cost_only_applies_in_api_key_mode():
             if not entry.is_free
         )
     finally:
-        if saved is None:
+        keenable.default_credentials = saved_default_creds
+        if saved_costs is None:
             BLOCK_COSTS.pop(block_class, None)
         else:
-            BLOCK_COSTS[block_class] = saved
+            BLOCK_COSTS[block_class] = saved_costs
