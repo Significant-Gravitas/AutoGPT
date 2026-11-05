@@ -80,9 +80,15 @@ describe("SignupPage sends a new account to onboarding first", () => {
     vi.restoreAllMocks();
   });
 
-  test.each(["/home", "/", "/copilot", "/home/", "/copilot/"])(
+  test.each([
+    ["/home", "/home"],
+    ["/", "/"],
+    ["/copilot", "/home"],
+    ["/home/", "/home/"],
+    ["/copilot/", "/home"],
+  ])(
     "signing up from ?next=%s goes straight to /onboarding, never Home",
-    async (next) => {
+    async (next, safeNext) => {
       openSignup(next);
 
       submitSignupForm();
@@ -91,14 +97,32 @@ describe("SignupPage sends a new account to onboarding first", () => {
         expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
       );
       expect(routerReplace).toHaveBeenCalledTimes(1);
-      // Nor does the emailed verification link carry the default landing.
+      // The verification email's link goes through /auth/callback, which
+      // routes by onboarding state for a default landing too.
       expect(mockSignupAction).toHaveBeenCalledWith(
         EMAIL,
         PASSWORD,
         PASSWORD,
         false,
-        null,
+        safeNext,
       );
+    },
+  );
+
+  test.each([
+    ["/home?utm_source=newsletter", "/onboarding?utm_source=newsletter"],
+    [
+      "/copilot?utm_campaign=launch&gclid=abc",
+      "/onboarding?utm_campaign=launch&gclid=abc",
+    ],
+  ])(
+    "a campaign link (?next=%s) still lands on onboarding with its tracking params",
+    async (next, expected) => {
+      openSignup(next);
+
+      submitSignupForm();
+
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(expected));
     },
   );
 
@@ -131,12 +155,12 @@ describe("SignupPage sends a new account to onboarding first", () => {
     );
   });
 
-  test("continuing with Google from ?next=/home lets the callback route by onboarding", async () => {
+  test("continuing with Google from a campaign link hands /auth/callback the whole next", async () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async () => new Response(JSON.stringify({})));
-    openSignup("/home");
+    openSignup("/home?utm_source=newsletter");
 
     fireEvent.click(
       screen.getByRole("button", { name: /continue with google/i }),
@@ -152,6 +176,8 @@ describe("SignupPage sends a new account to onboarding first", () => {
       ([input]) => input === "/api/auth/login/with-provider",
     )!;
     const { redirectTo } = JSON.parse(String(init?.body));
-    expect(redirectTo).toBe(`${window.location.origin}/auth/callback`);
+    expect(redirectTo).toBe(
+      `${window.location.origin}/auth/callback?next=${encodeURIComponent("/home?utm_source=newsletter")}`,
+    );
   });
 });
