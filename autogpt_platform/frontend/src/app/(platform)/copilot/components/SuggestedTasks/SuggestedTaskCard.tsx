@@ -13,6 +13,7 @@ import {
   getPromptIcon,
   getTaskState,
 } from "./helpers";
+import { UnsupportedNote } from "./UnsupportedNote";
 
 interface Props {
   task: SuggestedTask;
@@ -47,6 +48,7 @@ export function SuggestedTaskCard({
           <Text variant="body-medium" tone="muted" className="text-pretty">
             {task.title}
           </Text>
+          <UnsupportedNote services={task.unsupported} />
           <div className="mt-auto self-start rounded-full bg-surface-hover px-2 py-0.5">
             <Text variant="small-medium" tone="muted">
               In progress
@@ -68,6 +70,7 @@ export function SuggestedTaskCard({
           <Text variant="body-medium" tone="primary" className="text-pretty">
             {task.title}
           </Text>
+          <UnsupportedNote services={task.unsupported} />
         </button>
       )}
       <span className="absolute -top-2 -right-2 flex opacity-0 transition-opacity duration-150 group-hover/card:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">

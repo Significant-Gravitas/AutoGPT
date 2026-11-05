@@ -67,6 +67,7 @@ export function ConnectCredentialDialog({
     selectedMethod,
     setSelectedMethod,
     apiKeyForm,
+    apiKeyUrl,
     handleApiKeySubmit,
     showContinue,
     isContinueDisabled,
@@ -154,6 +155,7 @@ export function ConnectCredentialDialog({
     supportedAuthTypes: getConnectableCredentialTypes(
       schema.credentials_types ?? [],
     ).filter((t): t is AuthMethod => KNOWN_AUTH_METHODS.has(t as AuthMethod)),
+    apiKeyUrl,
   };
   const guided =
     (connectable.supportedAuthTypes.includes(AuthType.oauth2) &&

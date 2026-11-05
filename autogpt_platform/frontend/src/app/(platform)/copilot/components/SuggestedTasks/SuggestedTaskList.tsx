@@ -14,6 +14,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import NextLink from "next/link";
 import { tourStartingPoint, tourTarget } from "@/lib/tour-targets";
 import { getChatHref, getPromptIcon, getTaskState } from "./helpers";
+import { UnsupportedNote } from "./UnsupportedNote";
 
 interface Props {
   tasks: SuggestedTask[];
@@ -71,13 +72,16 @@ export function SuggestedTaskList({
                     tone="disabled"
                     className="shrink-0"
                   />
-                  <Text
-                    variant="body-medium"
-                    tone="muted"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
+                  <span className="flex min-w-0 flex-col">
+                    <Text
+                      variant="body-medium"
+                      tone="muted"
+                      className="text-pretty"
+                    >
+                      {task.title}
+                    </Text>
+                    <UnsupportedNote services={task.unsupported} />
+                  </span>
                   <Text
                     variant="small"
                     tone="muted"
@@ -103,13 +107,16 @@ export function SuggestedTaskList({
                     tone="subtle"
                     className="shrink-0"
                   />
-                  <Text
-                    variant="body-medium"
-                    tone="primary"
-                    className="text-pretty"
-                  >
-                    {task.title}
-                  </Text>
+                  <span className="flex min-w-0 flex-col">
+                    <Text
+                      variant="body-medium"
+                      tone="primary"
+                      className="text-pretty"
+                    >
+                      {task.title}
+                    </Text>
+                    <UnsupportedNote services={task.unsupported} />
+                  </span>
                   {sendingId === task.id ? (
                     <Icon
                       icon={Loading03Icon}

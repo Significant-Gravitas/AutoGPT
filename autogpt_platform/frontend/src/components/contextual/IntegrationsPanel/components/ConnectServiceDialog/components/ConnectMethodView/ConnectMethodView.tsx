@@ -261,6 +261,7 @@ export function ConnectMethodView({
                               <InlineApiKeyForm
                                 form={apiKeyForm}
                                 providerName={provider.name}
+                                apiKeyUrl={provider.apiKeyUrl}
                                 onSubmit={onApiKeySubmit}
                               />
                             ) : method === AuthType.device_code ? (
