@@ -43,23 +43,23 @@ export function ProviderBox({
           )}
         />
         {isBusy && (
-          <Icon
-            icon={Loading03Icon}
-            size={20}
-            className="absolute -right-1 -bottom-1 rounded-full bg-surface text-foreground-tertiary motion-safe:animate-spin"
-          />
+          <span className="absolute -right-1 -bottom-1 rounded-full bg-surface">
+            <Icon
+              icon={Loading03Icon}
+              size={20}
+              tone="muted"
+              spin
+              className="block"
+            />
+          </span>
         )}
       </span>
       <span className="flex w-full flex-col items-center gap-1">
         <Text
           variant="body-medium"
           as="span"
-          className={cn(
-            "flex min-h-11 items-center justify-center",
-            state === "coming-soon"
-              ? "text-foreground-tertiary"
-              : "text-foreground-base",
-          )}
+          tone={state === "coming-soon" ? "muted" : "base"}
+          className="flex min-h-11 items-center justify-center"
         >
           {name}
         </Text>

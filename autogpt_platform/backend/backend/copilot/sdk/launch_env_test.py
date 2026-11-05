@@ -358,8 +358,8 @@ async def test_subscription_probes_and_sdk_launch_use_the_selected_executable(
         [str(cli), "-v"],
     ]
     assert [command[0] for command in commands] == [str(cli)]
-    assert bundled.call_count == (2 if source in {"bundled", "path"} else 0)
-    assert which.call_count == (2 if source == "path" else 0)
+    assert bundled.call_count == (1 if source in {"bundled", "path"} else 0)
+    assert which.call_count == (1 if source == "path" else 0)
     provision.assert_called_once_with()
     _assert_keeps_only(spawned, env, _HOST_LOGIN)
 

@@ -111,7 +111,7 @@ function UnderstandingValue({ value }: { value: string }) {
       : value;
 
   return (
-    <dd className="text-sm whitespace-pre-line text-foreground-emphasis">
+    <dd className="text-body whitespace-pre-line text-foreground-emphasis">
       {shown}
       {isLong ? (
         <button

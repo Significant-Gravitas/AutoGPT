@@ -73,7 +73,7 @@ function Section({
 }) {
   return (
     <div id={slugify(title)} className="mb-10 scroll-mt-6">
-      <h2 className="mb-4 border-b border-border-base pb-2 font-mono text-xl font-semibold text-foreground-emphasis">
+      <h2 className="mb-4 border-b border-border-base pb-2 font-mono text-lead font-semibold text-foreground-emphasis">
         {title}
       </h2>
       <div className="space-y-4">{children}</div>
@@ -90,7 +90,7 @@ function SubSection({
 }) {
   return (
     <div className="rounded-lg border border-dashed border-info/30 p-3">
-      <p className="mb-2 text-xs font-medium tracking-wide text-foreground-tertiary uppercase">
+      <p className="mb-2 text-caption font-medium tracking-wide text-foreground-tertiary uppercase">
         {label}
       </p>
       {children}
@@ -198,7 +198,7 @@ export default function StyleguidePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-10">
             <Text variant="h1">Copilot Styleguide</Text>
-            <p className="mb-8 text-sm text-foreground-tertiary">
+            <p className="mb-8 text-body text-foreground-tertiary">
               Static showcase of all chat message types, tool states &amp;
               variants.
             </p>
@@ -1854,7 +1854,7 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
 
             <Section title="Reasoning Collapse: Interactive Tool Pinning">
-              <p className="mb-4 text-sm text-foreground-secondary">
+              <p className="mb-4 text-body text-foreground-secondary">
                 When the stream finishes, intermediate tool calls are collapsed
                 behind a &quot;Show reasoning&quot; button. However, tools whose
                 output requires user interaction (credentials, inputs,

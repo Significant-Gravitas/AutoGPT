@@ -151,10 +151,11 @@ export default function TextWidget(props: WidgetProps) {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-2xs"
+                shape="pill"
                 onClick={handleModalOpen}
                 type="button"
-                className="p-1"
+                withTooltip={false}
                 aria-label="Expand input"
               >
                 <Icon icon={ArrowExpandIcon} className="size-4" />

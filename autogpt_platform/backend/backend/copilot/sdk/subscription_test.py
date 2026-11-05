@@ -1,14 +1,17 @@
 """Subscription validation uses the configured executable, without real auth."""
 
+import json
+import logging
 import os
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
-from backend.copilot.sdk import subscription
+from backend.copilot.sdk import cli_version, subscription
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +23,7 @@ def isolated_subscription(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(subscription, "inherited_env", dict)
     monkeypatch.setattr(
         subscription,
-        "find_bundled_cli",
+        "_cli_the_sdk_finds",
         Mock(side_effect=AssertionError("unexpected fallback")),
     )
     monkeypatch.setattr(
@@ -54,47 +57,16 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     return calls
 
 
-@pytest.mark.parametrize(
-    "setting", ["explicit", "CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"]
-)
-def test_configured_cli_drives_both_probes(
-    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch, setting: str
-):
-    if setting == "explicit":
-        subscription.validate_subscription(str(cli))
-    else:
-        monkeypatch.setenv(setting, str(cli))
-        subscription.validate_subscription()
+def test_configured_cli_drives_both_probes(cli: Path, runs: list[list[str]]):
+    subscription.validate_subscription(str(cli))
     assert runs == [[str(cli), "--version"], [str(cli), "auth", "status"]]
-
-
-@pytest.mark.parametrize("explicit", [False, True])
-def test_cli_setting_precedence(
-    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch, explicit: bool
-):
-    monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-unprefixed-cli")
-    monkeypatch.setenv(
-        "CHAT_CLAUDE_AGENT_CLI_PATH", "missing-prefixed-cli" if explicit else str(cli)
-    )
-    subscription.validate_subscription(str(cli) if explicit else None)
-    assert [call[0] for call in runs] == [str(cli), str(cli)]
-
-
-def test_empty_prefixed_setting_uses_unprefixed_alias(
-    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "")
-    monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
-    subscription.validate_subscription()
-    assert [call[0] for call in runs] == [str(cli), str(cli)]
 
 
 @pytest.mark.parametrize(
     "kind", ["missing", "directory", "not-executable", "whitespace"]
 )
-@pytest.mark.parametrize("explicit", [False, True])
 def test_invalid_configured_cli_fails_before_provisioning_or_fallback(
-    cli: Path, monkeypatch: pytest.MonkeyPatch, kind: str, explicit: bool
+    cli: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ):
     path = {
         "missing": str(cli.with_name("missing.exe")),
@@ -104,27 +76,20 @@ def test_invalid_configured_cli_fails_before_provisioning_or_fallback(
     }[kind]
     if kind == "not-executable":
         monkeypatch.setattr(subscription.os, "access", lambda path, mode: False)
-    monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
-    if not explicit:
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", path)
     with pytest.raises(RuntimeError, match="Configured Claude CLI") as error:
-        subscription.validate_subscription(path if explicit else None)
+        subscription.validate_subscription(path)
     assert str(cli.parent) not in str(error.value)
     subscription.provision_credentials_file.assert_not_called()
-    subscription.find_bundled_cli.assert_not_called()
+    subscription._cli_the_sdk_finds.assert_not_called()
     subscription.subprocess.run.assert_not_called()
 
 
 def test_unset_cli_keeps_existing_discovery(
-    runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
+    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(
-        subscription, "find_bundled_cli", lambda: "existing-bundled-or-path-cli"
-    )
+    monkeypatch.setattr(subscription, "_cli_the_sdk_finds", lambda: str(cli))
     subscription.validate_subscription()
-    assert [call[0] for call in runs] == [
-        os.path.realpath("existing-bundled-or-path-cli")
-    ] * 2
+    assert [call[0] for call in runs] == [str(cli)] * 2
 
 
 def test_launcher_retargeting_does_not_redirect_auth(
@@ -162,21 +127,6 @@ def test_validation_cache_distinguishes_configured_paths(
     second.chmod(0o755)
     for path in (cli, cli, second):
         subscription.validate_subscription(os.fspath(path))
-    assert [call[0] for call in runs] == [str(cli), str(cli), str(second), str(second)]
-
-
-@pytest.mark.parametrize(
-    "setting", ["CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"]
-)
-def test_validation_cache_follows_environment_selection(
-    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch, setting: str
-):
-    second = cli.with_name("2.1.285.exe")
-    second.write_bytes(b"another executable")
-    second.chmod(0o755)
-    for path in (cli, cli, second, cli):
-        monkeypatch.setenv(setting, str(path))
-        subscription.validate_subscription()
     assert [call[0] for call in runs] == [str(cli), str(cli), str(second), str(second)]
 
 
@@ -230,3 +180,132 @@ def test_failed_validation_is_not_cached(
     subscription.validate_subscription(str(cli))
     subscription.validate_subscription(str(cli))
     assert run.call_count == len(failures) + 2
+
+
+ACCOUNT_EMAIL = "synthetic-account-privacy-16237@example.invalid"
+
+
+@pytest.fixture
+def cli_run(cli: Path) -> Iterator[MagicMock]:
+    subscription._validate_subscription.cache_clear()
+    try:
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(subscription, "provision_credentials_file") as provision,
+            patch.object(subscription, "_cli_the_sdk_finds", return_value=str(cli)),
+            patch.object(subscription.subprocess, "run") as run,
+        ):
+            run.side_effect = [
+                subprocess.CompletedProcess([], 0, "1.2.3", ""),
+                subprocess.CompletedProcess(
+                    [],
+                    0,
+                    json.dumps(
+                        {
+                            "loggedIn": True,
+                            "authMethod": "claude.ai",
+                            "email": ACCOUNT_EMAIL,
+                        }
+                    ),
+                    "",
+                ),
+            ]
+            yield run
+            provision.assert_called_once_with()
+    finally:
+        subscription._validate_subscription.cache_clear()
+
+
+def test_validate_subscription_keeps_auth_method_without_account_email(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+    assert "Claude Code subscription mode: CLI version 1.2.3" in caplog.messages
+    assert "Claude subscription auth: method=claude.ai" in caplog.messages
+
+
+@pytest.mark.parametrize(
+    "version_code, auth_code, logged_in, error, calls",
+    [
+        (1, 0, True, "Claude CLI check failed", 1),
+        (0, 1, True, "Claude CLI is not authenticated", 2),
+        (0, 0, False, "Claude CLI reports loggedIn=false", 2),
+    ],
+)
+def test_validate_subscription_still_rejects_failed_checks(
+    cli_run: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    version_code: int,
+    auth_code: int,
+    logged_in: bool,
+    error: str,
+    calls: int,
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], version_code, "1.2.3", "version unavailable"),
+        subprocess.CompletedProcess(
+            [],
+            auth_code,
+            json.dumps(
+                {
+                    "loggedIn": logged_in,
+                    "authMethod": "claude.ai",
+                    "email": ACCOUNT_EMAIL,
+                }
+            ),
+            "",
+        ),
+    ]
+    with (
+        caplog.at_level(logging.INFO, logger=subscription.__name__),
+        pytest.raises(RuntimeError, match=error),
+    ):
+        subscription.validate_subscription()
+
+    assert cli_run.call_count == calls
+    assert subscription._validate_subscription.cache_info().currsize == 0
+    assert not any(
+        "Claude subscription auth:" in message for message in caplog.messages
+    )
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+
+
+def test_validate_subscription_still_warns_on_unparseable_auth_status(
+    cli_run: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    cli_run.side_effect = [
+        subprocess.CompletedProcess([], 0, "1.2.3", ""),
+        subprocess.CompletedProcess([], 0, f"invalid JSON: {ACCOUNT_EMAIL}", ""),
+    ]
+    with caplog.at_level(logging.INFO, logger=subscription.__name__):
+        assert subscription.validate_subscription() is None
+
+    assert cli_run.call_count == 2
+    assert "Could not parse `claude auth status` output" in caplog.messages
+    assert ACCOUNT_EMAIL not in caplog.text
+    assert all(ACCOUNT_EMAIL not in repr(vars(record)) for record in caplog.records)
+
+
+def test_unset_cli_reuses_sdk_discovery(
+    cli: Path, runs: list[list[str]], monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        subscription, "_cli_the_sdk_finds", cli_version._cli_the_sdk_finds
+    )
+    discovery = Mock(return_value=str(cli))
+    monkeypatch.setattr(SubprocessCLITransport, "_find_cli", discovery)
+    cli_version._cli_the_sdk_finds.cache_clear()
+    try:
+        for _ in range(5):
+            subscription.validate_subscription()
+        discovery.assert_called_once_with()
+        assert runs == [[str(cli), "--version"], [str(cli), "auth", "status"]]
+    finally:
+        cli_version._cli_the_sdk_finds.cache_clear()

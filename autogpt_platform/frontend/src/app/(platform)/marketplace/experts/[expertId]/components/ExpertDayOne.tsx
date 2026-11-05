@@ -31,7 +31,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             <span
               aria-hidden="true"
               className={cn(
-                "relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-4 ring-surface",
+                "relative flex size-8 shrink-0 items-center justify-center rounded-full text-body font-semibold tabular-nums ring-4 ring-surface",
                 accent.pill,
               )}
             >
@@ -39,7 +39,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-1 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-base leading-6 font-semibold break-words text-foreground-strong">
+                <div className="text-body-lg leading-6 font-semibold break-words text-foreground-strong">
                   {item.title}
                 </div>
                 {item.description ? (
@@ -49,7 +49,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
                 ) : null}
               </div>
               {item.timing ? (
-                <span className="shrink-0 self-start rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-2.5 py-0.5 text-xs leading-5 font-medium whitespace-nowrap text-foreground-secondary">
+                <span className="shrink-0 self-start rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-2.5 py-0.5 text-caption leading-5 font-medium whitespace-nowrap text-foreground-secondary">
                   {item.timing}
                 </span>
               ) : null}

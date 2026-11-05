@@ -54,7 +54,7 @@ export function SubscriptionTierSection() {
   if (error) {
     return (
       <div className="space-y-4">
-        <Text variant="lg-medium" as="h3" tone="inherit">
+        <Text variant="lead-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div
@@ -76,7 +76,7 @@ export function SubscriptionTierSection() {
   if (currentTier === "ENTERPRISE") {
     return (
       <div className="space-y-4">
-        <Text variant="lg-medium" as="h3" tone="inherit">
+        <Text variant="lead-medium" as="h3" tone="inherit">
           Subscription Plan
         </Text>
         <div className="rounded-lg border border-brand bg-accent-surface p-4 text-accent-strong">
@@ -134,15 +134,14 @@ export function SubscriptionTierSection() {
 
   return (
     <div className="space-y-4">
-      <Text variant="lg-medium" as="h3" tone="inherit">
+      <Text variant="lead-medium" as="h3" tone="inherit">
         Subscription Plan
       </Text>
 
       {needsSubscription && (
         <div
           role="status"
-          // oxlint-disable-next-line design-system/no-raw-colors -- violet-900 #4C1D95 has no role (accent-strong is lighter); violet-300 #C4B5FD likewise; deferred
-          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-violet-900"
+          className="rounded-md border border-brand/40 bg-accent-surface px-4 py-3 text-accent-strong"
         >
           <Text variant="body-medium-tight" as="p" tone="inherit">
             Pick a plan to continue using AutoGPT.
@@ -216,7 +215,12 @@ export function SubscriptionTierSection() {
                 )}
               </div>
 
-              <Text variant="2xl-bold" as="p" tone="inherit" className="mb-1">
+              <Text
+                variant="heading-md-bold"
+                as="p"
+                tone="inherit"
+                className="mb-1"
+              >
                 {formatCost(cost, tier.key)}
               </Text>
               {rateLimitLabel && (
