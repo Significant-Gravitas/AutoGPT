@@ -9,7 +9,12 @@ from backend.util.exceptions import BlockInputError
 from ._api import DataForSeoClient, DataForSeoError
 from ._config import dataforseo
 from ._onpage import count_issues, normalise_domain, parse_page
-from .site_audit import DataForSeoSiteAuditBlock, crawl_cost
+from .site_audit import (
+    MAX_WAIT_SECONDS,
+    STOP_WAIT_SECONDS,
+    DataForSeoSiteAuditBlock,
+    crawl_cost,
+)
 
 CREDS = dataforseo.get_test_credentials()
 CREDS_INPUT = CREDS.model_dump()
@@ -188,3 +193,13 @@ async def test_site_audit_needs_a_target():
             credentials=CREDS,
         ):
             pass
+
+
+def test_longest_wait_leaves_room_inside_ottos_limit():
+    # Otto cancels a direct block run after 300 seconds.
+    assert MAX_WAIT_SECONDS + STOP_WAIT_SECONDS <= 240
+
+
+def test_crawl_cost_never_bills_more_pages_than_were_paid_for():
+    over = {"crawl_progress": "finished", "crawl_status": {"pages_crawled": 50}}
+    assert crawl_cost(0.006, 40, over) == 0.006

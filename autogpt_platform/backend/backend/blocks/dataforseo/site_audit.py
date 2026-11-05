@@ -26,9 +26,9 @@ SUMMARY_PATH = "/v3/on_page/summary/{task_id}"
 PAGES_PATH = "/v3/on_page/pages"
 FORCE_STOP_PATH = "/v3/on_page/force_stop"
 POLL_INTERVAL_SECONDS = 15
-# Otto's direct block runs are cancelled after 300 seconds, so the crawl wait,
-# the stop and the requests around them must all fit inside that.
-MAX_WAIT_SECONDS = 240
+# Otto's direct block runs are cancelled after 300 seconds. The crawl wait plus
+# the stop wait leaves a minute for the requests around them.
+MAX_WAIT_SECONDS = 210
 STOP_WAIT_SECONDS = 30
 
 
