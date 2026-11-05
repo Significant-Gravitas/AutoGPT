@@ -50,6 +50,7 @@ from .computer_use.catalog import takes_session, without_session
 from .computer_use.concealed import clipboard_state, marker_in
 from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
+from .directory_browser import _is_reparse_point
 from .fsops import rename_no_replace
 from .local_llm_limits import bounded_chunks, read_json_lines
 from .path_jail import (
@@ -1111,7 +1112,8 @@ class FileHandler:
                 # scan budget stops a huge directory part way; os.walk and
                 # iterdir read each directory whole before yielding any of it.
                 # Depth first, a directory's entries before its subfolders',
-                # and like os.walk it never follows a symlink into a folder.
+                # and like os.walk it never follows a symlink into a folder,
+                # nor a Windows junction, which is_dir() takes for one.
                 pending = [base]
                 while pending:
                     folder = pending.pop()
@@ -1127,7 +1129,8 @@ class FileHandler:
                                 if not payload.include_hidden and entry.name.startswith("."):
                                     continue
                                 try:
-                                    if entry.is_dir(follow_symlinks=False):
+                                    folder_here = entry.is_dir(follow_symlinks=False)
+                                    if folder_here and not _is_reparse_point(path):
                                         subfolders.append(path)
                                 except OSError:
                                     pass

@@ -148,3 +148,25 @@ async def test_max_entries_below_one_lists_nothing(tmp_path: Path, max_entries: 
 
     assert response.payload.entries == []
     assert response.payload.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_a_recursive_listing_never_enters_a_junction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """To os.scandir a Windows junction is a folder like any other, so the
+    walk went through one pointing outside the shared folder and listed
+    what is there. It's listed itself, but never entered."""
+    (tmp_path / "junction").mkdir()
+    (tmp_path / "junction" / "outside.txt").write_text("")
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "folder" / "inside.txt").write_text("")
+    monkeypatch.setattr(
+        handlers_module, "_is_reparse_point", lambda path: Path(path).name == "junction"
+    )
+
+    response = await _listing(tmp_path, recursive=True)
+
+    names = {entry.name for entry in response.payload.entries}
+    assert {"junction", "folder", "inside.txt"} <= names
+    assert "outside.txt" not in names
