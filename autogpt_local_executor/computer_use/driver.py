@@ -252,9 +252,19 @@ class CuaDriverBridge:
                 )
             ensure_executable(binary)
             runtime = driver_runtime(self._platform)
+            try:
+                policy = self._write_policy()
+            except OSError as exc:
+                # A full or unwritable temporary directory: without its policy
+                # the driver can't run, and HELLO goes on without computer use.
+                self._last_failure = str(exc)
+                raise DriverUnavailable(
+                    f"could not write the cua-driver policy file: {exc}",
+                    code=ErrorCode.INTERNAL_ERROR,
+                ) from exc
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
-                env=driver_environment(self._write_policy()),
+                env=driver_environment(policy),
                 client_version=self._client_version,
             )
             self._starts.append(time.monotonic())

@@ -201,6 +201,28 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     await bridge.close()
 
 
+async def test_a_policy_file_that_cannot_be_written_leaves_the_driver_unavailable(
+    fake_log, monkeypatch
+) -> None:
+    """The policy file was written before the start's error handling, so a
+    full or unwritable temporary directory raised OSError out of the HELLO
+    build, which drops computer use only for DriverUnavailable."""
+    import errno
+    import os
+
+    def full(*_args, **_kwargs):
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    monkeypatch.setattr(driver.tempfile, "mkdtemp", full)
+    bridge = _bridge()
+    try:
+        with pytest.raises(DriverUnavailable, match="policy"):
+            await bridge.snapshot()
+    finally:
+        await bridge.close()
+    assert records(fake_log) == []  # the driver never started
+
+
 async def test_a_start_cancelled_before_the_tool_list_stops_the_driver(fake_log) -> None:
     """Shutdown cancels the task that is starting the driver. The process it
     had started was left running, and the bridge didn't know it, so its
