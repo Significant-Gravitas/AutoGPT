@@ -17,6 +17,7 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTaskState,
     SuggestedTasksUpdate,
 )
+from backend.api.features.onboarding_dump.providers import label_support
 from backend.util.exceptions import ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,8 @@ async def get_suggested_tasks(user_id: str) -> SuggestedTasksResponse:
     dump = await db.get_dump(user_id)
     stored = _stored_tasks(dump.suggestedPrompts if dump else None)
     if stored:
-        return SuggestedTasksResponse(tasks=stored, stored=True)
-    return SuggestedTasksResponse(tasks=_generic_tasks(), stored=False)
+        return SuggestedTasksResponse(tasks=label_support(stored), stored=True)
+    return SuggestedTasksResponse(tasks=label_support(_generic_tasks()), stored=False)
 
 
 async def update_suggested_tasks(
@@ -60,13 +61,13 @@ async def update_suggested_tasks(
             raise NotFoundError("Unknown suggestion")
         changed = [_apply(task, update) for task in tasks]
         if changed == tasks:
-            return SuggestedTasksResponse(tasks=tasks, stored=bool(stored))
+            return SuggestedTasksResponse(
+                tasks=label_support(tasks), stored=bool(stored)
+            )
         if await db.replace_suggested_prompts(
-            user_id,
-            dump.updatedAt,
-            [task.model_dump(mode="json") for task in changed],
+            user_id, dump.updatedAt, [task.stored() for task in changed]
         ):
-            return SuggestedTasksResponse(tasks=changed, stored=True)
+            return SuggestedTasksResponse(tasks=label_support(changed), stored=True)
     logger.warning(
         f"Suggested tasks: gave up after {_WRITE_ATTEMPTS} conflicting writes"
     )

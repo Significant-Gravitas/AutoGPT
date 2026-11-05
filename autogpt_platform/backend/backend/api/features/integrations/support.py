@@ -1,10 +1,11 @@
 """Whether the platform can connect a service someone names.
 
-Otto answers "can you use X?" from this: a service is supported when a
-user can actually connect it here, through a block provider whose sign-in
-a user here can finish or an official MCP catalog server. A provider whose
-only sign-in is OAuth, with no app configured, has blocks but no way in, so
-it does not count.
+The greeting promises automations, Otto answers "can you use X?", and the
+Home checklist labels tasks, all from one answer: a service is supported
+when a user can actually connect it here, through a block provider whose
+sign-in a user here can finish or an official MCP catalog server. A provider
+whose only sign-in is OAuth, with no app configured, has blocks but no way
+in, so it does not count.
 
 A provider's sign-ins come from every place one is declared: its
 ProviderBuilder, and the credentials fields of the blocks that can run.
@@ -13,6 +14,7 @@ Older connectors (Slack's bot token) declare theirs only on their blocks.
 
 import logging
 import re
+from collections.abc import Iterable
 
 from pydantic import BaseModel
 
@@ -35,10 +37,12 @@ logger = logging.getLogger(__name__)
 # Providers that are plumbing rather than a service a person names.
 _NOT_SERVICES = frozenset({"database", "generic_webhook", "http", "mcp", "smtp"})
 
-# Tools small businesses run on that we have no connector for, each named
-# one way so asks for the same tool land together (``canonical_name``).
-# Whether each is supported is still decided against the live registry, so
-# one that gains a connector drops out on its own.
+# Tools small businesses run on that we have no connector for. Only used to
+# read free text written before tasks recorded what they connect to: a new
+# task cannot be stored without its integrations (intro._parse_prompts), so
+# this covers older rows until they are backfilled. Whether each is
+# supported is still decided against the live registry, so one that gains
+# a connector drops out on its own.
 KNOWN_GAPS = (
     "Shopify",
     "Printful",
@@ -140,6 +144,41 @@ def find_connectable(name: str) -> ConnectableService | None:
     return _match(name, connectable_services())
 
 
+def unsupported_services(
+    names: Iterable[str], services: list[ConnectableService] | None = None
+) -> list[str]:
+    """The names in ``names`` we cannot connect, de-duplicated, in order.
+
+    Pass ``services`` when labelling many names at once, so the registry is
+    read once rather than per call.
+    """
+    services = connectable_services() if services is None else services
+    missing: dict[str, str] = {}
+    for name in names:
+        label = name.strip()
+        key = _normalize(label)
+        if key and key not in missing and _match(label, services) is None:
+            missing[key] = label
+    return list(missing.values())
+
+
+def unsupported_in_task(
+    integrations: list[str] | None,
+    text: str,
+    services: list[ConnectableService] | None = None,
+) -> list[str]:
+    """The tools a task needs that we cannot connect: the ones it declares,
+    and the known gaps its text names. The text is read whatever the
+    declaration says, since the model that wrote it can leave a tool out
+    (``[]`` on a Shopify task). Any other vendor its text names is not
+    looked for; older rows that declare nothing need a model-extraction
+    backfill for that."""
+    services = connectable_services() if services is None else services
+    declared = [canonical_name(name) for name in integrations or []]
+    named = _known_gaps_in(text, capitalised=True)
+    return unsupported_services([*declared, *named], services)
+
+
 def described_products(description: str | None) -> frozenset[str]:
     """The products a provider's description names, when it names them:
     "Gmail, Drive, Calendar, Sheets" does, every item capitalised;
@@ -161,11 +200,15 @@ def canonical_name(name: str) -> str:
     return known[0] if known else " ".join(name.split())
 
 
-def _known_gaps_in(text: str) -> list[str]:
-    """The known gaps ``text`` names as whole words, in any case: a name
-    given as a service ("shopify store") is that service."""
+def _known_gaps_in(text: str, capitalised: bool = False) -> list[str]:
+    """The known gaps ``text`` names as whole words. In free text only a
+    capitalised mention counts: "a gelato flavour" is not Gelato. A name
+    given as a service ("shopify store") counts in any case."""
+    head = "(?=[A-Z])" if capitalised else ""
     return [
-        name for name in KNOWN_GAPS if re.search(rf"\b(?i:{re.escape(name)})\b", text)
+        name
+        for name in KNOWN_GAPS
+        if re.search(rf"\b{head}(?i:{re.escape(name)})\b", text)
     ]
 
 
