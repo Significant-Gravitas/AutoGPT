@@ -361,12 +361,12 @@ def _hashable(value: Any) -> Any:
 
 
 def _build_manifest(
-    recording: WorkflowRecording,
+    steps: list[TrajectoryStep],
     seq_to_param: dict[int, str],
     data_source_hint: str | None,
 ) -> ReplayManifest:
     bindings: list[ReplayBinding] = []
-    for step in recording.steps:
+    for step in steps:
         param = seq_to_param.get(step.seq)
         # Constant value kept unless it's a secret (§7 value-stripping).
         constant_value: Any = None
@@ -381,10 +381,43 @@ def _build_manifest(
                 constant_value=constant_value,
                 selector_fallthrough=_selector_fallthrough(step),
                 requires_assert=step.is_mutating,
-                destructive=step.is_destructive,
+                destructive=step.is_destructive or _click_may_act(step),
             )
         )
     return ReplayManifest(bindings=bindings, data_source_hint=data_source_hint)
+
+
+# Roles of controls a click only focuses (DOM/ARIA, macOS AX, AT-SPI, UIA),
+# lower-cased without spaces.
+_FIELD_ROLES = frozenset(
+    {
+        "textbox",
+        "searchbox",
+        "combobox",
+        "spinbutton",
+        "textarea",
+        "text",
+        "entry",
+        "edit",
+        "axtextfield",
+        "axtextarea",
+        "axsearchfield",
+        "axcombobox",
+        "axsecuretextfield",
+        "passwordtext",
+    }
+)
+
+
+def _click_may_act(step: TrajectoryStep) -> bool:
+    """A click on anything but a text field may act (a button, a link, a
+    Delete), and replay can't confirm what it lands on, so it is gated like
+    a submit. A click into a field only focuses it, which the fill after it
+    needs."""
+    if step.action != "click":
+        return False
+    role = (step.enrichment.role or "").lower().replace(" ", "")
+    return role not in _FIELD_ROLES
 
 
 def _strip_values(recording: WorkflowRecording, seq_to_param: dict[int, str]) -> None:
@@ -406,7 +439,7 @@ def _render_skill_md(
     name: str,
     description: str,
     trigger: str,
-    recording: WorkflowRecording,
+    steps: list[TrajectoryStep],
     params: list[SkillParameter],
     seq_to_param: dict[int, str],
     data_source_hint: str | None,
@@ -445,7 +478,7 @@ def _render_skill_md(
 
     lines.append("## Procedure")
     step_no = 1
-    for step in recording.steps:
+    for step in steps:
         param = seq_to_param.get(step.seq)
         target = _step_label(step)
         if param:
@@ -527,12 +560,16 @@ def generate_skill_from_recording(
     # Strip parameter / secret values BEFORE rendering so the draft never
     # echoes the user's real demonstrated data (§7).
     _strip_values(recording, seq_to_param)
-    manifest = _build_manifest(recording, seq_to_param, data_source_hint)
+    # A recording of the same row twice or more is one row to replay per data
+    # row, so the manifest and the Procedure hold the first row's steps; the
+    # parameters were inferred across all of them.
+    unit = rows[0] if multi_row else recording.steps
+    manifest = _build_manifest(unit, seq_to_param, data_source_hint)
     skill_md = _render_skill_md(
         name=name,
         description=description,
         trigger=trigger,
-        recording=recording,
+        steps=unit,
         params=params,
         seq_to_param=seq_to_param,
         data_source_hint=data_source_hint,
@@ -750,6 +787,9 @@ async def dry_run(
                 row_result.steps.append(step_res)
                 if step_res.detail == "destructive_skipped":
                     result.destructive_blocked = True
+                    # The steps after it would act on a screen the recording
+                    # never saw: the form not submitted, the page not opened.
+                    break
                 if not step_res.ok:
                     row_result.ok = False
                     row_result.error = (

@@ -26,10 +26,21 @@ from .recording_skill import (
 )
 
 
-def _step(seq, action, label=None, raw=None, vtype="text", selectors=None, cursor=None):
+def _step(
+    seq,
+    action,
+    label=None,
+    raw=None,
+    vtype="text",
+    selectors=None,
+    cursor=None,
+    role=None,
+):
     enrichment = {"kind": "dom" if selectors else "none"}
     if label:
         enrichment["label"] = label
+    if role:
+        enrichment["role"] = role
     if selectors:
         enrichment["selectors"] = selectors
     payload = {
@@ -279,10 +290,33 @@ class TestDryRun:
         ]
         result = await dry_run(skill, rows, shim=shim)
         assert result.rows_attempted == 2
-        # type_text was called for the parameter fills of both rows.
-        typed = _calls(shim, "type_text")
-        assert len(typed) >= 2
-        assert {c.args[1]["text"] for c in typed} >= {"Alice", "Bob"}
+        # Each data row fills the demonstrated row's fields once, in order.
+        typed = [c.args[1]["text"] for c in _calls(shim, "type_text")]
+        assert typed == ["Alice", "alice@x.com", "Bob", "bob@y.com"]
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_demonstration_replays_one_row_per_data_row(self):
+        """The manifest held both demonstrated rows, so each data row was
+        typed twice and, with actions allowed, submitted twice."""
+        skill = generate_skill_from_recording(_two_row_recording())
+        shim = _mock_shim()
+        rows = [
+            {"first_name": "Alice", "email": "alice@x.com"},
+            {"first_name": "Bob", "email": "bob@y.com"},
+        ]
+
+        result = await dry_run(skill, rows, shim=shim, allow_destructive=True)
+
+        typed = [c.args[1]["text"] for c in _calls(shim, "type_text")]
+        assert typed == ["Alice", "alice@x.com", "Bob", "bob@y.com"]
+        assert len(_calls(shim, "click")) == 2  # one submit per data row
+        assert result.rows_ok == 2
+        assert [b.action for b in skill.manifest.bindings] == [
+            "fill",
+            "fill",
+            "submit",
+        ]
+        assert skill.skill_md.count("set First Name") == 1
 
     @pytest.mark.asyncio
     async def test_destructive_submit_gated_by_default(self):
@@ -299,6 +333,50 @@ class TestDryRun:
         assert submit_steps and all(
             s.detail == "destructive_skipped" for s in submit_steps
         )
+
+    @pytest.mark.asyncio
+    async def test_a_dry_run_clicks_only_into_fields_until_actions_are_allowed(
+        self,
+    ):
+        """A click isn't a destructive verb, so a dry run without
+        allow_destructive clicked a recorded button at its screen point,
+        though it could be Delete. A click into a text field only focuses it,
+        and the fill after it needs that focus."""
+        recording = WorkflowRecording.from_payload(
+            {
+                "recording_id": "rec_click",
+                "steps": [
+                    _step(1, "click", label="First Name", role="textbox"),
+                    _step(2, "fill", label="First Name", raw="John"),
+                    _step(3, "click", label="Delete", role="button"),
+                    _step(4, "fill", label="Note", raw="x"),
+                    _step(5, "submit", label="Save"),
+                ],
+            }
+        )
+        skill = generate_skill_from_recording(
+            recording,
+            clarifications={
+                "confirmed_parameters": {"First Name": True, "Note": False}
+            },
+        )
+        held_back, allowed = _mock_shim(), _mock_shim()
+
+        result = await dry_run(skill, [{"first_name": "Ada"}], shim=held_back)
+        await dry_run(
+            skill, [{"first_name": "Ada"}], shim=allowed, allow_destructive=True
+        )
+
+        assert [c.args[1]["x"] for c in _calls(held_back, "click")] == [101]
+        assert [c.args[1]["text"] for c in _calls(held_back, "type_text")] == ["Ada"]
+        assert result.destructive_blocked is True
+        # The steps after it would act on a screen the recording never saw.
+        (row,) = result.per_row
+        assert (row.steps[-1].action, row.steps[-1].detail) == (
+            "click",
+            "destructive_skipped",
+        )
+        assert [c.args[1]["x"] for c in _calls(allowed, "click")] == [101, 103, 105]
 
     @pytest.mark.asyncio
     async def test_destructive_runs_when_allowed(self):
