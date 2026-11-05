@@ -471,6 +471,7 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
+            file = file.model_copy(update={"replaced_file_id": replaced_file_id})
             try:
                 from backend.api.features.workspace.embeddings import (
                     delete_workspace_file_embedding,

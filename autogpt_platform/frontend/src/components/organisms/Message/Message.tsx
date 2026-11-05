@@ -8,7 +8,6 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { MapAwarePre } from "@/components/contextual/MapEmbed/MapAwarePre";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
@@ -29,7 +28,6 @@ import type {
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { defaultSchema } from "hast-util-sanitize";
-import type { LinkSafetyModalProps } from "streamdown";
 import {
   defaultRehypePlugins,
   defaultRemarkPlugins,
@@ -37,6 +35,7 @@ import {
   Streamdown,
 } from "streamdown";
 import { remarkAppLinks } from "./app-links";
+import { MessageLink } from "./components/MessageLink/MessageLink";
 import { rehypeLiteralTags } from "./literal-tags";
 import {
   createComponentsMerger,
@@ -340,54 +339,6 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-function isSameOriginLink(url: string): boolean {
-  try {
-    const parsed = new URL(url, window.location.origin);
-    return parsed.origin === window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-function ExternalLinkModal({
-  url,
-  isOpen,
-  onClose,
-  onConfirm,
-}: LinkSafetyModalProps) {
-  return (
-    <Dialog
-      title="Open external link"
-      styling={{ maxWidth: "30rem", minWidth: "auto" }}
-      controlled={{
-        isOpen,
-        set: async (open) => {
-          if (!open) onClose();
-        },
-      }}
-    >
-      <Dialog.Content>
-        <Text variant="body">
-          You&apos;re about to visit an external website:
-        </Text>
-        <div className="mt-2 rounded-md bg-surface-hover p-3">
-          <Text variant="small-mono" className="break-all">
-            {url}
-          </Text>
-        </div>
-        <Dialog.Footer>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={onConfirm}>
-            Open link
-          </Button>
-        </Dialog.Footer>
-      </Dialog.Content>
-    </Dialog>
-  );
-}
-
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
 // reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
 // KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
@@ -441,10 +392,6 @@ function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
   );
 }
 
-function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
-  return <ExternalLinkModal {...modalProps} />;
-}
-
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 
 // Streamdown memoises every block on the identity of this list, so it is built
@@ -469,24 +416,26 @@ const REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
   ...Object.values(defaultRehypePlugins),
 ];
 
-const LINK_SAFETY = {
-  enabled: true,
-  onLinkCheck: isSameOriginLink,
-  renderModal: renderExternalLinkModal,
-};
+// MessageLink asks before leaving the site itself; Streamdown's own check
+// would draw every link as a button without an href.
+const LINK_SAFETY = { enabled: false };
 
-const TABLE_COMPONENT: StreamdownComponents = {
+const DEFAULT_COMPONENTS: StreamdownComponents = {
   table: MessageTable,
   pre: MapAwarePre,
+  a: MessageLink,
 };
 
-const mergeTableComponent = createComponentsMerger((components) => ({
-  ...TABLE_COMPONENT,
+// A caller may replace any default but the link, which keeps the dialog in
+// front of every link to another site.
+const mergeDefaultComponents = createComponentsMerger((components) => ({
+  ...DEFAULT_COMPONENTS,
   ...components,
+  a: MessageLink,
 }));
 
-function withTableComponent(components: StreamdownComponents | undefined) {
-  return components ? mergeTableComponent(components) : TABLE_COMPONENT;
+function withDefaultComponents(components: StreamdownComponents | undefined) {
+  return components ? mergeDefaultComponents(components) : DEFAULT_COMPONENTS;
 }
 
 // memo-boundary: one per text part of every transcript row, and also
@@ -501,7 +450,7 @@ export const MessageResponse = memo(function MessageResponse({
   // the result stable, and spots an entry the caller replaced in place, which
   // a result cached on `components` would miss.
   const mergedComponents = useReadEveryRender(() =>
-    withTableComponent(components),
+    withDefaultComponents(components),
   );
   const from = useContext(MessageRoleContext);
   return (
