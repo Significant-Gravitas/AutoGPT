@@ -142,6 +142,8 @@ class ShimConfig(BaseSettings):
     oauth_client_id: str = Field(default="autogpt-local-executor")
     oauth_redirect_port: int = Field(
         default=41899,
+        ge=1,
+        le=65535,
         description="First port in the 41899-41910 fallback range to bind "
         "for the OAuth callback listener.",
     )

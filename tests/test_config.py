@@ -357,3 +357,12 @@ def test_a_default_config_path_that_is_not_a_file_is_an_error(
 
     with pytest.raises(ConfigFileError, match="not a regular file"):
         load_config()
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) -> None:
+    """Port 0 bound an ephemeral port while the redirect URI said 0, so
+    sign-in timed out; past 65535, bind raised OverflowError, which the
+    callback's port loop doesn't catch."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, oauth_redirect_port=port)
