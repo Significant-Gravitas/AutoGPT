@@ -181,7 +181,9 @@ def _audit_storage_failure(message: str, exc: OSError) -> DaemonPreflightError:
     )
 
 
-# Storage errors a restart can't fix: the path, or what it may do, is wrong.
+# Storage errors a restart can't fix: the path, or what it may do, is wrong,
+# or the device under it failed or is gone. Any other error restarts the
+# service (exit 75), which systemd does every five seconds without a limit.
 _PERMANENT_STORAGE_ERRNOS = frozenset(
     {
         errno.EACCES,
@@ -192,6 +194,9 @@ _PERMANENT_STORAGE_ERRNOS = frozenset(
         errno.ELOOP,
         errno.ENAMETOOLONG,
         errno.EINVAL,
+        errno.EIO,
+        errno.ENXIO,
+        errno.ENODEV,
     }
 )
 
