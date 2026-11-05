@@ -85,6 +85,7 @@
 * [Exa Websets Polling](block-integrations/exa/websets_polling.md)
 * [Exa Websets Search](block-integrations/exa/websets_search.md)
 * [Fal AI Video Generator](block-integrations/fal/ai_video_generator.md)
+* [Firecrawl Alexandria](block-integrations/firecrawl/alexandria.md)
 * [Firecrawl Crawl](block-integrations/firecrawl/crawl.md)
 * [Firecrawl Extract](block-integrations/firecrawl/extract.md)
 * [Firecrawl Map](block-integrations/firecrawl/map.md)
