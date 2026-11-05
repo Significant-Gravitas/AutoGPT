@@ -342,3 +342,18 @@ def test_the_cli_exits_78_on_an_environment_list_that_is_not_json(
 
     assert exited.value.code == 78
     assert "AUTOGPT_SHIM_RECORDING_CHANNELS" in capsys.readouterr().err
+
+
+def test_a_default_config_path_that_is_not_a_file_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory where the default config.toml belongs ran the shim on the
+    defaults without a word, though --config naming one is an error."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "config.toml").mkdir()
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "config.toml")
+
+    with pytest.raises(ConfigFileError, match="not a regular file"):
+        load_config()

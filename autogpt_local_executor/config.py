@@ -331,12 +331,17 @@ def load_config(
         is_file = stat.S_ISREG(path.stat().st_mode)
     except (FileNotFoundError, NotADirectoryError):
         is_file = False
+        if config_path is not None:
+            # A --config that names nothing ran the shim on the defaults
+            # without a word. (Without --config, a missing default file
+            # means defaults.)
+            raise ConfigFileError(f"{path}: no such config file") from None
     except OSError as exc:
         raise ConfigFileError(f"{path}: {exc}") from exc
-    if config_path is not None and not is_file:
-        # A --config that names nothing ran the shim on the defaults without
-        # a word. (Without --config, a missing default file means defaults.)
-        raise ConfigFileError(f"{path}: no such config file")
+    else:
+        if not is_file:
+            # A directory where the config belongs, with or without --config.
+            raise ConfigFileError(f"{path}: not a regular file")
     if is_file:
         try:
             with open(path, "rb") as f:
