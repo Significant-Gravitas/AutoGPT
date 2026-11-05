@@ -136,3 +136,15 @@ async def test_a_walk_stops_part_way_through_a_directory_larger_than_its_budget(
 
     assert response.payload.truncated is True
     assert read <= 13
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_entries", [0, -3])
+async def test_max_entries_below_one_lists_nothing(tmp_path: Path, max_entries: int) -> None:
+    """The cap was raised to at least one, so asking for none returned one."""
+    (tmp_path / "match").write_text("")
+
+    response = await _listing(tmp_path, max_entries=max_entries)
+
+    assert response.payload.entries == []
+    assert response.payload.truncated is True

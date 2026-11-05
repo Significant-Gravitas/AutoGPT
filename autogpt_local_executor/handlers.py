@@ -1085,8 +1085,9 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"{base} is not a directory")
 
         # max_entries has no bound on the wire; cap it so a huge value can't
-        # walk a whole tree only to have the reply refused as too large.
-        limit = max(1, min(payload.max_entries, MAX_FILE_LIST_ENTRIES))
+        # walk a whole tree only to have the reply refused as too large. Zero
+        # or less asks for no entries.
+        limit = max(0, min(payload.max_entries, MAX_FILE_LIST_ENTRIES))
 
         def _walk() -> tuple[list[FileEntry], bool]:
             entries: list[FileEntry] = []
