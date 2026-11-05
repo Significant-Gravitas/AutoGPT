@@ -21,12 +21,17 @@ async def _raise(error: Exception) -> None:
     raise error
 
 
+def _own_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    # Only this module's: a retry left running by an earlier test can log here.
+    return [record for record in caplog.records if record.name == MODULE]
+
+
 @pytest.mark.asyncio
 async def test_returns_the_value(caplog: pytest.LogCaptureFixture):
     caplog.set_level(logging.INFO, logger=MODULE)
 
     assert await attempt_step("count", USER_ID, _value()) == 7
-    assert not caplog.records
+    assert not _own_records(caplog)
 
 
 @pytest.mark.asyncio
@@ -38,7 +43,7 @@ async def test_a_stalled_call_is_given_up_on_and_logged(
     result = await attempt_step("wait", USER_ID, asyncio.Event().wait())
 
     assert result is None
-    [record] = caplog.records
+    [record] = _own_records(caplog)
     assert record.levelno == logging.ERROR
     assert "TimeoutError" in record.getMessage()
     assert USER_ID in record.getMessage()
@@ -51,7 +56,7 @@ async def test_already_gone_is_logged_as_info(caplog: pytest.LogCaptureFixture):
     result = await attempt_step("delete", USER_ID, _raise(NotFoundError("gone")))
 
     assert result is None
-    [record] = caplog.records
+    [record] = _own_records(caplog)
     assert record.levelno == logging.INFO
     assert "already gone" in record.getMessage()
 
@@ -63,6 +68,6 @@ async def test_any_other_error_is_logged_and_not_raised(
     result = await attempt_step("stop", USER_ID, _raise(RuntimeError("db down")))
 
     assert result is None
-    [record] = caplog.records
+    [record] = _own_records(caplog)
     assert record.levelno == logging.ERROR
     assert "stop" in record.getMessage() and "db down" in record.getMessage()
