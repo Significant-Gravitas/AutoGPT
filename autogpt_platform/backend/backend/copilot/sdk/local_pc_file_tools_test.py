@@ -467,27 +467,57 @@ class TestLocalPCReadsThroughALimit:
         assert write.args[1]["content"] == "hello there"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("platform", "root", "reference", "path"),
+        [
+            # A folder outside the cloud sandbox's /home/user and /tmp, which
+            # the cloud resolver refused before the read reached the shim.
+            ("darwin", "/Users/alice/project", "/Users/alice/project/data.csv", None),
+            ("darwin", "/Users/alice/project", "data.csv", "/Users/alice/project/data.csv"),
+            ("windows", "C:\\Users\\alice\\project", "data.csv", "C:\\Users\\alice\\project\\data.csv"),
+            ("linux", "/home/user/ws", "/home/user/ws/data.csv", None),
+        ],
+        ids=["macos-absolute", "macos-relative", "windows-relative", "linux-absolute"],
+    )  # fmt: skip
     async def test_a_file_reference_reads_at_most_its_limit(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        platform: str,
+        root: str,
+        reference: str,
+        path: str | None,
     ):
-        shim = _shim(allowed_root="/home/user/ws", platform="linux")
+        shim = _shim(allowed_root=root, platform=platform)
         shim._rpc = AsyncMock(return_value=_contents(b"a,b\n1,2\n"))
         monkeypatch.setattr(
             "backend.copilot.sdk.file_ref.get_current_sandbox", lambda: shim
         )
 
-        data = await read_file_bytes("/home/user/ws/data.csv", None, MagicMock())
+        data = await read_file_bytes(reference, None, MagicMock())
 
         assert data == b"a,b\n1,2\n"
         shim._rpc.assert_awaited_once_with(
             "FILE_READ",
             {
-                "path": "/home/user/ws/data.csv",
+                "path": path or reference,
                 "encoding": "base64",
                 "offset": 0,
                 "length": _MAX_BARE_REF_BYTES + 1,
             },
         )
+
+    @pytest.mark.asyncio
+    async def test_a_file_reference_outside_the_folder_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim(allowed_root="/Users/alice/project", platform="darwin")
+        monkeypatch.setattr(
+            "backend.copilot.sdk.file_ref.get_current_sandbox", lambda: shim
+        )
+
+        with pytest.raises(ValueError, match="Path is not allowed"):
+            await read_file_bytes("/Users/alice/.ssh/id_ed25519", None, MagicMock())
+        shim._rpc.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_read_file_via_shim_reads_through_the_limit(self):

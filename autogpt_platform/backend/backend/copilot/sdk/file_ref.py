@@ -44,7 +44,7 @@ from backend.copilot.context import (
     get_workspace_manager,
     is_local_pc_executor,
     resolve_allowed_local_path,
-    resolve_sandbox_path,
+    resolve_executor_path,
 )
 from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
@@ -193,7 +193,8 @@ async def read_file_bytes(
     sandbox = get_current_sandbox()
     if sandbox is not None:
         try:
-            remote = resolve_sandbox_path(plain)
+            # A Local PC's folder, or E2B's /home/user and /tmp.
+            remote = resolve_executor_path(plain, sandbox)
         except ValueError as exc:
             raise ValueError(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
