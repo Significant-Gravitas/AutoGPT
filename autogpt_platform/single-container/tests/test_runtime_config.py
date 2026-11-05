@@ -10,6 +10,7 @@ import re
 import stat
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -2029,14 +2030,34 @@ def check_chat_environment(environ, dotenv_paths):
 """
 
 
+def _read_plain_dotenv(path: str | os.PathLike[str]) -> dict[str, str]:
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def _dotenv_where_missing() -> dict[str, object]:
+    """python-dotenv for the backend's real check, where it is not installed.
+
+    The image runs check-chat-env on the backend's virtualenv, which has
+    python-dotenv, but this suite runs on a bare python3. Where the package is
+    missing, the plain KEY=VALUE files these tests write are read here; the
+    migration is still the backend's own."""
+    if importlib.util.find_spec("dotenv") is not None:
+        return {}
+    return {"dotenv": types.SimpleNamespace(dotenv_values=_read_plain_dotenv)}
+
+
 class CheckChatEnvTest(unittest.TestCase):
     """check-chat-env runs the backend's own check from its source."""
 
     def test_legacy_settings_use_the_real_migration(self) -> None:
         backend = Path(__file__).resolve().parents[2] / "backend"
-        with tempfile.TemporaryDirectory() as tmp:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(sys.modules, _dotenv_where_missing()),
+        ):
             env_file = Path(tmp) / ".env"
-            env_file.write_text("CHAT_API_KEY=synthetic-route-key\\n", encoding="utf-8")
+            env_file.write_text("CHAT_API_KEY=synthetic-route-key\n", encoding="utf-8")
             notes = runtime_config.check_chat_env(
                 env_file, {"AUTOGPT_BACKEND_DIR": str(backend)}
             )
