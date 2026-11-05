@@ -13,6 +13,7 @@ capability. Docs: https://docs.firecrawl.dev/features/alexandria
 import uuid
 from typing import Any
 
+from aiohttp import ClientTimeout
 from pydantic import SecretStr
 
 from backend.data.model import NodeExecutionStats
@@ -38,6 +39,11 @@ from ._config import firecrawl
 ALEXANDRIA_URL = "https://api.firecrawl.dev/v2/scrape"
 # Firecrawl caps one Alexandria execution at 120 seconds.
 MAX_TIMEOUT_SECONDS = 120
+# Stop waiting a little after Firecrawl's own cap, and give up after a few
+# throttled or failed attempts, so a busy Firecrawl can't hold a worker.
+REQUEST_TIMEOUT = ClientTimeout(total=MAX_TIMEOUT_SECONDS + 30)
+MAX_ATTEMPTS = 3
+MAX_RETRY_WAIT_SECONDS = 30
 # Firecrawl bills in its own credits (1 credit ≈ $0.001), as in _config.py.
 USD_PER_FIRECRAWL_CREDIT = 0.001
 
@@ -63,8 +69,12 @@ _TEST_TOOL = {
 }
 
 
-class AlexandriaError(Exception):
-    """A refused Alexandria request, with Firecrawl's error code and message."""
+class AlexandriaError(ValueError):
+    """A refused Alexandria request, with Firecrawl's error code and message.
+
+    A ValueError, so the executor treats a refusal (terms not accepted, out of
+    Firecrawl credits, bad options) as the user's to fix, not a platform fault.
+    """
 
 
 async def call_alexandria(
@@ -89,13 +99,18 @@ async def call_alexandria(
 
     # One request id across retries, so Firecrawl runs (and bills) a retried
     # paid call once.
-    response = await Requests(raise_for_status=False).post(
+    response = await Requests(
+        raise_for_status=False,
+        retry_max_attempts=MAX_ATTEMPTS,
+        retry_max_wait=MAX_RETRY_WAIT_SECONDS,
+    ).post(
         ALEXANDRIA_URL,
         headers={
             "Authorization": f"Bearer {api_key}",
             "x-request-id": str(uuid.uuid4()),
         },
         json=body,
+        timeout=REQUEST_TIMEOUT,
     )
     try:
         payload = response.json()
@@ -397,8 +412,8 @@ class FirecrawlRunDataToolBlock(Block):
         credits = _charge(self, result)
         data = result.get("data")
         records = result.get("records")
-        if records is None:
+        if isinstance(records, bool) or not isinstance(records, (int, float)):
             records = len(data) if isinstance(data, list) else int(data is not None)
         yield "data", data
-        yield "records", records
+        yield "records", int(records)
         yield "credits_cost", credits

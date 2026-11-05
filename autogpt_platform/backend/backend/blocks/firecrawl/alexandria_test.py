@@ -68,6 +68,22 @@ async def test_call_alexandria_sends_one_call_with_auth_and_request_id():
     }
 
 
+async def test_call_alexandria_bounds_retries_and_waiting():
+    body = {"success": True, "data": {"alexandria": [{"creditsCost": 0}]}}
+    with _patch_post(_response(200, body)) as requests_cls:
+        await call_alexandria("fc-key", "apollo", "people/search")
+
+    # A throttled or failing Firecrawl must not hold an executor worker.
+    assert requests_cls.call_args.kwargs["retry_max_attempts"] == 3
+    timeout = requests_cls.return_value.post.call_args.kwargs["timeout"]
+    assert timeout.total == 150
+
+
+def test_refusals_are_user_fixable_errors():
+    # The executor treats ValueErrors as the user's to fix, not platform faults.
+    assert issubclass(AlexandriaError, ValueError)
+
+
 async def test_call_alexandria_points_to_terms_page_when_terms_are_required():
     body = {
         "success": False,
@@ -136,6 +152,35 @@ async def test_run_data_tool_bills_then_raises_when_the_capability_failed():
 
     # A failed capability can still be charged, so its cost is recorded.
     assert captured[0].provider_cost == pytest.approx(0.003)
+
+
+async def test_run_data_tool_sends_trimmed_provider_and_capability():
+    block = FirecrawlRunDataToolBlock()
+    call = AsyncMock(return_value={"creditsCost": 0, "records": 0, "data": []})
+    with patch.object(block, "call_alexandria", call):
+        await _run(block, provider="  apollo ", capability=" people/search  ")
+
+    assert call.call_args.args[1:3] == ("apollo", "people/search")
+
+
+@pytest.mark.parametrize(
+    "result, records",
+    [
+        ({"data": [{"a": 1}, {"a": 2}]}, 2),
+        ({"data": {"people": []}}, 1),
+        ({"data": None}, 0),
+        ({"data": [], "records": 3.0}, 3),
+        ({"data": [{"a": 1}], "records": "many"}, 1),
+    ],
+)
+async def test_run_data_tool_counts_records(result: dict[str, Any], records: int):
+    block = FirecrawlRunDataToolBlock()
+    with patch.object(
+        block, "call_alexandria", AsyncMock(return_value={"creditsCost": 0, **result})
+    ):
+        outputs, _ = await _run(block, provider="apollo", capability="x")
+
+    assert outputs["records"] == [records]
 
 
 @pytest.mark.parametrize("provider, capability", [(" ", "x"), ("apollo", " ")])
