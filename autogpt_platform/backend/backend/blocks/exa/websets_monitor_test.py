@@ -171,6 +171,17 @@ async def test_update_import_requires_a_change():
 
 
 @pytest.mark.asyncio
+async def test_update_import_treats_empty_metadata_as_no_change():
+    block = ExaUpdateImportBlock()
+    api = AsyncMock()
+    with patch.object(block, "_api", api), pytest.raises(
+        ValueError, match="title or metadata"
+    ):
+        await collect_outputs(block, import_id=IMPORT_ID, metadata={})
+    api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_update_import_patches_title_and_metadata():
     block = ExaUpdateImportBlock()
     api = AsyncMock(return_value={"id": IMPORT_ID, "status": "canceled"})

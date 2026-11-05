@@ -32,6 +32,7 @@ from backend.sdk import (
 from . import agent_api
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._timeouts import MAX_RESEARCH_WAIT_SECONDS, execution_timeout_for
 from .agent_api import AgentRunRequest, AgentWaitResult, build_create_payload
 from .agent_billing import bill_finished_run
 from .agent_fixtures import (
@@ -69,6 +70,10 @@ class ExaCreateResearchBlock(Block):
     """Create a research task (now an Exa Agent run) and optionally wait for it."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_RESEARCH_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -99,7 +104,7 @@ class ExaCreateResearchBlock(Block):
             description="Maximum time to wait for completion in seconds (only if wait_for_completion is True)",
             advanced=True,
             ge=1,
-            le=3600,
+            le=MAX_RESEARCH_WAIT_SECONDS,
         )
 
     class Output(BlockSchemaOutput):
@@ -197,8 +202,10 @@ class ExaCreateResearchBlock(Block):
             )
         )
         created = parse_run(await self.create_run(credentials, payload))
+        # The run exists (and costs) at Exa now: hand over its ID before
+        # waiting, so a run cut short still leaves the workflow a way to it.
+        yield "research_id", created.run_id
         if not input_data.wait_for_completion:
-            yield "research_id", created.run_id
             yield "status", legacy_status(created.status)
             yield "model", input_data.model.value
             yield "instructions", created.query or input_data.instructions
@@ -213,7 +220,6 @@ class ExaCreateResearchBlock(Block):
                 f"Research {created.run_id} did not complete within "
                 f"{input_data.polling_timeout} seconds"
             )
-        yield "research_id", result.run.run_id
         yield "status", legacy_status(result.run.status)
         yield "model", input_data.model.value
         yield "instructions", result.run.query or input_data.instructions

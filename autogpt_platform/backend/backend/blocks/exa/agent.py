@@ -25,6 +25,7 @@ from backend.sdk import (
 from . import agent_api
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._timeouts import MAX_AGENT_WAIT_SECONDS, execution_timeout_for
 from .agent_api import AgentRunRequest, AgentWaitResult, build_create_payload
 from .agent_billing import bill_finished_run
 from .agent_fixtures import SAMPLE_COMPLETED_RUN, SAMPLE_QUEUED_RUN
@@ -77,6 +78,10 @@ class ExaAgentRunBlock(Block):
     """Start an Exa Agent run and (by default) wait for its result."""
 
     refuses_platform_credentials = True
+    # Let the longest polling timeout finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_AGENT_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -171,7 +176,7 @@ class ExaAgentRunBlock(Block):
             "is still going, the block fails with the run ID so you can collect "
             "it later; the run keeps going on Exa.",
             ge=10,
-            le=10800,
+            le=MAX_AGENT_WAIT_SECONDS,
         )
 
     class Output(AgentRunOutputs):
@@ -232,8 +237,10 @@ class ExaAgentRunBlock(Block):
         refuse_platform_credentials(self, credentials)
         payload = build_create_payload(_to_request(input_data))
         created = parse_run(await self.create_run(credentials, payload))
+        # The run exists (and costs) at Exa now: hand over its ID before
+        # waiting, so a run cut short still leaves the workflow a way to it.
+        yield "run_id", created.run_id
         if not input_data.wait_for_completion:
-            yield "run_id", created.run_id
             yield "status", created.status
             yield "created_at", created.created_at
             return
@@ -243,22 +250,27 @@ class ExaAgentRunBlock(Block):
         )
         run = result.run
         if result.timed_out:
-            yield "run_id", run.run_id
             yield "status", run.status
             yield "created_at", run.created_at
             yield "error", _timeout_message(run, input_data.polling_timeout)
             return
 
         await bill_finished_run(self, run, user_id)
-        for name, value in run_outputs(run):
+        for name, value in run_outputs(run, include_run_id=False):
             yield name, value
         if run.status == "failed":
             yield "error", await self.describe_failure(credentials, run)
 
 
-def run_outputs(run: AgentRun) -> Iterator[tuple[str, Any]]:
-    """Yield the shared :class:`AgentRunOutputs` fields for ``run``."""
-    yield "run_id", run.run_id
+def run_outputs(
+    run: AgentRun, *, include_run_id: bool = True
+) -> Iterator[tuple[str, Any]]:
+    """Yield the shared :class:`AgentRunOutputs` fields for ``run``.
+
+    ``include_run_id=False`` is for a block that already yielded the ID.
+    """
+    if include_run_id:
+        yield "run_id", run.run_id
     yield "status", run.status
     yield "stop_reason", run.stop_reason
     yield "text", run.text
@@ -271,7 +283,8 @@ def run_outputs(run: AgentRun) -> Iterator[tuple[str, Any]]:
 
 
 def _expected_outputs(raw_run: dict) -> list[tuple[str, Any]]:
-    return list(run_outputs(parse_run(raw_run)))
+    run = parse_run(raw_run)
+    return [("run_id", run.run_id), *run_outputs(run, include_run_id=False)]
 
 
 def _to_request(input_data: ExaAgentRunBlock.Input) -> AgentRunRequest:

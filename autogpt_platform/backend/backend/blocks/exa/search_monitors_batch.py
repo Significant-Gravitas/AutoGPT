@@ -148,6 +148,9 @@ def batch_body(input_data: ExaBatchSearchMonitorsBlock.Input) -> dict[str, Any]:
             "Set a name, status or metadata filter: batch actions never apply "
             "to all monitors at once"
         )
+    # Unlike the rest of the Monitors API, batchMonitors is snake_case in
+    # Exa's OpenAPI spec: `dry_run` and `limit` in, `ids`, `dry_run` and
+    # `has_more` out.
     return {
         "action": input_data.action.value,
         "filter": monitor_filter,

@@ -26,8 +26,7 @@ def refuse_platform_credentials(block: Block, credentials: Credentials) -> None:
 
 
 def platform_credentials_refused_message(provider: str) -> str:
-    # A ProviderName member hashes by its name, so look it up by its value.
-    label = provider_label(str(getattr(provider, "value", provider)))
+    label = provider_label(provider)
     return (
         f"This block keeps what it creates in the {label} account behind "
         f"its key, so it can't use the platform's shared {label} key. "

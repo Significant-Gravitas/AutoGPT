@@ -194,6 +194,13 @@ def test_legacy_num_sentences_maps_to_max_characters():
     }
 
 
+def test_a_huge_num_sentences_is_clamped_to_exas_ceiling():
+    contents = ContentSettings(highlights=HighlightSettings(num_sentences=10_000))
+    assert process_contents_settings(contents) == {
+        "highlights": {"maxCharacters": 1_000_000}
+    }
+
+
 def test_max_characters_wins_over_num_sentences():
     contents = ContentSettings(
         highlights=HighlightSettings(max_characters=700, num_sentences=3)

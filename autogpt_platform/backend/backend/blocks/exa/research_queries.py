@@ -20,6 +20,7 @@ from backend.sdk import (
 from . import agent_api
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._timeouts import MAX_RESEARCH_WAIT_SECONDS, execution_timeout_for
 from .agent_api import AgentWaitResult
 from .agent_billing import bill_finished_run
 from .agent_fixtures import SAMPLE_COMPLETED_RUN, SAMPLE_EVENT_LIST, SAMPLE_RUN_ID
@@ -188,6 +189,10 @@ class ExaWaitForResearchBlock(Block):
     """Wait for a research task (an Exa Agent run) to complete."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_RESEARCH_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -201,7 +206,7 @@ class ExaWaitForResearchBlock(Block):
             default=600,
             description="Maximum time to wait in seconds",
             ge=1,
-            le=3600,
+            le=MAX_RESEARCH_WAIT_SECONDS,
         )
         check_interval: int = SchemaField(
             default=10,

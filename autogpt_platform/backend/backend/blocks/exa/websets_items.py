@@ -145,10 +145,9 @@ class WebsetItemModel(BaseModel):
             enrichments=enrichments_dict,
             created_at=item.created_at.isoformat() if item.created_at else "",
             updated_at=item.updated_at.isoformat() if item.updated_at else "",
-            # The SDK's Source is a plain Enum: str() gives 'Source.search'.
-            source=(
-                str(getattr(item.source, "value", item.source)) if item.source else None
-            ),
+            # The SDK model sets use_enum_values, so this is already "search"
+            # or "import".
+            source=str(item.source) if item.source else None,
             source_id=item.source_id,
         )
 

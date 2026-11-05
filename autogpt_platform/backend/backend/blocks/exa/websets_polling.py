@@ -27,6 +27,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from ._timeouts import MAX_WEBSETS_WAIT_SECONDS, execution_timeout_for
 from .helpers import merge_exa_cost
 from .websets_api import ExaWebsetsBlockBase, segment
 
@@ -65,6 +66,10 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
     """Wait for a webset to reach a specific status with progress tracking."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_WEBSETS_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -82,7 +87,7 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
             default=300,
             description="Maximum time to wait in seconds",
             ge=1,
-            le=1800,  # 30 minutes max
+            le=MAX_WEBSETS_WAIT_SECONDS,
         )
         check_interval: int = SchemaField(
             default=5,
@@ -212,6 +217,10 @@ class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
     """Wait for a specific webset search to complete with progress tracking."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_WEBSETS_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -229,7 +238,7 @@ class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
             default=300,
             description="Maximum time to wait in seconds",
             ge=1,
-            le=1800,
+            le=MAX_WEBSETS_WAIT_SECONDS,
         )
         check_interval: int = SchemaField(
             default=5,
@@ -315,6 +324,10 @@ class ExaWaitForEnrichmentBlock(Block):
     """Wait for a webset enrichment to complete with progress tracking."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_WEBSETS_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -332,7 +345,7 @@ class ExaWaitForEnrichmentBlock(Block):
             default=300,
             description="Maximum time to wait in seconds",
             ge=1,
-            le=1800,
+            le=MAX_WEBSETS_WAIT_SECONDS,
         )
         check_interval: int = SchemaField(
             default=5,

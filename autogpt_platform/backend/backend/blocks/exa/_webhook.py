@@ -259,11 +259,9 @@ async def _delete_unusable_webhook(
 
 
 def verify_exa_signature(
-    secrets: str | list[str], signature_header: str | None, body: bytes
+    secrets: list[str], signature_header: str | None, body: bytes
 ) -> None:
     """Raise 403 unless ``signature_header`` signs ``body`` with one of ``secrets``."""
-    if isinstance(secrets, str):
-        secrets = [secrets]
     if not signature_header:
         raise HTTPException(
             status_code=403, detail=f"Missing {SIGNATURE_HEADER} header"

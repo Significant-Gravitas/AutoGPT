@@ -25,6 +25,8 @@ from .content_settings import (
 # Exa: "numSentences ... Currently mapped to a character budget of about 1333
 # characters per sentence."
 CHARACTERS_PER_SENTENCE = 1333
+# Exa's ceiling for highlights ``maxCharacters``.
+MAX_HIGHLIGHT_CHARACTERS = 1_000_000
 
 # Exa's documented livecrawl -> maxAgeHours mapping. "fallback" equals Exa's
 # default (omit maxAgeHours); "preferred" has no equivalent and passes through.
@@ -119,7 +121,12 @@ def highlight_max_characters(highlights: HighlightSettings) -> int | None:
     if highlights.max_characters is not None:
         return highlights.max_characters
     if highlights.num_sentences is not None:
-        return highlights.num_sentences * CHARACTERS_PER_SENTENCE
+        # num_sentences has no upper bound of its own, so keep the converted
+        # budget inside the range Exa accepts.
+        return min(
+            highlights.num_sentences * CHARACTERS_PER_SENTENCE,
+            MAX_HIGHLIGHT_CHARACTERS,
+        )
     return None
 
 

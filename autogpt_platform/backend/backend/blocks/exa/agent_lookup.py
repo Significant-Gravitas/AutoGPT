@@ -20,6 +20,7 @@ from backend.sdk import (
 from . import agent_api
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._timeouts import MAX_AGENT_WAIT_SECONDS, execution_timeout_for
 from .agent import RUN_ID_PLACEHOLDER, AgentRunOutputs, run_outputs
 from .agent_api import AgentWaitResult
 from .agent_billing import bill_finished_run
@@ -98,6 +99,10 @@ class ExaWaitForAgentRunBlock(Block):
     """Poll an Exa Agent run until it finishes or the timeout passes."""
 
     refuses_platform_credentials = True
+    # Let the longest timeout input finish before the executor cancels run().
+    execution_timeout_seconds: int | None = execution_timeout_for(
+        MAX_AGENT_WAIT_SECONDS
+    )
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -112,7 +117,7 @@ class ExaWaitForAgentRunBlock(Block):
             description="Longest time to wait in seconds (1-10800). Ultra runs "
             "usually take about 30 minutes and can take up to 3 hours.",
             ge=1,
-            le=10800,
+            le=MAX_AGENT_WAIT_SECONDS,
             advanced=False,
         )
         check_interval: int = SchemaField(

@@ -93,7 +93,8 @@ class ExaUpdateImportBlock(ExaWebsetsBlockBase):
         payload: dict[str, Any] = {}
         if input_data.title:
             payload["title"] = input_data.title
-        if input_data.metadata is not None:
+        # An empty mapping keeps the current metadata, as the input says.
+        if input_data.metadata:
             payload["metadata"] = input_data.metadata
         if not payload:
             raise ValueError("Set a new title or metadata to update the import.")
