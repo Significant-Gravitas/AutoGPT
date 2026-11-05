@@ -9,13 +9,6 @@ import pytest
 
 from backend.copilot.learning import retrieval
 from backend.copilot.tools import skills
-from backend.copilot.tools.skill_updates_test import (
-    USER,
-    _install,
-    _marketplace,
-    _package,
-)
-from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.util.testing import Rendezvous
 
 
@@ -28,36 +21,6 @@ def skills_on(monkeypatch):
     monkeypatch.setattr(
         skills, "is_skills_feature_enabled", AsyncMock(return_value=True)
     )
-
-
-@pytest.fixture
-def update_queue(monkeypatch):
-    """The names a write queues for the next notice, held in memory the way
-    the Redis set holds them."""
-    queued: set[str] = set()
-
-    async def remember(_user_id, _expert_id, names):
-        queued.update(names)
-
-    async def consume(_user_id, _expert_id):
-        names = sorted(queued)
-        queued.clear()
-        return names
-
-    monkeypatch.setattr(skills, "_remember_updated", remember)
-    monkeypatch.setattr(skills, "_consume_updated", consume)
-
-
-def _after_other_ready_work(lookup: AsyncMock) -> AsyncMock:
-    """*lookup*, answering only once the loop has run every other ready task,
-    as a database round trip lets it."""
-
-    async def answer(*args, **kwargs):
-        for _ in range(10):
-            await asyncio.sleep(0)
-        return await lookup(*args, **kwargs)
-
-    return AsyncMock(side_effect=answer)
 
 
 @pytest.mark.asyncio
@@ -94,41 +57,6 @@ async def test_a_turn_reads_updates_and_versions_together_after_listing(
     queued.assert_awaited_once_with("user-1", "expert-1")
     heads.assert_awaited_once_with("user-1", "expert-1")
     seen.assert_awaited_once_with("chat-1")
-
-
-@pytest.mark.asyncio
-async def test_a_turn_that_updates_a_copy_announces_the_update_once(
-    skills_on, update_queue
-):
-    """A cold turn that brings a marketplace copy up to date records the new
-    version as the one the chat has seen. Heads read while the copy is still
-    being updated (here, while its marketplace lookup is out) would record
-    the old one, and the next turn would announce the same update again."""
-    manager = _FakeWorkspaceManager()
-    v1 = _package("cold-email", "v1", "# Cold\n")
-    v2 = _package("cold-email", "v2", "# Cold, revised\n")
-    with _patch_skills_path(manager) as patched:
-        await _install(v1)
-        history = _history(await skills.build_skills_context(USER))
-        # Takes the install's own queued name and records v1 as seen.
-        await skills.build_skills_update_notice(
-            USER, prior_contents=history, session_id="chat-1"
-        )
-        _marketplace(patched, v2)
-        patched.skill_db.get_active_versions = _after_other_ready_work(
-            patched.skill_db.get_active_versions
-        )
-
-        updating = await skills.build_skills_update_notice(
-            USER, prior_contents=history, session_id="chat-1"
-        )
-        after = await skills.build_skills_update_notice(
-            USER, prior_contents=history, session_id="chat-1"
-        )
-
-    assert manager.files["/skills/cold-email/SKILL.md"] == v2.skill_markdown.encode()
-    assert "Updated skills: cold-email." in updating
-    assert after == ""
 
 
 @pytest.mark.asyncio

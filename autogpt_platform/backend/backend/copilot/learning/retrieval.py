@@ -117,6 +117,11 @@ def index_revision(entries: list[IndexEntry]) -> str:
 
 
 async def read_seen_index_revision(session_id: str) -> str | None:
+    """Return the seen revision, or None when no marker exists.
+
+    Redis failures propagate; callers must handle them without marking unseen
+    revisions as seen.
+    """
     redis = await get_redis_async()
     raw = await redis.get(SKILLS_INDEX_SEEN_KEY.format(session_id=session_id))
     if raw is None:
