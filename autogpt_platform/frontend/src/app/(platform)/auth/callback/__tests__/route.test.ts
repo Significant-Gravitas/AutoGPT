@@ -548,6 +548,31 @@ describe("auth callback GET — default landing next", () => {
     expect(response.headers.get("location")).toBe(`${origin}/copilot`);
   });
 
+  it.each([
+    [true, "/home?utm_source=newsletter", "/onboarding?utm_source=newsletter"],
+    [
+      true,
+      "/copilot?utm_campaign=launch&gclid=abc",
+      "/onboarding?utm_campaign=launch&gclid=abc",
+    ],
+    [false, "/home?_gl=1*abc", "/copilot?_gl=1*abc"],
+  ])(
+    "keeps a campaign link's tracking params (onboarding pending: %s, next=%s)",
+    async (shouldShowOnboarding, next, expected) => {
+      getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding });
+
+      const response = await GET(
+        makeCallbackRequest(`/auth/callback?next=${encodeURIComponent(next)}`),
+      );
+
+      expect(response.headers.get("location")).toBe(`${origin}${expected}`);
+      expect(revalidatePathMock).toHaveBeenCalledWith(
+        expected.split("?")[0],
+        "layout",
+      );
+    },
+  );
+
   it.each(["/marketplace", "/home?sessionId=abc"])(
     "still honours a real deep link (%s) before onboarding",
     async (next) => {

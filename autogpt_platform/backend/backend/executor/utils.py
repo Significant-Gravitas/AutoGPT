@@ -414,11 +414,13 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
+    # The queued input keeps the None, so when the node runs a None here is a
+    # placeholder too, unless its pin is linked: that None was really sent.
     placeholders: set[str] = set()
     if dry_run:
-        cred_field_names = set(schema.get_credentials_fields().keys())
-        for field_name in cred_field_names:
-            if field_name not in data:
+        linked_pins = {link.sink_name for link in node.input_links}
+        for field_name in schema.get_credentials_fields():
+            if data.get(field_name) is None and field_name not in linked_pins:
                 data = {**data, field_name: None}
                 placeholders.add(field_name)
 

@@ -1,6 +1,10 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus } from "@/app/api/helpers";
-import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   type EmailVerificationNotice,
@@ -109,14 +113,17 @@ export async function GET(request: Request) {
       // Prefer a sanitized ?next (relative paths only — getAuthDeepLink drops
       // absolute and protocol-relative values, so a crafted ?next can't
       // open-redirect the user off-site); otherwise route by onboarding state.
-      // A default landing (`next=/home`) routes by onboarding state too, so a
-      // new account never lands on Home first (SECRT-3384).
       // Resolve the final target BEFORE revalidating so we revalidate the page
       // the user actually lands on.
+      const rawNext = searchParams.get("next");
       next =
-        getAuthDeepLink(searchParams.get("next")) ??
-        (shouldShowOnboarding ? "/onboarding" : "/copilot");
-      revalidatePath(next, "layout");
+        getAuthDeepLink(rawNext) ??
+        withAuthTracking(
+          shouldShowOnboarding ? "/onboarding" : "/copilot",
+          rawNext,
+        );
+      // A cache tag is the path alone; a query would make this a no-op.
+      revalidatePath(next.split(/[?#]/)[0], "layout");
     } catch (createUserError) {
       console.error("Error creating user:", createUserError);
 
