@@ -36,6 +36,15 @@ logger = logging.getLogger(__name__)
 SubjectOf = Callable[[], Awaitable[Subject | None]]
 
 
+class CallRefused(Exception):
+    """A subject resolver refusing a call outright, before any card opens:
+    the call answers with ``result``, and nothing is held or run."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__("the call was refused before the gate decided")
+        self.result = result
+
+
 class Verdict(BaseModel):
     """The gate's decision on a call that proceeds, and the subject it decided
     on, where it resolved one: an approval of exactly this call skips that."""
@@ -77,6 +86,8 @@ async def gate_non_registry_tool(
             session,
             subject_of=recorded if subject_of is not None else None,
         )
+    except CallRefused as refused:
+        return refused.result, None
     except Exception:
         logger.warning(f"Action gate failed for MCP tool {tool_name}", exc_info=True)
         return (

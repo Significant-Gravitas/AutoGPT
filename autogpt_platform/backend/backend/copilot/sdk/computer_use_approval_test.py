@@ -402,6 +402,39 @@ async def test_a_script_runs_once_the_user_approves_it(
     assert _sent(computer) == [("run_script", ["script"])]
 
 
+@pytest.mark.parametrize("mode", ["auto", "ask_first"])
+async def test_a_script_too_long_for_its_card_is_refused_before_it_asks(
+    rows, computer, mode: AutopilotMode
+):
+    """cua-driver takes a 64 KiB script, but a card shows about 26,000
+    characters of a call, so a benign head could carry an unseen tail that
+    ran on the user's approval of the head."""
+    session = _session(mode)
+    script = "return 1;\n" + "// padding\n" * 3_000 + 'cua.call("launch_app", {})'
+
+    refused = await _call_as_otto(session, computer)(
+        {"tool": "run_script", "arguments": {"script": script}}
+    )
+
+    assert refused["isError"] is True
+    assert json.loads(refused["content"][0]["text"])["code"] == "TOO_LONG_TO_APPROVE"
+    assert rows.rows == {}
+    assert _sent(computer) == []
+
+
+async def test_a_script_that_fits_is_shown_whole_on_its_card(rows, computer):
+    session = _session("auto")
+    script = "return 1;\n" + "// padding\n" * 2_000
+
+    await _call_as_otto(session, computer)(
+        {"tool": "run_script", "arguments": {"script": script}}
+    )
+
+    (card,) = rows.rows.values()
+    assert card.payload["clipped"] == []
+    assert card.payload["arguments"]["arguments"]["script"] == script
+
+
 async def test_a_launch_that_runs_a_command_line_asks_even_in_auto(
     rows, computer, supervisor
 ):

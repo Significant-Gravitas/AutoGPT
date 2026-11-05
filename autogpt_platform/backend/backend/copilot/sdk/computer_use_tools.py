@@ -16,6 +16,7 @@ the disk also waits for the user's approval of that call
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable
@@ -28,7 +29,9 @@ from backend.copilot.context import (
     get_execution_context,
     is_local_pc_executor,
 )
-from backend.copilot.gate.mcp_seam import approved_for
+from backend.copilot.gate.mcp_seam import CallRefused, approved_for
+from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.review import CARD_ARGUMENT_CHARS, card_shows_whole
 from backend.copilot.gate.subject import Subject
 from backend.copilot.sdk.computer_use_approval import (
     UNREADABLE,
@@ -143,7 +146,24 @@ async def computer_use_subject(args: dict[str, Any]) -> Subject | None:
         catalog = await shim.computer.tools(_guard=guard)
     except ShimComputerUseError:
         return UNREADABLE
-    return computer_subject(tool, arguments, tool_spec(catalog, tool))
+    subject = computer_subject(tool, arguments, tool_spec(catalog, tool))
+    # The user approves what the card shows, and the call runs whole: a
+    # script or a list of paths past what a card shows would run its unseen
+    # tail on that approval.
+    if subject.effect is Effect.EXTERNAL and not card_shows_whole(args):
+        raise CallRefused(
+            err(
+                "TOO_LONG_TO_APPROVE",
+                f"`{tool}` waits for the user's approval on a card, and this "
+                f"call is too long for the card to show whole: its arguments "
+                f"run to {len(json.dumps(arguments)):,} characters, and a card "
+                f"shows about {CARD_ARGUMENT_CHARS:,}. Nothing ran. Make it "
+                "shorter, a script that does less or fewer files or arguments "
+                "at a time, and call again.",
+                {"tool": tool},
+            )
+        )
+    return subject
 
 
 async def _require_computer_use() -> Gate | dict[str, Any]:
