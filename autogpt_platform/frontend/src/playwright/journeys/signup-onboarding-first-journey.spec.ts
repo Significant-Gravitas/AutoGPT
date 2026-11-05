@@ -82,13 +82,17 @@ test.describe("a new account goes to onboarding first", () => {
     expect(setup.ok(), `account setup failed: ${setup.status()}`).toBe(true);
 
     const seen = await watchTheWayIn(context, page);
-    const unanswered = await answerOnboardingCheckLast(page);
+    const hold = await answerOnboardingCheckLast(page);
     seen.startCounting();
     await page.goto("/home");
 
     await expectOnboardingStarted(page);
     expect(
-      unanswered,
+      hold.held,
+      "onboarding checks held for Home's inputs",
+    ).toBeGreaterThan(0);
+    expect(
+      hold.unanswered,
       "Home inputs that never answered while the onboarding check was held",
     ).toEqual([]);
     // Home is where this one starts, so only the prompts are checked.
@@ -96,6 +100,7 @@ test.describe("a new account goes to onboarding first", () => {
   });
 });
 
+const ONBOARDING_CHECK = "/api/proxy/api/onboarding/completed";
 const HOME_INPUTS = {
   credits: "/api/proxy/api/credits",
   autoTopUp: "/api/proxy/api/credits/auto-top-up",
@@ -106,12 +111,14 @@ const HOME_INPUTS = {
 // missing input fails by name rather than as a slow redirect.
 const HOLD_LIMIT = 8_000;
 
-// Holds the onboarding check until Home has the answers its prompts need (the
-// paywall's too when payment is on), so a prompt that doesn't wait for
-// onboarding opens on every run, not only when the check comes back last.
-// Returns the inputs that hadn't answered when the hold gave up.
+// Holds the onboarding check until Home has the answers its prompts need, so a
+// prompt that doesn't wait for onboarding opens on every run, not only when
+// the check comes back last. The paywall's subscription is waited for when
+// payment is on but never required: it is only asked for once the payment
+// answer has rendered, and a LOCAL build (CI) never gates on it anyway.
+// Reports how many checks it held and which required inputs never answered.
 async function answerOnboardingCheckLast(page: Page) {
-  const unanswered: string[] = [];
+  const hold = { held: 0, unanswered: [] as string[] };
   const answered = new Map<string, Response>();
   const waiters: Array<() => void> = [];
   page.on("response", (response) => {
@@ -127,46 +134,54 @@ async function answerOnboardingCheckLast(page: Page) {
         waiters.splice(0).forEach((wake) => wake());
       });
   });
-  async function neededPaths() {
+  const required = [
+    HOME_INPUTS.credits,
+    HOME_INPUTS.autoTopUp,
+    HOME_INPUTS.config,
+  ];
+  async function waitingFor() {
     const config = answered.get(HOME_INPUTS.config);
     const body = config ? await config.json().catch(() => null) : null;
-    const needed = [HOME_INPUTS.credits, HOME_INPUTS.autoTopUp];
-    if (!config) needed.push(HOME_INPUTS.config);
-    if (body?.payment_enabled) needed.push(HOME_INPUTS.subscription);
-    return needed;
+    const wanted = body?.payment_enabled
+      ? [...required, HOME_INPUTS.subscription]
+      : required;
+    return wanted.filter((path) => !answered.has(path));
   }
-  async function allAnswered(deadline: number) {
-    while (Date.now() < deadline) {
-      const missing = (await neededPaths()).filter((p) => !answered.has(p));
-      if (missing.length === 0) return [];
+  async function untilAnswered(deadline: number) {
+    while (Date.now() < deadline && (await waitingFor()).length > 0) {
       await new Promise<void>((wake) => {
         waiters.push(wake);
         setTimeout(wake, 250);
       });
     }
-    return (await neededPaths()).filter((p) => !answered.has(p));
+    return required.filter((path) => !answered.has(path));
   }
 
-  await page.route("**/api/proxy/api/onboarding/completed", async (route) => {
-    const missing = await allAnswered(Date.now() + HOLD_LIMIT);
-    for (const path of missing) {
-      if (!unanswered.includes(path)) unanswered.push(path);
-    }
-    // Two frames, so React has rendered what those answers trigger.
-    await route
-      .request()
-      .frame()
-      .evaluate(
-        () =>
-          new Promise((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(resolve)),
-          ),
-      )
-      .catch(() => {});
-    // Not continue(): that skips the shared fixture's routes.
-    await route.fallback();
-  });
-  return unanswered;
+  // By pathname, so a query string on the check can't turn the hold off.
+  await page.route(
+    (url) => url.pathname === ONBOARDING_CHECK,
+    async (route) => {
+      hold.held += 1;
+      const missing = await untilAnswered(Date.now() + HOLD_LIMIT);
+      for (const path of missing) {
+        if (!hold.unanswered.includes(path)) hold.unanswered.push(path);
+      }
+      // Two frames, so React has rendered what those answers trigger.
+      await route
+        .request()
+        .frame()
+        .evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        )
+        .catch(() => {});
+      // Not continue(): that skips the shared fixture's routes.
+      await route.fallback();
+    },
+  );
+  return hold;
 }
 
 async function expectOnboardingStarted(page: Page) {
@@ -193,23 +208,16 @@ async function watchTheWayIn(context: BrowserContext, page: Page) {
   await context.addInitScript((watched: Record<string, string>) => {
     const report = (window as unknown as Record<string, unknown>)
       .__reportPrompt as (prompt: string, path: string) => void;
-    // textContent (no layout) at most every 100 ms: reading innerText on
-    // every mutation stalls the page enough to delay Playwright's network
-    // events. The prompts are only in the DOM while they show.
-    let scheduled = false;
+    // Every mutation batch, so even a prompt that flashes is seen.
+    // textContent needs no layout, and the prompts are only in the DOM while
+    // they show.
     function check() {
-      scheduled = false;
       const text = document.body?.textContent ?? "";
       for (const [prompt, copy] of Object.entries(watched)) {
         if (text.includes(copy)) report(prompt, window.location.pathname);
       }
     }
-    function schedule() {
-      if (scheduled) return;
-      scheduled = true;
-      setTimeout(check, 100);
-    }
-    new MutationObserver(schedule).observe(document, {
+    new MutationObserver(check).observe(document, {
       childList: true,
       subtree: true,
       characterData: true,

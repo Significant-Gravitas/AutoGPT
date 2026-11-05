@@ -218,13 +218,10 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   // An unfinished user who left the wizard (Back, a link) is sent back on
-  // their next page, as a full page load would. Not an admin impersonating
-  // one: the answer is the target's, and the admin must stay free to move.
+  // their next page, as a full page load would.
   const isKnownUnfinished = isOnboardingComplete === false;
   useEffect(() => {
-    if (isKnownUnfinished && !hasImpersonation()) {
-      hasInitialized.current = false;
-    }
+    if (isKnownUnfinished) hasInitialized.current = false;
   }, [isKnownUnfinished, pathname]);
 
   useEffect(() => {
@@ -279,7 +276,13 @@ export default function OnboardingProvider({
           isOnAuthRoute,
           hasPendingAuthDeepLink,
         });
-        if (redirectTarget) {
+        // An admin impersonating an unfinished user is never sent into the
+        // target's wizard; the answer is the target's, not theirs.
+        const isAdminViewingTarget =
+          redirectTarget === "/onboarding" &&
+          !isOnAuthRoute &&
+          hasImpersonation();
+        if (redirectTarget && !isAdminViewingTarget) {
           // Leaving an auth page keeps a campaign link's tracking params.
           router.replace(
             isOnAuthRoute

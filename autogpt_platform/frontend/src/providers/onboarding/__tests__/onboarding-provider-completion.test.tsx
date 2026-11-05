@@ -277,19 +277,21 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
-  test("an admin impersonating an unfinished user is not bounced to the wizard on every page", async () => {
+  test("an admin impersonating an unfinished user is never sent into the target's wizard, and sees it finish", async () => {
     ImpersonationState.set("target-user", "user-a");
     mockPathname = "/admin/users";
     const view = render(tree());
     await waitFor(() => expect(completion()).toBe("false"));
-    const checks = backend.completionChecks;
-    const redirects = routerReplace.mock.calls.length;
 
     mockPathname = "/admin/users/target-user";
     view.rerender(tree());
-    await act(async () => {});
+    await waitFor(() => expect(backend.completionChecks).toBe(2));
 
-    expect(backend.completionChecks).toBe(checks);
-    expect(routerReplace.mock.calls.length).toBe(redirects);
+    // The target finishes onboarding; the admin's next page picks it up.
+    backend.isCompleted = true;
+    mockPathname = "/home";
+    view.rerender(tree());
+    await waitFor(() => expect(completion()).toBe("true"));
+    expect(routerReplace).not.toHaveBeenCalledWith("/onboarding");
   });
 });
