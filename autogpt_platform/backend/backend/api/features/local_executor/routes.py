@@ -37,7 +37,11 @@ from backend.api.features.local_executor.models import (
 from backend.api.features.local_executor.state import mark_recording_reviewed
 from backend.api.features.local_executor.websocket import router as websocket_router
 from backend.copilot.config import ChatConfig
-from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
+from backend.copilot.model import (
+    CHAT_STATUS_RUNNING,
+    ChatSessionInfo,
+    get_chat_session_metadata,
+)
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.sdk.computer_use_policy import computer_use_scope
 from backend.copilot.sdk.recording_tools import (
@@ -419,8 +423,21 @@ async def _release_reviewed_local_shim(
     user_id: str,
     shim: LocalPCShim,
 ) -> None:
+    """Detach the reviewed session from its machine and close its shim, as a
+    turn does when it ends, unless a turn is running: it shares this shim,
+    and releases it itself when it ends."""
     try:
         session = await get_chat_session_metadata(session_id, user_id)
+    except Exception:
+        logger.warning(
+            "[LocalPC] Failed to read reviewed recording session %s",
+            session_id[:12],
+            exc_info=True,
+        )
+        session = None
+    if session is not None and session.chat_status == CHAT_STATUS_RUNNING:
+        return
+    try:
         if session is not None and session.metadata.execution_target.kind == "local":
             target = session.metadata.execution_target
             presence = await get_machine_presence(
