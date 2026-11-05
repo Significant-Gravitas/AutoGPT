@@ -3,7 +3,6 @@ what the cap reads."""
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -151,7 +150,7 @@ async def test_a_claim_on_a_row_a_cancel_moves_mid_admit_is_busy():
             status=CHAT_STATUS_QUEUED,
             user_id=user_id,
         )
-        cancel_holds_the_row = asyncio.Event()
+        cancel_backend: asyncio.Queue[int] = asyncio.Queue(maxsize=1)
         cancel_may_commit = asyncio.Event()
 
         async def cancel() -> None:
@@ -160,13 +159,14 @@ async def test_a_claim_on_a_row_a_cancel_moves_mid_admit_is_busy():
                     where={"id": session.session_id, "chatStatus": CHAT_STATUS_QUEUED},
                     data={"chatStatus": CHAT_STATUS_IDLE},
                 )
-                cancel_holds_the_row.set()
+                rows = await tx.query_raw("SELECT pg_backend_pid() AS pid")
+                cancel_backend.put_nowait(rows[0]["pid"])
                 await cancel_may_commit.wait()
 
         cancelling = asyncio.create_task(cancel())
         admitting = None
         try:
-            await asyncio.wait_for(cancel_holds_the_row.wait(), timeout=10)
+            blocker_pid = await asyncio.wait_for(cancel_backend.get(), timeout=10)
             admitting = asyncio.create_task(
                 copilot_db.admit_chat_session_turn(
                     session_id=session.session_id,
@@ -175,9 +175,7 @@ async def test_a_claim_on_a_row_a_cancel_moves_mid_admit_is_busy():
                     capacity=5,
                 )
             )
-            await asyncio.sleep(0.5)
-            # Still queued in the admit's snapshot, so its flip waits on the row.
-            assert not admitting.done()
+            await _wait_for_database_lock(blocker_pid, "transactionid")
         finally:
             cancel_may_commit.set()
             await asyncio.gather(
@@ -206,7 +204,7 @@ async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
     )
     try:
         session = await create_chat_session(user_id, dry_run=False)
-        holding = asyncio.Event()
+        holder_backend: asyncio.Queue[int] = asyncio.Queue(maxsize=1)
         release = asyncio.Event()
 
         async def hold_the_users_lock() -> None:
@@ -215,13 +213,14 @@ async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
                     "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
                     f"copilot-turns:{user_id}",
                 )
-                holding.set()
+                rows = await tx.query_raw("SELECT pg_backend_pid() AS pid")
+                holder_backend.put_nowait(rows[0]["pid"])
                 await release.wait()
 
         holder = asyncio.create_task(hold_the_users_lock())
         admitting = None
         try:
-            await asyncio.wait_for(holding.wait(), timeout=10)
+            blocker_pid = await asyncio.wait_for(holder_backend.get(), timeout=10)
             admitting = asyncio.create_task(
                 copilot_db.admit_chat_session_turn(
                     session_id=session.session_id,
@@ -230,10 +229,8 @@ async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
                     capacity=5,
                 )
             )
-            await asyncio.sleep(1.5)
-            assert not admitting.done()
+            observed_ms = await _wait_for_database_lock(blocker_pid, "advisory")
         finally:
-            released_at = datetime.now(UTC)
             release.set()
             await asyncio.gather(
                 holder,
@@ -247,9 +244,7 @@ async def test_an_admit_that_waited_on_the_lock_is_stamped_after_the_wait():
             where={"id": session.session_id}
         )
         assert row is not None
-        # Not 1.5 s before the release; the margin covers the database's clock
-        # differing a little from this one.
-        assert row.updatedAt >= released_at - timedelta(milliseconds=500)
+        assert round(row.updatedAt.timestamp() * 1000) >= observed_ms
     finally:
         await User.prisma().delete(where={"id": user_id})
 
@@ -357,6 +352,35 @@ async def test_another_users_session_is_never_admitted():
     finally:
         for user_id in (owner_id, other_id):
             await User.prisma().delete(where={"id": user_id})
+
+
+async def _wait_for_database_lock(blocker_pid: int, wait_event: str) -> float:
+    """Observe the admit blocked by this test's holder and return DB time in ms.
+
+    The holder owns a unique user's row or advisory lock, so its sole waiter
+    is this test's admit. Each observation uses a new implicit transaction.
+    Separate its start from the observation by more than the stored timestamp's
+    millisecond precision, so a transaction-start stamp cannot pass by rounding.
+    """
+    async with asyncio.timeout(10):
+        while True:
+            rows = await prisma.query_raw(
+                """SELECT pid,
+                    floor(extract(epoch FROM clock_timestamp()) * 1000)::float8
+                        AS observed_ms
+                FROM pg_stat_activity
+                WHERE datname = current_database() AND state = 'active'
+                    AND wait_event_type = 'Lock' AND wait_event = $2::text
+                    AND $1::int = ANY(pg_blocking_pids(pid))
+                    AND xact_start < date_trunc('milliseconds', clock_timestamp())
+                        - interval '1 millisecond'""",
+                blocker_pid,
+                wait_event,
+            )
+            if rows:
+                assert len(rows) == 1, rows
+                return rows[0]["observed_ms"]
+            await asyncio.sleep(0.01)
 
 
 async def _admit(user_id: str, session_id: str, capacity: int) -> bool:
