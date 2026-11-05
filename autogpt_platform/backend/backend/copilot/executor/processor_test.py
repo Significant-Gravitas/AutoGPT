@@ -2148,6 +2148,36 @@ class TestExecuteSafetyNet:
             pool.shutdown(wait=True)
 
 
+class TestLocalPCPinsSdk:
+    """Only the SDK engine is bound to the user's machine. A Local PC chat
+    must never run on the baseline engine, whose tools use a cloud sandbox."""
+
+    @pytest.mark.parametrize(
+        ("kind", "use_sdk", "thinking_available", "expected"),
+        [
+            ("local", False, True, True),
+            ("local", True, True, True),
+            # No SDK transport: stays on baseline, which refuses the turn.
+            ("local", False, False, False),
+            ("cloud", False, True, False),
+        ],
+    )
+    def test_a_local_pc_chat_runs_on_the_sdk_engine(
+        self, kind: str, use_sdk: bool, thinking_available: bool, expected: bool
+    ):
+        from backend.copilot.executor.processor import _pin_local_pc_to_sdk
+
+        session = MagicMock()
+        session.metadata.execution_target.kind = kind
+
+        assert (
+            _pin_local_pc_to_sdk(
+                session, use_sdk, thinking_available=thinking_available
+            )
+            is expected
+        )
+
+
 class TestBuildingModeForcesSdk:
     """Engine pinning: a session whose history shows building mode must run
     on the SDK engine even when the request asked for Fast."""

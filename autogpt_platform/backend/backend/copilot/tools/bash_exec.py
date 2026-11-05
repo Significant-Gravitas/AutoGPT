@@ -25,7 +25,7 @@ import asyncio
 import contextlib
 import logging
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import NotFoundException, TimeoutException
@@ -37,6 +37,8 @@ from backend.copilot.context import (
     get_bash_command_as_written,
     get_current_permissions,
     get_current_sandbox,
+    get_workdir,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
@@ -67,8 +69,12 @@ from backend.util.sandbox_login import (
 from .base import BaseTool
 from .connect_integration import requested_scopes
 from .e2b_sandbox import SandboxOwner, keep_sandbox_running
+from .local_pc_shim import COMMAND_TIMEOUT_SECONDS
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import MAX_OUTPUT_SIZE, get_workspace_dir, has_full_sandbox, run_sandboxed
+
+if TYPE_CHECKING:
+    from .local_pc_shim import LocalPCShim
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +159,9 @@ def _build_completion_response(
     exit_code: int,
     secret_values: list[str],
     session_id: str | None,
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
 ) -> BashExecResponse:
     """The command's result, with any injected token replaced by [REDACTED].
 
@@ -168,11 +177,25 @@ def _build_completion_response(
         out = out.replace(secret, "[REDACTED]")
         err = err.replace(secret, "[REDACTED]")
     return BashExecResponse(
-        message=f"Command executed with status code {exit_code}",
+        message=(
+            "Execution timed out and output was truncated by the Local PC executor limit."
+            if timed_out and output_truncated
+            else (
+                "Execution timed out"
+                if timed_out
+                else (
+                    f"Command executed with status code {exit_code}. Output was truncated "
+                    "by the Local PC executor limit."
+                    if output_truncated
+                    else f"Command executed with status code {exit_code}"
+                )
+            )
+        ),
         stdout=out,
         stderr=err,
         exit_code=exit_code,
-        timed_out=False,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
         session_id=session_id,
     ).from_outside(out, err)
 
@@ -189,6 +212,19 @@ class BashExecTool(BaseTool):
 
     @property
     def description(self) -> str:
+        sandbox = get_current_sandbox()
+        if is_local_pc_executor(sandbox):
+            shell = (
+                "the Windows command shell"
+                if sandbox.platform.lower() == "windows"
+                else "the machine's POSIX shell"
+            )
+            return (
+                f"Execute a command with {shell} on the user's Local PC. "
+                "This is explicitly enabled, full user-level command execution; "
+                "the file API workspace jail does not confine shell commands. "
+                f"Killed after `timeout` seconds, at most {COMMAND_TIMEOUT_SECONDS}."
+            )
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
@@ -202,16 +238,29 @@ class BashExecTool(BaseTool):
 
     @property
     def parameters(self) -> dict[str, Any]:
+        sandbox = get_current_sandbox()
+        command_description = "Bash command or script."
+        timeout_description = "Timeout in seconds; raise for long-running commands."
+        if is_local_pc_executor(sandbox):
+            command_description = (
+                "Windows command-shell input."
+                if sandbox.platform.lower() == "windows"
+                else "POSIX-shell command or script."
+            )
+            # The companion stops every command at its own cap.
+            timeout_description = (
+                f"Timeout in seconds, at most {COMMAND_TIMEOUT_SECONDS}."
+            )
         return {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Bash command or script.",
+                    "description": command_description,
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds; raise for long-running commands.",
+                    "description": timeout_description,
                     "default": 120,
                     "title": "Time limit",
                     "format": "seconds",
@@ -244,7 +293,13 @@ class BashExecTool(BaseTool):
         since the sandbox was made; None where one could not be read or told."""
         command = args.get("command")
         sandbox = get_current_sandbox()
-        if not isinstance(command, str) or sandbox is None:
+        # The probes below run commands on the box; on a Local PC that box is
+        # the user's own machine, so they are not run there.
+        if (
+            not isinstance(command, str)
+            or sandbox is None
+            or is_local_pc_executor(sandbox)
+        ):
             return None
         targets = run_targets(command)
         reads = await asyncio.gather(
@@ -306,6 +361,10 @@ class BashExecTool(BaseTool):
             ).from_outside()
 
         sandbox = get_current_sandbox()
+        if is_local_pc_executor(sandbox):
+            return await self._execute_on_local_pc(
+                sandbox, command, timeout, session_id
+            )
         if sandbox is not None:
             return await self._execute_on_e2b(
                 sandbox,
@@ -349,6 +408,55 @@ class BashExecTool(BaseTool):
             timed_out=timed_out,
             session_id=session_id,
         ).from_outside(stdout, stderr)
+
+    async def _execute_on_local_pc(
+        self,
+        sandbox: "LocalPCShim",
+        command: str,
+        timeout: int,
+        session_id: str | None,
+    ) -> ToolResponseBase:
+        """Run *command* on the user's Local PC through its companion.
+
+        No connected-account tokens or git identity are handed to the user's
+        machine, and no shell is assumed: ``shell="auto"`` picks the POSIX
+        shell or cmd.exe, and the companion answers SHELL_NOT_AVAILABLE when
+        neither exists.
+
+        Each stream keeps at most ``MAX_OUTPUT_SIZE``, as on E2B. The command
+        answers once, after it ends, so it cannot be stopped at that limit;
+        the companion sends at most a bounded prefix of its output.
+        """
+        try:
+            result = await sandbox.commands.run(
+                command,
+                shell="auto",
+                cwd=get_workdir(sandbox),
+                timeout=timeout,
+                envs={},
+            )
+        except Exception as exc:
+            logger.error("[LocalPC] bash_exec failed: %s", exc, exc_info=True)
+            return ErrorResponse(
+                message=f"Local PC execution failed: {exc}",
+                error="local_pc_execution_error",
+                session_id=session_id,
+            ).from_outside(str(exc))
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        return _build_completion_response(
+            stdout[:MAX_OUTPUT_SIZE],
+            stderr[:MAX_OUTPUT_SIZE],
+            result.exit_code,
+            [],
+            session_id,
+            timed_out=result.timed_out,
+            output_truncated=(
+                result.output_truncated
+                or len(stdout) > MAX_OUTPUT_SIZE
+                or len(stderr) > MAX_OUTPUT_SIZE
+            ),
+        )
 
     async def _execute_on_e2b(
         self,
@@ -668,7 +776,7 @@ async def _lands_on(path: str) -> bool:
     file, which runs first and can redirect it (``CDPATH``, an exported ``cat``).
     Same accepted race as ``_check_sandbox_symlink_escape``."""
     sandbox = get_current_sandbox()
-    if sandbox is None:
+    if sandbox is None or is_local_pc_executor(sandbox):
         return False
     try:
         if await changed_login_files(sandbox):

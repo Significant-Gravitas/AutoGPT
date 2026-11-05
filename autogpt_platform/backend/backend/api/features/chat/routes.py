@@ -18,10 +18,19 @@ from fastapi import (
     Security,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
+from backend.api.features.chat.local_create_lock import client_named_local_create
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
+from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -65,11 +74,14 @@ from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
     AutopilotMode,
+    ChatSession,
     ChatSessionInfo,
-    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     SessionIdConflictError,
     create_chat_session,
     delete_chat_session,
+    get_adoptable_local_client_chat_session,
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_or_create_client_chat_session,
@@ -140,6 +152,18 @@ from backend.copilot.service import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.local_pc_machine import (
+    MachineConnectionStaleError,
+    MachineControlError,
+    MachineNotConnectedError,
+    MachineSessionBinding,
+    activate_machine_session,
+    attach_machine_session,
+    detach_machine_session,
+    get_machine_presence,
+)
+from backend.copilot.tools.local_pc_relay_protocol import RelayPresence
+from backend.copilot.tools.local_pc_shim import get_shim_manager
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
     PresetListResponse,
@@ -475,6 +499,28 @@ class PeekPendingMessagesResponse(BaseModel):
     count: int
 
 
+class CloudExecutionTargetRequest(BaseModel):
+    kind: Literal["cloud"] = "cloud"
+
+
+class LocalExecutionTargetRequest(BaseModel):
+    kind: Literal["local"] = "local"
+    machine_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    expected_connection_id: str = Field(min_length=1, max_length=128)
+    browse_id: str = Field(min_length=1, max_length=256)
+    directory_ref: str = Field(min_length=1, max_length=256)
+
+
+ExecutionTargetRequest = Annotated[
+    CloudExecutionTargetRequest | LocalExecutionTargetRequest,
+    Field(discriminator="kind"),
+]
+
+
 class CreateSessionRequest(BaseModel):
     """Request model for creating (or get-or-creating) a chat session.
 
@@ -525,6 +571,19 @@ class CreateSessionRequest(BaseModel):
     # The approval mode the chat starts on. Leave unset to start on the
     # expert's default (or the platform default); send only a deliberate pick.
     autopilot_mode: AutopilotMode | None = None
+    execution_target: ExecutionTargetRequest = Field(
+        default_factory=CloudExecutionTargetRequest
+    )
+
+    @model_validator(mode="after")
+    def builder_sessions_use_cloud_execution(self) -> "CreateSessionRequest":
+        if self.builder_graph_id and self.execution_target.kind == "local":
+            raise ValueError("Builder-bound sessions do not support Local PC execution")
+        if self.expert_kickoff and self.execution_target.kind == "local":
+            raise ValueError(
+                "Expert kickoff sessions do not support Local PC execution"
+            )
+        return self
 
 
 class CreateSessionResponse(BaseModel):
@@ -533,7 +592,7 @@ class CreateSessionResponse(BaseModel):
     id: str
     created_at: str
     user_id: str | None
-    metadata: ChatSessionMetadata = ChatSessionMetadata()
+    metadata: PublicChatSessionMetadata = PublicChatSessionMetadata()
     expert_id: str | None = None
 
 
@@ -565,7 +624,7 @@ class SessionDetailResponse(BaseModel):
     oldest_sequence: int | None = None
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
-    metadata: ChatSessionMetadata = ChatSessionMetadata()
+    metadata: PublicChatSessionMetadata = PublicChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
     # outcome, and whether a parent still has a continuation to come.
@@ -619,6 +678,237 @@ class UpdateSessionPinnedRequest(BaseModel):
     """Request model for pinning/unpinning a session."""
 
     is_pinned: bool
+
+
+def _bindings_match(
+    expected: MachineSessionBinding,
+    actual: MachineSessionBinding,
+) -> bool:
+    return expected == actual
+
+
+async def _best_effort_detach_local_session(
+    presence: RelayPresence,
+    session_id: str,
+) -> None:
+    try:
+        await detach_machine_session(presence, session_id)
+    except Exception:
+        logger.warning(
+            "[LocalPC] Failed to detach machine attachment for session %s",
+            session_id[:12],
+            exc_info=True,
+        )
+
+
+async def _compensate_local_session_creation(
+    presence: RelayPresence,
+    session_id: str,
+    *,
+    user_id: str,
+    organization_id: str | None,
+    attach_to_undo: bool,
+    inserted_target: LocalExecutionTargetMetadata | None,
+) -> None:
+    """Undo only what this request may have done: detach an attach it made
+    or may have made, and delete the row only if it is the one this request
+    inserted, bound to exactly ``inserted_target``."""
+    if attach_to_undo:
+        await _best_effort_detach_local_session(presence, session_id)
+    if inserted_target is None:
+        return
+    try:
+        # A Cloud create for the same id takes no Local PC lock, so it can
+        # win the insert; that row is not this request's to delete. Once a
+        # row exists nothing else can take its id, so checking it first is
+        # safe.
+        saved = await get_chat_session_metadata(session_id, user_id)
+        if saved is None or saved.metadata.execution_target != inserted_target:
+            return
+        await delete_chat_session(
+            session_id,
+            user_id,
+            organization_id=organization_id,
+        )
+    except Exception:
+        logger.exception(
+            "[LocalPC] Failed to delete compensated session %s",
+            session_id[:12],
+        )
+
+
+async def _create_local_chat_session(
+    *,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    dry_run: bool,
+    target: LocalExecutionTargetRequest,
+    session_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    if not await is_local_executor_enabled(user_id):
+        raise HTTPException(status_code=404, detail="Local PC executor is not enabled")
+
+    config = ChatConfig()
+    if not config.use_local_pc_executor:
+        raise HTTPException(
+            status_code=409,
+            detail="Local PC execution is unavailable on this deployment",
+        )
+
+    if expert_id is not None:
+        organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
+            user_id, expert_id
+        )
+
+    if session_id is not None:
+        existing = await get_adoptable_local_client_chat_session(
+            user_id,
+            session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            machine_id=target.machine_id,
+            directory_ref=target.directory_ref,
+        )
+        if existing is not None:
+            return existing
+    else:
+        session_id = str(uuid4())
+
+    # Checked after adoption: a resend adopts the session its first attempt
+    # committed even if the machine has gone offline since.
+    try:
+        presence = await get_machine_presence(
+            user_id,
+            config.local_pc_executor_oauth_client_id,
+            target.machine_id,
+            expected_connection_id=target.expected_connection_id,
+        )
+    except (MachineNotConnectedError, MachineConnectionStaleError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # The machine refuses a second attach of a live session id, so a request
+    # whose attach succeeded owns that id, including a row its create may have
+    # committed before a cancellation. One the machine refused owns nothing.
+    # One it never answered (a timeout, a lost connection, a cancellation)
+    # may still have attached, so it is undone too: the create lock leaves no
+    # other attempt that could hold the id.
+    attached: MachineSessionBinding | None = None
+    attach_unconfirmed = False
+    # create_chat_session resolves a private expert's tenancy again, so undo
+    # under the tenancy the row was saved with once it exists.
+    saved_organization_id = organization_id
+    inserted_target: LocalExecutionTargetMetadata | None = None
+    try:
+        try:
+            attached = await attach_machine_session(
+                presence,
+                session_id=session_id,
+                browse_id=target.browse_id,
+                directory_ref=target.directory_ref,
+            )
+        except MachineControlError as exc:
+            attach_unconfirmed = not exc.refused
+            raise
+        except BaseException:
+            attach_unconfirmed = True
+            raise
+        if attached.session_id != session_id or attached.revision != 1:
+            raise MachineControlError(
+                "INVALID_SESSION_BINDING",
+                "The Local PC executor returned an invalid session binding",
+            )
+
+        execution_target = LocalExecutionTargetMetadata(
+            machine_id=target.machine_id,
+            directory_ref=target.directory_ref,
+            allowed_root=attached.allowed_root,
+            root_fingerprint=attached.fingerprint,
+            root_grant=attached.root_grant,
+            revision=attached.revision,
+        )
+        inserted_target = execution_target
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            session_id=session_id,
+            execution_target=execution_target,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
+        )
+        saved_organization_id = session.organization_id
+        activated = await activate_machine_session(presence, attached)
+        if not _bindings_match(attached, activated):
+            raise MachineControlError(
+                "INVALID_SESSION_BINDING",
+                "The Local PC executor activated a different session binding",
+            )
+
+        try:
+            await get_shim_manager().wait_for(session_id, timeout=8.0)
+            hello = await get_shim_manager().get_hello_async(session_id)
+        except Exception as exc:
+            raise MachineControlError(
+                "SESSION_DATA_CHANNEL_UNAVAILABLE",
+                "The Local PC executor did not open the session data channel",
+            ) from exc
+        if (
+            hello is None
+            or hello.machine_id != target.machine_id
+            or hello.allowed_root != attached.allowed_root
+        ):
+            raise MachineControlError(
+                "SESSION_DATA_CHANNEL_MISMATCH",
+                "The Local PC executor opened a mismatched session data channel",
+            )
+    except BaseException as exc:
+        cleanup_task = asyncio.create_task(
+            _compensate_local_session_creation(
+                presence,
+                session_id,
+                user_id=user_id,
+                organization_id=saved_organization_id,
+                attach_to_undo=attached is not None or attach_unconfirmed,
+                inserted_target=inserted_target,
+            )
+        )
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            await cleanup_task
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        if isinstance(
+            exc,
+            (MachineNotConnectedError, MachineConnectionStaleError),
+        ):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if isinstance(exc, MachineControlError):
+            status_code = (
+                409
+                if exc.code
+                in {
+                    "DIRECTORY_REFERENCE_INVALID",
+                    "DIRECTORY_UNAVAILABLE",
+                    "SESSION_ALREADY_ACTIVE",
+                    "SESSION_REVISION_MISMATCH",
+                }
+                else 503
+            )
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise
+
+    await _best_effort_detach_local_session(presence, session_id)
+    return session
 
 
 # ========== Routes ==========
@@ -933,6 +1223,7 @@ async def create_session(
     Returns:
         CreateSessionResponse: Details of the resulting session.
     """
+    request = request or CreateSessionRequest()
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
@@ -991,7 +1282,33 @@ async def create_session(
         f"{', expert_kickoff=True' if expert_kickoff else ''}"
     )
 
-    if builder_graph_id:
+    if request.execution_target.kind == "local":
+        try:
+            async with client_named_local_create(user_id, client_session_id):
+                session = await _create_local_chat_session(
+                    user_id=user_id,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    dry_run=dry_run,
+                    target=request.execution_target,
+                    session_id=client_session_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+        except SessionIdConflictError as e:
+            raise HTTPException(
+                status_code=409, detail="Session id already in use"
+            ) from e
+        except experts_db.ExpertNotFoundError as e:
+            raise HTTPException(status_code=404, detail="Expert not found") from e
+        except experts_db.ExpertPrivateTenancyNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail="Your expert workspace is still being set up. Try again shortly.",
+            ) from e
+    elif builder_graph_id:
         if llm_auth_provider != "platform":
             raise HTTPException(
                 status_code=422,
@@ -1056,7 +1373,7 @@ async def create_session(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
-        metadata=session.metadata,
+        metadata=PublicChatSessionMetadata.from_internal(session.metadata),
         expert_id=session.expert_id,
     )
 
@@ -1088,6 +1405,7 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        409: {"description": "The chat runs on a Local PC, not in a cloud box"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1105,6 +1423,13 @@ async def start_session_desktop(
     # expert's box (the archive already killed it, and nothing would kill
     # the new one).
     session = await _validate_and_get_writable_session(session_id, user_id)
+    # A Local PC chat's commands run on the user's computer; a cloud box here
+    # would be a second machine the panel calls the chat's own.
+    if session.metadata.execution_target.kind == "local":
+        raise HTTPException(
+            status_code=409,
+            detail="This chat runs on your Local PC, so it has no cloud desktop.",
+        )
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
         raise HTTPException(
@@ -1158,6 +1483,13 @@ async def delete_session(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
+    session_metadata = await get_chat_session_metadata(session_id, user_id)
+    if session_metadata is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
     deleted = await delete_chat_session(session_id, user_id, organization_id=ctx.org_id)
 
     if not deleted:
@@ -1165,6 +1497,31 @@ async def delete_session(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
         )
+
+    execution_target = session_metadata.metadata.execution_target
+    if execution_target.kind == "local":
+        try:
+            config = ChatConfig()
+            presence = await get_machine_presence(
+                user_id,
+                config.local_pc_executor_oauth_client_id,
+                execution_target.machine_id,
+            )
+            await detach_machine_session(presence, session_id)
+        except Exception:
+            logger.warning(
+                "[LocalPC] Failed to detach deleted session %s",
+                session_id[:12],
+                exc_info=True,
+            )
+        try:
+            await get_shim_manager().close_existing_session(session_id)
+        except Exception:
+            logger.warning(
+                "[LocalPC] Failed to close deleted session data channel %s",
+                session_id[:12],
+                exc_info=True,
+            )
 
     # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
@@ -1490,7 +1847,7 @@ async def get_session(
         oldest_sequence=page.oldest_sequence,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
-        metadata=page.session.metadata,
+        metadata=PublicChatSessionMetadata.from_internal(page.session.metadata),
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
         background_pending=background.pending,

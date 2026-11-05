@@ -14,6 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
+from backend.copilot.context import (
+    resolve_sandbox_path as canonical_resolve_sandbox_path,
+)
 from backend.copilot.sdk.tool_adapter import SDK_DISALLOWED_TOOLS
 
 from .e2b_file_tools import (
@@ -66,6 +69,9 @@ def _expected_bridge_path(
 
 
 class TestResolveSandboxPath:
+    def test_legacy_export_uses_canonical_resolver(self):
+        assert resolve_sandbox_path is canonical_resolve_sandbox_path
+
     def test_relative_path_resolved(self):
         assert resolve_sandbox_path("src/main.py") == f"{E2B_WORKDIR}/src/main.py"
 
@@ -1307,6 +1313,7 @@ class TestSandboxFileOverTheReadLimit:
     def stream(self, monkeypatch):
         stream = _FileStream(b"0123456789abcdef" * 8)
         sandbox = SimpleNamespace(
+            sandbox_id="sandbox-1",
             files=SimpleNamespace(read=AsyncMock(return_value=stream)),
             commands=SimpleNamespace(run=AsyncMock()),
         )

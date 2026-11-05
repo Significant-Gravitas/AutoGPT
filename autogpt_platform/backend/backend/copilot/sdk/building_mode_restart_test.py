@@ -11,7 +11,8 @@ from unittest.mock import MagicMock
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, LocalExecutionTargetMetadata
+from backend.copilot.prompting import get_local_pc_sdk_supplement
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 
 from .service import _graphiti_ingest_allowed, _ready_for_building_mode_restart
@@ -81,6 +82,7 @@ class TestApplyBuildingModeRestart:
         delegation_supplement: str = "",
         oversight_supplement: str = "",
         team_building_supplement: str = "",
+        local_pc: bool = False,
         auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
@@ -96,6 +98,14 @@ class TestApplyBuildingModeRestart:
             new=mocker.AsyncMock(return_value=suffix),
         )
         session = _session(requested=True, guide_loaded=False)
+        if local_pc:
+            session.metadata.execution_target = LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            )
         session.expert_id = expert_id
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
@@ -154,6 +164,15 @@ class TestApplyBuildingModeRestart:
         prompt = state.options.system_prompt
         text = prompt if isinstance(prompt, str) else prompt["append"]
         assert marker in text
+
+    @pytest.mark.asyncio
+    async def test_local_pc_instructions_survive_the_restart(self, mocker):
+        _, state, _, _ = await self._run(mocker, local_pc=True)
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert get_local_pc_sdk_supplement() in text
+        assert "<building_guide>GUIDE</building_guide>" in text
 
     @pytest.mark.asyncio
     async def test_auto_mode_supplement_survives_the_restart(self, mocker):

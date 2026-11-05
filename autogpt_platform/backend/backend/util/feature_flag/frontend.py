@@ -39,6 +39,8 @@ class FrontendFlag(str, Enum):
 
     MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms"
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
+    LOCAL_PC_EXECUTOR = Flag.LOCAL_PC_EXECUTOR.value
+    WORKFLOW_RECORDING = Flag.WORKFLOW_RECORDING.value
     GENERIC_TRIGGER_AGENTS = Flag.GENERIC_TRIGGER_AGENTS.value
     CHAT_WORKSPACE_FILES = "chat-workspace-files"
     CHAT_PINNING = "chat-pinning"

@@ -10,6 +10,10 @@ from mcp.types import ListToolsRequest, ToolAnnotations
 
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.context import get_sdk_cwd
+from backend.copilot.gate import Decision
+from backend.copilot.gate.mcp_seam import Verdict, approved_for
+from backend.copilot.gate.policy import PARKABLE, Effect, effect_for
+from backend.copilot.gate.subject import Subject
 from backend.copilot.google_data_redaction import (
     REDACTED,
     redact_google_data,
@@ -17,9 +21,16 @@ from backend.copilot.google_data_redaction import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.sdk.computer_use_policy import (
+    computer_use_scope,
+    local_pc_tool_names,
+)
 from backend.copilot.tools import DEFERRED_TOOL_NAMES, TOOL_REGISTRY
+from backend.copilot.tools.local_pc_shim import ComputerUseDriver, ShimHello
 from backend.util.truncate import truncate
 
+from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+from .recording_tools import RECORDING_TOOLS
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
@@ -32,7 +43,9 @@ from .tool_adapter import (
     cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    held_call_handlers,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -40,6 +53,67 @@ from .tool_adapter import (
     stash_pending_tool_output,
     wait_for_stash,
 )
+
+
+def _hello(**overrides) -> ShimHello:
+    values = {
+        "machine_id": "machine-1",
+        "capabilities": ["computer_use"],
+        "computer_use_driver": ComputerUseDriver(
+            name="cua-driver", version="0.38.0", runtime="direct"
+        ),
+        "computer_use_tools": ["click", "type_text"],
+    }
+    values.update(overrides)
+    return ShimHello(**values)
+
+
+def test_local_pc_tools_are_both_or_neither() -> None:
+    """Otto reaches every driver tool through the same two MCP tools."""
+    assert local_pc_tool_names(computer_use_scope(_hello())) == {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"capabilities": ["files"]},
+        {"computer_use_driver": None},
+        {"computer_use_tools": []},
+    ],
+    ids=["no-capability", "no-driver", "no-tools"],
+)
+def test_no_computer_use_scope_registers_no_local_pc_tools(overrides: dict) -> None:
+    scope = computer_use_scope(_hello(**overrides))
+    assert scope is None
+    assert local_pc_tool_names(scope) == frozenset()
+
+
+def test_the_scope_names_the_driver_release_and_its_tools() -> None:
+    scope = computer_use_scope(_hello())
+    assert scope is not None
+    assert (scope.machine_id, scope.driver, scope.tools) == (
+        "machine-1",
+        "cua-driver 0.38.0",
+        ("click", "type_text"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_registration_registers_only_the_named_local_pc_tools() -> None:
+    server = create_copilot_mcp_server(
+        use_local_pc_computer=True,
+        local_pc_computer_tool_names={"local_pc_computer_tools"},
+    )
+    instance = server["instance"]
+    handler = instance.request_handlers[ListToolsRequest]
+    result = await handler(ListToolsRequest(method="tools/list"))
+    names = {tool.name for tool in result.root.tools}
+    assert "local_pc_computer_tools" in names
+    assert "local_pc_computer" not in names
+
 
 # ---------------------------------------------------------------------------
 # _text_from_mcp_result
@@ -1358,6 +1432,43 @@ class TestCreateCopilotMcpServerHidden:
             assert short in registered
 
     @pytest.mark.asyncio
+    async def test_hidden_local_pc_and_ui_owned_recording_start_not_registered(self):
+        server = create_copilot_mcp_server(
+            hidden_tool_names=["local_pc_computer"],
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "local_pc_computer" not in registered
+        assert "record_workflow" not in registered
+        assert "local_pc_computer_tools" in registered
+        assert "list_recordings" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_sdk_file_aliases_hide_e2b_tools(self):
+        server = create_copilot_mcp_server(
+            use_e2b=True,
+            hidden_tool_names=["Read", "Grep"],
+        )
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "grep" not in registered
+        assert "write_file" in registered
+
+    @pytest.mark.asyncio
+    async def test_hidden_read_alias_hides_unified_read_tool(self):
+        server = create_copilot_mcp_server(hidden_tool_names=["Read"])
+
+        registered = await self._registered_tool_names(server)
+
+        assert "read_file" not in registered
+        assert "Write" in registered
+
+    @pytest.mark.asyncio
     async def test_automation_origin_tools_not_registered(self):
         """The origin gate reaches the MCP server, not just the schema list.
 
@@ -1448,6 +1559,26 @@ class TestCreateCopilotMcpServerHidden:
         handler = instance.request_handlers[ListToolsRequest]
         result = await handler(ListToolsRequest(method="tools/list"))
         return {t.name for t in result.root.tools}
+
+
+@pytest.mark.parametrize(
+    ("use_e2b", "hidden", "expected_hidden", "expected_visible"),
+    [
+        (True, ["Read", "Grep"], {"read_file", "grep"}, "write_file"),
+        (True, ["grep"], {"grep"}, "write_file"),
+        (False, ["Read"], {"read_file"}, "Write"),
+    ],
+)
+def test_hidden_file_tools_are_omitted_from_allowed_tools(
+    use_e2b: bool,
+    hidden: list[str],
+    expected_hidden: set[str],
+    expected_visible: str,
+) -> None:
+    allowed = set(get_copilot_tool_names(use_e2b=use_e2b, hidden_tool_names=hidden))
+
+    assert not {f"mcp__copilot__{name}" for name in expected_hidden} & allowed
+    assert f"mcp__copilot__{expected_visible}" in allowed
 
 
 class TestNavigableToolResultText:
@@ -1557,7 +1688,7 @@ class TestNonRegistryGateSeam:
         _init_ctx(_make_test_session())
         with patch(
             "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
-            new=AsyncMock(return_value=refusal),
+            new=AsyncMock(return_value=(refusal, None)),
         ) as gate:
             wrapper = _make_truncating_wrapper(
                 handler, "write_file", required_args=["path"]
@@ -1567,6 +1698,101 @@ class TestNonRegistryGateSeam:
         gate.assert_awaited_once()
         assert called is False
         assert result.get("isError") is True
+
+    @pytest.mark.asyncio
+    async def test_the_handler_runs_under_the_verdict_on_its_own_subject(self):
+        disk = Subject(key="disk:a", name="Disk", effect=Effect.EXTERNAL)
+        seen: list[bool] = []
+        subjects: list[dict] = []
+
+        async def subject_of(args):
+            subjects.append(args)
+            return disk
+
+        async def handler(_args):
+            seen.append(approved_for("disk:a"))
+            return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+        async def gate(_name, _args, _user, _session, subject_of=None):
+            assert subject_of is not None
+            return None, Verdict(
+                decision=Decision(allowed=True, decided=True),
+                subject=await subject_of(),
+            )
+
+        _init_ctx(_make_test_session())
+        with (
+            patch("backend.copilot.sdk.tool_adapter.gate_non_registry_tool", gate),
+            patch(
+                "backend.copilot.sdk.tool_adapter.release_non_registry_read",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.sdk.tool_adapter.screen_non_registry_read",
+                new=AsyncMock(side_effect=lambda *a, **_k: a[4]),
+            ),
+        ):
+            wrapper = _make_truncating_wrapper(
+                handler, "local_pc_computer", gate_subject=subject_of
+            )
+            await wrapper({"tool": "clipboard_write", "arguments": {}})
+
+        assert subjects == [{"tool": "clipboard_write", "arguments": {}}]
+        assert seen == [True]
+        # Nothing outlives the call.
+        assert approved_for("disk:a") is False
+
+    def test_every_tool_the_gate_can_hold_outside_the_registry_can_replay(self):
+        """A held call the gate can't run after its approval would tell the
+        model the tool no longer exists."""
+        parkable = {
+            name
+            for name in (
+                *LOCAL_PC_COMPUTER_TOOL_NAMES,
+                *(t[0] for t in RECORDING_TOOLS),
+            )
+            if name not in TOOL_REGISTRY and effect_for(name) in PARKABLE
+        }
+        assert parkable
+        assert parkable <= set(
+            held_call_handlers(use_local_pc_computer=True, use_recording=True)
+        )
+
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            {"use_local_pc_computer": False, "use_recording": False},
+            {"use_local_pc_computer": True, "use_recording": False},
+            {"use_local_pc_computer": False, "use_recording": True},
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "local_pc_computer_tool_names": ["local_pc_computer_tools"],
+            },
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "hidden_tool_names": ["local_pc_computer", "dry_run_skill"],
+            },
+        ],
+        ids=["off", "computer-use", "recording", "consented-subset", "hidden"],
+    )
+    async def test_a_held_call_replays_only_through_a_tool_this_turn_offers(
+        self, turn: dict[str, Any]
+    ):
+        """The replay table held every Local PC handler, so a call approved
+        before computer use was turned off, or before a permission was taken
+        away, still drove the computer on the next turn."""
+        local_pc = {*LOCAL_PC_COMPUTER_TOOL_NAMES, *(t[0] for t in RECORDING_TOOLS)}
+
+        replayable = set(held_call_handlers(**turn))
+        registered = await TestCreateCopilotMcpServerHidden._registered_tool_names(
+            create_copilot_mcp_server(**turn)
+        )
+
+        assert replayable == registered & local_pc
+        if not (turn["use_local_pc_computer"] or turn["use_recording"]):
+            assert replayable == set()
 
 
 def test_set_execution_context_carries_hidden_tools():

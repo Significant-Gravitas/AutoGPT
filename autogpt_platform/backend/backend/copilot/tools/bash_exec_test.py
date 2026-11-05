@@ -30,6 +30,7 @@ from ._test_data import make_session
 from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
 from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
+from .sandbox import MAX_OUTPUT_SIZE
 
 _USER = "user-bash-exec-test"
 _PICKED = {"github": "cred-picked"}
@@ -113,6 +114,204 @@ def _make_sandbox(exit_code: int = 0, stdout: str = "", stderr: str = "") -> Mag
     sandbox.set_timeout = AsyncMock()
     sandbox.commands.run = AsyncMock(side_effect=run)
     return sandbox
+
+
+def _make_local_pc_sandbox(
+    exit_code: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
+) -> MagicMock:
+    """A Local PC companion whose command answers in one wire round trip."""
+    result = MagicMock(
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
+    )
+    sandbox = MagicMock(allowed_root="/workspace", platform="linux")
+    sandbox.commands.run = AsyncMock(return_value=result)
+    return sandbox
+
+
+def test_local_windows_description_does_not_claim_bash_or_confinement() -> None:
+    sandbox = MagicMock(platform="windows")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        tool = _make_tool()
+
+        assert "Windows command shell" in tool.description
+        assert "does not confine shell commands" in tool.description
+        assert tool.parameters["properties"]["command"]["description"] == (
+            "Windows command-shell input."
+        )
+
+
+def test_local_pc_schema_states_the_companions_command_cap() -> None:
+    """The companion stops every command at its cap, so a longer timeout
+    the model asks for would never apply."""
+    sandbox = MagicMock(platform="linux")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        tool = _make_tool()
+
+        assert "at most 30" in tool.description
+        assert tool.parameters["properties"]["timeout"]["description"] == (
+            "Timeout in seconds, at most 30."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_never_receives_platform_integration_secrets() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(stdout="ok")
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.get_workdir",
+            return_value="/workspace",
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.get_integration_env_vars",
+            new=AsyncMock(return_value={"GH_TOKEN": "secret"}),
+        ) as get_integration_env,
+        patch(
+            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+            new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "User"}),
+        ) as get_git_identity,
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=make_session(_USER),
+            command="echo hi",
+            timeout=10,
+        )
+
+    assert isinstance(result, BashExecResponse)
+    assert result.stdout == "ok"
+    get_integration_env.assert_not_awaited()
+    get_git_identity.assert_not_awaited()
+    run_kwargs = sandbox.commands.run.await_args.kwargs
+    assert run_kwargs["envs"] == {}
+    assert run_kwargs["shell"] == "auto"
+    assert run_kwargs["cwd"] == "/workspace"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_preserves_timeout_and_truncation_metadata() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(
+        exit_code=-1,
+        stdout="partial output",
+        stderr="[command output truncated]",
+        timed_out=True,
+        output_truncated=True,
+    )
+
+    with patch(
+        "backend.copilot.tools.bash_exec.is_local_pc_executor",
+        return_value=True,
+    ):
+        result = await tool._execute_on_local_pc(
+            sandbox=sandbox,
+            command="slow command",
+            timeout=10,
+            session_id="session-1",
+        )
+
+    assert isinstance(result, BashExecResponse)
+    assert result.timed_out is True
+    assert result.output_truncated is True
+    assert result.message == (
+        "Execution timed out and output was truncated by the Local PC executor limit."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+async def test_local_pc_keeps_each_stream_to_the_output_limit(stream: str) -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(**{stream: "x" * (MAX_OUTPUT_SIZE + 5)})
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat big.log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(getattr(result, stream)) == MAX_OUTPUT_SIZE
+    assert result.output_truncated is True
+    assert "truncated" in result.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_output_within_the_limit_is_whole() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox(stdout="x" * MAX_OUTPUT_SIZE, stderr="warn")
+
+    result = await tool._execute_on_local_pc(
+        sandbox=sandbox,
+        command="cat log",
+        timeout=10,
+        session_id="session-1",
+    )
+
+    assert isinstance(result, BashExecResponse)
+    assert len(result.stdout) == MAX_OUTPUT_SIZE
+    assert result.stderr == "warn"
+    assert result.output_truncated is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_local_pc_gate_probes_never_run_on_the_users_machine() -> None:
+    tool = _make_tool()
+    sandbox = _make_local_pc_sandbox()
+    with (
+        patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ),
+        patch(
+            "backend.copilot.tools.bash_exec.is_local_pc_executor",
+            return_value=True,
+        ),
+    ):
+        context = await tool.gate_context({"command": "bash ./setup.sh"})
+        subject = await tool.gate_subject(
+            _USER, make_session(_USER), {"command": "echo hi > ~/workspace/a.txt"}
+        )
+
+    assert context is None
+    assert subject is None
+    sandbox.commands.run.assert_not_awaited()
 
 
 class TestBashExecE2BTokenInjection:

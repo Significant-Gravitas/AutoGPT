@@ -74,6 +74,29 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
+    # Local PC Executor — route copilot execution to a user's local machine
+    # via the autogpt-local-executor shim. EXPERIMENTAL; gated as
+    # `config.use_local_pc_executor AND flag(LOCAL_PC_EXECUTOR, user)` so the
+    # config is the deploy-level kill switch and the flag controls per-user
+    # opt-in / staged rollout. Default off.
+    LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Workflow recording — record a task the user performs on their machine
+    # and generalize it into a reusable skill (UI-owned recording/review plus
+    # list/generate/dry-run MCP tools). Gated as
+    # `config.use_local_pc_executor AND shim advertises recording AND
+    # flag(WORKFLOW_RECORDING, user)` — same shape as LOCAL_PC_EXECUTOR.
+    # See `copilot/tools/recording_skill.py`. Default off; per-user rollout.
+    WORKFLOW_RECORDING = "workflow-recording"
+    # Local LLM routing — when on AND the user's shim advertises `local_llm`
+    # plus a non-empty `local_llm_models`, copilot turns that match the
+    # (mode, tier) policy are routed through the shim's LOCAL_LLM_COMPLETION
+    # wire op. See `copilot/tools/local_llm_router.py`. Default off.
+    LOCAL_LLM_ROUTING = "local-llm-routing"
+    # Per-tier preferred local-model lists used by LocalLLMRouter. JSON
+    # value, shape:
+    #   {"fast": ["llama3.2:3b", "llama3.2:1b"], "default": [...], "thinking": []}
+    # Missing tier → empty list → never route that tier locally.
+    LOCAL_LLM_TIER_PREFERENCES = "local-llm-tier-preferences"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
@@ -459,6 +482,7 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        Flag.LOCAL_LLM_TIER_PREFERENCES.value,
     }
 )
 

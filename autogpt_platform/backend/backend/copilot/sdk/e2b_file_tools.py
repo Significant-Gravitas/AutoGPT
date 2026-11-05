@@ -22,7 +22,10 @@ import json
 import logging
 import os
 import shlex
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
+
+if TYPE_CHECKING:
+    from e2b import AsyncSandbox
 
 from backend.copilot.context import (
     E2B_ALLOWED_DIRS,
@@ -34,9 +37,16 @@ from backend.copilot.context import (
     is_sdk_tool_path,
     is_within_allowed_dirs,
     resolve_allowed_local_path,
-    resolve_sandbox_path,
+    resolve_executor_path,
 )
+from backend.copilot.context import resolve_sandbox_path as resolve_sandbox_path
 from backend.copilot.host_fs import open_no_follow
+from backend.copilot.sdk.local_pc_file_tools import (
+    is_local_pc,
+    list_via_shim,
+    run_argv_via_shim,
+    stat_via_shim,
+)
 from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
 from backend.copilot.tool_image import (
     BINARY_IMAGE_READ_GUIDANCE,
@@ -227,17 +237,34 @@ async def _check_sandbox_symlink_escape(
 ) -> str | None:
     """Resolve the canonical parent path inside the sandbox to detect symlink escapes.
 
-    ``normpath`` (used by ``resolve_sandbox_path``) only normalises the string;
-    ``readlink -f`` follows actual symlinks on the sandbox filesystem.
+    For E2B: ``readlink -f`` follows symlinks on the POSIX sandbox FS.
+    For LocalPCShim: FILE_STAT(follow_symlinks=True) returns the canonical
+    path per the shim's per-OS realpath (handles junctions on Windows,
+    firmlinks on macOS — see
+    ``autogpt-local-executor/docs/CROSS_PLATFORM.md`` Path Jail Strategy).
 
     Returns the canonical parent path, or ``None`` if the path escapes
-    the allowed sandbox directories.
+    the executor's allowed dirs.
 
     Note: There is an inherent TOCTOU window between this check and the
-    subsequent ``sandbox.files.write()``.  A symlink could theoretically be
-    replaced between the two operations.  This is acceptable in the E2B
-    sandbox model since the sandbox is single-user and ephemeral.
+    subsequent ``sandbox.files.write()`` — a symlink could be replaced
+    between the two ops. Acceptable for E2B (single-user, ephemeral) and
+    for the shim (single-user with per-op shim-side jail re-check).
     """
+    if is_local_pc(sandbox):
+        try:
+            stat = await stat_via_shim(
+                sandbox, parent or sandbox.allowed_root, follow_symlinks=True
+            )
+        except (OSError, ValueError):
+            return None
+        if not stat.get("exists"):
+            return None
+        # Shim jail-check already passed; return the input parent so the
+        # caller's `os.path.join(parent, basename)` produces a path the
+        # next FILE_WRITE will re-validate against the same jail.
+        return parent or sandbox.allowed_root
+
     canonical_res = await run_internal(
         sandbox,
         f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
@@ -256,6 +283,24 @@ async def _check_sandbox_symlink_escape(
 
 def _get_sandbox():
     return get_current_sandbox()
+
+
+async def _read_remote(sandbox: Any, remote: str, max_bytes: int) -> bytes:
+    """At most ``max_bytes + 1`` bytes of *remote*, so a longer result means the
+    file is over the limit: a Local PC's companion is asked for no more, and an
+    E2B file stops streaming one byte past it."""
+    if is_local_pc(sandbox):
+        return await sandbox.files.read_capped(remote, max_bytes)
+    return await read_sandbox_file(sandbox, remote, max_bytes)
+
+
+async def _remote_file_size(sandbox: Any, remote: str) -> int:
+    """Size of *remote* on the executor: FILE_STAT on a Local PC, the files
+    API on E2B."""
+    if is_local_pc(sandbox):
+        stat = await stat_via_shim(sandbox, remote, follow_symlinks=True)
+        return int(stat.get("size_bytes") or 0)
+    return (await sandbox.files.get_info(remote)).size
 
 
 def _is_allowed_local(path: str) -> bool:
@@ -284,12 +329,17 @@ class DeclaredResult(dict[str, Any]):
 def _get_sandbox_and_path(
     file_path: str,
 ) -> tuple[Any, str] | dict[str, Any]:
-    """Common preamble: get sandbox + resolve path, or return MCP error."""
+    """Common preamble: get sandbox + resolve path, or return MCP error.
+
+    Path resolution is executor-aware: E2B paths resolve under `/home/user`
+    + `/tmp`, LocalPCShim paths resolve under the shim's `allowed_root`
+    advertised in HELLO.
+    """
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
     try:
-        remote = resolve_sandbox_path(file_path)
+        remote = resolve_executor_path(file_path, sandbox)
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return sandbox, remote
@@ -313,6 +363,12 @@ async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
     are handled correctly: text is encoded to bytes for the base64 shell
     pipe, and raw bytes are passed through without any encoding.
     """
+    # LocalPCShim runs FILE and COMMAND ops as the same OS user, so the
+    # E2B sticky-bit/`/tmp` workaround below doesn't apply — just write.
+    if is_local_pc(sandbox):
+        await sandbox.files.write(path, content)
+        return
+
     if path == "/tmp" or path.startswith("/tmp/"):
         raw = content.encode() if isinstance(content, str) else content
         encoded = base64.b64encode(raw).decode()
@@ -397,8 +453,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         try:
             ext = os.path.splitext(remote)[1].lower()
             if ext in IMAGE_EXTENSIONS:
-                info = await sandbox.files.get_info(remote)
-                if info.size > MAX_IMAGE_BYTES:
+                if await _remote_file_size(sandbox, remote) > MAX_IMAGE_BYTES:
                     return _mcp(
                         IMAGE_TOO_LARGE_MESSAGE,
                         error=True,
@@ -411,11 +466,15 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                     outside=(),
                 )
             if ext in IMAGE_EXTENSIONS:
-                raw = await read_sandbox_image(sandbox, remote)
+                raw = (
+                    await sandbox.files.read_capped(remote, MAX_IMAGE_BYTES)
+                    if is_local_pc(sandbox)
+                    else await read_sandbox_image(sandbox, remote)
+                )
                 return await asyncio.to_thread(
                     _image_result, raw, offset, args.get("limit")
                 )
-            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
+            raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
@@ -483,21 +542,26 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is not None:
         # E2B path — write to sandbox filesystem
         try:
-            remote = resolve_sandbox_path(file_path)
+            remote = resolve_executor_path(file_path, sandbox)
         except ValueError as exc:
             return _mcp(str(exc), error=True)
 
         try:
             parent = os.path.dirname(remote)
-            if parent and parent not in E2B_ALLOWED_DIRS:
-                await sandbox.files.make_dir(parent)
-            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
-            if canonical_parent is None:
-                return _mcp(
-                    f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
-                    error=True,
+            if not is_local_pc(sandbox):
+                e2b_sandbox = cast("AsyncSandbox", sandbox)
+                if parent and parent not in E2B_ALLOWED_DIRS:
+                    await e2b_sandbox.files.make_dir(parent)
+                canonical_parent = await _check_sandbox_symlink_escape(
+                    e2b_sandbox, parent
                 )
-            remote = os.path.join(canonical_parent, os.path.basename(remote))
+                if canonical_parent is None:
+                    return _mcp(
+                        f"Path must be within {E2B_ALLOWED_DIRS_STR}: "
+                        f"{os.path.basename(parent)}",
+                        error=True,
+                    )
+                remote = os.path.join(canonical_parent, os.path.basename(remote))
             await _sandbox_write(sandbox, remote, content)
         except Exception as exc:
             return _mcp(
@@ -592,55 +656,32 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     if sandbox is not None:
         # E2B path — edit in sandbox filesystem
         try:
-            remote = resolve_sandbox_path(file_path)
+            remote = resolve_executor_path(file_path, sandbox)
         except ValueError as exc:
             return _mcp(str(exc), error=True)
 
-        parent = os.path.dirname(remote)
-        try:
-            canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
-        except Exception as exc:
-            return _mcp(f"Failed to edit {os.path.basename(remote)}: {exc}", error=True)
-        if canonical_parent is None:
-            return _mcp(
-                f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
-                error=True,
+        if not is_local_pc(sandbox):
+            parent = os.path.dirname(remote)
+            try:
+                canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+            except Exception as exc:
+                return _mcp(
+                    f"Failed to edit {os.path.basename(remote)}: {exc}", error=True
+                )
+            if canonical_parent is None:
+                return _mcp(
+                    f"Path must be within {E2B_ALLOWED_DIRS_STR}: "
+                    f"{os.path.basename(parent)}",
+                    error=True,
+                )
+            remote = os.path.join(canonical_parent, os.path.basename(remote))
+
+        # The CLI runs one message's calls in parallel, and chats bound to one
+        # Local PC folder share its files: take turns, as the SDK path does.
+        async with _edit_lock(_executor_file_key(sandbox, remote)):
+            return await _edit_on_executor(
+                sandbox, remote, file_path, old_string, new_string, replace_all
             )
-        remote = os.path.join(canonical_parent, os.path.basename(remote))
-
-        try:
-            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
-            content = raw.decode("utf-8", errors="replace")
-        except Exception as exc:
-            return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
-        if len(raw) > _MAX_READ_BYTES:
-            return _mcp(_too_large(remote, "edited"), error=True)
-
-        count = content.count(old_string)
-        if count == 0:
-            return _mcp(f"old_string not found in {file_path}", error=True)
-        if count > 1 and not replace_all:
-            return _mcp(
-                f"old_string appears {count} times in {file_path}. "
-                "Use replace_all=true or provide a more unique string.",
-                error=True,
-            )
-
-        updated = (
-            content.replace(old_string, new_string)
-            if replace_all
-            else content.replace(old_string, new_string, 1)
-        )
-        try:
-            await _sandbox_write(sandbox, remote, updated)
-        except Exception as exc:
-            return _mcp(
-                f"Failed to write {os.path.basename(remote)}: {exc}", error=True
-            )
-
-        return _mcp(
-            f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})"
-        )
 
     # Non-E2B path — edit in SDK working directory
     sdk_cwd = get_sdk_cwd()
@@ -652,18 +693,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         return err
     assert resolved is not None
 
-    # Per-path lock prevents parallel edits from racing through
-    # the read-modify-write cycle and silently dropping changes.
-    # LRU-bounded: evict the oldest entry when the dict is full so that
-    # _edit_locks does not grow unboundedly in long-running server processes.
-    if resolved not in _edit_locks:
-        if len(_edit_locks) >= _EDIT_LOCKS_MAX:
-            _edit_locks.popitem(last=False)
-        _edit_locks[resolved] = asyncio.Lock()
-    else:
-        _edit_locks.move_to_end(resolved)
-    lock = _edit_locks[resolved]
-    async with lock:
+    async with _edit_lock(resolved):
         try:
             content = _read_capped_text(resolved)
         except FileNotFoundError:
@@ -705,6 +735,67 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})")
 
 
+def _edit_lock(key: str) -> asyncio.Lock:
+    """The lock edits of one file take turns on, so parallel edits can't race
+    through the read-modify-write and drop a change. LRU-bounded, so the
+    locks don't grow without limit in a long-running server process."""
+    if key not in _edit_locks:
+        if len(_edit_locks) >= _EDIT_LOCKS_MAX:
+            _edit_locks.popitem(last=False)
+        _edit_locks[key] = asyncio.Lock()
+    else:
+        _edit_locks.move_to_end(key)
+    return _edit_locks[key]
+
+
+def _executor_file_key(sandbox: Any, remote: str) -> str:
+    """One key per file on one executor: a Local PC folder is shared by every
+    chat bound to that machine, an E2B box is its chat's own."""
+    if is_local_pc(sandbox):
+        return f"local_pc:{sandbox.machine_id}:{remote}"
+    return f"e2b:{sandbox.sandbox_id}:{remote}"
+
+
+async def _edit_on_executor(
+    sandbox: Any,
+    remote: str,
+    file_path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool,
+) -> dict[str, Any]:
+    """Read, replace and write one file on the E2B box or the Local PC."""
+    try:
+        raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
+        content = raw.decode("utf-8", errors="replace")
+    except Exception as exc:
+        return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+    if len(raw) > _MAX_READ_BYTES:
+        return _mcp(_too_large(remote, "edited"), error=True)
+
+    count = content.count(old_string)
+    if count == 0:
+        return _mcp(f"old_string not found in {file_path}", error=True)
+    if count > 1 and not replace_all:
+        return _mcp(
+            f"old_string appears {count} times in {file_path}. "
+            "Use replace_all=true or provide a more unique string.",
+            error=True,
+        )
+
+    updated = (
+        content.replace(old_string, new_string)
+        if replace_all
+        else content.replace(old_string, new_string, 1)
+    )
+    try:
+        await _sandbox_write(sandbox, remote, updated)
+    except Exception as exc:
+        return _mcp(f"Failed to write {os.path.basename(remote)}: {exc}", error=True)
+
+    return _mcp(f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})")
+
+
 async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
     """Find files matching a name pattern inside the sandbox using ``find``."""
     if not args:
@@ -722,12 +813,37 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
 
     try:
-        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
+        search_dir = (
+            resolve_executor_path(path, sandbox)
+            if path
+            else (sandbox.allowed_root if is_local_pc(sandbox) else E2B_WORKDIR)
+        )
     except ValueError as exc:
         return _mcp(str(exc), error=True)
+
+    # LocalPCShim: use the wire FILE_LIST op (per-OS portable, no POSIX shell).
+    if is_local_pc(sandbox):
+        try:
+            resp = await list_via_shim(
+                sandbox,
+                search_dir,
+                glob=pattern,
+                recursive=True,
+                max_entries=_GLOB_MAX_ENTRIES,
+            )
+        except Exception as exc:
+            return _mcp(f"Glob failed: {exc}", error=True)
+        files = [e.get("path", "") for e in resp.get("entries", []) if e.get("is_file")]
+        text = json.dumps(files, indent=2)
+        if resp.get("truncated"):
+            text += (
+                f"\n\n[The listing stopped at {_GLOB_MAX_ENTRIES} entries, so "
+                "more matches exist. Narrow the path or the pattern to see them.]"
+            )
+        return _mcp(text, outside=tuple(files))
 
     cmd = f"find {shlex.quote(search_dir)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -500"
     try:
@@ -737,6 +853,11 @@ async def _handle_glob(args: dict[str, Any]) -> dict[str, Any]:
 
     files = [line for line in (result.stdout or "").strip().splitlines() if line]
     return _mcp(json.dumps(files, indent=2), outside=tuple(files))
+
+
+_GLOB_MAX_ENTRIES = 500
+_GREP_TIMEOUT_SECONDS = 15
+_GREP_ERROR_CHARS = 1_000
 
 
 async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
@@ -757,10 +878,14 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     sandbox = _get_sandbox()
     if sandbox is None:
-        return _mcp("No E2B sandbox available", error=True)
+        return _mcp("No sandbox available", error=True)
 
     try:
-        search_dir = resolve_sandbox_path(path) if path else E2B_WORKDIR
+        search_dir = (
+            resolve_executor_path(path, sandbox)
+            if path
+            else (sandbox.allowed_root if is_local_pc(sandbox) else E2B_WORKDIR)
+        )
     except ValueError as exc:
         return _mcp(str(exc), error=True)
 
@@ -768,10 +893,24 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if include:
         parts.extend(["--include", include])
     parts.extend([pattern, search_dir])
-    cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
 
+    # LocalPCShim: send the pre-built argv so the shim's per-OS subprocess
+    # path handles quoting. Falls through with SHELL_NOT_AVAILABLE on
+    # Windows-without-Git-Bash; the LLM can retry via bash_exec.
+    if is_local_pc(sandbox):
+        try:
+            result = await run_argv_via_shim(
+                sandbox, parts, cwd=sandbox.allowed_root, timeout=_GREP_TIMEOUT_SECONDS
+            )
+        except Exception as exc:
+            return _mcp(f"Grep failed: {exc}", error=True)
+        return _local_grep_result(result)
+
+    cmd = " ".join(shlex.quote(p) for p in parts) + " 2>/dev/null | head -200"
     try:
-        result = await run_internal(sandbox, cmd, cwd=E2B_WORKDIR, timeout=15)
+        result = await run_internal(
+            sandbox, cmd, cwd=E2B_WORKDIR, timeout=_GREP_TIMEOUT_SECONDS
+        )
     except Exception as exc:
         return _mcp(f"Grep failed: {exc}", error=True)
 
@@ -779,6 +918,36 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     if not output:
         return _mcp("No matches found.", outside=())
     return _mcp(output, outside=(output,))
+
+
+def _local_grep_result(result: Any) -> dict[str, Any]:
+    """Read a Local PC grep by its exit status: 0 found matches, 1 found none,
+    and anything else (a bad pattern, an unreadable file, a timeout) is an
+    error that must not read as "No matches found."."""
+    output = (result.stdout or "").strip()
+    # Past the companion's output cap the matches shown are not all of them.
+    truncated = (
+        "\n\n[Output truncated: more matches exist. Narrow the pattern, path "
+        "or include filter to see them.]"
+        if result.output_truncated
+        else ""
+    )
+    if result.exit_code in (0, 1) and not result.timed_out:
+        if not output:
+            return _mcp("No matches found.", outside=())
+        return _mcp(f"{output}{truncated}", outside=(output,))
+    if result.timed_out:
+        errors = f"timed out after {_GREP_TIMEOUT_SECONDS} seconds"
+    else:
+        stderr = (result.stderr or "").strip()
+        errors = stderr[:_GREP_ERROR_CHARS] or f"exit code {result.exit_code}"
+    if not output:
+        return _mcp(f"Grep failed: {errors}", error=True)
+    # Matches in the files grep could read are still real results.
+    return _mcp(
+        f"{output}{truncated}\n\n[grep reported errors: {errors}]",
+        outside=(output, errors),
+    )
 
 
 # Bridging: copy SDK-internal files into E2B sandbox
@@ -826,6 +995,10 @@ async def bridge_to_sandbox(
     basename (e.g. multiple ``result.json`` files).
     """
     if offset != 0 or limit < _DEFAULT_READ_LIMIT:
+        return None
+    # A Local PC is the user's own machine, outside any sandbox: platform
+    # files are never copied onto it unasked.
+    if is_local_pc(sandbox):
         return None
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
@@ -973,14 +1146,15 @@ def _image_result(raw: bytes, offset: int, limit: int | None) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the cloud sandbox (/home/user or /tmp). "
+        "Read a file in the execution workspace: /home/user or /tmp in the "
+        "cloud, or this chat's Local PC folder. "
         "Use offset and limit for large text files. " + IMAGE_READ_DESCRIPTION,
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "offset": {
                     "type": "integer",
@@ -996,16 +1170,16 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "write_file",
-        "Write or create a file in the cloud sandbox (/home/user or /tmp). "
+        "Write or create a file in the execution workspace. "
         "Parent directories are created automatically. "
-        "To copy a workspace file into the sandbox, use "
+        "To copy a user workspace file into the executor, use "
         "read_workspace_file with save_to_path instead.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -1014,14 +1188,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "edit_file",
-        "Targeted text replacement in a sandbox file. "
+        "Targeted text replacement in a workspace file. "
         "old_string must appear in the file and is replaced with new_string.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
+                    "description": "Path, relative to the workspace root or absolute.",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},
@@ -1035,7 +1209,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "glob",
-        "Search for files by name pattern in the cloud sandbox.",
+        "Search for files by name pattern in the execution workspace.",
         {
             "type": "object",
             "properties": {
@@ -1045,7 +1219,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory to search. Default: /home/user.",
+                    "description": "Directory to search. Default: workspace root.",
                 },
             },
         },
@@ -1053,14 +1227,14 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "grep",
-        "Search file contents by regex in the cloud sandbox.",
+        "Search file contents by regex in the execution workspace.",
         {
             "type": "object",
             "properties": {
                 "pattern": {"type": "string", "description": "Regex pattern."},
                 "path": {
                     "type": "string",
-                    "description": "File or directory. Default: /home/user.",
+                    "description": "File or directory. Default: workspace root.",
                 },
                 "include": {
                     "type": "string",
