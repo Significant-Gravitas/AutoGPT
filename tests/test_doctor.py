@@ -396,6 +396,34 @@ async def test_daemon_preflight_on_macos_needs_both_grants(
     assert record["result"]["error_code"] == ErrorCode.PERMISSION_PENDING.value
 
 
+async def test_run_stops_the_driver_a_failed_preflight_started(
+    tmp_path, monkeypatch, fake_log
+) -> None:
+    """run() checked the macOS grants through cua-driver before the try
+    whose finally closes the driver, so a missing grant left the driver's
+    policy directory behind on every start launchd made."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setenv(
+        "FAKE_CUA_PERMISSIONS", json.dumps({"accessibility": False, "screen_recording": True})
+    )
+    daemon = _daemon(_with_driver(tmp_path))
+    bridge = daemon._computer_handler.driver
+    policies: list[Path] = []
+    real_write_policy = bridge._write_policy
+
+    def write_policy() -> Path:
+        policies.append(real_write_policy())
+        return policies[-1]
+
+    monkeypatch.setattr(bridge, "_write_policy", write_policy)
+
+    with pytest.raises(DaemonPreflightError):
+        await daemon.run()
+
+    assert policies and not policies[0].parent.exists()
+    assert bridge._client is None
+
+
 async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(
     tmp_path, monkeypatch, fake_log
 ) -> None:

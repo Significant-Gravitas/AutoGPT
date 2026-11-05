@@ -423,20 +423,26 @@ class ShimDaemon:
 
     async def run(self) -> None:
         """Connect → handshake → pump messages, retrying only transient failures."""
-        # Fail closed on incomplete preview capabilities and missing OS
-        # permissions before opening the WebSocket.
-        await self._preflight_or_raise()
-        if not self._control_mode:
-            # A legacy session is jailed to allowed_root, which the shim
-            # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
-            try:
-                self.config.allowed_root.mkdir(parents=True, exist_ok=True)
-            except OSError as exc:
-                raise DaemonPreflightError(
-                    f"Could not create allowed_root {self.config.allowed_root}: {exc}"
-                ) from exc
-        if self._manage_audit_lifecycle:
-            await self._audit_shim_start()
+        try:
+            # Fail closed on incomplete preview capabilities and missing OS
+            # permissions before opening the WebSocket.
+            await self._preflight_or_raise()
+            if not self._control_mode:
+                # A legacy session is jailed to allowed_root, which the shim
+                # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
+                try:
+                    self.config.allowed_root.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise DaemonPreflightError(
+                        f"Could not create allowed_root {self.config.allowed_root}: {exc}"
+                    ) from exc
+            if self._manage_audit_lifecycle:
+                await self._audit_shim_start()
+        except BaseException:
+            # On macOS the preflight starts cua-driver to check its grants,
+            # and the finally below, which stops it, isn't reached from here.
+            await self._computer_handler.close()
+            raise
         self._running = True
         attempt = 0
         try:
