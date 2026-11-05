@@ -485,6 +485,28 @@ def test_audit_prune_keeps_a_file_whose_newest_record_has_no_timestamp(
     assert "no timestamp" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "ts",
+    ["-Infinity", '"-Infinity"', "NaN", "true", '"1"'],
+    ids=["infinity", "infinity-string", "nan", "boolean", "number-string"],
+)
+def test_audit_prune_keeps_a_file_with_a_timestamp_that_is_not_a_finite_number(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], ts: str
+) -> None:
+    """float() turned -Infinity, as a JSON token or a string, into -inf,
+    older than any cutoff, so prune deleted the file. The writer only ever
+    writes a finite number, and a file prune can't date is kept."""
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20240101-000000"
+    rotated.write_text(f'{{"seq": 1, "op": "SHIM_START", "ts": {ts}}}\n')
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert rotated.exists()
+    assert "Kept" in capsys.readouterr().out
+
+
 def test_version_prints_the_installed_version(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1010,6 +1010,7 @@ def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
     past any fixed window (an EXECUTE_COMMAND with a long command, say), so
     every line is read whole."""
     import json
+    import math
 
     try:
         newest_ts: float | None = None
@@ -1022,6 +1023,12 @@ def _newest_record_ts(path: Path) -> tuple[tuple[int, int, int], float] | None:
                 ts = record.get("ts") if isinstance(record, dict) else None
                 if ts is None:
                     print(f"Kept {path.name}: a record in it has no timestamp.")
+                    return None
+                # The writer writes a finite number. float() would turn
+                # -Infinity, as a JSON token or a string, into a time older
+                # than any cutoff, and delete the file.
+                if not isinstance(ts, int | float) or isinstance(ts, bool) or not math.isfinite(ts):
+                    print(f"Kept {path.name}: a record in it has a timestamp that isn't a time.")
                     return None
                 newest_ts = float(ts) if newest_ts is None else max(newest_ts, float(ts))
         if newest_ts is None:
