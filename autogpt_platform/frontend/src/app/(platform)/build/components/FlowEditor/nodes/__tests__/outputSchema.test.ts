@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { augmentOutputSchemaWithEdges } from "../outputSchema";
+import {
+  augmentOutputSchemaWithEdges,
+  getNestedOutputProperties,
+} from "../outputSchema";
 import type { RJSFSchema } from "@rjsf/utils";
 import type { CustomEdge } from "../../edges/CustomEdge";
 
@@ -277,6 +280,73 @@ describe("dynamic output safety", () => {
         properties: { name: { title: "name" } },
       },
     });
+  });
+
+  it("reads object members of nullable and union outputs", () => {
+    expect(
+      getNestedOutputProperties({
+        title: "Main Result",
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              text: { title: "Text" },
+              html: { title: "Html" },
+            },
+          },
+          { type: "null" },
+        ],
+      }),
+    ).toEqual({
+      text: { title: "Text" },
+      html: { title: "Html" },
+    });
+    expect(
+      getNestedOutputProperties({
+        oneOf: [
+          { type: "object", properties: { url: { type: "string" } } },
+          { type: "object", properties: { profile: { type: "object" } } },
+        ],
+      }),
+    ).toEqual({
+      url: { type: "string" },
+      profile: { type: "object" },
+    });
+    expect(
+      getNestedOutputProperties({
+        allOf: [{ type: "object", properties: { kept: { title: "Kept" } } }],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+  });
+
+  it("ignores scalar unions and keeps declared properties ahead of combinators", () => {
+    expect(
+      getNestedOutputProperties({
+        anyOf: [{ type: "string" }, { type: "null" }],
+      }),
+    ).toEqual({});
+    expect(
+      getNestedOutputProperties({
+        properties: { kept: { title: "Kept" } },
+        anyOf: [
+          { type: "object", properties: { ignored: { title: "Ignored" } } },
+        ],
+      }),
+    ).toEqual({ kept: { title: "Kept" } });
+  });
+
+  it("treats prototype-like union keys as own properties", () => {
+    const before = Object.getOwnPropertyDescriptors(Object.prototype);
+    const schema = JSON.parse(
+      '{"anyOf":[{"type":"object","properties":{"__proto__":{"type":"string","title":"Injected"}}},{"type":"null"}]}',
+    );
+    const result = getNestedOutputProperties(schema);
+    expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(before);
+    expect(Object.hasOwn(result, "__proto__")).toBe(true);
+    expect(result.__proto__).toEqual({ type: "string", title: "Injected" });
+    expect(JSON.stringify(schema)).toBe(
+      '{"anyOf":[{"type":"object","properties":{"__proto__":{"type":"string","title":"Injected"}}},{"type":"null"}]}',
+    );
   });
 
   it.each([null, undefined, false, 4, "bad", [], {}].map((value) => [value]))(

@@ -15,6 +15,58 @@ export function getOutputProperties(schema: unknown): OutputProperties {
     : {};
 }
 
+const MAX_OUTPUT_SCHEMA_DEPTH = 6;
+
+function assignOwnProperty(
+  target: OutputProperties,
+  key: string,
+  value: RJSFSchema | boolean,
+) {
+  if (Object.hasOwn(target, key)) return;
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function nestedOutputProperties(
+  schema: unknown,
+  depth: number,
+  seen: Set<object>,
+): OutputProperties {
+  const direct = getOutputProperties(schema);
+  if (Object.keys(direct).length > 0) return direct;
+  if (
+    !isSchemaObject(schema) ||
+    depth >= MAX_OUTPUT_SCHEMA_DEPTH ||
+    seen.has(schema)
+  )
+    return {};
+
+  const branches = [schema.allOf, schema.anyOf, schema.oneOf].filter(
+    (branch): branch is (RJSFSchema | boolean)[] => Array.isArray(branch),
+  );
+  if (branches.length === 0) return {};
+
+  seen.add(schema);
+  const merged: OutputProperties = {};
+  for (const branch of branches) {
+    for (const option of branch) {
+      const nested = nestedOutputProperties(option, depth + 1, seen);
+      for (const [key, value] of Object.entries(nested)) {
+        assignOwnProperty(merged, key, value);
+      }
+    }
+  }
+  return merged;
+}
+
+export function getNestedOutputProperties(schema: unknown): OutputProperties {
+  return nestedOutputProperties(schema, 0, new Set());
+}
+
 function withOutputPath(
   schema: unknown,
   segments: string[],
