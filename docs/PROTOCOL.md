@@ -620,9 +620,12 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
 `truncated` is true only when something was left out: a match past
 `max_entries` (which is capped at 10,000), a match that would take the
 entries past the reply's size budget (16 MiB less 64 KiB, so the reply
-stays under the frame limit), or a directory entry past the walk's scan
-budget of 100,000 entries. Exactly `max_entries` matches come back with
-`truncated: false`. To see the rest, list a narrower path or glob. The scan
+stays under the frame limit), a directory entry past the walk's scan
+budget of 100,000 entries, or the entries of a subfolder the walk couldn't
+read. A folder asked for that can't be read is an error (`INTERNAL_ERROR`,
+or `PATH_NOT_FOUND` once it's gone), not an empty listing. Exactly
+`max_entries` matches come back with `truncated: false`. To see the rest,
+list a narrower path or glob. The scan
 budget counts entries as each directory is read, so a directory with
 millions of entries is never read whole.
 

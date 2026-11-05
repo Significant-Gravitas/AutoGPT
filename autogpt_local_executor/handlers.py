@@ -1093,6 +1093,8 @@ class FileHandler:
         def _walk() -> tuple[list[FileEntry], bool]:
             entries: list[FileEntry] = []
             truncated = False
+            # A subfolder that couldn't be read leaves its entries out.
+            unread = False
             case_fold = platform_info.is_case_insensitive_fs(str(base))
             glob = payload.glob
 
@@ -1114,6 +1116,7 @@ class FileHandler:
                 # Depth first, a directory's entries before its subfolders',
                 # and like os.walk it never follows a symlink into a folder,
                 # nor a Windows junction, which is_dir() takes for one.
+                nonlocal unread
                 pending = [base]
                 while pending:
                     folder = pending.pop()
@@ -1135,6 +1138,11 @@ class FileHandler:
                                 except OSError:
                                     pass
                     except OSError:
+                        # The folder asked for is an error (handle_list
+                        # answers it); one under it leaves the listing short.
+                        if folder == base:
+                            raise
+                        unread = True
                         continue
                     pending.extend(reversed(subfolders))
 
@@ -1176,9 +1184,26 @@ class FileHandler:
                     break
                 reply_bytes += size
                 entries.append(entry)
-            return entries, truncated
+            return entries, truncated or unread
 
-        entries, truncated = await asyncio.to_thread(_walk)
+        try:
+            entries, truncated = await asyncio.to_thread(_walk)
+        except OSError as exc:
+            # The folder can be entered but not read (no read permission, a
+            # macOS privacy prompt nobody answered), or went away: listing it
+            # as empty would say it is.
+            code = (
+                ErrorCode.PATH_NOT_FOUND
+                if isinstance(exc, FileNotFoundError)
+                else ErrorCode.INTERNAL_ERROR
+            )
+            await self._emit(
+                "FILE_LIST",
+                msg.id,
+                {**details_base, "entries_returned": 0},
+                _err_result(_elapsed_ms(start), code.value),
+            )
+            return make_error(msg.id, code, f"Could not list {base}: {exc}")
         await self._emit(
             "FILE_LIST",
             msg.id,

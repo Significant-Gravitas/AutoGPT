@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import autogpt_local_executor.handlers as handlers_module
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.handlers import FileHandler
 from autogpt_local_executor.protocol import (
+    ErrorMessage,
     FileListMessage,
     FileListPayload,
     FileListResponseMessage,
@@ -170,3 +172,50 @@ async def test_a_recursive_listing_never_enters_a_junction(
     names = {entry.name for entry in response.payload.entries}
     assert {"junction", "folder", "inside.txt"} <= names
     assert "outside.txt" not in names
+
+
+_posix_permissions = pytest.mark.skipif(
+    os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions, not root"
+)
+
+
+@_posix_permissions
+@pytest.mark.asyncio
+async def test_a_folder_that_cannot_be_read_is_an_error_not_an_empty_listing(
+    tmp_path: Path,
+) -> None:
+    """A folder the shim may enter but not read (no read permission, or a
+    macOS privacy prompt nobody answered) came back as an empty listing that
+    wasn't truncated, so the folder looked empty."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "hidden-by-the-error.txt").write_text("")
+    locked.chmod(0o300)
+    handler = FileHandler(ShimConfig(allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"))
+    try:
+        response = await handler.handle_list(_list(locked))
+    finally:
+        locked.chmod(0o700)
+
+    assert isinstance(response, ErrorMessage)
+    assert "locked" in response.payload.message
+
+
+@_posix_permissions
+@pytest.mark.asyncio
+async def test_a_subfolder_that_cannot_be_read_marks_the_listing_truncated(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "open").mkdir()
+    (tmp_path / "open" / "a.txt").write_text("")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "b.txt").write_text("")
+    locked.chmod(0o300)
+    try:
+        response = await _listing(tmp_path, recursive=True)
+    finally:
+        locked.chmod(0o700)
+
+    assert {entry.name for entry in response.payload.entries} == {"open", "a.txt", "locked"}
+    assert response.payload.truncated is True
