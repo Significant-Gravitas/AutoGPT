@@ -774,6 +774,10 @@ class TestSDKDisallowedTools:
     def test_bash_tool_is_disallowed(self):
         assert "Bash" in SDK_DISALLOWED_TOOLS
 
+    def test_powershell_tool_is_disallowed(self):
+        assert "PowerShell" in get_sdk_disallowed_tools()
+        assert "PowerShell" in BLOCKED_TOOLS
+
     def test_webfetch_tool_is_disallowed(self):
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
