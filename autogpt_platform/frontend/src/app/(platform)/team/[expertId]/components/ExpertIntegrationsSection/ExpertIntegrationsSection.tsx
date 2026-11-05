@@ -153,7 +153,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           ) : null}
         </SectionEmptyState>
       ) : visible.length === 0 ? (
-        <Text variant="body-md" tone="muted" className="pt-4">
+        <Text variant="body-md" tone="muted" className="mt-4">
           No integrations match.
         </Text>
       ) : (

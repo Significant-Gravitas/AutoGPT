@@ -237,15 +237,11 @@ export function PendingReviewsList({
         data-slot="pending-reviews-list-empty"
         className="flex flex-col items-center justify-center py-12 text-center"
       >
-        <Icon
-          icon={Clock01Icon}
-          size={48}
-          className="mb-4 text-muted-foreground"
-        />
-        <Text variant="h4" className="text-muted-foreground">
+        <Icon icon={Clock01Icon} size={48} tone="muted" className="mb-4" />
+        <Text variant="h4" tone="muted">
           {emptyMessage}
         </Text>
-        <Text variant="body" className="mt-2 max-w-md text-muted-foreground">
+        <Text variant="body" tone="muted" className="mt-2 max-w-md">
           When workflows have human-in-the-loop blocks, they will appear here
           for your review and approval.
         </Text>
@@ -291,12 +287,12 @@ export function PendingReviewsList({
               </AttentionCard.Icon>
               <Text
                 variant="large-semibold"
-                className="overflow-hidden text-ellipsis text-textBlack"
+                className="overflow-hidden text-ellipsis text-foreground-base"
               >
                 Your review is needed
               </Text>
             </AttentionCard.Row>
-            <Text variant="large" className="text-textGrey">
+            <Text variant="large" tone="body">
               {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
                 ? "Otto is waiting for your approval before the action below."
                 : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
@@ -336,39 +332,23 @@ export function PendingReviewsList({
                         <Icon
                           icon={ArrowRight01Icon}
                           size={20}
-                          // TODO(tokens): no role for Tailwind's default gray-600;
-                          // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          tone="secondary"
                         />
                       ) : (
                         <Icon
                           icon={ArrowDown01Icon}
                           size={20}
-                          // TODO(tokens): no role for Tailwind's default gray-600;
-                          // the zinc roles are a different grey.
-                          className="text-gray-600"
+                          tone="secondary"
                         />
                       )}
                       <div
                         data-slot="pending-reviews-list-group-heading"
                         className="flex-1"
                       >
-                        <Text
-                          // TODO(tokens): no role for Tailwind's default gray-900; the
-                          // zinc roles are a different grey.
-                          variant="body"
-                          className="font-semibold text-gray-900"
-                        >
-                          {reviewTitle}
-                        </Text>
+                        <Text variant="body-semibold">{reviewTitle}</Text>
                         {(workflowName ||
                           (!firstReview?.action && !isGateReview(nodeId))) && (
-                          <Text
-                            // TODO(tokens): no role for Tailwind's default gray-500;
-                            // the zinc roles are a different grey.
-                            variant="small"
-                            className="text-gray-500"
-                          >
+                          <Text variant="small" tone="muted">
                             {workflowName
                               ? `In workflow “${workflowName}”`
                               : `Node #${getShortenedNodeId(nodeId)}`}
@@ -410,12 +390,7 @@ export function PendingReviewsList({
                               handleAutoApproveFutureToggle(nodeId, enabled)
                             }
                           />
-                          <Text
-                            // TODO(tokens): no role for Tailwind's default gray-700;
-                            // the zinc roles are a different grey.
-                            variant="small"
-                            className="text-gray-700"
-                          >
+                          <Text variant="small" tone="body">
                             Auto-approve future executions of this node
                           </Text>
                         </div>
@@ -429,7 +404,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, true)}
                           disabled={isBusy}
                           variant="primary"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "approve"}
                         >
                           {reviewCount === 1
@@ -440,7 +415,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, false)}
                           disabled={isBusy}
                           variant="destructive"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "reject"}
                         >
                           {reviewCount === 1
@@ -455,7 +430,7 @@ export function PendingReviewsList({
             })}
           </div>
 
-          <Text variant="small" className="text-textGrey">
+          <Text variant="small" tone="body">
             Each decision applies only to the reviews shown above it. You can
             turn auto-approval on or off using the toggle for each node.
           </Text>

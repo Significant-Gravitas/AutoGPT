@@ -12,8 +12,6 @@ from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
 from backend.blocks.mcp.protocol import MCPProtocolEra
 from backend.util.test import execute_block_test
 
-pytestmark = pytest.mark.usefixtures("no_stored_mcp_credentials")
-
 # ── SSE parsing unit tests ───────────────────────────────────────────
 
 
@@ -665,6 +663,7 @@ class TestMCPToolBlock:
             refresh_token=SecretStr(""),
             scopes=[],
             title="Test MCP credential",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
         )
 
         async for _ in block.run(

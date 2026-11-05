@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangleIcon } from "lucide-react";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
 
 import { Text } from "@/components/atoms/Text/Text";
@@ -32,10 +33,13 @@ export function TopUpDialog({
       title={
         isOutOfCredits ? (
           <span className="inline-flex items-center gap-2">
-            <AlertTriangleIcon
-              // TODO(tokens): no exact role for text-orange-600 (#E77B00)
-              className="h-[1.125rem] w-[1.125rem] text-orange-600"
-            />
+            <span className="flex text-orange-foreground">
+              <Icon
+                aria-hidden
+                icon={Alert02Icon}
+                className="h-[1.125rem] w-[1.125rem]"
+              />
+            </span>
             You&apos;re out of automation credits
           </span>
         ) : (

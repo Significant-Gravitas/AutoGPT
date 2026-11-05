@@ -2,6 +2,7 @@ import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { afterEach, describe, expect, it } from "vitest";
+import { tones } from "@/components/styles/tones";
 import { Button } from "./Button";
 import { ButtonProps } from "./helpers";
 
@@ -33,7 +34,7 @@ describe("Button compact sizes", () => {
     renderButton({ variant: "outline", size: "xs", children: "New Pod" });
     const el = screen.getByRole("button", { name: "New Pod" });
     expect(el.className).toContain("border-border-base");
-    expect(el.className).not.toContain("border-zinc-700");
+    expect(el.className).not.toContain("border-foreground-body");
   });
 
   it("renders a leadingIcon before the label", () => {
@@ -75,10 +76,10 @@ describe("Button compact sizes", () => {
   });
 });
 
-describe("Button legacy variants", () => {
-  it("renders a plain button with the children as they are", () => {
+describe("Button compact variants", () => {
+  it("renders a rounded-md button with the children as they are", () => {
     render(
-      <Button variant="legacy-outline" className="space-x-3">
+      <Button variant="compact-outline" size="compact" className="space-x-3">
         <span>One</span>
         <span>Two</span>
       </Button>,
@@ -86,29 +87,32 @@ describe("Button legacy variants", () => {
     const el = screen.getByRole("button", { name: "One Two" });
     expect(el.children).toHaveLength(2);
     expect(el.querySelector(".contents")).toBeNull();
-    expect(el.className).toContain("border-neutral-200");
+    expect(el.className).toContain("rounded-md");
+    expect(el.className).not.toContain("rounded-full");
+    expect(el.className).toContain("border-border-base");
     expect(el.className).toContain("h-9 px-4 py-2");
     expect(el.className).toContain("space-x-3");
   });
 
   it("applies the size, and lets the caller's classes win", () => {
     render(
-      <Button variant="legacy-default" size="legacy-sm" className="text-xs">
+      <Button variant="compact-primary" size="compact-sm" className="h-10">
         Save
       </Button>,
     );
     const el = screen.getByRole("button", { name: "Save" });
-    expect(el.className).toContain("h-8");
-    expect(el.className).toContain("text-xs");
-    expect(el.className).not.toContain("text-caption");
-    expect(el.className).not.toContain("leading-4");
+    expect(el.className).toContain("bg-action");
+    expect(el.className).toContain("h-10");
+    expect(el.className).not.toContain("h-8");
+    expect(el.className).toContain("text-caption");
   });
 
   it("forwards the ref and the caller's props", () => {
     let node: HTMLButtonElement | null = null;
     render(
       <Button
-        variant="legacy-ghost"
+        variant="compact-ghost"
+        size="compact"
         ref={(el) => {
           node = el;
         }}
@@ -121,23 +125,7 @@ describe("Button legacy variants", () => {
     const el = screen.getByTestId("ghost");
     expect(node).toBe(el);
     expect(el).toHaveProperty("disabled", true);
-  });
-
-  it("adds no slot of its own, like the old component, and keeps the caller's", () => {
-    render(
-      <>
-        <Button variant="legacy-outline">Plain</Button>
-        <Button variant="legacy-ghost" data-slot="date-input-trigger">
-          Pick
-        </Button>
-      </>,
-    );
-    expect(
-      screen.getByRole("button", { name: "Plain" }).hasAttribute("data-slot"),
-    ).toBe(false);
-    expect(
-      screen.getByRole("button", { name: "Pick" }).getAttribute("data-slot"),
-    ).toBe("date-input-trigger");
+    expect(el.getAttribute("data-slot")).toBe("button");
   });
 });
 
@@ -218,5 +206,151 @@ describe("Button textSize", () => {
       .className.split(" ");
     expect(classes).toContain("text-body-md");
     expect(classes).not.toContain("text-body");
+  });
+});
+
+describe("Button quiet variants, row and inline sizes, and shape", () => {
+  it.each([
+    ["ghost-muted", "text-foreground-tertiary", "hover:text-foreground-body"],
+    ["ghost-subtle", "text-foreground-subtle", "hover:text-foreground-body"],
+    ["ghost-danger", "text-foreground-tertiary", "hover:text-error"],
+  ] as const)("renders %s with a ghost box", (variant, rest, hover) => {
+    renderButton({ variant, size: "icon-xs", "aria-label": variant });
+    const classes = screen
+      .getByRole("button", { name: variant })
+      .className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "bg-transparent",
+        "border-transparent",
+        rest,
+        hover,
+      ]),
+    );
+    expect(classes).not.toContain("text-foreground-base");
+  });
+
+  it("renders row as a 32px button with no minimum width", () => {
+    renderButton({ variant: "secondary", size: "row", children: "Retry" });
+    const classes = screen
+      .getByRole("button", { name: "Retry" })
+      .className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["h-8", "min-w-0", "px-3"]));
+    expect(classes).not.toContain("h-9");
+  });
+
+  it("renders a link at the inline size with no box", () => {
+    renderButton({ variant: "link", size: "inline-xs", children: "Details" });
+    const classes = screen
+      .getByRole("button", { name: "Details" })
+      .className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining(["h-auto", "p-0", "text-caption", "leading-4"]),
+    );
+    expect(classes).not.toContain("h-[2.875rem]");
+  });
+
+  it.each([
+    ["pill", "rounded-full"],
+    ["rounded", "rounded-xl"],
+    ["soft", "rounded-lg"],
+  ] as const)("renders shape %s over the size's radius", (shape, cls) => {
+    renderButton({ variant: "primary", size: "xs", shape, children: "Go" });
+    const classes = screen
+      .getByRole("button", { name: "Go" })
+      .className.split(" ");
+    expect(classes).toContain(cls);
+    expect(classes).not.toContain("rounded-md");
+  });
+
+  it("keeps a ghost-* variant's look while loading", () => {
+    renderButton({ variant: "ghost-muted", loading: true, children: "Saving" });
+    const classes = screen
+      .getByRole("button", { name: "Saving" })
+      .className.split(" ");
+    expect(classes).toContain("text-foreground-tertiary");
+    expect(classes).not.toContain("bg-foreground-tertiary");
+  });
+});
+
+describe("Button fill variants, tone and icon-2xs", () => {
+  it.each([
+    [
+      "brand",
+      ["bg-brand", "text-action-foreground", "hover:bg-accent-strong"],
+      "bg-action",
+    ],
+    [
+      "warning",
+      [
+        "bg-warning-foreground",
+        "text-action-foreground",
+        "hover:bg-warning-foreground/90",
+      ],
+      "bg-action",
+    ],
+    [
+      "success",
+      ["bg-success/30", "border-success", "text-foreground-base"],
+      "bg-surface",
+    ],
+    [
+      "tray",
+      [
+        "bg-transparent",
+        "border-transparent",
+        "hover:bg-surface-hover",
+        "disabled:opacity-40",
+      ],
+      "shadow-sm",
+    ],
+    [
+      "ghost-warning",
+      ["text-warning-foreground", "hover:bg-warning-surface"],
+      "text-foreground-base",
+    ],
+  ] as const)(
+    "renders the %s variant's own classes",
+    (variant, defining, conflicting) => {
+      renderButton({ variant, size: "small", children: variant });
+      const classes = screen
+        .getByRole("button", { name: variant })
+        .className.split(" ");
+      expect(classes).toEqual(expect.arrayContaining([...defining]));
+      expect(classes).not.toContain(conflicting);
+    },
+  );
+
+  it.each(Object.entries(tones).filter(([tone]) => tone !== "base"))(
+    "replaces the variant's text colour with the %s tone",
+    (tone, cls) => {
+      renderButton({
+        variant: "ghost",
+        size: "small",
+        tone: tone as keyof typeof tones,
+        children: "Toned",
+      });
+      const classes = screen
+        .getByRole("button", { name: "Toned" })
+        .className.split(" ");
+      expect(classes).toContain(cls);
+      expect(classes).not.toContain("text-foreground-base");
+    },
+  );
+
+  it("renders icon-2xs as a 24px icon-only button", () => {
+    renderButton({
+      variant: "ghost-subtle",
+      size: "icon-2xs",
+      leadingIcon: PencilEdit02Icon,
+      "aria-label": "Rename",
+    });
+    const el = screen.getByRole("button", { name: "Rename" });
+    const classes = el.className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining(["size-6", "min-w-0", "p-0"]),
+    );
+    expect(classes).not.toContain("h-[2.875rem]");
+    expect(el.querySelector("svg")?.getAttribute("width")).toBe("14");
   });
 });

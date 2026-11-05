@@ -28,6 +28,7 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    bash_command_as_written,
     get_execution_context,
     is_sdk_tool_path,
     reset_consult_budget,
@@ -39,11 +40,13 @@ from backend.copilot.gate.mcp_seam import (
 )
 from backend.copilot.gate.reads import model_view
 from backend.copilot.google_data_redaction import remember_cut_google_output
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
+    text_outside_file_refs,
 )
 from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
@@ -552,7 +555,9 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         # line-based offset/limit applied to the raw bytes is useless.
         # _navigable_tool_result_text() unwraps the envelope and pretty-
         # prints inner JSON so line offsets actually slice the payload.
-        with open(resolved, encoding="utf-8", errors="replace") as f:
+        with open(
+            resolved, encoding="utf-8", errors="replace", opener=open_no_follow
+        ) as f:
             raw = f.read()
         navigable = _navigable_tool_result_text(raw)
         if char_offset is not None or char_limit is not None:
@@ -854,7 +859,12 @@ def _make_truncating_wrapper(
                     _clear_tool_failures(name)
                 return released
 
-        result = await run(args)
+        command = original_args.get("command") if name == "bash_exec" else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
+        with bash_command_as_written(as_written):
+            result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
             _text_from_mcp_result(result), _text_from_mcp_result(truncated)
@@ -920,17 +930,16 @@ def create_copilot_mcp_server(
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    dispatches concurrent tool calls in parallel rather than sequentially.
-    This is a deliberate override: even side-effect tools use the hint
-    because the MCP tools are already individually sandboxed and the
-    pre-launch duplicate-execution bug (SECRT-2204) is worse than
-    sequential dispatch.
+    Tools are annotated with ``readOnlyHint=True`` so the SDK CLI runs the
+    calls in one message in parallel, even tools with side effects.  The
+    exception is a tool that ``writes_files``: the CLI runs a call without
+    the hint on its own, after the calls written before it and before the
+    ones after, so a copy of a file never starts while the command that
+    builds it is still running (SECRT-3178).
 
     When *use_e2b* is True, five additional MCP file tools are registered
-    that route directly to the E2B sandbox filesystem, and the caller should
-    disable the corresponding SDK built-in tools via
-    :func:`get_sdk_disallowed_tools`.
+    that route directly to the E2B sandbox filesystem; the SDK built-ins they
+    stand in for are disabled in both modes by :func:`get_sdk_disallowed_tools`.
 
     Short tool names in *hidden_tool_names* are not registered at all — the
     model never sees them.  ``allowed_tools``/``disallowed_tools`` alone are
@@ -963,15 +972,13 @@ def create_copilot_mcp_server(
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
-        # All tools annotated readOnlyHint=True to enable parallel dispatch.
-        # The SDK CLI uses this hint to dispatch concurrent tool calls in
-        # parallel rather than sequentially.  Side-effect safety is ensured
-        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=_PARALLEL_ANNOTATION,
+            annotations=(
+                _MUTATING_ANNOTATION if base_tool.writes_files else _PARALLEL_ANNOTATION
+            ),
         )(
             _make_truncating_wrapper(
                 handler,
@@ -1091,8 +1098,8 @@ def create_copilot_mcp_server(
 #   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-# In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
-# access.  read_file also handles local tool-results and ephemeral reads.
+# The five file tools are disabled in both modes; the MCP file tools and bash_exec
+# replace them.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
 # WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
 # ``mcp__copilot__web_search`` so cost tracking is unified across paths.
@@ -1210,7 +1217,7 @@ COPILOT_TOOL_NAMES = [
     f"{MCP_TOOL_PREFIX}{READ_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{EDIT_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-    *_SDK_BUILTIN_TOOLS,
+    *_SDK_BUILTIN_ALWAYS,
 ]
 
 
@@ -1245,15 +1252,9 @@ def get_copilot_tool_names(
     ]
 
 
-def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
-    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`.
-
-    When *use_e2b* is True the SDK built-in file tools are also disabled
-    because MCP equivalents provide direct sandbox access.
-    """
-    if not use_e2b:
-        return list(SDK_DISALLOWED_TOOLS)
-    return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+def get_sdk_disallowed_tools() -> list[str]:
+    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`."""
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]))
 
 
 def get_sdk_builtin_tools() -> list[str]:
