@@ -1821,8 +1821,8 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         )
     else:
         clipboard = (
-            "clipboard_read returns only text this session put on the clipboard in the "
-            "last 30 seconds."
+            "clipboard_read returns only text clipboard_write put on this computer's "
+            "clipboard, in this chat or another, in the last 30 seconds."
         )
     notes = [
         "",

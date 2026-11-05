@@ -83,7 +83,10 @@ WSL2 can't drive Windows apps; run the shim on Windows itself.
 read returns depends on a second setting:
 
 - **Default:** only text the agent itself put on the clipboard in the last
-  30 seconds. Anything you copied comes back as `CLIPBOARD_CONCEALED`.
+  30 seconds, from any chat on this computer: the clipboard is the
+  computer's, not one chat's. Anything else comes back as
+  `CLIPBOARD_CONCEALED`. The shim compares the text, so a copy you make of
+  the very same text reads back too.
 - **With `--enable-clipboard-read-foreign`:** whatever is on the clipboard,
   except what a password manager marked private (many mark their copies,
   KeePassXC among them). Those come back as

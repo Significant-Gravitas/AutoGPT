@@ -1305,6 +1305,25 @@ async def test_child_sessions_share_the_driver_and_only_the_parent_stops_it(
     assert parent.driver._client is None
 
 
+async def test_text_one_chat_wrote_is_readable_from_another(make_handler) -> None:
+    """The clipboard is the computer's: a paste in any window shows another
+    chat's write too, so the writeback record is shared, and the
+    instructions say so rather than "this session"."""
+    parent = make_handler(enable_clipboard=True, session_id=None)
+    child = make_handler(enable_clipboard=True, session_id="child")
+    parent.share_with(child)
+
+    await parent.handle(_call("clipboard_write", {"text": "from the first chat"}))
+    response = await child.handle(_call("clipboard_read"))
+    listing = await child.handle(ComputerToolsRequestMessage(id=new_id(), ts=now_ts()))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert (response.payload.structured_content or {})["text"] == "from the first chat"
+    assert isinstance(listing, ComputerToolsResponseMessage)
+    assert "in this chat or another" in listing.payload.instructions
+    assert "this session" not in listing.payload.instructions
+
+
 # ── Daemon ───────────────────────────────────────────────────────────────
 
 
