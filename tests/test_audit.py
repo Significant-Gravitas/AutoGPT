@@ -1089,6 +1089,20 @@ def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, numb
     assert violation.kind == "parse_error"
 
 
+def test_a_record_nested_too_deeply_to_check_is_a_parse_error(tmp_path: Path) -> None:
+    """A record nested some hundreds of levels deep parses, but canonicalizing
+    it raised RecursionError, which the verifier didn't catch, so verify and
+    verify-all ended in a traceback instead of a violation."""
+    depth = 2000
+    nested = '{"a":' * depth + "1" + "}" * depth
+    path = tmp_path / "audit.log"
+    path.write_text(f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}\n')
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+
+
 @_posix_only
 @pytest.mark.asyncio
 async def test_export_writes_the_archive_after_releasing_the_lock(

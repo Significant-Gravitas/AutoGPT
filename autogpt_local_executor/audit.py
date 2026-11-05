@@ -484,9 +484,10 @@ class AuditWriter:
                 continue
             try:
                 rec = json.loads(raw.decode("utf-8"))
-            except ValueError as exc:
+            except (ValueError, RecursionError) as exc:
                 # JSONDecodeError and UnicodeDecodeError, and the plain
                 # ValueError an integer past Python's 4,300-digit limit raises.
+                # RecursionError: a record nested too deeply to parse.
                 violations.append(Violation("parse_error", None, f"unparseable line: {exc}"))
                 # Can't continue the chain past an unparseable record.
                 return violations
@@ -521,9 +522,11 @@ class AuditWriter:
             shadow = {k: v for k, v in rec.items() if k != "hmac"}
             try:
                 canonical = canonical_bytes(shadow)
-            except ValueError as exc:
+            except (ValueError, RecursionError) as exc:
                 # json.loads takes NaN and Infinity; no record the writer
-                # produced can hold one, and canonicalizing them raises.
+                # produced can hold one, and canonicalizing them raises. A
+                # record that parses can still be nested too deeply for the
+                # canonicalizer, which recurses.
                 violations.append(Violation("parse_error", seq, f"uncanonicalizable record: {exc}"))
                 return violations
             actual = hmac.new(audit_key, canonical, sha256).hexdigest()
