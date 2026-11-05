@@ -43,15 +43,14 @@ _SECRET_TYPES: frozenset[str] = frozenset({"secret"})
 
 
 class SkillParameter(BaseModel):
-    """One inferred-and-confirmed parameter of a generated skill."""
+    """One inferred-and-confirmed parameter of a generated skill. It carries
+    no demonstrated value: those are the user's real data, which §7
+    value-stripping removes from everything the skill keeps or shows."""
 
     name: str
     type: str
     label: str | None = None
     confirmed: bool = False
-    # The demonstrated values seen for this parameter, in row order. Used
-    # to prove variance (≥2 distinct → parameter) and to seed dry-run rows.
-    sample_values: list[Any] = Field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,7 +58,6 @@ class SkillParameter(BaseModel):
             "type": self.type,
             "label": self.label,
             "confirmed": self.confirmed,
-            "sample_values": list(self.sample_values),
         }
 
 
@@ -344,7 +342,6 @@ def _infer_parameters(
                     type=vtype,
                     label=label,
                     confirmed=confirmed,
-                    sample_values=list(values),
                 )
             )
             # Bind every step occurrence of this field.

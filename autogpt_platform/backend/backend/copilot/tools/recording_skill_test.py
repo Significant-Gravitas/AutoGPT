@@ -13,6 +13,7 @@ The load-bearing spec rules under test:
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -201,6 +202,18 @@ class TestValueStripping:
         )
         assert "John" not in skill.skill_md
         assert "john@x.com" not in skill.skill_md
+
+    def test_what_otto_gets_carries_no_parameter_value(self):
+        """Stripping cleared the recording, but each parameter kept the
+        demonstrated values as `sample_values`, which the tool result
+        returned and the session kept."""
+        skill = generate_skill_from_recording(_two_row_recording())
+
+        shown = json.dumps(skill.to_dict())
+
+        assert {p.name for p in skill.parameters} >= {"first_name", "email"}
+        for value in ("John", "Jane", "john@x.com", "jane@y.com"):
+            assert value not in shown
 
 
 class TestManifestFallthrough:
