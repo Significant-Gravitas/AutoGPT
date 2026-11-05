@@ -411,6 +411,11 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
+_SAFE_CWD_PREFIX = os.path.realpath(
+    os.environ.get("COPILOT_WORKSPACE_PREFIX") or "/tmp/copilot-"
+)
+
+
 def projects_base() -> str:
     """Return the resolved path to the CLI's projects directory."""
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
@@ -430,7 +435,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str) -> int:
     growth.
 
     The sweep is scoped to the one directory *encoded_cwd* names, which keeps
-    it safe where several copilot sessions share a host.
+    it safe where several copilot sessions share a host. It refuses a name
+    that is not a single directory under the configured workspace prefix.
 
     Returns the number of directories removed.
     """
@@ -440,15 +446,15 @@ def cleanup_stale_project_dirs(encoded_cwd: str) -> int:
 
     now = time.time()
     removed = 0
+    encoded_prefix = re.sub(r"[^a-zA-Z0-9]", "-", _SAFE_CWD_PREFIX)
 
+    if not re.fullmatch(r"[a-zA-Z0-9-]+", encoded_cwd) or not encoded_cwd.startswith(
+        encoded_prefix
+    ):
+        logger.warning("[Transcript] Refusing to sweep non-copilot dir")
+        return 0
     target = Path(_pbase) / encoded_cwd
     if not target.is_dir():
-        return 0
-    # Guard: only sweep copilot-generated dirs.
-    if "-tmp-copilot-" not in target.name:
-        logger.warning(
-            "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
-        )
         return 0
     try:
         # st_mtime is used as a proxy for session activity. Claude CLI writes

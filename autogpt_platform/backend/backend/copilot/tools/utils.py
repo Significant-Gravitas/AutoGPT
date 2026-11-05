@@ -23,6 +23,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     HostScopedCredentials,
     OAuth2Credentials,
+    is_refused_sdk_default,
 )
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -507,6 +508,12 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
 
 def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
     if cred.provider not in field_info.provider:
+        return False
+    if is_refused_sdk_default(cred.id):
+        # The operator's own key for a provider whose SDK default can't run:
+        # ``creds_manager.get`` refuses it, so it fits no field. Counting it
+        # would pick it over the "Use Credits" system credential in a watched
+        # chat, or make it a second "own" account to choose between.
         return False
     if cred.type not in field_info.supported_types:
         return False
