@@ -19,10 +19,10 @@ from .falkordb_driver import open_driver
 from .scope import MemoryScope
 from .scope_resolution import resolve_memory_scope
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
-@pytest_asyncio.fixture(loop_scope="function")
+@pytest_asyncio.fixture(loop_scope="session")
 async def private_orgs(falkordb_available, monkeypatch):
     # The client is shared with the rest of the session: leave it as found.
     connected_here = not db.is_connected()
@@ -46,19 +46,10 @@ async def private_orgs(falkordb_available, monkeypatch):
         for org in organizations
     ]
     monkeypatch.setattr(
-        graphiti_store, "is_enabled_for_user", AsyncMock(return_value=True)
-    )
-    monkeypatch.setattr(
-        graphiti_forget, "is_enabled_for_user", AsyncMock(return_value=True)
-    )
-    monkeypatch.setattr(routes, "is_enabled_for_user", AsyncMock(return_value=True))
-    monkeypatch.setattr(
         graphiti_store, "resolve_user_name", AsyncMock(return_value="Owner")
     )
     monkeypatch.setattr(ingest, "ensure_indices_once", AsyncMock())
-    monkeypatch.setattr(
-        "backend.copilot.dream.scheduling.ensure_dream_system_scheduled", AsyncMock()
-    )
+    monkeypatch.setattr(ingest, "ensure_scope_scheduled", AsyncMock())
 
     class Lease:
         async def run(self, action):
@@ -116,7 +107,6 @@ async def test_default_store_delayed_worker_recall_and_hard_forget(
         return client
 
     monkeypatch.setattr(ingest, "get_graphiti_client", client_for)
-    monkeypatch.setattr(graphiti_forget, "get_graphiti_client", client_for)
     session = ChatSession.new(user_id, dry_run=False, organization_id=orgs[0])
     store = graphiti_store.MemoryStoreTool()
     await store._execute(user_id, session, name="AutoGPT", content="AUTOGPT_PRIVATE")

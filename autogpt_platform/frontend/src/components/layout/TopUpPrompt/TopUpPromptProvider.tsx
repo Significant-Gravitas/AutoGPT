@@ -6,6 +6,7 @@ import useCredits from "@/hooks/useCredits";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { useActiveOrgWallet } from "@/services/org-team/useActiveOrgWallet";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
 import { TopUpDialog } from "./TopUpDialog/TopUpDialog";
@@ -23,6 +24,7 @@ export function TopUpPromptProvider({ children }: Props) {
   // anyone to top one up.
   const { isTeamOrg } = useActiveOrgWallet();
   const canPromptTopUp = isLoggedIn && !isTeamOrg;
+  const { isOnboardingComplete } = useOnboarding();
   const { credits, autoTopUpConfig } = useCredits({
     identityKey,
     fetchInitialCredits: canPromptTopUp,
@@ -38,9 +40,11 @@ export function TopUpPromptProvider({ children }: Props) {
   // spuriously. It is also fail-closed by design: if GET /credits/auto-top-up
   // errors, autoTopUpConfig stays null and the prompt stays hidden, rather than
   // risk nudging a user who actually has auto-refill enabled.
+  // A new account has 0 credits until onboarding sets up its plan.
   const isOutOfCredits =
     !!isBillingEnabled &&
     !isTeamOrg &&
+    isOnboardingComplete === true &&
     credits !== null &&
     credits <= 0 &&
     autoTopUpConfig !== null &&

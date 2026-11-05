@@ -1,6 +1,7 @@
 """Worker-side identity, inherited-deadline and completion fences for background turns."""
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from backend.copilot import stream_registry
@@ -21,7 +22,11 @@ from backend.data.db_accessors import background_task_db
 logger = logging.getLogger(__name__)
 
 
-async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
+async def claim_background_execution(
+    entry: CoPilotExecutionEntry,
+    *,
+    on_claimed_elsewhere: Callable[[], None] | None = None,
+) -> bool:
     metadata = entry.message_metadata or {}
     task_id = metadata.get(BACKGROUND_TASK_KEY)
     if not task_id:
@@ -37,6 +42,10 @@ async def claim_background_execution(entry: CoPilotExecutionEntry) -> bool:
         task_id, entry.user_id, entry.session_id, entry.turn_id, stage
     )
     if not claimed:
+        # Before the cleanup, which can raise: the turn is another worker's
+        # either way.
+        if on_claimed_elsewhere is not None:
+            on_claimed_elsewhere()
         await _close_unstarted_background_turn(entry, task_id, stage)
         return False
     try:

@@ -44,6 +44,7 @@ from backend.copilot.tools.skills import (
     SkillWriteLockError,
     delete_user_skill,
     get_default_skill_with_body,
+    invocation_frontmatter,
     list_user_skill_files,
     list_user_skills,
     parse_skill_markdown,
@@ -104,6 +105,8 @@ async def list_copilot_skills(
             triggers=list(s.triggers),
             origin=s.origin,
             update=s.update,
+            argument_hint=s.extra.get("argument-hint"),
+            user_invocable=s.extra.get("user-invocable") is not False,
         )
         for s in skills
     ]
@@ -145,10 +148,13 @@ async def upload_copilot_skill(
     stored = await _store_uploaded_skill(
         user_id, parsed, expert_id=expert_id, organization_id=ctx.org_id
     )
+    invocation = invocation_frontmatter(parsed.extra)
     return CopilotSkillInfo(
         name=stored.name,
         description=stored.description,
         triggers=list(stored.triggers),
+        argument_hint=invocation.get("argument-hint"),
+        user_invocable=invocation.get("user-invocable") is not False,
     )
 
 
@@ -197,10 +203,13 @@ async def upload_copilot_skill_package(
         files=package.files,
         organization_id=ctx.org_id,
     )
+    invocation = invocation_frontmatter(parsed.extra)
     return CopilotSkillInfo(
         name=stored.name,
         description=stored.description,
         triggers=list(stored.triggers),
+        argument_hint=invocation.get("argument-hint"),
+        user_invocable=invocation.get("user-invocable") is not False,
     )
 
 

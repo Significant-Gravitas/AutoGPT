@@ -24,6 +24,7 @@ function makeArtifact(id: string, title = `file-${id}`): ArtifactRef {
 
 function resetStore() {
   useCopilotUIStore.setState({
+    artifactTenantScope: null,
     artifactPanel: {
       isOpen: false,
       activeArtifact: null,
@@ -94,6 +95,94 @@ describe("artifactPanel store actions", () => {
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.activeArtifact?.id).toBe("a");
     expect(s.history).toEqual([]);
+  });
+
+  describe("followArtifactOverwrite", () => {
+    it("swaps the open file without opening a history entry", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const next = makeArtifact("v2", "report.md");
+
+      useCopilotUIStore.getState().followArtifactOverwrite("v1", next);
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toEqual({ ...next, documentId: "v1" });
+      expect(s.history).toEqual([]);
+    });
+
+    it("keeps one document id across a chain of overwrites", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      const { followArtifactOverwrite } = useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+      followArtifactOverwrite("v2", makeArtifact("v3"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v3");
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("keeps the document id when the open version's card is clicked", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const { followArtifactOverwrite, openArtifact } =
+        useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      openArtifact(makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("leaves no back entry to itself after an old card is clicked mid-turn", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v2"));
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.history).toEqual([]);
+    });
+
+    it("swaps a file waiting in the back stack and leaves the open one", () => {
+      const other = makeArtifact("other");
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openArtifact(other);
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toBe(other);
+      expect(s.history.map((ref) => ref.id)).toEqual(["v2"]);
+    });
+
+    it("keeps the computer face showing", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openComputer();
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.mode).toBe("computer");
+    });
+
+    it("changes nothing when the panel holds no ref to the file", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+      const before = useCopilotUIStore.getState().artifactPanel;
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      expect(useCopilotUIStore.getState().artifactPanel).toBe(before);
+    });
   });
 
   it("goBackArtifact is a no-op when history is empty", () => {
@@ -533,5 +622,45 @@ describe("lastArtifact session scoping", () => {
     useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
     useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
     expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+});
+
+describe("saved artifact scope through overwrites", () => {
+  beforeEach(resetStore);
+  it.each([null, "org-a"])(
+    "retains saved scope %s after navigation",
+    (organizationId) => {
+      const scope = { organizationId, teamId: "team-a" };
+      const old = { ...makeArtifact("v1"), ...scope };
+      useCopilotUIStore.getState().openArtifact(old);
+      useCopilotUIStore.setState({
+        artifactTenantScope: { organizationId: "org-nav", teamId: "team-nav" },
+      });
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", { ...makeArtifact("v2"), ...scope });
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact,
+      ).toMatchObject({
+        id: "v2",
+        documentId: "v1",
+        ...scope,
+      });
+    },
+  );
+  it("ignores an overwrite from another team even when the file id matches", () => {
+    const old = {
+      ...makeArtifact("v1"),
+      organizationId: "org-a",
+      teamId: "team-a",
+    };
+    useCopilotUIStore.getState().openArtifact(old);
+    const before = useCopilotUIStore.getState().artifactPanel;
+    useCopilotUIStore.getState().followArtifactOverwrite("v1", {
+      ...makeArtifact("v2"),
+      organizationId: "org-a",
+      teamId: "team-b",
+    });
+    expect(useCopilotUIStore.getState().artifactPanel).toBe(before);
   });
 });

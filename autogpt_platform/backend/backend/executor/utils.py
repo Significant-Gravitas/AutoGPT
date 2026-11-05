@@ -99,7 +99,7 @@ from backend.util.exceptions import (
 from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
-from backend.util.type import coerce_inputs_to_schema
+from backend.util.type import ConversionError, coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -370,11 +370,21 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
+class InputMismatchError(ValueError):
+    """A value the node can't use; unlike missing input, waiting won't fix it.
+    ``data`` is the resolved input the node is queued with to fail."""
+
+    def __init__(self, message: str, data: BlockInput):
+        super().__init__(message)
+        self.data = data
+
+
 def validate_exec(
     node: Node,
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
+    raise_on_mismatch: bool = False,
     trigger_setup: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
@@ -387,6 +397,9 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
+        raise_on_mismatch: When True, a value that can't be converted or
+            doesn't match the schema raises ``InputMismatchError``, so the
+            caller can tell it apart from missing input.
         trigger_setup: Validate a trigger before its first event: absent
             credential fields and a webhook block's ``payload`` are left out of
             the missing-input and schema checks; everything else is validated as
@@ -411,11 +424,15 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
+    # The queued input keeps the None, so when the node runs a None here is a
+    # placeholder too, unless its pin is linked: that None was really sent.
+    placeholders: set[str] = set()
     if dry_run:
-        cred_field_names = set(schema.get_credentials_fields().keys())
-        for field_name in cred_field_names:
-            if field_name not in data:
+        linked_pins = {link.sink_name for link in node.input_links}
+        for field_name in schema.get_credentials_fields():
+            if data.get(field_name) is None and field_name not in linked_pins:
                 data = {**data, field_name: None}
+                placeholders.add(field_name)
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
     input_default = schema.get_input_defaults(node.input_default)
@@ -423,8 +440,14 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
-    # Coerce non-matching data types to the expected input schema.
-    coerce_inputs_to_schema(data, schema)
+    # Coerce first: some blocks' missing-input checks read the converted values.
+    # A value that can't be converted is reported after that check, so a node
+    # still missing input keeps waiting.
+    conversion_error: str | None = None
+    try:
+        coerce_inputs_to_schema(data, schema)
+    except ConversionError as e:
+        conversion_error = str(e)
 
     unchecked_fields: set[str] = set()
     if trigger_setup:
@@ -443,12 +466,32 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
+    # A required input that arrived as None is skipped, as before, not failed:
+    # None is sometimes sent on purpose. A dry run's credential placeholders
+    # didn't arrive, so they don't count.
+    raise_on_mismatch = raise_on_mismatch and not any(
+        data.get(name, "") is None
+        for name in schema.get_required_fields()
+        if name not in placeholders
+    )
+
+    # A value that can't be converted fails dry runs too, so the builder learns
+    # the wiring is wrong.
+    if conversion_error:
+        error_message = f"{error_prefix} {conversion_error}"
+        if raise_on_mismatch:
+            raise InputMismatchError(error_message, data)
+        logger.warning(error_message)
+        return None, error_message
+
     # Last validation: Validate the input values against the schema.
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
         if error := schema.get_mismatch_error(data, exclude_fields=unchecked_fields):
             error_message = f"{error_prefix} {error}"
+            if raise_on_mismatch:
+                raise InputMismatchError(error_message, data)
             logger.warning(error_message)
             return None, error_message
 

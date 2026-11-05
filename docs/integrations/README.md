@@ -121,6 +121,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Get New Items](block-integrations/exa/websets_items.md#exa-get-new-items) | Get items added since a cursor - enables incremental processing without reprocessing |
 | [Exa List Imports](block-integrations/exa/websets_import_export.md#exa-list-imports) | List all imports with pagination support |
 | [File Read](block-integrations/data.md#file-read) | Reads a file and returns its content as a string, with optional chunking by delimiter and size limits |
+| [Firecrawl Find Data Tools](block-integrations/firecrawl/alexandria.md#firecrawl-find-data-tools) | Finds structured-data tools in Firecrawl Alexandria, free of charge: people and company search and enrichment (work emails, job titles, firmographics via Apollo, People Data Labs, FullEnrich), jobs, finance and filings, public records, places, retail and thousands more |
+| [Firecrawl Run Data Tool](block-integrations/firecrawl/alexandria.md#firecrawl-run-data-tool) | Runs a Firecrawl Alexandria data tool and returns its typed, sourced records: find people by title and company, get verified work emails, enrich a company from its domain, and thousands more |
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
 | [Google Docs Append Plain Text](block-integrations/google/docs.md#google-docs-append-plain-text) | Append plain text to the end of a Google Doc (no formatting applied) |

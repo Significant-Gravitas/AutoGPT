@@ -680,9 +680,21 @@ class TestOutline:
         most of the file is a read the model must never be offered."""
         data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
         body, outline = _outline_of(data, 900)
-        assert "record={…10 keys}" in outline  # spans the file: no window
         widest = max(int(m) for m in re.findall(r"@\d+\+(\d+)", outline))
         assert widest * 4 // 3 < len(body)
+
+    def test_an_oversized_node_gets_its_first_chunk(self):
+        """A node too big to quote whole used to carry no window at all, which
+        left the model nothing to read it back with."""
+        data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
+        body, parsed, offsets = _index_json(json.dumps(data))
+        outline = _outline(parsed, offsets, 900)
+        node_start, node_length = offsets["$.record"]
+        window = re.search(r"record=\{…10 keys @(\d+)\+(\d+)\}", outline)
+        assert window, outline
+        cap = len(body) * 3 // 4
+        assert node_length > cap, "the fixture's node must be oversized"
+        assert (int(window[1]), int(window[2])) == (node_start, cap)
 
     def test_a_single_long_string_still_says_something(self):
         """Structure alone leaves the budget unspent, so the scalar cap widens."""

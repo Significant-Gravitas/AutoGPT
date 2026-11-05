@@ -75,41 +75,54 @@ describe("artifact source cache isolation", () => {
     expect(reads).toBeGreaterThan(initialReads);
   });
 
-  it("does not reuse or copy a file cache under another saved organization", async () => {
-    const savedA = { ...artifact, organizationId: "saved-a", teamId: null };
-    const savedB = { ...artifact, organizationId: "saved-b", teamId: null };
-    let reads = 0;
-    let denied = false;
-    server.use(
-      http.get("/api/proxy/api/workspace/files/private-view/download", () => {
-        reads++;
-        return denied
-          ? HttpResponse.json({ detail: "Not found" }, { status: 404 })
-          : HttpResponse.text(privateSource);
-      }),
-    );
-    const ui = render(
-      <ArtifactContent
-        artifact={savedA}
-        classification={classification}
-        isSourceView
-      />,
-    );
-    expect(await screen.findByText(privateSource)).toBeDefined();
-    expect(getCachedArtifactContent(savedA)).toBe(privateSource);
-    expect(getCachedArtifactContent(savedB)).toBeUndefined();
-    expect(getCachedArtifactContent(artifact.id)).toBeUndefined();
-    const initialReads = reads;
-    denied = true;
-    ui.rerender(
-      <ArtifactContent
-        artifact={savedB}
-        classification={classification}
-        isSourceView
-      />,
-    );
-    expect(screen.queryByText(privateSource)).toBeNull();
-    expect(await screen.findByText("Failed to load content")).toBeDefined();
-    expect(reads).toBeGreaterThan(initialReads);
-  });
+  it.each([undefined, "shared-document"])(
+    "does not reuse a file under another saved organization with document %s",
+    async (documentId) => {
+      const savedA = {
+        ...artifact,
+        documentId,
+        organizationId: "saved-a",
+        teamId: null,
+      };
+      const savedB = {
+        ...artifact,
+        documentId,
+        organizationId: "saved-b",
+        teamId: null,
+      };
+      let reads = 0;
+      let denied = false;
+      server.use(
+        http.get("/api/proxy/api/workspace/files/private-view/download", () => {
+          reads++;
+          return denied
+            ? HttpResponse.json({ detail: "Not found" }, { status: 404 })
+            : HttpResponse.text(privateSource);
+        }),
+      );
+      const ui = render(
+        <ArtifactContent
+          artifact={savedA}
+          classification={classification}
+          isSourceView
+        />,
+      );
+      expect(await screen.findByText(privateSource)).toBeDefined();
+      expect(getCachedArtifactContent(savedA)).toBe(privateSource);
+      expect(getCachedArtifactContent(savedB)).toBeUndefined();
+      expect(getCachedArtifactContent(artifact.id)).toBeUndefined();
+      const initialReads = reads;
+      denied = true;
+      ui.rerender(
+        <ArtifactContent
+          artifact={savedB}
+          classification={classification}
+          isSourceView
+        />,
+      );
+      expect(screen.queryByText(privateSource)).toBeNull();
+      expect(await screen.findByText("Failed to load content")).toBeDefined();
+      expect(reads).toBeGreaterThan(initialReads);
+    },
+  );
 });

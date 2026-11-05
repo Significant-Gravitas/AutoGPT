@@ -79,6 +79,9 @@ class WorkspaceFile(pydantic.BaseModel):
     scope_resolved: bool = True
     is_user_global_config: bool = False
     is_internal: bool = False
+    # Not a column: on what WorkspaceManager.write_file returns, the live file
+    # this write replaced. Kept off every serialized form of the file.
+    replaced_file_id: Optional[str] = pydantic.Field(default=None, exclude=True)
 
     @staticmethod
     def from_db(file: "UserWorkspaceFile") -> "WorkspaceFile":

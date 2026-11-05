@@ -8,6 +8,7 @@ import { environment } from "@/services/environment";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { planScopeOf } from "./helpers";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { PaywallModal } from "./PaywallModal";
 import { WorkflowsMovedNotice } from "../components/WorkflowsMovedNotice/WorkflowsMovedNotice";
 
@@ -32,6 +33,7 @@ export function PaywallGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isLoggedIn } = useAuth();
   const { isPaymentEnabled } = usePlatformPayment();
+  const { isOnboardingComplete } = useOnboarding();
   const { data: subscription, isLoading } = useGetSubscriptionStatus({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
@@ -59,6 +61,9 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     // the modal's own Log out button), and the modal must not linger or block
     // that exit.
     isLoggedIn &&
+    // Onboarding has its own plan step. Unknown counts as unfinished, so the
+    // paywall can't flash while that check is in flight.
+    isOnboardingComplete === true &&
     !isLoading &&
     planScope === "personal" &&
     !isExempt &&
@@ -67,15 +72,17 @@ export function PaywallGate({ children }: { children: ReactNode }) {
     !environment.isLocal() &&
     !!subscription &&
     subscription.tier === "NO_TIER";
+  // The notice waits until the paywall is decided, so it can't open and then
+  // be replaced by the paywall.
+  const isGateDecided =
+    !isPaymentEnabled ||
+    (!isLoading && !planScopePending && isOnboardingComplete !== null);
 
   return (
     <>
       {children}
       {shouldGate && <PaywallModal />}
-      {!shouldGate &&
-        (!isPaymentEnabled || (!isLoading && !planScopePending)) && (
-          <WorkflowsMovedNotice />
-        )}
+      {!shouldGate && isGateDecided && <WorkflowsMovedNotice />}
     </>
   );
 }

@@ -134,6 +134,7 @@ async def wait_for_session_result(
     queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
+        include_suppressed_errors=True,
     )
     result = SessionResult()
     if queue is None:

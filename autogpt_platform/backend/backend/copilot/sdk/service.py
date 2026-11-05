@@ -205,6 +205,10 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..skill_invocation import (
+    get_persisted_skill_invocation,
+    inject_skill_invocation,
+)
 from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
@@ -5088,6 +5092,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
+    persisted_invocation = (
+        get_persisted_skill_invocation(message, session.messages)
+        if is_user_message and not continued_pending
+        else None
+    )
     continued_entry: StreamPendingDrained | None = None
     if continued_pending:
         # An auto-continue call streams into the turn it continues: its user
@@ -5102,8 +5111,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         continued_entry = drained_rows_entry(continued_pending)
         _user_message_appended = False
     else:
-        _user_message_appended = maybe_append_user_message(
-            session, message, is_user_message, message_metadata
+        _user_message_appended = (
+            persisted_invocation is None
+            and maybe_append_user_message(
+                session, message, is_user_message, message_metadata
+            )
         )
     if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
@@ -5355,7 +5367,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # bare session_id line on any scheduler RPC hiccup); the per-user
         # skill index; and the expert or team block. None of it needs what
         # setup produces, so it is read beside the setup legs below.
-        if not has_history:
+        if not has_history and persisted_invocation is None:
             first_turn_context = FirstTurnContext(
                 (
                     build_session_context(
@@ -5859,6 +5871,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # messages folded in below), never the context blocks
         # ``inject_user_context`` puts in front of them on a first turn.
         recall_message = current_message
+        if persisted_invocation is not None:
+            current_message = persisted_invocation
 
         # On the first turn inject user context into the message before building
         # the query so that _build_query_message sees the full prefixed content.
@@ -5914,6 +5928,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+
+        # A ``/skill-name arguments`` send carries the skill's instructions
+        # into this turn and every later one. Same row as the injection
+        # above, and before pending messages are folded in for the same
+        # reason.
+        if is_user_message and not continued_pending:
+            invoked_message = await inject_skill_invocation(
+                current_message,
+                session_id,
+                session.messages,
+                user_id=user_id,
+                expert_id=session.expert_id,
+                organization_id=session.organization_id,
+            )
+            if invoked_message is not None:
+                current_message = invoked_message
 
         # Now that ``inject_user_context`` has wrapped + persisted the
         # ORIGINAL turn-starting send into its row, fold any pending

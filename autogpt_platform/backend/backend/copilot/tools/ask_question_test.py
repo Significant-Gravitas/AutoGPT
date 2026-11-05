@@ -24,6 +24,12 @@ def session() -> ChatSession:
     return ChatSession.new(user_id="test-user", dry_run=False)
 
 
+@pytest.fixture(autouse=True)
+def fake_question_persistence(monkeypatch):
+    db = MagicMock(set_session_pending_question=AsyncMock())
+    monkeypatch.setattr("backend.copilot.tools.ask_question.chat_db", lambda: db)
+
+
 # ── Happy paths ──────────────────────────────────────────────────────
 
 
