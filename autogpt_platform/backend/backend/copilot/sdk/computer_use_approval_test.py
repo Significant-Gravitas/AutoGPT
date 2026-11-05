@@ -527,6 +527,40 @@ async def test_an_approved_screenshot_call_brings_its_image_back(rows, computer)
     assert late.model_image.data_base64 == png
 
 
+async def test_an_approved_script_brings_back_its_last_image_and_names_the_rest(
+    rows, computer
+):
+    """cua-driver's run_script returns its last two images, a before and an
+    after. The replay kept the first, so Otto saw the screen as it was
+    before the script ran, and nothing said another image existed."""
+    session = _session("ask_first")
+    before = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"b" * 32).decode()
+    after = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"a" * 32).decode()
+    computer.computer.call = AsyncMock(
+        return_value={
+            "tool": "run_script",
+            "is_error": False,
+            "content": [
+                {"type": "image", "data": before, "mime_type": "image/png"},
+                {"type": "text", "text": "Clicked Save."},
+                {"type": "image", "data": after, "mime_type": "image/png"},
+            ],
+        }
+    )
+    await _call_as_otto(session, computer)(
+        {"tool": "run_script", "arguments": {"script": "return 1"}}
+    )
+
+    rows.answer(ReviewStatus.APPROVED)
+    _, delivered = await _next_turn(session)
+
+    (late,) = delivered
+    assert late.model_image is not None
+    assert late.model_image.data_base64 == after
+    assert "Clicked Save." in late.content
+    assert "1 more image(s) from this call aren't shown" in late.content
+
+
 async def test_a_held_call_does_not_run_once_computer_use_is_off(rows, computer):
     """The replay table held every computer-use handler, so a call approved
     after the deployment or the chat stopped offering computer use still

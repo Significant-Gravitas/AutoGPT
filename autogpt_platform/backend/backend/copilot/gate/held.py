@@ -673,19 +673,32 @@ async def _run_handler(
     await review_store.consume(call.review_id, user_id)
     blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
     text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
-    image = next(
-        (b for b in blocks if b.get("type") == "image" and b.get("data")), None
+    images = [b for b in blocks if b.get("type") == "image" and b.get("data")]
+    # A late result carries one image: the last that reads, which shows what
+    # the call left on screen (a script's after, not its before). The rest
+    # are named rather than dropped unsaid.
+    shown = next(
+        (image for image in map(_tool_image, reversed(images)) if image is not None),
+        None,
     )
-    if image is None:
+    if left_out := len(images) - (shown is not None):
+        text += (
+            f"\n\n({left_out} more image(s) from this call aren't shown: a result "
+            "that waited for approval carries only its last. Take a fresh "
+            "screenshot if you need one.)"
+        )
+    if shown is None:
         return "approved", text
+    return "approved", HeldImage(text=text, image=shown).model_dump_json()
+
+
+def _tool_image(block: dict[str, Any]) -> ToolImage | None:
     try:
-        shown = ToolImage.model_validate(
-            {"mime_type": image.get("mimeType"), "data_base64": str(image["data"])}
+        return ToolImage.model_validate(
+            {"mime_type": block.get("mimeType"), "data_base64": str(block["data"])}
         )
     except ValidationError:
-        return "approved", text
-    held = HeldImage(text=text, image=shown)
-    return "approved", held.model_dump_json()
+        return None
 
 
 async def _restore(
