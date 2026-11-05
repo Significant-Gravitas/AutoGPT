@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 import io
 import json
 from unittest.mock import AsyncMock, MagicMock
@@ -391,6 +393,46 @@ def _png() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (1, 1)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+class TestLocalPCEditsTakeTurns:
+    @pytest.mark.asyncio
+    async def test_two_edits_to_one_file_both_land(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The CLI runs one message's tool calls in parallel, so two edits of
+        one file both read it, then the second write dropped the first edit.
+        Each read waits for the other edit's read, which only an edit that
+        doesn't take turns reaches."""
+        shim = _shim(allowed_root="/Users/test/ws")
+        stored = {"/Users/test/ws/notes.txt": b"one two"}
+        both_read = asyncio.Barrier(2)
+
+        async def rpc(op: str, payload: dict, **_kwargs) -> dict:
+            if op == "FILE_READ":
+                data = stored[payload["path"]]
+                with contextlib.suppress(TimeoutError, asyncio.BrokenBarrierError):
+                    await asyncio.wait_for(both_read.wait(), 0.5)
+                return _contents(data)
+            stored[payload["path"]] = payload["content"].encode()
+            return {"type": "ACK", "payload": {"ok": True}}
+
+        shim._rpc = rpc
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        first, second = await asyncio.gather(
+            _handle_edit_file(
+                {"file_path": "notes.txt", "old_string": "one", "new_string": "1"}
+            ),
+            _handle_edit_file(
+                {"file_path": "notes.txt", "old_string": "two", "new_string": "2"}
+            ),
+        )
+
+        assert first["isError"] is False and second["isError"] is False
+        assert stored["/Users/test/ws/notes.txt"] == b"1 2"
 
 
 class TestLocalPCReadsThroughALimit:

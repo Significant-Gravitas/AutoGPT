@@ -676,39 +676,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 )
             remote = os.path.join(canonical_parent, os.path.basename(remote))
 
-        try:
-            raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
-            content = raw.decode("utf-8", errors="replace")
-        except Exception as exc:
-            return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
-        if len(raw) > _MAX_READ_BYTES:
-            return _mcp(_too_large(remote, "edited"), error=True)
-
-        count = content.count(old_string)
-        if count == 0:
-            return _mcp(f"old_string not found in {file_path}", error=True)
-        if count > 1 and not replace_all:
-            return _mcp(
-                f"old_string appears {count} times in {file_path}. "
-                "Use replace_all=true or provide a more unique string.",
-                error=True,
+        # The CLI runs one message's calls in parallel, and chats bound to one
+        # Local PC folder share its files: take turns, as the SDK path does.
+        async with _edit_lock(_executor_file_key(sandbox, remote)):
+            return await _edit_on_executor(
+                sandbox, remote, file_path, old_string, new_string, replace_all
             )
-
-        updated = (
-            content.replace(old_string, new_string)
-            if replace_all
-            else content.replace(old_string, new_string, 1)
-        )
-        try:
-            await _sandbox_write(sandbox, remote, updated)
-        except Exception as exc:
-            return _mcp(
-                f"Failed to write {os.path.basename(remote)}: {exc}", error=True
-            )
-
-        return _mcp(
-            f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})"
-        )
 
     # Non-E2B path — edit in SDK working directory
     sdk_cwd = get_sdk_cwd()
@@ -720,18 +693,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         return err
     assert resolved is not None
 
-    # Per-path lock prevents parallel edits from racing through
-    # the read-modify-write cycle and silently dropping changes.
-    # LRU-bounded: evict the oldest entry when the dict is full so that
-    # _edit_locks does not grow unboundedly in long-running server processes.
-    if resolved not in _edit_locks:
-        if len(_edit_locks) >= _EDIT_LOCKS_MAX:
-            _edit_locks.popitem(last=False)
-        _edit_locks[resolved] = asyncio.Lock()
-    else:
-        _edit_locks.move_to_end(resolved)
-    lock = _edit_locks[resolved]
-    async with lock:
+    async with _edit_lock(resolved):
         try:
             content = _read_capped_text(resolved)
         except FileNotFoundError:
@@ -769,6 +731,67 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 f.write(updated)
         except Exception as exc:
             return _mcp(f"Failed to write {file_path}: {exc}", error=True)
+
+    return _mcp(f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})")
+
+
+def _edit_lock(key: str) -> asyncio.Lock:
+    """The lock edits of one file take turns on, so parallel edits can't race
+    through the read-modify-write and drop a change. LRU-bounded, so the
+    locks don't grow without limit in a long-running server process."""
+    if key not in _edit_locks:
+        if len(_edit_locks) >= _EDIT_LOCKS_MAX:
+            _edit_locks.popitem(last=False)
+        _edit_locks[key] = asyncio.Lock()
+    else:
+        _edit_locks.move_to_end(key)
+    return _edit_locks[key]
+
+
+def _executor_file_key(sandbox: Any, remote: str) -> str:
+    """One key per file on one executor: a Local PC folder is shared by every
+    chat bound to that machine, an E2B box is its chat's own."""
+    if is_local_pc(sandbox):
+        return f"local_pc:{sandbox.machine_id}:{remote}"
+    return f"e2b:{sandbox.sandbox_id}:{remote}"
+
+
+async def _edit_on_executor(
+    sandbox: Any,
+    remote: str,
+    file_path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool,
+) -> dict[str, Any]:
+    """Read, replace and write one file on the E2B box or the Local PC."""
+    try:
+        raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
+        content = raw.decode("utf-8", errors="replace")
+    except Exception as exc:
+        return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+    if len(raw) > _MAX_READ_BYTES:
+        return _mcp(_too_large(remote, "edited"), error=True)
+
+    count = content.count(old_string)
+    if count == 0:
+        return _mcp(f"old_string not found in {file_path}", error=True)
+    if count > 1 and not replace_all:
+        return _mcp(
+            f"old_string appears {count} times in {file_path}. "
+            "Use replace_all=true or provide a more unique string.",
+            error=True,
+        )
+
+    updated = (
+        content.replace(old_string, new_string)
+        if replace_all
+        else content.replace(old_string, new_string, 1)
+    )
+    try:
+        await _sandbox_write(sandbox, remote, updated)
+    except Exception as exc:
+        return _mcp(f"Failed to write {os.path.basename(remote)}: {exc}", error=True)
 
     return _mcp(f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})")
 

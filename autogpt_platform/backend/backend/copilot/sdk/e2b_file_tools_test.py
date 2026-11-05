@@ -1313,6 +1313,7 @@ class TestSandboxFileOverTheReadLimit:
     def stream(self, monkeypatch):
         stream = _FileStream(b"0123456789abcdef" * 8)
         sandbox = SimpleNamespace(
+            sandbox_id="sandbox-1",
             files=SimpleNamespace(read=AsyncMock(return_value=stream)),
             commands=SimpleNamespace(run=AsyncMock()),
         )
