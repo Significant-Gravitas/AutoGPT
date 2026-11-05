@@ -6,6 +6,7 @@ import pytest
 
 from ._api import DataForSeoClient, DataForSeoError
 from ._config import dataforseo
+from ._targets import normalise_domain, normalise_target
 from .ai_mentions import DataForSeoAiMentionsBlock
 from .ai_mentions import build_task as build_mentions_task
 from .backlinks import DataForSeoBacklinksSummaryBlock
@@ -91,6 +92,24 @@ class TestSerp:
         assert (first.domain, first.url_resolved) == ("www.shop.com", False)
         assert (second.domain, second.url_resolved) == ("", False)
 
+    @pytest.mark.parametrize(
+        "breadcrumb, domain",
+        [
+            ("https://www.shop.com › blog", "www.shop.com"),
+            ("shop.com › blog", "shop.com"),
+            ("Shop.com/blog/candles", "shop.com"),
+            ("Reddit · r/candles", ""),
+            ("28.8K+ views · 4 years ago", ""),
+        ],
+    )
+    def test_breadcrumb_domain_with_or_without_scheme(self, breadcrumb, domain):
+        item = {
+            "type": "organic",
+            "url": "https://google.com/goto?url=opaque",
+            "breadcrumb": breadcrumb,
+        }
+        assert parse_organic([item])[0].domain == domain
+
 
 class TestRankedKeywords:
     def _input(self, **kwargs) -> DataForSeoRankedKeywordsBlock.Input:
@@ -132,6 +151,14 @@ class TestAiMentions:
         )
         assert task["target"] == [{"domain": "example.com"}, {"keyword": "soy candles"}]
 
+    def test_pasted_url_becomes_a_domain(self):
+        task = build_mentions_task(
+            DataForSeoAiMentionsBlock.Input(
+                credentials=CREDS_INPUT, domain="https://www.example.com/shop"
+            )
+        )
+        assert task["target"] == [{"domain": "example.com"}]
+
     async def test_needs_a_domain_or_keyword(self):
         block = DataForSeoAiMentionsBlock()
         with pytest.raises(ValueError, match="domain, a keyword"):
@@ -160,3 +187,31 @@ class TestBilling:
                 pass
         assert block.execution_stats.provider_cost == 0.024
         assert block.execution_stats.provider_cost_type == "cost_usd"
+
+
+@pytest.mark.parametrize(
+    "raw, domain",
+    [
+        ("example.com", "example.com"),
+        (" https://www.example.com/shop ", "example.com"),
+        ("www.example.com", "example.com"),
+        ("shop.example.com", "shop.example.com"),
+        ("", ""),
+    ],
+)
+def test_normalise_domain(raw, domain):
+    assert normalise_domain(raw) == domain
+
+
+@pytest.mark.parametrize(
+    "raw, target",
+    [
+        ("example.com", "example.com"),
+        (" https://www.example.com/ ", "example.com"),
+        ("http://example.com", "example.com"),
+        ("example.com/shop", "https://example.com/shop"),
+        ("https://www.example.com/shop?x=1", "https://www.example.com/shop?x=1"),
+    ],
+)
+def test_normalise_target_keeps_pages_and_tidies_domains(raw, target):
+    assert normalise_target(raw) == target

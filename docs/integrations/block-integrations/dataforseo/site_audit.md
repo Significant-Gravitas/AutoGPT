@@ -32,7 +32,7 @@ Issues use DataForSEO's check names, keeping only the ones that signal a problem
 | pages_crawled | How many pages were crawled | int |
 | onpage_score | Site score, 0-100, where 100 means no critical issues | float |
 | issue_counts | How many crawled pages have each issue, most common first | Dict[str, int] |
-| pages | Crawled pages, lowest score first, each with its issues (On-Page check names such as no_h1_tag, is_4xx_code, duplicate_title) and click_depth: clicks from the home page | List[AuditedPage] |
+| pages | Crawled pages, lowest score first, each with its issues (On-Page check names such as no_h1_tag, is_4xx_code, duplicate_title) and click_depth: clicks from the home page. Empty if DataForSEO did not send the page list in time | List[AuditedPage] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

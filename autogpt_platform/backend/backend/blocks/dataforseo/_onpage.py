@@ -3,7 +3,6 @@ Parsing helpers for DataForSEO On-Page crawl results.
 """
 
 from typing import Any
-from urllib.parse import urlparse
 
 from backend.sdk import BaseModel
 
@@ -39,13 +38,6 @@ class AuditedPage(BaseModel):
     click_depth: int | None
     onpage_score: float | None
     issues: list[str]
-
-
-def normalise_domain(target: str) -> str:
-    """'https://www.example.com/shop' -> 'example.com', as On-Page expects."""
-    target = target.strip()
-    host = urlparse(target if "://" in target else f"//{target}").hostname or ""
-    return host.removeprefix("www.")
 
 
 def count_issues(

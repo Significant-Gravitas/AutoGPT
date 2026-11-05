@@ -20,6 +20,7 @@ from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, record_cost
 from ._config import dataforseo
+from ._targets import normalise_domain
 
 LLM_MENTIONS_PATH = "/v3/ai_optimization/llm_mentions/search/live"
 
@@ -141,7 +142,7 @@ class DataForSeoAiMentionsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: UserPasswordCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.domain.strip() and not input_data.keyword.strip():
+        if not normalise_domain(input_data.domain) and not input_data.keyword.strip():
             raise BlockInputError(
                 message="Give a domain, a keyword, or both",
                 block_name=self.name,
@@ -157,7 +158,7 @@ class DataForSeoAiMentionsBlock(Block):
 
 def build_task(input_data: DataForSeoAiMentionsBlock.Input) -> dict[str, Any]:
     target: list[dict[str, str]] = []
-    if domain := input_data.domain.strip():
+    if domain := normalise_domain(input_data.domain):
         target.append({"domain": domain})
     if keyword := input_data.keyword.strip():
         target.append({"keyword": keyword})

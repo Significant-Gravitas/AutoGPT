@@ -2,8 +2,8 @@
 DataForSEO Google Search Results block: a live Google results page for a keyword.
 """
 
+import re
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 from backend.sdk import (
     BaseModel,
@@ -25,6 +25,10 @@ SERP_PATH = "/v3/serp/google/organic/live/advanced"
 # Google's click-through redirect. DataForSEO normally resolves it to the real
 # page, but when it can't, the breadcrumb is the only clue to the site.
 GOOGLE_REDIRECT_PREFIX = "https://google.com/goto?"
+# A host at the start of a breadcrumb, with or without its scheme.
+BREADCRUMB_HOST = re.compile(
+    r"(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:/|$)", re.IGNORECASE
+)
 
 
 class OrganicResult(BaseModel):
@@ -200,9 +204,13 @@ def _organic_result(position: int, item: dict[str, Any]) -> OrganicResult:
 
 
 def _breadcrumb_domain(item: dict[str, Any]) -> str:
-    """The site from a breadcrumb like 'https://example.com › Blog', else ''."""
+    """The site from a breadcrumb like 'https://example.com › Blog', else ''.
+
+    Some breadcrumbs carry no site at all, e.g. '8 comments · 1 year ago'.
+    """
     first = (item.get("breadcrumb") or "").split(" ")[0]
-    return (urlparse(first).hostname or "") if first.startswith("http") else ""
+    match = BREADCRUMB_HOST.match(first)
+    return match.group(1).lower() if match else ""
 
 
 _TEST_SERP = [

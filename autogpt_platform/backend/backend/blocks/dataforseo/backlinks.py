@@ -19,6 +19,7 @@ from backend.sdk import (
 
 from ._api import DataForSeoClient, record_cost
 from ._config import dataforseo
+from ._targets import normalise_target
 
 SUMMARY_PATH = "/v3/backlinks/summary/live"
 REFERRING_DOMAINS_PATH = "/v3/backlinks/referring_domains/live"
@@ -112,7 +113,7 @@ class DataForSeoBacklinksSummaryBlock(Block):
         return await client.post_task(
             SUMMARY_PATH,
             {
-                "target": input_data.target.strip(),
+                "target": normalise_target(input_data.target),
                 "include_subdomains": input_data.include_subdomains,
             },
         )
@@ -206,7 +207,7 @@ class DataForSeoReferringDomainsBlock(Block):
         return await client.post_task(
             REFERRING_DOMAINS_PATH,
             {
-                "target": input_data.target.strip(),
+                "target": normalise_target(input_data.target),
                 "include_subdomains": input_data.include_subdomains,
                 "exclude_internal_backlinks": True,
                 "backlinks_status_type": "live",

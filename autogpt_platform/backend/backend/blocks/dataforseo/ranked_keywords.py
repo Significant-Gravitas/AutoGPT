@@ -20,6 +20,7 @@ from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, record_cost
 from ._config import dataforseo
+from ._targets import normalise_target
 
 RANKED_KEYWORDS_PATH = "/v3/dataforseo_labs/google/ranked_keywords/live"
 POSITION_FIELD = "ranked_serp_element.serp_item.rank_group"
@@ -155,7 +156,7 @@ class DataForSeoRankedKeywordsBlock(Block):
 
 def build_task(input_data: DataForSeoRankedKeywordsBlock.Input) -> dict[str, Any]:
     task: dict[str, Any] = {
-        "target": input_data.target.strip(),
+        "target": normalise_target(input_data.target),
         "location_code": input_data.location_code,
         "language_code": input_data.language_code,
         "limit": input_data.limit,

@@ -2,9 +2,12 @@
 DataForSEO Site Audit block: crawl a site and report its technical SEO issues.
 """
 
-from asyncio import get_running_loop, sleep
+from asyncio import get_running_loop, sleep, wait_for
+
+from pydantic import Field
 
 from backend.sdk import (
+    BaseModel,
     Block,
     BlockCategory,
     BlockEffect,
@@ -19,7 +22,8 @@ from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, DataForSeoError, record_cost
 from ._config import dataforseo
-from ._onpage import AuditedPage, count_issues, normalise_domain, parse_page
+from ._onpage import AuditedPage, count_issues, parse_page
+from ._targets import normalise_domain
 
 TASK_POST_PATH = "/v3/on_page/task_post"
 SUMMARY_PATH = "/v3/on_page/summary/{task_id}"
@@ -30,6 +34,17 @@ POLL_INTERVAL_SECONDS = 15
 # the stop wait leaves a minute for the requests around them.
 MAX_WAIT_SECONDS = 210
 STOP_WAIT_SECONDS = 30
+# The page list comes last; if DataForSEO is slow to send it, return the crawl
+# summary without it rather than run past the limit with nothing to show.
+PAGES_TIMEOUT_SECONDS = 30
+
+
+class CrawlState(BaseModel):
+    """What is known about a crawl so far, kept as it goes so that billing
+    still has it when a later request fails."""
+
+    summary: dict = Field(default_factory=dict)
+    stop_requested: bool = False
 
 
 class DataForSeoSiteAuditBlock(Block):
@@ -74,7 +89,8 @@ class DataForSeoSiteAuditBlock(Block):
             description=(
                 "Crawled pages, lowest score first, each with its issues (On-Page "
                 "check names such as no_h1_tag, is_4xx_code, duplicate_title) and "
-                "click_depth: clicks from the home page"
+                "click_depth: clicks from the home page. Empty if DataForSEO did "
+                "not send the page list in time"
             )
         )
 
@@ -143,23 +159,32 @@ class DataForSeoSiteAuditBlock(Block):
         task_id, upfront_usd = await self._start_crawl(
             client, self._target(input_data), input_data.max_crawl_pages
         )
-        summary: dict = {}
+        state = CrawlState()
         try:
-            summary = await self._crawl(client, task_id, input_data.max_wait_seconds)
+            await self._crawl(client, task_id, input_data.max_wait_seconds, state)
         finally:
             # Bill even when polling fails: DataForSEO has already been paid.
             record_cost(
-                self, crawl_cost(upfront_usd, input_data.max_crawl_pages, summary)
+                self, crawl_cost(upfront_usd, input_data.max_crawl_pages, state)
             )
-        pages = await self._pages(client, task_id, input_data.max_crawl_pages)
+        pages = await self._pages_in_time(client, task_id, input_data.max_crawl_pages)
+        summary = state.summary
         metrics = summary.get("page_metrics") or {}
         yield "complete", _is_finished(summary) and not _ended_early(summary)
-        yield "pages_crawled", (summary.get("crawl_status") or {}).get(
-            "pages_crawled"
-        ) or 0
+        yield "pages_crawled", _pages_crawled(summary)
         yield "onpage_score", metrics.get("onpage_score")
         yield "issue_counts", count_issues(metrics, pages)
         yield "pages", [parse_page(p) for p in pages]
+
+    async def _pages_in_time(
+        self, client: DataForSeoClient, task_id: str, limit: int
+    ) -> list:
+        try:
+            return await wait_for(
+                self._pages(client, task_id, limit), PAGES_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            return []
 
     def _target(self, input_data: Input) -> str:
         target = normalise_domain(input_data.target)
@@ -172,26 +197,35 @@ class DataForSeoSiteAuditBlock(Block):
         return target
 
     async def _crawl(
-        self, client: DataForSeoClient, task_id: str, max_wait_seconds: int
-    ) -> dict:
+        self,
+        client: DataForSeoClient,
+        task_id: str,
+        max_wait_seconds: int,
+        state: CrawlState,
+    ) -> None:
         """Wait for the crawl; stop it at the limit so it ends, and is billed, now."""
-        summary = await self._wait_for_crawl(client, task_id, max_wait_seconds)
-        if _is_finished(summary):
-            return summary
+        await self._wait_for_crawl(client, task_id, max_wait_seconds, state)
+        if _is_finished(state.summary):
+            return
         await self._stop_crawl(client, task_id)
-        return await self._wait_for_crawl(client, task_id, STOP_WAIT_SECONDS)
+        state.stop_requested = True
+        await self._wait_for_crawl(client, task_id, STOP_WAIT_SECONDS, state)
 
     async def _stop_crawl(self, client: DataForSeoClient, task_id: str) -> None:
         await client.post_task(FORCE_STOP_PATH, {"id": task_id})
 
     async def _wait_for_crawl(
-        self, client: DataForSeoClient, task_id: str, max_wait_seconds: int
-    ) -> dict:
+        self,
+        client: DataForSeoClient,
+        task_id: str,
+        max_wait_seconds: int,
+        state: CrawlState,
+    ) -> None:
         loop = get_running_loop()
         deadline = loop.time() + max_wait_seconds
         waited = 0.0
-        summary = await self._summary(client, task_id)
-        while not _is_finished(summary):
+        state.summary = await self._summary(client, task_id)
+        while not _is_finished(state.summary):
             # Bounded by the sleeps taken and by the clock, which also counts
             # the time the requests themselves took.
             remaining = min(max_wait_seconds - waited, deadline - loop.time())
@@ -200,8 +234,7 @@ class DataForSeoSiteAuditBlock(Block):
             interval = min(POLL_INTERVAL_SECONDS, remaining)
             await sleep(interval)
             waited += interval
-            summary = await self._summary(client, task_id)
-        return summary
+            state.summary = await self._summary(client, task_id)
 
 
 def _is_finished(summary: dict) -> bool:
@@ -213,17 +246,23 @@ def _ended_early(summary: dict) -> bool:
     return summary.get("crawl_stop_reason") in ("force_stopped", "unexpected_exception")
 
 
-def crawl_cost(upfront_usd: float, max_crawl_pages: int, summary: dict) -> float:
+def _pages_crawled(summary: dict) -> int:
+    return (summary.get("crawl_status") or {}).get("pages_crawled") or 0
+
+
+def crawl_cost(upfront_usd: float, max_crawl_pages: int, state: CrawlState) -> float:
     """What the crawl really costs.
 
     DataForSEO takes payment for max_crawl_pages when the crawl is posted and
     refunds the pages it didn't crawl once the crawl finishes, including when
-    it was stopped. Until then the whole upfront amount is spent.
+    it was stopped. So once finished or stopped, bill the pages crawled (as
+    last seen, for a stop that hasn't landed yet); otherwise the crawl may
+    still run to max_crawl_pages, and the whole upfront amount is spent.
     """
-    if not _is_finished(summary):
+    if not (_is_finished(state.summary) or state.stop_requested):
         return upfront_usd
-    crawled = (summary.get("crawl_status") or {}).get("pages_crawled") or 0
-    return upfront_usd / max_crawl_pages * min(crawled, max_crawl_pages)
+    crawled = min(_pages_crawled(state.summary), max_crawl_pages)
+    return upfront_usd / max_crawl_pages * crawled
 
 
 _TEST_SUMMARY = {
