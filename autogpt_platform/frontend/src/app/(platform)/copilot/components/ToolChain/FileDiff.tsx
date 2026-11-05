@@ -18,16 +18,12 @@ export function FileDiff({ file, diff }: Props) {
     <div className="overflow-hidden rounded-xl bg-surface font-mono shadow-sm ring-1 ring-border-base/70">
       <div className="flex items-center gap-2 border-b border-border-base py-2.5 pr-3 pl-4 text-body-sm leading-inherit">
         <span className="inline-flex items-center gap-1.5">
-          <Icon
-            icon={CodeIcon}
-            size={15}
-            className="shrink-0 text-foreground-subtle"
-          />
+          <Icon icon={CodeIcon} size={15} tone="subtle" className="shrink-0" />
           <span className="leading-none text-foreground-strong">
             {file ?? "file"}
           </span>
         </span>
-        <span className="ml-auto inline-flex items-center gap-2 text-xs leading-none">
+        <span className="ml-auto inline-flex items-center gap-2 text-caption leading-none">
           <span className="text-success">+{added}</span>
           <span className="text-error-foreground">-{removed}</span>
         </span>
@@ -96,7 +92,7 @@ export function FileDiff({ file, diff }: Props) {
           </div>
         ))}
         {truncated && (
-          <p className="px-3 py-2 text-center text-xs text-foreground-tertiary">
+          <p className="px-3 py-2 text-center text-caption text-foreground-tertiary">
             Diff preview truncated after {MAX_RENDERED_DIFF_ROWS} lines
           </p>
         )}

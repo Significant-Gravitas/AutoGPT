@@ -51,9 +51,9 @@ export function AskQuestionTool({ part }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+    <div className="flex items-center gap-2 py-2 text-body text-foreground-tertiary">
       {isError || (output && isErrorOutput(output)) ? (
-        <Icon icon={AlertCircleIcon} size={16} className="text-error" />
+        <Icon icon={AlertCircleIcon} size={16} tone="error" />
       ) : isStreaming ? (
         <Icon icon={Chatting01Icon} size={16} className="animate-pulse" />
       ) : (

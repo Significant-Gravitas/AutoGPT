@@ -1,6 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 // Inlined from the former shadcn button-group primitive (SECRT-3113 How 3):
@@ -33,24 +32,6 @@ export function ButtonGroup({
       data-slot="button-group"
       data-orientation={orientation}
       className={cn(buttonGroupVariants({ orientation }), className)}
-      {...props}
-    />
-  );
-}
-
-export function ButtonGroupText({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  return (
-    <Text
-      variant="body-medium-tight"
-      tone="inherit"
-      as="div"
-      className={cn(
-        "flex items-center gap-2 rounded-md border border-border-base bg-surface-hover px-4 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
       {...props}
     />
   );

@@ -15,6 +15,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useGetFlag: () => true,
 }));
 
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
 import Layout from "../layout";
 
 describe("legacy /profile layout", () => {

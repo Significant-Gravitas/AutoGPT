@@ -150,10 +150,7 @@ export function LlmModelPicker({
           <Text variant="body" tone="primary" className="ml-1 flex-1">
             {triggerTitle}
           </Text>
-          <Icon
-            icon={ArrowDown01Icon}
-            className="h-3 w-3 text-foreground-strong"
-          />
+          <Icon icon={ArrowDown01Icon} tone="primary" className="h-3 w-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent

@@ -158,16 +158,17 @@ agents call this one via `AgentExecutorBlock`, update their pinned
 
 ### REQUIRED: AgentInputBlock and AgentOutputBlock
 
-Every agent MUST include one AgentOutputBlock and a way to be started: EITHER
-at least one AgentInputBlock OR a webhook trigger block (never both). These
-define the agent's interface — what it accepts and what it produces.
+Every agent MUST include one AgentOutputBlock and a way to be started: at
+least one AgentInputBlock and/or a webhook trigger block. These define the
+agent's interface — what it accepts and what it produces.
 
 - **Regular agent**: include at least one AgentInputBlock for the values the
   user provides at runtime.
-- **Triggered agent**: include a webhook trigger block instead — it is started
-  by an external event, so it needs NO AgentInputBlock. Do NOT add a throwaway
-  AgentInputBlock alongside a trigger; the trigger block already provides the
-  agent's entry point and event payload. See "Setting Up Webhook Triggers".
+- **Triggered agent**: include a webhook trigger block — it is started by an
+  external event and needs no AgentInputBlock for the payload. Add
+  AgentInputBlocks beside it only for values the event does NOT carry (e.g. a
+  target channel); those are collected once at trigger setup, as
+  `constant_inputs`. See "Setting Up Webhook Triggers".
 
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
@@ -193,7 +194,7 @@ define the agent's interface — what it accepts and what it produces.
 
 Without an output block the user cannot see results, and without an input or
 trigger block the agent cannot be started. NEVER skip the output block, and
-always include either an input block or a trigger block.
+always include at least one of an input block or a trigger block.
 
 Specialized input subclasses (`AgentDropdownInputBlock`,
 `AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
@@ -234,7 +235,9 @@ descriptions; read and follow those when `find_capability` surfaces a match.
   `![alt](workspace://<file_id>)` in its Markdown body.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
-  sink_name/source_name to access nested object fields.
+  sink_name/source_name to access nested object fields, and
+  `listField_$_0`, `listField_$_1`, … for list items, so several links can
+  fill one list input.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
@@ -469,6 +472,11 @@ block's configuration inputs). Read those fields from the agent's
 webhook-trigger agent — you do **not** need to fetch or parse the full graph
 (`include_graph`) for this. Config is usually empty for a generic webhook. The
 call creates a triggered preset.
+
+**If the agent also has input blocks, pass their values as `constant_inputs`**
+(fields in `input_schema`). They are stored on the preset and fed to the graph
+on every fire, beside the event payload. The tool returns `missing_inputs` when
+a required one is absent — ask the user for it, never guess.
 
 **Configure the trigger through the tool, NOT by editing the graph.** The trigger
 block's config (e.g. GitHub `repo` and `events`) is *not* set on the trigger node

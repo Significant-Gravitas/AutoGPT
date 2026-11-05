@@ -78,7 +78,7 @@ export async function advanceToRoleStep(
   const role = page.getByText("What best describes you");
   const subscription = page.getByText(/choose the plan that.s right/i);
   const team = page.getByRole("heading", {
-    name: "Your own team of AI experts.",
+    name: "Your new team, ready on day one",
   });
   const autopilot = page.getByRole("heading", {
     name: "Meet Otto, your Head of AI.",
@@ -97,8 +97,14 @@ export async function advanceToRoleStep(
         .click();
       await expect(subscription).toBeHidden({ timeout: 10000 });
     } else {
-      const current = (await team.isVisible()) ? team : autopilot;
-      await page.getByRole("button", { name: "Next", exact: true }).click();
+      const onTeam = await team.isVisible();
+      const current = onTeam ? team : autopilot;
+      await page
+        .getByRole("button", {
+          name: onTeam ? "Meet Otto" : "Next",
+          exact: true,
+        })
+        .click();
       await expect(current).toBeHidden({ timeout: 10000 });
     }
   }

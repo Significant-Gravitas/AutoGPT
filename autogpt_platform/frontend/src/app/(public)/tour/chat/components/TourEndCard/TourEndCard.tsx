@@ -48,7 +48,7 @@ export function TourEndCard() {
         >
           <span className="flex flex-col items-center">
             <span className="font-medium">Make this workflow yours</span>
-            <span className="text-xs font-normal opacity-80">
+            <span className="text-caption font-normal opacity-80">
               Start with Pro · $42.50/mo · cancel anytime
             </span>
           </span>
@@ -66,7 +66,7 @@ export function TourEndCard() {
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleSelfHostClick}
-          className="mt-1 text-center text-sm text-foreground-tertiary underline underline-offset-2 hover:text-foreground-body"
+          className="mt-1 text-center text-body text-foreground-tertiary underline underline-offset-2 hover:text-foreground-body"
         >
           or self-host free
         </a>

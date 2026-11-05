@@ -62,12 +62,13 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
           action={
             files.length > 0 && (
               <Button
-                variant="ghost"
-                size="icon"
+                variant="ghost-subtle"
+                size="icon-2xs"
+                shape="soft"
+                withTooltip={false}
                 onClick={handleDownloadAll}
                 loading={isZipping}
                 aria-label="Download all"
-                className="size-6 rounded-lg !p-0 text-foreground-subtle"
               >
                 <Icon icon={Download01Icon} size={14} />
               </Button>
