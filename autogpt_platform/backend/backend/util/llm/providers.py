@@ -115,6 +115,7 @@ ProviderLiteral = Literal[
     "llama_api",
     "aiml_api",
     "v0",
+    "regolo",
 ]
 
 ExecutionMode = Literal["sync", "batch", "flex"]
@@ -490,6 +491,24 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=False,
+        )
+    if provider == "regolo":
+        return await _call_openai_compat(
+            base_url="https://api.regolo.ai/v1",
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
+            extra_headers={
+                "HTTP-Referer": "https://agpt.co",
+                "X-Title": "AutoGPT",
+            },
         )
 
     raise ValueError(f"Unsupported LLM provider: {provider}")

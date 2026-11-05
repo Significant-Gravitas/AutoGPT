@@ -118,6 +118,7 @@ LLMProviderName = Literal[
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
     ProviderName.V0,
+    ProviderName.REGOLO,
 ]
 AICredentials = (
     CredentialsMetaInput[LLMProviderName, Literal["api_key"]] | SkipJsonSchema[None]
