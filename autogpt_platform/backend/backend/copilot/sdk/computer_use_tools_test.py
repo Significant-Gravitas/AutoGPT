@@ -37,6 +37,13 @@ _CATALOG = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _deployment_allows_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both settings are off by default; a deployment turns them on."""
+    monkeypatch.setattr(tools._chat_config, "use_local_pc_executor", True)
+    monkeypatch.setattr(tools._chat_config, "allow_computer_use", True)
+
+
 def _shim(*, capabilities: tuple[str, ...] = ("computer_use",)) -> LocalPCShim:
     shim = LocalPCShim.__new__(LocalPCShim)
     shim.sandbox_id = "session-1"
@@ -86,6 +93,24 @@ class TestGating:
 
         assert result["isError"] is True
         assert _payload(result)["code"] == "NO_LOCAL_PC_EXECUTOR"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("setting", ["use_local_pc_executor", "allow_computer_use"])
+    @pytest.mark.parametrize("handler", ["_h_computer", "_h_computer_tools"])
+    async def test_a_deployment_that_turned_computer_use_off_refuses(
+        self, monkeypatch: pytest.MonkeyPatch, setting: str, handler: str
+    ):
+        """A call held for approval replays through the handler on a later
+        turn, maybe after the deployment turned computer use off."""
+        shim = _shim()
+        _install(monkeypatch, shim)
+        monkeypatch.setattr(tools._chat_config, setting, False)
+
+        result = await getattr(tools, handler)({"tool": "click"})
+
+        assert _payload(result)["code"] == "COMPUTER_USE_DISABLED"
+        shim.computer.call.assert_not_awaited()
+        shim.computer.tools.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_missing_capability_fails_closed(

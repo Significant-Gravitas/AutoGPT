@@ -6092,7 +6092,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session,
             unsaved_held.append,
             cap=cap_late_tool_result,
-            mcp_handlers=held_call_handlers(),
+            mcp_handlers=held_call_handlers(
+                use_local_pc_computer=use_local_pc_computer,
+                use_recording=use_recording,
+                local_pc_computer_tool_names=local_pc_computer_tool_names,
+                hidden_tool_names=hidden_tools,
+            ),
         ):
             yield held_status
         pending_messages: list[PendingMessage] = [*unsaved_held]

@@ -1754,7 +1754,45 @@ class TestNonRegistryGateSeam:
             if name not in TOOL_REGISTRY and effect_for(name) in PARKABLE
         }
         assert parkable
-        assert parkable <= set(held_call_handlers())
+        assert parkable <= set(
+            held_call_handlers(use_local_pc_computer=True, use_recording=True)
+        )
+
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            {"use_local_pc_computer": False, "use_recording": False},
+            {"use_local_pc_computer": True, "use_recording": False},
+            {"use_local_pc_computer": False, "use_recording": True},
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "local_pc_computer_tool_names": ["local_pc_computer_tools"],
+            },
+            {
+                "use_local_pc_computer": True,
+                "use_recording": True,
+                "hidden_tool_names": ["local_pc_computer", "dry_run_skill"],
+            },
+        ],
+        ids=["off", "computer-use", "recording", "consented-subset", "hidden"],
+    )
+    async def test_a_held_call_replays_only_through_a_tool_this_turn_offers(
+        self, turn: dict[str, Any]
+    ):
+        """The replay table held every Local PC handler, so a call approved
+        before computer use was turned off, or before a permission was taken
+        away, still drove the computer on the next turn."""
+        local_pc = {*LOCAL_PC_COMPUTER_TOOL_NAMES, *(t[0] for t in RECORDING_TOOLS)}
+
+        replayable = set(held_call_handlers(**turn))
+        registered = await TestCreateCopilotMcpServerHidden._registered_tool_names(
+            create_copilot_mcp_server(**turn)
+        )
+
+        assert replayable == registered & local_pc
+        if not (turn["use_local_pc_computer"] or turn["use_recording"]):
+            assert replayable == set()
 
 
 def test_set_execution_context_carries_hidden_tools():

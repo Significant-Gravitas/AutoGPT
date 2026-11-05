@@ -124,6 +124,13 @@ class _Rows:
         return row
 
 
+@pytest.fixture(autouse=True)
+def _deployment_allows_computer_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both settings are off by default; a deployment turns them on."""
+    monkeypatch.setattr(tools._chat_config, "use_local_pc_executor", True)
+    monkeypatch.setattr(tools._chat_config, "allow_computer_use", True)
+
+
 @pytest.fixture
 def supervisor() -> AsyncMock:
     """A supervisor that would let anything run: only the user's approval may
@@ -203,12 +210,21 @@ def _session(mode: AutopilotMode) -> ChatSession:
     )
 
 
+def _offered(computer_use: bool = True) -> dict[str, held.McpHandler]:
+    """The replay table a turn builds, with computer use on or off for it."""
+    return tool_adapter.held_call_handlers(
+        use_local_pc_computer=computer_use, use_recording=False
+    )
+
+
 def _call_as_otto(session: ChatSession, shim: LocalPCShim):
     tool_adapter.set_execution_context("user-1", session, sandbox=shim)
-    return tool_adapter.held_call_handlers()[tools.LOCAL_PC_COMPUTER_TOOL]
+    return _offered()[tools.LOCAL_PC_COMPUTER_TOOL]
 
 
-async def _next_turn(session: ChatSession) -> tuple[list[str], list[PendingMessage]]:
+async def _next_turn(
+    session: ChatSession, *, computer_use: bool = True
+) -> tuple[list[str], list[PendingMessage]]:
     delivered: list[PendingMessage] = []
     heard = [
         status.message
@@ -216,7 +232,7 @@ async def _next_turn(session: ChatSession) -> tuple[list[str], list[PendingMessa
             "user-1",
             session,
             delivered.append,
-            mcp_handlers=tool_adapter.held_call_handlers(),
+            mcp_handlers=_offered(computer_use),
         )
     ]
     return heard, delivered
@@ -395,6 +411,25 @@ async def test_an_approved_screenshot_call_brings_its_image_back(rows, computer)
     assert late.model_image.data_base64 == png
 
 
+async def test_a_held_call_does_not_run_once_computer_use_is_off(rows, computer):
+    """The replay table held every computer-use handler, so a call approved
+    after the deployment or the chat stopped offering computer use still
+    drove the computer on the next turn."""
+    session = _session("ask_first")
+    await _call_as_otto(session, computer)(_CLICK)
+    rows.answer(ReviewStatus.APPROVED)
+
+    _heard, delivered = await _next_turn(session, computer_use=False)
+
+    assert _sent(computer) == []
+    (late,) = delivered
+    assert late.metadata["held_call"]["outcome"] == "closed"
+    assert "Nothing ran" in late.content
+    # The approval is spent: it can't run on a later turn either.
+    _heard, again = await _next_turn(session)
+    assert again == [] and _sent(computer) == []
+
+
 async def test_an_ordinary_call_held_in_ask_first_runs_after_approval(rows, computer):
     session = _session("ask_first")
     call = _call_as_otto(session, computer)
@@ -416,7 +451,7 @@ async def test_reading_the_tool_list_never_asks(rows, computer):
     tool_adapter.set_execution_context(
         "user-1", _session("ask_first"), sandbox=computer
     )
-    read = tool_adapter.held_call_handlers()[tools.LOCAL_PC_COMPUTER_TOOLS_TOOL]
+    read = _offered()[tools.LOCAL_PC_COMPUTER_TOOLS_TOOL]
 
     result = await read({"tools": ["clipboard_write"]})
 

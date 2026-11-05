@@ -22,6 +22,7 @@ from collections.abc import Callable
 from typing import Any
 
 from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
     get_current_sandbox,
     get_execution_context,
@@ -49,6 +50,7 @@ from backend.copilot.tools.local_pc_shim import (
 )
 
 logger = logging.getLogger(__name__)
+_chat_config = ChatConfig()
 
 _TOOL_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _MAX_TIMEOUT_SECONDS = 600
@@ -146,6 +148,12 @@ async def computer_use_subject(args: dict[str, Any]) -> Subject | None:
 
 async def _require_computer_use() -> Gate | dict[str, Any]:
     """The shim and its connection guard, or the MCP error to return."""
+    if not (_chat_config.use_local_pc_executor and _chat_config.allow_computer_use):
+        # A held call replays here on a later turn, maybe after this changed.
+        return err(
+            "COMPUTER_USE_DISABLED",
+            "Computer control is turned off on this deployment. Skip computer use.",
+        )
     sandbox = get_current_sandbox()
     shim = sandbox if is_local_pc_executor(sandbox) else None
     if not isinstance(shim, LocalPCShim):

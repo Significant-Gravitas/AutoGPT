@@ -757,6 +757,8 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
 # What a call of an MCP tool outside ``TOOL_REGISTRY`` acts on, where its name
 # alone does not say: the ``gate_subject`` of a registry tool.
 GateSubject = Callable[[dict[str, Any]], Awaitable[Subject | None]]
+# The Local PC tools that act on the user's machine, which the CLI serialises.
+_LOCAL_PC_MUTATING_TOOLS = frozenset({"local_pc_computer", "dry_run_skill"})
 McpHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
@@ -944,24 +946,62 @@ def _make_truncating_wrapper(
     return wrapper
 
 
-def held_call_handlers() -> dict[str, McpHandler]:
-    """The MCP tools outside ``TOOL_REGISTRY`` that the gate can hold, wrapped
-    as :func:`create_copilot_mcp_server` registers them, so an approved held
-    call replays through the same seam, which spends its approval. Each
-    handler re-checks its own Local PC executor, capability and consent, so
-    one that has gone since says so instead of running."""
+def held_call_handlers(
+    *,
+    use_local_pc_computer: bool,
+    use_recording: bool,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    hidden_tool_names: Iterable[str] = (),
+) -> dict[str, McpHandler]:
+    """The MCP tools outside ``TOOL_REGISTRY`` that the gate can hold and this
+    turn offers, wrapped as :func:`create_copilot_mcp_server` registers them,
+    so an approved held call replays through the same seam, which spends its
+    approval. A call of a tool the turn doesn't offer (computer use turned off
+    since, a permission taken away) has no handler here, so it doesn't run.
+    Each handler also re-checks its Local PC executor, capability and consent."""
+    return {
+        name: _make_truncating_wrapper(handler, name, gate_subject=subject)
+        for name, _desc, _schema, handler, subject in _offered_local_pc_tools(
+            hidden=frozenset(hidden_tool_names),
+            use_local_pc_computer=use_local_pc_computer,
+            local_pc_computer_tool_names=local_pc_computer_tool_names,
+            use_recording=use_recording,
+        )
+    }
+
+
+def _offered_local_pc_tools(
+    *,
+    hidden: frozenset[str],
+    use_local_pc_computer: bool,
+    local_pc_computer_tool_names: Iterable[str] | None,
+    use_recording: bool,
+) -> list[tuple[str, str, dict[str, Any], McpHandler, GateSubject | None]]:
+    """The Local PC computer-use and workflow-recording tools a turn offers,
+    each with its gate subject: the one list the turn registers and replays
+    held calls from, so the two can't disagree."""
     from .computer_use_tools import LOCAL_PC_COMPUTER_SUBJECTS, LOCAL_PC_COMPUTER_TOOLS
     from .recording_tools import RECORDING_TOOLS
 
-    return {
-        name: _make_truncating_wrapper(
-            handler, name, gate_subject=LOCAL_PC_COMPUTER_SUBJECTS.get(name)
-        )
-        for name, _desc, _schema, handler in (
-            *LOCAL_PC_COMPUTER_TOOLS,
-            *RECORDING_TOOLS,
-        )
-    }
+    consented = (
+        frozenset(local_pc_computer_tool_names)
+        if local_pc_computer_tool_names is not None
+        else None
+    )
+    offered: list[tuple[str, str, dict[str, Any], McpHandler, GateSubject | None]] = []
+    if use_local_pc_computer:
+        offered += [
+            (name, desc, schema, handler, LOCAL_PC_COMPUTER_SUBJECTS.get(name))
+            for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS
+            if name not in hidden and (consented is None or name in consented)
+        ]
+    if use_recording:
+        offered += [
+            (name, desc, schema, handler, None)
+            for name, desc, schema, handler in RECORDING_TOOLS
+            if name not in hidden
+        ]
+    return offered
 
 
 _SDK_FILE_TOOL_ALIASES = ("Read", "Write", "Edit", "Glob", "Grep")
@@ -1092,63 +1132,28 @@ def create_copilot_mcp_server(
             )(_make_truncating_wrapper(handler, name, required_args=["path"]))
             sdk_tools.append(decorated)
 
-    # LocalPC computer-use tools — only when the connected shim advertised
-    # the ``computer_use`` capability. ``local_pc_computer`` usually acts
-    # (clicks, types, launches), so it carries ``readOnlyHint=False`` and the
-    # CLI serialises it: two actions on one screen must not race. Reading the
-    # tool list stays parallel.
-    if use_local_pc_computer:
-        from .computer_use_tools import (
-            LOCAL_PC_COMPUTER_SUBJECTS,
-            LOCAL_PC_COMPUTER_TOOLS,
+    # LocalPC computer-use tools, only when the connected shim advertised the
+    # ``computer_use`` capability, and workflow-recording tools, only when it
+    # advertised ``recording``. ``local_pc_computer`` usually acts (clicks,
+    # types, launches) and ``dry_run_skill`` drives replay on the user's
+    # machine, so they carry ``readOnlyHint=False`` and the CLI serialises
+    # them: two actions on one screen must not race. Reading the tool list,
+    # list_recordings and generate_skill_from_recording stay parallel.
+    for name, desc, schema, handler, subject in _offered_local_pc_tools(
+        hidden=hidden,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
+    ):
+        ann = (
+            _MUTATING_ANNOTATION
+            if name in _LOCAL_PC_MUTATING_TOOLS
+            else _PARALLEL_ANNOTATION
         )
-
-        advertised_computer_tools = (
-            frozenset(local_pc_computer_tool_names)
-            if local_pc_computer_tool_names is not None
-            else None
+        decorated = tool(name, desc, schema, annotations=ann)(
+            _make_truncating_wrapper(handler, name, gate_subject=subject)
         )
-
-        _LOCAL_PC_MUTATING_TOOLS = {"local_pc_computer"}
-        for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS:
-            if name in hidden or (
-                advertised_computer_tools is not None
-                and name not in advertised_computer_tools
-            ):
-                continue
-            ann = (
-                _MUTATING_ANNOTATION
-                if name in _LOCAL_PC_MUTATING_TOOLS
-                else _PARALLEL_ANNOTATION
-            )
-            decorated = tool(name, desc, schema, annotations=ann)(
-                _make_truncating_wrapper(
-                    handler, name, gate_subject=LOCAL_PC_COMPUTER_SUBJECTS.get(name)
-                )
-            )
-            sdk_tools.append(decorated)
-
-    # Workflow-recording tools — only when the connected shim advertised the
-    # ``recording`` capability. dry_run_skill mutates state
-    # on the user's machine (start/stop a recording, drive replay), so they
-    # carry the mutating annotation for serialised dispatch. list_recordings
-    # + generate_skill_from_recording are read/compute-only.
-    if use_recording:
-        from .recording_tools import RECORDING_TOOLS
-
-        _RECORDING_MUTATING_TOOLS = {"dry_run_skill"}
-        for name, desc, schema, handler in RECORDING_TOOLS:
-            if name in hidden:
-                continue
-            ann = (
-                _MUTATING_ANNOTATION
-                if name in _RECORDING_MUTATING_TOOLS
-                else _PARALLEL_ANNOTATION
-            )
-            decorated = tool(name, desc, schema, annotations=ann)(
-                _make_truncating_wrapper(handler, name)
-            )
-            sdk_tools.append(decorated)
+        sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
     # which have no defence against output-token truncation.
