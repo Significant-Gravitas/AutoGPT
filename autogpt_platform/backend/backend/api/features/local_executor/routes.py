@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, NoReturn
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Security, status
@@ -36,21 +34,18 @@ from backend.api.features.local_executor.models import (
     RecordingStopResponse,
     SessionID,
 )
-from backend.api.features.local_executor.state import (
-    get_recording_state,
-    mark_recording_reviewed,
-    mark_recording_started,
-    mark_recording_stopped,
-)
+from backend.api.features.local_executor.state import mark_recording_reviewed
 from backend.api.features.local_executor.websocket import router as websocket_router
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSessionInfo, get_chat_session_metadata
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.sdk.computer_use_policy import computer_use_scope
 from backend.copilot.sdk.recording_tools import (
+    RecordingStateUnavailable,
+    RecordingSummaryUnavailable,
     register_recording_reviewed,
-    register_recording_started,
-    register_recording_stopped,
+    start_recording,
+    stop_recording,
 )
 from backend.copilot.tools.local_pc_machine import (
     MachineConnectionStaleError,
@@ -69,17 +64,11 @@ from backend.copilot.tools.local_pc_shim import (
     ShimRecordingError,
     get_shim_manager,
 )
-from backend.copilot.tools.recording_models import (
-    RecordingReviewApplied,
-    RecordingSummary,
-)
+from backend.copilot.tools.recording_models import RecordingReviewApplied
 
 router = APIRouter()
 router.include_router(websocket_router)
 logger = logging.getLogger(__name__)
-
-# Strong references, so a rollback stop outliving its request isn't collected.
-_ROLLBACK_TASKS: set[asyncio.Task[bool]] = set()
 
 
 @router.get(
@@ -268,47 +257,24 @@ async def start_session_recording(
     shim = await _require_owned_shim(session_id, user_id, recording=True)
     _require_recording_capability(shim)
     try:
-        recording_id = await shim.recording.start_with_consent(
+        recording_id = await start_recording(
+            shim,
+            session_id,
             mode=request.mode,
             interpretation_route=request.interpretation_route,
             channels=list(request.channels),
         )
     except ShimRecordingError as exc:
         _raise_recording_http_error(exc)
-    if not recording_id:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The Local PC executor did not return a recording ID",
-        )
-    effective_route = shim.recording.effective_route_for(
-        recording_id, request.interpretation_route
-    )
-    try:
-        await mark_recording_started(
-            session_id,
-            recording_id,
-            mode=request.mode,
-            interpretation_route=effective_route,
-            channels=list(request.channels),
-        )
-    except asyncio.CancelledError:
-        # The caller never learns the id, so the recording is stopped before
-        # the request gives up.
-        await _stop_after_cancellation(shim, recording_id)
-        raise
-    except Exception as exc:
-        stopped = await _stop_orphaned_recording(shim, recording_id)
+    except RecordingStateUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=_rollback_detail(recording_id, stopped=stopped),
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "details": {"recording_id": exc.recording_id},
+            },
         ) from exc
-    register_recording_started(
-        shim,
-        recording_id,
-        mode=request.mode,
-        interpretation_route=effective_route,
-        channels=list(request.channels),
-    )
     return RecordingStartResponse(recording_id=recording_id)
 
 
@@ -328,19 +294,16 @@ async def stop_session_recording(
     shim = await _require_owned_shim(session_id, user_id)
     _require_recording_capability(shim)
     try:
-        summary = await _get_stopped_recording_summary(session_id, request.recording_id)
-        if summary is None:
-            summary = await shim.recording.stop(request.recording_id)
-            # Persist the successful, non-idempotent STOP before the idempotent
-            # FETCH. If FETCH or the HTTP response fails, a retry can recover
-            # without sending a second STOP to the shim.
-            await mark_recording_stopped(
-                session_id, request.recording_id, summary=summary.to_dict()
-            )
-            register_recording_stopped(shim, request.recording_id, summary)
+        # The non-idempotent STOP is saved before the idempotent FETCH, so a
+        # retry after a failed FETCH or response recovers without a second.
+        summary = await stop_recording(shim, session_id, request.recording_id)
         recording = await shim.recording.fetch(request.recording_id)
     except ShimRecordingError as exc:
         _raise_recording_http_error(exc)
+    except RecordingSummaryUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
     finally:
         shim.close_recording(request.recording_id)
     return RecordingStopResponse(summary=summary, recording=recording)
@@ -546,64 +509,6 @@ def _grantable_computer_use_tools(hello: ShimHello | None) -> list[str] | None:
 def _computer_use_driver_label(hello: ShimHello | None) -> str | None:
     scope = computer_use_scope(hello) if hello is not None else None
     return scope.driver if scope is not None else None
-
-
-async def _get_stopped_recording_summary(
-    session_id: str, recording_id: str
-) -> RecordingSummary | None:
-    state = await get_recording_state(session_id, recording_id)
-    if state is None or state.status not in {"stopped", "reviewed"}:
-        return None
-    if state.summary is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Stopped recording state is missing its recovery summary",
-        )
-    summary = RecordingSummary.from_payload(state.summary)
-    if summary.recording_id != recording_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Stopped recording state has an invalid recovery summary",
-        )
-    return summary
-
-
-async def _stop_orphaned_recording(shim: LocalPCShim, recording_id: str) -> bool:
-    """Stop a recording whose state was never saved; True if it stopped."""
-    try:
-        await shim.recording.stop(recording_id)
-        return True
-    except Exception:
-        logger.exception(
-            "Failed to stop recording %s after state persistence failed",
-            recording_id,
-        )
-        return False
-    finally:
-        shim.close_recording(recording_id)
-
-
-async def _stop_after_cancellation(shim: LocalPCShim, recording_id: str) -> None:
-    """Run the stop as its own task. A cancelled scope can cancel every await
-    that follows, and the stop must finish anyway."""
-    stop = asyncio.create_task(_stop_orphaned_recording(shim, recording_id))
-    _ROLLBACK_TASKS.add(stop)
-    stop.add_done_callback(_ROLLBACK_TASKS.discard)
-    with contextlib.suppress(asyncio.CancelledError):
-        await asyncio.shield(stop)
-
-
-def _rollback_detail(recording_id: str, *, stopped: bool) -> dict[str, Any]:
-    if stopped:
-        code = "RECORDING_STATE_UNAVAILABLE"
-        message = "Recording state could not be saved, so the recording was stopped."
-    else:
-        code = "RECORDING_STOP_UNCONFIRMED"
-        message = (
-            "Recording state could not be saved, and stopping the recording "
-            "could not be confirmed."
-        )
-    return {"code": code, "message": message, "details": {"recording_id": recording_id}}
 
 
 def _raise_recording_http_error(exc: ShimRecordingError) -> NoReturn:

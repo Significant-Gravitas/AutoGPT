@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.local_executor import routes
+from backend.copilot.sdk import recording_tools
 from backend.api.features.local_executor.models import RecordingStartRequest
 from backend.copilot.tools.recording_models import RecordingSummary
 
@@ -32,7 +33,7 @@ async def test_a_cancelled_start_still_stops_the_recording() -> None:
     with (
         patch.object(routes, "_require_owned_shim", AsyncMock(return_value=shim)),
         patch.object(
-            routes,
+            recording_tools,
             "mark_recording_started",
             AsyncMock(side_effect=asyncio.CancelledError),
         ),
@@ -63,7 +64,7 @@ async def test_the_stop_survives_a_second_cancellation() -> None:
     with (
         patch.object(routes, "_require_owned_shim", AsyncMock(return_value=shim)),
         patch.object(
-            routes,
+            recording_tools,
             "mark_recording_started",
             AsyncMock(side_effect=asyncio.CancelledError),
         ),
@@ -79,6 +80,6 @@ async def test_the_stop_survives_a_second_cancellation() -> None:
             await request
 
     release_stop.set()
-    await asyncio.wait_for(asyncio.gather(*routes._ROLLBACK_TASKS), 5)
+    await asyncio.wait_for(asyncio.gather(*recording_tools.ROLLBACK_TASKS), 5)
     stop.assert_awaited_once_with("rec-orphan")
     shim.close_recording.assert_called_once_with("rec-orphan")

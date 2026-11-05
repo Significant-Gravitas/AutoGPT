@@ -19,6 +19,8 @@ via :class:`ShimRecordingError`. See
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -31,6 +33,8 @@ from backend.api.features.local_executor.consent import is_computer_use_approved
 from backend.api.features.local_executor.state import (
     get_recording_state,
     list_recording_states,
+    mark_recording_started,
+    mark_recording_stopped,
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import (
@@ -159,6 +163,141 @@ def register_recording_reviewed(
     metadata["reviewed_at"] = time.time()
     metadata["step_count"] = applied.step_count
     _remember_recording(state, recording_id, metadata)
+
+
+# ---------------------------------------------------------------------------
+# Starting and stopping, for the HTTP routes and the MCP tool alike
+# ---------------------------------------------------------------------------
+
+# Strong references, so a rollback stop outliving its request isn't collected.
+ROLLBACK_TASKS: set[asyncio.Task[bool]] = set()
+
+
+class RecordingStateUnavailable(Exception):
+    """A recording started, but its state couldn't be saved where every
+    worker reads it, so it was stopped, or the stop couldn't be confirmed."""
+
+    def __init__(self, recording_id: str, *, stopped: bool) -> None:
+        self.recording_id = recording_id
+        self.stopped = stopped
+        if stopped:
+            self.code = "RECORDING_STATE_UNAVAILABLE"
+            self.message = (
+                "Recording state could not be saved, so the recording was stopped."
+            )
+        else:
+            self.code = "RECORDING_STOP_UNCONFIRMED"
+            self.message = (
+                "Recording state could not be saved, and stopping the recording "
+                "could not be confirmed."
+            )
+        super().__init__(self.message)
+
+
+class RecordingSummaryUnavailable(Exception):
+    """A saved stop is missing the summary a retry recovers from."""
+
+
+async def start_recording(
+    shim: LocalPCShim,
+    session_id: str,
+    *,
+    mode: str,
+    interpretation_route: str,
+    channels: list[str],
+) -> str:
+    """Start a recording with the person's consent on the machine, then save
+    it to the shared state every worker reads, then to this worker's own.
+    One whose state can't be saved is stopped: no worker could list or stop
+    it. Raises ShimRecordingError, or RecordingStateUnavailable."""
+    recording_id = await shim.recording.start_with_consent(
+        mode=mode, interpretation_route=interpretation_route, channels=channels
+    )
+    if not recording_id:
+        raise ShimRecordingError(
+            "RECORDING_START_FAILED",
+            "The Local PC executor did not return a recording ID",
+        )
+    route = shim.recording.effective_route_for(recording_id, interpretation_route)
+    try:
+        await mark_recording_started(
+            session_id,
+            recording_id,
+            mode=mode,
+            interpretation_route=route,
+            channels=channels,
+        )
+    except asyncio.CancelledError:
+        # The caller never learns the id, so the recording is stopped first.
+        await stop_after_cancellation(shim, recording_id)
+        raise
+    except Exception as exc:
+        stopped = await stop_orphaned_recording(shim, recording_id)
+        raise RecordingStateUnavailable(recording_id, stopped=stopped) from exc
+    register_recording_started(
+        shim, recording_id, mode=mode, interpretation_route=route, channels=channels
+    )
+    return recording_id
+
+
+async def stop_recording(
+    shim: LocalPCShim, session_id: str, recording_id: str
+) -> RecordingSummary:
+    """Stop a recording once. A stop any worker saved returns its summary
+    without a second STOP, which the machine can't repeat; a new stop is
+    saved before anything else, so a retry can recover from it. Raises
+    ShimRecordingError, or RecordingSummaryUnavailable."""
+    summary = await _saved_stop_summary(session_id, recording_id)
+    if summary is None:
+        summary = await shim.recording.stop(recording_id)
+        await mark_recording_stopped(
+            session_id, recording_id, summary=summary.to_dict()
+        )
+        register_recording_stopped(shim, recording_id, summary)
+    return summary
+
+
+async def _saved_stop_summary(
+    session_id: str, recording_id: str
+) -> RecordingSummary | None:
+    state = await get_recording_state(session_id, recording_id)
+    if state is None or state.status not in {"stopped", "reviewed"}:
+        return None
+    if state.summary is None:
+        raise RecordingSummaryUnavailable(
+            "Stopped recording state is missing its recovery summary"
+        )
+    summary = RecordingSummary.from_payload(state.summary)
+    if summary.recording_id != recording_id:
+        raise RecordingSummaryUnavailable(
+            "Stopped recording state has an invalid recovery summary"
+        )
+    return summary
+
+
+async def stop_orphaned_recording(shim: LocalPCShim, recording_id: str) -> bool:
+    """Stop a recording whose state was never saved; True if it stopped."""
+    try:
+        await shim.recording.stop(recording_id)
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to stop recording %s after state persistence failed",
+            recording_id,
+        )
+        return False
+    finally:
+        shim.close_recording(recording_id)
+
+
+async def stop_after_cancellation(shim: LocalPCShim, recording_id: str) -> None:
+    """Run the stop as its own task. A cancelled scope can cancel every await
+    that follows, and the stop must finish anyway."""
+    stop = asyncio.create_task(stop_orphaned_recording(shim, recording_id))
+    ROLLBACK_TASKS.add(stop)
+    stop.add_done_callback(ROLLBACK_TASKS.discard)
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.shield(stop)
 
 
 # ---------------------------------------------------------------------------
@@ -295,20 +434,17 @@ async def _h_record_workflow(args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(channels, list):
             return _err("INVALID_ARGUMENT", "channels must be a list of strings")
         try:
-            recording_id = await shim.recording.start_with_consent(
+            recording_id = await start_recording(
+                shim,
+                shim.sandbox_id,
                 mode=mode,
                 interpretation_route=route,
                 channels=[str(c) for c in channels],
             )
         except ShimRecordingError as exc:
             return _handle_shim_error(exc)
-        register_recording_started(
-            shim,
-            recording_id,
-            mode=mode,
-            interpretation_route=route,
-            channels=[str(c) for c in channels],
-        )
+        except RecordingStateUnavailable as exc:
+            return _err(exc.code, exc.message, {"recording_id": exc.recording_id})
         return _ok({"recording_id": recording_id, "status": "recording", "mode": mode})
 
     if action == "stop":
@@ -316,12 +452,16 @@ async def _h_record_workflow(args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(recording_id, str) or not recording_id:
             return _err("INVALID_ARGUMENT", "recording_id is required to stop")
         try:
-            summary = await shim.recording.stop(recording_id)
+            summary = await stop_recording(shim, shim.sandbox_id, recording_id)
         except ShimRecordingError as exc:
             return _handle_shim_error(exc)
-        # Close the live step stream if one was open (co-pilot mode).
-        shim.close_recording(recording_id)
-        register_recording_stopped(shim, recording_id, summary)
+        except RecordingSummaryUnavailable as exc:
+            return _err(
+                "RECORDING_STATE_UNAVAILABLE", str(exc), {"recording_id": recording_id}
+            )
+        finally:
+            # Close the live step stream if one was open (co-pilot mode).
+            shim.close_recording(recording_id)
         return _ok({"recording_id": recording_id, "summary": summary.to_dict()})
 
     return _err(

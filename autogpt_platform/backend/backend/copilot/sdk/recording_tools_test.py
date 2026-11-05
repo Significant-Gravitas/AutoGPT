@@ -49,6 +49,7 @@ def _shim(*, capabilities=("recording", "computer_use")):
     shim.capture_connection_guard.return_value = guard
     shim.connection_guard_matches.return_value = True
     shim.recording = MagicMock()
+    shim.recording.effective_route_for = MagicMock(side_effect=lambda _id, route: route)
     shim.computer = MagicMock()
     shim.computer.call = AsyncMock(return_value={"is_error": False, "content": []})
     shim.close_recording = MagicMock()
@@ -80,6 +81,8 @@ def _install(monkeypatch, shim):
         "list_recording_states",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(rt, "mark_recording_started", AsyncMock())
+    monkeypatch.setattr(rt, "mark_recording_stopped", AsyncMock())
     # Fresh per-session state for each test.
     rt._SESSION_STATE.clear()
 
@@ -238,6 +241,78 @@ class TestRecordWorkflowStop:
         assert out["isError"] is False
         assert _parse(out)["summary"]["step_count"] == 2
         shim.close_recording.assert_called_once_with("rec_1")
+
+
+class TestRecordingSharedState:
+    """A recording started or stopped through the tool is saved where every
+    worker reads it, as the HTTP routes save theirs."""
+
+    @pytest.mark.asyncio
+    async def test_a_start_is_saved_where_every_worker_reads_it(self, monkeypatch):
+        """The start lived only in this worker's memory, so another worker's
+        list_recordings left it out."""
+        shim = _shim()
+        shim.recording.start_with_consent = AsyncMock(return_value="rec_1")
+        shim.recording.effective_route_for = MagicMock(return_value="local_vlm")
+        _install(monkeypatch, shim)
+
+        out = await rt._h_record_workflow({"action": "start", "channels": ["floor"]})
+
+        assert out["isError"] is False
+        rt.mark_recording_started.assert_awaited_once_with(
+            "sess-1",
+            "rec_1",
+            mode="copilot",
+            interpretation_route="local_vlm",
+            channels=["floor"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_start_whose_state_cannot_be_saved_is_stopped(self, monkeypatch):
+        shim = _shim()
+        shim.recording.start_with_consent = AsyncMock(return_value="rec_1")
+        shim.recording.stop = AsyncMock(
+            return_value=RecordingSummary(recording_id="rec_1")
+        )
+        _install(monkeypatch, shim)
+        monkeypatch.setattr(
+            rt, "mark_recording_started", AsyncMock(side_effect=RuntimeError("down"))
+        )
+
+        out = await rt._h_record_workflow({"action": "start"})
+
+        assert out["isError"] is True
+        assert _parse(out)["code"] == "RECORDING_STATE_UNAVAILABLE"
+        shim.recording.stop.assert_awaited_once_with("rec_1")
+        assert _parse(await rt._h_list_recordings({}))["recordings"] == []
+
+    @pytest.mark.asyncio
+    async def test_a_stop_is_saved_and_never_sent_twice(self, monkeypatch):
+        """A stop saved only here left the shared state saying recording, and
+        the machine can't take a second STOP for the same recording."""
+        summary = RecordingSummary(recording_id="rec_1", step_count=2)
+        shim = _shim()
+        shim.recording.stop = AsyncMock(return_value=summary)
+        _install(monkeypatch, shim)
+
+        first = await rt._h_record_workflow({"action": "stop", "recording_id": "rec_1"})
+        monkeypatch.setattr(
+            rt,
+            "get_recording_state",
+            AsyncMock(
+                return_value=RecordingState(
+                    recording_id="rec_1", status="stopped", summary=summary.to_dict()
+                )
+            ),
+        )
+        again = await rt._h_record_workflow({"action": "stop", "recording_id": "rec_1"})
+
+        assert first["isError"] is False and again["isError"] is False
+        rt.mark_recording_stopped.assert_awaited_once_with(
+            "sess-1", "rec_1", summary=summary.to_dict()
+        )
+        shim.recording.stop.assert_awaited_once_with("rec_1")
+        assert _parse(again)["summary"]["step_count"] == 2
 
 
 class TestGenerateSkill:
