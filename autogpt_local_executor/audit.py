@@ -455,11 +455,16 @@ class AuditWriter:
         p = Path(path)
         if not p.is_file():
             return [Violation("truncated", None, f"audit log not found: {p}")]
+        with open(p, "rb") as f:
+            data = f.read()
+        return cls.verify_records(data, audit_key)
+
+    @staticmethod
+    def verify_records(data: bytes, audit_key: bytes) -> list[Violation]:
+        """Chain-verify the contents of one audit log file. Returns [] if clean."""
         violations: list[Violation] = []
         prev_hmac: str | None = None
         expected_seq = 1
-        with open(p, "rb") as f:
-            data = f.read()
         if not data:
             return []
         # Detect mid-line truncation: file must end with a newline since we

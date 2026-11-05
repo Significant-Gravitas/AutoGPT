@@ -733,22 +733,74 @@ def _rotate_before_the_lock(monkeypatch, writer: AuditWriter) -> None:
 
 
 @pytest.mark.asyncio
-async def test_verify_all_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
+async def test_verify_all_lists_the_files_under_the_lock(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    verified: list[Path] = []
-    real_verify = AuditWriter.verify
-
-    def verify(path: Path, key: bytes) -> list:
-        verified.append(path)
-        return real_verify(path, key)
-
-    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
     _rotate_before_the_lock(monkeypatch, writer)
 
     assert cli._audit_verify_all(writer.path) == 0
-    assert [p for p in verified if p != writer.path] == list_rotated_files(writer.path) != []
+    out = capsys.readouterr().out
+    rotated = list_rotated_files(writer.path)
+    assert rotated and all(f"{path.name}: OK" in out for path in rotated)
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_verify_all_checks_records_without_holding_the_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """verify-all held the writers' lock while it parsed and HMACed every
+    record of every retained file, so each audit write the daemon made
+    meanwhile waited for the whole scan."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    held: list[bool] = []
+    real_canonical = audit_module.canonical_bytes
+
+    def canonical(record):
+        held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_canonical(record)
+
+    monkeypatch.setattr(audit_module, "canonical_bytes", canonical)
+
+    assert cli._audit_verify_all(writer.path) == 0
+    assert held and not any(held)
+
+
+@pytest.mark.asyncio
+async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    [rotated] = list_rotated_files(writer.path)
+    real_lock = audit_module.holding_log_lock
+    holds = 0
+
+    @contextlib.contextmanager
+    def prune_after_the_first_hold(log: Path):
+        nonlocal holds
+        holds += 1
+        if holds == 2:
+            rotated.unlink()
+        with real_lock(log):
+            yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", prune_after_the_first_hold)
+
+    assert cli._audit_verify_all(writer.path) == 0
+    out = capsys.readouterr().out
+    assert f"{rotated.name}: removed while the check ran" in out
+    assert "All 1 files verified clean." in out
 
 
 @pytest.mark.asyncio

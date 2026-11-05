@@ -226,7 +226,11 @@ from the file before it appends.
 
 `audit verify`, `verify-all` and `show` list and read the files under
 the same lock, so they never see a half-written record or miss a file that a
-rotation has just moved. `export` lists the files and reads the current
+rotation has just moved. `verify-all` reads each file under its own hold of
+the lock, the listing and the current log under the first, and checks the
+records after releasing it, so audit writes don't wait for the whole scan; a
+rotated file a prune removes in between is reported as removed and skipped.
+`export` lists the files and reads the current
 log under the lock, then reads the rotated files one at a time after
 releasing it, since they never change; one pruned or replaced in between
 fails the export, which writes nothing. A reader that can't write the lock file

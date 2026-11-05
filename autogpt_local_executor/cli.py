@@ -736,24 +736,45 @@ def _audit_verify_all(current: Path) -> int:
     except Exception as exc:
         print(f"Could not load audit key: {exc}")
         return 2
-    failures = 0
-    # Hold off appends and rotations while the files are listed and read: a
-    # rotation after the listing would move records to a name it lacks.
+    # Each file is read whole under the writers' lock, so no record is half
+    # written and no prune removes the file part way, and checked after it:
+    # checking parses and HMACs every record, and the daemon's audit writes
+    # wait on that lock. The listing and the read of the current log share one
+    # hold, since a rotation between them would move records to a name the
+    # listing lacks. A rotated file never changes, though a prune may remove it.
     with holding_log_lock(current):
         files = _audit_files(current)
-        if not files:
-            print("No audit logs found.")
-            return 0
-        for path in files:
-            violations = AuditWriter.verify(path, key)
-            if violations:
-                failures += 1
-            _print_violations(path, violations)
+        contents = _read_audit_file(files[0]) if files else None
+    if not files:
+        print("No audit logs found.")
+        return 0
+    failures = 0
+    checked = 0
+    for index, path in enumerate(files):
+        if index:
+            with holding_log_lock(current):
+                contents = _read_audit_file(path)
+        if contents is None:
+            print(f"{path.name}: removed while the check ran")
+            continue
+        violations = AuditWriter.verify_records(contents, key)
+        checked += 1
+        if violations:
+            failures += 1
+        _print_violations(path, violations)
     if failures:
-        print(f"\n{failures} of {len(files)} files have violations.")
+        print(f"\n{failures} of {checked} files have violations.")
         return 1
-    print(f"\nAll {len(files)} files verified clean.")
+    print(f"\nAll {checked} files verified clean.")
     return 0
+
+
+def _read_audit_file(path: Path) -> bytes | None:
+    """The contents of an audit log file, or None when it's gone."""
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
 
 
 def _audit_export(current: Path, output: Path | None) -> int:
@@ -955,8 +976,8 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
         return 0
     # A rotated log never changes, so it is read without the writers' lock:
     # reading every line of every one under it held off every audit write.
-    # The deletes run under the lock, so verify-all and show, which list and
-    # read under it, never lose a file part way, and only of files that are
+    # The deletes run under the lock, so verify-all and show, which read each
+    # file under it, never lose a file part way, and only of files that are
     # still the ones read.
     expired: list[tuple[Path, tuple[int, int, int], float]] = []
     for path in rotated:
