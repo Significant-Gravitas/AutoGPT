@@ -237,7 +237,12 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
         report = json.loads(completed.stdout)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         return [CheckResult("FAIL", "cua-driver", f"`{binary} doctor` failed: {exc}", True)]
-    version = str((report.get("build") or {}).get("version") or "")
+    if not isinstance(report, dict):
+        return [
+            CheckResult("FAIL", "cua-driver", f"`{binary} doctor` printed no report object", True)
+        ]
+    build = report.get("build")
+    version = str(build.get("version") or "") if isinstance(build, dict) else ""
     if not same_minor(version):
         return [
             CheckResult(
@@ -249,7 +254,20 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
             )
         ]
     out = [CheckResult("OK", "cua-driver", f"{version} at {binary}")]
-    for probe in report.get("probes") or []:
+    probes = report.get("probes") or []
+    readable = (
+        [probe for probe in probes if isinstance(probe, dict)] if isinstance(probes, list) else []
+    )
+    if not isinstance(probes, list) or len(readable) < len(probes):
+        out.append(
+            CheckResult(
+                "FAIL",
+                "cua-driver probes",
+                f"`{binary} doctor` reported probes doctor can't read",
+                blocking=True,
+            )
+        )
+    for probe in readable:
         label = str(probe.get("label") or "probe")
         if label in _INFO_PROBES:
             continue

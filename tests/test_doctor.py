@@ -192,6 +192,44 @@ def test_doctor_runs_a_driver_installed_without_its_execute_bit(tmp_path) -> Non
     assert (check.marker, check.label) == ("OK", "cua-driver")
 
 
+@pytest.mark.parametrize(
+    "report",
+    [
+        "[]",
+        "null",
+        '"0.38.0"',
+        '{"build": "0.38.0", "probes": []}',
+        '{"build": {"version": "0.38.0"}, "probes": {"label": "AT-SPI"}}',
+        '{"build": {"version": "0.38.0"}, "probes": ["AT-SPI"]}',
+    ],
+    ids=["array", "null", "string", "build-a-string", "probes-an-object", "probe-a-string"],
+)
+def test_doctor_fails_on_a_driver_report_it_cannot_read(
+    tmp_path, driver_commands, report: str
+) -> None:
+    """JSON that isn't shaped like the report (an array, or a build or probe
+    that isn't an object) ended doctor in an AttributeError."""
+    driver_commands.state["report"] = report
+
+    checks = doctor._driver_doctor(FAKE)
+
+    assert any(check.marker == "FAIL" and check.blocking for check in checks)
+
+
+def test_doctor_keeps_the_probes_it_can_read(tmp_path, driver_commands) -> None:
+    driver_commands.state["report"] = json.dumps(
+        {
+            "build": {"version": "0.38.0"},
+            "probes": ["AT-SPI", {"label": "AT-SPI", "message": "reachable", "status": "ok"}],
+        }
+    )
+
+    checks = {check.label: check.marker for check in doctor._driver_doctor(FAKE)}
+
+    assert checks["cua-driver AT-SPI"] == "OK"
+    assert checks["cua-driver probes"] == "FAIL"
+
+
 def test_doctor_reports_a_driver_error_instead_of_crashing(
     tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
 ) -> None:
