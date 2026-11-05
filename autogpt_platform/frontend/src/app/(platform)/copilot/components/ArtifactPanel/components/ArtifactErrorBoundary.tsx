@@ -39,9 +39,12 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
     });
   }
 
-  componentDidUpdate(prevProps: Props) {
+  componentDidUpdate(prevProps: Props, prevState: State) {
+    // An error caught in this very commit belongs to these props: clearing it
+    // would only crash and report the same render again.
     if (
       this.state.error &&
+      prevState.error === this.state.error &&
       (prevProps.artifactID !== this.props.artifactID ||
         prevProps.artifactTitle !== this.props.artifactTitle ||
         prevProps.artifactType !== this.props.artifactType ||

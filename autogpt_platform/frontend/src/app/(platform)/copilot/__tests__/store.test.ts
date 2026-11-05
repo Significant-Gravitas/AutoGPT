@@ -120,6 +120,18 @@ describe("artifactPanel store actions", () => {
       expect(s.activeArtifact?.documentId).toBe("v1");
     });
 
+    it("keeps the document id when the open version's card is clicked", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const { followArtifactOverwrite, openArtifact } =
+        useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      openArtifact(makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
     it("leaves no back entry to itself after an old card is clicked mid-turn", () => {
       useCopilotUIStore.getState().openArtifact(makeArtifact("v2"));
       useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));

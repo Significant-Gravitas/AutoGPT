@@ -25,10 +25,21 @@ function message(role: Message["role"], ...parts: Message["parts"]): Message {
 }
 
 function replacedIds(messages: Message[]) {
-  return getLatestTurnOverwrites(messages).map((o) => [
-    o.replacedFileId,
-    o.next.id,
-  ]);
+  return getLatestTurnOverwrites(messages)
+    .map((o) => [o.replacedFileId, o.next.id])
+    .sort();
+}
+
+const TOO_BIG = 11 * 1024 * 1024;
+
+function bigWrite(fileId: string, replaced: string) {
+  return write(fileId, undefined, {
+    file_id: fileId,
+    replaced_file_id: replaced,
+    name: "data.csv",
+    mime_type: "text/csv",
+    size_bytes: TOO_BIG,
+  });
 }
 
 describe("getLatestTurnOverwrites", () => {
@@ -49,11 +60,11 @@ describe("getLatestTurnOverwrites", () => {
     });
   });
 
-  it("lists a file rewritten twice in the order it happened", () => {
+  it("points every version of a file rewritten twice at the last one", () => {
     expect(
       replacedIds([message("assistant", write("v2", "v1"), write("v3", "v2"))]),
     ).toEqual([
-      ["v1", "v2"],
+      ["v1", "v3"],
       ["v2", "v3"],
     ]);
   });
@@ -67,7 +78,7 @@ describe("getLatestTurnOverwrites", () => {
         message("assistant", write("v3", "v2")),
       ]),
     ).toEqual([
-      ["v1", "v2"],
+      ["v1", "v3"],
       ["v2", "v3"],
     ]);
   });
@@ -109,15 +120,27 @@ describe("getLatestTurnOverwrites", () => {
   });
 
   it("leaves out a new version too big for the panel to preview", () => {
-    const output = {
-      file_id: "v2",
-      replaced_file_id: "v1",
-      name: "data.csv",
-      mime_type: "text/csv",
-      size_bytes: 11 * 1024 * 1024,
-    };
+    expect(replacedIds([message("assistant", bigWrite("v2", "v1"))])).toEqual(
+      [],
+    );
+  });
+
+  it("follows past a too-big version to a later one it can preview", () => {
     expect(
-      replacedIds([message("assistant", write("v2", undefined, output))]),
+      replacedIds([
+        message("assistant", bigWrite("v2", "v1"), write("v3", "v2")),
+      ]),
+    ).toEqual([
+      ["v1", "v3"],
+      ["v2", "v3"],
+    ]);
+  });
+
+  it("follows nothing when a file's last version is too big", () => {
+    expect(
+      replacedIds([
+        message("assistant", write("v2", "v1"), bigWrite("v3", "v2")),
+      ]),
     ).toEqual([]);
   });
 

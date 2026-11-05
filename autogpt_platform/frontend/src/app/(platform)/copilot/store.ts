@@ -456,11 +456,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           : prevHistory;
       if (isClient && opts?.persist !== false)
         storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      // A card for the version already open must not make it a new document.
+      const documentId =
+        activeArtifact?.id === ref.id ? activeArtifact.documentId : undefined;
       return {
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: true,
-          activeArtifact: ref,
+          activeArtifact: documentId ? { ...ref, documentId } : ref,
           history,
           mode: "artifact",
           // A document opened over the computer face takes the panel; the

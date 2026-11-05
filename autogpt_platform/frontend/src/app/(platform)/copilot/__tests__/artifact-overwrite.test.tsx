@@ -292,6 +292,67 @@ describe.each(STREAM_PATHS)("overwriting a file on the %s path", (path) => {
     expect(page.scrollTop).toBe(240);
   });
 
+  it("holds the new text the same way when Otto overwrites it again", async () => {
+    const v3 = holdDownload();
+    fileDownloads({ v3: v3.text });
+    streamReturns(
+      overwriteTurn(V1_ID),
+      turnWithWrites(writeChunks(V3_ID, V2_ID)),
+    );
+    renderChatWithReport();
+    await openReport();
+
+    await typeAndSend("Rewrite the report");
+    await waitFor(() =>
+      expect(within(panel()!).getByText(V2_TEXT)).toBeDefined(),
+    );
+    await waitForTurnEnd();
+    const page = scrollPage(V2_TEXT);
+    page.scrollTop = 240;
+
+    await typeAndSend("Once more");
+    await waitFor(() => expect(openFileId()).toBe(V3_ID));
+    expect(within(panel()!).getByText(V2_TEXT)).toBeDefined();
+
+    v3.release(V3_TEXT);
+    await waitFor(() =>
+      expect(within(panel()!).getByText(V3_TEXT)).toBeDefined(),
+    );
+    expect(panel()!.contains(page)).toBe(true);
+    expect(page.scrollTop).toBe(240);
+  });
+
+  it("doesn't refetch or drop the text when the open version's card is clicked mid-download", async () => {
+    const v2 = holdDownload();
+    const fetched = fileDownloads({ v2: v2.text });
+    streamReturns(
+      turnWithWrites(writeChunks(V2_ID, V1_ID), [
+        { type: "text-start", id: "link" },
+        {
+          type: "text-delta",
+          id: "link",
+          delta: `Updated: [new-report.md](workspace://${V2_ID}#text/markdown)`,
+        },
+        { type: "text-end", id: "link" },
+      ]),
+    );
+    renderChatWithReport();
+    await openReport();
+
+    await typeAndSend("Rewrite the report");
+    await waitFor(() => expect(fetched).toContain(V2_ID));
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: /new-report\.md/i }));
+
+    expect(within(panel()!).getByText(V1_TEXT)).toBeDefined();
+    v2.release(V2_TEXT);
+    await waitFor(() =>
+      expect(within(panel()!).getByText(V2_TEXT)).toBeDefined(),
+    );
+    expect(fetched.filter((id) => id === V2_ID)).toHaveLength(1);
+  });
+
   it("holds the place and the source view when one turn writes the file twice", async () => {
     fileDownloads();
     streamReturns(
