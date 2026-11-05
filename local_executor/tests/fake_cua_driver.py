@@ -8,11 +8,13 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_VERSION       serverInfo.version (default 0.38.0)
   FAKE_CUA_EXTRA_TOOLS   comma-separated tools listed beyond the catalog
   FAKE_CUA_PERMISSIONS   JSON for check_permissions' structured result
+  FAKE_CUA_SCREEN        JSON for get_screen_size's structured result
   FAKE_CUA_CLIPBOARD     file holding the clipboard text
   FAKE_CUA_CLIPBOARD_TYPES  comma-separated clipboard types
   FAKE_CUA_IMAGE_BYTES   size of the image get_window_state returns
   FAKE_CUA_EXIT_AT_START exit before answering initialize
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
+  FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
 """
 
 from __future__ import annotations
@@ -100,7 +102,11 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             error=True,
         )
     if name == "get_screen_size":
-        return text_result("1920x1080", {"width": 1920, "height": 1080, "scale_factor": 1.0})
+        size = json.loads(
+            os.environ.get("FAKE_CUA_SCREEN")
+            or '{"width": 1920, "height": 1080, "scale_factor": 1.0}'
+        )
+        return text_result("1920x1080", size)
     if name == "check_permissions":
         granted = json.loads(
             os.environ.get("FAKE_CUA_PERMISSIONS")
@@ -189,7 +195,11 @@ def handle(message: dict) -> None:
             }
         )
     elif method == "tools/list":
-        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": tool_list()}})
+        result: dict = {"tools": tool_list()}
+        paging = os.environ.get("FAKE_CUA_NEXT_CURSOR")
+        if paging:
+            result["nextCursor"] = "page" if paging == "same" else f"page-{request_id}"
+        send({"jsonrpc": "2.0", "id": request_id, "result": result})
     elif method == "tools/call":
         params = message["params"]
         pid = (params.get("arguments") or {}).get("pid")

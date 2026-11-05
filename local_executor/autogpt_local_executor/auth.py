@@ -32,7 +32,8 @@ from .config import ShimConfig, _validate_platform_endpoint
 KEYCHAIN_SERVICE = "autogpt-local-executor"
 # How long `autogpt-shim auth` waits for the browser to come back.
 CALLBACK_TIMEOUT_SECONDS = 300.0
-# The last of the redirect ports the OAuth app registers (41899-41910).
+# The redirect ports the OAuth app registers (41899-41910).
+CALLBACK_FIRST_PORT = 41899
 CALLBACK_LAST_PORT = 41910
 # How long the callback server waits for one connection's request. It takes
 # one connection at a time, so without this a connection that never sends
@@ -389,7 +390,8 @@ class OAuthFlow:
         # The OAuth app lists 41899-41910 as redirect URIs; a port past that is
         # rejected on the redirect. A configured port outside the range is the
         # only one known to be registered.
-        last_port = CALLBACK_LAST_PORT if first_port <= CALLBACK_LAST_PORT else first_port
+        in_range = CALLBACK_FIRST_PORT <= first_port <= CALLBACK_LAST_PORT
+        last_port = CALLBACK_LAST_PORT if in_range else first_port
         for port in range(first_port, last_port + 1):
             try:
                 server = _CallbackServer(("127.0.0.1", port), CallbackHandler)

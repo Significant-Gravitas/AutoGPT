@@ -1467,6 +1467,64 @@ async def test_a_rewritten_file_never_keeps_set_id_bits(
     assert program.stat().st_mode & 0o7777 == 0o755
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_an_in_place_write_drops_set_id_bits_before_the_contents_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-place fallback truncated and wrote first and dropped the bits
+    after, so a write that failed part way left a set-user-ID file holding
+    partial contents, and a privileged shim, which the kernel doesn't strip
+    the bits for, left them on the new contents until the chmod."""
+    import contextlib
+    import errno
+
+    import autogpt_local_executor.path_jail as path_jail
+
+    program = tmp_path / "tool"
+    program.write_text("old")
+    program.chmod(0o4755)
+    assert program.stat().st_mode & 0o4000
+    modes_at_truncate: list[int] = []
+
+    class FullDisk:
+        def __init__(self, file) -> None:
+            self._file = file
+
+        def fileno(self) -> int:
+            return self._file.fileno()
+
+        def flush(self) -> None:
+            self._file.flush()
+
+        def truncate(self, size: int) -> int:
+            # Before the truncate itself, which Linux strips the bits on
+            # for an unprivileged process.
+            modes_at_truncate.append(os.fstat(self._file.fileno()).st_mode)
+            return self._file.truncate(size)
+
+        def write(self, _data: bytes) -> int:
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    real_open = path_jail.open_jail_file
+
+    @contextlib.contextmanager
+    def open_jail_file(*args, **kwargs):
+        with real_open(*args, **kwargs) as file:
+            yield FullDisk(file)
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError("the directory takes no new entries")
+
+    monkeypatch.setattr(path_jail, "_replace_with", refuse)
+    monkeypatch.setattr(path_jail, "open_jail_file", open_jail_file)
+
+    with pytest.raises(OSError):
+        path_jail.write_jail_file(program, tmp_path, b"new")
+
+    assert [mode & 0o6000 for mode in modes_at_truncate] == [0]
+    assert program.stat().st_mode & 0o7777 == 0o755
+
+
 @pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])
 @pytest.mark.asyncio
 async def test_a_file_whose_name_is_long_in_bytes_can_be_written(tmp_path: Path, char: str) -> None:
@@ -1551,15 +1609,27 @@ async def test_a_move_refuses_a_destination_that_appears_after_the_check_where_t
 
 
 def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
-    from autogpt_local_executor import fsops
+    """Whether this OS and filesystem refuse a replacing rename in the rename
+    itself, asked of the C library directly. Asked of the code under test, a
+    regression that made it report no support skipped these tests instead
+    of failing them."""
+    import ctypes
+    import ctypes.util
 
     src, dst = folder / ".probe-src", folder / ".probe-dst"
     src.write_text("")
     dst.write_text("")
     try:
-        return fsops._native_no_replace_rename(src, dst)
-    except FileExistsError:
-        return True
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        if sys.platform == "linux" and hasattr(libc, "renameat2"):
+            # renameat2(AT_FDCWD, src, AT_FDCWD, dst, RENAME_NOREPLACE)
+            result = libc.renameat2(-100, os.fsencode(src), -100, os.fsencode(dst), 1)
+        elif sys.platform == "darwin" and hasattr(libc, "renamex_np"):
+            # renamex_np(src, dst, RENAME_EXCL)
+            result = libc.renamex_np(os.fsencode(src), os.fsencode(dst), 4)
+        else:
+            return False
+        return result != 0 and ctypes.get_errno() == errno.EEXIST
     finally:
         src.unlink(missing_ok=True)
         dst.unlink(missing_ok=True)

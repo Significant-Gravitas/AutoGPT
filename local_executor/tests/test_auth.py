@@ -394,6 +394,7 @@ def test_callback_uses_next_port_when_first_is_busy(
     first_port = blocker.getsockname()[1]
     # A free port is rarely in the registered 41899-41910, so the range is
     # moved to start at it.
+    monkeypatch.setattr(auth_module, "CALLBACK_FIRST_PORT", first_port)
     monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", first_port + 11)
     flow = OAuthFlow(_config(tmp_path, callback_port=first_port), token_store=object())
 
@@ -636,8 +637,14 @@ def test_a_request_that_trickles_in_cannot_hold_the_callback(
 
 @pytest.mark.parametrize(
     ("first", "tried"),
-    [(41899, list(range(41899, 41911))), (41905, list(range(41905, 41911))), (50000, [50000])],
-    ids=["default", "within-range", "custom"],
+    [
+        (41899, list(range(41899, 41911))),
+        (41905, list(range(41905, 41911))),
+        (50000, [50000]),
+        (41898, [41898]),
+        (8080, [8080]),
+    ],
+    ids=["default", "within-range", "custom", "just-below-range", "below-range"],
 )
 def test_the_callback_binds_only_registered_ports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first: int, tried: list[int]
@@ -645,7 +652,8 @@ def test_the_callback_binds_only_registered_ports(
     """The fallback tried twelve ports from the configured one, so a start
     above 41899 could bind 41911 or higher, which the OAuth app doesn't list,
     and sign-in failed on the redirect. A port outside 41899-41910 is the
-    only one known to be registered."""
+    only one known to be registered; one below the range went on to scan
+    every port up to 41910."""
     import autogpt_local_executor.auth as auth_module
 
     attempts: list[int] = []

@@ -22,9 +22,14 @@ Per [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-locat
 | WSL2 | Linux path |
 
 Permissions: created `0600` on POSIX (owner-only), and an existing log
-(one an older version made, say) is set to `0600` when the shim opens it;
-ACL'd to the running user on Windows. The shim refuses to start if the audit log can't be
-opened for append.
+(one an older version made, say) is set to `0600` when the shim opens it.
+Where that chmod fails (another account's file, or a filesystem without
+POSIX modes such as exFAT or an SMB share), the shim logs a warning and goes
+on writing the log, which others may then read. On Windows the shim sets no
+ACL of its own: the log keeps its folder's, which under the default
+`%LOCALAPPDATA%` lets only you and administrators in. Don't point
+`audit_log_path` at a folder other accounts can read. The shim refuses to
+start if the audit log can't be opened for append.
 
 ## Format
 
@@ -80,7 +85,7 @@ single JSON object with this shape:
 | `FILE_LIST` | `{path, glob, recursive, include_hidden, max_entries, entries_returned}` |
 | `FILE_DELETE` | `{path, recursive, missing_ok}` |
 | `FILE_MOVE` | `{src, dst, overwrite}` |
-| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too) and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs, and so are the arguments of a call with approved disk arguments, which `approved_arguments` names. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
+| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too) and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs, and so are the arguments of a call with approved disk arguments, which `approved_arguments` names. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` (left out for the per-minute budget or the frame limit) and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
 | `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
 | `DIRECTORY_LIST` | `{browse_id, path, entries_returned, truncated}` — logs the canonical directory being viewed, never returned entry-name arrays or opaque references |
 | `SESSION_ALLOWED_ROOT_SET` | `{previous_allowed_root, allowed_root, fingerprint, revision}` |
@@ -161,8 +166,17 @@ record              = {**record_without_hmac, "hmac": hmac.hex()}
 ```
 
 `json_canonical` follows the **RFC 8785 JSON Canonicalization Scheme
-(JCS)** (sorted keys, no whitespace), with one difference in numbers:
-a float is written as Python's `repr` gives it. An integer-valued float
+(JCS)** (sorted keys, no whitespace), with two differences.
+
+Object keys are sorted by Unicode code point, where RFC 8785 sorts by
+UTF-16 code unit. The two orders differ only where, at the first character
+two keys don't share, one has a character above U+FFFF (an emoji, say) and
+the other one from U+E000 to U+FFFF: by code point a key starting with
+U+FFFD sorts before one starting with U+1F600, and by UTF-16 after it. Keys
+in `details` can be anything a request carried (a computer tool's
+arguments, say).
+
+A float is written as Python's `repr` gives it. An integer-valued float
 keeps its `.0` (`1712345678.0`, where RFC 8785 writes `1712345678`),
 and very large or small floats use Python's exponent spelling
 (`1e-07`). Booleans match RFC 8785, and so do integers up to 2^53 - 1 in
@@ -173,10 +187,10 @@ larger integers come out the same.
 The shim ships this hand-rolled canonicalizer over the input shapes used
 in this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`)
 so the wheel doesn't carry an extra dependency. A third-party verifier
-must reproduce the float rule above; a stock RFC 8785 library (e.g. the
-`rfc8785` PyPI package) reports records holding such floats as
+must reproduce both rules above; a stock RFC 8785 library (e.g. the
+`rfc8785` PyPI package) reports records holding such floats or keys as
 `hmac_mismatch`. Moving to strict RFC 8785 would change the HMAC input
-of every existing record, so it waits for a versioned log format. `NaN`
+of existing records, so it waits for a versioned log format. `NaN`
 and `±Infinity` are rejected: the canonicalizer raises on them rather
 than silently producing non-JSON.
 A string UTF-8 can't encode (a POSIX path whose bytes aren't UTF-8
@@ -226,7 +240,11 @@ from the file before it appends.
 
 `audit verify`, `verify-all` and `show` list and read the files under
 the same lock, so they never see a half-written record or miss a file that a
-rotation has just moved. `export` lists the files and reads the current
+rotation has just moved. `verify-all` reads each file under its own hold of
+the lock, the listing and the current log under the first, and checks the
+records after releasing it, so audit writes don't wait for the whole scan; a
+rotated file a prune removes in between is reported as removed and skipped.
+`export` lists the files and reads the current
 log under the lock, then reads the rotated files one at a time after
 releasing it, since they never change; one pruned or replaced in between
 fails the export, which writes nothing. A reader that can't write the lock file

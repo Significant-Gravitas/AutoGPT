@@ -307,3 +307,74 @@ def test_a_default_config_that_cannot_be_reached_is_an_error(tmp_path: Path, mon
             load_config()
     finally:
         locked.chmod(0o700)
+
+
+def test_an_environment_list_that_is_not_json_is_a_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A list setting takes JSON from the environment. Anything else raised
+    pydantic-settings' SettingsError, which isn't a ValidationError, so it
+    got past the CLI's config handling."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent.toml")
+    monkeypatch.setenv("AUTOGPT_SHIM_RECORDING_CHANNELS", "floor")
+
+    with pytest.raises(ConfigFileError, match="AUTOGPT_SHIM_RECORDING_CHANNELS"):
+        load_config()
+
+
+def test_the_cli_exits_78_on_an_environment_list_that_is_not_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """It ended in a traceback and status 1, which a service manager
+    restarts, instead of the config error's 78."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor import cli
+
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent.toml")
+    monkeypatch.setenv("AUTOGPT_SHIM_RECORDING_CHANNELS", "floor")
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "status"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    assert "AUTOGPT_SHIM_RECORDING_CHANNELS" in capsys.readouterr().err
+
+
+def test_a_default_config_path_that_is_not_a_file_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory where the default config.toml belongs ran the shim on the
+    defaults without a word, though --config naming one is an error."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "config.toml").mkdir()
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "config.toml")
+
+    with pytest.raises(ConfigFileError, match="not a regular file"):
+        load_config()
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) -> None:
+    """Port 0 bound an ephemeral port while the redirect URI said 0, so
+    sign-in timed out; past 65535, bind raised OverflowError, which the
+    callback's port loop doesn't catch."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, oauth_redirect_port=port)
+
+
+@pytest.mark.parametrize(
+    "field", ["reconnect_base_delay", "reconnect_max_delay", "reconnect_jitter_seconds"]
+)
+def test_reconnect_delays_are_at_most_a_day(tmp_path: Path, field: str) -> None:
+    """Any finite float passed. Near the largest, the delay plus its jitter
+    overflowed to infinity, and asyncio.sleep(inf) never returns; well short
+    of that, a delay of 1e300 seconds never ends either."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, **{field: 86_401})
+    assert getattr(ShimConfig(allowed_root=tmp_path, **{field: 86_400}), field) == 86_400

@@ -81,11 +81,44 @@ BROWSER_TOOLS = frozenset(
 # Offered only with --enable-clipboard.
 CLIPBOARD_TOOLS = frozenset({"clipboard_read", "clipboard_write"})
 
-# Everything else the driver has stays off: its configuration, updates,
-# extensions and session lifecycle; recording and replay; killing
+# Everything else the reviewed release has stays off: its configuration,
+# updates, extensions and session lifecycle; recording and replay; killing
 # processes; downloads, which need cua-driver's own host approval; arbitrary
 # page JavaScript; and the agent-cursor controls, so the overlay that shows
-# the person where the agent is working can't be hidden.
+# the person where the agent is working can't be hidden. docs/CUA_DRIVER.md
+# gives the reason for each. tests/test_cua_driver_contract.py checks every
+# tool the driver has is offered or here, so a release that adds one fails
+# until someone reviews it.
+NOT_OFFERED_TOOLS = frozenset(
+    {
+        "browser_download",
+        "check_for_update",
+        "end_session",
+        "escalate_session",
+        "get_accessibility_tree",
+        "get_agent_cursor_state",
+        "get_config",
+        "get_recording_state",
+        "get_session",
+        "get_session_state",
+        "health_report",
+        "install_extension",
+        "install_ffmpeg",
+        "kill_app",
+        "list_sessions",
+        "page",
+        "parallel_mouse_drag",
+        "parse_visual_regions",
+        "replay_trajectory",
+        "set_agent_cursor_enabled",
+        "set_agent_cursor_motion",
+        "set_agent_cursor_theme",
+        "set_config",
+        "start_recording",
+        "start_session",
+        "stop_recording",
+    }
+)
 
 
 def offered_tools(*, enable_clipboard: bool) -> frozenset[str]:

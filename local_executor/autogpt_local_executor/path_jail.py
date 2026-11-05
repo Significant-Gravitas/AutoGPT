@@ -337,14 +337,14 @@ def write_jail_file(
         _replace_with(path, data, mode)
     except PermissionError:
         with open_jail_file(path, allowed_root, write=True) as file:
-            file.truncate(0)
-            file.write(data)
             if mode is not None and hasattr(os, "fchmod"):
-                file.flush()
-                # Best-effort: the write itself stands if this fails (a file
-                # someone else owns, say).
+                # Before the contents change, so they never carry the bits,
+                # even when the write fails part way. Best-effort: the write
+                # still goes ahead if this fails (a file someone else owns).
                 with contextlib.suppress(OSError):
                     os.fchmod(file.fileno(), mode)
+            file.truncate(0)
+            file.write(data)
 
 
 def _replace_with(path: Path, data: bytes, mode: int | None) -> None:

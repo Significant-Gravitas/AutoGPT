@@ -102,8 +102,10 @@ def _canonicalize(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ",".join(_canonicalize(v) for v in value) + "]"
     if isinstance(value, dict):
-        # Keys are sorted by codepoint (RFC 8785 §3.2.3 — UTF-16 ordering;
-        # for the BMP subset we actually use, codepoint sort is equivalent).
+        # Keys are sorted by code point. RFC 8785 §3.2.3 sorts by UTF-16
+        # code unit, which differs for keys with characters above U+FFFF,
+        # and `details` keys can be anything a request carried. Changing it
+        # would change existing records' HMAC input; AUDIT_LOG.md says so.
         items = sorted(value.items(), key=lambda kv: kv[0])
         return (
             "{"
@@ -203,7 +205,7 @@ class AuditWriter:
                         "Existing audit log failed verification; refusing to append"
                     )
             self._seq, self._prev_hmac = self._load_tail_state(self.path)
-            # 0600 on POSIX; on Windows the file inherits the user-only ACL.
+            # 0600 on POSIX; on Windows the file keeps its folder's ACL.
             if not self.path.exists():
                 # Create empty so first write can fsync against an existing inode
                 # and we can set 0600 once instead of after every append.
@@ -455,11 +457,16 @@ class AuditWriter:
         p = Path(path)
         if not p.is_file():
             return [Violation("truncated", None, f"audit log not found: {p}")]
+        with open(p, "rb") as f:
+            data = f.read()
+        return cls.verify_records(data, audit_key)
+
+    @staticmethod
+    def verify_records(data: bytes, audit_key: bytes) -> list[Violation]:
+        """Chain-verify the contents of one audit log file. Returns [] if clean."""
         violations: list[Violation] = []
         prev_hmac: str | None = None
         expected_seq = 1
-        with open(p, "rb") as f:
-            data = f.read()
         if not data:
             return []
         # Detect mid-line truncation: file must end with a newline since we
@@ -477,9 +484,10 @@ class AuditWriter:
                 continue
             try:
                 rec = json.loads(raw.decode("utf-8"))
-            except ValueError as exc:
+            except (ValueError, RecursionError) as exc:
                 # JSONDecodeError and UnicodeDecodeError, and the plain
                 # ValueError an integer past Python's 4,300-digit limit raises.
+                # RecursionError: a record nested too deeply to parse.
                 violations.append(Violation("parse_error", None, f"unparseable line: {exc}"))
                 # Can't continue the chain past an unparseable record.
                 return violations
@@ -514,9 +522,11 @@ class AuditWriter:
             shadow = {k: v for k, v in rec.items() if k != "hmac"}
             try:
                 canonical = canonical_bytes(shadow)
-            except ValueError as exc:
+            except (ValueError, RecursionError) as exc:
                 # json.loads takes NaN and Infinity; no record the writer
-                # produced can hold one, and canonicalizing them raises.
+                # produced can hold one, and canonicalizing them raises. A
+                # record that parses can still be nested too deeply for the
+                # canonicalizer, which recurses.
                 violations.append(Violation("parse_error", seq, f"uncanonicalizable record: {exc}"))
                 return violations
             actual = hmac.new(audit_key, canonical, sha256).hexdigest()
@@ -804,13 +814,21 @@ def _create_owner_only(path: Path) -> None:
 
 
 def _chmod_owner_only(path: Path) -> None:
-    """0600 on POSIX; no-op on Windows (the file inherits the user ACL)."""
+    """0600 on POSIX; no-op on Windows, where the file keeps its folder's ACL.
+
+    A failure is warned about, not fatal: a filesystem without POSIX modes
+    (exFAT, an SMB share) refuses every chmod, and the shim still writes the
+    log there, readable by whoever the filesystem lets read it."""
     if os.name == "nt":
         return
     try:
         os.chmod(path, 0o600)
-    except OSError:
-        logger.debug("chmod 0600 failed for %s", path, exc_info=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not make %s readable by its owner only (%s); other accounts may read it",
+            path,
+            exc,
+        )
 
 
 def _file_identity(path: Path) -> tuple[int, int, int] | None:

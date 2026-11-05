@@ -36,6 +36,10 @@ KILL_GRACE_SECONDS = 2.0
 # JSON-RPC error codes.
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
+# tools/list pages followed before the server counts as broken. cua-driver
+# 0.38 lists every tool on one page.
+MAX_TOOL_LIST_PAGES = 50
 
 
 class McpError(Exception):
@@ -201,16 +205,32 @@ class StdioMcpClient:
             self._pending.pop(request_id, None)
 
     async def list_tools(self, *, timeout: float) -> list[dict[str, Any]]:
+        """Every page of tools/list, within `timeout` seconds in all. A server
+        that repeats a cursor, or pages past MAX_TOOL_LIST_PAGES, is broken:
+        following it would hold the caller for good."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         tools: list[dict[str, Any]] = []
         cursor: str | None = None
-        while True:
+        seen: set[str] = set()
+        for _ in range(MAX_TOOL_LIST_PAGES):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError(f"tools/list took more than {timeout:g} seconds")
+            # Each page gets what is left, rather than a timeout around the
+            # loop, whose cancel Python 3.11's wait_for can drop.
             result = await self.request(
-                "tools/list", {"cursor": cursor} if cursor else {}, timeout=timeout
+                "tools/list", {"cursor": cursor} if cursor else {}, timeout=remaining
             )
             tools.extend(t for t in result.get("tools") or [] if isinstance(t, dict))
-            cursor = result.get("nextCursor")
-            if not cursor:
+            next_cursor = result.get("nextCursor")
+            if next_cursor is None or next_cursor == "":
                 return tools
+            if not isinstance(next_cursor, str) or next_cursor in seen:
+                raise McpError(INTERNAL_ERROR, "tools/list repeated a cursor or sent a bad one")
+            seen.add(next_cursor)
+            cursor = next_cursor
+        raise McpError(INTERNAL_ERROR, f"tools/list ran past {MAX_TOOL_LIST_PAGES} pages")
 
     async def call_tool(
         self, name: str, arguments: dict[str, Any], *, timeout: float

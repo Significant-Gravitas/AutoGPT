@@ -43,6 +43,7 @@ from .audit import (
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
 from .computer_use import DriverUnavailable, find_driver_binary
+from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
@@ -181,7 +182,9 @@ def _audit_storage_failure(message: str, exc: OSError) -> DaemonPreflightError:
     )
 
 
-# Storage errors a restart can't fix: the path, or what it may do, is wrong.
+# Storage errors a restart can't fix: the path, or what it may do, is wrong,
+# or the device under it failed or is gone. Any other error restarts the
+# service (exit 75), which systemd does every five seconds without a limit.
 _PERMANENT_STORAGE_ERRNOS = frozenset(
     {
         errno.EACCES,
@@ -192,6 +195,9 @@ _PERMANENT_STORAGE_ERRNOS = frozenset(
         errno.ELOOP,
         errno.ENAMETOOLONG,
         errno.EINVAL,
+        errno.EIO,
+        errno.ENXIO,
+        errno.ENODEV,
     }
 )
 
@@ -262,6 +268,12 @@ CHILD_REAPER_INTERVAL_SECONDS = 30
 # first (handlers._run_to_completion); one that hangs is let go after this,
 # so the session still ends and the shim can reconnect.
 DISPATCH_DRAIN_SECONDS = 10.0
+# How long a chat's request waits for one of the machine's request slots
+# before it's refused with SHIM_OVERLOADED. Other chats' requests can hold
+# every slot, and one let go after DISPATCH_DRAIN_SECONDS keeps its slot
+# until its thread returns, which a hung one never does. Well inside the 30
+# seconds the platform waits for most replies.
+MACHINE_WORK_WAIT_SECONDS = 10.0
 
 
 @dataclass
@@ -412,20 +424,26 @@ class ShimDaemon:
 
     async def run(self) -> None:
         """Connect → handshake → pump messages, retrying only transient failures."""
-        # Fail closed on incomplete preview capabilities and missing OS
-        # permissions before opening the WebSocket.
-        await self._preflight_or_raise()
-        if not self._control_mode:
-            # A legacy session is jailed to allowed_root, which the shim
-            # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
-            try:
-                self.config.allowed_root.mkdir(parents=True, exist_ok=True)
-            except OSError as exc:
-                raise DaemonPreflightError(
-                    f"Could not create allowed_root {self.config.allowed_root}: {exc}"
-                ) from exc
-        if self._manage_audit_lifecycle:
-            await self._audit_shim_start()
+        try:
+            # Fail closed on incomplete preview capabilities and missing OS
+            # permissions before opening the WebSocket.
+            await self._preflight_or_raise()
+            if not self._control_mode:
+                # A legacy session is jailed to allowed_root, which the shim
+                # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
+                try:
+                    self.config.allowed_root.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise DaemonPreflightError(
+                        f"Could not create allowed_root {self.config.allowed_root}: {exc}"
+                    ) from exc
+            if self._manage_audit_lifecycle:
+                await self._audit_shim_start()
+        except BaseException:
+            # On macOS the preflight starts cua-driver to check its grants,
+            # and the finally below, which stops it, isn't reached from here.
+            await self._computer_handler.close()
+            raise
         self._running = True
         attempt = 0
         try:
@@ -1341,8 +1359,9 @@ class ShimDaemon:
                     in_flight_owed = True
                     try:
                         if self._machine_work_semaphore is not None and not self._control_mode:
-                            async with self._machine_work_semaphore:
-                                response = await self._handle(msg, send=_stream_send)
+                            response = await self._handle_in_a_machine_slot(
+                                self._machine_work_semaphore, msg, _stream_send
+                            )
                         else:
                             response = await self._handle(msg, send=_stream_send)
                     finally:
@@ -1396,6 +1415,29 @@ class ShimDaemon:
         # promptly (don't wait for the 30s tick).
         if was_full_after_decrement:
             await self._emit_status(ws, source="capacity_edge")
+
+    async def _handle_in_a_machine_slot(
+        self, slots: asyncio.Semaphore, msg: Any, send: Any
+    ) -> BaseModel | None:
+        """Handle `msg` in one of the machine's request slots, shared by every
+        chat, or refuse it when none frees up in MACHINE_WORK_WAIT_SECONDS.
+        Only the wait is bounded: a slot taken is held until the work ends,
+        since a thread already running it can't be stopped."""
+        try:
+            async with asyncio.timeout(MACHINE_WORK_WAIT_SECONDS):
+                await slots.acquire()
+        except TimeoutError:
+            return make_error(
+                msg.id,
+                ErrorCode.SHIM_OVERLOADED,
+                "Every request slot on this computer is busy with other chats' work; "
+                "retry in a moment.",
+                details={"reason": "machine_busy"},
+            )
+        try:
+            return await self._handle(msg, send=send)
+        finally:
+            slots.release()
 
     def _available_capacity(self) -> int:
         """Free request slots right now. Floored at 0."""
@@ -2041,8 +2083,7 @@ class ShimDaemon:
         if find_driver_binary(self.config.cua_driver_path) is None:
             await self._fail_preflight(
                 "Computer use is enabled but cua-driver is not installed. Reinstall with "
-                "`pipx install 'autogpt-local-executor[computer-use]'`, then run "
-                "`autogpt-shim doctor`.",
+                f"`{COMPUTER_USE_INSTALL}`, then run `autogpt-shim doctor`.",
                 missing_permissions=["cua_driver"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,

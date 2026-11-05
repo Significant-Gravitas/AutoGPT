@@ -1282,6 +1282,26 @@ async def test_an_accessibility_result_with_no_fields_leaves_the_step_unenriched
     assert step.enrichment.kind == "none"
 
 
+async def test_an_accessibility_result_with_fields_tags_the_step_ax() -> None:
+    """The test above alone passes for an enricher that never attaches
+    anything."""
+    from autogpt_local_executor.recording import A11yEnricher
+    from autogpt_local_executor.recording.capture import MockCaptureSource
+
+    def resolver(**_where):
+        return {"role": "button", "label": "Save", "ax_path": None}
+
+    enricher = A11yEnricher(floor=MockCaptureSource([_step(1)]), resolver=resolver)
+
+    [step] = [step async for step in enricher.steps()]
+
+    assert (step.enrichment.kind, step.enrichment.role, step.enrichment.label) == (
+        "ax",
+        "button",
+        "Save",
+    )
+
+
 def _fake_quartz(monkeypatch, *, location_fails: bool = False):
     import sys
     from types import SimpleNamespace

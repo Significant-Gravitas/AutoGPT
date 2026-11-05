@@ -33,7 +33,7 @@ from pathlib import Path
 from . import platform_info
 from .computer_use import CuaDriverBridge, DriverUnavailable, find_driver_binary, offered_tools
 from .computer_use.catalog import REVIEWED_DRIVER_VERSION, same_minor
-from .computer_use.driver import driver_environment, ensure_executable
+from .computer_use.driver import COMPUTER_USE_INSTALL, driver_environment, ensure_executable
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowser
@@ -205,8 +205,7 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
             CheckResult(
                 "FAIL",
                 "cua-driver",
-                "not installed — reinstall with "
-                "`pipx install 'autogpt-local-executor[computer-use]'`",
+                f"not installed — reinstall with `{COMPUTER_USE_INSTALL}`",
                 blocking=True,
             )
         ]
@@ -237,7 +236,12 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
         report = json.loads(completed.stdout)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         return [CheckResult("FAIL", "cua-driver", f"`{binary} doctor` failed: {exc}", True)]
-    version = str((report.get("build") or {}).get("version") or "")
+    if not isinstance(report, dict):
+        return [
+            CheckResult("FAIL", "cua-driver", f"`{binary} doctor` printed no report object", True)
+        ]
+    build = report.get("build")
+    version = str(build.get("version") or "") if isinstance(build, dict) else ""
     if not same_minor(version):
         return [
             CheckResult(
@@ -249,7 +253,20 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
             )
         ]
     out = [CheckResult("OK", "cua-driver", f"{version} at {binary}")]
-    for probe in report.get("probes") or []:
+    probes = report.get("probes") or []
+    readable = (
+        [probe for probe in probes if isinstance(probe, dict)] if isinstance(probes, list) else []
+    )
+    if not isinstance(probes, list) or len(readable) < len(probes):
+        out.append(
+            CheckResult(
+                "FAIL",
+                "cua-driver probes",
+                f"`{binary} doctor` reported probes doctor can't read",
+                blocking=True,
+            )
+        )
+    for probe in readable:
         label = str(probe.get("label") or "probe")
         if label in _INFO_PROBES:
             continue
@@ -295,19 +312,21 @@ async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
     except (DriverUnavailable, McpError, TimeoutError) as exc:
         return CheckResult("WARN", "display", f"cua-driver could not read the screen: {exc}")
     structured = raw.get("structuredContent")
-    if raw.get("isError") or not isinstance(structured, dict) or "width" not in structured:
+    size = structured if isinstance(structured, dict) else {}
+    width, height, scale = size.get("width"), size.get("height"), size.get("scale_factor", 1)
+    if raw.get("isError") or not all(_is_number(value) for value in (width, height, scale)):
+        content = raw.get("content")
         text = " ".join(
             str(block.get("text") or "")
-            for block in raw.get("content") or []
+            for block in (content if isinstance(content, list) else [])
             if isinstance(block, dict)
         )
         return CheckResult("WARN", "display", f"cua-driver could not read the screen: {text}")
-    return CheckResult(
-        "OK",
-        "display",
-        f"{structured['width']:g}x{structured['height']:g} "
-        f"(scale {structured.get('scale_factor', 1):g})",
-    )
+    return CheckResult("OK", "display", f"{width:g}x{height:g} (scale {scale:g})")
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 async def _check_macos_permissions(bridge: CuaDriverBridge) -> list[CheckResult]:

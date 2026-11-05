@@ -14,6 +14,8 @@ docs/CROSS_PLATFORM.md "Default allowed_root" and "Audit log location".
 from __future__ import annotations
 
 import ipaddress
+import json
+import re
 import socket
 import stat
 from pathlib import Path
@@ -140,6 +142,8 @@ class ShimConfig(BaseSettings):
     oauth_client_id: str = Field(default="autogpt-local-executor")
     oauth_redirect_port: int = Field(
         default=41899,
+        ge=1,
+        le=65535,
         description="First port in the 41899-41910 fallback range to bind "
         "for the OAuth callback listener.",
     )
@@ -201,9 +205,11 @@ class ShimConfig(BaseSettings):
     # Positive: a zero or negative delay turns the reconnect backoff into a
     # tight loop against the platform. Finite: asyncio.sleep(inf) never
     # returns, so the shim would stop reconnecting.
-    reconnect_base_delay: float = Field(default=1.0, gt=0, allow_inf_nan=False)
-    reconnect_max_delay: float = Field(default=60.0, gt=0, allow_inf_nan=False)
-    reconnect_jitter_seconds: float = Field(default=5.0, ge=0, allow_inf_nan=False)
+    # At most a day each: near the largest float the delay plus its jitter
+    # overflowed to infinity, and asyncio.sleep(inf) never returns.
+    reconnect_base_delay: float = Field(default=1.0, gt=0, le=86_400, allow_inf_nan=False)
+    reconnect_max_delay: float = Field(default=60.0, gt=0, le=86_400, allow_inf_nan=False)
+    reconnect_jitter_seconds: float = Field(default=5.0, ge=0, le=86_400, allow_inf_nan=False)
 
     # ── Local LLM (see docs/LOCAL_LLM.md) ──────────────────────────────────
     ollama_url: str = Field(
@@ -308,7 +314,8 @@ class ShimConfig(BaseSettings):
 
 
 class ConfigFileError(ValueError):
-    """The config file exists but can't be read or isn't valid TOML."""
+    """The config file exists but can't be read or isn't valid TOML, or an
+    AUTOGPT_SHIM_* environment variable can't be read."""
 
 
 def load_config(
@@ -328,12 +335,17 @@ def load_config(
         is_file = stat.S_ISREG(path.stat().st_mode)
     except (FileNotFoundError, NotADirectoryError):
         is_file = False
+        if config_path is not None:
+            # A --config that names nothing ran the shim on the defaults
+            # without a word. (Without --config, a missing default file
+            # means defaults.)
+            raise ConfigFileError(f"{path}: no such config file") from None
     except OSError as exc:
         raise ConfigFileError(f"{path}: {exc}") from exc
-    if config_path is not None and not is_file:
-        # A --config that names nothing ran the shim on the defaults without
-        # a word. (Without --config, a missing default file means defaults.)
-        raise ConfigFileError(f"{path}: no such config file")
+    else:
+        if not is_file:
+            # A directory where the config belongs, with or without --config.
+            raise ConfigFileError(f"{path}: not a regular file")
     if is_file:
         try:
             with open(path, "rb") as f:
@@ -347,6 +359,31 @@ def load_config(
                 file_overrides[key] = Path(file_overrides[key])
     # ShimConfig(**kwargs) ranks every kwarg above the environment, so the
     # environment is read here and layered over the file explicitly.
-    from_env = EnvSettingsSource(ShimConfig)()
+    from_env = environment_settings()
     merged = {**file_overrides, **from_env, **overrides}
     return ShimConfig(**merged)
+
+
+def environment_variable(field: str) -> str:
+    """The environment variable that sets `field`."""
+    return ShimConfig.model_config["env_prefix"] + field.upper()
+
+
+def environment_settings() -> dict[str, Any]:
+    """The settings the AUTOGPT_SHIM_* variables give, by field, read the way
+    pydantic-settings reads them."""
+    try:
+        return EnvSettingsSource(ShimConfig)()
+    except ValueError as exc:
+        # pydantic-settings' SettingsError. A list setting takes JSON, so
+        # AUTOGPT_SHIM_RECORDING_CHANNELS=floor can't be read. It isn't a
+        # ValidationError, so it got past the CLI as a traceback and status 1.
+        field = re.search(r'field "([^"]+)"', str(exc))
+        name = (
+            environment_variable(field.group(1))
+            if field
+            else "An AUTOGPT_SHIM_ environment variable"
+        )
+        if isinstance(exc.__cause__, json.JSONDecodeError):
+            raise ConfigFileError(f"{name} must be JSON: {exc.__cause__}") from exc
+        raise ConfigFileError(f"{name}: {exc}") from exc

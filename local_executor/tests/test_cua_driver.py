@@ -59,6 +59,67 @@ async def test_the_client_completes_the_handshake_and_lists_tools(fake_log: Path
     assert {tool["name"] for tool in tools} >= {"click", "get_window_state"}
 
 
+async def test_a_tool_list_that_repeats_its_cursor_is_refused(fake_log, monkeypatch) -> None:
+    """list_tools followed nextCursor until there was none, with no check,
+    so a driver that kept answering the same cursor kept it going for good,
+    holding the bridge's lock and the HELLO that waits on it."""
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "same")
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    try:
+        with pytest.raises(McpError, match="cursor"):
+            await asyncio.wait_for(client.list_tools(timeout=10), timeout=5)
+    finally:
+        await client.close()
+
+
+async def test_a_driver_whose_tool_list_loops_is_unavailable(fake_log, monkeypatch) -> None:
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "same")
+    bridge = _bridge()
+    try:
+        with pytest.raises(DriverUnavailable, match="cursor"):
+            await asyncio.wait_for(bridge.snapshot(), timeout=5)
+    finally:
+        await bridge.close()
+
+
+async def test_a_tool_list_that_never_ends_is_cut_off(fake_log, monkeypatch) -> None:
+    from autogpt_local_executor.computer_use import mcp_client
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "new")
+    monkeypatch.setattr(mcp_client, "MAX_TOOL_LIST_PAGES", 5)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    try:
+        with pytest.raises(McpError, match="pages"):
+            await asyncio.wait_for(client.list_tools(timeout=10), timeout=5)
+    finally:
+        await client.close()
+
+
+async def test_the_tool_list_deadline_covers_every_page(fake_log, monkeypatch) -> None:
+    """Each page got the whole timeout afresh, so the timeout never bounded
+    the listing."""
+    import time
+
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "new")
+    monkeypatch.setattr(mcp_client, "MAX_TOOL_LIST_PAGES", 10**9)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=5)
+    finally:
+        await client.close()
+    assert time.monotonic() - started < 3  # its own deadline, not the guard's
+
+
 async def test_a_request_past_its_deadline_is_cancelled_at_the_server(fake_log: Path) -> None:
     client = _fake_client([str(FAKE), "mcp"])
     await client.start(timeout=10)
@@ -199,6 +260,28 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     with pytest.raises(DriverUnavailable, match="fake driver failed to start"):
         await bridge.snapshot()
     await bridge.close()
+
+
+async def test_a_policy_file_that_cannot_be_written_leaves_the_driver_unavailable(
+    fake_log, monkeypatch
+) -> None:
+    """The policy file was written before the start's error handling, so a
+    full or unwritable temporary directory raised OSError out of the HELLO
+    build, which drops computer use only for DriverUnavailable."""
+    import errno
+    import os
+
+    def full(*_args, **_kwargs):
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    monkeypatch.setattr(driver.tempfile, "mkdtemp", full)
+    bridge = _bridge()
+    try:
+        with pytest.raises(DriverUnavailable, match="policy"):
+            await bridge.snapshot()
+    finally:
+        await bridge.close()
+    assert records(fake_log) == []  # the driver never started
 
 
 async def test_a_start_cancelled_before_the_tool_list_stops_the_driver(fake_log) -> None:
@@ -708,6 +791,30 @@ async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, m
     assert not [b for b in response.payload.content if isinstance(b, ComputerImageContent)]
     assert any("too large" in b.text for b in response.payload.content
                if isinstance(b, ComputerTextContent))  # fmt: skip
+    # The audit record counted only images the rate limit held back, so it
+    # said none were withheld.
+    [record] = _audit(handler.config.audit_log_path.parent)
+    assert (record["details"]["images"], record["details"]["images_withheld"]) == (0, 1)
+
+
+async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> None:
+    """The budget counted a text block's raw UTF-8 bytes, but JSON writes a
+    control character as six bytes and a quote as two, so a result could
+    pass the budget and still exceed the frame limit, and the whole result
+    was then replaced with FILE_TOO_LARGE."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "MAX_WIRE_BASE64_CONTENT_BYTES", 1000)
+    monkeypatch.setattr(handlers, "MAX_WIRE_TEXT_CONTENT_BYTES", 100)
+    handler = make_handler()
+
+    payload, _summary = handler._result_payload(
+        "get_window_state", {"content": [{"type": "text", "text": "\x00" * 600}]}
+    )
+
+    texts = [b.text for b in payload.content if isinstance(b, ComputerTextContent)]
+    assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
+    assert any("cut down" in text for text in texts)
 
 
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(

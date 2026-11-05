@@ -485,6 +485,28 @@ def test_audit_prune_keeps_a_file_whose_newest_record_has_no_timestamp(
     assert "no timestamp" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "ts",
+    ["-Infinity", '"-Infinity"', "NaN", "true", '"1"'],
+    ids=["infinity", "infinity-string", "nan", "boolean", "number-string"],
+)
+def test_audit_prune_keeps_a_file_with_a_timestamp_that_is_not_a_finite_number(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], ts: str
+) -> None:
+    """float() turned -Infinity, as a JSON token or a string, into -inf,
+    older than any cutoff, so prune deleted the file. The writer only ever
+    writes a finite number, and a file prune can't date is kept."""
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    rotated = tmp_path / "audit.log.20240101-000000"
+    rotated.write_text(f'{{"seq": 1, "op": "SHIM_START", "ts": {ts}}}\n')
+
+    assert cli._audit_prune(current, "1d") == 0
+
+    assert rotated.exists()
+    assert "Kept" in capsys.readouterr().out
+
+
 def test_version_prints_the_installed_version(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -693,6 +715,120 @@ def test_install_carries_the_deployment_flags_into_the_service(
     )
 
 
+def _capture_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    from autogpt_local_executor import install
+
+    install_autostart = MagicMock()
+    install_autostart.return_value = SimpleNamespace(
+        target_path=tmp_path / "unit",
+        platform="linux",
+        enable_command=None,
+        disable_command=None,
+        notes=[],
+    )
+    monkeypatch.setattr(install, "install_autostart", install_autostart)
+    return install_autostart
+
+
+def test_install_carries_the_deployment_from_the_environment_into_the_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only flags reached the service. With the platform URL set in the
+    environment, auth signed in to that deployment and the service, which
+    doesn't get this shell's environment, looked for the default one's
+    credentials and failed at every start."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "https://platform.example.com")
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_OAUTH_URL", "https://login.example.com/auth")
+    monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", "files")
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--platform-url",
+        "https://platform.example.com",
+        "--platform-oauth-url",
+        "https://login.example.com/auth",
+        "--allowed-root",
+        str(tmp_path / "files"),
+    )
+
+
+def test_an_install_flag_outranks_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "https://other.example.com")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "autogpt-shim",
+            "--config",
+            str(_empty_config(tmp_path)),
+            "--platform-url",
+            "https://platform.example.com",
+            "install",
+        ],
+    )
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--platform-url",
+        "https://platform.example.com",
+    )
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("AUTOGPT_SHIM_PLATFORM_WS_URL", "wss://platform.example.com/ws/local-executor"),
+        ("AUTOGPT_SHIM_OAUTH_CLIENT_ID", "another-client"),
+    ],
+)
+def test_install_refuses_a_deployment_setting_only_the_environment_has(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    variable: str,
+    value: str,
+) -> None:
+    """These pick the saved credentials too, and no option carries them to
+    the service, so it would fail at every start."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv(variable, value)
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    assert variable in capsys.readouterr().err
+    install_autostart.assert_not_called()
+
+
+def test_install_names_settings_from_the_environment_the_service_will_not_get(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "true")
+    monkeypatch.setattr(
+        sys, "argv", ["autogpt-shim", "--config", str(_empty_config(tmp_path)), "install"]
+    )
+
+    cli.main()
+
+    install_autostart.assert_called_once()
+    assert "AUTOGPT_SHIM_ENABLE_SHELL" in capsys.readouterr().out
+
+
 def test_a_bad_config_stops_the_launchagent_instead_of_looping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -746,6 +882,35 @@ async def test_a_temporary_preflight_failure_exits_75_for_a_restart(
 
     assert await cli._cmd_start(config) == 75
     assert "Preflight failed: the disk is full" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("code", "status"), [("ENOSPC", 75), ("EIO", 78)])
+async def test_start_exits_by_how_the_audit_storage_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, status: int
+) -> None:
+    """The exit-status test raised a preflight error already marked
+    transient, so a full disk taken for a permanent failure where the
+    storage error is classified would still have passed it."""
+    import errno
+
+    import autogpt_local_executor.daemon as daemon_module
+
+    number = getattr(errno, code)
+
+    def refuse(**_kwargs) -> None:
+        raise OSError(number, os.strerror(number))
+
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+    monkeypatch.setattr(daemon_module, "AuditWriter", refuse)
+    monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+    assert await cli._cmd_start(config) == status
 
 
 def test_the_systemd_unit_restarts_a_temporary_failure() -> None:

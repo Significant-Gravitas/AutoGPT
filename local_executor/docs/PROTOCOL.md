@@ -67,7 +67,9 @@ payloads forbid fields they don't define, so a frame carrying one fails
 validation and is logged and dropped, never acted on: an older shim that
 ignored a newer field could act without a constraint the platform meant it
 to apply. The platform learns the shim's maximum from HELLO before it
-answers, so it must not send a newer minor's fields to an older shim.
+answers, so it must not send a newer minor's fields to an older shim. A
+frame whose objects and arrays nest more than 64 levels deep is logged and
+dropped the same way; no message comes close.
 
 ### Frame-level `version`
 
@@ -617,12 +619,23 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
 }
 ```
 
+An entry's `size_bytes` and `mtime` are its own (an `lstat`). For a symlink,
+`is_file` and `is_dir` describe its target only when the target is inside
+the allowed root; for one outside, missing or unreadable, both are false,
+so a listing never says whether a path outside the root exists. A recursive
+listing never enters a symlink or a Windows junction. An entry whose name
+isn't valid UTF-8 (possible on Linux) is left out: JSON can't carry it, and
+no request could name it.
+
 `truncated` is true only when something was left out: a match past
 `max_entries` (which is capped at 10,000), a match that would take the
 entries past the reply's size budget (16 MiB less 64 KiB, so the reply
-stays under the frame limit), or a directory entry past the walk's scan
-budget of 100,000 entries. Exactly `max_entries` matches come back with
-`truncated: false`. To see the rest, list a narrower path or glob. The scan
+stays under the frame limit), a directory entry past the walk's scan
+budget of 100,000 entries, or the entries of a subfolder the walk couldn't
+read. A folder asked for that can't be read is an error (`INTERNAL_ERROR`,
+or `PATH_NOT_FOUND` once it's gone), not an empty listing. Exactly
+`max_entries` matches come back with `truncated: false`. To see the rest,
+list a narrower path or glob. The scan
 budget counts entries as each directory is read, so a directory with
 millions of entries is never read whole.
 
@@ -1095,6 +1108,11 @@ for the base backoff before reconnecting, preventing a hot loop.
 The platform may send multiple requests before receiving responses (pipelined). The shim
 assigns each request its own async task and responds with matching `id` when complete.
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
+The chats on a machine also share the control connection's `max_concurrent`
+slots. A request waits up to ten seconds for one, then gets
+`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
+until its work ends, including work still running in a thread after its
+session ended.
 `COMPUTER_TOOL_CALL`s from every session on a machine take turns, since
 they share one screen.
 

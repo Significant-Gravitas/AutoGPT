@@ -1266,8 +1266,40 @@ def parse_message(raw: str | bytes) -> Any:
     """
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except RecursionError:
+        raise ValueError("frame nested too deeply to parse") from None
+    if _nesting_depth(data) > MAX_FRAME_NESTING:
+        raise ValueError(f"frame nested more than {MAX_FRAME_NESTING} levels deep")
     return _MESSAGE_ADAPTER.validate_python(data)
+
+
+# How deeply an inbound frame may nest. No message comes close: a run_steps
+# call is about six levels deep. The audit writer, its canonicalizer and the
+# argument redaction all recurse, and a computer tool call nested some
+# hundreds of levels deep went to the driver while its audit record failed.
+MAX_FRAME_NESTING = 64
+
+
+def _nesting_depth(value: Any) -> int:
+    """How many objects and arrays deep `value` goes, counted without
+    recursing, and no further than one level past MAX_FRAME_NESTING."""
+    deepest = 0
+    stack = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, dict):
+            children: Any = item.values()
+        elif isinstance(item, list):
+            children = item
+        else:
+            continue
+        deepest = max(deepest, depth)
+        if deepest > MAX_FRAME_NESTING:
+            break
+        stack.extend((child, depth + 1) for child in children)
+    return deepest
 
 
 def dump_message(msg: BaseModel) -> str:

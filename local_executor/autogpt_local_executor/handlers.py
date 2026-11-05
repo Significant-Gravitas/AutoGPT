@@ -50,12 +50,14 @@ from .computer_use.catalog import takes_session, without_session
 from .computer_use.concealed import clipboard_state, marker_in
 from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
+from .directory_browser import _is_reparse_point
 from .fsops import rename_no_replace
 from .local_llm_limits import bounded_chunks, read_json_lines
 from .path_jail import (
     PathJailError,
     assert_entry_inside_jail,
     assert_inside_jail,
+    is_inside_jail,
     open_jail_file,
     write_jail_file,
 )
@@ -218,6 +220,26 @@ def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
 
 
+def _sendable(text: str) -> bool:
+    """Whether `text` can go on the wire: JSON is UTF-8."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _jailed_link_target_mode(link: Path, allowed_root: str | os.PathLike[str]) -> int | None:
+    """The mode of what `link` points to, when that's inside the jail; None
+    for a target outside it, a missing one, or one that can't be stat'ed."""
+    if not is_inside_jail(link, allowed_root):
+        return None
+    try:
+        return link.stat().st_mode
+    except OSError:
+        return None
+
+
 # How long a command's process group has to exit after SIGTERM before SIGKILL.
 _TERMINATE_GRACE_SECONDS = 2.0
 # The most entries one FILE_LIST returns, whatever max_entries asks for.
@@ -299,24 +321,29 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
 
     work = asyncio.ensure_future(asyncio.to_thread(run))
     held = 0
-    while True:
-        try:
-            result = await asyncio.shield(work)
-            break
-        except asyncio.CancelledError:
-            # Only `work` itself being cancelled (the loop shutting down) ends
-            # the wait; a change that finished as the cancel landed is returned.
-            if work.cancelled():
-                raise
-            cancelled.set()
-            held += 1
-        except _NeverStarted:
-            raise asyncio.CancelledError from None
-    task = asyncio.current_task()
-    if task is not None:
-        for _ in range(held):
-            task.uncancel()
-    return result
+    try:
+        while True:
+            try:
+                return await asyncio.shield(work)
+            except asyncio.CancelledError:
+                # Only `work` itself being cancelled (the loop shutting down)
+                # ends the wait; a change that finished as the cancel landed
+                # is returned.
+                if work.cancelled():
+                    held = 0  # the cancellation goes on, so it stays counted
+                    raise
+                cancelled.set()
+                held += 1
+            except _NeverStarted:
+                held = 0
+                raise asyncio.CancelledError from None
+    finally:
+        # Released however the thread ended, returned or raised: a held
+        # cancel left counted would mislead asyncio.timeout and TaskGroup.
+        task = asyncio.current_task()
+        if task is not None:
+            for _ in range(held):
+                task.uncancel()
 
 
 async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
@@ -1085,12 +1112,15 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"{base} is not a directory")
 
         # max_entries has no bound on the wire; cap it so a huge value can't
-        # walk a whole tree only to have the reply refused as too large.
-        limit = max(1, min(payload.max_entries, MAX_FILE_LIST_ENTRIES))
+        # walk a whole tree only to have the reply refused as too large. Zero
+        # or less asks for no entries.
+        limit = max(0, min(payload.max_entries, MAX_FILE_LIST_ENTRIES))
 
         def _walk() -> tuple[list[FileEntry], bool]:
             entries: list[FileEntry] = []
             truncated = False
+            # A subfolder that couldn't be read leaves its entries out.
+            unread = False
             case_fold = platform_info.is_case_insensitive_fs(str(base))
             glob = payload.glob
 
@@ -1110,7 +1140,9 @@ class FileHandler:
                 # scan budget stops a huge directory part way; os.walk and
                 # iterdir read each directory whole before yielding any of it.
                 # Depth first, a directory's entries before its subfolders',
-                # and like os.walk it never follows a symlink into a folder.
+                # and like os.walk it never follows a symlink into a folder,
+                # nor a Windows junction, which is_dir() takes for one.
+                nonlocal unread
                 pending = [base]
                 while pending:
                     folder = pending.pop()
@@ -1126,11 +1158,17 @@ class FileHandler:
                                 if not payload.include_hidden and entry.name.startswith("."):
                                     continue
                                 try:
-                                    if entry.is_dir(follow_symlinks=False):
+                                    folder_here = entry.is_dir(follow_symlinks=False)
+                                    if folder_here and not _is_reparse_point(path):
                                         subfolders.append(path)
                                 except OSError:
                                     pass
                     except OSError:
+                        # The folder asked for is an error (handle_list
+                        # answers it); one under it leaves the listing short.
+                        if folder == base:
+                            raise
+                        unread = True
                         continue
                     pending.extend(reversed(subfolders))
 
@@ -1149,6 +1187,11 @@ class FileHandler:
                     continue
                 if not _matches(p.name):
                     continue
+                if not _sendable(str(p)):
+                    # A POSIX name whose bytes aren't UTF-8 decodes to lone
+                    # surrogates, which JSON can't carry; no request could
+                    # name the file either.
+                    continue
                 if len(entries) >= limit:
                     truncated = True
                     break
@@ -1156,12 +1199,17 @@ class FileHandler:
                     st = p.lstat()
                 except OSError:
                     continue
+                link = stat.S_ISLNK(st.st_mode)
+                # The entry's own type, from its lstat. A link is followed only
+                # to a target inside the jail: whether one outside exists, and
+                # what it is, isn't the platform's to learn.
+                mode = _jailed_link_target_mode(p, self.config.allowed_root) if link else st.st_mode
                 entry = FileEntry(
                     name=p.name,
                     path=str(p),
-                    is_file=p.is_file(),
-                    is_dir=p.is_dir(),
-                    is_symlink=p.is_symlink(),
+                    is_file=mode is not None and stat.S_ISREG(mode),
+                    is_dir=mode is not None and stat.S_ISDIR(mode),
+                    is_symlink=link,
                     size_bytes=st.st_size,
                     mtime=st.st_mtime,
                 )
@@ -1172,9 +1220,26 @@ class FileHandler:
                     break
                 reply_bytes += size
                 entries.append(entry)
-            return entries, truncated
+            return entries, truncated or unread
 
-        entries, truncated = await asyncio.to_thread(_walk)
+        try:
+            entries, truncated = await asyncio.to_thread(_walk)
+        except OSError as exc:
+            # The folder can be entered but not read (no read permission, a
+            # macOS privacy prompt nobody answered), or went away: listing it
+            # as empty would say it is.
+            code = (
+                ErrorCode.PATH_NOT_FOUND
+                if isinstance(exc, FileNotFoundError)
+                else ErrorCode.INTERNAL_ERROR
+            )
+            await self._emit(
+                "FILE_LIST",
+                msg.id,
+                {**details_base, "entries_returned": 0},
+                _err_result(_elapsed_ms(start), code.value),
+            )
+            return make_error(msg.id, code, f"Could not list {base}: {exc}")
         await self._emit(
             "FILE_LIST",
             msg.id,
@@ -1639,6 +1704,7 @@ class ComputerUseHandler:
             images = [block for block in content if isinstance(block, ComputerImageContent)]
             content = [block for block in content if isinstance(block, ComputerTextContent)]
             size -= sum(_block_size(block) for block in images)
+            withheld += len(images)
             if images:
                 notes.append(
                     f"{len(images)} screenshot(s) left out: the result was too large to "
@@ -1717,9 +1783,11 @@ def _audit_arguments(value: Any, key: str | None = None, *, truncate: bool = Tru
 
 
 def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
+    """The block's bytes as JSON carries them: a control character takes six,
+    a quote or backslash two."""
     if isinstance(block, ComputerImageContent):
         return len(block.data)
-    return len(block.text.encode("utf-8"))
+    return len(json.dumps(block.text, ensure_ascii=False).encode("utf-8"))
 
 
 def _truncate_utf8(text: str, limit: int) -> str:

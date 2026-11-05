@@ -164,7 +164,10 @@ which systemd and launchd both restart: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
 An audit log that fails verification can't clear that way, so under
 launchd it exits 0 like the other permanent failures; check it with
-`autogpt-shim audit verify` and move it aside to start a new log.
+`autogpt-shim audit verify` and move it aside to start a new log. Nor can
+audit storage the shim may not write (permission denied, read-only) or
+whose device failed or is gone (an I/O error): fix it, then start the
+shim again.
 
 ### Packaging & install
 

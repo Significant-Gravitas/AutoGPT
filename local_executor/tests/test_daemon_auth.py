@@ -660,13 +660,21 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("code", "permanent", "transient"),
-    [("ENOSPC", False, True), ("EROFS", True, False)],
+    [
+        ("ENOSPC", False, True),
+        ("EROFS", True, False),
+        ("EIO", True, False),
+        ("ENXIO", True, False),
+        ("ENODEV", True, False),
+    ],
 )
 async def test_a_failed_first_audit_write_says_whether_a_restart_can_fix_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, permanent: bool, transient: bool
 ) -> None:
     """A full disk at the first audit write exited 78 like a bad config, so
-    the systemd unit never restarted once space was freed."""
+    the systemd unit never restarted once space was freed. A failed or
+    missing device counted as transient, so the unit restarted every five
+    seconds for as long as the device stayed broken."""
     import errno
     import os
 

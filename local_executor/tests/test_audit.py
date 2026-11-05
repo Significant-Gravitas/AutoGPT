@@ -733,22 +733,74 @@ def _rotate_before_the_lock(monkeypatch, writer: AuditWriter) -> None:
 
 
 @pytest.mark.asyncio
-async def test_verify_all_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch) -> None:
+async def test_verify_all_lists_the_files_under_the_lock(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    verified: list[Path] = []
-    real_verify = AuditWriter.verify
-
-    def verify(path: Path, key: bytes) -> list:
-        verified.append(path)
-        return real_verify(path, key)
-
-    monkeypatch.setattr(AuditWriter, "verify", staticmethod(verify))
     _rotate_before_the_lock(monkeypatch, writer)
 
     assert cli._audit_verify_all(writer.path) == 0
-    assert [p for p in verified if p != writer.path] == list_rotated_files(writer.path) != []
+    out = capsys.readouterr().out
+    rotated = list_rotated_files(writer.path)
+    assert rotated and all(f"{path.name}: OK" in out for path in rotated)
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_verify_all_checks_records_without_holding_the_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """verify-all held the writers' lock while it parsed and HMACed every
+    record of every retained file, so each audit write the daemon made
+    meanwhile waited for the whole scan."""
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    held: list[bool] = []
+    real_canonical = audit_module.canonical_bytes
+
+    def canonical(record):
+        held.append(_lock_is_held(tmp_path / ".audit.log.lock"))
+        return real_canonical(record)
+
+    monkeypatch.setattr(audit_module, "canonical_bytes", canonical)
+
+    assert cli._audit_verify_all(writer.path) == 0
+    assert held and not any(held)
+
+
+@pytest.mark.asyncio
+async def test_verify_all_skips_a_rotated_file_pruned_while_it_runs(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    writer.force_rotate()
+    await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+    [rotated] = list_rotated_files(writer.path)
+    real_lock = audit_module.holding_log_lock
+    holds = 0
+
+    @contextlib.contextmanager
+    def prune_after_the_first_hold(log: Path):
+        nonlocal holds
+        holds += 1
+        if holds == 2:
+            rotated.unlink()
+        with real_lock(log):
+            yield
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", prune_after_the_first_hold)
+
+    assert cli._audit_verify_all(writer.path) == 0
+    out = capsys.readouterr().out
+    assert f"{rotated.name}: removed while the check ran" in out
+    assert "All 1 files verified clean." in out
 
 
 @pytest.mark.asyncio
@@ -764,8 +816,10 @@ async def test_export_lists_the_files_under_the_lock(tmp_path: Path, monkeypatch
     assert cli._audit_export(writer.path, output) == 0
     rotated = list_rotated_files(writer.path)
     with zipfile.ZipFile(output) as zf:
-        names = set(zf.namelist())
-    assert rotated and {p.name for p in rotated} <= names
+        archived = {name: zf.read(name) for name in zf.namelist()}
+    assert rotated and {p.name for p in rotated} <= archived.keys()
+    # The bytes too: an export that packed an empty or wrong body passed.
+    assert all(archived[p.name] == p.read_bytes() for p in rotated)
 
 
 @_posix_only
@@ -873,6 +927,52 @@ def test_tail_follows_the_new_log_after_a_rotation(tmp_path: Path) -> None:
             seen.append(line)
 
     assert seen == [b'{"seq": 1}\n', b'{"seq": 1, "new": true}\n']
+
+
+def test_tail_reads_a_record_appended_just_before_a_rotation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tail read to the end of the log and only then asked whether a
+    rotation had moved it. A record appended, and the log rotated, between
+    the two was in the old file it then stopped reading, and never printed."""
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1}\n')
+    real_open = cli._open_for_following
+    rotated = False
+
+    class WriterBetweenTheSteps:
+        def __init__(self, f) -> None:
+            self._f = f
+
+        def readline(self) -> bytes:
+            nonlocal rotated
+            chunk = self._f.readline()
+            if not chunk and not rotated:
+                rotated = True
+                with open(path, "ab") as f:
+                    f.write(b'{"seq": 2}\n')
+                path.rename(tmp_path / "audit.log.20200101-000000")
+                path.write_bytes(b'{"seq": 1, "new": true}\n')
+            return chunk
+
+        def __getattr__(self, name: str):
+            return getattr(self._f, name)
+
+    monkeypatch.setattr(cli, "_open_for_following", lambda p: WriterBetweenTheSteps(real_open(p)))
+    waits = 0
+
+    def wait() -> None:
+        nonlocal waits
+        waits += 1
+        if waits > 3:
+            raise _StopFollowing
+
+    seen: list[bytes] = []
+    with pytest.raises(_StopFollowing):
+        for line in cli._follow(path, wait):
+            seen.append(line)
+
+    assert seen == [b'{"seq": 1}\n', b'{"seq": 2}\n', b'{"seq": 1, "new": true}\n']
 
 
 def test_tail_waits_for_the_rest_of_a_record_being_written(tmp_path: Path) -> None:
@@ -985,6 +1085,20 @@ def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, numb
     verify ended in a traceback instead of a violation."""
     path = tmp_path / "audit.log"
     path.write_text(f'{{"seq": 1, "ts": {number}, "hmac": "00"}}\n')
+
+    [violation] = AuditWriter.verify(path, KEY)
+
+    assert violation.kind == "parse_error"
+
+
+def test_a_record_nested_too_deeply_to_check_is_a_parse_error(tmp_path: Path) -> None:
+    """A record nested some hundreds of levels deep parses, but canonicalizing
+    it raised RecursionError, which the verifier didn't catch, so verify and
+    verify-all ended in a traceback instead of a violation."""
+    depth = 2000
+    nested = '{"a":' * depth + "1" + "}" * depth
+    path = tmp_path / "audit.log"
+    path.write_text(f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}\n')
 
     [violation] = AuditWriter.verify(path, KEY)
 
@@ -1442,6 +1556,31 @@ async def test_an_existing_log_is_made_owner_only(tmp_path: Path) -> None:
     AuditWriter(path=w.path, audit_key=KEY)
 
     assert stat.S_IMODE(w.path.stat().st_mode) == 0o600
+
+
+@_posix_only
+@pytest.mark.asyncio
+async def test_a_log_that_cannot_be_made_owner_only_is_warned_about(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A chmod that failed (another account's file, a filesystem without
+    POSIX modes) was logged at debug level, and the shim went on appending
+    to a log other accounts may read."""
+    w = _writer(tmp_path)
+    await w.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    real_chmod = os.chmod
+
+    def refuse(path, mode, *args, **kwargs):
+        if Path(path) == w.path:
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        return real_chmod(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(audit_module.os, "chmod", refuse)
+
+    with caplog.at_level("WARNING", logger=audit_module.__name__):
+        AuditWriter(path=w.path, audit_key=KEY)
+
+    assert any(str(w.path) in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
 
 
 def test_prune_refuses_a_duration_too_long_to_convert(tmp_path: Path, capsys) -> None:

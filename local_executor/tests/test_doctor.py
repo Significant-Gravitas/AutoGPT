@@ -125,6 +125,26 @@ def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     assert "computer-use]" in capsys.readouterr().out
 
 
+def test_the_install_hint_replaces_a_shim_installed_from_git(tmp_path, monkeypatch, capsys) -> None:
+    """The hint was `pipx install 'autogpt-local-executor[computer-use]'`. The
+    setup card installs the shim from Git, and pipx leaves an installed
+    package as it is without --force, so cua-driver stayed missing."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
+
+    doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
+
+    out = capsys.readouterr().out
+    assert "pipx install --force 'autogpt-local-executor[computer-use] @ git+https://" in out
+
+
+def test_computer_use_md_gives_the_install_command_the_shim_does() -> None:
+    from autogpt_local_executor.computer_use.driver import COMPUTER_USE_INSTALL
+
+    docs = Path(__file__).parents[1] / "docs" / "COMPUTER_USE.md"
+    assert COMPUTER_USE_INSTALL in docs.read_text(encoding="utf-8")
+
+
 def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
 ) -> None:
@@ -192,6 +212,44 @@ def test_doctor_runs_a_driver_installed_without_its_execute_bit(tmp_path) -> Non
     assert (check.marker, check.label) == ("OK", "cua-driver")
 
 
+@pytest.mark.parametrize(
+    "report",
+    [
+        "[]",
+        "null",
+        '"0.38.0"',
+        '{"build": "0.38.0", "probes": []}',
+        '{"build": {"version": "0.38.0"}, "probes": {"label": "AT-SPI"}}',
+        '{"build": {"version": "0.38.0"}, "probes": ["AT-SPI"]}',
+    ],
+    ids=["array", "null", "string", "build-a-string", "probes-an-object", "probe-a-string"],
+)
+def test_doctor_fails_on_a_driver_report_it_cannot_read(
+    tmp_path, driver_commands, report: str
+) -> None:
+    """JSON that isn't shaped like the report (an array, or a build or probe
+    that isn't an object) ended doctor in an AttributeError."""
+    driver_commands.state["report"] = report
+
+    checks = doctor._driver_doctor(FAKE)
+
+    assert any(check.marker == "FAIL" and check.blocking for check in checks)
+
+
+def test_doctor_keeps_the_probes_it_can_read(tmp_path, driver_commands) -> None:
+    driver_commands.state["report"] = json.dumps(
+        {
+            "build": {"version": "0.38.0"},
+            "probes": ["AT-SPI", {"label": "AT-SPI", "message": "reachable", "status": "ok"}],
+        }
+    )
+
+    checks = {check.label: check.marker for check in doctor._driver_doctor(FAKE)}
+
+    assert checks["cua-driver AT-SPI"] == "OK"
+    assert checks["cua-driver probes"] == "FAIL"
+
+
 def test_doctor_reports_a_driver_error_instead_of_crashing(
     tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
 ) -> None:
@@ -209,6 +267,31 @@ def test_doctor_reports_a_driver_error_instead_of_crashing(
     assert lines["display"][0] == "WARN"
     assert "get_screen_size broke" in lines["display"][1]
     assert lines["permissions"][0] == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "screen",
+    [
+        '{"width": 1920}',
+        '{"width": "1920", "height": "1080"}',
+        '{"width": null, "height": 1080}',
+        '{"width": 1920, "height": 1080, "scale_factor": "2x"}',
+    ],
+    ids=["no-height", "strings", "null-width", "string-scale"],
+)
+async def test_doctor_warns_on_a_screen_size_it_cannot_read(
+    fake_log, monkeypatch: pytest.MonkeyPatch, screen: str
+) -> None:
+    """A size with a width and no height raised KeyError, and one that
+    isn't a number broke the format, so doctor ended in a traceback."""
+    monkeypatch.setenv("FAKE_CUA_SCREEN", screen)
+    bridge = fake_bridge()
+    try:
+        check = await doctor._check_screen(bridge)
+    finally:
+        await bridge.close()
+
+    assert (check.marker, check.label) == ("WARN", "display")
 
 
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
@@ -331,6 +414,34 @@ async def test_daemon_preflight_on_macos_needs_both_grants(
     )
     assert record["details"]["missing_permissions"] == missing
     assert record["result"]["error_code"] == ErrorCode.PERMISSION_PENDING.value
+
+
+async def test_run_stops_the_driver_a_failed_preflight_started(
+    tmp_path, monkeypatch, fake_log
+) -> None:
+    """run() checked the macOS grants through cua-driver before the try
+    whose finally closes the driver, so a missing grant left the driver's
+    policy directory behind on every start launchd made."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setenv(
+        "FAKE_CUA_PERMISSIONS", json.dumps({"accessibility": False, "screen_recording": True})
+    )
+    daemon = _daemon(_with_driver(tmp_path))
+    bridge = daemon._computer_handler.driver
+    policies: list[Path] = []
+    real_write_policy = bridge._write_policy
+
+    def write_policy() -> Path:
+        policies.append(real_write_policy())
+        return policies[-1]
+
+    monkeypatch.setattr(bridge, "_write_policy", write_policy)
+
+    with pytest.raises(DaemonPreflightError):
+        await daemon.run()
+
+    assert policies and not policies[0].parent.exists()
+    assert bridge._client is None
 
 
 async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(

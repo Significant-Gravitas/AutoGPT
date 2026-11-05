@@ -27,9 +27,12 @@ The shim speaks MCP to it over stdin and stdout
 (`autogpt_local_executor/computer_use/mcp_client.py`): initialize, list
 tools, call tools, and cancel a call that runs past its deadline.
 
-**Which binary.** The one in the `cua-driver` wheel the `computer-use` extra
-installs (`cua-driver==0.38.0`), else `cua_driver_path` from the config, else
-`cua-driver` on PATH. It must be the minor version this document reviews
+**Which binary.** `cua_driver_path` from the config, when it's set. If no
+file is there, the shim doesn't fall back to another driver: with computer
+use on, it doesn't start, as when no driver is installed. Without
+`cua_driver_path`, the one in the `cua-driver` wheel the `computer-use` extra
+installs (`cua-driver==0.38.0`), else `cua-driver` on PATH. It must be the
+minor version this document reviews
 (`REVIEWED_DRIVER_VERSION`); the shim refuses another, which could add tools
 or arguments nobody has looked at.
 
@@ -241,7 +244,9 @@ prompt for the shim's app (the driver leaves prompting to its host).
 1. Bump the pin in `pyproject.toml` and `REVIEWED_DRIVER_VERSION`.
 2. Diff the new release's `tools/list` against the old: new tools stay off
    until reviewed; new arguments on offered tools need the same review as
-   the approval arguments and refusals above, file paths especially.
+   the approval arguments and refusals above, file paths especially. The
+   contract tests fail on any tool the catalog doesn't name, offered or in
+   `NOT_OFFERED_TOOLS`.
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes. If its policy can forbid an argument, forbid
    `screenshot_out_file` inside scripts and drop `run_script` from
