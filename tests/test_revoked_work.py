@@ -165,3 +165,36 @@ async def test_a_cancel_during_the_audit_write_still_records_the_change(
 
     assert target.read_text() == "written"
     assert [op for op, result in audit.ops if result["ok"]] == ["FILE_WRITE"]
+
+
+@pytest.mark.asyncio
+async def test_a_change_that_fails_after_a_cancel_lets_the_held_cancel_go() -> None:
+    """The cancellations held while the thread ran were released only when
+    it returned. One that raised (a full disk, say) left the task counting
+    a cancel it had absorbed, which asyncio.timeout and TaskGroup read to
+    tell their own cancels from others."""
+    started = threading.Event()
+    release = threading.Event()
+
+    def write() -> None:
+        started.set()
+        release.wait(5)
+        raise OSError("No space left on device")
+
+    async def handler() -> int:
+        try:
+            await handlers_module._run_to_completion(write)
+        except OSError:
+            pass
+        task = asyncio.current_task()
+        assert task is not None
+        return task.cancelling()
+
+    task = asyncio.create_task(handler())
+    await asyncio.to_thread(started.wait, 5)
+    task.cancel()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.wait_for(task, timeout=5) == 0

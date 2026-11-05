@@ -321,24 +321,29 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
 
     work = asyncio.ensure_future(asyncio.to_thread(run))
     held = 0
-    while True:
-        try:
-            result = await asyncio.shield(work)
-            break
-        except asyncio.CancelledError:
-            # Only `work` itself being cancelled (the loop shutting down) ends
-            # the wait; a change that finished as the cancel landed is returned.
-            if work.cancelled():
-                raise
-            cancelled.set()
-            held += 1
-        except _NeverStarted:
-            raise asyncio.CancelledError from None
-    task = asyncio.current_task()
-    if task is not None:
-        for _ in range(held):
-            task.uncancel()
-    return result
+    try:
+        while True:
+            try:
+                return await asyncio.shield(work)
+            except asyncio.CancelledError:
+                # Only `work` itself being cancelled (the loop shutting down)
+                # ends the wait; a change that finished as the cancel landed
+                # is returned.
+                if work.cancelled():
+                    held = 0  # the cancellation goes on, so it stays counted
+                    raise
+                cancelled.set()
+                held += 1
+            except _NeverStarted:
+                held = 0
+                raise asyncio.CancelledError from None
+    finally:
+        # Released however the thread ended, returned or raised: a held
+        # cancel left counted would mislead asyncio.timeout and TaskGroup.
+        task = asyncio.current_task()
+        if task is not None:
+            for _ in range(held):
+                task.uncancel()
 
 
 async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
