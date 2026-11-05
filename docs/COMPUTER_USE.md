@@ -16,12 +16,17 @@ working.
 
 ## Turning it on
 
-Computer use is off by default. Install the package with the computer-use
-extra, which brings the pinned cua-driver binary:
+Computer use is off by default. It needs the computer-use extra, which
+brings the pinned cua-driver binary. A shim installed from the platform's
+setup card or the README doesn't have it, and pipx leaves an installed
+package as it is, so reinstall it with the extra from the same Git source:
 
 ```bash
-pipx install 'autogpt-local-executor[computer-use]'
+pipx install --force 'autogpt-local-executor[computer-use] @ git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'
 ```
+
+If your install command named a revision (`...autogpt-local-executor.git@<revision>`),
+add the same `@<revision>` at the end of the URL here.
 
 Then start the shim with `--enable-computer-use` (or set
 `enable_computer_use = true` in the config), and run `autogpt-shim doctor`.

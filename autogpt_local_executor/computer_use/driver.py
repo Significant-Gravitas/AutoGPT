@@ -31,6 +31,13 @@ from .mcp_client import McpClosedError, McpError, StdioMcpClient
 logger = logging.getLogger(__name__)
 
 DRIVER_NAME = "cua-driver"
+# How to add computer use to a shim installed from Git, as the platform's
+# setup card and the README install it. pipx leaves an installed package
+# as it is without --force, extra or not. docs/COMPUTER_USE.md says the same.
+COMPUTER_USE_INSTALL = (
+    "pipx install --force 'autogpt-local-executor[computer-use] @ "
+    "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'"
+)
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
 # A driver that keeps stopping is given up on until the window has passed.
@@ -245,8 +252,8 @@ class CuaDriverBridge:
             binary = find_driver_binary(self._explicit_binary)
             if binary is None:
                 raise DriverUnavailable(
-                    "cua-driver is not installed. Reinstall the local executor with "
-                    "computer use: pipx install 'autogpt-local-executor[computer-use]'.",
+                    "cua-driver is not installed. Reinstall the local executor with its "
+                    f"computer-use extra: {COMPUTER_USE_INSTALL}",
                     code=ErrorCode.DEPENDENCY_MISSING,
                     details={"dependency": DRIVER_NAME},
                 )
@@ -355,6 +362,7 @@ class CuaDriverBridge:
 
 
 __all__ = [
+    "COMPUTER_USE_INSTALL",
     "DRIVER_NAME",
     "CuaDriverBridge",
     "DriverSnapshot",

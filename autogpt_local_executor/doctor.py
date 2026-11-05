@@ -33,7 +33,7 @@ from pathlib import Path
 from . import platform_info
 from .computer_use import CuaDriverBridge, DriverUnavailable, find_driver_binary, offered_tools
 from .computer_use.catalog import REVIEWED_DRIVER_VERSION, same_minor
-from .computer_use.driver import driver_environment, ensure_executable
+from .computer_use.driver import COMPUTER_USE_INSTALL, driver_environment, ensure_executable
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowser
@@ -205,8 +205,7 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
             CheckResult(
                 "FAIL",
                 "cua-driver",
-                "not installed — reinstall with "
-                "`pipx install 'autogpt-local-executor[computer-use]'`",
+                f"not installed — reinstall with `{COMPUTER_USE_INSTALL}`",
                 blocking=True,
             )
         ]

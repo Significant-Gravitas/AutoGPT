@@ -125,6 +125,26 @@ def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     assert "computer-use]" in capsys.readouterr().out
 
 
+def test_the_install_hint_replaces_a_shim_installed_from_git(tmp_path, monkeypatch, capsys) -> None:
+    """The hint was `pipx install 'autogpt-local-executor[computer-use]'`. The
+    setup card installs the shim from Git, and pipx leaves an installed
+    package as it is without --force, so cua-driver stayed missing."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
+
+    doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
+
+    out = capsys.readouterr().out
+    assert "pipx install --force 'autogpt-local-executor[computer-use] @ git+https://" in out
+
+
+def test_computer_use_md_gives_the_install_command_the_shim_does() -> None:
+    from autogpt_local_executor.computer_use.driver import COMPUTER_USE_INSTALL
+
+    docs = Path(__file__).parents[1] / "docs" / "COMPUTER_USE.md"
+    assert COMPUTER_USE_INSTALL in docs.read_text(encoding="utf-8")
+
+
 def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver
 ) -> None:

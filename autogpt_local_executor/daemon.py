@@ -43,6 +43,7 @@ from .audit import (
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
 from .computer_use import DriverUnavailable, find_driver_binary
+from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
@@ -2082,8 +2083,7 @@ class ShimDaemon:
         if find_driver_binary(self.config.cua_driver_path) is None:
             await self._fail_preflight(
                 "Computer use is enabled but cua-driver is not installed. Reinstall with "
-                "`pipx install 'autogpt-local-executor[computer-use]'`, then run "
-                "`autogpt-shim doctor`.",
+                f"`{COMPUTER_USE_INSTALL}`, then run `autogpt-shim doctor`.",
                 missing_permissions=["cua_driver"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,
