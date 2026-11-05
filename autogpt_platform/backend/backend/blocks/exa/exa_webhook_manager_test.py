@@ -331,6 +331,20 @@ class TestSearchMonitorSignature:
                 _monitor_webhook({"webhook_secret": SECRET}), _request({})
             )
 
+    @pytest.mark.parametrize("unreadable", [{"not": "a secret"}, ["a", "b"], 123])
+    async def test_an_unreadable_secret_fails_closed(self, unreadable):
+        # A secret is set but can't be read as one. Treating it as "no secret"
+        # would accept unsigned deliveries, so the delivery is refused, even
+        # one signed with the real secret.
+        header = f"t={TIMESTAMP},v1={_sign(BODY)}"
+        with pytest.raises(HTTPException) as exc:
+            await ExaWebhookManager.verify_signature(
+                _monitor_webhook({"webhook_secret": unreadable}),
+                _request({"Exa-Signature": header}),
+            )
+        assert exc.value.status_code == 403
+        assert "could not be read" in exc.value.detail
+
     @pytest.mark.parametrize(
         "inputs", [{}, {"webhook_secret": None}, {"webhook_secret": "  "}]
     )

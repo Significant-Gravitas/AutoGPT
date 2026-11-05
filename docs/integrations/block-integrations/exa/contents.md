@@ -30,7 +30,7 @@ Max Age Hours replaces the deprecated Livecrawl option and wins when both are se
 | highlights | The passages of each page most relevant to a query. Sent only when a query, max characters or (deprecated) sentence count is set | HighlightSettings | No |
 | summary | LLM-generated summary of each page (billed per page). Sent only when a query or schema is set | SummarySettings | No |
 | max_age_hours | Maximum age of cached content, in hours (-1 to 720). Older pages are fetched fresh; 0 always fetches fresh, -1 only uses the cache. Leave empty (recommended) to use the cache and fetch pages that have no cached copy. Overrides Livecrawl. | int | No |
-| snapshot_as_of | Return each page as Exa stored it at this time: an ISO 8601 date-time or a date (midnight UTC). Never fetches live pages, so it cannot be combined with Max Age Hours, Livecrawl or Subpages. | str | No |
+| snapshot_as_of | Return each page as Exa stored it at this time: an ISO 8601 date-time or a date (midnight UTC). Never fetches live pages, so it cannot be combined with Max Age Hours or Livecrawl. | str | No |
 | livecrawl | Deprecated by Exa: use Max Age Hours instead. Translated as always -> 0, never -> -1, fallback (default) -> Exa's default; 'preferred' has no equivalent and is passed through. | "never" \| "fallback" \| "always" \| "preferred" | No |
 | livecrawl_timeout | How long a fresh page fetch may take, in milliseconds (1 to 90000) | int | No |
 | subpages | Number of subpages to crawl per page (0 to 100) | int | No |

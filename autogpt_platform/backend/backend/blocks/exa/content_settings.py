@@ -208,7 +208,7 @@ class ContentSettings(BaseModel):
         default=None,
         description="Return each page as Exa stored it at this time: an ISO 8601 "
         "date-time or a date (midnight UTC). Never fetches live pages, so it "
-        "cannot be combined with Max Age Hours, Livecrawl or Subpages.",
+        "cannot be combined with Max Age Hours or Livecrawl.",
         placeholder="2026-01-15",
         advanced=True,
     )
