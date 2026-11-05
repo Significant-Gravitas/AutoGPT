@@ -40,6 +40,19 @@ query SearchFeatureRequests($term: String!, $filter: IssueFilter, $first: Int) {
 }
 """
 
+# An exact, case-insensitive title match: a ranked full-text search returns
+# the top few hits, and with many "Integration request: ..." issues the one
+# wanted can rank outside them.
+FIND_ISSUE_BY_TITLE_QUERY = """
+query FindFeatureRequestByTitle($filter: IssueFilter) {
+  issues(filter: $filter, first: 1) {
+    nodes {
+      id
+    }
+  }
+}
+"""
+
 CUSTOMER_UPSERT_MUTATION = """
 mutation CustomerUpsert($input: CustomerUpsertInput!) {
   customerUpsert(input: $input) {
@@ -100,6 +113,12 @@ def _get_settings() -> Settings:
     return _settings
 
 
+# Otto waits on these calls mid-turn, and Linear's client retries 429s and
+# 5xx: without a cap an outage would keep the turn waiting indefinitely.
+LINEAR_MAX_ATTEMPTS = 3
+LINEAR_RETRY_MAX_WAIT_SECONDS = 2.0
+
+
 def _get_linear_config() -> tuple[LinearClient, str, str]:
     """Return a configured Linear client, project ID, and team ID.
 
@@ -119,7 +138,11 @@ def _get_linear_config() -> tuple[LinearClient, str, str]:
         api_key=SecretStr(secrets.copilot_linear_api_key),
         title="System Linear API Key",
     )
-    client = LinearClient(credentials=credentials)
+    client = LinearClient(
+        credentials=credentials,
+        retry_max_attempts=LINEAR_MAX_ATTEMPTS,
+        retry_max_wait=LINEAR_RETRY_MAX_WAIT_SECONDS,
+    )
     return (
         client,
         secrets.linear_feature_request_project_id,
@@ -270,30 +293,6 @@ class CreateFeatureRequestTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
-    async def _find_or_create_customer(
-        self, client: LinearClient, user_id: str, name: str
-    ) -> dict:
-        """Find existing customer by user_id or create a new one via upsert.
-
-        Args:
-            client: Linear API client.
-            user_id: Stable external ID used to deduplicate customers.
-            name: Human-readable display name (e.g. the user's email).
-        """
-        data = await client.mutate(
-            CUSTOMER_UPSERT_MUTATION,
-            {
-                "input": {
-                    "name": name,
-                    "externalId": user_id,
-                },
-            },
-        )
-        result = data.get("customerUpsert", {})
-        if not result.get("success"):
-            raise RuntimeError(f"Failed to upsert customer: {data}")
-        return result["customer"]
-
     async def _execute(
         self,
         user_id: str | None,
@@ -321,110 +320,125 @@ class CreateFeatureRequestTool(BaseTool):
                 session_id=session_id,
             )
 
-        try:
-            client, project_id, team_id = _get_linear_config()
-        except Exception as e:
-            logger.exception("Failed to initialize Linear client")
-            return ErrorResponse(
-                message="Failed to create feature request.",
-                error=str(e),
-                session_id=session_id,
-            )
+        return await file_feature_request(
+            user_id, title, description, existing_issue_id, session_id
+        )
 
-        # Resolve a human-readable name (email) for the Linear customer record.
-        # Fall back to user_id if the lookup fails or returns None.
-        try:
-            customer_display_name = (
-                await user_db().get_user_email_by_id(user_id) or user_id
-            )
-        except Exception:
-            customer_display_name = user_id
 
-        # Step 1: Find or create customer for this user
-        try:
-            customer = await self._find_or_create_customer(
-                client, user_id, customer_display_name
-            )
-            customer_id = customer["id"]
-            customer_name = customer["name"]
-        except Exception as e:
-            logger.exception("Failed to upsert customer in Linear")
-            return ErrorResponse(
-                message="Failed to create feature request.",
-                error=str(e),
-                session_id=session_id,
-            )
+async def find_feature_request(title: str) -> str | None:
+    """The id of the feature request titled exactly ``title``, if one exists.
 
-        # Step 2: Create or reuse issue
-        issue_id: str | None = None
-        issue_identifier: str | None = None
-        if existing_issue_id:
-            # Add need to existing issue - we still need the issue details for response
-            is_new_issue = False
-            issue_id = existing_issue_id
-        else:
-            # Create new issue in the feature requests project
-            try:
-                data = await client.mutate(
-                    ISSUE_CREATE_MUTATION,
-                    {
-                        "input": {
-                            "title": title,
-                            "description": description,
-                            "teamId": team_id,
-                            "projectId": project_id,
-                        },
-                    },
-                )
-                result = data.get("issueCreate", {})
-                if not result.get("success"):
-                    return ErrorResponse(
-                        message="Failed to create feature request issue.",
-                        error=str(data),
-                        session_id=session_id,
-                    )
-                issue = result["issue"]
-                issue_id = issue["id"]
-                issue_identifier = issue.get("identifier")
-            except Exception as e:
-                logger.exception("Failed to create feature request issue")
-                return ErrorResponse(
-                    message="Failed to create feature request.",
-                    error=str(e),
-                    session_id=session_id,
-                )
-            is_new_issue = True
+    Raises when Linear is unreachable or unconfigured: a failed look-up is
+    not an absent request, and filing on it would split one request in two.
+    """
+    client, project_id, _team_id = _get_linear_config()
+    data = await client.query(
+        FIND_ISSUE_BY_TITLE_QUERY,
+        {
+            "filter": {
+                "project": {"id": {"eq": project_id}},
+                "title": {"eqIgnoreCase": title},
+            }
+        },
+    )
+    nodes = data.get("issues", {}).get("nodes", [])
+    return nodes[0]["id"] if nodes else None
 
-        # Step 3: Create customer need on the issue
+
+async def file_feature_request(
+    user_id: str,
+    title: str,
+    description: str,
+    existing_issue_id: str | None,
+    session_id: str | None,
+) -> ToolResponseBase:
+    """File ``title`` as a feature request for ``user_id``, or add their need
+    to ``existing_issue_id``: the customer, issue and need writes in Linear."""
+    try:
+        client, project_id, team_id = _get_linear_config()
+    except Exception as e:
+        logger.exception("Failed to initialize Linear client")
+        return ErrorResponse(
+            message="Failed to create feature request.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    # Resolve a human-readable name (email) for the Linear customer record.
+    # Fall back to user_id if the lookup fails or returns None.
+    try:
+        customer_display_name = await user_db().get_user_email_by_id(user_id) or user_id
+    except Exception:
+        customer_display_name = user_id
+
+    # Step 1: Find or create customer for this user
+    try:
+        customer = await _upsert_customer(client, user_id, customer_display_name)
+        customer_id = customer["id"]
+        customer_name = customer["name"]
+    except Exception as e:
+        logger.exception("Failed to upsert customer in Linear")
+        return ErrorResponse(
+            message="Failed to create feature request.",
+            error=str(e),
+            session_id=session_id,
+        )
+
+    # Step 2: Create or reuse issue
+    issue_id: str | None = None
+    issue_identifier: str | None = None
+    if existing_issue_id:
+        # Add need to existing issue - we still need the issue details for response
+        is_new_issue = False
+        issue_id = existing_issue_id
+    else:
+        # Create new issue in the feature requests project
         try:
             data = await client.mutate(
-                CUSTOMER_NEED_CREATE_MUTATION,
+                ISSUE_CREATE_MUTATION,
                 {
                     "input": {
-                        "customerId": customer_id,
-                        "issueId": issue_id,
-                        "body": description,
-                        "priority": 0,
+                        "title": title,
+                        "description": description,
+                        "teamId": team_id,
+                        "projectId": project_id,
                     },
                 },
             )
-            need_result = data.get("customerNeedCreate", {})
-            if not need_result.get("success"):
-                orphaned = (
-                    {"issue_id": issue_id, "issue_identifier": issue_identifier}
-                    if is_new_issue
-                    else None
-                )
+            result = data.get("issueCreate", {})
+            if not result.get("success"):
                 return ErrorResponse(
-                    message="Failed to attach customer need to the feature request.",
+                    message="Failed to create feature request issue.",
                     error=str(data),
-                    details=orphaned,
                     session_id=session_id,
                 )
-            need = need_result["need"]
-            issue_info = need["issue"]
+            issue = result["issue"]
+            issue_id = issue["id"]
+            issue_identifier = issue.get("identifier")
         except Exception as e:
-            logger.exception("Failed to create customer need")
+            logger.exception("Failed to create feature request issue")
+            return ErrorResponse(
+                message="Failed to create feature request.",
+                error=str(e),
+                session_id=session_id,
+            )
+        is_new_issue = True
+
+    # Step 3: Create customer need on the issue
+    try:
+        data = await client.mutate(
+            CUSTOMER_NEED_CREATE_MUTATION,
+            {
+                "input": {
+                    "customerId": customer_id,
+                    "issueId": issue_id,
+                    "body": description,
+                    "priority": 0,
+                },
+            },
+        )
+        need_result = data.get("customerNeedCreate", {})
+        if not need_result.get("success"):
             orphaned = (
                 {"issue_id": issue_id, "issue_identifier": issue_identifier}
                 if is_new_issue
@@ -432,21 +446,59 @@ class CreateFeatureRequestTool(BaseTool):
             )
             return ErrorResponse(
                 message="Failed to attach customer need to the feature request.",
-                error=str(e),
+                error=str(data),
                 details=orphaned,
                 session_id=session_id,
             )
-
-        return FeatureRequestCreatedResponse(
-            message=(
-                f"{'Created new feature request' if is_new_issue else 'Added your request to existing feature request'}: "
-                f"{issue_info['title']}."
-            ),
-            issue_id=issue_info["id"],
-            issue_identifier=issue_info["identifier"],
-            issue_title=issue_info["title"],
-            issue_url=issue_info.get("url", ""),
-            is_new_issue=is_new_issue,
-            customer_name=customer_name,
+        need = need_result["need"]
+        issue_info = need["issue"]
+    except Exception as e:
+        logger.exception("Failed to create customer need")
+        orphaned = (
+            {"issue_id": issue_id, "issue_identifier": issue_identifier}
+            if is_new_issue
+            else None
+        )
+        return ErrorResponse(
+            message="Failed to attach customer need to the feature request.",
+            error=str(e),
+            details=orphaned,
             session_id=session_id,
         )
+
+    return FeatureRequestCreatedResponse(
+        message=(
+            f"{'Created new feature request' if is_new_issue else 'Added your request to existing feature request'}: "
+            f"{issue_info['title']}."
+        ),
+        issue_id=issue_info["id"],
+        issue_identifier=issue_info["identifier"],
+        issue_title=issue_info["title"],
+        issue_url=issue_info.get("url", ""),
+        is_new_issue=is_new_issue,
+        customer_name=customer_name,
+        session_id=session_id,
+    )
+
+
+async def _upsert_customer(client: LinearClient, user_id: str, name: str) -> dict:
+    """Find existing customer by user_id or create a new one via upsert.
+
+    Args:
+        client: Linear API client.
+        user_id: Stable external ID used to deduplicate customers.
+        name: Human-readable display name (e.g. the user's email).
+    """
+    data = await client.mutate(
+        CUSTOMER_UPSERT_MUTATION,
+        {
+            "input": {
+                "name": name,
+                "externalId": user_id,
+            },
+        },
+    )
+    result = data.get("customerUpsert", {})
+    if not result.get("success"):
+        raise RuntimeError(f"Failed to upsert customer: {data}")
+    return result["customer"]

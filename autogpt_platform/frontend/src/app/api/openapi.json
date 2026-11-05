@@ -33579,6 +33579,7 @@
           "web_search",
           "feature_request_search",
           "feature_request_created",
+          "integration_request",
           "memory_store",
           "memory_search",
           "memory_forget_candidates",

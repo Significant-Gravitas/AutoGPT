@@ -12,8 +12,12 @@ from backend.copilot.context import set_execution_context
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
-from .find_capability import NEEDS_EXPERT_GRANT, FindCapabilityTool
-from .models import CapabilityListResponse
+from .find_capability import (
+    NEEDS_EXPERT_GRANT,
+    FindCapabilityTool,
+    _no_result_suggestions,
+)
+from .models import CapabilityListResponse, NoResultsResponse
 
 USER = "user-find-cap"
 GITHUB_STATE = ConnectionState(providers=frozenset({"github"}))
@@ -211,3 +215,31 @@ async def test_otto_search_keeps_the_usual_order():
     assert isinstance(result, CapabilityListResponse)
     assert _github_hits(result)
     assert result.capabilities[0]["kind"] == "block"
+
+
+async def test_a_service_nothing_covers_points_at_the_not_supported_card():
+    """SECRT-3150: "printify" found nothing and the only next step offered was
+    a vendor MCP server, so the model hand-built an HTTP request and asked a
+    new user for a token. The last step is now the not-supported card."""
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            user_id=USER, session=make_session(USER), query="gelato"
+        )
+
+    assert isinstance(result, NoResultsResponse)
+    assert result.suggestions is not None
+    assert "tool:request_integration" in result.suggestions[-1]
+
+
+def test_no_step_reaches_for_http_before_the_not_supported_card():
+    """Searching 'http' finds the hand-built request, the ticket's failure
+    path: nothing before the not-supported card may point there."""
+    suggestions = _no_result_suggestions(None)
+    card = next(
+        i for i, step in enumerate(suggestions) if "tool:request_integration" in step
+    )
+
+    assert not any("http" in step.lower() for step in suggestions[:card])

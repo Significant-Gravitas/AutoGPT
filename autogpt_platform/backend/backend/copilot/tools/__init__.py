@@ -79,6 +79,7 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .request_integration import RequestIntegrationTool
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
@@ -189,6 +190,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),
     "create_feature_request": CreateFeatureRequestTool(),
+    "request_integration": RequestIntegrationTool(),
     # Platform info (subscription, billing)
     "get_platform_info": PlatformInfoTool(),
     # Agent generation tools (local validation/fixing)
