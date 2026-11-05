@@ -285,3 +285,21 @@ async def test_a_name_that_is_not_utf8_is_left_out_of_the_listing(tmp_path: Path
 
     assert [entry.name for entry in response.payload.entries] == ["good.txt"]
     dump_message(response)  # the reply can be sent
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows names can't hold \" or \\")
+@pytest.mark.asyncio
+async def test_the_byte_budget_counts_names_as_json_escapes_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quotes and backslashes take two bytes each in JSON; a budget that
+    counted raw bytes would let such names past it."""
+    for index in range(50):
+        (tmp_path / f"{chr(34) * 20}{chr(92) * 20}{index:02d}").write_text("")
+    monkeypatch.setattr(handlers_module, "FILE_LIST_REPLY_BUDGET_BYTES", 4000)
+
+    response = await _listing(tmp_path)
+
+    assert 0 < len(response.payload.entries) < 50
+    entry_bytes = sum(len(e.model_dump_json().encode()) + 1 for e in response.payload.entries)
+    assert entry_bytes <= 4000
