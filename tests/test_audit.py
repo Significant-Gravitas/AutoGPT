@@ -1592,9 +1592,7 @@ def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path)
         "[" * 100_000 + "]" * 100_000,
     ],
 )
-def test_prune_keeps_a_log_it_cannot_judge_without_a_traceback(
-    tmp_path: Path, line: str
-) -> None:
+def test_prune_keeps_a_log_it_cannot_judge_without_a_traceback(tmp_path: Path, line: str) -> None:
     current = tmp_path / "audit.log"
     current.write_text("")
     rotated = tmp_path / "audit.log.20200101-000000"

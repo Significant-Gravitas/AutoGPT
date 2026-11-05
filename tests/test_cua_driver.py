@@ -769,9 +769,7 @@ async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler
     }
 
 
-async def test_a_launch_that_runs_a_command_line_waits_for_approval(
-    make_handler, fake_log
-) -> None:
+async def test_a_launch_that_runs_a_command_line_waits_for_approval(make_handler, fake_log) -> None:
     """cua-driver starts a launch_path or a program with extra arguments in
     the background, with no window of its own, so a launch ran any command
     with no more than the supervisor's say in Auto."""
