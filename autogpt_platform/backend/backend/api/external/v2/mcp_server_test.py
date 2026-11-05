@@ -1,6 +1,5 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
-import base64
 import json
 import logging
 from types import SimpleNamespace
@@ -539,7 +538,8 @@ async def test_a_key_reads_its_owners_run_output_as_it_does_over_rest(
     mocker: pytest_mock.MockerFixture, no_tenancy_lookups: mock.AsyncMock
 ):
     """No expert stands behind a key, so its call reaches the whole workspace,
-    where a run stores its output: at the root, outside any chat's folder."""
+    where a run stores its output: at the root, outside any chat's folder. A
+    text file comes back as its text, as REST's download serves its bytes."""
     mocker.patch(
         "backend.api.external.v2.mcp_server.get_access_token",
         return_value=_token(*_tool_scopes("read_workspace_file")),
@@ -568,7 +568,8 @@ async def test_a_key_reads_its_owners_run_output_as_it_does_over_rest(
     result = await _call("read_workspace_file", {"file_id": "file-1"})
 
     reply = json.loads(result.content[0].text)
-    assert base64.b64decode(reply.get("content_base64", "")) == b"hello", reply
+    assert reply["type"] == "workspace_file_content", reply
+    assert reply.get("content") == "hello" and "content_base64" not in reply, reply
 
 
 async def test_a_missing_credential_comes_back_as_an_error_not_a_setup_card(

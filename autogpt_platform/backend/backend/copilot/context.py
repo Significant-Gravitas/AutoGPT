@@ -265,6 +265,18 @@ def get_current_sandbox() -> ExecutorSandbox | None:
     return _current_sandbox.get()
 
 
+@contextmanager
+def turn_sandbox(sandbox: "AsyncSandbox | None") -> Iterator[None]:
+    """Use *sandbox* as the turn's sandbox inside the block, for work that
+    writes to the model's working directory before the turn sets its
+    execution context."""
+    token = _current_sandbox.set(sandbox)
+    try:
+        yield
+    finally:
+        _current_sandbox.reset(token)
+
+
 def get_sdk_cwd() -> str:
     """Return the SDK working directory for the current session (empty string if unset)."""
     return _current_sdk_cwd.get()

@@ -37,12 +37,17 @@ export function fromBackendUserOnboarding(
 // onboarded user back into the wizard.
 const ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE" satisfies OnboardingStep;
 
+// Same rule as the backend's GET /onboarding/completed.
+export function hasCompletedOnboarding(completedSteps: string[]): boolean {
+  return completedSteps.includes(ONBOARDING_COMPLETE);
+}
+
 export function shouldRedirectFromOnboarding(
   completedSteps: string[],
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes(ONBOARDING_COMPLETE) &&
+    hasCompletedOnboarding(completedSteps) &&
     !pathname.startsWith("/onboarding/reset")
   );
 }

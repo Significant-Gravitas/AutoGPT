@@ -193,6 +193,7 @@ from backend.data.push_subscription import (
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
 from backend.data.subscription_trial import (
     get_subscription_trial,
+    list_trials_ending_unrenewed,
     record_subscription_trial_cost,
 )
 from backend.data.understanding import (
@@ -239,6 +240,7 @@ from backend.data.workspace_skill import (
     publish_workspace_skill_file,
     skill_root_has_room,
 )
+from backend.notifications.trial import send_trial_last_calls
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -433,6 +435,7 @@ class DatabaseManager(AppService):
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
+    list_trials_ending_unrenewed = _(list_trials_ending_unrenewed)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
@@ -602,6 +605,7 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
+    send_trial_last_calls = _(send_trial_last_calls)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -783,16 +787,15 @@ class DatabaseManager(AppService):
     complete_background_task = _(background_task_db.complete_background_task)
     list_background_tasks = _(background_task_db.list_background_tasks)
     enqueue_background_followup = _(background_task_db.enqueue_background_followup)
-    get_background_followup_envelope = _(
-        background_task_db.get_background_followup_envelope
-    )
     suppress_background_followup = _(background_task_db.suppress_background_followup)
     release_deleted_background_turn = _(
         background_task_db.release_deleted_background_turn
     )
-    release_expired_background_turn = _(
-        background_task_db.release_expired_background_turn
+    release_abandoned_background_turn = _(
+        background_task_db.release_abandoned_background_turn
     )
+    background_child_result = _(background_task_db.background_child_result)
+    has_open_handoffs = _(background_task_db.has_open_handoffs)
     cancel_background_tasks = _(background_task_db.cancel_background_tasks)
     cancel_queued_background_followup = _(
         background_task_db.cancel_queued_background_followup
@@ -912,6 +915,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Graphs
     get_graph_metadata = _(d.get_graph_metadata)
+    get_node = _(d.get_node)
 
     # Credits
     spend_credits = _(d.spend_credits)
@@ -1019,6 +1023,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_subscription_tier = d.get_user_subscription_tier
     get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
+    list_trials_ending_unrenewed = d.list_trials_ending_unrenewed
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
@@ -1199,6 +1204,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
+    send_trial_last_calls = d.send_trial_last_calls
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -1351,10 +1357,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     complete_background_task = d.complete_background_task
     list_background_tasks = d.list_background_tasks
     enqueue_background_followup = d.enqueue_background_followup
-    get_background_followup_envelope = d.get_background_followup_envelope
     suppress_background_followup = d.suppress_background_followup
     release_deleted_background_turn = d.release_deleted_background_turn
-    release_expired_background_turn = d.release_expired_background_turn
+    release_abandoned_background_turn = d.release_abandoned_background_turn
+    background_child_result = d.background_child_result
+    has_open_handoffs = d.has_open_handoffs
     cancel_background_tasks = d.cancel_background_tasks
     cancel_queued_background_followup = d.cancel_queued_background_followup
     cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks
