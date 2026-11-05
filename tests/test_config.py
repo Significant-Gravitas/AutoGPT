@@ -366,3 +366,15 @@ def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) 
     callback's port loop doesn't catch."""
     with pytest.raises(ValidationError):
         ShimConfig(allowed_root=tmp_path, oauth_redirect_port=port)
+
+
+@pytest.mark.parametrize(
+    "field", ["reconnect_base_delay", "reconnect_max_delay", "reconnect_jitter_seconds"]
+)
+def test_reconnect_delays_are_at_most_a_day(tmp_path: Path, field: str) -> None:
+    """Any finite float passed. Near the largest, the delay plus its jitter
+    overflowed to infinity, and asyncio.sleep(inf) never returns; well short
+    of that, a delay of 1e300 seconds never ends either."""
+    with pytest.raises(ValidationError):
+        ShimConfig(allowed_root=tmp_path, **{field: 86_401})
+    assert getattr(ShimConfig(allowed_root=tmp_path, **{field: 86_400}), field) == 86_400
