@@ -1,6 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -549,9 +550,24 @@ async def test_a_recovered_turn_spends_against_its_own_chat():
     """Kills: a recovery envelope with no chat, whose paid reads never ask."""
     enqueue = AsyncMock()
     session = AsyncMock(return_value=MagicMock())
+
+    @asynccontextmanager
+    async def admitted_slot(*_args, **_kwargs):
+        yield MagicMock(admitted=True)
+
     with (
         patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
         patch("backend.copilot.model.get_chat_session", session),
+        patch("backend.copilot.executor.utils.check_inflight_cap", AsyncMock()),
+        patch("backend.copilot.executor.utils.acquire_turn_slot", admitted_slot),
+        patch("backend.copilot.executor.utils.admit_turn", AsyncMock()),
+        patch(
+            "backend.copilot.executor.utils.chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch("backend.copilot.stream_registry.create_session", AsyncMock()),
     ):
         await _enqueue_for_recovery("sess-1", "user-1", "resume", dry_run=False)
     call = enqueue.await_args
