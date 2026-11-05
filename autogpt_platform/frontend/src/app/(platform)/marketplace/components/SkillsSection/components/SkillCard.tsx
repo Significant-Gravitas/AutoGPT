@@ -33,7 +33,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
       href={`/marketplace/skills/${skill.slug}`}
       data-testid="skill-card"
       // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
-      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table outline-none transition-[transform,box-shadow,border-color] duration-200 ease-out [touch-action:manipulation] hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
+      className="group relative flex h-full [touch-action:manipulation] flex-col overflow-hidden rounded-2xl border border-border-base/80 bg-surface text-left shadow-message-table transition-[transform,box-shadow,border-color] duration-200 ease-out outline-none hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
     >
       <div
         className={cn(
@@ -45,7 +45,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
         <div className="flex items-start justify-between gap-3">
           <span
             className={cn(
-              "inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface ring-1 ring-inset ring-border-base/70",
+              "inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface ring-1 ring-border-base/70 ring-inset",
               accent.icon,
             )}
           >
@@ -54,7 +54,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
           {icon && skill.categories[0] ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-body font-medium",
                 accent.pill,
               )}
             >
@@ -67,7 +67,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
         <div className="min-w-0">
           <h3
             title={title}
-            className="line-clamp-1 text-lg font-semibold tracking-title text-foreground-strong"
+            className="line-clamp-1 text-lead font-semibold tracking-title text-foreground-strong"
           >
             {title}
           </h3>
@@ -99,13 +99,13 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </span>
             ) : null}
           </div>
-          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+          <p className="mt-2 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
             {skill.description}
           </p>
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="flex items-center gap-2 text-base text-foreground-secondary">
+          <span className="flex items-center gap-2 text-body-lg text-foreground-secondary">
             <Icon
               icon={Download04Icon}
               size={18}
@@ -119,19 +119,19 @@ export function SkillCard({ skill, isInstalled }: Props) {
               : `${skill.install_count.toLocaleString()} installed`}
           </span>
           {isInstalled ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-success">
+            <span className="flex items-center gap-1.5 text-body-lg font-medium text-success">
               <Icon icon={CheckmarkCircle02Icon} size={18} aria-hidden />
               Added
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-foreground-tertiary transition-colors duration-200 group-hover:text-foreground-strong">
+            <span className="flex items-center gap-1.5 text-body-lg font-medium text-foreground-tertiary transition-colors duration-200 group-hover:text-foreground-strong">
               View
               <Icon
                 icon={ArrowRight02Icon}
                 size={16}
                 aria-hidden
-                // oxlint-disable-next-line design-system/no-restyle -- the arrow nudges on hover; Icon has no motion prop
-                className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                motion="transform"
+                className="group-hover:translate-x-0.5"
               />
             </span>
           )}

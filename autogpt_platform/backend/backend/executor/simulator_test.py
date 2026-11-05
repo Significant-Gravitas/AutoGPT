@@ -22,6 +22,7 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot import usage_activation_fixtures
+from backend.data.model import NodeExecutionStats
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _MAX_JSON_RETRIES,
@@ -34,7 +35,17 @@ from backend.executor.simulator import (
     get_dry_run_credentials,
     prepare_dry_run,
     simulate_block,
+    track_dry_run_block_cost,
 )
+
+
+@pytest.fixture(autouse=True)
+def spend_refusal(monkeypatch) -> AsyncMock:
+    """The user has allowance left unless a test says otherwise."""
+    refusal = AsyncMock(return_value=None)
+    monkeypatch.setattr("backend.executor.simulator.platform_spend_refusal", refusal)
+    return refusal
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -313,6 +324,16 @@ class TestPrepareDryRun:
             result = prepare_dry_run(block, {"agent_mode_max_iterations": 0})
         assert result is not None
         assert result["agent_mode_max_iterations"] == 0
+
+    def test_orchestrator_loop_until_finished_takes_the_cap(self) -> None:
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            result = prepare_dry_run(block, {"agent_mode_max_iterations": -1})
+        assert result is not None
+        assert result["agent_mode_max_iterations"] == 10
 
     def test_orchestrator_falls_back_without_key(self) -> None:
         """Without platform OpenRouter key, OrchestratorBlock falls back
@@ -824,6 +845,68 @@ class TestSimulatorCostTracking:
         assert track_kwargs["cost_usd"] == pytest.approx(0.000189)
         assert track_kwargs["session"] is None
         assert track_kwargs["log_prefix"] == "[simulator]"
+
+    @pytest.mark.asyncio
+    async def test_a_spent_allowance_never_calls_the_model(self, spend_refusal) -> None:
+        spend_refusal.return_value = "You've reached your daily usage limit."
+        get_client = MagicMock()
+        with patch("backend.executor.simulator.get_openai_client", get_client):
+            outputs = [
+                item
+                async for item in simulate_block(
+                    _make_block(), {"query": "hello"}, user_id="user-42"
+                )
+            ]
+        assert len(outputs) == 1
+        assert outputs[0][0] == "error"
+        assert "daily usage limit" in outputs[0][1]
+        get_client.assert_not_called()
+        spend_refusal.assert_awaited_once_with("user-42")
+
+    @pytest.mark.asyncio
+    async def test_an_unparseable_response_is_still_recorded(self) -> None:
+        client, create_mock = self._mock_client(
+            _sim_completion(content="not json", usage=_sim_usage(cost=0.0001))
+        )
+        with (
+            patch("backend.executor.simulator.get_openai_client", return_value=client),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=1),
+            ) as mock_track,
+        ):
+            outputs = [
+                item
+                async for item in simulate_block(
+                    _make_block(), {"query": "hello"}, user_id="user-42"
+                )
+            ]
+        assert outputs[0][0] == "error"
+        assert create_mock.await_count == _MAX_JSON_RETRIES
+        assert mock_track.await_count == _MAX_JSON_RETRIES
+
+    @pytest.mark.asyncio
+    async def test_a_dry_run_blocks_spend_is_recorded_with_its_cost(self) -> None:
+        stats = NodeExecutionStats(
+            input_token_count=900,
+            output_token_count=120,
+            cache_read_token_count=40,
+            cache_creation_token_count=5,
+            provider_cost=0.0042,
+        )
+        with patch(
+            "backend.executor.simulator.persist_and_record_usage",
+            new=AsyncMock(return_value=1),
+        ) as mock_track:
+            await track_dry_run_block_cost(stats, user_id="user-42", model="m-1")
+
+        kwargs = mock_track.await_args.kwargs
+        assert kwargs["user_id"] == "user-42"
+        assert kwargs["cost_usd"] == pytest.approx(0.0042)
+        assert (kwargs["prompt_tokens"], kwargs["completion_tokens"]) == (900, 120)
+        assert kwargs["cache_read_tokens"] == 40
+        assert kwargs["cache_creation_tokens"] == 5
+        assert kwargs["model"] == "m-1"
 
     @pytest.mark.asyncio
     async def test_tracks_even_when_cost_absent(self) -> None:

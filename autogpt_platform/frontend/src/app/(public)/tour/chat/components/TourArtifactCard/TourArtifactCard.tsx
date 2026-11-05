@@ -10,7 +10,7 @@ interface Props {
 export function TourArtifactCard({ artifact }: Props) {
   return (
     <div className="flex flex-col gap-2.5 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
-      <div className="flex items-center gap-1.5 text-sm text-foreground-tertiary">
+      <div className="flex items-center gap-1.5 text-body text-foreground-tertiary">
         <Icon icon={Mail02Icon} className="size-4 shrink-0" />
         <span>Artifact · {artifact.caption}</span>
       </div>
@@ -26,7 +26,7 @@ export function TourArtifactCard({ artifact }: Props) {
       )}
 
       {artifact.bullets && artifact.bullets.length > 0 && (
-        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-foreground-body">
+        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-body text-foreground-body">
           {artifact.bullets.map((bullet) => (
             <li key={bullet}>{bullet}</li>
           ))}
@@ -35,7 +35,7 @@ export function TourArtifactCard({ artifact }: Props) {
 
       {artifact.diff && (
         <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-muted px-4 py-3">
-          <div className="flex items-center gap-3 text-base font-medium">
+          <div className="flex items-center gap-3 text-body-lg font-medium">
             <span className="text-error-foreground line-through decoration-error-foreground/70">
               {artifact.diff.from}
             </span>
@@ -44,7 +44,7 @@ export function TourArtifactCard({ artifact }: Props) {
             </span>
             <span className="text-success-foreground">{artifact.diff.to}</span>
           </div>
-          <span className="text-sm text-foreground-tertiary">
+          <span className="text-body text-foreground-tertiary">
             {artifact.diff.delta}
           </span>
         </div>

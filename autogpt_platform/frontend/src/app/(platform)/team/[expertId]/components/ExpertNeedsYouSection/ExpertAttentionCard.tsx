@@ -73,7 +73,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               {item.title}
             </Text>
             {item.priority === "high" ? (
-              <span className="rounded bg-warning-surface px-1.5 py-px font-sans text-caption font-medium text-warning-foreground ring-1 ring-inset ring-warning-foreground/10">
+              <span className="rounded bg-warning-surface px-1.5 py-px font-sans text-caption font-medium text-warning-foreground ring-1 ring-warning-foreground/10 ring-inset">
                 Waiting
               </span>
             ) : null}

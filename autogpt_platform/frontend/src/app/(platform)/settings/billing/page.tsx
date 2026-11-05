@@ -167,9 +167,8 @@ function SettingsBillingPage() {
             size="icon-sm"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
+            tone="muted"
             onClick={() => setIsExplainerOpen(true)}
-            // oxlint-disable-next-line design-system/no-restyle -- the info button is a quiet grey glyph beside the title
-            className="text-foreground-tertiary"
           />
         </div>
         <Text variant="body" tone="secondary">

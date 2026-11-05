@@ -180,28 +180,16 @@ export function AgentInfoStep({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Store01Icon} size={18} tone="muted" />
                   Listing basics
                   {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -289,28 +277,16 @@ export function AgentInfoStep({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Album01Icon} size={18} tone="muted" />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={agentId}
                   onImagesChange={handleImagesChange}
@@ -328,28 +304,16 @@ export function AgentInfoStep({
                   as="span"
                   className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={SparklesIcon} size={18} tone="muted" />
                   Experience details
                   {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      className="text-error"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"
@@ -451,12 +415,13 @@ export function AgentInfoStep({
                       <button
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                       >
                         <Icon
                           icon={Calendar03Icon}
                           size={16}
-                          className="shrink-0 text-foreground-tertiary"
+                          tone="muted"
+                          className="shrink-0"
                         />
                         <Text
                           variant="body-tight"

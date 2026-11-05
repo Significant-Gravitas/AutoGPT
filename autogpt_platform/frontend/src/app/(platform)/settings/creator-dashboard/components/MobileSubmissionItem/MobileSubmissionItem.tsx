@@ -94,7 +94,7 @@ export function MobileSubmissionItem({
       className="flex flex-col gap-3 border-b border-separator px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-small bg-surface-hover">
+        <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-small bg-surface-hover select-none">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -132,8 +132,8 @@ export function MobileSubmissionItem({
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
-                  // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
-                  className="shrink-0 text-foreground-tertiary"
+                  tone="muted"
+                  className="shrink-0"
                   aria-hidden
                 />
               </Link>
@@ -213,8 +213,8 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
-                  className="text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-restyle -- the menu item has no destructive variant (deferred)
+                  className="text-error-hover focus:text-error-foreground"
                 >
                   <span className="flex items-center gap-2">
                     <UIIcon icon={Delete02Icon} size={14} />
@@ -229,26 +229,26 @@ export function MobileSubmissionItem({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-caption-sm font-medium leading-inherit ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="whitespace-nowrap text-xs text-foreground-tertiary">
+        <span className="text-caption whitespace-nowrap text-foreground-tertiary">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
-        <span aria-hidden className="text-xs text-foreground-disabled">
+        <span aria-hidden className="text-caption text-foreground-disabled">
           ·
         </span>
-        <span className="whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
+        <span className="text-caption whitespace-nowrap text-foreground-tertiary tabular-nums">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
           <>
-            <span aria-hidden className="text-xs text-foreground-disabled">
+            <span aria-hidden className="text-caption text-foreground-disabled">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-foreground-tertiary">
+            <span className="inline-flex items-center gap-1 text-caption whitespace-nowrap text-foreground-tertiary tabular-nums">
               {submission.review_avg_rating!.toFixed(1)}
               {/* oxlint-disable-next-line design-system/no-restyle -- the star is amber beside grey run counts */}
               <UIIcon icon={StarIcon} size={10} className="text-warning" />

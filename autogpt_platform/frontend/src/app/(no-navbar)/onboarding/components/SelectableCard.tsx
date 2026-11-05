@@ -32,7 +32,7 @@ export function SelectableCard({
       )}
     >
       {selected && (
-        <span className="absolute right-2 top-2 flex size-4 items-center justify-center rounded-full bg-action-hover text-action-foreground">
+        <span className="absolute top-2 right-2 flex size-4 items-center justify-center rounded-full bg-action-hover text-action-foreground">
           <Icon icon={Tick02Icon} size={10} />
         </span>
       )}

@@ -36,9 +36,9 @@ const meta: Meta<typeof TaskProgressBar> = {
   decorators: [
     (Story) => (
       // Mirrors ChatContainer: the bar sits just above the chat input inside the
-      // #fafafa chat column. ChatInput is shown for placement reference only.
+      // surface-muted chat column. ChatInput is shown for placement reference only.
       <TooltipProvider>
-        <div className="mx-auto flex w-full max-w-3xl flex-col bg-[#fafafa] px-3 pb-2 pt-2">
+        <div className="mx-auto flex w-full max-w-3xl flex-col bg-surface-muted px-3 pt-2 pb-2">
           <div className="relative z-10">
             <Story />
           </div>

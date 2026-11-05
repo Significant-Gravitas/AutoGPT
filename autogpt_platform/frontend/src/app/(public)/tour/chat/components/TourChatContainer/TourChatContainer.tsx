@@ -23,7 +23,7 @@ export function TourChatContainer({ chat }: Props) {
           footer={isDemoComplete ? <TourEndCard /> : null}
         />
         {!isDemoComplete && (
-          <div className="relative px-3 pb-2 pt-2">
+          <div className="relative px-3 pt-2 pb-2">
             <TourPromptBar
               key={`${chat.turnIndex}:${chat.currentUserPrompt ?? ""}`}
               prompt={chat.currentUserPrompt}
@@ -32,7 +32,7 @@ export function TourChatContainer({ chat }: Props) {
                 chat.currentUserPrompt && chat.onSend(chat.currentUserPrompt)
               }
             />
-            <p className="mt-2 flex items-center justify-center gap-1 text-sm text-foreground-subtle">
+            <p className="mt-2 flex items-center justify-center gap-1 text-body text-foreground-subtle">
               <Icon icon={FlashIcon} className="size-3.5 shrink-0" />
               Simulated demo — sign up to put Otto to work on your own tasks.
             </p>

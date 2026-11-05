@@ -48,10 +48,7 @@ export function EmptyHero({
       ) : recipientPicker ? (
         <div className="mb-8 text-heading-sm leading-relaxed tracking-normal text-foreground-strong">
           {isExpert ? "I'm" : "Tell"}{" "}
-          <span
-            // TODO(tokens): no role holds 18px (text-lg); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
-            className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lg"
-          >
+          <span className="mr-1 inline-block align-middle [&_button]:ml-0 [&_button]:text-lead">
             {recipientPicker}
           </span>
           {isExpert
@@ -62,7 +59,7 @@ export function EmptyHero({
         // Keyed on the text so switching recipient re-types the line.
         <TextGenerateEffect
           key={intro}
-          className="mb-8 !font-normal [&>div]:!mt-0 [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal"
+          className="mb-8 !font-normal [&_div]:!text-heading-sm [&_div]:!leading-normal [&_div]:!tracking-normal [&>div]:!mt-0"
           duration={0.6}
           words={intro}
         />
