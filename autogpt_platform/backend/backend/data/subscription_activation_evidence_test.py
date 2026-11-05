@@ -83,6 +83,22 @@ def test_initial_signup_requires_creation_invoice():
     assert qualifies(value, trial_end=None)
 
 
+def test_paying_early_starts_the_paid_period_just_after_trial_end():
+    # Ending a trial early puts the invoice and its paid period one second
+    # after trial_end.
+    value = invoice()
+    value.update(billing_reason="subscription_update", created=201)
+    value["status_transitions"] = {"paid_at": 201}
+    value["lines"]["data"][0]["period"] = {"start": 201, "end": 301}
+    assert qualifies(value, trial_end=200)
+
+
+def test_paid_period_before_trial_end_cannot_be_initial_activation():
+    value = invoice()
+    value["lines"]["data"][0]["period"] = {"start": 199, "end": 300}
+    assert not qualifies(value)
+
+
 def test_later_trial_renewal_cannot_be_initial_activation():
     value = invoice()
     value["lines"]["data"][0]["period"] = {"start": 300, "end": 400}
