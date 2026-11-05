@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any
 
 from backend.blocks._platform_credentials import refuse_platform_credentials
+from backend.data.block import BlockInput
 from backend.sdk import (
     APIKeyCredentials,
     BlockCategory,
@@ -73,6 +74,8 @@ class EnrichmentFormat(str, Enum):
 
 
 class ExaCreateWebsetBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -273,14 +276,15 @@ class ExaCreateWebsetBlock(ExaWebsetsBlockBase):
         created = await self._api(credentials, "POST", "/websets", json=payload)
         webset = Webset.model_validate(created)
 
+        # Yield the webset before waiting: it exists (and costs) at Exa now, so
+        # a wait that times out must still hand its ID to the workflow.
+        yield "webset", webset
         if not (input_data.wait_for_initial_results and "search" in payload):
-            yield "webset", webset
             return
 
         final_webset = await self._wait_until_idle(
             credentials, webset.id, input_data.polling_timeout
         )
-        yield "webset", webset
         yield "initial_item_count", final_webset.items_found
         yield "completion_time", time.time() - start_time
 
@@ -354,6 +358,8 @@ def _enrichments_payload(data: ExaCreateWebsetBlock.Input) -> list[dict[str, Any
 class ExaCreateOrFindWebsetBlock(ExaWebsetsBlockBase):
     """Create a new webset or return existing one if external_id already exists (idempotent)."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -424,12 +430,25 @@ class ExaCreateOrFindWebsetBlock(ExaWebsetsBlockBase):
             }
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
-        created = await self._api(credentials, "POST", "/websets", json=payload)
+        try:
+            created = await self._api(credentials, "POST", "/websets", json=payload)
+        except ExaApiError as e:
+            if e.status != 409:
+                raise
+            # Another run created it between the lookup and the create.
+            existing = await self._api(
+                credentials, "GET", f"/websets/{segment(input_data.external_id)}"
+            )
+            yield "webset", Webset.model_validate(existing)
+            yield "was_created", False
+            return
         yield "webset", Webset.model_validate(created)
         yield "was_created", True
 
 
 class ExaUpdateWebsetBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -446,7 +465,7 @@ class ExaUpdateWebsetBlock(ExaWebsetsBlockBase):
         )
         metadata: dict | None = SchemaField(
             default=None,
-            description="Key-value pairs to associate with this webset (set to null to clear)",
+            description="Key-value pairs to store on this webset, replacing the current ones. Leave empty to keep the current metadata.",
         )
 
     class Output(BlockSchemaOutput):
@@ -493,7 +512,7 @@ class ExaUpdateWebsetBlock(ExaWebsetsBlockBase):
         payload: dict[str, Any] = {}
         if input_data.title:
             payload["title"] = input_data.title
-        if input_data.metadata is not None:
+        if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
         data = await self._api(
@@ -513,6 +532,8 @@ class ExaUpdateWebsetBlock(ExaWebsetsBlockBase):
 
 
 class ExaListWebsetsBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -600,6 +621,8 @@ class ExaListWebsetsBlock(ExaWebsetsBlockBase):
 
 
 class ExaGetWebsetBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -707,6 +730,8 @@ class ExaGetWebsetBlock(ExaWebsetsBlockBase):
 
 
 class ExaDeleteWebsetBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -753,6 +778,8 @@ class ExaDeleteWebsetBlock(ExaWebsetsBlockBase):
 
 
 class ExaCancelWebsetBlock(ExaWebsetsBlockBase):
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -820,7 +847,7 @@ class ExaPreviewWebsetBlock(ExaWebsetsBlockBase):
         )
         include_sample_items: bool = SchemaField(
             default=False,
-            description="Also search for a few matching items and return them in 'items'. This runs a real search and uses Websets credits.",
+            description="Also search for a few matching items and return them in 'items'. This runs a real search and uses Websets credits, so it needs your own Exa API key.",
             advanced=True,
         )
         sample_count: int = SchemaField(
@@ -889,9 +916,17 @@ class ExaPreviewWebsetBlock(ExaWebsetsBlockBase):
             test_mock={"_api": lambda *args, **kwargs: sample_preview()},
         )
 
+    def refuses_platform_credentials_for(self, input_data: BlockInput) -> bool:
+        # Sample items run a real Websets search, and Exa's preview response
+        # carries no cost the platform could bill, so they need the user's own
+        # key. A plain preview spends nothing and stays allowed on the shared key.
+        return bool(input_data.get("include_sample_items"))
+
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        if input_data.include_sample_items:
+            refuse_platform_credentials(self, credentials)
         search: dict[str, Any] = {"query": input_data.query}
         entity_type = input_data.entity_type.value if input_data.entity_type else None
         entity = entity_payload(entity_type, input_data.entity_description)
@@ -953,6 +988,8 @@ def _suggestions(criteria: int, columns: int) -> list[str]:
 
 class ExaWebsetStatusBlock(ExaWebsetsBlockBase):
     """Get a quick status overview of a webset without fetching all details."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -1021,6 +1058,8 @@ class ExaWebsetStatusBlock(ExaWebsetsBlockBase):
 class ExaWebsetSummaryBlock(ExaWebsetsBlockBase):
     """Get a comprehensive summary of a webset including samples and statistics."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -1052,7 +1091,9 @@ class ExaWebsetSummaryBlock(ExaWebsetsBlockBase):
         webset_id: str = SchemaField(description="The webset identifier")
         status: str = SchemaField(description="Current status")
         entity_type: str = SchemaField(description="Type of entities in the webset")
-        total_items: int = SchemaField(description="Total number of items")
+        total_items: int = SchemaField(
+            description="Number of sample items returned (not the size of the webset)"
+        )
         sample_items: list[dict[str, Any]] = SchemaField(
             description="Sample items from the webset"
         )
@@ -1109,7 +1150,7 @@ class ExaWebsetSummaryBlock(ExaWebsetsBlockBase):
             _enrichment_summary(webset, input_data.include_enrichment_details),
         )
         yield "monitor_summary", _monitor_summary(webset)
-        yield "statistics", _statistics(webset, search_summary)
+        yield "statistics", _statistics(webset)
         yield "created_at", webset.created_at or ""
         yield "updated_at", webset.updated_at or ""
 
@@ -1143,22 +1184,23 @@ def _monitor_summary(webset: ApiWebset) -> MonitorSummaryModel:
     )
 
 
-def _statistics(
-    webset: ApiWebset, search_summary: SearchSummaryModel
-) -> WebsetStatisticsModel:
+def _statistics(webset: ApiWebset) -> WebsetStatisticsModel:
+    # Read the searches off the webset, not the search summary: that one is
+    # zeroed when include_search_details is off.
     searches = len(webset.searches)
+    found = sum(s.found for s in webset.searches)
     return WebsetStatisticsModel(
         total_operations=searches + len(webset.enrichments),
         is_processing=webset.is_processing,
         has_monitors=bool(webset.monitors),
-        avg_items_per_search=(
-            search_summary.total_items_found / searches if searches else 0
-        ),
+        avg_items_per_search=found / searches if searches else 0,
     )
 
 
 class ExaWebsetReadyCheckBlock(ExaWebsetsBlockBase):
     """Check if a webset is ready for the next operation (conditional workflow helper)."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

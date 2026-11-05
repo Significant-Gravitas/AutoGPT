@@ -10,7 +10,7 @@ Get an Exa Agent run's status and, once it has finished, its answer, structured 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block reads one run with `GET /agent/runs/{id}` and returns its current status and, once it has finished, the answer, structured output, citations, usage and cost, plus the query and effort it was given. Once the run has finished, the block charges its total cost as reported by Exa, unless another block has already charged you for that run: each run is billed once, so polling with this block is safe. A failed run does not fail the block; instead `failure_reason` explains why, read from the run or, failing that, from its stored events.
+This block reads one run with `GET /agent/runs/{id}` and returns its current status and, once it has finished, the answer, structured output, citations, usage and cost, plus the query and effort it was given. The block only runs on your own Exa API key, so Exa bills the run to your own Exa account and the platform charges no credits. A failed run does not fail the block; instead `failure_reason` explains why, read from the run or, failing that, from its stored events.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -56,9 +56,9 @@ Wait for an Exa Agent run to finish, then return its answer, structured output, 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block polls `GET /agent/runs/{id}` until the run is completed, failed or cancelled, or the timeout (default 900 seconds, up to 10800) passes. The first re-check comes after `check_interval` seconds (default 5) and each gap after that grows by half, up to 30 seconds, so short runs return quickly and long ultra runs are not polled constantly. On timeout the block does not fail: it returns the run's current state with `timed_out` true and charges nothing, and the run keeps going on Exa.
+This block polls `GET /agent/runs/{id}` until the run is completed, failed or cancelled, or the timeout (default 900 seconds, up to 10800) passes. The first re-check comes after `check_interval` seconds (default 5) and each gap after that grows by half, up to 30 seconds, so short runs return quickly and long ultra runs are not polled constantly. On timeout the block does not fail: it returns the run's current state with `timed_out` true, and the run keeps going on Exa.
 
-When the run has finished, the block charges the run's total cost as reported by Exa, unless another block has already charged you for that run; each run is billed once, whichever block sees it finish first. A failed run does not fail the block; `failure_reason` explains why it failed.
+When the run has finished, the block returns its total cost as reported by Exa. The block only runs on your own Exa API key, so Exa bills the run to your own Exa account and the platform charges no credits. A failed run does not fail the block; `failure_reason` explains why it failed.
 <!-- END MANUAL -->
 
 ### Inputs

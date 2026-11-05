@@ -118,7 +118,7 @@ This block pages through the webset's items and returns up to `max_items` (1-100
 | error | Error message if the operation failed | str |
 | export_data | Exported data in the requested format | str |
 | item_count | Number of items exported | int |
-| total_items | Total number of items in the webset | int |
+| total_items | Number of items exported (not the size of the webset) | int |
 | truncated | Whether the export was truncated due to max_items limit | bool |
 | format | Format of the exported data | str |
 

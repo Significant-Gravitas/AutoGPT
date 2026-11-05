@@ -32,6 +32,8 @@ FAILURE_REASON_DESCRIPTION = "Why the run failed (only when status is failed)"
 class ExaGetAgentRunBlock(Block):
     """Fetch an Exa Agent run's current status and, once finished, its result."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -94,6 +96,8 @@ class ExaGetAgentRunBlock(Block):
 
 class ExaWaitForAgentRunBlock(Block):
     """Poll an Exa Agent run until it finishes or the timeout passes."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

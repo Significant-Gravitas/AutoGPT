@@ -145,13 +145,18 @@ class WebsetItemModel(BaseModel):
             enrichments=enrichments_dict,
             created_at=item.created_at.isoformat() if item.created_at else "",
             updated_at=item.updated_at.isoformat() if item.updated_at else "",
-            source=str(item.source) if item.source else None,
+            # The SDK's Source is a plain Enum: str() gives 'Source.search'.
+            source=(
+                str(getattr(item.source, "value", item.source)) if item.source else None
+            ),
             source_id=item.source_id,
         )
 
 
 class ExaGetWebsetItemBlock(Block):
     """Get a specific item from a webset by its ID."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -213,6 +218,8 @@ class ExaGetWebsetItemBlock(Block):
 
 class ExaListWebsetItemsBlock(Block):
     """List items in a webset with pagination and optional filtering."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -335,6 +342,8 @@ class ExaListWebsetItemsBlock(Block):
 class ExaDeleteWebsetItemBlock(Block):
     """Delete a specific item from a webset."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -380,6 +389,8 @@ class ExaDeleteWebsetItemBlock(Block):
 
 class ExaBulkWebsetItemsBlock(Block):
     """Get all items from a webset in a single operation (with size limits)."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -467,6 +478,8 @@ class ExaBulkWebsetItemsBlock(Block):
 class ExaWebsetItemsSummaryBlock(ExaWebsetsBlockBase):
     """Get a summary of items in a webset without retrieving all data."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -484,7 +497,7 @@ class ExaWebsetItemsSummaryBlock(ExaWebsetsBlockBase):
 
     class Output(BlockSchemaOutput):
         total_items: int = SchemaField(
-            description="Total number of items in the webset"
+            description="Total number of items found by the webset's searches (imported items are not counted)"
         )
         entity_type: str = SchemaField(description="Type of entities in the webset")
         sample_items: list[WebsetItemModel] = SchemaField(
@@ -535,6 +548,8 @@ class ExaWebsetItemsSummaryBlock(ExaWebsetsBlockBase):
 
 class ExaGetNewItemsBlock(Block):
     """Get items added to a webset since a specific cursor (incremental processing helper)."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

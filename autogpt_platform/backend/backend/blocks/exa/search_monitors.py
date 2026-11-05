@@ -62,6 +62,8 @@ OUTPUT_SCHEMA_HELP = (
 class ExaCreateSearchMonitorBlock(SearchMonitorApiMixin, Block):
     """Create a Search Monitor that runs an Exa search on a schedule."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."

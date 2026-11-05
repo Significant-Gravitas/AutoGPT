@@ -74,6 +74,11 @@ class TestWebsetWebhookBlock:
         assert outputs["event_type"] == "import.completed"
         assert outputs["webset_id"] == "webset_1"
 
+    async def test_events_whose_data_is_not_an_object_are_skipped(self):
+        for data in (["not", "an", "object"], "text"):
+            outputs = await _run_webset({**EXAMPLE_ITEM_CREATED_EVENT, "data": data})
+            assert outputs == {}
+
     async def test_disabled_events_are_skipped(self):
         payload = {**EXAMPLE_ITEM_CREATED_EVENT, "type": "webset.deleted"}
         outputs = await _run_webset(payload)

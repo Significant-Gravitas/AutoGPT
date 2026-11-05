@@ -55,6 +55,8 @@ def _cursor_field() -> str | None:
 class ExaListAgentRunsBlock(Block):
     """List your team's Exa Agent runs, newest first."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = _credentials_field()
         limit: int = _limit_field("runs")
@@ -112,6 +114,8 @@ class ExaListAgentRunsBlock(Block):
 class ExaCancelAgentRunBlock(Block):
     """Cancel a queued or running Exa Agent run, discarding its results."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = _credentials_field()
         run_id: str = _run_id_field("ID of the Exa Agent run to cancel")
@@ -158,6 +162,8 @@ class ExaCancelAgentRunBlock(Block):
 
 class ExaStopAgentRunBlock(Block):
     """Finish an Exa Agent run early and keep what it has found."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = _credentials_field()
@@ -206,6 +212,8 @@ class ExaStopAgentRunBlock(Block):
 class ExaDeleteAgentRunBlock(Block):
     """Permanently delete a stored Exa Agent run."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = _credentials_field()
         run_id: str = _run_id_field("ID of the Exa Agent run to delete")
@@ -246,6 +254,8 @@ class ExaDeleteAgentRunBlock(Block):
 
 class ExaListAgentRunEventsBlock(Block):
     """List the stored lifecycle events of an Exa Agent run."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = _credentials_field()

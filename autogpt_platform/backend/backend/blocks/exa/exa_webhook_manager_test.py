@@ -187,14 +187,25 @@ class TestRegistration:
             )
         exa.assert_not_called()
 
-    async def test_missing_secret_in_response_fails(self):
-        exa = AsyncMock(return_value={"id": "webhook_1", "secret": None})
+    @pytest.mark.parametrize("delete_fails", [False, True])
+    async def test_missing_secret_in_response_fails_and_removes_the_webhook(
+        self, delete_fails
+    ):
+        created = {"id": "webhook_1", "secret": None}
+        exa = AsyncMock(
+            side_effect=[created, RuntimeError("down") if delete_fails else {}]
+        )
         with patch("backend.blocks.exa._webhook.exa_request", exa), pytest.raises(
             ValueError, match="signing secret"
         ):
             await ExaWebhookManager()._register_webhook(
                 TEST_CREDENTIALS, "webset", "", ["item_created"], "u", "s"
             )
+
+        assert exa.call_args.args[1:] == (
+            "DELETE",
+            "https://api.exa.ai/websets/v0/webhooks/webhook_1",
+        )
 
 
 class TestDeregistration:
@@ -326,11 +337,24 @@ class TestSearchMonitorSignature:
     async def test_no_secret_yet_accepts_the_delivery(self, inputs):
         await ExaWebhookManager.verify_signature(_monitor_webhook(inputs), _request({}))
 
-    async def test_conflicting_secrets_are_refused(self):
-        with pytest.raises(HTTPException, match="same webhook secret"):
+    @pytest.mark.parametrize("signing_secret", ["a", "b"])
+    async def test_a_delivery_signed_by_any_monitor_on_the_webhook_passes(
+        self, signing_secret
+    ):
+        # Two monitors' triggers share the webhook; each monitor signs with
+        # its own secret.
+        header = f"t={TIMESTAMP},v1={_sign(BODY, secret=signing_secret)}"
+        await ExaWebhookManager.verify_signature(
+            _monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
+            _request({"Exa-Signature": header}),
+        )
+
+    async def test_a_delivery_signed_by_no_monitor_on_the_webhook_is_refused(self):
+        header = f"t={TIMESTAMP},v1={_sign(BODY, secret='other')}"
+        with pytest.raises(HTTPException, match="Invalid webhook signature"):
             await ExaWebhookManager.verify_signature(
                 _monitor_webhook({"webhook_secret": "a"}, {"webhook_secret": "b"}),
-                _request({}),
+                _request({"Exa-Signature": header}),
             )
 
 

@@ -47,6 +47,8 @@ _EVENTS_HELP = (
 class ExaCreateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     """Subscribe a URL to Websets events."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -119,6 +121,8 @@ class ExaCreateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
 class ExaGetWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     """Fetch a Websets webhook (its secret is never returned again)."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -176,6 +180,8 @@ class ExaGetWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
 
 class ExaUpdateWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     """Change a Websets webhook's URL, events or metadata."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -248,7 +254,9 @@ def build_update_body(input_data: ExaUpdateWebsetWebhookBlock.Input) -> dict[str
         body["url"] = input_data.url.strip()
     if input_data.events:
         body["events"] = event_type_values(input_data.events)
-    if input_data.metadata is not None:
+    # An empty mapping is what the builder sends for an untouched field, so it
+    # keeps the metadata rather than clearing it.
+    if input_data.metadata:
         body["metadata"] = input_data.metadata
     if not body:
         raise ValueError("Nothing to update: set a URL, events or metadata")
@@ -257,6 +265,8 @@ def build_update_body(input_data: ExaUpdateWebsetWebhookBlock.Input) -> dict[str
 
 class ExaDeleteWebsetWebhookBlock(WebsetsTeamApiMixin, Block):
     """Delete a Websets webhook, stopping its deliveries."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

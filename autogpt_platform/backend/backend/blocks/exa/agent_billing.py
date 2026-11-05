@@ -1,12 +1,16 @@
 """
-Bill each Exa Agent run exactly once, whichever block first sees it finish.
+Record each Exa Agent run's cost exactly once, whichever block first sees it finish.
 
 Several blocks can see the same finished run: Exa Agent (when it waits), Wait,
-Get, Cancel and Stop, and the legacy Research blocks. Billing in each of them
-would charge a workflow that waits and then reads a run twice. Billing in only
-some would leave a run started without waiting, and read with Get, never paid
-for. So every one of them bills a finished run, and a per-user claim on the run
-ID makes only the first one count.
+Get, Cancel and Stop, and the legacy Research blocks. Recording the cost in
+each of them would count a workflow that waits and then reads a run twice, so
+a per-user claim on the run ID makes only the first one count.
+
+All of these blocks refuse the platform's shared Exa key, so runs only happen
+on the user's own key, and a run on the user's own key is never charged
+credits: the Exa base cost only applies to the platform's keys. What is
+recorded is the Exa-reported cost in the node's execution stats. The claim
+keeps that figure from being counted twice; it does not guard a charge.
 """
 
 import logging
@@ -42,10 +46,11 @@ async def bill_finished_run(block: Block, run: AgentRun, user_id: str) -> None:
 
 
 async def claim_run_billing(user_id: str, run_id: str) -> bool:
-    """Claim the right to bill ``run_id`` for ``user_id``; False if already claimed.
+    """Claim ``run_id``'s cost for ``user_id``; False if already claimed.
 
-    If Redis can't be reached in time the run is billed anyway: a rare double
-    charge is better than letting runs on the platform key go unpaid.
+    If Redis can't be reached in time the cost is recorded anyway: the figure
+    is only reported, so counting it twice now and then is better than
+    leaving it out.
     """
     key = f"{BILLED_KEY_PREFIX}:{user_id}:{run_id}"
     try:
@@ -60,7 +65,7 @@ async def claim_run_billing(user_id: str, run_id: str) -> bool:
         TimeoutError,
     ) as exc:
         logger.warning(
-            f"Could not check whether Exa Agent run {run_id} was already billed, "
-            f"billing it: {exc}"
+            f"Could not check whether Exa Agent run {run_id}'s cost was already "
+            f"recorded, recording it: {exc}"
         )
         return True

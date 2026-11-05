@@ -27,6 +27,8 @@ from .websets_fixtures import sample_team
 class ExaGetWebsetsTeamInfoBlock(ExaWebsetsBlockBase):
     """Get the team's current Websets concurrency usage and limits."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."

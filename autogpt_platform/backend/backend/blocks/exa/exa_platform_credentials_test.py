@@ -4,7 +4,9 @@ Websets, their searches, items, enrichments, monitors and imports, research
 tasks and webhooks all live in the Exa account behind the key, so these blocks
 only run on the user's own Exa key. Every module in ``backend.blocks.exa`` is
 searched for blocks, so a block added later must either refuse the platform's
-key or be named in ``STATELESS_BLOCKS``. Blocks with no credentials input
+key (and set ``refuses_platform_credentials``, which graph validation reads) or
+be named in ``STATELESS_BLOCKS``. Preview Webset refuses only when it is asked
+for sample items, which run a real search. Blocks with no credentials input
 (manual webhook triggers) hold no key, so there is nothing to refuse.
 """
 
@@ -22,6 +24,7 @@ from pydantic import SecretStr
 
 from backend.blocks._base import Block
 from backend.blocks.exa._webhook import ExaWebhookManager
+from backend.blocks.exa.websets import ExaPreviewWebsetBlock
 from backend.data.integrations import Webhook
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.credentials_store import exa_credentials
@@ -169,13 +172,56 @@ async def test_stateful_block_runs_on_users_own_key(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("credentials", PLATFORM_KEYS, ids=lambda c: c.id)
 @pytest.mark.parametrize("block_cls", STATELESS_BLOCK_CLASSES, ids=lambda c: c.__name__)
 async def test_stateless_block_still_runs_on_platform_key(
-    block_cls: type[Block], credentials: Credentials, vendor: list[MagicMock]
+    block_cls: type[Block], vendor: list[MagicMock]
+):
+    # The "Use Credits for Exa search" system credential is the platform key a
+    # run actually gets: exa-default is refused before any block runs, since
+    # Exa isn't in RUNNABLE_SDK_DEFAULT_PROVIDERS.
+    with pytest.raises(ReachedVendor):
+        await _run(block_cls(), exa_credentials)
+
+
+@pytest.mark.parametrize("block_cls", ALL_BLOCKS, ids=lambda c: c.__name__)
+def test_marker_matches_the_run_time_refusal(block_cls: type[Block]):
+    # Graph validation and the builder read the marker; run() refuses. They
+    # must agree, or a graph would pass validation only to fail at the node.
+    assert block_cls.refuses_platform_credentials == (block_cls in STATEFUL_BLOCKS)
+    block = block_cls()
+    defaults = dict(_sample_input(block))
+    assert block.refuses_platform_credentials_for(defaults) == (
+        block_cls in STATEFUL_BLOCKS
+    )
+
+
+def test_preview_refuses_platform_keys_only_with_sample_items():
+    block = ExaPreviewWebsetBlock()
+    assert not block.refuses_platform_credentials_for({"query": "q"})
+    assert block.refuses_platform_credentials_for(
+        {"query": "q", "include_sample_items": True}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("credentials", PLATFORM_KEYS, ids=lambda c: c.id)
+async def test_preview_with_sample_items_refuses_platform_key(
+    credentials: Credentials, vendor: list[MagicMock]
+):
+    # Sample items run a real Websets search, and the preview response has no
+    # cost to bill, so the shared key would pay for it with nothing charged.
+    with pytest.raises(BlockExecutionError, match="platform's shared Exa key"):
+        await _run(ExaPreviewWebsetBlock(), credentials, include_sample_items=True)
+
+    assert not any(mock.called for mock in vendor)
+
+
+@pytest.mark.asyncio
+async def test_preview_with_sample_items_runs_on_users_own_key(
+    vendor: list[MagicMock],
 ):
     with pytest.raises(ReachedVendor):
-        await _run(block_cls(), credentials)
+        await _run(ExaPreviewWebsetBlock(), USER_OWNED, include_sample_items=True)
 
 
 @pytest.mark.asyncio

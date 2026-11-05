@@ -194,6 +194,12 @@ class TestListAndBatch:
             ("metadata[team]", "r&d"),
         ]
 
+    def test_an_empty_metadata_value_is_still_a_filter(self):
+        params = list_params(
+            ExaListSearchMonitorsBlock.Input(**CREDS, metadata={"team": ""})
+        )
+        assert ("metadata[team]", "") in params
+
     def test_batch_requires_a_filter(self):
         with pytest.raises(ValueError, match="filter"):
             batch_body(

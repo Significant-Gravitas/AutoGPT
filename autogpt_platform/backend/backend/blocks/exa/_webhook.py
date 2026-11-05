@@ -136,8 +136,8 @@ class ExaWebhookManager(BaseWebhooksManager):
         cls, webhook: WebhookWithRelations, request: Request
     ) -> None:
         if webhook.webhook_type == cls.WebhookType.SEARCH_MONITOR:
-            secret = _search_monitor_secret(webhook)
-            if not secret:
+            secrets = _search_monitor_secrets(webhook)
+            if not secrets:
                 # The secret only exists once the monitor has been created, so
                 # until it is pasted into the block the URL is the only
                 # credential, as for the platform's other manual webhooks.
@@ -150,8 +150,9 @@ class ExaWebhookManager(BaseWebhooksManager):
                     detail="Webhook is missing its Exa signing secret; "
                     "re-register the webhook",
                 )
+            secrets = [secret]
         verify_exa_signature(
-            secret, request.headers.get(SIGNATURE_HEADER), await request.body()
+            secrets, request.headers.get(SIGNATURE_HEADER), await request.body()
         )
 
     @classmethod
@@ -206,6 +207,9 @@ class ExaWebhookManager(BaseWebhooksManager):
         )
         exa_secret = webhook_data.get("secret")
         if not exa_secret:
+            # The webhook exists at Exa, but nothing here records its ID, so
+            # remove it rather than leave it delivering to the user's account.
+            await _delete_unusable_webhook(credentials, webhook_data.get("id"))
             raise ValueError("Exa did not return a signing secret for the webhook")
         return webhook_data["id"], {
             "events": exa_events,
@@ -233,10 +237,33 @@ class ExaWebhookManager(BaseWebhooksManager):
                 raise
 
 
-def verify_exa_signature(
-    secret: str, signature_header: str | None, body: bytes
+async def _delete_unusable_webhook(
+    credentials: APIKeyCredentials, exa_webhook_id: str | None
 ) -> None:
-    """Raise 403 unless ``signature_header`` signs ``body`` with ``secret``."""
+    """Best-effort delete of a webhook Exa created that can't be used."""
+    if not exa_webhook_id:
+        return
+    try:
+        await exa_request(
+            credentials,
+            "DELETE",
+            f"{WEBSETS_API_BASE}/webhooks/{path_segment(exa_webhook_id)}",
+        )
+    except Exception:
+        logger.warning(
+            "Could not delete Exa webhook %s that came back without a signing "
+            "secret",
+            exa_webhook_id,
+            exc_info=True,
+        )
+
+
+def verify_exa_signature(
+    secrets: str | list[str], signature_header: str | None, body: bytes
+) -> None:
+    """Raise 403 unless ``signature_header`` signs ``body`` with one of ``secrets``."""
+    if isinstance(secrets, str):
+        secrets = [secrets]
     if not signature_header:
         raise HTTPException(
             status_code=403, detail=f"Missing {SIGNATURE_HEADER} header"
@@ -257,18 +284,26 @@ def verify_exa_signature(
         )
 
     signed_payload = f"{timestamp}.".encode() + body
-    expected = hmac.new(secret.encode(), signed_payload, hashlib.sha256).hexdigest()
+    expected = [
+        hmac.new(secret.encode(), signed_payload, hashlib.sha256).hexdigest()
+        for secret in secrets
+    ]
     # Compare as bytes: compare_digest raises TypeError on non-ASCII str input,
     # which would surface as a 500 instead of a 403.
     if not any(
-        hmac.compare_digest(expected.encode(), sig.encode("utf-8", "ignore"))
+        hmac.compare_digest(digest.encode(), sig.encode("utf-8", "ignore"))
+        for digest in expected
         for sig in provided_signatures
     ):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
 
-def _search_monitor_secret(webhook: WebhookWithRelations) -> str | None:
-    """Return the monitor secret set on the nodes/presets using this webhook."""
+def _search_monitor_secrets(webhook: WebhookWithRelations) -> list[str]:
+    """Every monitor secret set on the nodes/presets using this webhook.
+
+    Triggers for different monitors can share one webhook, each with its own
+    monitor's secret, so a delivery signed with any of them is authentic.
+    """
     sources = [node.input_default for node in webhook.triggered_nodes] + [
         preset.inputs for preset in webhook.triggered_presets
     ]
@@ -279,21 +314,7 @@ def _search_monitor_secret(webhook: WebhookWithRelations) -> str | None:
         )
         if secret
     }
-    if len(found) > 1:
-        # Only one signature can be checked; picking one would make
-        # verification depend on node order, so refuse instead.
-        logger.warning(
-            "Exa webhook %s has %d distinct webhook secrets across its targets; "
-            "refusing the delivery.",
-            webhook.id,
-            len(found),
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="All Exa Search Monitor triggers sharing this webhook must "
-            "use the same webhook secret",
-        )
-    return next(iter(found), None)
+    return sorted(found)
 
 
 def _read_secret(raw: object) -> str | None:

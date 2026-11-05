@@ -33,6 +33,8 @@ _SAMPLE_MODEL = SearchMonitorModel.from_api(SAMPLE_MONITOR)
 class ExaGetSearchMonitorBlock(SearchMonitorApiMixin, Block):
     """Fetch one Search Monitor's configuration and schedule."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -90,6 +92,8 @@ class ExaGetSearchMonitorBlock(SearchMonitorApiMixin, Block):
 
 class ExaListSearchMonitorsBlock(SearchMonitorApiMixin, Block):
     """List the team's Search Monitors, optionally filtered."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -177,13 +181,18 @@ def list_params(input_data: ExaListSearchMonitorsBlock.Input) -> QueryParams:
     add_param(params, "name", input_data.name)
     add_param(params, "limit", input_data.limit)
     add_param(params, "cursor", input_data.cursor)
-    for key, value in input_data.metadata.items():
-        add_param(params, f"metadata[{key}]", value)
+    # Appended directly: an empty value is a filter too, which add_param drops.
+    params.extend(
+        (f"metadata[{key}]", "" if value is None else str(value))
+        for key, value in input_data.metadata.items()
+    )
     return params
 
 
 class ExaDeleteSearchMonitorBlock(SearchMonitorApiMixin, Block):
     """Permanently delete a Search Monitor."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

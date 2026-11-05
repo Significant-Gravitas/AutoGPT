@@ -14,8 +14,7 @@ from pydantic import BaseModel
 
 from backend.sdk import SchemaField
 
-from ._exa_rest import EXA_API_BASE
-from ._platform_key import TeamScopedExaMixin
+from ._exa_rest import EXA_API_BASE, ExaRestMixin
 from .helpers import ContentSettings, process_contents_settings
 
 MONITORS_URL = f"{EXA_API_BASE}/monitors"
@@ -258,7 +257,8 @@ def build_webhook(
     return webhook
 
 
-class SearchMonitorApiMixin(TeamScopedExaMixin):
-    """Exa calls for Exa Search Monitors, which act on the whole Exa team."""
+class SearchMonitorApiMixin(ExaRestMixin):
+    """Exa calls for Exa Search Monitors, which act on the whole Exa team.
 
-    TEAM_SCOPED_FEATURE = "Exa Search Monitors"
+    Every block using it refuses the platform's shared key in ``run``.
+    """

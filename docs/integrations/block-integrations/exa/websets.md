@@ -284,7 +284,7 @@ Preview how a search query will be interpreted before creating a webset. Helps u
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends your query to `POST /v0/websets/preview` and shows how Exa will interpret it before you create a webset: the detected (or forced) entity type, the criteria Exa would generate, and the enrichment columns it detects. A 'custom' entity type needs a 2-200 character description. Turn on `include_sample_items` to also get up to `sample_count` (1-10) matching items; this runs a real search and uses Websets credits.
+This block sends your query to `POST /v0/websets/preview` and shows how Exa will interpret it before you create a webset: the detected (or forced) entity type, the criteria Exa would generate, and the enrichment columns it detects. A 'custom' entity type needs a 2-200 character description. Turn on `include_sample_items` to also get up to `sample_count` (1-10) matching items; this runs a real search and uses Websets credits, so it needs your own Exa API key and fails with a clear message on the platform's shared Exa key. A plain preview works on either key.
 
 The `interpretation` sentence and `suggestions` are written by the block from the number of criteria and columns, not by Exa: it suggests adding criteria when none were generated and naming the data points you want when no columns were detected. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
@@ -296,7 +296,7 @@ The `interpretation` sentence and `suggestions` are written by the block from th
 | query | Your search query to preview. Use this to see how Exa will interpret your search before creating a webset. | str | Yes |
 | entity_type | Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect. | "company" \| "person" \| "article" \| "research_paper" \| "custom" \| "auto" | No |
 | entity_description | Description for custom entity type (2-200 characters, required when entity_type is 'custom') | str | No |
-| include_sample_items | Also search for a few matching items and return them in 'items'. This runs a real search and uses Websets credits. | bool | No |
+| include_sample_items | Also search for a few matching items and return them in 'items'. This runs a real search and uses Websets credits, so it needs your own Exa API key. | bool | No |
 | sample_count | How many sample items to return when 'include sample items' is on (1-10) | int | No |
 
 ### Outputs
@@ -342,7 +342,7 @@ This operation does not affect the webset's items, searches, or enrichments. It 
 |-------|-------------|------|----------|
 | webset_id | The ID or external ID of the Webset to update | str | Yes |
 | title | New name for the webset. Leave empty to keep the current one. | str | No |
-| metadata | Key-value pairs to associate with this webset (set to null to clear) | Dict[str, Any] | No |
+| metadata | Key-value pairs to store on this webset, replacing the current ones. Leave empty to keep the current metadata. | Dict[str, Any] | No |
 
 ### Outputs
 
@@ -482,7 +482,7 @@ This block reads the webset and, when `include_sample_items` is on, fetches its 
 | webset_id | The webset identifier | str |
 | status | Current status | str |
 | entity_type | Type of entities in the webset | str |
-| total_items | Total number of items | int |
+| total_items | Number of sample items returned (not the size of the webset) | int |
 | sample_items | Sample items from the webset | List[Dict[str, Any]] |
 | search_summary | Summary of searches performed | SearchSummaryModel |
 | enrichment_summary | Summary of enrichments applied | EnrichmentSummaryModel |

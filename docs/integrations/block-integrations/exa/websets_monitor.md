@@ -190,7 +190,7 @@ Update a monitor's status, schedule, search settings or metadata
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends a PATCH with only the inputs you set. Status 'enabled' or 'disabled' turns scheduled runs on or off; the legacy 'paused' is sent as 'disabled'. A new timezone must come with the cron expression, and changing any search setting (query, criteria, behavior or entity) needs `search_count` too, because Exa requires it whenever the search is updated; otherwise the block fails before calling Exa.
+This block sends a PATCH with only the inputs you set. Status 'enabled' or 'disabled' turns scheduled runs on or off; the legacy 'paused' is sent as 'disabled'. A new timezone must come with the cron expression, and changing any search setting (query, criteria, behavior, entity type or entity description) needs `search_count` too, an entity description is only sent with entity type 'custom', because Exa requires it whenever the search is updated; otherwise the block fails before calling Exa.
 
 Search settings left empty reuse the webset's last search. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->

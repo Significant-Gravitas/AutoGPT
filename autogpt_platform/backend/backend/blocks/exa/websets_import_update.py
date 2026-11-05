@@ -29,6 +29,8 @@ from .websets_import_export import ImportModel
 class ExaUpdateImportBlock(ExaWebsetsBlockBase):
     """Rename an import or replace its metadata."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."

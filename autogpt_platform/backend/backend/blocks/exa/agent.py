@@ -76,6 +76,8 @@ class AgentRunOutputs(BlockSchemaOutput):
 class ExaAgentRunBlock(Block):
     """Start an Exa Agent run and (by default) wait for its result."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -184,7 +186,7 @@ class ExaAgentRunBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaAgentRunBlock.Input,
             output_schema=ExaAgentRunBlock.Output,
-            effect=BlockEffect.READ,
+            effect=BlockEffect.EXTERNAL_JUDGED,
             display_name="Exa Agent",
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,

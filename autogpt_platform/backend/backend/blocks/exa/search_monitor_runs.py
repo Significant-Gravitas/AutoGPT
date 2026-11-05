@@ -35,6 +35,8 @@ _SAMPLE_RUN_MODEL = SearchMonitorRunModel.from_api(SAMPLE_RUN)
 class ExaTriggerSearchMonitorBlock(SearchMonitorApiMixin, Block):
     """Start a Search Monitor run now, outside its schedule."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -82,6 +84,8 @@ class ExaTriggerSearchMonitorBlock(SearchMonitorApiMixin, Block):
 
 class ExaListSearchMonitorRunsBlock(SearchMonitorApiMixin, Block):
     """List a Search Monitor's runs, newest first."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -162,6 +166,8 @@ class ExaListSearchMonitorRunsBlock(SearchMonitorApiMixin, Block):
 
 class ExaGetSearchMonitorRunBlock(SearchMonitorApiMixin, Block):
     """Get one Search Monitor run, including its output once completed."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

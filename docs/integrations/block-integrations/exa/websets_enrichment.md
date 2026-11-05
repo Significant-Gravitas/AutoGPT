@@ -50,7 +50,7 @@ Create enrichments to extract additional structured data from webset items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an enrichment that has Exa's AI extract one value per webset item from your description, in the chosen format (text, date, number, options, email, phone or url). Exa runs it on all existing items and on items added later. Options (1-150 labels) are only sent when the format is 'options', and more than 150 fails before calling Exa. The `title` input is not part of Exa's current API; Exa generates the title from the description and format.
+This block creates an enrichment that has Exa's AI extract one value per webset item from your description, in the chosen format (text, date, number, options, email, phone or url). Exa runs it on all existing items and on items added later. Options (1-150 labels) are only sent when the format is 'options', and more than 150 fails before calling Exa. The `title` input is not part of Exa's current API: the block sends it as-is when set, but Exa may ignore it and generate the title from the description and format.
 
 With `wait_for_completion` and `apply_to_existing` both on, the block polls the enrichment (every 5 seconds, backing off to 30) until it is completed, canceled or failed, for up to `polling_timeout` seconds (default 300, max 600). `items_enriched` is then an estimate taken from the number of items the webset's searches found. On timeout the block returns the status from creation and `items_enriched` 0 instead of failing. `apply_to_existing` only controls this waiting and cannot stop Exa enriching existing items. It charges only if Exa's response reports a cost (150 credits per USD).
 <!-- END MANUAL -->
@@ -81,8 +81,8 @@ With `wait_for_completion` and `apply_to_existing` both on, the block polls the 
 | description | Description of what data is extracted | str |
 | format | Format of the extracted data | str |
 | instructions | Generated instructions for the enrichment | str |
-| items_enriched | Number of items enriched (if wait_for_completion was True) | int |
-| completion_time | Time taken to complete in seconds (if wait_for_completion was True) | float |
+| items_enriched | Number of items enriched (if wait_for_completion and apply_to_existing were both True) | int |
+| completion_time | Time taken to complete in seconds (if wait_for_completion and apply_to_existing were both True) | float |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

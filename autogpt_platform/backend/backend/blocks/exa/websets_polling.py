@@ -64,6 +64,8 @@ IDLE_TARGETS = (
 class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
     """Wait for a webset to reach a specific status with progress tracking."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -167,7 +169,8 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
                 return webset, False
             await sleep(interval)
             interval = min(interval * 1.5, input_data.max_interval)
-        return await self._get_webset(credentials, input_data.webset_id), True
+        webset = await self._get_webset(credentials, input_data.webset_id)
+        return webset, webset.status != input_data.target_status.value
 
     def _extract_search_progress(self, webset_data: dict) -> dict:
         """Extract search progress information from webset data."""
@@ -207,6 +210,8 @@ class ExaWaitForWebsetBlock(ExaWebsetsBlockBase):
 
 class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
     """Wait for a specific webset search to complete with progress tracking."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -308,6 +313,8 @@ class ExaWaitForSearchBlock(ExaWebsetsBlockBase):
 
 class ExaWaitForEnrichmentBlock(Block):
     """Wait for a webset enrichment to complete with progress tracking."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

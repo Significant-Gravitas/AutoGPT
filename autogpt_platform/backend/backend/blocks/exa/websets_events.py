@@ -39,6 +39,8 @@ _SAMPLE_EVENT_MODEL = WebsetEventModel.from_api(SAMPLE_EVENT)
 class ExaListWebsetEventsBlock(WebsetsTeamApiMixin, Block):
     """List Websets events, newest first, with type and date filters."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -141,6 +143,8 @@ def iso_utc(value: datetime | None) -> str | None:
 
 class ExaGetWebsetEventBlock(WebsetsTeamApiMixin, Block):
     """Fetch one Websets event by ID."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

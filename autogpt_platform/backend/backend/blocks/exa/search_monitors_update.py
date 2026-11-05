@@ -38,6 +38,8 @@ from .search_monitors_models import (
 class ExaUpdateSearchMonitorBlock(SearchMonitorApiMixin, Block):
     """Change a Search Monitor's search, schedule, output, webhook or status."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."

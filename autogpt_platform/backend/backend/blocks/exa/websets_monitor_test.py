@@ -112,6 +112,14 @@ async def test_update_monitor_maps_paused_and_sends_cadence_and_search():
     [
         ({"timezone": "Europe/Paris"}, "cron expression"),
         ({"search_query": "New AI startups"}, "search count"),
+        (
+            {"entity_type": "custom", "entity_description": "Open-source LLM repos"},
+            "search count",
+        ),
+        (
+            {"entity_description": "Open-source LLM repos", "search_count": 5},
+            "entity type 'custom'",
+        ),
     ],
 )
 async def test_update_monitor_rejects_incomplete_changes(inputs, message):

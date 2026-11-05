@@ -64,6 +64,8 @@ BEHAVIOR_DESCRIPTION = (
 class ExaCreateWebsetSearchBlock(ExaWebsetsBlockBase):
     """Add a new search to an existing webset."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -314,6 +316,8 @@ def _expected_results(recall: dict[str, Any] | None) -> dict[str, Any]:
 class ExaGetWebsetSearchBlock(ExaWebsetsBlockBase):
     """Get the status and details of a webset search."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -413,6 +417,8 @@ class ExaGetWebsetSearchBlock(ExaWebsetsBlockBase):
 class ExaCancelWebsetSearchBlock(ExaWebsetsBlockBase):
     """Cancel a running webset search."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -466,6 +472,8 @@ class ExaCancelWebsetSearchBlock(ExaWebsetsBlockBase):
 
 class ExaFindOrCreateSearchBlock(ExaWebsetsBlockBase):
     """Find existing search by query or create new one (prevents duplicate searches)."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

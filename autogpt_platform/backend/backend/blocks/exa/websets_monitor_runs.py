@@ -63,6 +63,8 @@ class WebsetMonitorRunModel(BaseModel):
 class ExaListWebsetMonitorRunsBlock(ExaWebsetsBlockBase):
     """List the runs of a Websets monitor."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -132,6 +134,8 @@ class ExaListWebsetMonitorRunsBlock(ExaWebsetsBlockBase):
 
 class ExaGetWebsetMonitorRunBlock(ExaWebsetsBlockBase):
     """Get one run of a Websets monitor."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

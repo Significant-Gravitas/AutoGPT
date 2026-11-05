@@ -8,8 +8,7 @@ from pydantic import BaseModel
 
 from backend.sdk import SchemaField
 
-from ._exa_rest import WEBSETS_API_BASE
-from ._platform_key import TeamScopedExaMixin
+from ._exa_rest import WEBSETS_API_BASE, ExaRestMixin
 from ._webhook import LEGACY_EVENT_TYPES, ExaEventType
 
 WEBHOOKS_URL = f"{WEBSETS_API_BASE}/webhooks"
@@ -107,7 +106,8 @@ def event_type_values(events: list[ExaEventType]) -> list[str]:
     return [event.value for event in events]
 
 
-class WebsetsTeamApiMixin(TeamScopedExaMixin):
-    """Exa calls for Exa Websets webhooks and events, which act on the whole Exa team."""
+class WebsetsTeamApiMixin(ExaRestMixin):
+    """Exa calls for Exa Websets webhooks and events, which act on the whole Exa team.
 
-    TEAM_SCOPED_FEATURE = "Exa Websets webhooks and events"
+    Every block using it refuses the platform's shared key in ``run``.
+    """

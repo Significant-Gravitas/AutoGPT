@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.blocks.exa._exa_rest import ExaApiError
+from backend.blocks.exa._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.exa.websets import (
     ExaCreateOrFindWebsetBlock,
     ExaCreateWebsetBlock,
@@ -123,6 +124,43 @@ async def test_create_or_find_creates_only_on_404():
 
 
 @pytest.mark.asyncio
+async def test_create_or_find_returns_the_webset_a_concurrent_run_created():
+    block = ExaCreateOrFindWebsetBlock()
+    api = _api(
+        ExaApiError("not found", 404),
+        ExaApiError("externalId already exists", 409),
+        sample_webset(externalId="e1"),
+    )
+    with patch.object(block, "_api", api):
+        outputs = dict(await collect_outputs(block, external_id="e1"))
+
+    assert outputs["was_created"] is False
+    assert outputs["webset"].external_id == "e1"
+    assert api.call_args_list[2].args[1:3] == ("GET", "/websets/e1")
+
+
+@pytest.mark.asyncio
+async def test_create_webset_hands_over_its_id_even_when_the_wait_times_out():
+    block = ExaCreateWebsetBlock()
+    outputs = []
+    with (
+        patch.object(block, "_api", _api(sample_webset(status="pending"))),
+        patch.object(block, "_wait_until_idle", AsyncMock(side_effect=TimeoutError)),
+        pytest.raises(TimeoutError),
+    ):
+        async for name, value in block.run(
+            block.input_schema(
+                credentials=TEST_CREDENTIALS_INPUT, search_query="AI startups"
+            ),
+            credentials=TEST_CREDENTIALS,
+        ):
+            outputs.append((name, value))
+
+    assert [name for name, _ in outputs] == ["webset"]
+    assert outputs[0][1].id == WEBSET_ID
+
+
+@pytest.mark.asyncio
 async def test_create_or_find_propagates_other_errors():
     block = ExaCreateOrFindWebsetBlock()
     with patch.object(block, "_api", _api(ExaApiError("bad key", 401))), pytest.raises(
@@ -235,3 +273,28 @@ async def test_summary_reads_monitor_next_run():
     assert outputs["monitor_summary"].next_run.isoformat().startswith("2024-02-01")
     assert outputs["sample_items"] == [{"id": "item_1"}]
     assert outputs["entity_type"] == "company"
+
+
+@pytest.mark.asyncio
+async def test_summary_average_ignores_hidden_search_details():
+    block = ExaWebsetSummaryBlock()
+    api = _api(sample_webset(), {"data": []})
+    with patch.object(block, "_api", api):
+        outputs = dict(
+            await collect_outputs(
+                block, webset_id=WEBSET_ID, include_search_details=False
+            )
+        )
+
+    assert outputs["search_summary"].total_items_found == 0
+    assert outputs["statistics"].avg_items_per_search == 5
+
+
+@pytest.mark.asyncio
+async def test_update_webset_leaves_metadata_alone_when_empty():
+    block = ExaUpdateWebsetBlock()
+    api = _api(sample_webset(title="Renamed"))
+    with patch.object(block, "_api", api):
+        await collect_outputs(block, webset_id=WEBSET_ID, title="Renamed", metadata={})
+
+    assert api.call_args.kwargs["json"] == {"title": "Renamed"}

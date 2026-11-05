@@ -92,6 +92,8 @@ class SearchBehavior(str, Enum):
 class ExaCreateMonitorBlock(ExaWebsetsBlockBase):
     """Create a monitor to automatically keep a webset updated on a schedule."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -283,6 +285,8 @@ def search_config_payload(
 class ExaGetMonitorBlock(ExaWebsetsBlockBase):
     """Get the details and status of a monitor."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -350,6 +354,8 @@ class ExaGetMonitorBlock(ExaWebsetsBlockBase):
 
 class ExaUpdateMonitorBlock(ExaWebsetsBlockBase):
     """Update a monitor's configuration."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -473,7 +479,12 @@ def update_monitor_payload(data: ExaUpdateMonitorBlock.Input) -> dict[str, Any]:
         data.search_criteria,
         data.search_behavior,
         data.entity_type,
+        data.entity_description,
     )
+    if data.entity_description and data.entity_type != "custom":
+        raise ValueError(
+            "An entity description is only sent with entity type 'custom'; " "set both."
+        )
     if data.search_count is not None:
         payload["behavior"] = {
             "type": "search",
@@ -498,6 +509,8 @@ def update_monitor_payload(data: ExaUpdateMonitorBlock.Input) -> dict[str, Any]:
 
 class ExaDeleteMonitorBlock(ExaWebsetsBlockBase):
     """Delete a monitor from a webset."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -537,6 +550,8 @@ class ExaDeleteMonitorBlock(ExaWebsetsBlockBase):
 
 class ExaListMonitorsBlock(ExaWebsetsBlockBase):
     """List all monitors with pagination."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

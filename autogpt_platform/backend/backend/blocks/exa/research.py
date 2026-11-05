@@ -68,6 +68,8 @@ _COMPLETED = ResearchTaskModel.from_agent_run(parse_run(SAMPLE_COMPLETED_RUN))
 class ExaCreateResearchBlock(Block):
     """Create a research task (now an Exa Agent run) and optionally wait for it."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -224,6 +226,8 @@ class ExaCreateResearchBlock(Block):
 
 class ExaListResearchBlock(Block):
     """List research tasks (Exa Agent runs) with pagination support."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

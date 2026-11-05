@@ -76,3 +76,9 @@ async def test_list_items_passes_source_filter():
         )
 
     assert list_items.call_args.kwargs["source_id"] == "import_9"
+
+
+def test_item_source_is_the_enum_value():
+    from backend.blocks.exa.websets_items import WebsetItemModel
+
+    assert WebsetItemModel.from_sdk(_item(0)).source == "search"

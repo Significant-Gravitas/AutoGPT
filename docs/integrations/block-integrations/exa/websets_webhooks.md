@@ -127,7 +127,7 @@ Update an Exa Websets webhook's URL, events or metadata
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends a PATCH to the Websets API's `/v0/webhooks/{id}` with only the fields you set; empty fields stay as they are. New events and metadata replace the existing ones rather than adding to them.
+This block sends a PATCH to the Websets API's `/v0/webhooks/{id}` with only the fields you set; empty fields, including empty metadata, stay as they are, so metadata can't be cleared here. New events and metadata replace the existing ones rather than adding to them.
 
 If no URL, events or metadata is set, the block fails before calling Exa. Choosing the legacy `import.processing` event also fails; use `import.completed`. It records no Exa cost, so it is not charged. It needs your own Exa API key and fails with a clear message on the platform's shared Exa key, since every user of that key shares one Exa account.
 <!-- END MANUAL -->

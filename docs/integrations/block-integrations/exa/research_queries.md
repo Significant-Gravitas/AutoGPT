@@ -12,7 +12,7 @@ Get status and results of a research task. Legacy: now reads Exa Agent runs; use
 <!-- MANUAL: how_it_works -->
 Exa retired its Research API, so this block now reads the Exa Agent run with the given ID (`GET /agent/runs/{id}`) and returns it in the legacy research shape. Statuses map to pending (queued), running, completed, canceled (cancelled) and failed, and `model` is the legacy name for low, medium and high runs (`exa-research-fast`, `exa-research`, `exa-research-pro`) or the effort name for runs started with other efforts. Once the run has finished, it returns the total cost and the number of searches; Exa Agent reports no pages crawled or reasoning tokens, so `cost_pages` and `cost_reasoning_tokens` are always 0. `output_parsed` is only set when the run produced a JSON object, and for a failed run `error_message` gives Exa's reason.
 
-Once the run has finished, the block charges its total cost, unless another block has already charged you for that run, so polling with it is safe. With include events on, it also reads up to 1,000 stored Exa Agent events (event, data and timestamp), which Exa does not keep for Zero Data Retention teams.
+The block only runs on your own Exa API key, so Exa bills the run to your own Exa account and the platform charges no credits. With include events on, it also reads up to 1,000 stored Exa Agent events (event, data and timestamp), which Exa does not keep for Zero Data Retention teams.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -60,7 +60,7 @@ Wait for a research task to complete with configurable timeout. Legacy: now wait
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Exa retired its Research API, so this block now polls the Exa Agent run with the given ID (`GET /agent/runs/{id}`) every `check_interval` seconds (default 10, fixed rather than growing) until it finishes or the timeout (default 600 seconds, up to 3600) passes. On timeout the block does not fail: it returns the last status with `timed_out` true, charges nothing and the run keeps going on Exa. Once the run finishes, the block charges the run's total cost as reported by Exa, unless another block has already charged you for that run, and returns the text answer, `output_parsed` (only when the run produced a JSON object) and the cost; `final_status` uses the legacy names pending, running, completed, canceled and failed.
+Exa retired its Research API, so this block now polls the Exa Agent run with the given ID (`GET /agent/runs/{id}`) every `check_interval` seconds (default 10, fixed rather than growing) until it finishes or the timeout (default 600 seconds, up to 3600) passes. On timeout the block does not fail: it returns the last status with `timed_out` true and the run keeps going on Exa. Once the run finishes, the block returns the text answer, `output_parsed` (only when the run produced a JSON object) and the cost; `final_status` uses the legacy names pending, running, completed, canceled and failed.
 <!-- END MANUAL -->
 
 ### Inputs

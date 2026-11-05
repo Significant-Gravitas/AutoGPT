@@ -18,6 +18,13 @@ WEBSETS_API_BASE = "https://api.exa.ai/websets/v0"
 
 QueryParams = list[tuple[str, str]]
 
+API_KEY_HEADER = "x-api-key"
+# Reads and deletes are safe to repeat; a retried POST or PATCH could create or
+# change a resource twice when Exa did it but answered with a retryable status.
+IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
+# Attempts for an idempotent request that Exa answers with 429 or a 5xx.
+READ_RETRY_ATTEMPTS = 3
+
 
 class ExaApiError(ValueError):
     """An Exa endpoint answered with a non-2xx status."""
@@ -57,11 +64,17 @@ async def exa_request(
 
     Raises ``ExaApiError`` carrying Exa's own error message on any non-2xx
     response, so the block run fails with something the user can act on.
+    Idempotent requests are retried a bounded number of times on 429 and 5xx;
+    writes are sent once. The API key is dropped on a cross-origin redirect.
     """
-    headers = {"x-api-key": credentials.api_key.get_secret_value()}
-    response = await Requests(raise_for_status=False).request(
-        method, url, headers=headers, json=body, params=params or None
-    )
+    headers = {API_KEY_HEADER: credentials.api_key.get_secret_value()}
+    attempts = READ_RETRY_ATTEMPTS if method.upper() in IDEMPOTENT_METHODS else 1
+    response = await Requests(
+        raise_for_status=False,
+        retry_max_attempts=attempts,
+        # A redirect to another origin must not carry the key along with it.
+        sensitive_headers=(API_KEY_HEADER,),
+    ).request(method, url, headers=headers, json=body, params=params or None)
     if not response.ok:
         raise ExaApiError(
             f"Exa API error ({response.status}): {error_message(response.text())}",

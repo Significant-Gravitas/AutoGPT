@@ -34,6 +34,8 @@ _SAMPLE_ATTEMPT_MODEL = WebhookAttemptModel.from_api(SAMPLE_ATTEMPT)
 class ExaListWebsetWebhooksBlock(WebsetsTeamApiMixin, Block):
     """List the team's active Websets webhooks."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -100,6 +102,8 @@ class ExaListWebsetWebhooksBlock(WebsetsTeamApiMixin, Block):
 
 class ExaListWebsetWebhookAttemptsBlock(WebsetsTeamApiMixin, Block):
     """List a Websets webhook's delivery attempts, newest first."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

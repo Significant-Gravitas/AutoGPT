@@ -238,7 +238,7 @@ Use this to understand webset contents at a glance, check enrichment availabilit
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| total_items | Total number of items in the webset | int |
+| total_items | Total number of items found by the webset's searches (imported items are not counted) | int |
 | entity_type | Type of entities in the webset | str |
 | sample_items | Sample of items from the webset | List[WebsetItemModel] |
 | enrichment_columns | List of enrichment columns available | List[str] |

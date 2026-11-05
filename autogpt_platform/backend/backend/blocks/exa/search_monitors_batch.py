@@ -37,6 +37,8 @@ class SearchMonitorBatchAction(str, Enum):
 class ExaBatchSearchMonitorsBlock(SearchMonitorApiMixin, Block):
     """Delete, pause or unpause every Search Monitor matching a filter."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."

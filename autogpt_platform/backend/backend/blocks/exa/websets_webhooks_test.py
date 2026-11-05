@@ -86,6 +86,10 @@ class TestUpdateWebhook:
         with pytest.raises(ValueError, match="Nothing to update"):
             build_update_body(self._input(url="  "))
 
+    def test_empty_metadata_keeps_the_existing_metadata(self):
+        body = build_update_body(self._input(url="https://example.com", metadata={}))
+        assert body == {"url": "https://example.com"}
+
 
 class TestAttempts:
     def test_filters_become_query_params(self):

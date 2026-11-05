@@ -4,6 +4,7 @@ Exa Webhook Blocks
 These blocks handle webhook events from Exa's API for websets and other events.
 """
 
+import logging
 from typing import Any
 
 from backend.blocks._platform_credentials import refuse_platform_credentials
@@ -26,6 +27,8 @@ from backend.sdk import (
 from ._config import exa
 from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from ._webhook import ExaWebhookManager, filter_field_for
+
+logger = logging.getLogger(__name__)
 
 
 class WebsetEventFilter(BaseModel):
@@ -132,6 +135,8 @@ class ExaWebsetWebhookBlock(Block):
     always pass through.
     """
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="Exa API credentials for webhook management"
@@ -219,7 +224,16 @@ class ExaWebsetWebhookBlock(Block):
         if not self._should_process_event(event_type, input_data.event_filter):
             return
 
-        event_data: dict[str, Any] = payload.get("data") or {}
+        event_data = payload.get("data") or {}
+        if not isinstance(event_data, dict):
+            # Exa always sends an object here; skip anything else rather than
+            # fail the run on it.
+            logger.warning(
+                "Skipping Exa %s event whose data is a %s, not an object",
+                event_type,
+                type(event_data).__name__,
+            )
+            return
         webset_id = webset_id_of(event_data)
         if input_data.webset_id and webset_id and webset_id != input_data.webset_id:
             return

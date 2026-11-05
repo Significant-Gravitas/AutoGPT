@@ -158,6 +158,8 @@ class ExportFormat(str, Enum):
 class ExaCreateImportBlock(Block):
     """Create an import to load external data that can be used with websets."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -338,6 +340,8 @@ class ExaCreateImportBlock(Block):
 class ExaGetImportBlock(ExaWebsetsBlockBase):
     """Get the status and details of an import."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -411,6 +415,8 @@ class ExaGetImportBlock(ExaWebsetsBlockBase):
 class ExaListImportsBlock(ExaWebsetsBlockBase):
     """List all imports with pagination."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -473,6 +479,8 @@ class ExaListImportsBlock(ExaWebsetsBlockBase):
 class ExaDeleteImportBlock(ExaWebsetsBlockBase):
     """Delete an import."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -512,6 +520,8 @@ class ExaDeleteImportBlock(ExaWebsetsBlockBase):
 class ExaExportWebsetBlock(Block):
     """Export all data from a webset in various formats."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -545,7 +555,7 @@ class ExaExportWebsetBlock(Block):
         )
         item_count: int = SchemaField(description="Number of items exported")
         total_items: int = SchemaField(
-            description="Total number of items in the webset"
+            description="Number of items exported (not the size of the webset)"
         )
         truncated: bool = SchemaField(
             description="Whether the export was truncated due to max_items limit"

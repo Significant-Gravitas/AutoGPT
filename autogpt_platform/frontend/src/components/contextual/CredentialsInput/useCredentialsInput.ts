@@ -156,7 +156,11 @@ export function useCredentialsInput({
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
-      const savedCreds = credentials.savedCredentials;
+      // A block that refuses the platform's shared keys would fail on a
+      // system credential, so only the user's own credentials are candidates.
+      const savedCreds = schema.refuses_platform_credentials
+        ? filterSystemCredentials(credentials.savedCredentials)
+        : credentials.savedCredentials;
       if (savedCreds.length === 0) return;
 
       if (hasAttemptedAutoSelect.current) return;
@@ -180,6 +184,7 @@ export function useCredentialsInput({
       readOnly,
       isOptional,
       onSelectCredential,
+      schema.refuses_platform_credentials,
     ],
   );
 

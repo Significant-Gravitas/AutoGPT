@@ -103,6 +103,8 @@ class EnrichmentFormat(str, Enum):
 class ExaCreateEnrichmentBlock(ExaWebsetsBlockBase):
     """Create a new enrichment to extract additional data from webset items."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -168,10 +170,10 @@ class ExaCreateEnrichmentBlock(ExaWebsetsBlockBase):
             description="Generated instructions for the enrichment"
         )
         items_enriched: int | None = SchemaField(
-            description="Number of items enriched (if wait_for_completion was True)"
+            description="Number of items enriched (if wait_for_completion and apply_to_existing were both True)"
         )
         completion_time: float | None = SchemaField(
-            description="Time taken to complete in seconds (if wait_for_completion was True)"
+            description="Time taken to complete in seconds (if wait_for_completion and apply_to_existing were both True)"
         )
 
     def __init__(self):
@@ -285,6 +287,8 @@ class ExaCreateEnrichmentBlock(ExaWebsetsBlockBase):
 class ExaGetEnrichmentBlock(Block):
     """Get the status and details of a webset enrichment."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -358,6 +362,8 @@ class ExaGetEnrichmentBlock(Block):
 
 class ExaUpdateEnrichmentBlock(ExaWebsetsBlockBase):
     """Update an existing enrichment configuration."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
@@ -445,6 +451,8 @@ class ExaUpdateEnrichmentBlock(ExaWebsetsBlockBase):
 class ExaDeleteEnrichmentBlock(Block):
     """Delete an enrichment from a webset."""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
@@ -491,6 +499,8 @@ class ExaDeleteEnrichmentBlock(Block):
 
 class ExaCancelEnrichmentBlock(Block):
     """Cancel a running enrichment operation."""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

@@ -10,7 +10,7 @@ Cancel an Exa Agent run immediately. No results are kept; usage so far is still 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls `POST /agent/runs/{id}/cancel`, which ends a queued or running run immediately and discards its results. It returns the run as Exa reports it after cancelling and, once Exa reports the run as finished, charges the usage the run built up before it was cancelled, unless another block has already charged you for that run. To keep what an ultra run has found so far, use 'Stop Exa Agent Run' instead.
+This block calls `POST /agent/runs/{id}/cancel`, which ends a queued or running run immediately and discards its results. It returns the run as Exa reports it after cancelling, including the usage the run built up before it was cancelled, which Exa bills to your own Exa account; the platform charges no credits, since the block only runs on your own Exa key. To keep what an ultra run has found so far, use 'Stop Exa Agent Run' instead.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -165,7 +165,7 @@ Stop an Exa Agent run early and return the results gathered so far (stop reason 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calls `POST /agent/runs/{id}/stop`, which tells a running run to wrap up and keep the results gathered so far, with stop reason `stopped`. Exa currently supports this for ultra-effort runs only. The block returns the run as Exa reports it and, once Exa reports the run as finished, charges the run's total cost, unless another block has already charged you for that run; if the run is still wrapping up, collect the final result with 'Wait for Exa Agent Run', which charges it then.
+This block calls `POST /agent/runs/{id}/stop`, which tells a running run to wrap up and keep the results gathered so far, with stop reason `stopped`. Exa currently supports this for ultra-effort runs only. The block returns the run as Exa reports it; if the run is still wrapping up, collect the final result with 'Wait for Exa Agent Run'. Exa bills the run to your own Exa account; the platform charges no credits, since the block only runs on your own Exa key.
 <!-- END MANUAL -->
 
 ### Inputs
