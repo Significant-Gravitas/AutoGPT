@@ -180,7 +180,7 @@ normal network access. OS isolation and destination approval are future work.
 | Access files outside allowed_root | ❌ | Expand allowed_root (explicit) |
 | Take screenshots | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
 | Inject mouse/keyboard | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
-| Launch programs with arguments | ❌ | Part of computer use (same configuration and grant). Like `--enable-shell`, this is user-account-level access: a launched program, or a terminal driven by keyboard input, runs whatever it is given. Each launch is audited with its arguments. |
+| Launch programs with arguments | ❌ | Part of computer use (same configuration and grant). Like `--enable-shell`, this is user-account-level access: a launched program, or a terminal driven by keyboard input, runs whatever it is given. A launch with a command line, a program's path, extra arguments, links or an inspector port waits for the person's approval in the chat, unless the chat runs Unsupervised. The computer-use handler audits each launch it takes with its arguments, best effort (a launch goes ahead if its record can't be written). |
 | Access serial/USB/GPIO | ❌ | Operation dispatch is not implemented |
 | Run elevated operations | Uses executor user's privileges | No privilege-dropping or elevation sandbox |
 | Background tasks when user absent | Available while daemon is running | No separate background-work permission |

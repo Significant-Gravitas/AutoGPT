@@ -143,9 +143,9 @@ flag is enabled, until capture and interpretation are complete end to end.
   "version": "2.0",
   "payload": {
     "session_id": null,          // null on control; exact ID on data WS
-    "connection_id": null,       // optional platform presence generation
+    "connection_id": "conn-7f3a", // opaque presence generation; required on control
     "protocol_version": "2.0",     // max wire version this platform supports
-    "granted_capabilities": ["shell", "files"],  // subset platform approved
+    "granted_capabilities": ["directory_browse"],  // control; a data WS gets its subset, e.g. ["shell", "files"]
     "max_file_size_bytes": 10485760,
     "command_timeout_seconds": 30,
     "max_concurrent": 4                          // shim caps in-flight requests
@@ -505,10 +505,12 @@ below, it leaves a partial file instead). An existing file keeps its
 mode, except set-user-ID and set-group-ID, which a write drops so that new
 contents never run with the file owner's privileges (Linux drops them for an
 unprivileged writer; the shim drops them whatever it runs as); a new one gets
-the usual default (0o666 less the umask). Because the
-target gets a new inode, a hard link made to it from elsewhere keeps the
-old contents, and extended attributes and ACLs on the old file don't carry
-over. Where the directory takes no new entries, or (on Windows) another
+the usual default (0o666 less the umask). An existing file with more than
+one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
+refuses one: its other names may be outside the root, and the shim can't
+tell, so the write neither succeeds nor replaces it. Because a target the
+write does replace gets a new inode, extended attributes and ACLs on the
+old file don't carry over. Where the directory takes no new entries, or (on Windows) another
 program has the file open, the shim overwrites the file in place instead:
 it truncates the file and writes the content, so a write that fails part way
 there leaves a partial file, and the old contents are gone.

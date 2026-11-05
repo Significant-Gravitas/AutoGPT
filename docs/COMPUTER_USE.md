@@ -125,9 +125,12 @@ terminal or a file manager, say. See
 
 Everything a tool returns goes to the platform and the model: accessibility
 trees, which can include the text of windows the agent reads, and
-screenshots. Each call, refused ones too, is recorded in the audit log,
-without the text the agent typed or scripted (see
-[AUDIT_LOG.md](AUDIT_LOG.md)). cua-driver's own telemetry is off for the
+screenshots. Each call the computer-use handler takes, refused ones too, is
+recorded in the audit log, without the text the agent typed or scripted
+(see [AUDIT_LOG.md](AUDIT_LOG.md)). Recording is best effort: a call goes
+ahead if its record can't be written, and a call refused before it reaches
+the handler (computer use off on this machine, or not granted to the
+session) is answered without one. cua-driver's own telemetry is off for the
 driver the shim starts.
 
 ## Troubleshooting
