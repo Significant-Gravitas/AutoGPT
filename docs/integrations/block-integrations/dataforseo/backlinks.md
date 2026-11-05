@@ -31,7 +31,7 @@ This block calls the DataForSEO Backlinks Summary API and returns a target's aut
 <!-- MANUAL: use_case -->
 **Link gap**: Compare your referring domains with a competitor's to see which sites link to them but not to you, for outreach and digital PR.
 
-**Broken backlinks**: Find links pointing at pages that no longer load, and redirect those pages.
+**Broken backlinks**: See how many links point at pages that no longer load, a sign that old URLs need redirects.
 
 **Authority check**: Judge how hard it will be to outrank the pages already ranking for a query.
 <!-- END MANUAL -->
@@ -68,7 +68,7 @@ This block calls the DataForSEO Referring Domains API and lists the sites with l
 <!-- MANUAL: use_case -->
 **Link gap**: Compare your referring domains with a competitor's to see which sites link to them but not to you, for outreach and digital PR.
 
-**Broken backlinks**: Find links pointing at pages that no longer load, and redirect those pages.
+**Broken backlinks**: See how many links point at pages that no longer load, a sign that old URLs need redirects.
 
 **Authority check**: Judge how hard it will be to outrank the pages already ranking for a query.
 <!-- END MANUAL -->

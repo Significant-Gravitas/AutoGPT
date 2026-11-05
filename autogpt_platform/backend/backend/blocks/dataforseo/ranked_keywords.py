@@ -160,6 +160,8 @@ def build_task(input_data: DataForSeoRankedKeywordsBlock.Input) -> dict[str, Any
         "language_code": input_data.language_code,
         "limit": input_data.limit,
         "order_by": ORDER_BY,
+        # Positions from organic listings only, not ads or other features.
+        "item_types": ["organic"],
     }
     filters: list[Any] = []
     if input_data.min_position:

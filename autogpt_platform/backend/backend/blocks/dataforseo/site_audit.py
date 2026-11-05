@@ -2,12 +2,9 @@
 DataForSEO Site Audit block: crawl a site and report its technical SEO issues.
 """
 
-from asyncio import sleep
-from typing import Any
-from urllib.parse import urlparse
+from asyncio import get_running_loop, sleep
 
 from backend.sdk import (
-    BaseModel,
     Block,
     BlockCategory,
     BlockEffect,
@@ -22,44 +19,17 @@ from backend.util.exceptions import BlockInputError
 
 from ._api import DataForSeoClient, DataForSeoError, record_cost
 from ._config import dataforseo
+from ._onpage import AuditedPage, count_issues, normalise_domain, parse_page
 
 TASK_POST_PATH = "/v3/on_page/task_post"
 SUMMARY_PATH = "/v3/on_page/summary/{task_id}"
 PAGES_PATH = "/v3/on_page/pages"
+FORCE_STOP_PATH = "/v3/on_page/force_stop"
 POLL_INTERVAL_SECONDS = 15
-
-# On-Page checks where a true value (or a non-zero page count) is a problem.
-# The rest, such as is_https or seo_friendly_url, are true on a healthy page.
-ISSUE_CHECKS = frozenset(
-    {
-        "no_title", "title_too_long", "title_too_short", "duplicate_title_tag",
-        "irrelevant_title", "no_description", "irrelevant_description",
-        "duplicate_meta_tags", "no_h1_tag", "is_4xx_code", "is_5xx_code",
-        "is_broken", "is_redirect", "redirect_chain", "has_meta_refresh_redirect",
-        "has_links_to_redirects", "canonical_to_broken", "canonical_to_redirect",
-        "canonical_chain", "recursive_canonical", "is_orphan_page", "is_http",
-        "https_to_http_links", "is_link_relation_conflict", "no_image_alt",
-        "low_content_rate", "low_character_count", "low_readability_rate",
-        "has_micromarkup_errors", "high_loading_time", "high_waiting_time",
-        "large_page_size", "size_greater_than_3mb", "has_render_blocking_resources",
-        "no_doctype", "no_encoding_meta_tag", "no_favicon", "deprecated_html_tags",
-        "lorem_ipsum", "flash", "frame",
-    }
-)  # fmt: skip
-# Page-level flags that sit beside the checks rather than inside them.
-PAGE_FLAGS = ("duplicate_title", "duplicate_description", "duplicate_content", "broken_links", "broken_resources")  # fmt: skip
-
-
-class AuditedPage(BaseModel):
-    url: str
-    status_code: int | None
-    title: str
-    description: str
-    h1: list[str]
-    canonical: str
-    click_depth: int | None
-    onpage_score: float | None
-    issues: list[str]
+# Otto's direct block runs are cancelled after 300 seconds, so the crawl wait,
+# the stop and the requests around them must all fit inside that.
+MAX_WAIT_SECONDS = 240
+STOP_WAIT_SECONDS = 30
 
 
 class DataForSeoSiteAuditBlock(Block):
@@ -69,40 +39,30 @@ class DataForSeoSiteAuditBlock(Block):
         credentials: CredentialsMetaInput = dataforseo.credentials_field(
             description="DataForSEO credentials (username and password)"
         )
-        target: str = SchemaField(
-            description="Domain to crawl, e.g. 'example.com'. Not needed with task_id",
-            default="",
-        )
+        target: str = SchemaField(description="Domain to crawl, e.g. 'example.com'")
         max_crawl_pages: int = SchemaField(
-            description=(
-                "Most pages to crawl (billed per page crawled), and most pages "
-                "returned"
-            ),
+            description="Most pages to crawl (billed per page crawled)",
             default=100,
             ge=1,
             le=1000,
         )
         max_wait_seconds: int = SchemaField(
             description=(
-                "How long to wait for the crawl. If it is still running, the pages "
-                "crawled so far are returned; pass task_id to collect the rest later"
+                "How long to let the crawl run. A crawl still running then is "
+                "stopped, and the pages crawled so far are returned"
             ),
-            default=300,
+            default=180,
             ge=0,
-            le=900,
-        )
-        task_id: str = SchemaField(
-            description=(
-                "Collect the results of an earlier crawl instead of starting one; "
-                "set max_crawl_pages to how many pages to return"
-            ),
-            default="",
-            advanced=True,
+            le=MAX_WAIT_SECONDS,
         )
 
     class Output(BlockSchemaOutput):
-        task_id: str = SchemaField(description="The crawl's ID, kept for 30 days")
-        finished: bool = SchemaField(description="Whether the crawl has finished")
+        complete: bool = SchemaField(
+            description=(
+                "False when the crawl was stopped at max_wait_seconds before "
+                "reaching every page up to max_crawl_pages"
+            )
+        )
         pages_crawled: int = SchemaField(description="How many pages were crawled")
         onpage_score: float | None = SchemaField(
             description="Site score, 0-100, where 100 means no critical issues"
@@ -136,8 +96,7 @@ class DataForSeoSiteAuditBlock(Block):
             },
             test_credentials=dataforseo.get_test_credentials(),
             test_output=[
-                ("task_id", "task-1"),
-                ("finished", True),
+                ("complete", True),
                 ("pages_crawled", 5),
                 ("onpage_score", 91.5),
                 ("issue_counts", {"no_image_alt": 5, "no_h1_tag": 1}),
@@ -178,30 +137,23 @@ class DataForSeoSiteAuditBlock(Block):
         self, input_data: Input, *, credentials: UserPasswordCredentials, **kwargs
     ) -> BlockOutput:
         client = DataForSeoClient(credentials)
-        task_id = input_data.task_id.strip()
-        upfront_usd = 0.0
-        if not task_id:
-            target = self._target(input_data)
-            task_id, upfront_usd = await self._start_crawl(
-                client, target, input_data.max_crawl_pages
-            )
+        task_id, upfront_usd = await self._start_crawl(
+            client, self._target(input_data), input_data.max_crawl_pages
+        )
         summary: dict = {}
         try:
-            summary = await self._wait_for_crawl(
-                client, task_id, input_data.max_wait_seconds
-            )
+            summary = await self._crawl(client, task_id, input_data.max_wait_seconds)
         finally:
             # Bill even when polling fails: DataForSEO has already been paid.
             record_cost(
                 self, crawl_cost(upfront_usd, input_data.max_crawl_pages, summary)
             )
-        finished = summary.get("crawl_progress") == "finished"
-        crawled = (summary.get("crawl_status") or {}).get("pages_crawled") or 0
         pages = await self._pages(client, task_id, input_data.max_crawl_pages)
         metrics = summary.get("page_metrics") or {}
-        yield "task_id", task_id
-        yield "finished", finished
-        yield "pages_crawled", crawled
+        yield "complete", _is_finished(summary) and not _was_stopped(summary)
+        yield "pages_crawled", (summary.get("crawl_status") or {}).get(
+            "pages_crawled"
+        ) or 0
         yield "onpage_score", metrics.get("onpage_score")
         yield "issue_counts", count_issues(metrics)
         yield "pages", [parse_page(p) for p in pages]
@@ -210,73 +162,64 @@ class DataForSeoSiteAuditBlock(Block):
         target = normalise_domain(input_data.target)
         if not target:
             raise BlockInputError(
-                message="Give a domain to crawl, or the task_id of an earlier crawl",
+                message="Give a domain to crawl, e.g. 'example.com'",
                 block_name=self.name,
                 block_id=self.id,
             )
         return target
 
+    async def _crawl(
+        self, client: DataForSeoClient, task_id: str, max_wait_seconds: int
+    ) -> dict:
+        """Wait for the crawl; stop it at the limit so it ends, and is billed, now."""
+        summary = await self._wait_for_crawl(client, task_id, max_wait_seconds)
+        if _is_finished(summary):
+            return summary
+        await self._stop_crawl(client, task_id)
+        return await self._wait_for_crawl(client, task_id, STOP_WAIT_SECONDS)
+
+    async def _stop_crawl(self, client: DataForSeoClient, task_id: str) -> None:
+        await client.post_task(FORCE_STOP_PATH, {"id": task_id})
+
     async def _wait_for_crawl(
         self, client: DataForSeoClient, task_id: str, max_wait_seconds: int
     ) -> dict:
-        waited = 0
+        loop = get_running_loop()
+        deadline = loop.time() + max_wait_seconds
+        waited = 0.0
         summary = await self._summary(client, task_id)
-        while summary.get("crawl_progress") != "finished" and waited < max_wait_seconds:
-            interval = min(POLL_INTERVAL_SECONDS, max_wait_seconds - waited)
+        while not _is_finished(summary):
+            # Bounded by the sleeps taken and by the clock, which also counts
+            # the time the requests themselves took.
+            remaining = min(max_wait_seconds - waited, deadline - loop.time())
+            if remaining <= 0:
+                break
+            interval = min(POLL_INTERVAL_SECONDS, remaining)
             await sleep(interval)
             waited += interval
             summary = await self._summary(client, task_id)
         return summary
 
 
+def _is_finished(summary: dict) -> bool:
+    return summary.get("crawl_progress") == "finished"
+
+
+def _was_stopped(summary: dict) -> bool:
+    return summary.get("crawl_stop_reason") == "force_stopped"
+
+
 def crawl_cost(upfront_usd: float, max_crawl_pages: int, summary: dict) -> float:
     """What the crawl really costs.
 
     DataForSEO takes payment for max_crawl_pages when the crawl is posted and
-    refunds the pages it didn't crawl once the crawl finishes. Until then the
-    whole upfront amount is spent.
+    refunds the pages it didn't crawl once the crawl finishes, including when
+    it was stopped. Until then the whole upfront amount is spent.
     """
-    if summary.get("crawl_progress") != "finished":
+    if not _is_finished(summary):
         return upfront_usd
     crawled = (summary.get("crawl_status") or {}).get("pages_crawled") or 0
     return upfront_usd / max_crawl_pages * min(crawled, max_crawl_pages)
-
-
-def normalise_domain(target: str) -> str:
-    """'https://www.example.com/shop' -> 'example.com', as On-Page expects."""
-    target = target.strip()
-    host = urlparse(target if "://" in target else f"//{target}").hostname or ""
-    return host.removeprefix("www.")
-
-
-def count_issues(metrics: dict[str, Any]) -> dict[str, int]:
-    counts = {
-        name: count
-        for name, count in (metrics.get("checks") or {}).items()
-        if name in ISSUE_CHECKS and count
-    }
-    counts |= {flag: metrics[flag] for flag in PAGE_FLAGS if metrics.get(flag)}
-    return dict(sorted(counts.items(), key=lambda kv: kv[1], reverse=True))
-
-
-def parse_page(page: dict[str, Any]) -> AuditedPage:
-    meta = page.get("meta") or {}
-    checks = page.get("checks") or {}
-    issues = sorted(
-        name for name, bad in checks.items() if name in ISSUE_CHECKS and bad
-    )
-    issues += [flag for flag in PAGE_FLAGS if page.get(flag)]
-    return AuditedPage(
-        url=page.get("url") or "",
-        status_code=page.get("status_code"),
-        title=meta.get("title") or "",
-        description=meta.get("description") or "",
-        h1=(meta.get("htags") or {}).get("h1") or [],
-        canonical=meta.get("canonical") or "",
-        click_depth=page.get("click_depth"),
-        onpage_score=page.get("onpage_score"),
-        issues=issues,
-    )
 
 
 _TEST_SUMMARY = {
