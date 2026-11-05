@@ -659,21 +659,70 @@ describe("usePreparingStep — hiring the plan's team", () => {
     });
   });
 
-  it("tries again when nobody could join, then says who did not", async () => {
+  it("says at once who could not join when nobody could, without trying again", async () => {
     const hires = mockHire(() =>
       HttpResponse.json({
         hired: [],
         failed: [{ template_id: "tpl-maria", name: "Maria" }],
       }),
     );
-    renderPreparing({ canHire: true });
+    const onComplete = vi.fn();
+    renderPreparing({ onComplete, canHire: true });
 
     await advance(START_DELAY_MS);
-    await advance(HIRE_MAX_WAIT_MS);
+    await advance(GENERIC_TOTAL_MS + 100);
 
-    expect(hires.count).toBeGreaterThan(1);
+    expect(hires.count).toBe(1);
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Couldn't hire Maria" }),
+    );
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet when asking after a refresh fails, and still refreshes Home", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? new Promise<Response>(() => {})
+        : HttpResponse.json({ detail: "busy" }, { status: 503 });
+    });
+    const first = renderPreparing({ canHire: true });
+    await advance(START_DELAY_MS);
+    first.unmount();
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const onComplete = vi.fn();
+    renderHook(() => usePreparingStep({ onComplete, canHire: true }), {
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children),
+    });
+    await advance(START_DELAY_MS);
+    await advance(HIRE_MAX_WAIT_MS + 100);
+
+    expect(hires.count).toBeGreaterThan(1);
+    expect(toast).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: getGetBrainDumpSuggestedTasksQueryKey(),
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("says who did not join when the plan never settles inside the window", async () => {
+    const hires = mockHire(() =>
+      HttpResponse.json({ detail: "changing" }, { status: 409 }),
+    );
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS + HIRE_MAX_WAIT_MS + 500);
+
+    expect(hires.count).toBeGreaterThan(1);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't hire Maria, Max and Mina" }),
     );
   });
 

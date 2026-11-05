@@ -991,6 +991,16 @@ def plan_world(
     reads["list_experts"].side_effect = lambda *a, **k: list(hired.values())
     hire_expert = AsyncMock(side_effect=hire)
     mocker.patch.object(experts_db, "hire_expert", new=hire_expert)
+    claims: set[str] = set()
+
+    async def claim(key, value, nx, ex):
+        is_new = key not in claims
+        claims.add(key)
+        return is_new or None
+
+    redis = MagicMock()
+    redis.set = AsyncMock(side_effect=claim)
+    mocker.patch.object(plan_hire, "get_redis_async", new=AsyncMock(return_value=redis))
     return {**reads, "hire_expert": hire_expert}
 
 
@@ -1155,7 +1165,10 @@ def test_hiring_the_plan_hires_its_team_once(
 
 
 def test_a_plan_that_could_not_be_settled_hires_nobody(
-    dumps: DumpStore, plan_world: dict[str, AsyncMock], mocker: MockerFixture
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    hire_events: MagicMock,
+    mocker: MockerFixture,
 ):
     """Three lost writes leave the temporary team, which the pipeline may
     still replace, so the client is told to try again."""
@@ -1170,6 +1183,7 @@ def test_a_plan_that_could_not_be_settled_hires_nobody(
         client.post(PLAN_HIRE_URL)
 
     plan_world["hire_expert"].assert_not_awaited()
+    hire_events.assert_not_called()
 
 
 def test_the_plan_hire_reports_who_joined_once(
@@ -1238,6 +1252,88 @@ def test_a_failed_hire_is_reported_and_the_rest_still_join(
         PostHogEvent.PLAN_EXPERTS_HIRED,
         {"hired": 2, "already_on_team": 0, "failed": 1},
     )
+
+
+def _max_cannot_join(plan_world: dict[str, AsyncMock]) -> None:
+    succeed = plan_world["hire_expert"].side_effect
+
+    async def hire(user_id, template_id, name, **kwargs):
+        if template_id == "tpl-max":
+            raise RuntimeError("setup failed")
+        return await succeed(user_id, template_id, name, **kwargs)
+
+    plan_world["hire_expert"].side_effect = hire
+
+
+def test_a_repeat_that_finds_the_same_failure_reports_nothing(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
+):
+    """A reload re-asks how the hire went: the answer still says who could not
+    join, and the event stays the first call's."""
+    finalize(input_mode="skipped")
+    _max_cannot_join(plan_world)
+
+    client.post(PLAN_HIRE_URL)
+    repeat = client.post(PLAN_HIRE_URL)
+
+    assert repeat.json()["failed"] == [{"template_id": "tpl-max", "name": "Max"}]
+    hire_events.assert_called_once_with(
+        ANY,
+        PostHogEvent.PLAN_EXPERTS_HIRED,
+        {"hired": 2, "already_on_team": 0, "failed": 1},
+    )
+
+
+def test_a_repeat_nobody_could_join_again_reports_nothing(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
+):
+    finalize(input_mode="skipped")
+    plan_world["hire_expert"].side_effect = ExpertLimitExceededError(20)
+
+    client.post(PLAN_HIRE_URL)
+    client.post(PLAN_HIRE_URL)
+
+    hire_events.assert_called_once_with(
+        ANY,
+        PostHogEvent.PLAN_EXPERTS_HIRED,
+        {"hired": 0, "already_on_team": 0, "failed": 3},
+    )
+
+
+def test_a_repeat_that_hires_someone_who_failed_reports_them(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], hire_events: MagicMock
+):
+    finalize(input_mode="skipped")
+    succeed = plan_world["hire_expert"].side_effect
+    _max_cannot_join(plan_world)
+    client.post(PLAN_HIRE_URL)
+
+    plan_world["hire_expert"].side_effect = succeed
+    client.post(PLAN_HIRE_URL)
+
+    assert hire_events.call_count == 2
+    assert hire_events.call_args.args[2] == {
+        "hired": 1,
+        "already_on_team": 2,
+        "failed": 0,
+    }
+
+
+def test_a_failed_hire_is_still_reported_when_redis_is_down(
+    dumps: DumpStore,
+    plan_world: dict[str, AsyncMock],
+    hire_events: MagicMock,
+    mocker: MockerFixture,
+):
+    finalize(input_mode="skipped")
+    _max_cannot_join(plan_world)
+    mocker.patch.object(
+        plan_hire, "get_redis_async", new=AsyncMock(side_effect=OSError("down"))
+    )
+
+    client.post(PLAN_HIRE_URL)
+
+    hire_events.assert_called_once()
 
 
 def test_a_user_still_behind_the_paywall_hires_nobody(

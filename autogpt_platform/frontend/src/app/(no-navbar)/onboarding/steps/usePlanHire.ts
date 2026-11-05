@@ -5,7 +5,6 @@ import {
   useGetBrainDumpPlan,
   useHireBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
-import type { PlanHireResponse } from "@/app/api/__generated__/models/planHireResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
@@ -58,7 +57,9 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
       if (failed.length > 0) toastHireFailed(failed.map((e) => e.name));
     } catch (error) {
       Sentry.captureException(error, { tags: { context: "plan-hire" } });
-      toastHireFailed(names);
+      // After a refresh the first call may well have hired them: failing to
+      // ask says nothing about how it went.
+      if (resumedFor === null) toastHireFailed(names);
     } finally {
       // So Home's recipient picker and task owners see the new team, even
       // when a slow hire lands after Home has read them. Whatever the answer:
@@ -73,8 +74,9 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
     }
   });
 
-  // Its time up, ask how the first call went: the hire is idempotent, and
-  // that answer is what refreshes Home and says who did not join.
+  // Its time up, ask how the first call went: the hire is idempotent, so this
+  // does the hire if that call was lost, and its answer is what refreshes Home
+  // and says who did not join.
   useEffect(() => {
     if (!enabled || resumedFor === null) return;
     const timer = setTimeout(() => void hire(), resumedFor);
@@ -137,34 +139,26 @@ function usePlanToHire({
 }
 
 // The hire is idempotent, so one the server could not answer (a 5xx, no answer
-// at all, or a plan still changing), or that nobody could join, is sent again
-// while the preparing bar still waits for it.
+// at all, or a plan still changing) is sent again while the preparing bar
+// still waits for it.
 async function hireUntilAnswered(
   hirePlan: () => Promise<hireBrainDumpPlanResponse>,
   since: number,
 ) {
   for (;;) {
-    const isOutOfTime = () =>
-      Date.now() - since + HIRE_RETRY_MS >= HIRE_MAX_WAIT_MS;
     try {
       const response = await hirePlan();
       if (response.status !== 200) throw new Error("Plan hire failed");
-      if (!isEveryoneFailed(response.data) || isOutOfTime()) return response;
+      return response;
     } catch (error) {
-      if (isRefused(error) || isOutOfTime()) throw error;
+      const isRefused =
+        error instanceof ApiError && error.status < 500 && error.status !== 409;
+      const isOutOfTime =
+        Date.now() - since + HIRE_RETRY_MS >= HIRE_MAX_WAIT_MS;
+      if (isRefused || isOutOfTime) throw error;
+      await pause(HIRE_RETRY_MS);
     }
-    await pause(HIRE_RETRY_MS);
   }
-}
-
-function isEveryoneFailed({ hired, failed }: PlanHireResponse) {
-  return (failed?.length ?? 0) > 0 && !hired?.length;
-}
-
-function isRefused(error: unknown) {
-  return (
-    error instanceof ApiError && error.status < 500 && error.status !== 409
-  );
 }
 
 // Marked only while a try is on the wire: a refresh then waits for it
