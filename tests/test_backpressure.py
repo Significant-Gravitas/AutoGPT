@@ -322,6 +322,71 @@ async def test_cancel_dispatch_tasks_resets_capacity_and_cancels_handlers(
     assert daemon._available_capacity() == 1
 
 
+def _child(shim_config: ShimConfig, machine: asyncio.Semaphore) -> ShimDaemon:
+    audit = AuditWriter(path=shim_config.audit_log_path, audit_key=b"a" * 32)
+    child = ShimDaemon(
+        shim_config, token_store=object(), audit=audit, machine_work_semaphore=machine
+    )
+    child._semaphore = asyncio.Semaphore(child.config.max_concurrent)
+    return child
+
+
+async def test_a_request_that_finds_every_machine_slot_held_is_refused(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child session's request waited for a machine-wide slot with no
+    limit. A request let go when its session ended keeps its slot until its
+    thread returns, so one that never returns held it for good, and new
+    requests from every chat waited without an answer."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "MACHINE_WORK_WAIT_SECONDS", 0.05)
+    machine = asyncio.Semaphore(1)
+    await machine.acquire()  # held by work that never finishes
+    child = _child(shim_config, machine)
+    handled: list[Any] = []
+
+    async def fake_handle(msg: Any, *, send: Any = None) -> AckMessage:
+        handled.append(msg)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child, "_handle", fake_handle)
+    ws = _FakeWS()
+
+    await asyncio.wait_for(child._dispatch(ws, make_ack("req")), timeout=2)
+
+    [refused] = [parse_message(raw) for raw in ws.sent]
+    assert refused.type == MessageType.ERROR
+    assert refused.payload.code == "SHIM_OVERLOADED"
+    assert refused.id == "req"
+    assert handled == []
+    assert (child._pending_requests, child._queue_depth, child._in_flight) == (0, 0, 0)
+    assert machine.locked()  # the held slot stays held
+
+
+async def test_a_request_takes_a_machine_slot_freed_while_it_waits(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine = asyncio.Semaphore(1)
+    await machine.acquire()
+    child = _child(shim_config, machine)
+
+    async def fake_handle(msg: Any, *, send: Any = None) -> AckMessage:
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child, "_handle", fake_handle)
+    ws = _FakeWS()
+    request = asyncio.create_task(child._dispatch(ws, make_ack("req")))
+    await asyncio.sleep(0.05)
+    assert ws.sent == []
+
+    machine.release()
+    await asyncio.wait_for(request, timeout=2)
+
+    assert parse_message(ws.sent[0]).type == MessageType.ACK
+    assert not machine.locked()
+
+
 async def test_send_frame_replaces_oversized_response_with_correlated_error(
     daemon: ShimDaemon,
 ) -> None:

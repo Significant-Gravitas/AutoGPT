@@ -1095,6 +1095,11 @@ for the base backoff before reconnecting, preventing a hot loop.
 The platform may send multiple requests before receiving responses (pipelined). The shim
 assigns each request its own async task and responds with matching `id` when complete.
 Max concurrent requests: `HELLO_ACK.max_concurrent` (default 4).
+The chats on a machine also share the control connection's `max_concurrent`
+slots. A request waits up to ten seconds for one, then gets
+`SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
+until its work ends, including work still running in a thread after its
+session ended.
 `COMPUTER_TOOL_CALL`s from every session on a machine take turns, since
 they share one screen.
 

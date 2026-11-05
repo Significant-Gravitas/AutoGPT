@@ -262,6 +262,12 @@ CHILD_REAPER_INTERVAL_SECONDS = 30
 # first (handlers._run_to_completion); one that hangs is let go after this,
 # so the session still ends and the shim can reconnect.
 DISPATCH_DRAIN_SECONDS = 10.0
+# How long a chat's request waits for one of the machine's request slots
+# before it's refused with SHIM_OVERLOADED. Other chats' requests can hold
+# every slot, and one let go after DISPATCH_DRAIN_SECONDS keeps its slot
+# until its thread returns, which a hung one never does. Well inside the 30
+# seconds the platform waits for most replies.
+MACHINE_WORK_WAIT_SECONDS = 10.0
 
 
 @dataclass
@@ -1341,8 +1347,9 @@ class ShimDaemon:
                     in_flight_owed = True
                     try:
                         if self._machine_work_semaphore is not None and not self._control_mode:
-                            async with self._machine_work_semaphore:
-                                response = await self._handle(msg, send=_stream_send)
+                            response = await self._handle_in_a_machine_slot(
+                                self._machine_work_semaphore, msg, _stream_send
+                            )
                         else:
                             response = await self._handle(msg, send=_stream_send)
                     finally:
@@ -1396,6 +1403,29 @@ class ShimDaemon:
         # promptly (don't wait for the 30s tick).
         if was_full_after_decrement:
             await self._emit_status(ws, source="capacity_edge")
+
+    async def _handle_in_a_machine_slot(
+        self, slots: asyncio.Semaphore, msg: Any, send: Any
+    ) -> BaseModel | None:
+        """Handle `msg` in one of the machine's request slots, shared by every
+        chat, or refuse it when none frees up in MACHINE_WORK_WAIT_SECONDS.
+        Only the wait is bounded: a slot taken is held until the work ends,
+        since a thread already running it can't be stopped."""
+        try:
+            async with asyncio.timeout(MACHINE_WORK_WAIT_SECONDS):
+                await slots.acquire()
+        except TimeoutError:
+            return make_error(
+                msg.id,
+                ErrorCode.SHIM_OVERLOADED,
+                "Every request slot on this computer is busy with other chats' work; "
+                "retry in a moment.",
+                details={"reason": "machine_busy"},
+            )
+        try:
+            return await self._handle(msg, send=send)
+        finally:
+            slots.release()
 
     def _available_capacity(self) -> int:
         """Free request slots right now. Floored at 0."""
