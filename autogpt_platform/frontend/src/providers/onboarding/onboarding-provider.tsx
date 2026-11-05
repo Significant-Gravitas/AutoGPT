@@ -37,6 +37,7 @@ import {
 import {
   decideOnboardingRedirect,
   fromBackendUserOnboarding,
+  getOnboardingRoute,
   hasCompletedOnboarding,
   LocalOnboardingStateUpdate,
   shouldRedirectFromOnboarding,
@@ -163,27 +164,11 @@ export default function OnboardingProvider({
     };
   }, []);
 
-  const isOnOnboardingRoute = pathname.startsWith("/onboarding");
-  // The public `/tour` demo is for unauthenticated prospects and must never
-  // trigger onboarding init/redirects (which would bounce a logged-in user with
-  // incomplete onboarding out of the tour).
-  const isOnPublicTour = pathname.startsWith("/tour");
-  // A Supabase recovery link signs the user in and lands them on
-  // /reset-password. They must stay there until the new password is set;
-  // bouncing an un-onboarded account to /onboarding would skip the password
-  // change and turn the reset link into a one-time sign-in link.
-  const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
-  // A bot account-link page (/link/<token>, /link/slack/installed) must render
-  // for un-onboarded users too: the link token expires in 30 minutes and the
-  // wizard never returns here. Onboarding runs on the next navigation.
-  const isOnPlatformLinkRoute = pathname.startsWith("/link/");
-  // Signing out from the wizard must not bounce the user back into it.
-  const isOnLogoutRoute = pathname.startsWith("/logout");
-  // Logged-in users sitting on the auth pages need to be routed onward by us;
-  // otherwise the signup/login pages show their `isLoggedIn` loader forever.
-  // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
-  // /signup → / → /copilot → /onboarding bounce that flashes /copilot.
-  const isOnAuthRoute = pathname === "/signup" || pathname === "/login";
+  const {
+    isOnOnboardingRoute,
+    isOnAuthRoute,
+    isExempt: isOnExemptRoute,
+  } = getOnboardingRoute(pathname);
 
   const fetchOnboarding = useCallback(async () => {
     const requestUserID = latestUserID.current;
@@ -231,14 +216,7 @@ export default function OnboardingProvider({
   useEffect(() => {
     // Prevent multiple initializations. Skipped routes don't mark
     // hasInitialized, so init re-runs on the next pathname change.
-    if (
-      hasInitialized.current ||
-      !isLoggedIn ||
-      isOnPublicTour ||
-      isOnPasswordResetRoute ||
-      isOnPlatformLinkRoute ||
-      isOnLogoutRoute
-    ) {
+    if (hasInitialized.current || !isLoggedIn || isOnExemptRoute) {
       return;
     }
 
@@ -251,11 +229,6 @@ export default function OnboardingProvider({
     }
 
     hasInitialized.current = true;
-
-    function rerunForCurrentPage() {
-      hasInitialized.current = false;
-      setInitRetry((n) => n + 1);
-    }
 
     async function initializeOnboarding() {
       const requestUserID = latestUserID.current;
@@ -275,30 +248,29 @@ export default function OnboardingProvider({
           );
         }
 
-        // The user moved on while this was in flight (e.g. to /link/<token>
-        // or /logout, which must not be redirected). The answer above still
-        // stands; the current page runs its own check to decide where to go.
-        if (latestPathname.current !== pathname) {
-          rerunForCurrentPage();
-          return;
-        }
-
+        // The user may have moved on while this was in flight (the init
+        // skips their new page while it runs), so the page they are on now
+        // decides, with the answer already in hand.
+        const current = getOnboardingRoute(latestPathname.current);
+        if (current.isExempt) return;
         const redirectTarget = decideOnboardingRedirect({
           isCompleted: is_completed,
-          isOnOnboardingRoute,
-          isOnAuthRoute,
-          hasPendingAuthDeepLink,
+          isOnOnboardingRoute: current.isOnOnboardingRoute,
+          isOnAuthRoute: current.isOnAuthRoute,
+          hasPendingAuthDeepLink: readPendingAuthDeepLink(
+            current.isOnAuthRoute,
+          ),
         });
         // An admin impersonating an unfinished user is never sent into the
         // target's wizard; the answer is the target's, not theirs.
         const isAdminViewingTarget =
           redirectTarget === "/onboarding" &&
-          !isOnAuthRoute &&
+          !current.isOnAuthRoute &&
           hasImpersonation();
         if (redirectTarget && !isAdminViewingTarget) {
           // Leaving an auth page keeps a campaign link's tracking params.
           router.replace(
-            isOnAuthRoute
+            current.isOnAuthRoute
               ? withAuthTracking(redirectTarget, readAuthNext())
               : redirectTarget,
           );
@@ -307,15 +279,11 @@ export default function OnboardingProvider({
 
         const onboarding = await retryTransient(fetchOnboarding);
         if (latestUserID.current !== requestUserID) return;
-        if (latestPathname.current !== pathname) {
-          rerunForCurrentPage();
-          return;
-        }
 
-        // Handle redirects for completed onboarding
+        const pathNow = latestPathname.current;
         if (
-          isOnOnboardingRoute &&
-          shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
+          getOnboardingRoute(pathNow).isOnOnboardingRoute &&
+          shouldRedirectFromOnboarding(onboarding.completedSteps, pathNow)
         ) {
           router.replace("/home");
         }
@@ -358,10 +326,7 @@ export default function OnboardingProvider({
     router,
     isLoggedIn,
     pathname,
-    isOnPublicTour,
-    isOnPasswordResetRoute,
-    isOnPlatformLinkRoute,
-    isOnLogoutRoute,
+    isOnExemptRoute,
     initRetry,
     userID,
     setCompletion,

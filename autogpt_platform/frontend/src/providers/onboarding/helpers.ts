@@ -57,6 +57,33 @@ export function withCompletion(
     : next;
 }
 
+// Pages the provider never redirects from.
+const ONBOARDING_EXEMPT_PREFIXES = [
+  // The public demo for signed-out prospects; a signed-in user with
+  // unfinished onboarding must not be bounced out of it.
+  "/tour",
+  // A recovery link signs the user in and lands here. They must stay until
+  // the new password is set, or the reset link becomes a one-time sign-in.
+  "/reset-password",
+  // A bot account-link page (/link/<token>, /link/slack/installed). Its token
+  // expires in 30 minutes and the wizard never returns here.
+  "/link/",
+  // Signing out from the wizard must not bounce the user back into it.
+  "/logout",
+];
+
+export function getOnboardingRoute(pathname: string) {
+  return {
+    isOnOnboardingRoute: pathname.startsWith("/onboarding"),
+    // A signed-in user on these is routed onward by the provider; otherwise
+    // the page shows its `isLoggedIn` loader forever.
+    isOnAuthRoute: pathname === "/signup" || pathname === "/login",
+    isExempt: ONBOARDING_EXEMPT_PREFIXES.some((prefix) =>
+      pathname.startsWith(prefix),
+    ),
+  };
+}
+
 export function shouldRedirectFromOnboarding(
   completedSteps: string[],
   pathname: string,

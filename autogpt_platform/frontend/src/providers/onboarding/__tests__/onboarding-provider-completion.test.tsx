@@ -65,6 +65,8 @@ const backend = vi.hoisted(() => ({
   heldCheck: null as Promise<void> | null,
   // Set to hold only the next completion answer.
   holdOnce: null as Promise<void> | null,
+  // Set to hold only the next onboarding state read.
+  stateHoldOnce: null as Promise<void> | null,
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
@@ -79,9 +81,13 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   },
   getV1OnboardingState: async () => {
     backend.stateReads += 1;
+    const completedSteps = [...backend.completedSteps];
+    const hold = backend.stateHoldOnce;
+    backend.stateHoldOnce = null;
+    if (hold) await hold;
     return {
       status: 200,
-      data: { completedSteps: [...backend.completedSteps] },
+      data: { completedSteps },
     };
   },
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
@@ -125,6 +131,7 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     backend.stateReads = 0;
     backend.heldCheck = null;
     backend.holdOnce = null;
+    backend.stateHoldOnce = null;
     releaseHeld = () => {};
   });
 
@@ -328,8 +335,62 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     await waitFor(() =>
       expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
     );
-    expect(backend.completionChecks).toBe(2);
+    expect(backend.completionChecks).toBe(1);
     expect(completion()).toBe("false");
+  });
+
+  test("an unfinished user opening the app root is sent to the wizard on the first answer, though the root has already moved them to Home", async () => {
+    mockPathname = "/";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    mockPathname = "/home";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    expect(backend.completionChecks).toBe(1);
+  });
+
+  test("a check that answers once the user is on a sign-in page with its own next leaves the routing to that page", async () => {
+    mockPathname = "/marketplace";
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+    window.history.replaceState(null, "", "/login?next=%2Flibrary");
+    mockPathname = "/login";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() => expect(completion()).toBe("false"));
+    await act(async () => {});
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("a finished user who opens the wizard while their onboarding state loads is sent Home", async () => {
+    mockPathname = "/home";
+    backend.isCompleted = true;
+    backend.completedSteps = ["ONBOARDING_COMPLETE"];
+    backend.stateHoldOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    const view = render(tree());
+    await waitFor(() => expect(backend.stateReads).toBe(1));
+
+    mockPathname = "/onboarding";
+    view.rerender(tree());
+    await act(async () => releaseHeld());
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+    expect(backend.completionChecks).toBe(1);
   });
 
   test("an admin impersonating an unfinished user is never sent into the target's wizard, and sees it finish", async () => {
