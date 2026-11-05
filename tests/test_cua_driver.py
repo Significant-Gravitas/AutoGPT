@@ -59,6 +59,67 @@ async def test_the_client_completes_the_handshake_and_lists_tools(fake_log: Path
     assert {tool["name"] for tool in tools} >= {"click", "get_window_state"}
 
 
+async def test_a_tool_list_that_repeats_its_cursor_is_refused(fake_log, monkeypatch) -> None:
+    """list_tools followed nextCursor until there was none, with no check,
+    so a driver that kept answering the same cursor kept it going for good,
+    holding the bridge's lock and the HELLO that waits on it."""
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "same")
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    try:
+        with pytest.raises(McpError, match="cursor"):
+            await asyncio.wait_for(client.list_tools(timeout=10), timeout=5)
+    finally:
+        await client.close()
+
+
+async def test_a_driver_whose_tool_list_loops_is_unavailable(fake_log, monkeypatch) -> None:
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "same")
+    bridge = _bridge()
+    try:
+        with pytest.raises(DriverUnavailable, match="cursor"):
+            await asyncio.wait_for(bridge.snapshot(), timeout=5)
+    finally:
+        await bridge.close()
+
+
+async def test_a_tool_list_that_never_ends_is_cut_off(fake_log, monkeypatch) -> None:
+    from autogpt_local_executor.computer_use import mcp_client
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "new")
+    monkeypatch.setattr(mcp_client, "MAX_TOOL_LIST_PAGES", 5)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    try:
+        with pytest.raises(McpError, match="pages"):
+            await asyncio.wait_for(client.list_tools(timeout=10), timeout=5)
+    finally:
+        await client.close()
+
+
+async def test_the_tool_list_deadline_covers_every_page(fake_log, monkeypatch) -> None:
+    """Each page got the whole timeout afresh, so the timeout never bounded
+    the listing."""
+    import time
+
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setenv("FAKE_CUA_NEXT_CURSOR", "new")
+    monkeypatch.setattr(mcp_client, "MAX_TOOL_LIST_PAGES", 10**9)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=10)
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=5)
+    finally:
+        await client.close()
+    assert time.monotonic() - started < 3  # its own deadline, not the guard's
+
+
 async def test_a_request_past_its_deadline_is_cancelled_at_the_server(fake_log: Path) -> None:
     client = _fake_client([str(FAKE), "mcp"])
     await client.start(timeout=10)

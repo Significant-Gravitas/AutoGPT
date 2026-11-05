@@ -14,6 +14,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_IMAGE_BYTES   size of the image get_window_state returns
   FAKE_CUA_EXIT_AT_START exit before answering initialize
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
+  FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
 """
 
 from __future__ import annotations
@@ -194,7 +195,11 @@ def handle(message: dict) -> None:
             }
         )
     elif method == "tools/list":
-        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": tool_list()}})
+        result: dict = {"tools": tool_list()}
+        paging = os.environ.get("FAKE_CUA_NEXT_CURSOR")
+        if paging:
+            result["nextCursor"] = "page" if paging == "same" else f"page-{request_id}"
+        send({"jsonrpc": "2.0", "id": request_id, "result": result})
     elif method == "tools/call":
         params = message["params"]
         pid = (params.get("arguments") or {}).get("pid")
