@@ -102,8 +102,10 @@ def _canonicalize(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ",".join(_canonicalize(v) for v in value) + "]"
     if isinstance(value, dict):
-        # Keys are sorted by codepoint (RFC 8785 §3.2.3 — UTF-16 ordering;
-        # for the BMP subset we actually use, codepoint sort is equivalent).
+        # Keys are sorted by code point. RFC 8785 §3.2.3 sorts by UTF-16
+        # code unit, which differs for keys with characters above U+FFFF,
+        # and `details` keys can be anything a request carried. Changing it
+        # would change existing records' HMAC input; AUDIT_LOG.md says so.
         items = sorted(value.items(), key=lambda kv: kv[0])
         return (
             "{"
