@@ -527,9 +527,32 @@ async def test_deny_authorization_uses_only_registered_redirect(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize(
-    "field, length", [("client_id", 101), ("redirect_uri", 2049), ("state", 2049)]
-)
+async def test_deny_accepts_any_state_authorize_accepts(
+    client: httpx.AsyncClient,
+    test_oauth_app: dict,
+):
+    """Authorize takes a state of any length, and the consent page sends the
+    same state to Approve and Deny, so a long one could be approved but not
+    denied: Deny refused it with a 422 instead of telling the client."""
+    state = "s" * 3000
+
+    denied = await client.post(
+        "/api/oauth/authorize/deny",
+        json={
+            "client_id": test_oauth_app["client_id"],
+            "redirect_uri": test_oauth_app["redirect_uri"],
+            "state": state,
+        },
+    )
+
+    assert denied.status_code == 200
+    query = parse_qs(urlparse(denied.json()["redirect_url"]).query)
+    assert query["error"] == ["access_denied"]
+    assert query["state"] == [state]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("field, length", [("client_id", 101), ("redirect_uri", 2049)])
 async def test_deny_authorization_refuses_oversized_fields(
     client: httpx.AsyncClient,
     test_oauth_app: dict,
@@ -796,6 +819,64 @@ async def test_public_client_accepts_shim_form_pkce_and_refresh(
     )
     assert refresh_response.status_code == 200
     assert refresh_response.json()["access_token"] != tokens["access_token"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_client_registered_without_refresh_cannot_refresh(
+    client: httpx.AsyncClient,
+    test_public_oauth_app: dict,
+):
+    """The refresh branch never read the registered grant types, so a public
+    client, which refreshes without a secret, could rotate a refresh token
+    its registration doesn't allow."""
+    verifier, challenge = generate_pkce()
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": test_public_oauth_app["client_id"],
+            "redirect_uri": test_public_oauth_app["redirect_uri"],
+            "scopes": ["USE_TOOLS"],
+            "state": "grant_types_test",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        },
+    )
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
+    tokens = (
+        await client.post(
+            "/api/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": auth_code,
+                "redirect_uri": test_public_oauth_app["redirect_uri"],
+                "client_id": test_public_oauth_app["client_id"],
+                "code_verifier": verifier,
+            },
+        )
+    ).json()
+    await PrismaOAuthApplication.prisma().update(
+        where={"id": test_public_oauth_app["id"]},
+        data={"grantTypes": ["authorization_code"]},
+    )
+
+    refresh_response = await client.post(
+        "/api/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": test_public_oauth_app["client_id"],
+        },
+    )
+
+    assert refresh_response.status_code == 400
+    assert "unauthorized_client" in refresh_response.json()["detail"]
+    unrotated = await PrismaOAuthRefreshToken.prisma().find_unique(
+        where={"token": hashlib.sha256(tokens["refresh_token"].encode()).hexdigest()}
+    )
+    assert unrotated is not None and unrotated.revokedAt is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

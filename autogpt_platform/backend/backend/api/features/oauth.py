@@ -226,10 +226,9 @@ class DenyAuthorizeRequest(BaseModel):
 
     client_id: str = Field(description="Client identifier", max_length=MAX_ID_LENGTH)
     redirect_uri: str = Field(description="Redirect URI", max_length=MAX_URL_LENGTH)
-    # It goes back to the client on the redirect URL.
-    state: str = Field(
-        description="Anti-CSRF token from client", max_length=MAX_URL_LENGTH
-    )
+    # It goes back to the client on the redirect URL. No cap: authorize takes
+    # a state of any length, and the consent page sends Deny the same one.
+    state: str = Field(description="Anti-CSRF token from client")
 
 
 async def _get_valid_authorization_app(
@@ -547,6 +546,17 @@ async def token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
+        )
+    # RFC 6749 §5.2: a client uses only the grants it was registered for. A
+    # public client refreshes with the refresh token alone, so this is the
+    # only check between it and a grant its registration leaves out.
+    if request.grant_type not in app.grant_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "unauthorized_client: this application is not registered for the "
+                f"{request.grant_type} grant"
+            ),
         )
 
     # Handle authorization_code grant
