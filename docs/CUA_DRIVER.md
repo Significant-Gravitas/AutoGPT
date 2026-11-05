@@ -138,7 +138,8 @@ sixteen tools; all of them are in the catalog, which
   asks the person on an approval card that shows the path, and only then
   sends the call with the argument in `approved_arguments`; without it the
   shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
-  `run_steps` step may not use one at all.
+  `run_steps` step may not use one at all, and neither may the `observe`
+  that ends a batch, which the driver runs as a `get_window_state` call.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,

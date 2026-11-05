@@ -429,6 +429,15 @@ def test_arguments_that_reach_the_disk_wait_for_approval(
             "steps[0].screenshot_out_file",
         ),
         ("run_steps", {"steps": [{"run_script": {"script": "return 1"}}]}, [], "steps[0].script"),
+        # The driver runs `observe` as get_window_state, which writes the
+        # screenshot to the file it names.
+        (
+            "run_steps",
+            {"steps": [{"tool": "move_cursor", "args": {"x": 1, "y": 1}}],
+             "observe": {"pid": 1, "window_id": 2, "screenshot_out_file": "/x"}},
+            [],
+            "observe.screenshot_out_file",
+        ),
     ],
 )  # fmt: skip
 def test_arguments_this_machine_never_takes_are_refused(
@@ -616,6 +625,13 @@ async def test_the_drivers_own_error_comes_back_as_a_result(make_handler) -> Non
         ("set_config", {}),
         ("clipboard_read", {}),
         ("check_permissions", {"prompt": True}),
+        (
+            "run_steps",
+            {
+                "steps": [{"tool": "move_cursor", "args": {"x": 1, "y": 1}}],
+                "observe": {"pid": 1, "window_id": 2, "screenshot_out_file": "/home/me/.bashrc"},
+            },
+        ),
     ],
 )
 async def test_refused_calls_never_reach_the_driver(

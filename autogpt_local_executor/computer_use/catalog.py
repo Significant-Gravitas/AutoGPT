@@ -227,6 +227,17 @@ def check_arguments(tool: str, arguments: Mapping[str, Any], approved: Iterable[
                     raise ArgumentRefused(
                         tool, f"steps[{index}].{exc.argument}", exc.reason
                     ) from exc
+        # The driver runs `observe` as a get_window_state call of its own.
+        observe = arguments.get("observe")
+        if isinstance(observe, Mapping) and (
+            used := approval_arguments("get_window_state", observe)
+        ):
+            raise ArgumentRefused(
+                tool,
+                f"observe.{used[0]}",
+                "the observation that ends a batch can't touch the disk; call "
+                "get_window_state on its own so the person can approve it",
+            )
 
 
 # The keys of a run_steps step that aren't a tool name in its `{<tool>: args}`
