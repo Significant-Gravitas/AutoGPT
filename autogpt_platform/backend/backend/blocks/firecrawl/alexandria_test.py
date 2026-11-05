@@ -100,6 +100,21 @@ async def test_unresolved_call_names_the_request_id_to_retry_with():
     assert f"run again with request ID {sent}" in str(caught.value)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"success": True, "data": {"alexandria": []}},
+        {"success": True, "data": None},
+    ],
+)
+async def test_call_alexandria_raises_when_there_is_no_result(body: dict[str, Any]):
+    with (
+        _patch_post(_response(200, body)),
+        pytest.raises(AlexandriaError, match="no Alexandria result"),
+    ):
+        await call_alexandria("fc-key", "apollo", "x")
+
+
 def test_refusals_are_user_fixable_errors():
     # The executor treats ValueErrors as the user's to fix, not platform faults.
     assert issubclass(AlexandriaError, ValueError)

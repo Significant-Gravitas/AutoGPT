@@ -122,7 +122,7 @@ async def call_alexandria(
     if not response.ok or not payload.get("success"):
         raise AlexandriaError(_describe_refusal(response.status, payload, request_id))
 
-    results = payload.get("data", {}).get("alexandria") or []
+    results = (payload.get("data") or {}).get("alexandria") or []
     if not results:
         raise AlexandriaError("Firecrawl returned no Alexandria result")
     return results[0]
@@ -138,7 +138,7 @@ def _describe_refusal(status: int, payload: dict[str, Any], request_id: str) -> 
             f"ran. To retry without paying twice, run again with request ID "
             f"{request_id}."
         )
-    if code == "THIRD_PARTY_DATA_TERMS_REQUIRED":
+    if str(code).upper() == "THIRD_PARTY_DATA_TERMS_REQUIRED":
         url = (payload.get("requiresAction") or {}).get("url")
         return (
             f"{message}. A Firecrawl organization admin must accept this "
@@ -363,7 +363,12 @@ class FirecrawlRunDataToolBlock(Block):
 
     class Output(BlockSchemaOutput):
         data: Any = SchemaField(description="The records the tool returned")
-        records: int = SchemaField(description="How many records were returned")
+        records: int = SchemaField(
+            description=(
+                "How many records were returned, as Firecrawl reports it. If "
+                "it doesn't, the length of a list, or 1 for any other data"
+            )
+        )
         credits_cost: float = SchemaField(
             description="Firecrawl credits this call cost"
         )
