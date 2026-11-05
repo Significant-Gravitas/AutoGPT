@@ -23,6 +23,10 @@ from backend.data.auth.oauth import (
 )
 
 
+# The grants the Local Executor app is registered for.
+_GRANTS = ["authorization_code", "refresh_token"]
+
+
 def _make_client(*, raise_server_exceptions: bool = True) -> TestClient:
     app = FastAPI()
     app.include_router(oauth.router, prefix="/api/oauth")
@@ -144,7 +148,9 @@ async def test_confidential_client_cannot_use_public_refresh_exception() -> None
 @pytest.mark.parametrize("encoding", ["form", "json"])
 def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None:
     client = _make_client()
-    application = SimpleNamespace(id="app-1", name="Local Executor")
+    application = SimpleNamespace(
+        id="app-1", name="Local Executor", grant_types=_GRANTS
+    )
     validate_client = AsyncMock(return_value=application)
     consume_code = AsyncMock(
         return_value=("user-1", [APIKeyPermission.CONNECT_LOCAL_EXECUTOR])
@@ -186,7 +192,9 @@ def test_public_pkce_token_exchange_accepts_form_and_json(encoding: str) -> None
 
 def test_public_refresh_form_uses_refresh_token_as_bearer_credential() -> None:
     client = _make_client()
-    application = SimpleNamespace(id="app-1", name="Local Executor")
+    application = SimpleNamespace(
+        id="app-1", name="Local Executor", grant_types=_GRANTS
+    )
     validate_client = AsyncMock(return_value=application)
     refresh_tokens = AsyncMock(
         return_value=(_issued_token("new-access"), _issued_token("new-refresh"))
@@ -276,7 +284,10 @@ async def test_invalid_token_request_severs_sensitive_validation_context() -> No
 def test_successful_revocation_pushes_connected_shim_shutdown() -> None:
     client = _make_client()
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
     push_revocation = AsyncMock()
 
@@ -308,7 +319,10 @@ def test_successful_revocation_pushes_connected_shim_shutdown() -> None:
 def test_public_client_can_revoke_with_presented_token_and_no_secret() -> None:
     client = _make_client()
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
     validate_client = AsyncMock(return_value=application)
     revoke_token = AsyncMock(return_value=SimpleNamespace(user_id="user-1"))
@@ -340,7 +354,10 @@ def test_public_client_can_revoke_with_presented_token_and_no_secret() -> None:
 def test_revocation_storage_failure_returns_server_error() -> None:
     client = _make_client(raise_server_exceptions=False)
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
     push_revocation = AsyncMock()
 
@@ -371,7 +388,10 @@ def test_revocation_storage_failure_returns_server_error() -> None:
 def test_revocation_push_failure_does_not_change_oauth_result() -> None:
     client = _make_client(raise_server_exceptions=False)
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
     revoke_token = AsyncMock(return_value=SimpleNamespace(user_id="user-1"))
     manager = MagicMock()
@@ -404,7 +424,10 @@ def test_revocation_push_failure_does_not_change_oauth_result() -> None:
 def test_direct_revocation_delivery_failure_does_not_change_oauth_result() -> None:
     client = _make_client(raise_server_exceptions=False)
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
     relay = _NoopRelay()
     manager = ShimConnectionManager(relay=cast(RelayBackend, relay))
@@ -448,7 +471,10 @@ def test_direct_revocation_delivery_failure_does_not_change_oauth_result() -> No
 def test_refresh_replay_push_failure_does_not_change_oauth_result() -> None:
     client = _make_client(raise_server_exceptions=False)
     application = SimpleNamespace(
-        id="app-1", name="Local Executor", client_id="autogpt-local-executor"
+        id="app-1",
+        name="Local Executor",
+        client_id="autogpt-local-executor",
+        grant_types=_GRANTS,
     )
 
     def refresh_error():

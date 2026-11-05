@@ -854,7 +854,7 @@ def test_recording_stop_fetches_review_data_and_registers_state() -> None:
             AsyncMock(return_value=shim),
         ),
         patch(
-            "backend.api.features.local_executor.routes.register_recording_stopped",
+            "backend.copilot.sdk.recording_tools.register_recording_stopped",
             register_stopped,
         ),
         patch(
@@ -924,7 +924,7 @@ def test_recording_stop_retries_fetch_without_sending_duplicate_stop() -> None:
             mark_stopped,
         ),
         patch(
-            "backend.api.features.local_executor.routes.register_recording_stopped",
+            "backend.copilot.sdk.recording_tools.register_recording_stopped",
             register_stopped,
         ),
     ):
@@ -990,7 +990,7 @@ def test_recording_stop_remains_available_after_recording_kill_switch() -> None:
             AsyncMock(),
         ),
         patch(
-            "backend.api.features.local_executor.routes.register_recording_stopped",
+            "backend.copilot.sdk.recording_tools.register_recording_stopped",
             MagicMock(),
         ),
     ):
