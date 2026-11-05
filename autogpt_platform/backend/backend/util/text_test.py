@@ -19,6 +19,7 @@ from backend.util.text import (
     RENDER_MEMORY_LIMIT,
     TextFormatter,
     _check_percent_format,
+    singular,
 )
 
 
@@ -1016,3 +1017,19 @@ def _render_workers() -> set[int]:
         if ppid == os.getpid() and b"_serve_renders" in command:
             pids.add(int(proc.name))
     return pids
+
+
+@pytest.mark.parametrize(
+    "word, expected",
+    [
+        ("stickers", "sticker"),
+        ("sheets", "sheet"),
+        ("glass", "glass"),
+        ("boss", "boss"),
+        ("ads", "ads"),  # three letters: "ad" would match "Mouse Pad"
+        ("gas", "gas"),
+        ("mug", "mug"),
+    ],
+)
+def test_singular_takes_one_plural_s_off_longer_words(word: str, expected: str):
+    assert singular(word) == expected

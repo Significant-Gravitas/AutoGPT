@@ -18,6 +18,7 @@ export interface ConnectableProvider {
   searchTerms?: string[];
   mcpServer?: ProviderMetadata["mcp_server"];
   iconId?: string;
+  apiKeyUrl?: string | null;
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -127,6 +128,9 @@ export function toConnectableProviders(
     // (Microsoft 365 Copilot's older provider) mustn't blank it.
     if (item.name === displayProvider && !item.mcp_server && item.description) {
       provider.description = item.description;
+    }
+    if (item.api_key_url && !item.mcp_server) {
+      provider.apiKeyUrl = item.api_key_url;
     }
     byService.set(key, provider);
   }

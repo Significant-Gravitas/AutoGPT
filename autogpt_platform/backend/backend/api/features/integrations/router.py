@@ -127,6 +127,7 @@ from .models import (
     ProviderMetadata,
     ProviderNamesResponse,
     get_all_provider_names,
+    get_api_key_url,
     get_provider_description,
     get_supported_auth_types,
 )
@@ -2222,6 +2223,7 @@ async def list_providers(
         return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
+            api_key_url=get_api_key_url(name),
             supported_auth_types=auth_types,
             service=identity.service,
             service_name=identity.name,
