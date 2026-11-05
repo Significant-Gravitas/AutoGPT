@@ -414,8 +414,8 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
-    # The queued input keeps the None, so a None here is a placeholder too, when
-    # the node runs. Only a linked pin can really receive one.
+    # The queued input keeps the None, so when the node runs a None here is a
+    # placeholder too, unless its pin is linked: that None was really sent.
     placeholders: set[str] = set()
     if dry_run:
         linked_pins = {link.sink_name for link in node.input_links}
