@@ -114,6 +114,9 @@ function readAuthNext() {
   return new URLSearchParams(window.location.search).get("next");
 }
 
+// Long enough for a full-page navigation (a login reloads the page) to finish.
+const AUTH_ROUTE_FALLBACK_MS = 3_000;
+
 export default function OnboardingProvider({
   children,
 }: {
@@ -124,6 +127,7 @@ export default function OnboardingProvider({
   // Only a re-run trigger for the init effect, which reads the live URL.
   const [authDeepLinkPending, setAuthDeepLinkPending] = useState(false);
   const hasInitialized = useRef(false);
+  const latestCheck = useRef(0);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
   const { toast } = useToast();
@@ -233,16 +237,23 @@ export default function OnboardingProvider({
     }
 
     hasInitialized.current = true;
+    const checkID = ++latestCheck.current;
 
     async function initializeOnboarding() {
       const requestUserID = latestUserID.current;
+      // Re-checks can overlap and answer out of order. Only the newest decides,
+      // and only for the account it asked about.
+      function isOutdated() {
+        return (
+          latestCheck.current !== checkID ||
+          latestUserID.current !== requestUserID
+        );
+      }
       try {
         const { is_completed } = await retryTransient(() =>
           resolveResponse(getV1CheckIfOnboardingIsCompleted()),
         );
-        // Another account signed in while this was in flight; its own check
-        // decides where it goes.
-        if (latestUserID.current !== requestUserID) return;
+        if (isOutdated()) return;
 
         // A "not finished" read in the wizard is out of date if the user has
         // since finished it, so once they have left it their state decides.
@@ -254,7 +265,7 @@ export default function OnboardingProvider({
           // Unreadable, it goes to the catch, which asks again rather than
           // guess: a finished user must not be sent back into the wizard.
           onboarding = await retryTransient(fetchOnboarding);
-          if (latestUserID.current !== requestUserID) return;
+          if (isOutdated()) return;
         }
         const isCompleted =
           is_completed ||
@@ -281,23 +292,29 @@ export default function OnboardingProvider({
               ),
             });
         // An admin impersonating an unfinished user is never sent into the
-        // target's wizard; the answer is the target's, not theirs.
+        // target's wizard; the answer is the target's, not theirs. A sign-in
+        // page only shows its loader, so they still have to leave it.
         const isAdminViewingTarget =
-          redirectTarget === "/onboarding" &&
-          !current.isOnAuthRoute &&
-          hasImpersonation();
-        if (redirectTarget && !isAdminViewingTarget) {
+          redirectTarget === "/onboarding" && hasImpersonation();
+        const destination = !isAdminViewingTarget
+          ? redirectTarget
+          : current.isOnAuthRoute
+            ? "/home"
+            : null;
+        if (destination) {
+          // The next page reads the onboarding state this return skips.
+          hasInitialized.current = false;
           // Leaving an auth page keeps a campaign link's tracking params.
           router.replace(
             current.isOnAuthRoute
-              ? withAuthTracking(redirectTarget, readAuthNext())
-              : redirectTarget,
+              ? withAuthTracking(destination, readAuthNext())
+              : destination,
           );
           return;
         }
 
         onboarding ??= await retryTransient(fetchOnboarding);
-        if (latestUserID.current !== requestUserID) return;
+        if (isOutdated()) return;
 
         const pathNow = latestPathname.current;
         if (
@@ -307,6 +324,27 @@ export default function OnboardingProvider({
           router.replace("/home");
         }
       } catch (error) {
+        if (isOutdated()) return;
+
+        // Only this check moves a signed-in user off a sign-in page's loader.
+        // Home's own check takes over from there, and the prompts on Home
+        // stay hidden until it answers.
+        if (getOnboardingRoute(latestPathname.current).isOnAuthRoute) {
+          setTimeout(() => {
+            const { isOnAuthRoute } = getOnboardingRoute(
+              latestPathname.current,
+            );
+            if (
+              isMounted.current &&
+              !isOutdated() &&
+              isOnAuthRoute &&
+              !readPendingAuthDeepLink(isOnAuthRoute)
+            ) {
+              router.replace(withAuthTracking("/home", readAuthNext()));
+            }
+          }, AUTH_ROUTE_FALLBACK_MS);
+        }
+
         if (error instanceof ApiError && error.status === 401) {
           hasInitialized.current = false;
           return;

@@ -65,6 +65,8 @@ const backend = vi.hoisted(() => ({
   heldCheck: null as Promise<void> | null,
   // Set to hold only the next completion answer.
   holdOnce: null as Promise<void> | null,
+  // Set to fail only the next completion check with this HTTP status.
+  checkFailsOnceWith: null as number | null,
   // Set to hold only the next onboarding state read.
   stateHoldOnce: null as Promise<void> | null,
   // Set to fail only the next onboarding state read: an HTTP status, or a
@@ -80,6 +82,12 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     const hold = backend.holdOnce ?? backend.heldCheck;
     backend.holdOnce = null;
     if (hold) await hold;
+    const failure = backend.checkFailsOnceWith;
+    backend.checkFailsOnceWith = null;
+    if (failure) {
+      const { ApiError } = await import("@/lib/autogpt-server-api");
+      throw new ApiError("Completion check failed", failure, {});
+    }
     return { status: 200, data: { is_completed: isCompleted } };
   },
   getV1OnboardingState: async () => {
@@ -127,6 +135,7 @@ let releaseHeld = () => {};
 
 describe("OnboardingProvider isOnboardingComplete", () => {
   afterEach(() => {
+    vi.useRealTimers();
     releaseHeld();
     ImpersonationState.clear();
   });
@@ -143,6 +152,7 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     backend.stateReads = 0;
     backend.heldCheck = null;
     backend.holdOnce = null;
+    backend.checkFailsOnceWith = null;
     backend.stateHoldOnce = null;
     backend.stateFailsOnceWith = null;
     releaseHeld = () => {};
@@ -518,5 +528,127 @@ describe("OnboardingProvider isOnboardingComplete", () => {
     view.rerender(tree());
     await waitFor(() => expect(completion()).toBe("true"));
     expect(routerReplace).not.toHaveBeenCalledWith("/onboarding");
+  });
+
+  test("an admin impersonating an unfinished user who lands on a sign-in page goes Home, not into the target's wizard", async () => {
+    ImpersonationState.set("target-user", "user-a");
+    window.history.replaceState(null, "", "/login");
+    mockPathname = "/login";
+    render(tree());
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+    expect(routerReplace).not.toHaveBeenCalledWith("/onboarding");
+  });
+
+  test("an older check answering last can't undo a newer answer or send a finished user back", async () => {
+    mockPathname = "/onboarding";
+    const view = render(tree());
+    await waitFor(() => expect(completion()).toBe("false"));
+
+    backend.holdOnce = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    mockPathname = "/home";
+    view.rerender(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(2));
+
+    mockPathname = "/onboarding";
+    view.rerender(tree());
+    await waitFor(() => expect(backend.completionChecks).toBe(3));
+
+    backend.isCompleted = true;
+    backend.completedSteps = ["ONBOARDING_COMPLETE"];
+    mockPathname = "/home";
+    view.rerender(tree());
+    await waitFor(() => expect(completion()).toBe("true"));
+    routerReplace.mockClear();
+
+    await act(async () => releaseHeld());
+    await act(async () => {});
+
+    expect(completion()).toBe("true");
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("a finished user sent Home from a sign-in page gets their onboarding state on arrival", async () => {
+    backend.isCompleted = true;
+    backend.completedSteps = ["ONBOARDING_COMPLETE"];
+    window.history.replaceState(null, "", "/login");
+    mockPathname = "/login";
+    const view = render(tree());
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+    expect(backend.stateReads).toBe(0);
+
+    window.history.replaceState(null, "", "/home");
+    mockPathname = "/home";
+    view.rerender(tree());
+
+    await waitFor(() => expect(backend.stateReads).toBe(1));
+    expect(routerReplace).toHaveBeenCalledTimes(1);
+  });
+
+  describe("when the check fails on a sign-in page", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout"],
+        shouldAdvanceTime: true,
+      });
+      backend.checkFailsOnceWith = 403;
+      window.history.replaceState(
+        null,
+        "",
+        "/login?next=%2Fhome%3Futm_source%3Dad",
+      );
+      mockPathname = "/login";
+    });
+
+    async function failedCheckThenWait(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    test("the user is taken off its loader to Home, keeping tracking, and Home's check takes over", async () => {
+      const view = render(tree());
+      await waitFor(() => expect(backend.completionChecks).toBe(1));
+
+      await failedCheckThenWait(2_000);
+      expect(routerReplace).not.toHaveBeenCalled();
+
+      await failedCheckThenWait(1_500);
+      expect(routerReplace).toHaveBeenCalledWith("/home?utm_source=ad");
+      expect(completion()).toBe("null");
+
+      window.history.replaceState(null, "", "/home?utm_source=ad");
+      mockPathname = "/home";
+      view.rerender(tree());
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenLastCalledWith("/onboarding"),
+      );
+      expect(backend.completionChecks).toBe(2);
+    });
+
+    test("nothing happens if the user signed out during the wait", async () => {
+      const view = render(tree());
+      await waitFor(() => expect(backend.completionChecks).toBe(1));
+      await failedCheckThenWait(0);
+
+      mockUserID = null;
+      view.rerender(tree());
+      await failedCheckThenWait(3_500);
+
+      expect(routerReplace).not.toHaveBeenCalled();
+    });
+
+    test("nothing happens if the sign-in page gained its own next during the wait", async () => {
+      render(tree());
+      await waitFor(() => expect(backend.completionChecks).toBe(1));
+      await failedCheckThenWait(0);
+
+      window.history.replaceState(null, "", "/login?next=%2Flibrary");
+      await failedCheckThenWait(3_500);
+
+      expect(routerReplace).not.toHaveBeenCalled();
+    });
   });
 });
