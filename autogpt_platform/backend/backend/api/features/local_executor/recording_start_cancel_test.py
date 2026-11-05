@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.local_executor import routes
-from backend.copilot.sdk import recording_tools
 from backend.api.features.local_executor.models import RecordingStartRequest
+from backend.copilot.sdk import recording_tools
 from backend.copilot.tools.recording_models import RecordingSummary
 
 

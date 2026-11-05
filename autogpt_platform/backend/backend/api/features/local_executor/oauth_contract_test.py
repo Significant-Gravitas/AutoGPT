@@ -22,7 +22,6 @@ from backend.data.auth.oauth import (
     validate_client_credentials,
 )
 
-
 # The grants the Local Executor app is registered for.
 _GRANTS = ["authorization_code", "refresh_token"]
 

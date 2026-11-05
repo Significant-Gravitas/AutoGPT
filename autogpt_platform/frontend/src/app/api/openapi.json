@@ -24480,7 +24480,6 @@
           },
           "state": {
             "type": "string",
-            "maxLength": 2048,
             "title": "State",
             "description": "Anti-CSRF token from client"
           }
