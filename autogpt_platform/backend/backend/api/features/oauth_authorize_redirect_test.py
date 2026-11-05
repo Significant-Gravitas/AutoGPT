@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlparse
 
@@ -89,6 +90,62 @@ async def test_a_malformed_challenge_goes_back_to_the_client(
     assert parse_qs(sent_to.query)["state"] == ["state-1"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_rollout", [False, True])
+async def test_only_the_local_pc_rollout_can_link_a_computer(in_rollout: bool):
+    """Every Local PC route and connection checks the rollout flag, but
+    signing the companion in didn't: a user outside it got a token that
+    every connection then refused with 4403. The scope stops at sign-in now,
+    with the reason for the companion to show."""
+    app = _app(is_active=True).model_copy(
+        update={"scopes": [APIKeyPermission.CONNECT_LOCAL_EXECUTOR]}
+    )
+    issue = AsyncMock(return_value=SimpleNamespace(code="code-1"))
+    gate = AsyncMock(return_value=in_rollout)
+    with (
+        patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)),
+        patch.object(oauth, "is_local_executor_enabled", gate),
+        patch.object(oauth, "create_authorization_code", issue),
+    ):
+        response = await oauth.authorize(
+            request=_request(
+                REGISTERED, scopes=[APIKeyPermission.CONNECT_LOCAL_EXECUTOR.value]
+            ),
+            user_id="user",
+        )
+
+    query = parse_qs(urlparse(response.redirect_url).query)
+    gate.assert_awaited_once_with("user")
+    if in_rollout:
+        assert query["code"] == ["code-1"]
+    else:
+        assert query["error"] == ["access_denied"]
+        assert query["error_description"] == [
+            "Local PC isn't available for this account yet."
+        ]
+        assert query["state"] == ["state-1"]
+        issue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_scopes_never_read_the_local_pc_flag():
+    gate = AsyncMock(return_value=False)
+    issue = AsyncMock(return_value=SimpleNamespace(code="code-1"))
+    with (
+        patch.object(
+            oauth,
+            "get_oauth_application",
+            AsyncMock(return_value=_app(is_active=True)),
+        ),
+        patch.object(oauth, "is_local_executor_enabled", gate),
+        patch.object(oauth, "create_authorization_code", issue),
+    ):
+        response = await oauth.authorize(request=_request(REGISTERED), user_id="user")
+
+    assert parse_qs(urlparse(response.redirect_url).query)["code"] == ["code-1"]
+    gate.assert_not_awaited()
+
+
 async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
     app = None if app_state == "unknown" else _app(is_active=app_state == "active")
     with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
@@ -105,11 +162,12 @@ def _request(
     # RFC 7636 appendix B: a valid S256 challenge.
     code_challenge: str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
     code_challenge_method: str = "S256",
+    scopes: list[str] | None = None,
 ):
     return oauth.AuthorizeRequest(
         client_id="client-123",
         redirect_uri=redirect_uri,
-        scopes=[APIKeyPermission.READ_GRAPH.value],
+        scopes=scopes or [APIKeyPermission.READ_GRAPH.value],
         state="state-1",
         response_type=response_type,
         code_challenge=code_challenge,

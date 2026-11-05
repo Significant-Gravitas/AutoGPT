@@ -40,6 +40,7 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
@@ -368,6 +369,20 @@ async def authorize(
                 "invalid_scope",
                 "Application is not authorized for all requested scopes. "
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
+            )
+
+        # Linking a computer belongs to the Local PC rollout, like every Local
+        # PC route and connection. Checked at sign-in too, so a user outside
+        # it gets no token at all rather than one every connection refuses.
+        if (
+            APIKeyPermission.CONNECT_LOCAL_EXECUTOR in requested_scopes
+            and not await is_local_executor_enabled(user_id)
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "access_denied",
+                "Local PC isn't available for this account yet.",
             )
 
         # Create authorization code
