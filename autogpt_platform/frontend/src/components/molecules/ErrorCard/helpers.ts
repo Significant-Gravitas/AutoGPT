@@ -47,14 +47,6 @@ export function getHttpErrorMessage(
   return "An unexpected error has occurred. Our team has been notified and is working to resolve the issue.";
 }
 
-export function shouldShowError(
-  isSuccess: boolean,
-  responseError?: ErrorCardProps["responseError"],
-  httpError?: ErrorCardProps["httpError"],
-): boolean {
-  return !isSuccess || !!responseError || !!httpError;
-}
-
 export function handleReportError(
   responseError?: ErrorCardProps["responseError"],
   httpError?: ErrorCardProps["httpError"],

@@ -1,6 +1,7 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { beautifyString, cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
@@ -65,8 +66,9 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
     <Button
       draggable={true}
       variant={"ghost"}
+      shape="rounded"
       className={cn(
-        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal shadow-none",
+        "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal",
         "hover:cursor-default hover:bg-surface-hover focus:ring-0 active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
         className,
       )}
@@ -90,8 +92,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="body-medium"
             as="span"
-            tone="emphasis"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "emphasis"}
+            className="line-clamp-1"
           >
             {highlightText(
               beautifyString(title).replace(/ Block$/, ""),
@@ -103,8 +105,8 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
           <Text
             variant="small-loose"
             as="span"
-            tone="muted"
-            className={cn("line-clamp-1 group-disabled:text-foreground-subtle")}
+            tone={rest.disabled ? "subtle" : "muted"}
+            className="line-clamp-1"
           >
             {highlightText(description, highlightedText, "small-bold-loose")}
           </Text>
@@ -112,10 +114,10 @@ export const IntegrationBlock: IntegrationBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+          "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body text-action-foreground group-disabled:bg-foreground-subtle",
         )}
       >
-        <Plus className="h-5 w-5 text-action-foreground" strokeWidth={2} />
+        <Icon aria-hidden icon={PlusSignIcon} className="h-5 w-5" />
       </div>
     </Button>
   );

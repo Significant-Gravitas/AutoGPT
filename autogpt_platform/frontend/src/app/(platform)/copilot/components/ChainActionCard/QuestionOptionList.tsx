@@ -92,7 +92,7 @@ export function QuestionOptionList({
               onClick={() => onChange(option)}
               onKeyDown={(event) => handleKeyDown(event, index)}
               className={
-                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pr-12 pl-4 text-left text-base leading-snug transition-all " +
+                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pr-12 pl-4 text-left text-body-lg leading-snug transition-all " +
                 (isSelected
                   ? "bg-surface text-foreground-strong ring-2 ring-action"
                   : "bg-surface-muted text-foreground-body ring-1 ring-separator hover:bg-surface-hover")

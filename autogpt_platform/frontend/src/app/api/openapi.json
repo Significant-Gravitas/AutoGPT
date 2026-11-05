@@ -2850,6 +2850,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -3891,6 +3892,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -4062,6 +4064,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -4156,6 +4159,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -5055,7 +5059,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Submit message feedback",
-        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. It also goes to PostHog LLM analytics as an ``$ai_metric``\nevent. Langfuse or PostHog being down does not fail the request; the\nresponse says where the Langfuse score went.",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and sends it to PostHog LLM analytics as an\n``$ai_metric`` event. PostHog being down does not fail the request.",
         "operationId": "postV2Submit message feedback",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5715,7 +5719,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used — not the\nraw spend or cap — so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from LaunchDarkly (falling back to\nconfig). Includes the user's rate-limit tier.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used — not the\nraw spend or cap — so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from PostHog (falling back to\nconfig). Includes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -6272,13 +6276,25 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           },
           {
             "name": "transaction_filter",
@@ -9136,6 +9152,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "description": "Page number (1-indexed)",
               "default": 1,
@@ -10717,6 +10734,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "description": "Page number to retrieve (must be >= 1)",
               "default": 1,
@@ -10730,6 +10748,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "description": "Number of agents per page (must be >= 1)",
               "default": 15,
@@ -10940,11 +10959,23 @@
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
+            "name": "search_term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Search term to filter favorite agents",
+              "title": "Search Term"
+            },
+            "description": "Search term to filter favorite agents"
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "description": "Page number to retrieve (must be >= 1)",
               "default": 1,
@@ -10958,6 +10989,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "description": "Number of agents per page (must be >= 1)",
               "default": 15,
@@ -11575,6 +11607,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -11586,6 +11619,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 10,
               "title": "Page Size"
@@ -14448,6 +14482,24 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/platform-config": {
+      "get": {
+        "tags": ["platform-config"],
+        "summary": "Get Platform Config",
+        "description": "This deployment's settings the browser needs, the same for every caller.",
+        "operationId": "get_platform_config",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlatformConfig" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/platform-linking/links": {
       "get": {
         "tags": ["platform-linking"],
@@ -15162,6 +15214,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "description": "Page number (1-indexed)",
               "default": 1,
@@ -16771,13 +16824,25 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -17162,6 +17227,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -17173,6 +17239,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -17371,6 +17438,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -17635,6 +17703,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -17646,6 +17715,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -17793,6 +17863,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -17804,6 +17875,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -17863,6 +17935,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -18196,6 +18269,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000000,
               "minimum": 1,
               "default": 1,
               "title": "Page"
@@ -18207,6 +18281,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -20047,7 +20122,7 @@
       },
       "AddTeamMemberRequest": {
         "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
+          "user_id": { "type": "string", "maxLength": 100, "title": "User Id" },
           "is_admin": {
             "type": "boolean",
             "title": "Is Admin",
@@ -20553,13 +20628,21 @@
             "enum": [
               "reset_password",
               "verify_email",
+              "verify_new_email",
               "change_email",
               "set_password"
             ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
-          "url": { "type": "string", "title": "Url" }
+          "url": { "type": "string", "title": "Url" },
+          "new_email": {
+            "anyOf": [
+              { "type": "string", "format": "email" },
+              { "type": "null" }
+            ],
+            "title": "New Email"
+          }
         },
         "type": "object",
         "required": ["type", "to", "url"],
@@ -21769,12 +21852,15 @@
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
             "title": "Agent Ids"
           },
           "folder_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Folder Id"
           }
         },
@@ -21786,12 +21872,15 @@
       "BulkMoveFilesRequest": {
         "properties": {
           "file_ids": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
             "title": "File Ids"
           },
           "folder_id": {
-            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Folder Id"
           }
         },
@@ -22468,7 +22557,7 @@
         "type": "object",
         "required": ["tier", "label", "selectable"],
         "title": "ConnectionTier",
-        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nOn a ChatGPT connection it is the model the catalog pins for that cell,\nread straight from the registry -- no lease, no call to the account.\nWhat a lease would add is confirmation that this particular account still\nadvertises it; the router checks that when the turn runs and falls back\nif not, so the name here is the routed model rather than a guarantee.\n``None`` only when the catalog pins nothing for the cell."
+        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — feature-flag cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nOn a ChatGPT connection it is the model the catalog pins for that cell,\nread straight from the registry -- no lease, no call to the account.\nWhat a lease would add is confirmation that this particular account still\nadvertises it; the router checks that when the turn runs and falls back\nif not, so the name here is the routed model rather than a guarantee.\n``None`` only when the catalog pins nothing for the cell."
       },
       "ConsolidatedFact": {
         "properties": {
@@ -22622,6 +22711,15 @@
           "update": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Update"
+          },
+          "argument_hint": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Argument Hint"
+          },
+          "user_invocable": {
+            "type": "boolean",
+            "title": "User Invocable",
+            "default": true
           }
         },
         "type": "object",
@@ -22993,7 +23091,7 @@
       },
       "CreateInvitationRequest": {
         "properties": {
-          "email": { "type": "string", "title": "Email" },
+          "email": { "type": "string", "maxLength": 320, "title": "Email" },
           "is_admin": {
             "type": "boolean",
             "title": "Is Admin",
@@ -23005,8 +23103,9 @@
             "default": false
           },
           "team_ids": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
+            "maxItems": 100,
             "title": "Team Ids"
           }
         },
@@ -23030,7 +23129,10 @@
             "title": "Slug"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           }
         },
@@ -23217,11 +23319,15 @@
             "title": "Name"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "join_policy": {
             "type": "string",
+            "maxLength": 100,
             "title": "Join Policy",
             "default": "OPEN"
           }
@@ -23232,14 +23338,26 @@
       },
       "CreateTransferRequest": {
         "properties": {
-          "resource_type": { "type": "string", "title": "Resource Type" },
-          "resource_id": { "type": "string", "title": "Resource Id" },
+          "resource_type": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Resource Type"
+          },
+          "resource_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Resource Id"
+          },
           "target_organization_id": {
             "type": "string",
+            "maxLength": 100,
             "title": "Target Organization Id"
           },
           "reason": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Reason"
           }
         },
@@ -23339,7 +23457,8 @@
       "CredentialSelectionRequest": {
         "properties": {
           "selections": {
-            "additionalProperties": { "type": "string" },
+            "additionalProperties": { "type": "string", "maxLength": 100 },
+            "propertyNames": { "maxLength": 100 },
             "type": "object",
             "maxProperties": 20,
             "title": "Selections",
@@ -23453,6 +23572,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope",
+            "description": "What a user/password login may be used for, e.g. smtp://host[:port]; null for a login saved before scopes existed"
           },
           "mcp_auth_scheme": {
             "anyOf": [
@@ -26544,19 +26668,29 @@
             "title": "Name"
           },
           "icon": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Icon"
           },
           "color": {
             "anyOf": [
-              { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              {
+                "type": "string",
+                "maxLength": 7,
+                "pattern": "^#[0-9A-Fa-f]{6}$"
+              },
               { "type": "null" }
             ],
             "title": "Color",
             "description": "Hex color code (#RRGGBB)"
           },
           "parent_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Parent Id"
           }
         },
@@ -26582,7 +26716,10 @@
       "FolderMoveRequest": {
         "properties": {
           "target_parent_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Target Parent Id"
           }
         },
@@ -26613,12 +26750,23 @@
             "title": "Name"
           },
           "icon": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Icon"
           },
           "color": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Color"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 7,
+                "pattern": "^#[0-9A-Fa-f]{6}$"
+              },
+              { "type": "null" }
+            ],
+            "title": "Color",
+            "description": "Hex color code (#RRGGBB)"
           }
         },
         "type": "object",
@@ -26653,7 +26801,6 @@
         "type": "string",
         "enum": [
           "marketplace-search-terms",
-          "enable-platform-payment",
           "chat-mode-option",
           "generic-trigger-agents",
           "chat-workspace-files",
@@ -26673,7 +26820,6 @@
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
-          "ENABLE_PLATFORM_PAYMENT",
           "CHAT_MODE_OPTION",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
@@ -29123,10 +29269,15 @@
         "properties": {
           "graph_execution_id": {
             "type": "string",
+            "maxLength": 100,
             "title": "Graph Execution Id"
           },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
+          "name": { "type": "string", "maxLength": 100, "title": "Name" },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
@@ -29174,11 +29325,17 @@
             "title": "Credentials"
           },
           "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Name"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "is_active": {
@@ -29250,7 +29407,10 @@
             "description": "User-specific settings for this library agent"
           },
           "folder_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Folder Id",
             "description": "Folder ID to move agent to (None to move to root)"
           }
@@ -30231,15 +30391,7 @@
           "id": {
             "type": "string",
             "title": "Id",
-            "description": "The rating's id, which its Langfuse score shares."
-          },
-          "langfuse_target": {
-            "anyOf": [
-              { "type": "string", "enum": ["trace", "session"] },
-              { "type": "null" }
-            ],
-            "title": "Langfuse Target",
-            "description": "Where the Langfuse score went: the trace of the turn that wrote the reply, or the chat's Langfuse session when that trace is not known. Null when Langfuse is not configured or did not take the score; the rating is saved either way."
+            "description": "The rating's id, which its PostHog event carries as ``feedback_id``."
           }
         },
         "type": "object",
@@ -30737,7 +30889,12 @@
       },
       "NotificationPreferenceDTO": {
         "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "The account's address, as shown in the form. Ignored on update: an account's address changes only through the verified change-email flow."
+          },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency"
           },
@@ -31594,6 +31751,18 @@
         "title": "Platform",
         "description": "Mirror of the Prisma PlatformType enum."
       },
+      "PlatformConfig": {
+        "properties": {
+          "payment_enabled": {
+            "type": "boolean",
+            "title": "Payment Enabled",
+            "description": "Whether the platform is paid for, so an account without a plan is paywalled (`ENABLE_PLATFORM_PAYMENT`)."
+          }
+        },
+        "type": "object",
+        "required": ["payment_enabled"],
+        "title": "PlatformConfig"
+      },
       "PlatformCostDashboard": {
         "properties": {
           "by_provider": {
@@ -32201,24 +32370,40 @@
       "ProfileUpdateRequest": {
         "properties": {
           "username": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Username"
           },
           "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Name"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Avatar Url"
           },
           "links": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
+              {
+                "items": { "type": "string", "maxLength": 2048 },
+                "type": "array",
+                "maxItems": 100
+              },
               { "type": "null" }
             ],
             "title": "Links"
@@ -32733,8 +32918,13 @@
           "context": {
             "anyOf": [
               {
-                "additionalProperties": { "type": "string" },
-                "type": "object"
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 64000
+                },
+                "propertyNames": { "maxLength": 2048 },
+                "type": "object",
+                "maxProperties": 5
               },
               { "type": "null" }
             ],
@@ -32743,7 +32933,7 @@
           "file_ids": {
             "anyOf": [
               {
-                "items": { "type": "string" },
+                "items": { "type": "string", "maxLength": 100 },
                 "type": "array",
                 "maxItems": 20
               },
@@ -32753,7 +32943,11 @@
           },
           "folder_ids": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              {
+                "items": { "type": "string", "maxLength": 100 },
+                "type": "array",
+                "maxItems": 5
+              },
               { "type": "null" }
             ],
             "title": "Folder Ids"
@@ -33549,12 +33743,20 @@
         "properties": {
           "store_listing_version_id": {
             "type": "string",
+            "maxLength": 100,
             "title": "Store Listing Version Id"
           },
           "is_approved": { "type": "boolean", "title": "Is Approved" },
-          "comments": { "type": "string", "title": "Comments" },
+          "comments": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Comments"
+          },
           "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Internal Comments"
           }
         },
@@ -34174,6 +34376,15 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "background_outcome": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Background Outcome"
+          },
+          "background_pending": {
+            "type": "boolean",
+            "title": "Background Pending",
+            "default": false
           }
         },
         "type": "object",
@@ -34682,9 +34893,16 @@
       "SkillReviewRequest": {
         "properties": {
           "is_approved": { "type": "boolean", "title": "Is Approved" },
-          "comments": { "type": "string", "title": "Comments" },
+          "comments": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Comments"
+          },
           "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Internal Comments"
           }
         },
@@ -34748,22 +34966,28 @@
         "properties": {
           "skill_name": {
             "type": "string",
+            "maxLength": 100,
             "title": "Skill Name",
             "description": "Slug of the caller's library skill to publish."
           },
           "categories": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
+            "maxItems": 100,
             "title": "Categories"
           },
           "required_providers": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
+            "maxItems": 100,
             "title": "Required Providers",
             "description": "Integrations the skill's instructions assume are connected."
           },
           "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
             "title": "Changes Summary"
           }
         },
@@ -35343,11 +35567,21 @@
         "properties": {
           "store_listing_version_id": {
             "type": "string",
+            "maxLength": 100,
             "title": "Store Listing Version Id"
           },
-          "score": { "type": "integer", "title": "Score" },
+          "score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "description": "Star rating, 1 to 5"
+          },
           "comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Comments"
           }
         },
@@ -35568,7 +35802,7 @@
       },
       "StoreSubmissionEditRequest": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
+          "name": { "type": "string", "maxLength": 100, "title": "Name" },
           "sub_heading": {
             "type": "string",
             "maxLength": 100,
@@ -35577,39 +35811,57 @@
             "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
           },
           "video_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Video Url"
           },
           "agent_output_demo_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Agent Output Demo Url"
           },
           "image_urls": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2048 },
             "type": "array",
+            "maxItems": 100,
             "title": "Image Urls",
             "default": []
           },
           "description": {
             "type": "string",
+            "maxLength": 2000,
             "title": "Description",
             "default": ""
           },
           "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
             "title": "Instructions"
           },
           "categories": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
+            "maxItems": 100,
             "title": "Categories"
           },
           "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
             "title": "Changes Summary"
           },
           "recommended_schedule_cron": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 200 },
+              { "type": "null" }
+            ],
             "title": "Recommended Schedule Cron"
           }
         },
@@ -35621,6 +35873,7 @@
         "properties": {
           "graph_id": {
             "type": "string",
+            "maxLength": 100,
             "minLength": 1,
             "title": "Graph Id",
             "description": "Graph ID cannot be empty"
@@ -35631,8 +35884,8 @@
             "title": "Graph Version",
             "description": "Graph version must be greater than 0"
           },
-          "slug": { "type": "string", "title": "Slug" },
-          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "maxLength": 100, "title": "Slug" },
+          "name": { "type": "string", "maxLength": 100, "title": "Name" },
           "sub_heading": {
             "type": "string",
             "maxLength": 100,
@@ -35641,39 +35894,57 @@
             "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
           },
           "video_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Video Url"
           },
           "agent_output_demo_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Agent Output Demo Url"
           },
           "image_urls": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2048 },
             "type": "array",
+            "maxItems": 100,
             "title": "Image Urls",
             "default": []
           },
           "description": {
             "type": "string",
+            "maxLength": 2000,
             "title": "Description",
             "default": ""
           },
           "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
             "title": "Instructions"
           },
           "categories": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 100 },
             "type": "array",
+            "maxItems": 100,
             "title": "Categories"
           },
           "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
             "title": "Changes Summary"
           },
           "recommended_schedule_cron": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 200 },
+              { "type": "null" }
+            ],
             "title": "Recommended Schedule Cron"
           }
         },
@@ -35717,8 +35988,13 @@
           "context": {
             "anyOf": [
               {
-                "additionalProperties": { "type": "string" },
-                "type": "object"
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 64000
+                },
+                "propertyNames": { "maxLength": 2048 },
+                "type": "object",
+                "maxProperties": 5
               },
               { "type": "null" }
             ],
@@ -35733,7 +36009,7 @@
           "file_ids": {
             "anyOf": [
               {
-                "items": { "type": "string" },
+                "items": { "type": "string", "maxLength": 100 },
                 "type": "array",
                 "maxItems": 20
               },
@@ -35743,7 +36019,11 @@
           },
           "folder_ids": {
             "anyOf": [
-              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              {
+                "items": { "type": "string", "maxLength": 100 },
+                "type": "array",
+                "maxItems": 5
+              },
               { "type": "null" }
             ],
             "title": "Folder Ids",
@@ -35859,7 +36139,7 @@
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs Yearly",
-            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in PostHog. Empty for monthly-only configurations."
           },
           "billing_cycle": {
             "type": "string",
@@ -37199,7 +37479,11 @@
       },
       "TransferOwnershipRequest": {
         "properties": {
-          "new_owner_id": { "type": "string", "title": "New Owner Id" }
+          "new_owner_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "New Owner Id"
+          }
         },
         "type": "object",
         "required": ["new_owner_id"],
@@ -37408,18 +37692,29 @@
       },
       "TriggeredPresetSetupRequest": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
+          "name": { "type": "string", "maxLength": 100, "title": "Name" },
           "description": {
             "type": "string",
+            "maxLength": 2000,
             "title": "Description",
             "default": ""
           },
-          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Graph Id"
+          },
           "graph_version": { "type": "integer", "title": "Graph Version" },
           "trigger_config": {
             "additionalProperties": true,
             "type": "object",
             "title": "Trigger Config"
+          },
+          "constant_inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Constant Inputs",
+            "description": "Regular graph input values"
           },
           "agent_credentials": {
             "additionalProperties": {
@@ -37565,22 +37860,36 @@
       "UpdateOrgRequest": {
         "properties": {
           "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Name"
           },
           "slug": {
             "anyOf": [
-              { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
               { "type": "null" }
             ],
             "title": "Slug"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "avatar_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
             "title": "Avatar Url"
           }
         },
@@ -37609,7 +37918,9 @@
         "description": "Request model for pinning/unpinning a session."
       },
       "UpdateSessionTitleRequest": {
-        "properties": { "title": { "type": "string", "title": "Title" } },
+        "properties": {
+          "title": { "type": "string", "maxLength": 200, "title": "Title" }
+        },
         "type": "object",
         "required": ["title"],
         "title": "UpdateSessionTitleRequest",
@@ -37632,15 +37943,24 @@
       "UpdateTeamRequest": {
         "properties": {
           "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Name"
           },
           "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Description"
           },
           "join_policy": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Join Policy"
           }
         },
@@ -38954,6 +39274,11 @@
             "format": "password",
             "title": "Password",
             "writeOnly": true
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope",
+            "description": "What this login may be used for, as a URI whose meaning depends on the provider: smtp://host[:port] for SMTP, or the engine's scheme (postgresql://, mysql://, mssql://) and host[:port] for a database. None for a login saved before scopes existed."
           }
         },
         "type": "object",
@@ -39319,11 +39644,17 @@
             "title": "Name"
           },
           "icon": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Icon"
           },
           "parent_id": {
-            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Parent Id"
           }
         },
@@ -39353,11 +39684,17 @@
             "title": "Name"
           },
           "icon": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Icon"
           },
           "parent_id": {
-            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Parent Id"
           }
         },

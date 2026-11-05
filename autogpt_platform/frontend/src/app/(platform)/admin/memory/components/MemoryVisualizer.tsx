@@ -168,15 +168,15 @@ function MemoryScopeView({ expertID }: MemoryScopeViewProps) {
         />
         <div className="col-span-12 rounded-md border bg-surface md:col-span-7">
           {graph.isLoading ? (
-            <div className="flex h-[70vh] items-center justify-center text-sm text-foreground-tertiary">
+            <div className="flex h-[70vh] items-center justify-center text-body text-foreground-tertiary">
               Loading graph…
             </div>
           ) : graph.error || scopeMismatchError ? (
-            <div className="p-6 text-sm text-error-foreground">
+            <div className="p-6 text-body text-error-foreground">
               Failed to load graph: {String(graph.error ?? scopeMismatchError)}
             </div>
           ) : nodes.length === 0 ? (
-            <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-foreground-tertiary">
+            <div className="flex h-[70vh] flex-col items-center justify-center text-body text-foreground-tertiary">
               No memory yet. Start a chat session to populate it.
             </div>
           ) : (
@@ -221,14 +221,14 @@ interface OverviewStripProps {
 function OverviewStrip({ loading, error, data }: OverviewStripProps) {
   if (loading) {
     return (
-      <div className="rounded-md border bg-surface p-3 text-sm text-foreground-tertiary">
+      <div className="rounded-md border bg-surface p-3 text-body text-foreground-tertiary">
         Loading overview…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-md border border-error/20 bg-error-surface p-3 text-sm text-error-foreground">
+      <div className="rounded-md border border-error/20 bg-error-surface p-3 text-body text-error-foreground">
         Failed to load overview: {String(error)}
       </div>
     );
@@ -247,8 +247,8 @@ function OverviewStrip({ loading, error, data }: OverviewStripProps) {
           key={stat.label}
           className="rounded-md border bg-surface p-3 text-center"
         >
-          <div className="text-xl font-bold">{stat.value}</div>
-          <div className="text-xs tracking-wide text-foreground-tertiary uppercase">
+          <div className="text-lead font-bold">{stat.value}</div>
+          <div className="text-caption tracking-wide text-foreground-tertiary uppercase">
             {stat.label}
           </div>
         </div>
@@ -308,9 +308,9 @@ function ControlBar({
   const dreamActive = !!dreamActiveJobId;
   const nightlyActive = !!nightlyActiveJobId;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-surface p-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-surface p-3 text-body">
       {readOnly ? (
-        <span className="rounded bg-surface-hover px-2 py-1 text-xs text-foreground-secondary">
+        <span className="rounded bg-surface-hover px-2 py-1 text-caption text-foreground-secondary">
           Read-only
         </span>
       ) : (
@@ -346,7 +346,7 @@ function ControlBar({
         />
         Episodes (noisy)
       </label>
-      <span className="ml-auto text-xs text-foreground-tertiary">
+      <span className="ml-auto text-caption text-foreground-tertiary">
         {nodeCount} nodes · {edgeCount} edges
         {truncated && (
           <span className="ml-2 rounded bg-warning-surface px-2 py-0.5 text-warning-foreground">
@@ -409,7 +409,7 @@ function Sidebar({
   return (
     <div className="col-span-12 space-y-3 md:col-span-3">
       <div className="rounded-md border bg-surface p-3">
-        <h3 className="mb-2 text-xs font-semibold text-foreground-tertiary uppercase">
+        <h3 className="mb-2 text-caption font-semibold text-foreground-tertiary uppercase">
           Labels
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -424,7 +424,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenNodeTypes(togglePill(hiddenNodeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-xs ${
+                  className={`rounded-full border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"
@@ -437,7 +437,7 @@ function Sidebar({
         </div>
       </div>
       <div className="rounded-md border bg-surface p-3">
-        <h3 className="mb-2 text-xs font-semibold text-foreground-tertiary uppercase">
+        <h3 className="mb-2 text-caption font-semibold text-foreground-tertiary uppercase">
           Relationships
         </h3>
         <div className="flex flex-wrap gap-1.5">
@@ -452,7 +452,7 @@ function Sidebar({
                   onClick={() =>
                     setHiddenEdgeTypes(togglePill(hiddenEdgeTypes, k))
                   }
-                  className={`rounded-full border px-2 py-0.5 text-xs ${
+                  className={`rounded-full border px-2 py-0.5 text-caption ${
                     hidden
                       ? "border-border-strong text-foreground-subtle line-through"
                       : "border-foreground-emphasis text-foreground-body"
@@ -520,7 +520,7 @@ function DreamResultPanel({ result, onDismiss }: DreamResultPanelProps) {
 function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
   return (
     <div className="col-span-12 md:col-span-2">
-      <div className="rounded-md border bg-surface p-3 text-sm">
+      <div className="rounded-md border bg-surface p-3 text-body">
         {!node ? (
           <div className="text-foreground-tertiary">
             Click a node to inspect.
@@ -529,17 +529,17 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
           <>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate text-base font-semibold">
+                <div className="truncate text-body-lg font-semibold">
                   {node.name ?? node.uuid.slice(0, 12)}
                 </div>
-                <div className="text-xs text-foreground-tertiary">
+                <div className="text-caption text-foreground-tertiary">
                   {node.type ?? node.label}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onClear}
-                className="text-xs text-foreground-subtle hover:text-foreground-secondary"
+                className="text-caption text-foreground-subtle hover:text-foreground-secondary"
                 aria-label="Clear selection"
               >
                 ✕
@@ -549,14 +549,14 @@ function DetailPanel({ node, neighbors, onClear }: DetailPanelProps) {
               {node.uuid}
             </div>
             {node.summary && (
-              <div className="mt-3 text-xs whitespace-pre-wrap text-foreground-body">
+              <div className="mt-3 text-caption whitespace-pre-wrap text-foreground-body">
                 {node.summary}
               </div>
             )}
-            <h4 className="mt-4 text-xs font-semibold text-foreground-tertiary uppercase">
+            <h4 className="mt-4 text-caption font-semibold text-foreground-tertiary uppercase">
               {neighbors.length} edges
             </h4>
-            <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-xs">
+            <ul className="mt-1 max-h-72 space-y-1 overflow-y-auto text-caption">
               {neighbors.map(({ edge, otherUuid }) => (
                 <li
                   key={edge.uuid}

@@ -97,7 +97,7 @@ const components: Components = {
   ),
   table: ({ children }) => (
     <div className="mb-3 overflow-x-auto">
-      <table className="w-full border-collapse text-sm">{children}</table>
+      <table className="w-full border-collapse text-body">{children}</table>
     </div>
   ),
   th: ({ children }) => (
@@ -107,7 +107,7 @@ const components: Components = {
   ),
   td: ({ children }) => <td className="py-1.5 pr-4 align-top">{children}</td>,
   code: ({ children }) => (
-    <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-xs break-words">
+    <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-caption break-words">
       {children}
     </code>
   ),
@@ -120,9 +120,9 @@ const components: Components = {
 };
 
 const HEADING_CLASS: Record<number, string> = {
-  3: "mb-2 mt-6 text-base font-semibold text-foreground-strong first:mt-0",
+  3: "mb-2 mt-6 text-body-lg font-semibold text-foreground-strong first:mt-0",
   4: "mb-2 mt-5 text-body-md leading-inherit font-semibold text-foreground-strong first:mt-0",
-  5: "mb-1.5 mt-4 text-sm font-medium text-foreground-emphasis first:mt-0",
+  5: "mb-1.5 mt-4 text-body font-medium text-foreground-emphasis first:mt-0",
 };
 
 function Heading({

@@ -16,8 +16,9 @@ import {
  * mounts and would record "control" for everyone; PostHog records arm
  * assignment itself, so segmentation belongs there rather than here.
  *
- * PostHog keeps its own once-per-tab guard, marked only once the event is sent
- * or dropped for lack of consent, not while it waits for the answer.
+ * PostHog keeps its own once-per-tab guard, marked only once the event is sent,
+ * never while it waits for the answer or when it is dropped for lack of
+ * consent.
  */
 export function trackPaywallView() {
   trackPaywallViewed("onboarding");
