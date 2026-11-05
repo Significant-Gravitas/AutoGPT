@@ -104,13 +104,8 @@ def route_launch_env(
     if stand_in_model_url is not None:
         if gateway is not None:
             raise ValueError("A turn has one model endpoint")
-        base = stand_in_model_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        parsed = urlsplit(base)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            raise ValueError("The stand-in model URL must be an http(s) URL")
-        no_proxy = _no_proxy_value(parsed.hostname)
+        base, host = stand_in_base_url(stand_in_model_url)
+        no_proxy = _no_proxy_value(host)
         env = {
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": "load-test",
@@ -304,6 +299,21 @@ def cli_user_message(content: list[dict[str, Any]], session_id: str) -> dict[str
         "session_id": session_id,
         "client_composed": True,
     }
+
+
+def stand_in_base_url(url: str) -> tuple[str, str]:
+    """A load-test stand-in model's base URL, without ``/v1``, and its host.
+
+    The turn's profile and the CLI's environment both take the base from here,
+    so the two always name the same endpoint.
+    """
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    parsed = urlsplit(base)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("The stand-in model URL must be an http(s) URL")
+    return base, parsed.hostname
 
 
 def _no_proxy_value(*hosts: str) -> str:

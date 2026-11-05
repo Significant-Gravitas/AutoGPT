@@ -17,6 +17,7 @@ from backend.copilot.model_router import resolve_codex_model_route, resolve_mode
 from backend.copilot.route_profile import RouteProfile, codex_profile, platform_profile
 from backend.copilot.route_table import RoutingSource
 from backend.copilot.sdk.context_window import CodexEngineWindow
+from backend.copilot.sdk.env import stand_in_base_url
 from backend.copilot.sdk.model_gateway.front import ModelGateway
 from backend.copilot.sdk.model_gateway.route import (
     ApiKeyCredential,
@@ -45,14 +46,7 @@ async def resolve_turn_profile(
     if stand_in_model_url is not None:
         if credential_lease is not None:
             raise ValueError("A turn has one model endpoint")
-        from urllib.parse import urlsplit
-
-        base = stand_in_model_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        parsed = urlsplit(base)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            raise ValueError("The stand-in model URL must be an http(s) URL")
+        base, _ = stand_in_base_url(stand_in_model_url)
         stand_in = config.model_copy(
             update={
                 "platform_route": "direct_anthropic",
