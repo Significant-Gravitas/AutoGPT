@@ -1298,7 +1298,9 @@ def _nesting_depth(value: Any) -> int:
         deepest = max(deepest, depth)
         if deepest > MAX_FRAME_NESTING:
             break
-        stack.extend((child, depth + 1) for child in children)
+        # A scalar adds no depth, and a long flat array of them would only
+        # grow the stack.
+        stack.extend((child, depth + 1) for child in children if isinstance(child, dict | list))
     return deepest
 
 
