@@ -13,7 +13,10 @@ from asyncio import sleep
 from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel, ValidationError
 
-from backend.api.features.local_executor.gating import is_local_executor_enabled
+from backend.api.features.local_executor.gating import (
+    is_local_executor_enabled,
+    local_executor_turned_off,
+)
 from backend.api.features.local_executor.models import SessionID
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import (
@@ -102,7 +105,9 @@ async def local_executor_machine_ws(websocket: WebSocket) -> None:
         )
     )
     expiry_task = asyncio.create_task(
-        _close_when_token_ends(websocket, identity.expires_at, token_recheck)
+        _close_when_access_ends(
+            websocket, identity.expires_at, token_recheck, user_id=identity.user_id
+        )
     )
     try:
         await _serve_until_either_ends(relay_task, expiry_task)
@@ -156,7 +161,9 @@ async def local_executor_ws(
         )
     )
     expiry_task = asyncio.create_task(
-        _close_when_token_ends(websocket, identity.expires_at, token_recheck)
+        _close_when_access_ends(
+            websocket, identity.expires_at, token_recheck, user_id=identity.user_id
+        )
     )
     try:
         await _serve_until_either_ends(relay_task, expiry_task)
@@ -322,20 +329,32 @@ async def _deny(
     )
 
 
-async def _close_when_token_ends(
-    websocket: WebSocket, expires_at: int, recheck: asyncio.Event | None = None
+async def _close_when_access_ends(
+    websocket: WebSocket,
+    expires_at: int,
+    recheck: asyncio.Event | None = None,
+    *,
+    user_id: str | None = None,
 ) -> None:
-    """Close the connection when its access token expires or stops being active.
+    """Close the connection when its access token expires or stops being
+    active, or when the Local PC executor is turned off for its owner.
 
     Revoking one of the owner's tokens sets ``recheck`` through Redis, so the
     check runs at once, and only a connection whose own token was revoked
     closes. The periodic check bounds how long a connection outlives a
-    revocation that push missed."""
+    revocation that push missed, or the rollout flag turning off, which the
+    handshake alone would only catch for the next connection."""
     while (remaining := expires_at - time.time()) > 0:
         await _wait_for_recheck(recheck, min(remaining, _TOKEN_RECHECK_SECONDS))
-        if expires_at - time.time() > 0 and not await _token_still_active(websocket):
+        if expires_at - time.time() <= 0:
+            break
+        if not await _token_still_active(websocket):
             # 4428 tells the companion not to reconnect.
             await websocket.close(code=4428, reason="Token revoked")
+            return
+        if user_id is not None and await local_executor_turned_off(user_id):
+            # The refusal a new connection gets at the handshake.
+            await websocket.close(code=4403, reason="Local PC executor is not enabled")
             return
     await websocket.close(code=4401, reason="Access token expired")
 

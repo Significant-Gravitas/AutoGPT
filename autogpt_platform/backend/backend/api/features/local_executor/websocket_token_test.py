@@ -34,10 +34,35 @@ async def test_a_revoked_token_closes_the_connection_before_it_expires(
     monkeypatch.setattr(ws_module, "introspect_token", introspect)
     websocket = _websocket()
 
-    await ws_module._close_when_token_ends(websocket, int(time.time()) + 3600)
+    await ws_module._close_when_access_ends(websocket, int(time.time()) + 3600)
 
     websocket.close.assert_awaited_once_with(code=4428, reason="Token revoked")
     assert introspect.await_args.args[0] == "agpt_xt_token"
+
+
+@pytest.mark.asyncio
+async def test_turning_local_pc_off_closes_a_connection_already_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rollout flag was read only at the handshake, so a socket opened
+    before it turned off kept serving the turn that held it."""
+    monkeypatch.setattr(
+        ws_module,
+        "introspect_token",
+        AsyncMock(return_value=SimpleNamespace(active=True)),
+    )
+    turned_off = AsyncMock(return_value=True)
+    monkeypatch.setattr(ws_module, "local_executor_turned_off", turned_off)
+    websocket = _websocket()
+
+    await ws_module._close_when_access_ends(
+        websocket, int(time.time()) + 3600, user_id="user-1"
+    )
+
+    websocket.close.assert_awaited_once_with(
+        code=4403, reason="Local PC executor is not enabled"
+    )
+    turned_off.assert_awaited_with("user-1")
 
 
 @pytest.mark.asyncio
@@ -48,7 +73,7 @@ async def test_an_expired_token_still_closes_as_expired(
     monkeypatch.setattr(ws_module, "introspect_token", introspect)
     websocket = _websocket()
 
-    await ws_module._close_when_token_ends(websocket, int(time.time()) - 1)
+    await ws_module._close_when_access_ends(websocket, int(time.time()) - 1)
 
     websocket.close.assert_awaited_once_with(code=4401, reason="Access token expired")
     introspect.assert_not_awaited()
@@ -70,7 +95,7 @@ async def test_a_failed_recheck_keeps_the_connection_until_a_later_one(
     monkeypatch.setattr(ws_module, "introspect_token", introspect)
     websocket = _websocket()
 
-    await ws_module._close_when_token_ends(websocket, int(time.time()) + 3600)
+    await ws_module._close_when_access_ends(websocket, int(time.time()) + 3600)
 
     assert introspect.await_count == 3
     websocket.close.assert_awaited_once_with(code=4428, reason="Token revoked")
@@ -87,7 +112,7 @@ async def test_a_recheck_request_checks_the_token_at_once(
     websocket = _websocket()
     recheck = asyncio.Event()
     watcher = asyncio.create_task(
-        ws_module._close_when_token_ends(websocket, int(time.time()) + 7200, recheck)
+        ws_module._close_when_access_ends(websocket, int(time.time()) + 7200, recheck)
     )
     await asyncio.sleep(0)
 
@@ -112,7 +137,7 @@ async def test_a_recheck_keeps_a_connection_whose_token_is_still_active(
     websocket = _websocket()
     recheck = asyncio.Event()
     watcher = asyncio.create_task(
-        ws_module._close_when_token_ends(websocket, int(time.time()) + 7200, recheck)
+        ws_module._close_when_access_ends(websocket, int(time.time()) + 7200, recheck)
     )
     try:
         recheck.set()
@@ -171,7 +196,7 @@ async def test_revoking_one_computers_token_leaves_the_others_connected(
             )
         )
         watch = asyncio.create_task(
-            ws_module._close_when_token_ends(
+            ws_module._close_when_access_ends(
                 websocket, int(time.time()) + 7200, recheck
             )
         )
