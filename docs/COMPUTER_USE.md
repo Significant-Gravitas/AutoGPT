@@ -95,7 +95,7 @@ approve that call (see [Files on the disk](#files-on-the-disk)).
 
 ## Files on the disk
 
-Three things reach this computer's disk outside the folders you shared:
+Three of cua-driver's tool arguments reach this computer's disk themselves:
 saving a screenshot to a file, putting a file or image file on the
 clipboard, and handing files to a web page's upload field. Otto asks you
 first, every time, on an approval card in the chat that shows the path; the
@@ -106,6 +106,12 @@ happens.
 A script (`run_script`) asks too, every time, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
+
+These approvals cover those arguments, not the apps. An app Otto drives,
+or starts with `launch_app` (which takes any program and arguments, and
+asks nothing), reads and writes files with your access, outside the shared
+folders too: a terminal or a file manager, say. See
+[CUA_DRIVER.md](CUA_DRIVER.md#residual-risk).
 
 ## What leaves this computer
 
