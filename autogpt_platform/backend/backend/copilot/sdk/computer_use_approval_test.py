@@ -33,7 +33,7 @@ from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.json import sanitize_json
 
 _GATE = "backend.copilot.gate"
-_TOOLS = ["click", "clipboard_write", "get_window_state", "run_script"]
+_TOOLS = ["click", "clipboard_write", "get_window_state", "launch_app", "run_script"]
 _CATALOG = {
     "driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "instructions": "cua-driver: background GUI automation.",
@@ -69,6 +69,26 @@ _CATALOG = {
             "approval_arguments": {
                 "script": "runs this script, which drives apps and can save a "
                 "screenshot to any file"
+            },
+        },
+        {
+            "name": "launch_app",
+            "description": "Launch an app.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {},
+                    "launch_path": {},
+                    "additional_arguments": {},
+                    "urls": {},
+                },
+            },
+            "approval_arguments": {
+                "launch_path": "runs this command line",
+                "additional_arguments": (
+                    "starts the app with these command-line arguments"
+                ),
+                "urls": "opens these links or files, each in the app that handles it",
             },
         },
     ],
@@ -382,6 +402,69 @@ async def test_a_script_runs_once_the_user_approves_it(
     assert _sent(computer) == [("run_script", ["script"])]
 
 
+async def test_a_launch_that_runs_a_command_line_asks_even_in_auto(
+    rows, computer, supervisor
+):
+    """cua-driver starts a launch's command line or extra arguments out of
+    sight, with no window of its own, and a Chromium flag such as
+    --renderer-cmd-prefix runs any command, so a launch ran anything on the
+    supervisor's say in Auto."""
+    session = _session("auto")
+    launch = {
+        "tool": "launch_app",
+        "arguments": {
+            "name": "Google Chrome",
+            "additional_arguments": ["--renderer-cmd-prefix=sh -c id"],
+        },
+    }
+
+    parked = await _call_as_otto(session, computer)(launch)
+
+    assert json.loads(parked["content"][0]["text"])["type"] == "approval_required"
+    assert _sent(computer) == []
+    supervisor.assert_not_awaited()
+    (card,) = rows.rows.values()
+    headline = card.payload["headline"]
+    assert headline["ask"] == (
+        "Start an app on your computer with command-line arguments"
+    )
+    assert headline["object"] == "Google Chrome, --renderer-cmd-prefix=sh -c id"
+
+    rows.answer(ReviewStatus.APPROVED)
+    await _next_turn(session)
+
+    assert _sent(computer) == [("launch_app", ["additional_arguments"])]
+
+
+async def test_opening_an_app_by_name_is_left_to_the_supervisor(
+    rows, computer, supervisor
+):
+    opening = {"tool": "launch_app", "arguments": {"name": "Calculator"}}
+
+    result = await _call_as_otto(_session("auto"), computer)(opening)
+
+    assert result["isError"] is False
+    supervisor.assert_awaited_once()
+    assert _sent(computer) == [("launch_app", [])]
+
+
+def test_a_launch_is_asked_about_by_what_it_runs():
+    """The ask came from the alphabetically first argument, so a command line
+    with extra arguments read as "start an app with arguments"."""
+    spec = next(t for t in _CATALOG["tools"] if t["name"] == "launch_app")
+
+    subject = computer_subject(
+        "launch_app",
+        {"launch_path": "sh -c id", "additional_arguments": ["-x"]},
+        spec,
+    )
+
+    assert subject.name == "Run a program on your computer"
+    assert subject.reason.startswith("`launch_app` runs this command line.")
+    assert subject.preview is not None
+    assert subject.preview.object == "sh -c id, -x"
+
+
 async def test_an_approved_screenshot_call_brings_its_image_back(rows, computer):
     session = _session("ask_first")
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 32).decode()
@@ -471,6 +554,11 @@ async def test_reading_the_tool_list_never_asks(rows, computer):
         "run_script": {
             "script": "runs this script, which drives apps and can save a "
             "screenshot to any file"
+        },
+        "launch_app": {
+            "launch_path": "runs this command line",
+            "additional_arguments": "starts the app with these command-line arguments",
+            "urls": "opens these links or files, each in the app that handles it",
         },
     }
 

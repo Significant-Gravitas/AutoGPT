@@ -206,7 +206,11 @@ describe("LocalPCComputerUseConsent", () => {
         "See your open apps and windows, read what they show, and take screenshots of them",
       ),
     ).toBeDefined();
-    expect(screen.getByText("Open apps and links")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Open apps, and run programs or open links once you approve each one",
+      ),
+    ).toBeDefined();
     expect(
       screen.getByText(
         "Read your clipboard, within the limits set on that computer",

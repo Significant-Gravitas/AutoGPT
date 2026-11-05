@@ -48,7 +48,10 @@ const TOOL_GROUPS: ToolGroup[] = [
     tools: ["set_window_frame", "bring_to_front"],
     line: "Move, resize, and bring forward your windows",
   },
-  { tools: ["launch_app"], line: "Open apps and links" },
+  {
+    tools: ["launch_app"],
+    line: "Open apps, and run programs or open links once you approve each one",
+  },
   {
     tools: [
       "get_browser_state",
