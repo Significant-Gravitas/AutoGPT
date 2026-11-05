@@ -667,29 +667,35 @@ def _audit_show(current: Path, seq: int) -> int:
     without leaving the terminal."""
     import json
 
-    from .audit import holding_log_lock, list_rotated_files
+    from .audit import holding_log_lock
 
     found = False
-    # Listed and read under the writers' lock: a rotation in between would
-    # move records to a file that was never listed.
+    # The listing and the current log's contents share one hold of the
+    # writers' lock: a rotation in between would move records to a name the
+    # listing lacks. Each rotated log, which never changes but may be pruned,
+    # is read under a hold of its own, and searched and printed after it, so
+    # the daemon's audit writes wait neither for the scan nor for a slow
+    # terminal or pager.
     with holding_log_lock(current):
-        candidates: list[Path] = []
-        if current.is_file():
-            candidates.append(current)
-        candidates.extend(list_rotated_files(current))
-        for path in candidates:
-            with open(path, "rb") as f:
-                for raw in f:
-                    if not raw.strip():
-                        continue
-                    try:
-                        rec = json.loads(raw.decode("utf-8"))
-                    except ValueError:  # an integer past Python's limit raises a plain one
-                        continue
-                    if isinstance(rec, dict) and rec.get("seq") == seq:
-                        print(f"# from {path.name}")
-                        print(json.dumps(rec, indent=2, ensure_ascii=False))
-                        found = True
+        files = _audit_files(current)
+        contents = _read_audit_file(files[0]) if files else None
+    for index, path in enumerate(files):
+        if index:
+            with holding_log_lock(current):
+                contents = _read_audit_file(path)
+        if contents is None:
+            continue
+        for raw in contents.splitlines():
+            if not raw.strip():
+                continue
+            try:
+                rec = json.loads(raw.decode("utf-8"))
+            except (ValueError, RecursionError):  # past Python's int or nesting limit
+                continue
+            if isinstance(rec, dict) and rec.get("seq") == seq:
+                print(f"# from {path.name}")
+                print(json.dumps(rec, indent=2, ensure_ascii=False))
+                found = True
     if not found:
         print(f"No record with seq={seq} in {current} or rotated files.")
         return 1
