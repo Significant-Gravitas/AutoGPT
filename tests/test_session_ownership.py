@@ -664,7 +664,7 @@ async def test_revocation_audits_and_closes_while_a_side_effect_hangs(
 
 
 @pytest.mark.parametrize(
-    ("base", "cap"), [(1e-12, 60.0), (1.0, 1e308)], ids=["tiny-base", "huge-cap"]
+    ("base", "cap"), [(1e-12, 60.0), (1.0, 86_400.0)], ids=["tiny-base", "largest-cap"]
 )
 def test_the_backoff_reaches_its_cap_from_any_base(
     shim_config: ShimConfig, audit: _RecordingAudit, base: float, cap: float

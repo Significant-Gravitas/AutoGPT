@@ -394,6 +394,7 @@ def test_callback_uses_next_port_when_first_is_busy(
     first_port = blocker.getsockname()[1]
     # A free port is rarely in the registered 41899-41910, so the range is
     # moved to start at it.
+    monkeypatch.setattr(auth_module, "CALLBACK_FIRST_PORT", first_port)
     monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", first_port + 11)
     flow = OAuthFlow(_config(tmp_path, callback_port=first_port), token_store=object())
 
