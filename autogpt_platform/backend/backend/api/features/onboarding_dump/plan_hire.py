@@ -20,7 +20,7 @@ from backend.api.features.onboarding_dump.plan_models import (
     PlanHireFailure,
     PlanHireResponse,
 )
-from backend.util.exceptions import ExpertLimitExceededError
+from backend.util.exceptions import ConflictError, ExpertLimitExceededError
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
 
@@ -32,11 +32,16 @@ async def hire_plan(user_id: str) -> PlanHireResponse:
 
     A second call hires nobody and reports the same people. One failed hire
     is reported and the rest go ahead; the active expert limit stops the
-    hiring there, and everyone not yet hired is reported with it.
+    hiring there, and everyone not yet hired is reported with it. A plan that
+    could not be settled hires nobody and raises ``ConflictError``: its team
+    is one the pipeline may still replace.
     """
     # Settled first: a team hired while the pipeline still runs is the one
     # whose tasks Home then lists, not a team a later plan would replace.
-    team = (await plan_service.settle_plan(user_id)).team
+    plan = await plan_service.settle_plan(user_id)
+    if not plan.ready:
+        raise ConflictError("The plan is still changing, try again")
+    team = plan.team
     active = _on_team(await suggested_tasks.roster_by_template(user_id))
     outcome = _HireOutcome()
     for position, expert in enumerate(team):

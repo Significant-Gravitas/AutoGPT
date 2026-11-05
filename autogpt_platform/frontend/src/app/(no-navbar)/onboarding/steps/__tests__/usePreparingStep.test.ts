@@ -1,3 +1,4 @@
+import { getGetBrainDumpSuggestedTasksQueryKey } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import {
   type getBrainDumpSuggestedTasksResponse,
   useGetBrainDumpSuggestedTasks,
@@ -619,6 +620,77 @@ describe("usePreparingStep — hiring the plan's team", () => {
     await advance(START_DELAY_MS + 1_000);
 
     expect(hires.count).toBe(1);
+  });
+
+  it("asks how the first hire went once its time is up, and refreshes Home", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? new Promise<Response>(() => {})
+        : HttpResponse.json({
+            hired: [],
+            failed: [{ template_id: "tpl-max", name: "Max" }],
+          });
+    });
+    const first = renderPreparing({ canHire: true });
+    await advance(START_DELAY_MS);
+    first.unmount();
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    renderHook(() => usePreparingStep({ onComplete: vi.fn(), canHire: true }), {
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children),
+    });
+    await advance(1_000);
+    expect(hires.count).toBe(1);
+
+    await advance(HIRE_MAX_WAIT_MS);
+
+    expect(hires.count).toBe(2);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't hire Max" }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: getGetBrainDumpSuggestedTasksQueryKey(),
+    });
+  });
+
+  it("tries again when nobody could join, then says who did not", async () => {
+    const hires = mockHire(() =>
+      HttpResponse.json({
+        hired: [],
+        failed: [{ template_id: "tpl-maria", name: "Maria" }],
+      }),
+    );
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS);
+    await advance(HIRE_MAX_WAIT_MS);
+
+    expect(hires.count).toBeGreaterThan(1);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Couldn't hire Maria" }),
+    );
+  });
+
+  it("tries again when the plan is still changing", async () => {
+    let calls = 0;
+    const hires = mockHire(() => {
+      calls += 1;
+      return calls === 1
+        ? HttpResponse.json({ detail: "changing" }, { status: 409 })
+        : HttpResponse.json({ hired: [], failed: [] });
+    });
+    renderPreparing({ canHire: true });
+
+    await advance(START_DELAY_MS);
+    await advance(HIRE_RETRY_MS + 100);
+
+    expect(hires.count).toBe(2);
   });
 
   it("sends the hire again when the screen is refreshed between tries", async () => {

@@ -45,7 +45,7 @@ from backend.api.features.store.exceptions import VirusDetectedError
 from backend.blocks.typesafe._client import JevCallResult
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.understanding import BusinessUnderstandingInput
-from backend.util.exceptions import ExpertLimitExceededError
+from backend.util.exceptions import ConflictError, ExpertLimitExceededError
 from backend.util.gcs_utils_test import _gcs_http_error
 from backend.util.posthog_events import PostHogEvent
 
@@ -1152,6 +1152,24 @@ def test_hiring_the_plan_hires_its_team_once(
 
     assert second.json() == first.json()
     assert plan_world["hire_expert"].await_count == 3
+
+
+def test_a_plan_that_could_not_be_settled_hires_nobody(
+    dumps: DumpStore, plan_world: dict[str, AsyncMock], mocker: MockerFixture
+):
+    """Three lost writes leave the temporary team, which the pipeline may
+    still replace, so the client is told to try again."""
+    finalize(input_mode="typed", text=TRANSCRIPT)
+    _mid_pipeline(dumps)
+    mocker.patch.object(
+        plan_service.db, "replace_plan", new=AsyncMock(return_value=False)
+    )
+
+    # The API's handlers answer this with a 409; this test app has none.
+    with pytest.raises(ConflictError):
+        client.post(PLAN_HIRE_URL)
+
+    plan_world["hire_expert"].assert_not_awaited()
 
 
 def test_the_plan_hire_reports_who_joined_once(

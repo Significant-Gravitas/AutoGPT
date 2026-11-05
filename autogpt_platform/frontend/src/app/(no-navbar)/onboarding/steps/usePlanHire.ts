@@ -5,6 +5,7 @@ import {
   useGetBrainDumpPlan,
   useHireBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import type { PlanHireResponse } from "@/app/api/__generated__/models/planHireResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
@@ -39,7 +40,7 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
   const queryClient = useQueryClient();
   const [mountedAt] = useState(() => Date.now());
   // A refresh mid-hire: the first call is still going on the server, so the
-  // screen waits out what is left of its time instead of sending a second.
+  // screen waits out what is left of its time before sending a second.
   const [resumedFor] = useState(() => hireTimeLeft(userID));
   const [settled, setSettled] = useState(false);
   const sent = useRef(false);
@@ -55,27 +56,30 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
       );
       const failed = response.data.failed ?? [];
       if (failed.length > 0) toastHireFailed(failed.map((e) => e.name));
+    } catch (error) {
+      Sentry.captureException(error, { tags: { context: "plan-hire" } });
+      toastHireFailed(names);
+    } finally {
       // So Home's recipient picker and task owners see the new team, even
-      // when a slow hire lands after Home has read them.
+      // when a slow hire lands after Home has read them. Whatever the answer:
+      // one lost on its way back may still have hired them.
       await Promise.all([
         invalidateExpertRosterQueries(queryClient),
         queryClient.invalidateQueries({
           queryKey: getGetBrainDumpSuggestedTasksQueryKey(),
         }),
       ]).catch(() => undefined);
-    } catch (error) {
-      Sentry.captureException(error, { tags: { context: "plan-hire" } });
-      toastHireFailed(names);
-    } finally {
       setSettled(true);
     }
   });
 
+  // Its time up, ask how the first call went: the hire is idempotent, and
+  // that answer is what refreshes Home and says who did not join.
   useEffect(() => {
     if (!enabled || resumedFor === null) return;
-    const timer = setTimeout(() => setSettled(true), resumedFor);
+    const timer = setTimeout(() => void hire(), resumedFor);
     return () => clearTimeout(timer);
-  }, [enabled, resumedFor]);
+  }, [enabled, resumedFor, hire]);
 
   useEffect(() => {
     if (!enabled || resumedFor !== null || !plan.isKnown || sent.current) {
@@ -132,25 +136,35 @@ function usePlanToHire({
   return { team: ready?.team ?? [], isKnown: Boolean(ready) || isWaitOver };
 }
 
-// The hire is idempotent, so one the server could not answer (a 5xx, or no
-// answer at all) is sent again while the preparing bar still waits for it.
+// The hire is idempotent, so one the server could not answer (a 5xx, no answer
+// at all, or a plan still changing), or that nobody could join, is sent again
+// while the preparing bar still waits for it.
 async function hireUntilAnswered(
   hirePlan: () => Promise<hireBrainDumpPlanResponse>,
   since: number,
 ) {
   for (;;) {
+    const isOutOfTime = () =>
+      Date.now() - since + HIRE_RETRY_MS >= HIRE_MAX_WAIT_MS;
     try {
       const response = await hirePlan();
       if (response.status !== 200) throw new Error("Plan hire failed");
-      return response;
+      if (!isEveryoneFailed(response.data) || isOutOfTime()) return response;
     } catch (error) {
-      const isRefused = error instanceof ApiError && error.status < 500;
-      const isOutOfTime =
-        Date.now() - since + HIRE_RETRY_MS >= HIRE_MAX_WAIT_MS;
-      if (isRefused || isOutOfTime) throw error;
-      await pause(HIRE_RETRY_MS);
+      if (isRefused(error) || isOutOfTime()) throw error;
     }
+    await pause(HIRE_RETRY_MS);
   }
+}
+
+function isEveryoneFailed({ hired, failed }: PlanHireResponse) {
+  return (failed?.length ?? 0) > 0 && !hired?.length;
+}
+
+function isRefused(error: unknown) {
+  return (
+    error instanceof ApiError && error.status < 500 && error.status !== 409
+  );
 }
 
 // Marked only while a try is on the wire: a refresh then waits for it
