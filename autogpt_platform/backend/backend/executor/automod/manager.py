@@ -8,6 +8,8 @@ if TYPE_CHECKING:
 
 from pydantic import ValidationError
 
+from backend.blocks import get_block
+from backend.blocks._base import BlockType
 from backend.data.execution import ExecutionStatus
 from backend.util.exceptions import ModerationError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -262,38 +264,28 @@ class AutoModManager:
         if content_id:
             error_message += f" (Moderation ID: {content_id})"
 
-        # Prepare database update tasks
-        exec_updates = []
+        stats_patches = {}
         for exec_entry in executions_to_update:
-            # Collect all input and output names to clear
-            cleared_inputs = {}
-            cleared_outputs = {}
+            cleared_inputs = {name: [error_message] for name in exec_entry.input_data}
+            cleared_outputs = {name: [error_message] for name in exec_entry.output_data}
+            # An IO block's `name` is the graph's declared input/output key, not
+            # content; run inputs/outputs are keyed by it.
+            if (
+                "name" in exec_entry.input_data
+                and (block := get_block(exec_entry.block_id))
+                and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+            ):
+                cleared_inputs["name"] = [str(exec_entry.input_data["name"])]
+            stats_patches[exec_entry.node_exec_id] = {
+                "error": error_message,
+                "cleared_inputs": cleared_inputs,
+                "cleared_outputs": cleared_outputs,
+            }
 
-            if exec_entry.input_data:
-                for name in exec_entry.input_data.keys():
-                    cleared_inputs[name] = [error_message]
+        updated_execs = await db_client.mark_node_executions_moderated(
+            graph_exec_id, stats_patches, target_statuses
+        )
 
-            if exec_entry.output_data:
-                for name in exec_entry.output_data.keys():
-                    cleared_outputs[name] = [error_message]
-
-            # Add update task to list
-            exec_updates.append(
-                db_client.update_node_execution_status(
-                    exec_entry.node_exec_id,
-                    status=ExecutionStatus.FAILED,
-                    stats={
-                        "error": error_message,
-                        "cleared_inputs": cleared_inputs,
-                        "cleared_outputs": cleared_outputs,
-                    },
-                )
-            )
-
-        # Execute all database updates in parallel
-        updated_execs = await asyncio.gather(*exec_updates)
-
-        # Send all websocket updates in parallel
         await asyncio.gather(
             *[
                 send_async_execution_update(updated_exec)
