@@ -981,15 +981,40 @@ class TestPostHogToolSpans:
         assert email_subject not in repr(properties)
 
     @pytest.mark.asyncio
-    async def test_a_tool_that_answers_with_an_error_failed(self, capture):
-        tool = self._tool(ErrorResponse(message="no such label", session_id="s1"))
+    @pytest.mark.parametrize(
+        "error, reason",
+        [
+            ("feature_disabled", "feature_disabled"),
+            ("No label named 'Invoices from Bob'", "ErrorResponse"),
+            (None, "ErrorResponse"),
+        ],
+    )
+    async def test_a_tool_that_answers_with_an_error_failed_with_its_code_only(
+        self, capture, error, reason
+    ):
+        """The code says why it failed; free text can quote the user's mail."""
+        tool = self._tool(
+            ErrorResponse(message="no such label", error=error, session_id="s1")
+        )
 
         await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
 
         properties = capture.call_args.args[2]
         assert properties["$ai_is_error"] is True
-        assert "$ai_error" not in properties
-        assert "no such label" not in repr(properties)
+        assert properties["$ai_error"] == reason
+        assert "label" not in repr(properties)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_the_session_disabled_failed_with_that_code(self, capture):
+        tool = self._tool(ToolResponseBase(type=ResponseType.NO_RESULTS, message=""))
+
+        with patch("backend.copilot.tools.base.gate_denied", return_value=True):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        properties = capture.call_args.args[2]
+        assert properties["$ai_is_error"] is True
+        assert properties["$ai_error"] == "tool_disabled"
 
     @pytest.mark.asyncio
     async def test_a_call_waiting_for_an_approval_did_not_fail(self, capture):

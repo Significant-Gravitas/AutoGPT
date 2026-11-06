@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
-from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
+from backend.copilot.ai_spans import (
+    error_reason,
+    mark_tool_failed,
+    mark_tool_raised,
+    tool_span,
+)
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
     GOOGLE_DATA_METADATA_KEY,
@@ -610,16 +615,18 @@ class BaseTool:
                 session.session_id,
                 envelope.depth,
             )
+            refusal = ErrorResponse(
+                message=(
+                    f"{self.name} is not available in this delegated turn. "
+                    "If the task needs it, say so in your report instead."
+                ),
+                session_id=session.session_id,
+            )
+            mark_tool_failed(error_reason(refusal))
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
-                output=ErrorResponse(
-                    message=(
-                        f"{self.name} is not available in this delegated turn. "
-                        "If the task needs it, say so in your report instead."
-                    ),
-                    session_id=session.session_id,
-                ).model_dump_json(),
+                output=refusal.model_dump_json(),
                 success=False,
             )
 
@@ -627,12 +634,12 @@ class BaseTool:
         # dispatch, so gating it by name has to happen on the way in or it
         # does not happen at all.
         if gate_denied(self.name):
+            denial = gate_denied_error(self.name, session.session_id)
+            mark_tool_failed(error_reason(denial))
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
-                output=gate_denied_error(
-                    self.name, session.session_id
-                ).model_dump_json(),
+                output=denial.model_dump_json(),
                 success=False,
             )
 
@@ -681,7 +688,7 @@ class BaseTool:
         try:
             result = await self._execute(user_id, session, **run_kwargs)
             if result.type == ResponseType.ERROR:
-                mark_tool_failed()
+                mark_tool_failed(error_reason(result))
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = full = result.model_dump_json(exclude_none=True)
