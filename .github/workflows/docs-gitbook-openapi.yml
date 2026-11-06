@@ -55,7 +55,7 @@ jobs:
       run:
         working-directory: autogpt_platform/backend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
