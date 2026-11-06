@@ -35,6 +35,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
@@ -223,8 +224,12 @@ export const auth = betterAuth({
       create: {
         // Fires for both email/password signup AND a first OAuth sign-in,
         // since both create a user row. The SQL data-migration bypasses it.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
           assertSignUpPolicy(user.email, ctx);
+          assertProviderVerifiedEmail(user, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
             ctx?.path === ADMIN_CREATE_USER_PATH ||
