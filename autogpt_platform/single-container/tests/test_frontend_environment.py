@@ -68,6 +68,8 @@ class FrontendEnvironmentTest(unittest.TestCase):
                 **required,
                 **optional,
                 **forbidden,
+                # The proxies in front of the container are nginx's, not Next's.
+                "TRUSTED_PROXIES": "172.18.0.0/16",
             }
             shell = (
                 'source "$1"; build_frontend_environment; '
@@ -111,7 +113,8 @@ class FrontendEnvironmentTest(unittest.TestCase):
         self.assertEqual(child_environment["PORT"], "3001")
         self.assertEqual(child_environment["HOSTNAME"], "127.0.0.1")
         self.assertEqual(child_environment["NODE_ENV"], "production")
-        self.assertEqual(child_environment["TRUST_X_FORWARDED_FOR"], "true")
+        self.assertEqual(child_environment["TRUSTED_PROXIES"], "127.0.0.1,::1")
+        self.assertNotIn("TRUST_X_FORWARDED_FOR", child_environment)
 
     def test_rejects_missing_required_setting(self) -> None:
         result = subprocess.run(

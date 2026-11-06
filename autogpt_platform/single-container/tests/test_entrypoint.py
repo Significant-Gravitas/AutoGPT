@@ -193,41 +193,7 @@ class EnvironmentPolicyTest(unittest.TestCase):
     def _configure(
         self, *, output: str = "$BEHAVE_AS", **overrides: str
     ) -> subprocess.CompletedProcess[str]:
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
-            "AUTOGPT_BACKEND_DIR": str(ASSET_DIR.parent / "backend"),
-            "AUTOGPT_PYTHON": sys.executable,
-            "AUTOGPT_PUBLIC_URL": "http://localhost:3000",
-            "AUTH_ALLOW_NEW_ACCOUNTS": "false",
-            "POSTGRES_PASSWORD": "test-postgres",
-            "RABBITMQ_DEFAULT_USER": "test-rabbitmq",
-            "RABBITMQ_DEFAULT_PASS": "test-rabbitmq",
-            "REDIS_PASSWORD": "test-redis",
-            "BETTER_AUTH_SECRET": "test-better-auth",
-            "ENCRYPTION_KEY": "test-encryption",
-            "UNSUBSCRIBE_SECRET_KEY": "test-unsubscribe",
-            "GRAPHITI_FALKORDB_PASSWORD": "test-falkordb",
-            "VAPID_PRIVATE_KEY": "test-vapid-private",
-            "VAPID_PUBLIC_KEY": "test-vapid-public",
-        }
-        environment.update(overrides)
-        return subprocess.run(
-            [
-                "bash",
-                "-Eeuo",
-                "pipefail",
-                "-c",
-                'source "$1"; write_nginx_public_url_config() { :; }; '
-                f'configure_environment; printf "%s\\n" "{output}"',
-                "bash",
-                str(ENTRYPOINT_PATH),
-            ],
-            check=False,
-            capture_output=True,
-            encoding="utf-8",
-            env=environment,
-        )
+        return _configure(output=output, **overrides)
 
 
 _COPILOT_SPEND_CAPS = (
@@ -375,18 +341,73 @@ class ProxyIsolationTest(unittest.TestCase):
         self.assertIn("AUTOGPT_HOME=/run/autogpt/nginx/home", nginx_program)
         self.assertNotIn("user=autogpt\n", nginx_program)
 
-    def test_the_backend_reads_the_client_from_the_one_entry_nginx_sends(
-        self,
-    ) -> None:
-        # The backend's default of 3 is the hosted platform's proxy chain; here
-        # it falls back to nginx's own address, putting every client in one
-        # rate-limit bucket that one caller's failed keys can exhaust for all.
+    def test_every_service_gets_the_visitor_alone_from_nginx(self) -> None:
+        # The services trust only nginx, so whatever nginx forwards is the
+        # visitor; a location that passed the header on would hand them the
+        # caller's own entries.
         nginx = NGINX_CONF_PATH.read_text(encoding="utf-8")
-        rest_location = nginx.split("location /_agpt/ {", 1)[1].split("}", 1)[0]
+        server = nginx.split("server {", 1)[1]
         entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("proxy_set_header X-Forwarded-For $remote_addr;", rest_location)
-        self.assertIn("export TRUSTED_PROXY_COUNT=1\n", entrypoint)
+        directives = [line.strip() for line in server.splitlines()]
+        passes = [line for line in directives if line.startswith("proxy_pass ")]
+        forwarded = [line for line in directives if "X-Forwarded-For" in line]
+
+        self.assertEqual(len(passes), 4)
+        self.assertEqual(
+            forwarded, ["proxy_set_header X-Forwarded-For $remote_addr;"] * 4
+        )
+        self.assertIn("include /run/autogpt/nginx/real-ip.conf;", server)
+        self.assertIn("export TRUSTED_PROXIES=127.0.0.1,::1\n", entrypoint)
+        self.assertNotIn("TRUSTED_PROXY_COUNT", entrypoint)
+
+
+class TrustedProxiesTest(unittest.TestCase):
+    """The operator lists the proxies in front of the container; nginx reads
+    the visitor through them and the services trust nginx alone."""
+
+    def test_writes_one_set_real_ip_from_per_listed_proxy(self) -> None:
+        result = _entrypoint_shell(
+            "nginx_real_ip_config",
+            AUTOGPT_TRUSTED_PROXIES="172.18.0.0/16 10.0.0.1/32 2001:db8::/32",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout,
+            "set_real_ip_from 172.18.0.0/16;\n"
+            "set_real_ip_from 10.0.0.1/32;\n"
+            "set_real_ip_from 2001:db8::/32;\n"
+            "real_ip_header X-Forwarded-For;\n"
+            "real_ip_recursive on;\n",
+        )
+
+    def test_writes_nothing_with_no_proxy_listed(self) -> None:
+        result = _entrypoint_shell("nginx_real_ip_config", AUTOGPT_TRUSTED_PROXIES="")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_normalizes_the_list_and_keeps_the_services_on_nginx(self) -> None:
+        result = _configure(
+            output="$AUTOGPT_TRUSTED_PROXIES|$TRUSTED_PROXIES",
+            TRUSTED_PROXIES=" 172.18.0.5/16, 10.0.0.1 ,,",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines()[-1], "172.18.0.0/16 10.0.0.1/32|127.0.0.1,::1"
+        )
+
+    def test_refuses_an_entry_that_is_not_an_address_or_range(self) -> None:
+        for value in ("nginx-proxy", "10.0.0.1; include /etc/passwd", "10.0.0.0/33"):
+            with self.subTest(value=value):
+                result = _configure(
+                    output="$AUTOGPT_TRUSTED_PROXIES", TRUSTED_PROXIES=value
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("TRUSTED_PROXIES takes IP addresses", result.stderr)
 
 
 class ThirdPartyTelemetryTest(unittest.TestCase):
@@ -402,3 +423,68 @@ class ThirdPartyTelemetryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _configure(
+    *, output: str = "$BEHAVE_AS", **overrides: str
+) -> subprocess.CompletedProcess[str]:
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+        "AUTOGPT_BACKEND_DIR": str(ASSET_DIR.parent / "backend"),
+        "AUTOGPT_PYTHON": sys.executable,
+        "AUTOGPT_PUBLIC_URL": "http://localhost:3000",
+        "AUTH_ALLOW_NEW_ACCOUNTS": "false",
+        "POSTGRES_PASSWORD": "test-postgres",
+        "RABBITMQ_DEFAULT_USER": "test-rabbitmq",
+        "RABBITMQ_DEFAULT_PASS": "test-rabbitmq",
+        "REDIS_PASSWORD": "test-redis",
+        "BETTER_AUTH_SECRET": "test-better-auth",
+        "ENCRYPTION_KEY": "test-encryption",
+        "UNSUBSCRIBE_SECRET_KEY": "test-unsubscribe",
+        "GRAPHITI_FALKORDB_PASSWORD": "test-falkordb",
+        "VAPID_PRIVATE_KEY": "test-vapid-private",
+        "VAPID_PUBLIC_KEY": "test-vapid-public",
+    }
+    environment.update(overrides)
+    return subprocess.run(
+        [
+            "bash",
+            "-Eeuo",
+            "pipefail",
+            "-c",
+            'source "$1"; write_nginx_public_url_config() { :; }; '
+            "write_nginx_real_ip_config() { :; }; "
+            f'configure_environment; printf "%s\\n" "{output}"',
+            "bash",
+            str(ENTRYPOINT_PATH),
+        ],
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        env=environment,
+    )
+
+
+def _entrypoint_shell(
+    command: str, **environment: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "bash",
+            "-Eeuo",
+            "pipefail",
+            "-c",
+            f'source "$1"; {command}',
+            "bash",
+            str(ENTRYPOINT_PATH),
+        ],
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        env={
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            **environment,
+        },
+    )
