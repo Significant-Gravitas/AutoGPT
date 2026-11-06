@@ -61,6 +61,7 @@ export const providerIcons: Partial<
   replicate: fallbackIcon,
   reddit: fallbackIcon,
   fal: fallbackIcon,
+  wavespeed: fallbackIcon,
   revid: fallbackIcon,
   twitter: twitterIcon,
   unreal_speech: fallbackIcon,
