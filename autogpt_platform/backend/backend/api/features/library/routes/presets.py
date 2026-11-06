@@ -130,7 +130,13 @@ async def create_preset(
     return await db.create_preset_from_graph_execution(user_id, preset)
 
 
-@router.post("/presets/setup-trigger", dependencies=[Depends(enforce_payment_paywall)])
+@router.post(
+    "/presets/setup-trigger",
+    dependencies=[
+        Security(autogpt_auth_lib.requires_live_session),
+        Depends(enforce_payment_paywall),
+    ],
+)
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),

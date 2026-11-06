@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from autogpt_libs.auth import requires_org_permission
+from autogpt_libs.auth import requires_live_session, requires_org_permission
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Security
@@ -17,6 +17,7 @@ router = APIRouter()
     "",
     summary="Create transfer request",
     tags=["transfers"],
+    dependencies=[Security(requires_live_session)],
 )
 async def create_transfer(
     request: CreateTransferRequest,
@@ -91,6 +92,7 @@ async def reject_transfer(
     "/{transfer_id}/execute",
     summary="Execute approved transfer",
     tags=["transfers"],
+    dependencies=[Security(requires_live_session)],
 )
 async def execute_transfer(
     transfer_id: str,

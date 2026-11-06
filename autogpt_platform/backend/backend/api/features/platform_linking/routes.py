@@ -95,7 +95,10 @@ async def get_link_token_info_route(token: TokenPath) -> LinkTokenInfoResponse:
 @router.post(
     "/tokens/{token}/confirm",
     response_model=ConfirmLinkResponse,
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[
+        Security(auth.requires_user),
+        Security(auth.requires_live_session),
+    ],
     summary="Confirm a SERVER link token (user must be authenticated)",
 )
 async def confirm_link_token(
@@ -124,7 +127,10 @@ async def confirm_link_token(
 @router.post(
     "/user-tokens/{token}/confirm",
     response_model=ConfirmUserLinkResponse,
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[
+        Security(auth.requires_user),
+        Security(auth.requires_live_session),
+    ],
     summary="Confirm a USER link token (user must be authenticated)",
 )
 async def confirm_user_link_token(

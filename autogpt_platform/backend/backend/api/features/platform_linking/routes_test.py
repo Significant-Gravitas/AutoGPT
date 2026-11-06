@@ -205,13 +205,14 @@ class TestAdversarialTokenPath:
     @pytest.fixture
     def client(self):
         import fastapi
-        from autogpt_libs.auth import get_user_id, requires_user
+        from autogpt_libs.auth import get_user_id, requires_live_session, requires_user
         from fastapi.testclient import TestClient
 
         import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None
+        app.dependency_overrides[requires_live_session] = lambda: {}
         app.dependency_overrides[get_user_id] = lambda: "caller-user"
         app.include_router(routes_mod.router, prefix="/api/platform-linking")
         return TestClient(app)
@@ -268,13 +269,14 @@ class TestAdversarialDeleteLinkId:
     @pytest.fixture
     def client(self):
         import fastapi
-        from autogpt_libs.auth import get_user_id, requires_user
+        from autogpt_libs.auth import get_user_id, requires_live_session, requires_user
         from fastapi.testclient import TestClient
 
         import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None
+        app.dependency_overrides[requires_live_session] = lambda: {}
         app.dependency_overrides[get_user_id] = lambda: "caller-user"
         app.include_router(routes_mod.router, prefix="/api/platform-linking")
         return TestClient(app)

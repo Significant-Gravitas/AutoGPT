@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import fastapi
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_user_id, requires_live_session
 from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
@@ -537,6 +537,7 @@ class MCPOAuthCallbackResponse(BaseModel):
 @router.post(
     "/oauth/callback",
     summary="Exchange OAuth code for MCP tokens",
+    dependencies=[Security(requires_live_session)],
 )
 async def mcp_oauth_callback(
     request: MCPOAuthCallbackRequest,
@@ -692,6 +693,7 @@ class MCPStoreTokenRequest(BaseModel):
         "(sent as Bearer, unchanged from before), an explicit `Basic <value>` "
         "or `Bearer <value>`, or a complete `Authorization:` header."
     ),
+    dependencies=[Security(requires_live_session)],
 )
 async def mcp_store_token(
     request: MCPStoreTokenRequest,

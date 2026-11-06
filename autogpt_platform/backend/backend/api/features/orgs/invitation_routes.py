@@ -4,7 +4,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
+from autogpt_libs.auth import (
+    get_user_id,
+    requires_live_session,
+    requires_org_permission,
+    requires_user,
+)
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
@@ -38,6 +43,7 @@ org_router = APIRouter()
     "",
     summary="Create invitation",
     tags=["orgs", "invitations"],
+    dependencies=[Security(requires_live_session)],
 )
 async def create_invitation(
     org_id: str,
@@ -141,7 +147,7 @@ async def revoke_invitation(
     "/{token}/accept",
     summary="Accept invitation",
     tags=["invitations"],
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_live_session), Security(requires_user)],
 )
 async def accept_invitation(
     token: str,

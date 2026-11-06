@@ -5,7 +5,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
-from autogpt_libs.auth import get_optional_user_id, get_user_id
+from autogpt_libs.auth import get_optional_user_id, get_user_id, requires_live_session
 from fastapi import (
     APIRouter,
     Body,
@@ -411,7 +411,7 @@ async def _complete_codex_login(
 @router.post(
     "/{provider}/callback",
     summary="Exchange OAuth code for tokens",
-    dependencies=[Depends(enforce_payment_paywall)],
+    dependencies=[Security(requires_live_session), Depends(enforce_payment_paywall)],
 )
 async def callback(
     provider: Annotated[
@@ -810,7 +810,7 @@ async def device_auth_initiate(
 
 @router.post(
     "/{provider}/device-auth/poll",
-    dependencies=[Depends(enforce_payment_paywall)],
+    dependencies=[Security(requires_live_session), Depends(enforce_payment_paywall)],
     summary="Poll device code OAuth flow for completion",
 )
 async def device_auth_poll(
@@ -1082,6 +1082,7 @@ _PICKER_TOKEN_ALLOWED_SCOPES: dict[ProviderName, frozenset[str]] = {
     "/{provider}/credentials/{cred_id}/picker-token",
     summary="Issue a short-lived access token for a provider-hosted picker",
     operation_id="postV1GetPickerToken",
+    dependencies=[Security(requires_live_session)],
 )
 async def get_picker_token(
     provider: Annotated[
@@ -1159,7 +1160,7 @@ async def get_picker_token(
     "/{provider}/credentials",
     status_code=201,
     summary="Create Credentials",
-    dependencies=[Depends(enforce_payment_paywall)],
+    dependencies=[Security(requires_live_session), Depends(enforce_payment_paywall)],
 )
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],

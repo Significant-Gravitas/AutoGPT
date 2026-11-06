@@ -1,18 +1,36 @@
 // The backend's `ACCOUNT_BANNED_DETAIL` (autogpt_libs/auth/dependencies.py).
 const ACCOUNT_BANNED_CODE = "account_banned";
+// The backend's `SESSION_REVOKED_DETAIL` (autogpt_libs/auth/session.py).
+const SESSION_REVOKED_CODE = "session_revoked";
 
 const LOGOUT_REASON_PARAM = "reason";
 const ACCOUNT_NOTICE_PARAM = "account";
 const BANNED = "banned";
 
-export function isAccountBannedResponse(status: number, body: unknown) {
-  if (status !== 403 || typeof body !== "object" || body === null) return false;
+function detailCode(body: unknown) {
+  if (typeof body !== "object" || body === null) return undefined;
   const detail = (body as { detail?: unknown }).detail;
-  return (
-    typeof detail === "object" &&
-    detail !== null &&
-    (detail as { code?: unknown }).code === ACCOUNT_BANNED_CODE
-  );
+  if (typeof detail !== "object" || detail === null) return undefined;
+  return (detail as { code?: unknown }).code;
+}
+
+export function isAccountBannedResponse(status: number, body: unknown) {
+  return status === 403 && detailCode(body) === ACCOUNT_BANNED_CODE;
+}
+
+export function isSessionRevokedResponse(status: number, body: unknown) {
+  return status === 401 && detailCode(body) === SESSION_REVOKED_CODE;
+}
+
+// A banned account or an ended session leaves through /logout.
+export function signOutIfRefused(status: number, body: unknown) {
+  if (isAccountBannedResponse(status, body)) signOutBannedAccount();
+  else if (isSessionRevokedResponse(status, body)) signOutEndedSession();
+}
+
+function signOutEndedSession() {
+  if (window.location.pathname === "/logout") return;
+  window.location.replace("/logout");
 }
 
 // Through /logout for the full sign-out; every refused request lands here, so
