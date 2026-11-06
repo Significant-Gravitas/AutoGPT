@@ -398,6 +398,22 @@ async def test_move_agents_missing_ids(move_agents_tool, session):
 
 
 @pytest.mark.asyncio
+async def test_move_agents_reports_when_nothing_moved(move_agents_tool, session):
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(return_value=[])
+        result = await move_agents_tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_ids=["graph-id-1", "graph-id-2"],
+            folder_id="folder-1",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "no_agents_moved"
+    assert "Moved" not in result.message
+
+
+@pytest.mark.asyncio
 async def test_move_agents_success(move_agents_tool, session):
     agents = [
         _make_library_agent(id="a1", name="Agent Alpha"),
