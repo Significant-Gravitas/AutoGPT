@@ -1,0 +1,334 @@
+# Audit Log — Format & Tamper-Evidence
+
+> **Status**: Draft v0.1 — subject to change
+>
+> Operations attempt to append to a local audit log. Most runtime data-operation
+> audit writes are best-effort; disk/writer errors can leave completed work unrecorded.
+> The log is the user's primary forensic tool: "what did the platform
+> ask my machine to do, and when?" This doc pins the format, the
+> tamper-evidence scheme, and the rotation policy so consumers (the
+> user, the platform-side viewer, third-party tools) can rely on a
+> stable contract.
+
+## Location
+
+Per [CROSS_PLATFORM.md → Audit log location](CROSS_PLATFORM.md#audit-log-location):
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Logs/autogpt-local-executor/audit.log` |
+| Linux | `$XDG_STATE_HOME/autogpt-local-executor/audit.log` (fallback `~/.local/state/...`) |
+| Windows | `%LOCALAPPDATA%\autogpt-local-executor\logs\audit.log` |
+| WSL2 | Linux path |
+
+Permissions: created `0600` on POSIX (owner-only), and an existing log
+(one an older version made, say) is set to `0600` when the shim opens it.
+Where that chmod fails (another account's file, or a filesystem without
+POSIX modes such as exFAT or an SMB share), the shim logs a warning and goes
+on writing the log, which others may then read. On Windows the shim sets no
+ACL of its own: the log keeps its folder's, which under the default
+`%LOCALAPPDATA%` lets only you and administrators in. Don't point
+`audit_log_path` at a folder other accounts can read. The shim refuses to
+start if the audit log can't be opened for append.
+
+## Format
+
+Newline-delimited JSON (JSONL). One record per line. Each record is a
+single JSON object with this shape:
+
+```json
+{
+  "ts": 1712345678.123,
+  "session_id": "session-uuid",
+  "machine_id": "machine-uuid",
+  "shim_version": "0.1.0",
+  "request_id": "msg-uuid",
+  "op": "EXECUTE_COMMAND",
+  "details": { ... },
+  "result": {
+    "ok": true,
+    "exit_code": 0,
+    "duration_ms": 124,
+    "error_code": null
+  },
+  "seq": 4218,
+  "prev_hmac": "f4a2…",
+  "hmac": "9c81…"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `ts` | float (unix epoch seconds) | Record timestamp, monotonic-rounded |
+| `session_id` | string | The platform session that issued the op |
+| `machine_id` | string | This shim's stable machine identifier |
+| `shim_version` | string | semver of the shim writing the line |
+| `request_id` | string \| null | Wire envelope `id` for traceability (null for shim-internal events) |
+| `op` | string | One of the message types from PROTOCOL.md plus a few shim-internal events (see below) |
+| `details` | object | Op-specific payload (see "Per-op fields") |
+| `result.ok` | bool | True if the op completed without error |
+| `result.exit_code` | int \| null | For EXECUTE_COMMAND only |
+| `result.duration_ms` | int | Op elapsed time |
+| `result.error_code` | string \| null | ErrorCode enum value on failure (see PROTOCOL.md error codes), or `CANCELLED` for an `EXECUTE_COMMAND` or `COMPUTER_TOOL_CALL` stopped because its session ended or was revoked |
+| `seq` | int | Monotonic per-log-file sequence number, starts at 1, resets on rotation |
+| `prev_hmac` | string \| null | HMAC of the previous record (null for the first record in a file) |
+| `hmac` | string | HMAC of THIS record (see "Tamper-evidence chain") |
+
+### Per-op `details`
+
+| `op` | `details` shape |
+|---|---|
+| `EXECUTE_COMMAND` | `{command, argv, shell, cwd, env_keys[], timeout_seconds}` — env *keys* only, never values |
+| `FILE_READ` | `{path, encoding, offset, length, size_bytes_returned}` |
+| `FILE_WRITE` | `{path, encoding, size_bytes_written, create_parents}` |
+| `FILE_STAT` | `{path, follow_symlinks}` |
+| `FILE_LIST` | `{path, glob, recursive, include_hidden, max_entries, entries_returned}` |
+| `FILE_DELETE` | `{path, recursive, missing_ok}` |
+| `FILE_MOVE` | `{src, dst, overwrite}` |
+| `COMPUTER_TOOL_CALL` | `{tool, arguments}` — the cua-driver tool and its arguments, with `text`, `value`, `script` and `prompt_text` replaced by `{"redacted_chars": n}` (inside `run_steps` steps too) and other strings over 200 characters cut short. `launch_app` arguments are kept in full, since they decide what runs, and so are the arguments of a call with approved disk arguments, which `approved_arguments` names. On success `details` adds `is_error` (the driver's verdict), `images`, `images_withheld` (left out for the per-minute budget or the frame limit) and `text_bytes`. See [CUA_DRIVER.md](CUA_DRIVER.md#audit). |
+| `LOCAL_LLM_COMPLETION` | `{model, prompt_chars, response_chars, finish_reason, stream, tokens_prompt?, tokens_completion?, tokens_total?}` — never the prompt text, never the response text. `tokens_*` may be `null` if the backend doesn't report them. See [LOCAL_LLM.md](LOCAL_LLM.md). |
+| `DIRECTORY_LIST` | `{browse_id, path, entries_returned, truncated}` — logs the canonical directory being viewed, never returned entry-name arrays or opaque references |
+| `SESSION_ALLOWED_ROOT_SET` | `{previous_allowed_root, allowed_root, fingerprint, revision}` |
+| `ACTIVATE_SESSION` / `RESTORE_SESSION` | `{allowed_root, fingerprint, revision}` |
+| `DETACH_SESSION` | `{allowed_root, revision}` |
+| `HELLO` | `{platform, arch, capabilities, allowed_root}` |
+| `HELLO_ACK` | `{granted_capabilities, max_concurrent, max_file_size_bytes, command_timeout_seconds}` |
+| Shim-internal | See below |
+
+### Shim-internal events
+
+These have `request_id: null` and document state changes the platform
+didn't trigger:
+
+| `op` | When |
+|---|---|
+| `SHIM_START` | Daemon initialised, audit log opened |
+| `SHIM_STOP` | Daemon exit (graceful or via signal) |
+| `WS_CONNECTED` | WebSocket upgrade succeeded |
+| `WS_DISCONNECTED` | WebSocket loop ended (carries `details.reason`) |
+| `TOKEN_REFRESHED` | OAuth refresh token used |
+| `CONFIG_RELOADED` | `HELLO_ACK` rewrote runtime config |
+| `JAIL_VIOLATION` | Path-jail rejected an op before exec. `details` = `{code, path, attempted_op}` — the ErrorCode value, the rejected raw path, and the wire-protocol op that triggered it (e.g. `FILE_READ`) |
+
+### What's NEVER logged
+
+- Wire payload content for FILE_READ / FILE_WRITE (only sizes).
+- Screenshot image bytes or what a computer tool returned (only counts).
+- Text the agent typed, set or scripted through computer use (only its
+  length, to avoid leaking what the LLM is typing into password fields).
+- Environment variable VALUES (only keys, so the user can see "GH_TOKEN
+  was set" without seeing the token itself).
+- Refresh tokens or access tokens.
+- `LOCAL_LLM_COMPLETION` prompt messages or response content (only
+  character counts and token counts). The whole point of routing to a
+  local LLM is privacy; logging the prompt would defeat it.
+- Directory-list entry arrays, opaque browse references, or root grants.
+
+Concurrent per-chat child daemons share one `AuditWriter` and its lock/HMAC
+chain through immutable session-bound wrappers. They never mutate the writer's
+default session ID, so one chat's operation cannot be attributed to another.
+
+## Tamper-evidence chain
+
+Each record carries an HMAC of its own JSON form chained to the
+previous record's HMAC. Modifying a record or removing an interior record
+breaks verification. Removing a complete valid tail or an entire log/rotated
+file is not detectable without an independent checkpoint. A same-user attacker
+who obtains the key can forge records; this log does not provide OS isolation.
+
+### Keying
+
+A per-machine **audit key** is generated on first run and stored in the
+OS keychain (same backend as the OAuth tokens — see CROSS_PLATFORM.md
+"Keychain / credential storage"). The key is 32 bytes from
+`secrets.token_bytes(32)`. It NEVER leaves the machine.
+
+If the keychain is unavailable, a legacy audit-only fallback uses
+`AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
+authenticated encryption or a slow password KDF. OAuth tokens have no file
+fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+
+Malformed stored keys are preserved and rejected rather than regenerated.
+Before appending to an existing active log, startup verifies its chain using
+the loaded key. A wrong key, wrong fallback passphrase, or corrupt log causes
+startup to fail. Preserve the original key and files for investigation; do not
+delete them to hide verification failures. Without an existing log, the legacy
+fallback cannot authenticate a passphrase or detect valid-length corruption.
+
+### Algorithm
+
+```
+record_without_hmac = {ts, session_id, machine_id, shim_version,
+                       request_id, op, details, result, seq, prev_hmac}
+canonical_bytes     = json_canonical(record_without_hmac)
+hmac                = HMAC-SHA256(audit_key, canonical_bytes)
+record              = {**record_without_hmac, "hmac": hmac.hex()}
+```
+
+`json_canonical` follows the **RFC 8785 JSON Canonicalization Scheme
+(JCS)** (sorted keys, no whitespace), with two differences.
+
+Object keys are sorted by Unicode code point, where RFC 8785 sorts by
+UTF-16 code unit. The two orders differ only where, at the first character
+two keys don't share, one has a character above U+FFFF (an emoji, say) and
+the other one from U+E000 to U+FFFF: by code point a key starting with
+U+FFFD sorts before one starting with U+1F600, and by UTF-16 after it. Keys
+in `details` can be anything a request carried (a computer tool's
+arguments, say).
+
+A float is written as Python's `repr` gives it. An integer-valued float
+keeps its `.0` (`1712345678.0`, where RFC 8785 writes `1712345678`),
+and very large or small floats use Python's exponent spelling
+(`1e-07`). Booleans match RFC 8785, and so do integers up to 2^53 - 1 in
+absolute value. A larger integer can differ: the shim writes its exact
+digits, while RFC 8785 writes the nearest IEEE 754 double, though some
+larger integers come out the same.
+
+The shim ships this hand-rolled canonicalizer over the input shapes used
+in this spec (`str`, `int`, `float`, `bool`, `null`, `list`, `object`)
+so the wheel doesn't carry an extra dependency. A third-party verifier
+must reproduce both rules above; a stock RFC 8785 library (e.g. the
+`rfc8785` PyPI package) reports records holding such floats or keys as
+`hmac_mismatch`. Moving to strict RFC 8785 would change the HMAC input
+of existing records, so it waits for a versioned log format. `NaN`
+and `±Infinity` are rejected: the canonicalizer raises on them rather
+than silently producing non-JSON.
+A string UTF-8 can't encode (a POSIX path whose bytes aren't UTF-8
+decodes to lone surrogates) is written with those code points as
+`\udcXX` escapes, so its record is never dropped.
+
+### Verification
+
+A consumer (the user via `autogpt-shim audit verify`, or the platform-
+side viewer) reads the log line-by-line:
+
+```
+for each record in file:
+    actual_hmac = HMAC-SHA256(audit_key, canonical_bytes_without_hmac(record))
+    if actual_hmac != record.hmac:
+        FAIL "record {seq} tampered"
+    if record.prev_hmac != previous_record.hmac:
+        FAIL "chain break between {seq-1} and {seq}"
+    if record.seq != previous_record.seq + 1:
+        FAIL "sequence gap"
+    previous_record = record
+```
+
+Verification needs the audit key. The user has it on their machine.
+The platform does NOT — the platform receives the audit log only when
+the user uploads it for support, and the user provides the key
+out-of-band.
+
+## Rotation
+
+| Trigger | Action |
+|---|---|
+| File reaches **64 MiB** | Rotate to `audit.log.{YYYYMMDD-HHMMSS}` and start fresh |
+| 30 days since first record | Rotate (caps untouched logs in the working set) |
+| Shim restart | No rotation; appends to existing file |
+| User runs `autogpt-shim audit rotate` | Explicit rotation, safe while the daemon runs |
+
+Each new file starts with `seq=1` and `prev_hmac=null`. The first
+record (`SHIM_START` for restarts, or just the first op) carries
+`prev_hmac=null` to mark the chain origin.
+
+The daemon and an `autogpt-shim audit` command each open their own
+writer, so appends and rotations hold an exclusive lock on
+`.audit.log.lock` next to the log. A writer that finds the file
+rotated or appended to since its last write reloads the chain state
+from the file before it appends.
+
+`audit verify`, `verify-all` and `show` list and read the files under
+the same lock, so they never see a half-written record or miss a file that a
+rotation has just moved. `verify-all` reads each file under its own hold of
+the lock, the listing and the current log under the first, and checks the
+records after releasing it, so audit writes don't wait for the whole scan; a
+rotated file a prune removes in between is reported as removed and skipped.
+`export` lists the files and reads the current
+log under the lock, then reads the rotated files one at a time after
+releasing it, since they never change; one pruned or replaced in between
+fails the export, which writes nothing. A reader that can't write the lock file
+takes the lock through a read-only handle. One that can't open the lock
+file at all stops with an error rather than read unlocked; only a lock
+file that doesn't exist yet, which no writer can be holding, lets the
+read go ahead without it.
+
+If two rotations land within the same wall-clock second (rare, but
+possible under burst writes or explicit `rotate` after a recent
+size-triggered rotation), the second rotated file gets a `-N` counter
+suffix: `audit.log.YYYYMMDD-HHMMSS-1`, `-2`, etc. The writer never
+clobbers an existing rotated file. Only files named this way count as
+rotated logs: `audit export`, `verify-all` and `prune` leave any other
+`audit.log.*` file alone.
+
+Rotated files are kept indefinitely by default. `autogpt-shim audit
+prune --older-than 90d` deletes files whose newest record is older than
+the threshold: the latest timestamp of any record in the file, not the last
+line's, which a clock that went back can make older. A file with a record
+that has no timestamp is kept.
+Prune reads the rotated files without the lock, so writers don't wait on
+it, and deletes under the lock only files that are still the ones it read.
+The shim never auto-prunes — log loss is the user's call.
+
+## Reading and exporting
+
+```bash
+autogpt-shim audit tail        # tail -f the current file
+autogpt-shim audit show {seq}  # pretty-print every record with that seq (it restarts in each file)
+autogpt-shim audit verify      # chain-verify the current file
+autogpt-shim audit verify-all  # verify every rotated file
+autogpt-shim audit export      # zip + sign for support upload
+```
+
+Without `--output`, the archive is `audit-export-YYYYMMDD-HHMMSS.zip` in
+the current directory, with a `-N` suffix if a file of that name exists;
+an `--output` that exists is replaced. The archive is built beside its
+destination and moved into place when it is complete.
+
+Export bundles all current+rotated files into a `.zip` with an
+embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
+`manifest.sig` containing HMAC-SHA256 over the manifest using the
+local audit key. The signature is symmetric (not RSA): the user
+shares the audit key out-of-band with support / a platform-side
+viewer when they upload the bundle. This is intentional — there is no
+public PKI for the per-machine audit key, and adding one would
+require shipping a CA flow we don't need for v0.
+
+## What this catches
+
+- **A record cut off part way** — a partial final line is reported as
+  `truncated`.
+- **Record deletion** — `seq` jumps, prev_hmac mismatches.
+- **Field tampering** — HMAC mismatch on the tampered record.
+- **Wholesale log replacement** — verifier needs the audit key; an
+  attacker who replaces both the log and the key in the keychain has
+  also locked themselves out of any future verification by the user.
+- **Cross-machine impersonation** — `machine_id` is in every record
+  and signed; can't lift a chain from one machine and replay on another.
+
+## What this does NOT catch
+
+- Removing the newest complete records, a whole rotated file or the whole
+  log. What is left still verifies; see "Tamper-evidence chain" above.
+- Real-time tampering by a process running AS the shim user with
+  keychain access. (Mitigation: keychain prompts are user-visible on
+  macOS/Windows; an attacker writing to the audit key triggers a TCC
+  / consent dialog.)
+- The platform asking for something legitimate but harmful. (Mitigation:
+  Layer 5 in SECURITY.md — local confirmation prompts for dangerous ops.)
+- An attacker who compromises the platform's OAuth issuer and forges a
+  token. (Mitigation: token revocation per OAUTH_FLOW.md; user reviews
+  audit log for unexpected sessions.)
+
+## Future
+
+- **Platform-side audit viewer.** Web UI under settings that ingests
+  exported zips and presents a per-session timeline. Tracked in the
+  PR description, not built yet.
+- **Append-only filesystem flags.** macOS `chflags uchg`, Linux
+  `chattr +a`, Windows ACL deny-rewrite. Hardens against in-band
+  tampering even by the shim's own user.
+- **Remote witness.** Optionally, shim can stream HMAC checkpoints to
+  the platform every N records so the platform can detect log
+  truncation after-the-fact even without a user-initiated upload.
+  Trade-off: leaks operation metadata (timing, counts) to the platform.

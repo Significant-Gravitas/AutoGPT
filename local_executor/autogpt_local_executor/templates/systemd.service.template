@@ -1,0 +1,34 @@
+# Source template: autogpt_local_executor/templates/systemd.service.template
+# Rendered file:   ~/.config/systemd/user/autogpt-shim.service
+# Re-render with:  autogpt-shim install
+#
+# After install, enable the unit with:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now autogpt-shim.service
+#
+# For headless / no-login start-at-boot, also run:
+#   loginctl enable-linger $USER
+
+[Unit]
+Description=AutoGPT Local PC Executor shim
+Documentation=https://github.com/Significant-Gravitas/autogpt-local-executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={exec_start}
+Restart=on-failure
+RestartSec=5
+# 77 is an authentication failure, 78 a configuration or preflight failure:
+# a restart would only fail the same way. (Linux has no TCC relaunch chain to
+# keep 78 restarting for.) Fix it, then restart the unit. 75 (EX_TEMPFAIL) is
+# a failure that can clear on its own, such as audit storage that is full or
+# not mounted yet, so it restarts.
+RestartPreventExitStatus=77 78
+StandardOutput=append:{stdout_log}
+StandardError=append:{stderr_log}
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

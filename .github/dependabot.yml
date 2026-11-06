@@ -1,5 +1,20 @@
 version: 2
 updates:
+  # Local PC companion (local_executor/, pip project)
+  - package-ecosystem: "pip"
+    directory: "local_executor"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(local_executor/deps)"
+    groups:
+      dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+
   # autogpt_libs (Poetry project)
   - package-ecosystem: "pip"
     directory: "autogpt_platform/autogpt_libs"
