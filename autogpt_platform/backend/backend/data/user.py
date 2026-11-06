@@ -286,6 +286,12 @@ async def is_auth_user_banned(user_id: str) -> bool:
     return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
 
 
+async def get_account_created_at(user_ids: list[str]) -> dict[str, datetime]:
+    """When each account signed up, read from its auth identity."""
+    users = await AuthUser.prisma().find_many(where={"id": {"in": user_ids}})
+    return {user.id: user.createdAt for user in users}
+
+
 class OrphanedAuthIdentity(BaseModel):
     """An auth identity (Better Auth user) with no platform ``User`` row."""
 
