@@ -1,0 +1,15 @@
+# Build outputs and installed dependencies.
+build/runtime/
+build/.cache/
+dist/
+dist-upgrade/
+node_modules/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/.state/
+
+# The repository root ignores every package-lock.json. These two are the
+# pins `npm ci` installs from, so they are tracked.
+!/package-lock.json
+!/e2e/package-lock.json

@@ -591,8 +591,6 @@ _WORKDIR_FILE_CALL_OFFENDERS: dict[str, tuple[int, str]] = {
         _CLI_PROJECTS,
     ),
     "copilot/sdk/service.py _cleanup_sdk_tool_results shutil.rmtree": (2, _WHOLE_DIR),
-    "copilot/sdk/service.py _make_cli_tmpdir os.lstat": (1, _CLI_TMPDIR),
-    "copilot/sdk/service.py _make_cli_tmpdir os.mkdir": (1, _CLI_TMPDIR),
     "copilot/sdk/service.py _scrub_resumed_memory_for_retry .read_bytes": (
         1,
         _CLI_PROJECTS,

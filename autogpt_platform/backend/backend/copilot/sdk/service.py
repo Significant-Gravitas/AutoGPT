@@ -14,7 +14,6 @@ import os
 import random
 import re
 import shutil
-import stat
 import sys
 import time
 import uuid
@@ -66,6 +65,7 @@ from backend.copilot.graphiti.context_marker import (
     strip_injected_memory_text,
 )
 from backend.copilot.host_fs import cli_tmpdir, save_new_file
+from backend.copilot.host_private_directory import ensure_private_directory
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -5269,6 +5269,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     unsaved_held: list[PendingMessage] = []
     # A first turn's context reads, started before setup (``FirstTurnContext``).
     first_turn_context: FirstTurnContext | None = None
+    private_directories = contextlib.ExitStack()
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -5281,7 +5282,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         try:
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
-            _make_cli_tmpdir(sdk_cwd)
+            _make_cli_tmpdir(sdk_cwd, lifetime=private_directories)
         except (ValueError, OSError) as e:
             logger.error("%s Invalid SDK cwd: %s", log_prefix, e)
             yield StreamError(
@@ -6720,14 +6721,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         raise
     finally:
         turn_error = sys.exception()
-        if first_turn_context is not None:
-            first_turn_context.close()
-        # A turn that ended before its query no longer wants the recall.
-        # Cancelling, rather than awaiting, adds no await to this cleanup, and
-        # also suppresses an unretrieved-exception warning for a finished task.
-        if warm_ctx_task is not None:
-            warm_ctx_task.cancel()
         try:
+            if first_turn_context is not None:
+                first_turn_context.close()
+            # A turn that ended before its query no longer wants the recall.
+            # Cancelling adds no await to cleanup and consumes a failed task.
+            if warm_ctx_task is not None:
+                warm_ctx_task.cancel()
             tool_display_bridge.reset()
             await persist_unfolded_rows(session, unsaved_held, log_prefix=log_prefix)
             # Pending messages are drained atomically at the start of each
@@ -6752,8 +6752,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     turn_cache_read_tokens = codex_usage.cached_input_tokens
                     turn_cache_creation_tokens = 0
         finally:
-            if _cli_prelaunch is not None:
-                await _cli_prelaunch.close()
+            try:
+                if _cli_prelaunch is not None:
+                    await _cli_prelaunch.close()
+            finally:
+                private_directories.close()
 
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
@@ -7368,18 +7371,8 @@ def _stamp_turn_messages(
                 msg.stamps_pending_save = True
 
 
-def _make_cli_tmpdir(sdk_cwd: str) -> str:
-    """Create the CLI's temp directory with mode 0700, or reuse one an earlier
-    turn of this session left, which must be a 0700 directory of this user."""
-    path = cli_tmpdir(sdk_cwd)
-    try:
-        os.mkdir(path, 0o700)
-    except FileExistsError:
-        st = os.lstat(path)
-        if (
-            not stat.S_ISDIR(st.st_mode)
-            or st.st_uid != os.getuid()
-            or st.st_mode & 0o077
-        ):
-            raise
-    return path
+def _make_cli_tmpdir(
+    sdk_cwd: str, *, lifetime: contextlib.ExitStack | None = None
+) -> str:
+    """Create or validate the CLI's private directory for this user."""
+    return ensure_private_directory(cli_tmpdir(sdk_cwd), lifetime=lifetime)
