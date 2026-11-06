@@ -98,11 +98,6 @@
       "reason": "The generated fallback avatar's artwork palette (boring-avatars)."
     },
     {
-      "files": "src/app/(no-navbar)/onboarding/steps/SubscriptionStep/components/OttoCover.tsx",
-      "allow": ["#fdfcf8"],
-      "reason": "The warm studio colour baked into the cover artwork, so the panel meets the image without a seam."
-    },
-    {
       "files": "src/app/(platform)/library/components/SitrepItem/SitrepItem.tsx",
       "allow": ["#0000", "#000"],
       "reason": "Stops of the spinner's CSS mask: alpha, not colour."

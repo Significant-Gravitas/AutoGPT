@@ -370,6 +370,9 @@ class WorkspaceWriteResponse(ToolResponseBase):
     download_url: str
     source: str | None = None  # "content", "base64", or "copied from <path>"
     content_preview: str | None = None  # First 200 chars for text files
+    # The file this overwrite replaced, whose id is now dead. A client showing
+    # that file follows it to file_id.
+    replaced_file_id: str | None = None
     # Otto's own working file (e.g. build_state.json), as the write marked it.
     # For the activity log only; neither the model nor the client sees it.
     is_internal: bool = Field(default=False, exclude=True)
@@ -1246,6 +1249,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 download_url=download_url,
                 source=source,
                 content_preview=preview,
+                replaced_file_id=rec.replaced_file_id,
                 message=msg,
                 session_id=session_id,
                 is_internal=rec.is_internal,
