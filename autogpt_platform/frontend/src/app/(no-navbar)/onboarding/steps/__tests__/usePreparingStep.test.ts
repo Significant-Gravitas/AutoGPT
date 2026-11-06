@@ -284,6 +284,7 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
 const HIRE_URL = "*/api/onboarding/brain-dump/plan/hire";
 const HIRE_MAX_WAIT_MS = 15_000;
 const PLAN_WAIT_MS = 10_000;
+const PLAN_MAX_WAIT_MS = 30_000;
 const PLAN_POLL_MS = 1_000;
 const HIRE_RETRY_MS = 2_000;
 const HIRE_TRY_MS = 7_000;
@@ -602,6 +603,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
       getGetBrainDumpPlanMockHandler200({
         ...teamPlan(["Maria", "Max", "Mina"]),
         ready: false,
+        progress: { tasks_written: true, team_chosen: false },
       }),
     );
     const hires = mockHire();
@@ -616,6 +618,73 @@ describe("usePreparingStep — hiring the plan's team", () => {
 
     await advance(GENERIC_TOTAL_MS);
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps waiting while the tasks are being written, then hires as soon as they are", async () => {
+    let tasksWritten = false;
+    server.use(
+      getGetBrainDumpPlanMockHandler200(() => ({
+        ...teamPlan(["Maria"]),
+        ready: false,
+        progress: { tasks_written: tasksWritten, team_chosen: true },
+      })),
+    );
+    const hires = mockHire();
+    const onComplete = vi.fn();
+    renderPreparing({ onComplete, canHire: true });
+
+    await advance(PLAN_WAIT_MS + HIRE_MAX_WAIT_MS);
+    expect(hires.count).toBe(0);
+    expect(onComplete).not.toHaveBeenCalled();
+
+    tasksWritten = true;
+    await advance(PLAN_POLL_MS + 100);
+    expect(hires.count).toBe(1);
+
+    await advance(100);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up on the tasks at the plan step's limit, and the hire still goes out", async () => {
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ...teamPlan(["Maria"]),
+        ready: false,
+        progress: { tasks_written: false, team_chosen: false },
+      }),
+    );
+    const hires = mockHire(holdHire);
+    const onComplete = vi.fn();
+    renderPreparing({ onComplete, canHire: true });
+
+    await advance(PLAN_MAX_WAIT_MS - 500);
+    expect(hires.count).toBe(0);
+    expect(onComplete).not.toHaveBeenCalled();
+
+    await advance(1_000);
+    expect(hires.count).toBe(1);
+
+    await advance(HIRE_MAX_WAIT_MS - 1_000);
+    expect(onComplete).not.toHaveBeenCalled();
+
+    await advance(3_000);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hold the hire past the usual wait when the plan cannot be read", async () => {
+    server.use(
+      http.get("*/api/onboarding/brain-dump/plan", () =>
+        HttpResponse.json({ detail: "down" }, { status: 500 }),
+      ),
+    );
+    const hires = mockHire();
+    renderPreparing({ canHire: true });
+
+    await advance(PLAN_WAIT_MS - 500);
+    expect(hires.count).toBe(0);
+
+    await advance(1_000);
+    expect(hires.count).toBe(1);
   });
 
   it("gives Home's tasks to the new team when the hire lands after Home read them", async () => {

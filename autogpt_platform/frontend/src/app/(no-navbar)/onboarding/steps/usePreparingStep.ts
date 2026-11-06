@@ -1,7 +1,6 @@
 import { useGetBrainDumpRecommendedProviders } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { peekIntroPath } from "@/services/onboarding/brain-dump-handoff";
 import { useEffect, useRef, useState } from "react";
-import { HIRE_MAX_WAIT_MS } from "./plan-hire-helpers";
 import { usePlanHire } from "./usePlanHire";
 
 // The second item is the plan's team being hired (HIRE_ITEM), named once
@@ -57,9 +56,11 @@ export function usePreparingStep({ onComplete, canHire = false }: Args) {
   onCompleteRef.current = onComplete;
   const teamHire = usePlanHire({ enabled: canHire });
   const isHireSettledRef = useRef(teamHire.isSettled);
+  const hireMaxWaitRef = useRef(teamHire.maxWaitMs);
   useEffect(() => {
     isHireSettledRef.current = teamHire.isSettled;
-  }, [teamHire.isSettled]);
+    hireMaxWaitRef.current = teamHire.maxWaitMs;
+  }, [teamHire.isSettled, teamHire.maxWaitMs]);
 
   // Only a user who actually dumped gets the honest copy; a skip would
   // make "Reading your brain dump" a lie.
@@ -111,7 +112,7 @@ export function usePreparingStep({ onComplete, canHire = false }: Args) {
         !isRecommendationsReadyRef.current &&
         elapsed < RECOMMENDATIONS_MAX_WAIT_MS;
       const isWaitingOnHire =
-        !isHireSettledRef.current && elapsed < HIRE_MAX_WAIT_MS;
+        !isHireSettledRef.current && elapsed < hireMaxWaitRef.current;
       const isWaiting = isWaitingOnRecommendations || isWaitingOnHire;
 
       if (elapsed >= duration && !isWaiting && !finished) {

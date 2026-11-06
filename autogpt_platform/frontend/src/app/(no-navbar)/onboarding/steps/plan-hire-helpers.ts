@@ -7,8 +7,9 @@ import {
   withDeadline,
 } from "./SubscriptionStep/components/PlanPanel/helpers";
 
-// The preparing screen holds its bar this long for the hire, then moves on
-// whatever happened: a hire that never answers must not keep anyone from Home.
+// The preparing screen holds its bar this long after the hire goes out, then
+// moves on whatever happened: a hire that never answers must not keep anyone
+// from Home.
 export const HIRE_MAX_WAIT_MS = 15_000;
 const HIRE_RETRY_MS = 2_000;
 // The proxy waits 30 s for an answer: a try with none by this is sent again

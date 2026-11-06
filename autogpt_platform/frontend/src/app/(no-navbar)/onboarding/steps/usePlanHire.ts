@@ -4,6 +4,7 @@ import {
   hireBrainDumpPlan,
   useGetBrainDumpPlan,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import type { PlanResponse } from "@/app/api/__generated__/models/planResponse";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import * as Sentry from "@sentry/nextjs";
@@ -12,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useOnboardingWizardStore } from "../store";
 import { whenSkipSettled } from "./BrainDumpStep/useBrainDumpStep";
 import {
+  HIRE_MAX_WAIT_MS,
   hireTimeLeft,
   hireUntilAnswered,
   sendMarked,
@@ -19,14 +21,16 @@ import {
 } from "./plan-hire-helpers";
 import {
   joinNames,
+  PLAN_MAX_WAIT_MS,
   PLAN_POLL_MS,
   planAnsweredSince,
   readShownPlan,
 } from "./SubscriptionStep/components/PlanPanel/helpers";
 
 // With no plan shown, how long the hire waits for the pipeline's: the hire
-// settles the plan, so an early one loses the brain dump's. Short of
-// HIRE_MAX_WAIT_MS, so the hire still goes out while the bar holds.
+// settles the plan, so an early one loses the brain dump's. While its tasks
+// are still being written the wait runs to PLAN_MAX_WAIT_MS, as on the plan
+// step: settling then would keep the role plan and drop them for good.
 const PLAN_WAIT_MS = 10_000;
 
 // Hires the plan's team once the trial (or the plan, without a paywall) is
@@ -39,6 +43,7 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
   // screen waits out what is left of its time before sending a second.
   const [resumedFor] = useState(() => hireTimeLeft(userID));
   const [settled, setSettled] = useState(false);
+  const [sentAt, setSentAt] = useState<number | null>(null);
   const sent = useRef(false);
   const plan = usePlanToHire({ enabled, since: mountedAt });
   const names = plan.team.map((expert) => expert.name);
@@ -47,9 +52,9 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
     try {
       const response = await hireUntilAnswered(
         (signal) => sendMarked(userID, () => hireBrainDumpPlan({ signal })),
-        // A re-ask goes out with the bar's time nearly spent, and may be the
-        // only try that does the hire: it keeps trying from when it starts.
-        resumedFor === null ? mountedAt : Date.now(),
+        // From when it goes out: the wait for the plan, or a re-ask with the
+        // bar's time nearly spent, must not use up its tries.
+        Date.now(),
       );
       const failed = response.data.failed ?? [];
       if (failed.length > 0) toastHireFailed(failed.map((e) => e.name));
@@ -86,12 +91,20 @@ export function usePlanHire({ enabled }: { enabled: boolean }) {
       return;
     }
     sent.current = true;
+    setSentAt(Date.now());
     void hire();
   }, [enabled, resumedFor, plan.isKnown, hire]);
+
+  // How long after mounting the bar holds for the hire. Leaving this screen
+  // before the hire goes out means it never does, and the wait for the plan
+  // has its own limit, so until then the bar has none.
+  const sentAfter = sentAt === null ? Infinity : sentAt - mountedAt;
 
   return {
     label: names.length > 0 ? `Hiring ${joinNames(names)}` : null,
     isSettled: !enabled || settled,
+    maxWaitMs:
+      resumedFor === null ? sentAfter + HIRE_MAX_WAIT_MS : HIRE_MAX_WAIT_MS,
   };
 }
 
@@ -107,7 +120,13 @@ function usePlanToHire({
   const userID = useOnboardingWizardStore((s) => s.userID);
   const [shown] = useState(() => readShownPlan(userID));
   const [isWaitOver, setIsWaitOver] = useState(false);
+  const [isMaxWaitOver, setIsMaxWaitOver] = useState(false);
   const isWaiting = enabled && !shown;
+
+  function hasWaitEnded(latest: PlanResponse | null) {
+    return isMaxWaitOver || (isWaitOver && !isWritingTasks(latest));
+  }
+
   const query = useGetBrainDumpPlan({
     query: {
       enabled: isWaiting,
@@ -118,10 +137,10 @@ function usePlanToHire({
         return getBrainDumpPlan({ signal });
       },
       refetchOnMount: "always",
-      refetchInterval: (q) =>
-        isWaitOver || planAnsweredSince(q.state, since)?.ready
-          ? false
-          : PLAN_POLL_MS,
+      refetchInterval: (q) => {
+        const latest = planAnsweredSince(q.state, since);
+        return latest?.ready || hasWaitEnded(latest) ? false : PLAN_POLL_MS;
+      },
     },
   });
   const answer = planAnsweredSince(query, since);
@@ -130,8 +149,19 @@ function usePlanToHire({
   useEffect(() => {
     if (!isWaiting) return;
     const timer = setTimeout(() => setIsWaitOver(true), PLAN_WAIT_MS);
-    return () => clearTimeout(timer);
+    const maxTimer = setTimeout(() => setIsMaxWaitOver(true), PLAN_MAX_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(maxTimer);
+    };
   }, [isWaiting]);
 
-  return { team: ready?.team ?? [], isKnown: Boolean(ready) || isWaitOver };
+  return {
+    team: ready?.team ?? [],
+    isKnown: Boolean(ready) || hasWaitEnded(answer),
+  };
+}
+
+function isWritingTasks(plan: PlanResponse | null) {
+  return Boolean(plan?.progress && !plan.progress.tasks_written);
 }
