@@ -7,6 +7,7 @@ import socket
 import aiohttp
 import pytest
 from aiohttp import web
+from yarl import URL
 
 from autogpt_desktop.proxy import (
     ProxyThread,
@@ -17,6 +18,7 @@ from autogpt_desktop.proxy import (
 )
 
 RELEASE: web.AppKey[asyncio.Event] = web.AppKey("release")
+REQUESTS: web.AppKey[list[str]] = web.AppKey("requests")
 
 
 @pytest.mark.parametrize(
@@ -65,6 +67,7 @@ async def start(app: web.Application) -> tuple[web.AppRunner, int]:
 
 def rest_app() -> web.Application:
     async def echo(request: web.Request) -> web.Response:
+        request.app[REQUESTS].append(request.raw_path)
         return web.json_response(
             {
                 "path": request.path_qs,
@@ -95,6 +98,7 @@ def rest_app() -> web.Application:
 
     app = web.Application()
     app[RELEASE] = asyncio.Event()
+    app[REQUESTS] = []
     app.router.add_get("/api/redirect", redirect)
     app.router.add_get("/api/stream", stream)
     app.router.add_get("/api/cookies", cookies)
@@ -192,6 +196,47 @@ async def test_api_documentation_and_metrics_stay_private(stack, path):
     client, base, _ = stack
     async with client.get(f"{base}{path}") as response:
         assert response.status == 404
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "docs",
+        "redoc",
+        "openapi.json",
+        "metrics",
+        "external-api/docs",
+        "external-api/redoc",
+        "external-api/openapi.json",
+        "external-api/metrics",
+    ],
+)
+@pytest.mark.parametrize(
+    "prefix", ["x/../", "./", "x/%2e%2e/", "%2E/", "x/.%2E/", "x%2F..%2F"]
+)
+async def test_dot_segments_cannot_reach_private_api_endpoints(stack, prefix, endpoint):
+    client, base, rest = stack
+    target = URL(f"{base}/_agpt/{prefix}{endpoint}?probe=1", encoded=True)
+    async with client.get(target) as response:
+        body = await response.text()
+        assert response.status == 404, body
+    assert rest[REQUESTS] == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/files/report..txt",
+        "/api/files/.config",
+        "/api/files/...",
+        "/api/echo?next=/x/../docs",
+    ],
+)
+async def test_dots_in_names_and_queries_remain_public(stack, path):
+    client, base, _ = stack
+    async with client.get(URL(f"{base}/_agpt{path}", encoded=True)) as response:
+        assert response.status == 200
+        assert (await response.json())["path"] == path
 
 
 async def test_everything_else_goes_to_the_frontend(stack):

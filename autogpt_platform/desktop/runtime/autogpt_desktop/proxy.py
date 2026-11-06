@@ -83,6 +83,8 @@ async def _client_session(app: web.Application):
 async def _route(request: web.Request) -> web.StreamResponse:
     upstreams = request.app[UPSTREAMS]
     path = request.path
+    if any(segment in (".", "..") for segment in path.split("/")):
+        raise web.HTTPNotFound()
     if path == "/healthz":
         return web.Response(text="ok\n")
     if path in ("/_agpt/ws", "/_agpt/ws/"):
