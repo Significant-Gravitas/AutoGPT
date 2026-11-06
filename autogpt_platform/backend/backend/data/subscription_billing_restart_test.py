@@ -48,6 +48,7 @@ class FakeStripe:
         self.card_declines = False
         self.modify_started = asyncio.Event()
         self.hold_modify: asyncio.Event | None = None
+        self.preview_total: int | None = None
         self.tier: dict = {}
         self.rows: dict[str, MagicMock] = {}
 
@@ -161,7 +162,7 @@ class FakeStripe:
             "payment_behavior": "error_if_incomplete",
         }
         sub = self.subscriptions[sub_id]
-        total = PRICE * (12 if sub["interval"] == "year" else 1)
+        total = self.new_period_total(sub_id)
         from_balance = min(total, -self.balance)
         card = total - from_balance
         if card and self.card_declines:
@@ -189,6 +190,18 @@ class FakeStripe:
         if idempotency_key:
             self.idempotent[idempotency_key] = result
         return result
+
+    def new_period_total(self, sub_id: str) -> int:
+        sub = self.subscriptions[sub_id]
+        return PRICE * (12 if sub["interval"] == "year" else 1)
+
+    async def preview_invoice(self, subscription: str, subscription_details: dict):
+        assert subscription_details == {
+            "billing_cycle_anchor": "now",
+            "proration_behavior": "none",
+        }
+        total = self.new_period_total(subscription)
+        return {"total": total if self.preview_total is None else self.preview_total}
 
     async def list_subscriptions(self, customer: str, status: str, limit: int):
         page = MagicMock()
@@ -269,6 +282,7 @@ def fake():
             ("stripe.Subscription.list_async", fake.list_subscriptions),
             ("stripe.CreditNote.list_async", fake.list_credit_notes),
             ("stripe.CreditNote.create_async", fake.create_credit_note),
+            ("stripe.Invoice.create_preview_async", fake.preview_invoice),
         ):
             stack.enter_context(patch(target, side_effect=method))
         fake.tier = tier
@@ -586,9 +600,26 @@ async def test_an_invoice_already_credited_otherwise_is_not_credited_again(fake)
 
 
 @pytest.mark.asyncio
-async def test_a_reset_needing_a_declined_extra_charge_keeps_the_old_period(fake):
+async def test_a_late_invoice_cheaper_than_the_new_period_is_never_topped_up(fake):
+    """A one-time promotion paid half the late bill; resetting would charge
+    the card the other half, which the customer never agreed to."""
     _fail_on_3rd_pay_on_9th(fake)
-    fake.invoices["in_march"]["total"] = PRICE - 1000  # the price rose since
+    fake.invoices["in_march"]["total"] = PRICE // 2
+
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert fake.card_charges == [PRICE]
+    assert fake.credit_notes == []
+    assert fake.balance == 0
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+
+@pytest.mark.asyncio
+async def test_a_price_change_after_the_check_is_refused_not_charged(fake):
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.invoices["in_march"]["total"] = PRICE - 1000
+    fake.preview_total = PRICE - 1000  # the price rose after the preview
     fake.card_declines = True
 
     assert await restart_period_after_late_payment("in_march") == (

@@ -146,6 +146,8 @@ async def _restart_locked(invoice: dict, sub_id: str) -> RestartOutcome:
     progress = await _record_progress(invoice_id, user.id, sub_id, late)
     if progress.restartedAt is not None:
         return RestartOutcome.NOT_APPLICABLE
+    if not await _credit_covers_new_period(sub_id, invoice):
+        return RestartOutcome.NEEDS_MANUAL_FIX
     if not await _credit_late_invoice(invoice, late, progress):
         return RestartOutcome.NEEDS_MANUAL_FIX
     if not await _reset_anchor(sub_id, invoice_id):
@@ -160,6 +162,33 @@ async def _restart_locked(invoice: dict, sub_id: str) -> RestartOutcome:
         f" payment of invoice {invoice_id}, paid {_iso(late.paid_at)}"
     )
     return RestartOutcome.RESTARTED
+
+
+async def _credit_covers_new_period(sub_id: str, invoice: dict) -> bool:
+    """Whether the late invoice's credit pays the whole reset invoice.
+
+    The reset invoices the plan at today's terms. When the late invoice cost
+    less (a one-time promotion, a price change since), the card would be
+    charged the difference without the customer agreeing to it, so the
+    restart is left for a person instead."""
+    preview = await stripe_call(
+        stripe.Invoice.create_preview_async,
+        subscription=sub_id,
+        subscription_details={
+            "billing_cycle_anchor": "now",
+            "proration_behavior": "none",
+        },
+    )
+    new_period: int = preview.get("total") or 0
+    credit: int = invoice.get("total") or 0
+    if new_period <= credit:
+        return True
+    logger.error(
+        f"Restarting subscription {sub_id} from late invoice"
+        f" {invoice['id']} would charge {new_period - credit} more than the"
+        " late payment; the billing period was not restarted"
+    )
+    return False
 
 
 async def _record_progress(

@@ -62,8 +62,11 @@ async def _due(*past_due: dict, replaced: bool = False):
 
 
 @pytest.mark.asyncio
-async def test_a_failed_renewals_open_bill_is_offered():
-    due = await _due(_subscription())
+@pytest.mark.parametrize("status", ["open", "uncollectible"])
+async def test_a_failed_renewals_payable_bill_is_offered(status):
+    """Stripe marks the bill uncollectible once its retries run out; its
+    payment link still works, so it is still the way back."""
+    due = await _due(_subscription(status=status))
 
     assert due is not None
     assert due.model_dump() == {

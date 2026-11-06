@@ -22,6 +22,9 @@ from backend.data.subscription_billing_restart import current_period_start
 logger = logging.getLogger(__name__)
 
 _PAYMENT_DUE_STATUSES = ("past_due", "unpaid")
+# Stripe marks the bill uncollectible once its retries run out, but its
+# payment link still takes a payment.
+_PAYABLE_INVOICE_STATUSES = ("open", "uncollectible")
 UNPAID_BILL_BLOCKS_CHECKOUT = (
     "Your last payment didn't go through. Pay the open bill to restore your"
     " plan instead of starting a new one."
@@ -65,7 +68,7 @@ async def _payment_due(
         # A pending update's invoice holds a change, not the plan itself.
         return None
     if (
-        invoice.get("status") != "open"
+        invoice.get("status") not in _PAYABLE_INVOICE_STATUSES
         or stripe_id(invoice.get("customer")) != customer_id
         or (invoice.get("amount_due") or 0) <= 0
         or not invoice.get("currency")
