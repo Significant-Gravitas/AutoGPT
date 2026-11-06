@@ -1027,37 +1027,6 @@ async def get_failed_executions_details(
     return results
 
 
-async def cleanup_orphaned_execution(execution_id: str, admin_user_id: str) -> bool:
-    """
-    Cleanup orphaned execution by directly updating DB status.
-    For executions that are in DB but not actually running in executor.
-
-    Args:
-        execution_id: ID of the execution to cleanup
-        admin_user_id: ID of the admin user performing the operation
-
-    Returns:
-        True if execution was cleaned up, False otherwise
-    """
-    logger.info(
-        f"Admin user {admin_user_id} cleaning up orphaned execution {execution_id}"
-    )
-
-    # Update DB status directly without sending cancel signal
-    result = await AgentGraphExecution.prisma().update(
-        where={"id": execution_id},
-        data={
-            "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
-        },
-    )
-
-    logger.info(
-        f"Admin {admin_user_id} marked orphaned execution {execution_id} as FAILED"
-    )
-    return result is not None
-
-
 async def stop_all_long_running_executions(admin_user_id: str) -> int:
     """
     Stop ALL long-running executions (RUNNING >24h) by sending cancel signals.

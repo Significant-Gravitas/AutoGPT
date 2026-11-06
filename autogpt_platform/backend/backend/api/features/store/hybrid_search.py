@@ -367,15 +367,6 @@ async def hybrid_search(
     return cast(list[dict[str, Any]], results), total
 
 
-async def hybrid_search_simple(
-    query: str,
-    page: int = 1,
-    page_size: int = 20,
-) -> tuple[list[dict[str, Any]], int]:
-    """Simplified hybrid search for store agents."""
-    return await hybrid_search(query=query, page=page, page_size=page_size)
-
-
 # Backward compatibility alias - HybridSearchWeights maps to StoreAgentSearchWeights
 # for existing code that expects the popularity parameter
 HybridSearchWeights = StoreAgentSearchWeights

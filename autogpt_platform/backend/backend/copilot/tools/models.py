@@ -266,19 +266,6 @@ class NoResultsResponse(ToolResponseBase):
     name: str = "no_results"
 
 
-# Agent details models
-class InputField(BaseModel):
-    """Input field specification."""
-
-    name: str
-    type: str = "string"
-    description: str = ""
-    required: bool = False
-    default: Any | None = None
-    options: list[Any] | None = None
-    format: str | None = None
-
-
 class ExecutionOptions(BaseModel):
     """Available execution options for an agent."""
 

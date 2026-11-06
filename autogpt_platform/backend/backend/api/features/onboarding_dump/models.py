@@ -282,8 +282,3 @@ class RecommendedProvidersResponse(BaseModel):
 
 class GreetingDoneResponse(BaseModel):
     greeting_done: bool
-
-
-class RecordingUrlResponse(BaseModel):
-    url: str
-    mime_type: str | None = None

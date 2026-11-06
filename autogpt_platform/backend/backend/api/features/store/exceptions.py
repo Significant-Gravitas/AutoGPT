@@ -69,18 +69,6 @@ class ListingExistsError(StoreError):
     pass
 
 
-class ProfileNotFoundError(NotFoundError):
-    """Raised when a profile is not found"""
-
-    pass
-
-
-class ListingNotFoundError(NotFoundError):
-    """Raised when a store listing is not found"""
-
-    pass
-
-
 class SubmissionNotFoundError(NotFoundError):
     """Raised when a submission is not found"""
 
