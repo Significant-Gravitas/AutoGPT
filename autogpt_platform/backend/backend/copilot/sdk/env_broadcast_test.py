@@ -39,14 +39,20 @@ def _outside_a_turn():
     set_turn_trace_id(None)
 
 
-def _extra_body(**kwargs) -> dict:
-    with patch("backend.copilot.sdk.env.config", _config()):
+SONNET = "anthropic/claude-sonnet-5.5"
+ORDER = ["provider-a/global", "provider-b"]
+
+
+def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
+    with patch("backend.copilot.sdk.env.config", cfg or _config()):
         env = build_sdk_env(**kwargs)
     return json.loads(env["CLAUDE_CODE_EXTRA_BODY"])
 
 
 def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
-    body = _extra_body(session_id="sess-1", user_id="user-1")
+    cfg = _config(openrouter_provider_order=ORDER)
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=SONNET)
 
     assert body == {
         "user": "user-1",
@@ -57,7 +63,110 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
             "environment": attribution_settings.config.app_env.value,
             "impersonated": False,
         },
+        "provider": {"order": ORDER, "allow_fallbacks": False},
     }
+
+
+def test_claude_calls_keep_openrouters_routing_unless_providers_are_listed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A self-hosted install that sets nothing routes as OpenRouter decides."""
+    monkeypatch.delenv("CHAT_OPENROUTER_PROVIDER_ORDER", raising=False)
+
+    body = _extra_body(_config(_env_file=None), user_id="user-1", model=SONNET)
+
+    assert "provider" not in body
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        SONNET,
+        "claude-sonnet-5-5",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-haiku-4-5",
+    ],
+)
+def test_a_claude_call_asks_for_the_configured_providers_first(model: str):
+    cfg = _config(openrouter_provider_order=ORDER)
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=model)
+
+    assert body["provider"] == {"order": ORDER, "allow_fallbacks": False}
+
+
+@pytest.mark.parametrize("model", ["moonshotai/kimi-k2.6", "google/gemini-3-pro", None])
+def test_another_vendors_model_keeps_openrouters_routing(model: str | None):
+    cfg = _config(openrouter_provider_order=ORDER)
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=model)
+
+    assert "provider" not in body
+
+
+@pytest.mark.parametrize(
+    "fallback_model, routes_claude",
+    [
+        ("", True),
+        ("anthropic/claude-opus-4-7", True),
+        ("claude-haiku-4-5", True),
+        ("moonshotai/kimi-k2.6", False),
+        ("qwen/qwen3-coder", False),
+    ],
+)
+def test_mixed_vendor_fallback_keeps_openrouters_routing(
+    fallback_model: str, routes_claude: bool
+):
+    cfg = _config(
+        openrouter_provider_order=ORDER, claude_agent_fallback_model=fallback_model
+    )
+
+    body = _extra_body(cfg, model=SONNET)
+
+    assert ("provider" in body) is routes_claude
+
+
+@pytest.mark.parametrize(
+    "value, order",
+    [
+        ("google-vertex/global,anthropic", ["google-vertex/global", "anthropic"]),
+        (" google-vertex/global , anthropic ", ["google-vertex/global", "anthropic"]),
+        (
+            '["google-vertex/global", "anthropic"]',
+            ["google-vertex/global", "anthropic"],
+        ),
+        ("anthropic", ["anthropic"]),
+        ("", []),
+        ("[]", []),
+        # The hosted platform's value (the copilot executor's Helm values).
+        (
+            "google-vertex/global,anthropic,amazon-bedrock,azure/global,claude-on-aws",
+            [
+                "google-vertex/global",
+                "anthropic",
+                "amazon-bedrock",
+                "azure/global",
+                "claude-on-aws",
+            ],
+        ),
+    ],
+)
+def test_the_provider_order_reads_from_the_environment_in_either_spelling(
+    monkeypatch: pytest.MonkeyPatch, value: str, order: list[str]
+):
+    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", value)
+
+    assert _config().openrouter_provider_order == order
+
+
+def test_an_empty_provider_order_leaves_routing_to_openrouter(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", "")
+
+    body = _extra_body(_config(), session_id="sess-1", user_id="user-1", model=SONNET)
+
+    assert "provider" not in body
 
 
 def test_openrouter_mode_keeps_the_session_header_broadcast_needs():
