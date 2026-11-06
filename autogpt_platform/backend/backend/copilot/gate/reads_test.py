@@ -1397,9 +1397,19 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
 
 
 @pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"query": "digest"}])
-async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, lookup):
+@pytest.mark.parametrize(
+    "owned, copied",
+    [(False, False), (True, True)],
+    ids=["another user's graph", "the user's copy of a graph"],
+)
+async def test_a_library_graph_is_judged_without_the_listing_around_it(
+    rows, lookup, owned, copied
+):
     judge = _judge(_HELD)
-    with patch(f"{_READS}.judge_content", judge), _library_with_graph():
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _library_with_graph(owned=owned, copied=copied),
+    ):
         result = await _call(
             FindLibraryAgentTool(), _session(), {**lookup, "include_graph": True}
         )
@@ -1415,15 +1425,17 @@ async def test_a_library_graph_is_judged_without_the_listing_around_it(rows, loo
 
 
 @pytest.mark.parametrize(
-    "lookup, owned",
+    "lookup, owned, listed",
     [
-        ({"agent_id": "graph-1"}, False),
-        ({"for_creation": True}, False),
-        ({"agent_id": "graph-1", "include_graph": True}, True),
+        ({"agent_id": "graph-1"}, False, ["lib-1"]),
+        ({"for_creation": True, "goal_summary": "a daily digest"}, False, ["lib-1"]),
+        ({"for_creation": True}, False, []),
+        ({"agent_id": "graph-1", "include_graph": True}, True, ["lib-1"]),
     ],
+    ids=["no graph", "a create-time match", "no create-time goal", "the user's graph"],
 )
 async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
-    rows, lookup, owned
+    rows, lookup, owned, listed
 ):
     judge = _judge(_HELD)
     with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
@@ -1431,11 +1443,14 @@ async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
 
     judge.assert_not_awaited()
     assert result.success and rows.rows == {}
+    agents = json.loads(result.output).get("agents", [])
+    assert [agent["id"] for agent in agents] == listed
 
 
-def _library_with_graph(owned: bool = False):
+def _library_with_graph(owned: bool = False, copied: bool = False):
     """One library entry whose graph, typed as ``get_graph`` returns it, carries
-    the marker; ``owned`` is whether the user owns that graph."""
+    the marker; ``owned`` is whether the user holds that graph, ``copied``
+    whether it was copied from another, and the create-time search finds it."""
     entry = SimpleNamespace(
         id="lib-1",
         name="Daily digest",
@@ -1468,15 +1483,30 @@ def _library_with_graph(owned: bool = False):
         created_at=datetime.now(UTC),
     )
     library = SimpleNamespace(
+        get_library_agent=AsyncMock(return_value=entry),
         get_library_agent_by_graph_id=AsyncMock(return_value=entry),
         list_library_agents=AsyncMock(return_value=SimpleNamespace(agents=[entry])),
     )
-    graphs = SimpleNamespace(get_graph=AsyncMock(return_value=graph))
+    graphs = SimpleNamespace(
+        get_graph=AsyncMock(return_value=graph),
+        get_copied_graph_ids=AsyncMock(side_effect=lambda ids: ids if copied else []),
+    )
     stack = ExitStack()
-    for name, db in (("library_db", library), ("graph_db", graphs)):
-        stack.enter_context(
-            patch(f"backend.copilot.tools.agent_search.{name}", lambda db=db: db)
+    for name, db in (
+        ("agent_search.library_db", library),
+        ("agent_search.graph_db", graphs),
+        ("find_library_agent.graph_db", graphs),
+    ):
+        stack.enter_context(patch(f"backend.copilot.tools.{name}", lambda db=db: db))
+    stack.enter_context(
+        patch(
+            "backend.copilot.tools.agent_search.hybrid_search_library_agents",
+            AsyncMock(return_value=[{"content_id": "lib-1", "combined_score": 0.9}]),
         )
+    )
+    stack.enter_context(
+        patch("backend.copilot.tools.agent_search.track_library_check_outcome")
+    )
     return stack
 
 

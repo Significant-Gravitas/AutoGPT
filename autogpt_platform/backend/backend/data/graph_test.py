@@ -45,6 +45,7 @@ from backend.data.graph import create_graph as db_create_graph
 from backend.data.graph import (
     delete_graph,
     fork_graph,
+    get_copied_graph_ids,
     get_graph,
     get_graph_all_versions,
     get_graph_at_version,
@@ -1083,6 +1084,35 @@ async def test_fork_graph_clears_picked_files(
         assert forked.nodes[0].input_default["spreadsheet"] is None
     finally:
         await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_duplicate_saved_again_in_the_builder_is_still_a_copy(
+    server: SpinTestServer,
+):
+    original = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "greeting"})),
+        DEFAULT_USER_ID,
+    )
+    entry = await library_db.get_library_agent_by_graph_id(DEFAULT_USER_ID, original.id)
+    assert entry is not None
+    duplicate = await library_db.fork_library_agent(entry.id, DEFAULT_USER_ID)
+    copy = await get_graph(duplicate.graph_id, None, DEFAULT_USER_ID)
+    assert copy is not None
+    value_node, output_node = sorted(
+        copy.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    # The builder sends the graph back without ``forked_from_id``.
+    edited = _value_to_output_graph({"name": "hello"}, value_node.id, output_node.id)
+    edited.id = copy.id
+    await graphs_routes.update_graph(
+        copy.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    latest = await get_graph(copy.id, None, DEFAULT_USER_ID)
+    assert latest is not None and latest.version > copy.version
+    assert latest.forked_from_id is None
+
+    assert await get_copied_graph_ids([original.id, copy.id]) == [copy.id]
 
 
 def _value_to_output_graph(

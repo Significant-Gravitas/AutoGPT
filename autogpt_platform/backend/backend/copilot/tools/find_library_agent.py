@@ -5,6 +5,7 @@ from typing import Any
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import graph_db
 
 from .agent_generator import get_agent_as_json
 from .agent_json_input import write_agent_json_to_workspace
@@ -109,15 +110,19 @@ class FindLibraryAgentTool(BaseTool):
         result = await self._find(user_id, session, **kwargs)
         if not isinstance(result, AgentsFoundResponse):
             return result.from_outside()
-        # Only a graph the user does not own is outside content, declared as the
-        # response serialises it: a stored ``GraphModel`` has fields it drops.
+        with_graph = [agent for agent in result.agents if agent.graph is not None]
+        owned = [a.graph_id for a in with_graph if a.can_access_graph and a.graph_id]
+        # Holding a graph is not writing it, so a copy of any workflow is judged.
+        copied = set(await graph_db().get_copied_graph_ids(owned)) if owned else set()
+        # Declared as the response serialises it: a stored ``GraphModel`` has
+        # fields it drops.
         return result.from_outside(
             *(
                 agent.model_dump(mode="json", include={"graph"}, exclude_none=True)[
                     "graph"
                 ]
-                for agent in result.agents
-                if agent.graph is not None and not agent.can_access_graph
+                for agent in with_graph
+                if not agent.can_access_graph or agent.graph_id in copied
             )
         )
 
