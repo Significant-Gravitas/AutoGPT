@@ -122,8 +122,17 @@ def main() -> int:
                     print(f"{path}: symlink, left untouched", file=sys.stderr)
                     continue
                 names = fill_env_blanks(path)
-                if names:
-                    print(f"{path}: generated {', '.join(names)}")
+                generated = [
+                    name for name in names if name != FRONTEND_VAPID_PUBLIC_KEY
+                ]
+                if generated:
+                    print(f"{path}: generated {', '.join(generated)}")
+                if FRONTEND_VAPID_PUBLIC_KEY in names:
+                    print(
+                        f"{path}: cleared {FRONTEND_VAPID_PUBLIC_KEY}, which held the "
+                        "published key; the app now takes the public key from the "
+                        "backend. Rebuild the frontend if it was built with the old one."
+                    )
                 if _shell_overrides_database_password(path, os.environ):
                     print(
                         f"{path}: POSTGRES_PASSWORD is also set in this shell, and "
@@ -154,9 +163,10 @@ def main() -> int:
 def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[str, str]:
     """Return the existing secrets or atomically create them on first boot.
 
-    A version 1 config, written before INTERNAL_API_KEY existed, gets one. It
-    is saved as the current version once it passes every check, so a boot that
-    fails them leaves the file as it was."""
+    A version 1 config, written before INTERNAL_API_KEY existed, gets one, and
+    a config whose Web Push pair is the published one gets the pair a first
+    boot would make today. Either is saved once it passes every check, so a
+    boot that fails them leaves the file as it was."""
     if path.is_symlink():
         raise ValueError(f"refusing symlink at {path}")
     if path.exists():
@@ -164,9 +174,12 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
         upgrade = values.get("AUTOGPT_RUNTIME_CONFIG_VERSION") == "1"
         if upgrade:
             values = _upgraded_from_version_1(values, environment)
+        rotated = _with_a_published_vapid_pair_replaced(values, environment)
+        if rotated is not None:
+            values = rotated
         _validate_values(values)
         _verify_environment_matches(values, environment)
-        if upgrade:
+        if upgrade or rotated is not None:
             _write_config(path, values)
         path.chmod(0o600)
         return values
@@ -201,10 +214,12 @@ def fill_env_blanks(path: Path) -> list[str]:
         lambda: _shared_database_password(path)
     )
 
+    vapid_keypair = functools.lru_cache(maxsize=None)(_generate_vapid_keypair)
+
     filled: list[str] = []
     replacements: list[tuple[Setting, str]] = []
     for setting in settings:
-        value = _new_value(setting, text, path, database_password)
+        value = _new_value(setting, text, path, database_password, vapid_keypair)
         if value is not None:
             replacements.append((setting, value))
             filled.append(setting.name)
@@ -214,7 +229,9 @@ def fill_env_blanks(path: Path) -> list[str]:
 
     added: list[tuple[str, str]] = []
     for name in _missing_credentials(path, {setting.name for setting in settings}):
-        value = _new_value(Setting(name, "", True, 0, 0), "", path, database_password)
+        value = _new_value(
+            Setting(name, "", True, 0, 0), "", path, database_password, vapid_keypair
+        )
         if value is not None:
             added.append((name, value))
     if added:
@@ -270,7 +287,11 @@ def _check_passwords_are_plain(path: Path, settings: list[Setting]) -> None:
 
 
 def _new_value(
-    setting: Setting, text: str, path: Path, database_password: Callable[[], str]
+    setting: Setting,
+    text: str,
+    path: Path,
+    database_password: Callable[[], str],
+    vapid_keypair: Callable[[], tuple[str, str]],
 ) -> str | None:
     """What `fill_env_blanks` writes in place of a setting's value as written,
     or None to keep it."""
@@ -280,6 +301,13 @@ def _new_value(
     if name in ("DATABASE_URL", "DIRECT_URL"):
         written = text[setting.start : setting.end]
         return _database_url(written, value, path, database_password)
+    if name in VAPID_KEY_SETTINGS:
+        return _vapid_value(name, path, vapid_keypair)
+    if name == FRONTEND_VAPID_PUBLIC_KEY:
+        # The app takes this over the backend's key, so the published one
+        # would keep browsers subscribing under a pair the backend no longer
+        # signs with. Blank, the app fetches the backend's current key.
+        return "" if _is_published_vapid_key(value) else None
     if name in BUNDLED_SERVICE_HOSTS and not _uses_bundled_service(
         name, _file_settings(path)
     ):
@@ -292,6 +320,101 @@ def _new_value(
     if not value or (name in CREDENTIALS and _is_published(value)):
         return generator()
     return None
+
+
+def _vapid_value(
+    name: str, path: Path, vapid_keypair: Callable[[], tuple[str, str]]
+) -> str | None:
+    """The Web Push key pair is filled as one: a blank or published pair gets a
+    freshly generated private key and the public key that belongs to it. A
+    pair with one side set and the other blank can't be completed (the public
+    key is derived from the private one, never the reverse), so it is refused
+    rather than half-filled. Nothing stored depends on the pair, so replacing
+    a published one costs only the browsers' push subscriptions."""
+    effective = _file_settings(path)
+    # A bare name or a `$NAME` reference is Compose's to fill in from the
+    # environment when the stack starts, so it counts as set, not blank.
+    unset = [
+        setting is None or (setting.literal and _is_unset_vapid_key(setting.value))
+        for setting in (effective.get(key) for key in VAPID_KEY_SETTINGS)
+    ]
+    if not any(unset):
+        _refuse_a_mismatched_vapid_pair(effective, path)
+        return None
+    if not all(unset):
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY in {path} must be set "
+            "together: one is set and the other is blank (or the published "
+            "value). Clear both and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    return vapid_keypair()[VAPID_KEY_SETTINGS.index(name)]
+
+
+def _refuse_a_mismatched_vapid_pair(
+    effective: Mapping[str, Setting], path: Path
+) -> None:
+    """A kept pair has to be one: browsers subscribe under the public key and
+    the backend signs with the private one, and every push service rejects a
+    push whose keys don't belong together, so `make init-env` names that
+    rather than keeping it, as the single container does on boot. A private
+    key that isn't a raw scalar (py-vapid reads a DER key too) is the
+    backend's to load, and a `$NAME` reference is Compose's to fill in when
+    the stack starts, from an environment this can't see."""
+    private, public = (effective[name] for name in VAPID_KEY_SETTINGS)
+    if not (private.literal and public.literal):
+        return
+    scalar = _raw_vapid_scalar(private.value)
+    if scalar is None:
+        return
+    if not 0 < scalar < _P256_N:
+        raise ValueError(
+            f"VAPID_PRIVATE_KEY in {path} is not a P-256 private key. Clear "
+            "both VAPID keys and run this again to generate a pair, or set "
+            "both from one pair you generated."
+        )
+    if _base64url(_p256_public_point(scalar)) != _canonical_vapid_key(public.value):
+        raise ValueError(
+            f"VAPID_PUBLIC_KEY in {path} is not the public key of "
+            "VAPID_PRIVATE_KEY. Clear both and run this again to generate a "
+            "pair, or set both from one pair you generated."
+        )
+
+
+def _is_unset_vapid_key(value: str) -> bool:
+    return not value or _is_published_vapid_key(value)
+
+
+def _is_published_vapid_key(value: str) -> bool:
+    """Whether a Web Push key is one this repository published, however it is
+    spelled: py-vapid drops newlines, restores Base64 padding and takes the
+    standard alphabet too, and a decoder ignores the unused bits of the last
+    character, so every spelling that decodes to the published bytes is the
+    published key."""
+    return _vapid_key_digest(value) in PUBLISHED_VAPID_DIGESTS
+
+
+def _vapid_key_digest(value: str) -> str:
+    return hashlib.sha256(_canonical_vapid_key(value).encode()).hexdigest()
+
+
+_URLSAFE_TO_STANDARD = str.maketrans("-_", "+/")
+
+
+def _canonical_vapid_key(value: str) -> str:
+    """The unpadded Base64url spelling of the bytes `value` decodes to, or
+    `value` without whitespace and padding when it does not decode. A copy
+    of `backend/util/secrets_guard.py`'s, which the package boundary keeps
+    apart; the pinned-spelling test in each suite holds the two in step."""
+    compact = "".join(value.split()).rstrip("=")
+    try:
+        decoded = base64.b64decode(
+            compact.translate(_URLSAFE_TO_STANDARD) + "=" * (-len(compact) % 4),
+            validate=True,
+        )
+    except (ValueError, binascii.Error):
+        return compact
+    return _base64url(decoded)
 
 
 def _database_url(
@@ -598,9 +721,10 @@ def _closing_brace(template: str) -> int:
 
 
 def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
-    """Credentials the file's .env.default leaves for setup to fill that the
-    file has no line for, typically because it was copied before they existed.
-    Without them the services would fall back to a blank .env.default value."""
+    """Credentials, and the Web Push key pair, the file's .env.default leaves
+    for setup to fill that the file has no line for, typically because it was
+    copied before they existed. Without them the services would fall back to a
+    blank .env.default value."""
     defaults = path.with_name(".env.default")
     if path.name == defaults.name or not defaults.is_file():
         return []
@@ -609,7 +733,11 @@ def _missing_credentials(path: Path, assigned: set[str]) -> list[str]:
         for line in defaults.read_text(encoding="utf-8").splitlines(keepends=True)
         if (match := BLANK_ASSIGNMENT.match(line)) is not None
     ]
-    return [name for name in names if name in CREDENTIALS and name not in assigned]
+    return [
+        name
+        for name in names
+        if (name in CREDENTIALS or name in VAPID_KEY_SETTINGS) and name not in assigned
+    ]
 
 
 def _is_unset(value: str) -> bool:
@@ -730,6 +858,20 @@ def _upgraded_from_version_1(
     }
 
 
+def _with_a_published_vapid_pair_replaced(
+    values: dict[str, str], environment: Mapping[str, str]
+) -> dict[str, str] | None:
+    """A config whose persisted Web Push pair is the published one, with the
+    pair a first boot would make today in its place: the environment's own,
+    or a generated one. An earlier release persisted whatever pair the
+    environment gave it, the published one included, and the backend sends
+    no push with that pair. None when the persisted pair is anyone else's."""
+    if not _is_published_vapid_key(values.get("VAPID_PRIVATE_KEY", "")):
+        return None
+    private, public = _configured_or_generated_vapid(environment)
+    return {**values, "VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public}
+
+
 def _configured_or_generated_vapid(
     environment: Mapping[str, str],
 ) -> tuple[str, str]:
@@ -737,14 +879,64 @@ def _configured_or_generated_vapid(
     public = environment.get("VAPID_PUBLIC_KEY")
     if bool(private) != bool(public):
         raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together")
-    return (private, public) if private and public else _generate_vapid_keypair()
+    if not private or not public:
+        return _generate_vapid_keypair()
+    if _is_published_vapid_key(private) != _is_published_vapid_key(public):
+        # Replacing the published half would drop the other, which every
+        # later boot would then read as a changed value and refuse.
+        raise ValueError(
+            "VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must be set together: one "
+            "is the published key and the other is not; set both from one "
+            "generated pair, or clear both"
+        )
+    if _is_published_vapid_key(private):
+        return _generate_vapid_keypair()
+    expected = _public_key_for(private)
+    if expected is not None and expected != _canonical_vapid_key(public):
+        # Subscriptions would be taken under one key and pushes signed with
+        # another, and every push service would reject them.
+        raise ValueError(
+            "VAPID_PUBLIC_KEY is not the public key of VAPID_PRIVATE_KEY; set "
+            "both from one generated pair"
+        )
+    return private, public
+
+
+def _public_key_for(private: str) -> str | None:
+    """The Base64url public key of a raw P-256 private key, in any spelling
+    py-vapid reads, or None when `private` is not one, which whoever asked
+    reports in its own words."""
+    scalar = _raw_vapid_scalar(private)
+    if scalar is None or not 0 < scalar < _P256_N:
+        return None
+    return _base64url(_p256_public_point(scalar))
+
+
+def _raw_vapid_scalar(private: str) -> int | None:
+    """The number a raw (32-byte) private key spells, however it is spelled,
+    or None for anything else."""
+    try:
+        raw = _decode_base64url(_canonical_vapid_key(private))
+    except ValueError:
+        return None
+    return int.from_bytes(raw, "big") if len(raw) == 32 else None
 
 
 def _generate_vapid_keypair() -> tuple[str, str]:
+    """A fresh P-256 key pair in the form Web Push takes: the raw 32-byte
+    private scalar and the 65-byte uncompressed public point, base64url."""
+    private, public = _generate_p256_keypair()
+    return _base64url(private), _base64url(public)
+
+
+def _generate_p256_keypair() -> tuple[bytes, bytes]:
     try:
         from cryptography.hazmat.primitives.asymmetric import ec
-    except ImportError as exc:
-        raise ValueError("cryptography is required to generate VAPID keys") from exc
+    except ImportError:
+        # `make init-env` runs this under the system interpreter, which has
+        # no `cryptography`; the single-container image always has it.
+        scalar = secrets.randbelow(_P256_N - 1) + 1
+        return scalar.to_bytes(32, "big"), _p256_public_point(scalar)
 
     key = ec.generate_private_key(ec.SECP256R1())
     numbers = key.private_numbers()
@@ -755,7 +947,62 @@ def _generate_vapid_keypair() -> tuple[str, str]:
         + public_numbers.x.to_bytes(32, "big")
         + public_numbers.y.to_bytes(32, "big")
     )
-    return _base64url(private), _base64url(public)
+    return private, public
+
+
+# NIST P-256 (secp256r1), the curve Web Push (RFC 8292) signs with. Only key
+# generation is done here, once per install, so plain affine arithmetic
+# with no constant-time concern is enough.
+_P256_P = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
+_P256_A = _P256_P - 3
+_P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+_P256_G = (
+    0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296,
+    0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5,
+)
+
+
+def _p256_public_point(scalar: int) -> bytes:
+    """The uncompressed public point for a private scalar, as X9.62 bytes."""
+    point = _p256_multiply(scalar, _P256_G)
+    if point is None:
+        raise ValueError("P-256 scalar out of range")
+    x, y = point
+    return b"\x04" + x.to_bytes(32, "big") + y.to_bytes(32, "big")
+
+
+def _p256_multiply(
+    scalar: int, point: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    result = None
+    addend = point
+    while scalar:
+        if scalar & 1:
+            result = _p256_add(result, addend)
+        addend = _p256_add(addend, addend)
+        scalar >>= 1
+    return result
+
+
+def _p256_add(
+    first: tuple[int, int] | None, second: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    x1, y1 = first
+    x2, y2 = second
+    if x1 == x2 and (y1 + y2) % _P256_P == 0:
+        return None
+    if first == second:
+        slope = (3 * x1 * x1 + _P256_A) * pow(2 * y1, -1, _P256_P)
+    else:
+        slope = (y2 - y1) * pow(x2 - x1, -1, _P256_P)
+    slope %= _P256_P
+    x3 = (slope * slope - x1 - x2) % _P256_P
+    y3 = (slope * (x1 - x3) - y1) % _P256_P
+    return x3, y3
 
 
 def _fernet_key() -> str:
@@ -813,6 +1060,25 @@ PUBLISHED_CREDENTIAL_DIGESTS = frozenset(
     }
 )
 
+# The Web Push (VAPID) signing key pair in backend/.env. `fill-env` fills the
+# two as one, from a single generated key, and a published pair counts as
+# blank: the pair signs nothing that is stored, so replacing it costs only
+# the browsers' push subscriptions. frontend/.env's copy of the public key
+# is cleared when it is the published one and otherwise left alone: blank,
+# the app fetches the public key from the backend.
+VAPID_KEY_SETTINGS = ("VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY")
+FRONTEND_VAPID_PUBLIC_KEY = "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
+
+# SHA-256 of the private and public key backend/.env.default shipped from
+# #12723 (2026-04-29) until the pair was retired. Re-derive from git history:
+#   git log -p -- autogpt_platform/backend/.env.default | grep '^+VAPID_'
+PUBLISHED_VAPID_DIGESTS = frozenset(
+    {
+        "9c17b969b0d1d745c4fea96adce535472a5ce3c39dc1339905692c2177c950d5",  # pragma: allowlist secret
+        "e43d052ec7d9be1b083d4843020f8c468cd65c67479c325ff3799531a7bbeaab",  # pragma: allowlist secret
+    }
+)
+
 # Secrets already retired from the public .env.default files (SECRT-2611).
 # `check-env-defaults` keeps them blank: entropy scanners do not reliably catch
 # a freshly generated key pasted back into one of these lines, so the invariant
@@ -827,8 +1093,16 @@ BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
         "UNSUBSCRIBE_SECRET_KEY",
         "INTERNAL_API_KEY",
         "GRAPHITI_FALKORDB_PASSWORD",
+        *VAPID_KEY_SETTINGS,
     ),
-    "frontend/.env.default": ("BETTER_AUTH_SECRET", "DATABASE_URL"),
+    # The frontend's copy of the public key stays blank by design: the app
+    # fetches the backend's key, and setup clears a published value rather
+    # than filling one in.
+    "frontend/.env.default": (
+        "BETTER_AUTH_SECRET",
+        "DATABASE_URL",
+        FRONTEND_VAPID_PUBLIC_KEY,
+    ),
 }
 
 
@@ -876,6 +1150,8 @@ def _validate_values(values: dict[str, str]) -> None:
     vapid_public = _decode_base64url(values["VAPID_PUBLIC_KEY"])
     if len(vapid_private) != 32:
         raise ValueError("VAPID_PRIVATE_KEY must decode to exactly 32 bytes")
+    if not 0 < int.from_bytes(vapid_private, "big") < _P256_N:
+        raise ValueError("VAPID_PRIVATE_KEY must be a P-256 private scalar")
     if len(vapid_public) != 65 or vapid_public[0] != 4:
         raise ValueError("VAPID_PUBLIC_KEY must be an uncompressed P-256 public key")
 
@@ -911,11 +1187,16 @@ def _verify_environment_matches(
 ) -> None:
     for name, persisted in values.items():
         configured = environment.get(name)
-        if configured and configured != persisted:
-            raise ValueError(
-                f"{name} differs from the value persisted on first boot; "
-                "restore the original value or start with a new data volume"
-            )
+        if not configured or configured == persisted:
+            continue
+        if name in VAPID_KEY_SETTINGS and _is_published_vapid_key(configured):
+            # The first boot replaced the published pair, so the environment
+            # still carrying it is not a changed value.
+            continue
+        raise ValueError(
+            f"{name} differs from the value persisted on first boot; "
+            "restore the original value or start with a new data volume"
+        )
 
 
 def _write_config(path: Path, values: dict[str, str]) -> None:
@@ -931,26 +1212,34 @@ def _write_config(path: Path, values: dict[str, str]) -> None:
             os.close(descriptor)
             raise
         with stream:
-            os.fchmod(stream.fileno(), 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(stream.fileno(), 0o600)
             stream.write("# Generated once by the AutoGPT all-in-one image.\n")
             for name, value in values.items():
                 stream.write(f"{name}={value}\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory_flags = os.O_RDONLY
-        if hasattr(os, "O_DIRECTORY"):
-            directory_flags |= os.O_DIRECTORY
-        if hasattr(os, "O_CLOEXEC"):
-            directory_flags |= os.O_CLOEXEC
-        directory_descriptor = os.open(path.parent, directory_flags)
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
+        _fsync_directory(path.parent)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Persist the rename on POSIX; Windows cannot open directories this way."""
+    if os.name == "nt":
+        return
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    directory_descriptor = os.open(directory, directory_flags)
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
 
 
 if __name__ == "__main__":
