@@ -73,13 +73,22 @@ const install = identity(
 );
 const dataDir = defaultDataDir(process.platform, process.env, install);
 let launchRefusal = null;
+let launchRefusalTitle = "AutoGPT cannot open its data folder";
 try {
   claimLaunch(dataDir, {
     runtime: runtimeDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath }),
   });
   if (process.platform === "win32") launchRefusal = dataOfAnotherInstall();
 } catch (error) {
-  launchRefusal = error?.message || "AutoGPT could not open its data folder.";
+  if (error?.code === "AUTOGPT_RUNTIME_PROBE_FAILED") {
+    launchRefusalTitle = "AutoGPT runtime needs repair";
+    launchRefusal = "AutoGPT could not start its bundled runtime. Try opening it again. " +
+      `Reinstall ${install.productName} from a complete installer if this keeps happening. ` +
+      "Your saved accounts and agents remain in the data folder.\n\n" +
+      `Installers: ${releaseUrl(null, install)}`;
+  } else {
+    launchRefusal = error?.message || "AutoGPT could not open its data folder.";
+  }
 }
 if (!launchRefusal) claim(app, install);
 const logsDir = path.join(dataDir, "logs");
@@ -115,7 +124,7 @@ let preferences = DEFAULT_PREFERENCES;
 let privacy = null;
 
 if (launchRefusal) {
-  dialog.showErrorBox("AutoGPT cannot open its data folder", launchRefusal);
+  dialog.showErrorBox(launchRefusalTitle, launchRefusal);
   app.exit(1);
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();

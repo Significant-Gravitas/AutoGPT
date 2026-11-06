@@ -131,9 +131,16 @@ function requireNoRestore(journal) {
 }
 
 function claimLaunch(directory, { runtime, processStarted = processStartProbe({ runtime }) } = {}) {
-  const started = processStarted(process.pid);
-  if (!Number.isFinite(started) || started <= 0) {
-    throw new Error("AutoGPT could not verify its process identity.");
+  let started;
+  try {
+    started = processStarted(process.pid);
+    if (!Number.isFinite(started) || started <= 0) {
+      throw new Error("AutoGPT could not verify its process identity.");
+    }
+  } catch (cause) {
+    const error = new Error("AutoGPT could not verify its runtime process identity.", { cause });
+    error.code = "AUTOGPT_RUNTIME_PROBE_FAILED";
+    throw error;
   }
   const locations = maintenancePaths(directory);
   fs.mkdirSync(path.dirname(locations.root), { recursive: true });

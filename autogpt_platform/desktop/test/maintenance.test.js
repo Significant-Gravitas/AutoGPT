@@ -326,3 +326,36 @@ test("launch inspects identity using the explicitly selected runtime", (t) => {
   }]);
   assert.deepEqual(JSON.parse(fs.readFileSync(lease, "utf8")), { pid: process.pid, started: 100.25 });
 });
+
+test("launch identifies runtime inspection failures before writing data or leases", (t) => {
+  const f = fixture(t);
+  const failures = [new Error("missing runtime"), new SyntaxError("bad manifest"), new Error("probe timed out")];
+  for (const cause of failures) {
+    assert.throws(() => claimLaunch(f.data, { processStarted: () => { throw cause; } }), (error) => {
+      assert.equal(error.code, "AUTOGPT_RUNTIME_PROBE_FAILED");
+      assert.equal(error.cause, cause);
+      return true;
+    });
+    assert.deepEqual(fs.readdirSync(f.temporary), []);
+  }
+  for (const started of [null, 0, -1, "123", NaN]) {
+    assert.throws(() => claimLaunch(f.data, { processStarted: () => started }), {
+      code: "AUTOGPT_RUNTIME_PROBE_FAILED",
+    });
+    assert.deepEqual(fs.readdirSync(f.temporary), []);
+  }
+});
+
+for (const manifest of [null, "{", "{}"]) {
+  test(`a missing or invalid runtime manifest (${manifest}) is a runtime refusal`, (t) => {
+    const f = fixture(t);
+    const runtime = path.join(f.temporary, "runtime");
+    fs.mkdirSync(runtime);
+    if (manifest !== null) fs.writeFileSync(path.join(runtime, "manifest.json"), manifest);
+    assert.throws(() => claimLaunchWithProbe(f.data, { runtime }), {
+      code: "AUTOGPT_RUNTIME_PROBE_FAILED",
+    });
+    assert.equal(fs.existsSync(f.data), false);
+    assert.deepEqual(fs.readdirSync(f.temporary), ["runtime"]);
+  });
+}

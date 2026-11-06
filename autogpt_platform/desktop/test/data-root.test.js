@@ -94,7 +94,7 @@ test("main turns ownership/preparation errors into a startup refusal", () => {
   assert.match(message, /private creation refusal/);
 });
 
-function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure = false, isPackaged = false, runtimeOverride } = {}) {
+function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure = false, isPackaged = false, runtimeOverride, variant = "" } = {}) {
   const source = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
   const calls = [];
   const maintenanceRuntimes = [];
@@ -116,14 +116,14 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
   };
   const context = {
     __dirname: path.join(__dirname, "../src"),
-    process: { platform: "win32", env: { AUTOGPT_DESKTOP_RUNTIME: runtimeOverride }, resourcesPath: "/bundle" },
+    process: { platform: "win32", env: { AUTOGPT_DESKTOP_RUNTIME: runtimeOverride, AUTOGPT_DESKTOP_VARIANT: variant }, resourcesPath: "/bundle" },
     require: (name) => {
       if (name === "electron") return electron;
       if (["./reset-password-window", "./doctor-window"].includes(name)) return {};
       if (name === "./maintenance") return { claimLaunch: (directory, options) => {
         calls.push("lease");
         maintenanceRuntimes.push(options?.runtime);
-        if (maintenanceFailure) throw new Error("injected maintenance refusal");
+        if (maintenanceFailure) throw maintenanceFailure instanceof Error ? maintenanceFailure : new Error("injected maintenance refusal");
       } };
       if (name === "./paths") return {
         defaultDataDir: () => "/app-data/AutoGPT",
@@ -183,6 +183,28 @@ test("missing Windows runtime fails before creating or claiming a root", (t) => 
   assert.throws(() => claimDataDir(f.data, NORMAL, { platform: "win32", runtime: f.runtime }));
   assert.equal(fs.existsSync(f.data), false);
 });
+
+for (const variant of ["", "experimental"]) {
+  test(`runtime inspection failure offers the ${variant || "normal"} installer without opening the profile`, () => {
+    const failure = Object.assign(new Error("injected runtime probe failure"), {
+      code: "AUTOGPT_RUNTIME_PROBE_FAILED",
+    });
+    const { calls, boot } = loadMain({ maintenanceFailure: failure, variant });
+    assert.equal(boot, undefined);
+    assert.equal(calls.includes("claim-profile"), false);
+    assert.equal(calls.includes("private-root-and-stamp"), false);
+    assert.equal(calls.includes("instance-lock"), false);
+    assert.equal(calls.includes("when-ready"), false);
+    assert.equal(calls.at(-1), "exit:1");
+    const dialogs = calls.filter(Array.isArray);
+    assert.equal(dialogs.length, 1);
+    assert.equal(dialogs[0][0], "AutoGPT runtime needs repair");
+    assert.match(dialogs[0][1], /Reinstall/);
+    assert.ok(dialogs[0][1].includes(identity(variant).productName));
+    assert.ok(dialogs[0][1].includes(require("../src/updater").releaseUrl(null, identity(variant))));
+    assert.match(dialogs[0][1], /saved accounts and agents/);
+  });
+}
 
 test("fresh POSIX roots need no runtime and are created with private mode", (t) => {
   const f = fixture(t);
