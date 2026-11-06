@@ -41,6 +41,7 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    UnhealthyServiceError,
     _build_return_adapter,
     _usable_adapter,
     endpoint_to_async,
@@ -193,6 +194,20 @@ async def test_service_creation(server):
         assert client.fun_with_async(5, 3) == 8
         assert await client.add_async(5, 3) == 8
         assert await client.subtract_async(10, 4) == 6
+
+
+def test_unhealthy_service_error_from_health_check_is_503():
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.get("/health_check")
+    async def health_check():
+        raise UnhealthyServiceError("Database is not connected", log=False)
+
+    response = TestClient(app, raise_server_exceptions=False).get("/health_check")
+
+    assert response.status_code == 503
+    assert response.json()["type"] == "UnhealthyServiceError"
 
 
 def test_expert_lookup_errors_preserve_rpc_status_and_type():
