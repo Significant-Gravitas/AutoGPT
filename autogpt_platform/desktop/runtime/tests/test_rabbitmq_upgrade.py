@@ -381,6 +381,50 @@ def test_interrupted_ready_replacement_preserves_retry_and_downgrade_floor(
     assert json.loads(record.read_text("utf-8"))["state"] == "ready"
 
 
+@pytest.mark.parametrize("populated", [False, True])
+def test_interrupted_configuration_write_preserves_retry(
+    tmp_path: Path, monkeypatch, populated: bool
+):
+    bundle = make_bundle(tmp_path / "bundle")
+    data = DataDir(tmp_path / "data")
+    data.rabbitmq.mkdir(parents=True)
+    if populated:
+        add_storage(data)
+        write_record(data, "4.3.6")
+    configuration = data.rabbitmq / "rabbitmq.conf"
+    configuration.write_text("previous configuration\n", encoding="utf-8")
+    monkeypatch.setattr(rabbitmq, "forget_dangling_aliases", lambda: None)
+
+    def interrupted(*args):
+        raise PermissionError("interrupted before config replacement")
+
+    with monkeypatch.context() as failure:
+        failure.setattr(rabbitmq.os, "replace", interrupted)
+        with pytest.raises(PermissionError, match="before config replacement"):
+            rabbitmq.prepare(data, 5672, "test-user", "test-password")
+    leftovers = list(data.rabbitmq.glob(".rabbitmq.conf.*.tmp"))
+    assert len(leftovers) == 1
+    temporary = leftovers[0].read_bytes()
+    assert configuration.read_text("utf-8") == "previous configuration\n"
+
+    assert rabbitmq.check_compatible(bundle, data) == "4.3.6"
+    rabbitmq.prepare(data, 5672, "test-user", "test-password")
+    assert configuration.read_bytes() == temporary
+    assert leftovers[0].read_bytes() == temporary
+    if populated:
+        assert (
+            data.rabbitmq / "mnesia" / "rabbit@localhost-mnesia" / "schema.DAT"
+        ).read_bytes() == b"opaque broker storage"
+        assert (
+            json.loads((data.rabbitmq / "desktop-version.json").read_text("utf-8"))[
+                "state"
+            ]
+            == "ready"
+        )
+    else:
+        assert not (data.rabbitmq / "desktop-version.json").exists()
+
+
 @pytest.mark.parametrize(
     "name", ["enabled_plugins", "erl_inetrc", "rabbitmq.conf", ".erlang.cookie"]
 )
@@ -483,14 +527,15 @@ def test_generated_application_literals_comments_and_quoted_delimiters(
 @pytest.mark.parametrize(
     "temporary_content", ["invalid JSON", '{"version":"1.0.0"}', '{"version":"99.0.0"}']
 )
-def test_exact_marker_temporary_files_are_not_read_or_promoted(
-    tmp_path: Path, monkeypatch, temporary_content: str
+@pytest.mark.parametrize("name", ["desktop-version.json", "rabbitmq.conf"])
+def test_exact_temporary_files_are_not_read_or_promoted(
+    tmp_path: Path, monkeypatch, temporary_content: str, name: str
 ):
     bundle = make_bundle(tmp_path / "bundle")
     data = DataDir(tmp_path / "data")
     add_storage(data)
     record = write_record(data, "4.3.6", "starting")
-    temporary = data.rabbitmq / ".desktop-version.json.0123456789abcdef.tmp"
+    temporary = data.rabbitmq / f".{name}.0123456789abcdef.tmp"
     temporary.write_text(temporary_content, encoding="utf-8")
     committed = record.read_bytes()
     original_open = Path.open
@@ -515,7 +560,13 @@ def test_exact_marker_temporary_files_are_not_read_or_promoted(
         ".desktop-version.json.0123456789abcdeg.tmp",
         ".desktop-version.json.0123456789abcdef.tmp.extra",
         "desktop-version.json.0123456789abcdef.tmp",
-        ".rabbitmq.conf.0123456789abcdef.tmp",
+        ".rabbitmq.conf.0123456789abcde.tmp",
+        ".rabbitmq.conf.0123456789abcdef0.tmp",
+        ".rabbitmq.conf.0123456789ABCDEF.tmp",
+        ".rabbitmq.conf.0123456789abcdeg.tmp",
+        ".rabbitmq.conf.0123456789abcdef.tmp.extra",
+        "rabbitmq.conf.0123456789abcdef.tmp",
+        ".unknown.0123456789abcdef.tmp",
     ],
 )
 def test_temporary_file_lookalikes_are_rejected(tmp_path: Path, temporary_name: str):
@@ -530,14 +581,15 @@ def test_temporary_file_lookalikes_are_rejected(tmp_path: Path, temporary_name: 
 
 
 @pytest.mark.parametrize("kind", ["directory", "symlink", "hardlink", "dangling"])
-def test_marker_temporary_names_must_be_regular_unlinked_files(
-    tmp_path: Path, kind: str
+@pytest.mark.parametrize("name", ["desktop-version.json", "rabbitmq.conf"])
+def test_temporary_names_must_be_regular_unlinked_files(
+    tmp_path: Path, kind: str, name: str
 ):
     bundle = make_bundle(tmp_path / "bundle")
     data = DataDir(tmp_path / "data")
     add_storage(data)
     write_record(data, "4.3.6")
-    temporary = data.rabbitmq / ".desktop-version.json.0123456789abcdef.tmp"
+    temporary = data.rabbitmq / f".{name}.0123456789abcdef.tmp"
     outside = tmp_path / "outside.txt"
     outside.write_bytes(b"preserve")
     if kind == "directory":
@@ -553,11 +605,14 @@ def test_marker_temporary_names_must_be_regular_unlinked_files(
 
 
 @pytest.mark.parametrize("populated", [False, True])
-def test_temporary_marker_is_not_writer_evidence(tmp_path: Path, populated: bool):
+@pytest.mark.parametrize("name", ["desktop-version.json", "rabbitmq.conf"])
+def test_temporary_file_is_not_writer_evidence(
+    tmp_path: Path, populated: bool, name: str
+):
     bundle = make_bundle(tmp_path / "bundle")
     data = DataDir(tmp_path / "data")
     data.rabbitmq.mkdir(parents=True)
-    (data.rabbitmq / ".desktop-version.json.0123456789abcdef.tmp").write_text(
+    (data.rabbitmq / f".{name}.0123456789abcdef.tmp").write_text(
         '{"schema_version":1,"version":"4.3.6","state":"ready"}', encoding="utf-8"
     )
     if populated:
@@ -567,6 +622,28 @@ def test_temporary_marker_is_not_writer_evidence(tmp_path: Path, populated: bool
     else:
         assert rabbitmq.check_compatible(bundle, data) == "4.3.6"
     assert not (data.rabbitmq / "desktop-version.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("previous", "reason"),
+    [("4.1.8", "staged upgrade"), ("4.3.7", "unsupported downgrade")],
+)
+def test_config_temporary_file_does_not_authorize_incompatible_storage(
+    tmp_path: Path, previous: str, reason: str
+):
+    bundle = make_bundle(tmp_path / "bundle")
+    data = DataDir(tmp_path / "data")
+    storage = add_storage(data)
+    record = write_record(data, previous)
+    committed = record.read_bytes()
+    temporary = data.rabbitmq / ".rabbitmq.conf.0123456789abcdef.tmp"
+    temporary.write_bytes(b"interrupted config")
+
+    with pytest.raises(rabbitmq.IncompatibleDataError, match=reason):
+        rabbitmq.check_compatible(bundle, data)
+    assert record.read_bytes() == committed
+    assert storage.read_bytes() == b"opaque broker storage"
+    assert temporary.read_bytes() == b"interrupted config"
 
 
 @pytest.mark.parametrize("name", ["enabled_plugins", "erl_inetrc"])
@@ -635,7 +712,7 @@ def test_all_direct_mnesia_entries_are_checked_without_reading_storage(
         rabbitmq.check_compatible(bundle, data)
 
 
-@pytest.mark.parametrize("location", ["mnesia", "temporary"])
+@pytest.mark.parametrize("location", ["mnesia", "temporary", "config_temporary"])
 def test_storage_and_ignored_temporary_files_count_toward_entry_bounds(
     tmp_path: Path, monkeypatch, location: str
 ):
@@ -648,8 +725,13 @@ def test_storage_and_ignored_temporary_files_count_toward_entry_bounds(
         for number in range(3):
             (mnesia / str(number)).touch()
     else:
+        name = (
+            "rabbitmq.conf"
+            if location == "config_temporary"
+            else "desktop-version.json"
+        )
         for number in range(2):
-            (data.rabbitmq / f".desktop-version.json.{number:016x}.tmp").touch()
+            (data.rabbitmq / f".{name}.{number:016x}.tmp").touch()
     monkeypatch.setattr(rabbitmq, "METADATA_ENTRIES", 2)
 
     with pytest.raises(rabbitmq.IncompatibleDataError, match="Doctor"):

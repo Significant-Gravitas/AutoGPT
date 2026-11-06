@@ -251,7 +251,8 @@ def _has_storage(data: DataDir) -> bool:
         if entry.name in ("mnesia", "log"):
             valid = stat.S_ISDIR(info.st_mode)
         elif entry.name in files or re.fullmatch(
-            rf"\.{re.escape(DATA_VERSION_FILE)}\.[0-9a-f]{{16}}\.tmp", entry.name
+            rf"\.(?:{re.escape(DATA_VERSION_FILE)}|rabbitmq\.conf)\.[0-9a-f]{{16}}\.tmp",
+            entry.name,
         ):
             valid = stat.S_ISREG(info.st_mode)
         else:
