@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from types import TracebackType
 
 from autogpt_desktop import install, migrations
+from autogpt_desktop.atomic_file import publish_file
 from autogpt_desktop.layout import Bundle, DataDir
 from autogpt_desktop.maintenance import (
     DataLock,
@@ -230,7 +231,7 @@ def create_backup(
                 archive.writestr(MANIFEST, json.dumps(manifest, sort_keys=True))
             with pending.open("r+b") as complete:
                 os.fsync(complete.fileno())
-            os.link(pending, target)
+            publish_file(pending, target)
             sync_directory(target.parent)
             return target
         finally:

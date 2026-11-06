@@ -8,7 +8,7 @@ The archive includes the entire data folder: PostgreSQL, queued work, Valkey, wo
 
 ## Create a backup
 
-Choose a new filename outside the data folder. Its parent directory must already exist on a filesystem supporting hard links, such as NTFS, APFS or ext4. The tool refuses to overwrite an existing backup. Allow the size of the entire data folder plus 64 MiB of free space; compression may reduce the final archive, but the space check does not depend on that.
+Choose a new filename outside the data folder. Its parent directory must already exist. The filesystem must support atomic publication without replacing an existing file: Windows uses a rename that refuses replacement; macOS and Linux use a hard link or an exclusive rename. Unsupported filesystems fail explicitly; the tool never falls back to copying a partial archive into the final filename or overwriting an existing backup. Allow the size of the entire data folder plus 64 MiB of free space; compression may reduce the final archive, but the space check does not depend on that.
 
 Use the installed app's `resources/runtime` directory. On macOS it is normally `/Applications/AutoGPT.app/Contents/Resources/runtime`. The default data folders are:
 

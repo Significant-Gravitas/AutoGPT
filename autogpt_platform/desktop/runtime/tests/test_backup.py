@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 import os
@@ -479,6 +480,66 @@ def test_running_database_and_existing_archive_are_never_overwritten(populated):
     with pytest.raises(backup.BackupError, match="already exists"):
         backup.create_backup(bundle, root, archive, "AutoGPT")
     assert archive.read_bytes() == b"existing backup"
+
+
+def test_backup_can_publish_without_hard_links(populated, monkeypatch):
+    bundle, root, archive, contents = populated
+    monkeypatch.setattr(
+        backup.os,
+        "link",
+        Mock(side_effect=OSError(errno.EOPNOTSUPP, "hard links unsupported")),
+    )
+    assert backup.create_backup(bundle, root, archive, "AutoGPT") == archive
+    with zipfile.ZipFile(archive) as saved:
+        manifest = backup.read_manifest(saved)
+        for name, text in contents.items():
+            if name not in backup.EXCLUDED:
+                assert saved.read("data/" + name) == text.encode()
+                assert (root / name).read_text("utf-8") == text
+        assert manifest["source_directory"] == str(root)
+    assert not list(archive.parent.glob(".autogpt-backup-*"))
+
+
+def test_backup_does_not_overwrite_a_late_destination(populated, monkeypatch):
+    bundle, root, archive, contents = populated
+    publish = backup.publish_file
+
+    def publish_after_competitor(pending, target):
+        assert not target.exists()
+        with zipfile.ZipFile(pending) as saved:
+            backup.read_manifest(saved)
+        target.write_bytes(b"another complete backup")
+        publish(pending, target)
+
+    monkeypatch.setattr(backup, "publish_file", publish_after_competitor)
+    with pytest.raises(FileExistsError):
+        backup.create_backup(bundle, root, archive, "AutoGPT")
+    assert archive.read_bytes() == b"another complete backup"
+    assert not list(archive.parent.glob(".autogpt-backup-*"))
+    for name, text in contents.items():
+        assert (root / name).read_text("utf-8") == text
+
+
+@pytest.mark.parametrize("code", [errno.EACCES, errno.ENOSPC, errno.ENOTSUP])
+def test_failed_publication_removes_pending_but_preserves_data(
+    populated, monkeypatch, code
+):
+    bundle, root, archive, contents = populated
+    failure = OSError(code, "injected publication failure")
+
+    def fail(pending, target):
+        with zipfile.ZipFile(pending) as saved:
+            backup.read_manifest(saved)
+        raise failure
+
+    monkeypatch.setattr(backup, "publish_file", fail)
+    with pytest.raises(OSError) as caught:
+        backup.create_backup(bundle, root, archive, "AutoGPT")
+    assert caught.value is failure
+    assert not archive.exists()
+    assert not list(archive.parent.glob(".autogpt-backup-*"))
+    for name, text in contents.items():
+        assert (root / name).read_text("utf-8") == text
 
 
 def test_low_disk_space_refuses_backup_without_deleting_anything(
