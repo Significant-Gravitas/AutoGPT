@@ -144,7 +144,8 @@ class BusinessUnderstanding(pydantic.BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    # The account's name (`User.name`), attached on every read; never stored here.
+    # The account's name (`User.name`), attached on every read; the row's own copy is
+    # graph memory's label (`get_stored_user_name`).
     user_name: Optional[str] = None
     job_title: Optional[str] = None
 
@@ -296,6 +297,13 @@ async def _with_account_name(
     return understanding.model_copy(update={"user_name": user.name or None})
 
 
+async def get_stored_user_name(user_id: str) -> str | None:
+    """The name the understanding's row keeps, which only graph memory reads."""
+    row = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
+    data = row.data if row and isinstance(row.data, dict) else {}
+    return data.get("name") or None
+
+
 def merge_business_understanding_data(
     existing_data: dict[str, Any],
     input_data: BusinessUnderstandingInput,
@@ -331,8 +339,9 @@ def merge_business_understanding_data(
         "existing_automation",
     ]
 
-    # The name is the account's (`User.name`); drop the copy older rows kept.
-    existing_data.pop("name", None)
+    # Graph memory's speaker label; Otto's other readers use `User.name`.
+    if input_data.user_name is not None:
+        existing_data["name"] = input_data.user_name
 
     # Business string fields - overwrite if provided
     for field in business_string_fields:
@@ -369,9 +378,9 @@ async def upsert_business_understanding(
     - String fields: new value overwrites if provided (not None)
     - List fields: new items are appended to existing (deduplicated)
     - suggested_prompts: fully replaced if provided (not None)
-    - user_name: becomes the account's name if it has none, and is not stored here
+    - user_name: fills an empty account name, and is stored as memory's label
 
-    Data is stored as: {business: {version: 1, ...}, suggested_prompts: ...}
+    Data is stored as: {name: ..., business: {version: 1, ...}, suggested_prompts: ...}
     """
     if input_data.user_name:
         await set_user_name_if_unset(user_id, input_data.user_name)

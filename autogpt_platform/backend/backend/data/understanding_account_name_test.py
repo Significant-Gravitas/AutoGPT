@@ -1,5 +1,5 @@
 """AutoPilot's understanding reads and writes the user's name on the account
-(`User.name`), never on its own row."""
+(`User.name`); its row keeps its own copy only as graph memory's label."""
 
 import uuid
 from datetime import UTC, datetime
@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from prisma.models import CoPilotUnderstanding, User
 
+from backend.copilot.graphiti.ingest import resolve_user_name
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -87,10 +88,35 @@ async def test_a_name_given_to_the_understanding_fills_only_an_empty_account_nam
             where={"userId": {"in": [named, no_name, empty_name]}}
         )
         assert [row.data for row in rows] == [
-            {"business": {"industry": "Retail", "version": 1}}
+            {"name": "Rob", "business": {"industry": "Retail", "version": 1}}
         ] * 3
     finally:
         await _remove([named, no_name, empty_name])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_memory_labels_the_user_by_the_understandings_name_not_the_account(
+    server: SpinTestServer,
+):
+    user_id = await _account("Sam")
+    try:
+        await CoPilotUnderstanding.prisma().create(
+            data={"userId": user_id, "data": SafeJson({"name": "jane.doe"})}
+        )
+        assert await resolve_user_name(user_id) == "jane.doe"
+
+        await upsert_business_understanding(
+            user_id, BusinessUnderstandingInput(industry="Retail")
+        )
+        assert await resolve_user_name(user_id) == "jane.doe"
+
+        await upsert_business_understanding(
+            user_id, BusinessUnderstandingInput(user_name="Rob")
+        )
+        assert await resolve_user_name(user_id) == "Rob"
+        assert (await get_user_by_id(user_id)).name == "Sam"
+    finally:
+        await _remove([user_id])
 
 
 async def _account(name: str | None) -> str:
