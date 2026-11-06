@@ -12,6 +12,7 @@
 * [Scheduling & Triggers](scheduling-and-triggers.md)
 * [Templates](templates.md)
 * [Credits & Billing](credits-and-billing.md)
+* [Rate Limits](rate-limits.md)
 * [Integrations & Credentials](integrations-and-credentials.md)
 * [Data Flow & Execution](data-flow-and-execution.md)
 * [Sharing & Exporting Agents](sharing-and-exporting.md)
@@ -22,6 +23,7 @@
 * [Run AutoGPT in One Docker Container](single-container.md)
 * [AutoGPT Platform Installer](installer.md)
 * [Advanced Setup](advanced_setup.md)
+* [Client IP Addresses](client-ip.md)
 
 ## Tutorials
 
