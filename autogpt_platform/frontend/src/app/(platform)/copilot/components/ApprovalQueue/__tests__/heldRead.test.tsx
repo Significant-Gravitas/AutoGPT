@@ -52,6 +52,7 @@ test("a held read asks to let Otto read its source and quotes the flagged passag
   expect(screen.getByRole("button", { name: "Keep it out" })).toBeDefined();
   expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   expect(screen.queryByText("Url")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 });
 
 test("two held reads of the same tool are never released together", async () => {
@@ -86,6 +87,71 @@ test("a read the check could not assess says so and quotes nothing", async () =>
   ).toBeDefined();
   expect(screen.queryByText("What it says")).toBeNull();
   expect(screen.queryByText(/contains instructions/)).toBeNull();
+});
+
+const DUWO_PAGE = [
+  "Hoog contrast",
+  "Nederlands",
+  "## Ik huur",
+  "## Regel al je huurzaken online!",
+  "Klik hier om naar jouw persoonlijke DUWO account te gaan.",
+  "### Mijn gegevens",
+  "Persoonlijke gegevens Wachtwoord vergeten",
+  "### Kamer gevonden",
+  "Nieuwe studentenkamer Nieuwe DUWO University Housing kamer",
+].join("\n\n");
+
+test("a read flagged with no quotable passage shows what was flagged and accuses nothing", async () => {
+  const review = heldRead("q", "www.duwo.nl/over-duwo");
+  const payload = review.payload as Record<string, unknown>;
+  serve([
+    { ...review, payload: { ...payload, passage: "", excerpt: DUWO_PAGE } },
+  ]);
+  renderQueue();
+
+  expect(
+    await screen.findByText(
+      "A check flagged this, but couldn't point to an instruction in it. Otto hasn't seen it.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByText(
+      /Klik hier om naar jouw persoonlijke DUWO account te gaan/,
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/It contains instructions aimed at/)).toBeNull();
+
+  const more = screen.getByRole("button", { name: "Show more" });
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  await userEvent.click(more);
+  expect(
+    screen
+      .getByRole("button", { name: "Show less" })
+      .getAttribute("aria-expanded"),
+  ).toBe("true");
+});
+
+test("held markdown shows as plain lines: no live link, image or HTML", async () => {
+  const review = heldRead("m", "www.duwo.nl/over-duwo");
+  const payload = review.payload as Record<string, unknown>;
+  const excerpt = [
+    "## Ik huur",
+    "* [Klik hier](https://evil.example/login) voor je account",
+    "![tracking pixel](https://evil.example/pixel.png)",
+    "* [ __](https://www.youtube.com/user/DUWOnl)",
+    '<img src="https://evil.example/x.png" onerror="alert(1)">',
+  ].join("\n");
+  serve([{ ...review, payload: { ...payload, passage: "", excerpt } }]);
+  renderQueue();
+
+  const heading = await screen.findByText("Ik huur");
+  expect(heading.tagName).toBe("STRONG");
+  const quote = heading.closest("blockquote")!;
+  expect(quote.querySelector("a, img")).toBeNull();
+  expect(screen.getByText("• Klik hier voor je account")).toBeDefined();
+  expect(screen.getByText("tracking pixel")).toBeDefined();
+  expect(screen.getByText(/<img src=/)).toBeDefined();
+  expect(quote.textContent).not.toMatch(/##|\]\(|evil\.example\/login|youtube/);
 });
 
 function readBy(reader: string | null, judged: boolean) {

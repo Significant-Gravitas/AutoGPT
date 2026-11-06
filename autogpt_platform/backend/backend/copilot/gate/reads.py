@@ -129,15 +129,17 @@ _SOURCE_KEYS = (
 # The judge's source line sits inside its fence of outside bytes, so it never
 # carries the model's own words (a command, a search query).
 _JUDGED_SOURCE_KEYS = ("url", "file_path", "path")
+# Shipped with the row on every Home poll, so a few KB, never the held bytes.
+_EXCERPT_CHARS = 4_000
 _WAITING = (
     "This content is withheld while the user reviews it. Carry on with what "
     "does not depend on it; do not fetch it another way."
 )
 _HELD = (
-    "It contains text addressed to an AI assistant, so the user has been "
-    "shown the passage and asked whether to release it. If they approve, the "
-    "content arrives later as a <held_call_result> naming this call. Carry on "
-    "with what does not depend on it, and do not fetch it another way."
+    "A check flagged it as addressed to an AI assistant, so the user has been "
+    "asked whether to release it. If they approve, the content arrives later as "
+    "a <held_call_result> naming this call. Carry on with what does not depend "
+    "on it, and do not fetch it another way."
 )
 _REJECTED = (
     "The user declined to release this content. Do not fetch it again or "
@@ -287,7 +289,7 @@ async def screen_read(
         judged = await _judge(tool_name, args, text, images, outside, full)
         if judged is None or not judged[0].held:
             return None
-        verdict, text = judged
+        verdict, text, parts = judged
         call = held.HeldCall(
             review_id=read_review_id(session.session_id, user_id, tool_name, args),
             tool_name=tool_name,
@@ -296,15 +298,21 @@ async def screen_read(
             envelope=get_current_envelope(),
             cost_context=await capture_cost_context(user_id),
         )
+        passage = page_words(verdict.passage, text) if verdict.judged else ""
+        # Nothing quotable: the card shows what was flagged, so the user can judge it.
+        unquoted = verdict.judged and not passage
         return await _hold(
             call,
             user_id,
             session,
             source,
-            page_words(verdict.passage, text) if verdict.judged else "",
+            passage,
             output,
             success,
             judged=verdict.judged,
+            excerpt=(
+                _excerpt(readable(verdict.excerpt or text, parts)) if unquoted else ""
+            ),
         )
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
@@ -330,11 +338,14 @@ async def _judge(
     images: tuple[Image, ...],
     outside: tuple[Any, ...] | None,
     full: str,
-) -> tuple[ContentVerdict, str] | None:
-    """The verdict and the text it was reached on; None when nothing is readable."""
+) -> tuple[ContentVerdict, str, dict[str, bool] | None] | None:
+    """The verdict, the text it was reached on and the declared parts that text
+    joins; None when nothing is readable."""
+    parts = None
     if outside is not None:
         # AutoGPT writes no images, so a declaration narrows only the text.
-        text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+        parts = await asyncio.to_thread(outside_parts, outside, full, text, tool_name)
+        text = "\n".join(parts)
     # Bytes nobody can read are not instructions until something decodes
     # them, and that later read is judged.
     if not text.strip() and not images:
@@ -342,7 +353,7 @@ async def _judge(
     verdict = await judge_content(
         source=judged_source(tool_name, args), text=text, images=images
     )
-    return verdict, text
+    return verdict, text, parts
 
 
 async def _shadow_finding(
@@ -430,20 +441,37 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     return f"{output}\n\n{decoded}", ()
 
 
-def outside_view(
+def outside_parts(
     outside: tuple[Any, ...], full: str, text: str, tool_name: str = ""
-) -> str:
+) -> dict[str, bool]:
     """What of the declared parts the model reads in ``text``, each as the caps
-    left it; ``text`` whole when a part is not in ``full``, so a mark that
-    misses the bytes it names fails closed."""
-    pieces: dict[str, None] = {}
+    left it and True where it reads it JSON-escaped; ``text`` whole when a part
+    is not in ``full``, so a mark that misses the bytes it names fails closed."""
+    pieces: dict[str, bool] = {}
     budget = [_MAX_OUTSIDE_VALUES]
     if not all(_locate(part, full, text, pieces, budget) for part in outside):
         logger.warning(
             f"Declared outside parts of {tool_name} not located; judged whole"
         )
-        return text
-    return "\n".join(pieces)
+        return {text: False}
+    return pieces
+
+
+def readable(chunk: str, parts: dict[str, bool] | None) -> str:
+    """``chunk``, a slice of the judged parts, as a person reads it: the escapes
+    in a part the model read JSON-escaped are decoded."""
+    if not parts or not any(parts.values()):
+        return chunk
+    start = "\n".join(parts).find(chunk)
+    if start < 0:
+        return chunk
+    end, offset, shown = start + len(chunk), 0, []
+    for part, escaped in parts.items():
+        low, high = max(start - offset, 0), min(end - offset, len(part))
+        if low < high:
+            shown.append(_unescaped(part[low:high]) if escaped else part[low:high])
+        offset += len(part) + 1
+    return "\n".join(shown)
 
 
 # Past this many values a declaration is judged whole: locating each is a scan
@@ -457,7 +485,7 @@ _OPAQUE = (int, float, bool, type(None), datetime, date, time, UUID, Decimal)
 
 
 def _locate(
-    value: Any, full: str, view: str, pieces: dict[str, None], budget: list[int]
+    value: Any, full: str, view: str, pieces: dict[str, bool], budget: list[int]
 ) -> bool:
     """Add what of ``value`` shows in ``view``; False when it is not in ``full``."""
     budget[0] -= 1
@@ -482,12 +510,12 @@ def _locate(
         return False
     for dumped in _dumps(value):
         if dumped in view:
-            pieces[dumped] = None
+            pieces[dumped] = False
             return True
     return all(_locate(child, full, view, pieces, budget) for child in children)
 
 
-def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> bool:
+def _locate_text(value: str, full: str, view: str, pieces: dict[str, bool]) -> bool:
     if not value.strip():
         return True
     encodings = list(dict.fromkeys(_encodings(value)))
@@ -495,10 +523,13 @@ def _locate_text(value: str, full: str, view: str, pieces: dict[str, None]) -> b
         return False
     for encoded in encodings:
         if encoded in view:
-            pieces[encoded] = None
+            pieces[encoded] = encoded != value
             return True
-    kept = max((_fragments(encoded, view) for encoded in encodings), key=_coverage)
-    pieces.update(dict.fromkeys(kept))
+    escaped, kept = max(
+        ((encoded != value, _fragments(encoded, view)) for encoded in encodings),
+        key=lambda found: _coverage(found[1]),
+    )
+    pieces.update(dict.fromkeys(kept, escaped))
     return True
 
 
@@ -614,6 +645,7 @@ async def _hold(
     success: bool,
     *,
     judged: bool = True,
+    excerpt: str = "",
 ) -> str:
     """Queue the read on the chat's held calls; its answer delivers the bytes.
 
@@ -639,6 +671,7 @@ async def _hold(
         # Who the bytes reach: the card's copy names it, never the supervisor.
         "reader": reader,
         "passage": passage,
+        "excerpt": excerpt,
         "judged": judged,
         "success": success,
         # Both seams hand over JSON-encoded text, whose control characters are
@@ -661,8 +694,34 @@ def held_reason(passage: str, judged: bool) -> str:
     if not judged:
         return "this content could not be checked"
     if not passage:
-        return "this content contains instructions"
+        return "a check flagged this content"
     return f'this content contains instructions: "{passage.replace(chr(34), chr(39))}"'
+
+
+def _excerpt(text: str) -> str:
+    return text if len(text) <= _EXCERPT_CHARS else f"{text[:_EXCERPT_CHARS]}…"
+
+
+_JSON_ESCAPE = re.compile(r'\\(u[0-9a-fA-F]{4}|["\\/bfnrt])')
+_ESCAPED = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "b": "\b",
+    "f": "\f",
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+}
+
+
+def _unescaped(text: str) -> str:
+    """JSON string escapes decoded; one a slice cut short is left as it stands."""
+    decoded = _JSON_ESCAPE.sub(
+        lambda m: chr(int(m[1][1:], 16)) if len(m[1]) == 5 else _ESCAPED[m[1]], text
+    )
+    # Pairs an ASCII-escaped emoji, and replaces a surrogate a cut left alone.
+    return decoded.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
 
 
 async def _actor(user_id: str, session: ChatSession) -> str:

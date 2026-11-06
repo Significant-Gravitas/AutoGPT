@@ -1,3 +1,4 @@
+import { passageLines } from "@/app/(platform)/copilot/components/ApprovalQueue/helpers";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -15,7 +16,9 @@ export function HeldPassageQuote({ passage, clamp = true }: Props) {
         clamp && "line-clamp-2",
       )}
     >
-      {passage}
+      {passageLines(passage)
+        .map((line) => line.text)
+        .join(" ")}
     </blockquote>
   );
 }
