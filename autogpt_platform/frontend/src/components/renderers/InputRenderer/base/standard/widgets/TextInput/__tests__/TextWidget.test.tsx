@@ -123,6 +123,39 @@ describe("TextWidget", () => {
       expect(onChange).toHaveBeenLastCalledWith(100000);
     });
 
+    it.each(["9007199254740993", "-9007199254740993", "9223372036854775807"])(
+      "keeps %s as its exact digit string",
+      (value) => {
+        const onChange = vi.fn();
+        const props = makeProps({
+          schema: { type: "integer" },
+          onChange,
+        });
+
+        render(<TextWidget {...props} />);
+
+        fireEvent.change(screen.getByRole("spinbutton"), {
+          target: { value },
+        });
+
+        expect(onChange).toHaveBeenLastCalledWith(value);
+      },
+    );
+
+    it("displays a stored digit string unchanged", () => {
+      const props = makeProps({
+        schema: { type: "integer" },
+        value: "9007199254740993",
+      });
+
+      render(<TextWidget {...props} />);
+
+      expect(screen.getByRole("spinbutton")).toHaveProperty(
+        "value",
+        "9007199254740993",
+      );
+    });
+
     it("rejects non-finite values like 1e309", () => {
       const onChange = vi.fn();
       const props = makeProps({

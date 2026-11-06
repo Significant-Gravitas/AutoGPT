@@ -1,5 +1,5 @@
 import { Input } from "@/components/atoms/Input/Input";
-import { isJsonTextFor } from "@/lib/json-text";
+import { isJsonTextFor, parseJsonExact } from "@/lib/json-text";
 import { useId, useState } from "react";
 
 interface Props {
@@ -40,7 +40,7 @@ export function JsonDataInput({
   function handleChange(next: string) {
     setText(next);
     try {
-      onChange(JSON.parse(next));
+      onChange(parseJsonExact(next));
     } catch {
       onInvalidDraft(next);
     }

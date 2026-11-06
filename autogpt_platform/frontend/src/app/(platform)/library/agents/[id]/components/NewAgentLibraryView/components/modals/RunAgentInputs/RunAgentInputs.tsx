@@ -21,6 +21,7 @@ import {
   resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
+import { parseIntegerInput } from "@/lib/integer-input";
 import { getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -82,7 +83,9 @@ export function RunAgentInputs({
           placeholder={placeholder || "Enter number"}
           onChange={(e) => {
             const v = (e.target as HTMLInputElement).value;
-            if (!v || v.trim() === "") {
+            if (valueSchema.type === "integer") {
+              onChange(parseIntegerInput(v));
+            } else if (!v || v.trim() === "") {
               onChange(undefined);
             } else {
               const numValue = Number(v);

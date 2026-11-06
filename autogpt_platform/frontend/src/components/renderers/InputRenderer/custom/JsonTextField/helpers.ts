@@ -1,4 +1,5 @@
 import { RJSFSchema } from "@rjsf/utils";
+import { parseJsonExact } from "@/lib/json-text";
 
 /**
  * Converts form data to a JSON string for display
@@ -28,7 +29,7 @@ export function parseJsonValue(value: string): unknown | undefined {
   }
 
   try {
-    return JSON.parse(trimmed);
+    return parseJsonExact(trimmed);
   } catch {
     return undefined;
   }

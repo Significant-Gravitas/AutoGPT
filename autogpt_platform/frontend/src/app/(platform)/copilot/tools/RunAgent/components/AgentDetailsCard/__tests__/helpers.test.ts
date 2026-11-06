@@ -96,6 +96,45 @@ describe("isFormValid", () => {
     expect(isFormValid(schema, {})).toBe(false);
   });
 
+  it("accepts an integer beyond 2^53 held as a digit string", () => {
+    const schema: RJSFSchema = {
+      type: "object",
+      required: ["n"],
+      properties: {
+        n: { type: "integer" },
+        maybe: { anyOf: [{ type: "integer" }, { type: "null" }] },
+      },
+    };
+    expect(
+      isFormValid(schema, {
+        n: "9007199254740993",
+        maybe: "-9223372036854775807",
+      }),
+    ).toBe(true);
+  });
+
+  it("still rejects non-digit strings for integer fields", () => {
+    const schema: RJSFSchema = {
+      type: "object",
+      properties: { n: { type: "integer" } },
+    };
+    expect(isFormValid(schema, { n: "12abc" })).toBe(false);
+    expect(isFormValid(schema, { n: "1.5" })).toBe(false);
+  });
+
+  it("leaves string and number fields unchanged", () => {
+    const schema: RJSFSchema = {
+      type: "object",
+      properties: {
+        name: { type: "string", pattern: "^[a-z]+$" },
+        ratio: { type: "number" },
+      },
+    };
+    expect(isFormValid(schema, { name: "abc", ratio: 0.5 })).toBe(true);
+    expect(isFormValid(schema, { name: "ABC" })).toBe(false);
+    expect(isFormValid(schema, { ratio: "9007199254740993" })).toBe(false);
+  });
+
   it("returns true for empty schema with empty data", () => {
     const schema: RJSFSchema = {
       type: "object",

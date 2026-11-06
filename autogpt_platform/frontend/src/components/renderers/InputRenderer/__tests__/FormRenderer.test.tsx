@@ -94,6 +94,53 @@ vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
 }));
 
 describe("FormRenderer", () => {
+  it("accepts integers beyond 2^53 held as digit strings", async () => {
+    const handleChange = vi.fn();
+    const jsonSchema: RJSFSchema = {
+      type: "object",
+      properties: {
+        count: { title: "Count", type: "integer" },
+        limit: {
+          title: "Limit",
+          anyOf: [{ type: "integer" }, { type: "null" }],
+        },
+      },
+    };
+
+    render(
+      <FormRenderer
+        jsonSchema={jsonSchema}
+        handleChange={handleChange}
+        uiSchema={{}}
+        initialValues={{
+          count: "9007199254740993",
+          limit: "-9007199254740993",
+        }}
+        formContext={{
+          nodeId: "node-1",
+          uiType: BlockUIType.STANDARD,
+          showHandles: false,
+          size: "small",
+        }}
+      />,
+    );
+
+    const [count, limit] = screen.getAllByRole("spinbutton");
+    expect(count).toHaveProperty("value", "9007199254740993");
+    expect(limit).toHaveProperty("value", "-9007199254740993");
+
+    fireEvent.change(count, { target: { value: "9223372036854775807" } });
+
+    await waitFor(() => {
+      const lastCall = handleChange.mock.calls.at(-1)?.[0];
+      expect(lastCall.formData).toEqual({
+        count: "9223372036854775807",
+        limit: "-9007199254740993",
+      });
+      expect(lastCall.errors ?? []).toEqual([]);
+    });
+  });
+
   it("round-trips numeric enum values for array item selects", async () => {
     const handleChange = vi.fn();
     const jsonSchema: RJSFSchema = {

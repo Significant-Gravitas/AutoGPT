@@ -84,6 +84,16 @@ describe("JsonTextField", () => {
     await expectTypingKept(field, ', "a": 1', field.value.indexOf("\n}"));
   });
 
+  it("stores a typed integer beyond 2^53 with every digit", async () => {
+    render(<RowsForm rows={[{}]} />);
+
+    await expectTypingKept(getJsonField(), '"id": 9007199254740993', 1);
+
+    expect(screen.getByLabelText("Stored rows").textContent).toBe(
+      '[{"id":"9007199254740993"}]',
+    );
+  });
+
   it("keeps a negative decimal while it is typed", async () => {
     render(<RowsForm rows={[{}]} />);
 

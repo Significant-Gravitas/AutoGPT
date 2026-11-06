@@ -5,6 +5,7 @@ import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/ex
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { parseJsonExact } from "@/lib/json-text";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 import {
@@ -88,7 +89,7 @@ function parseOutput(output: unknown): RunAgentToolOutput | null {
     const trimmed = output.trim();
     if (!trimmed) return null;
     try {
-      return parseOutput(JSON.parse(trimmed) as unknown);
+      return parseOutput(parseJsonExact(trimmed));
     } catch {
       return null;
     }
