@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -52,10 +52,9 @@ def sandbox_on():
 @pytest.mark.parametrize("prefix", [None, ""])
 def test_default_workspace_prefix(sandbox_on, path_module, prefix):
     module = sandbox_on(path_module, prefix)
-    assert module.WORKSPACE_PREFIX == path_module.normpath("/tmp/copilot-")
-    assert module.make_session_path("abc-123") == path_module.normpath(
-        "/tmp/copilot-abc-123"
-    )
+    prefix = path_module.realpath("/tmp/copilot-")
+    assert module.WORKSPACE_PREFIX == prefix
+    assert module.make_session_path("abc-123") == f"{prefix}abc-123"
 
 
 @pytest.mark.parametrize(
@@ -76,6 +75,53 @@ def test_relocated_workspace(sandbox_on, path_module, prefix, expected):
     module.os.makedirs.assert_called_once_with(expected, exist_ok=True)
 
 
+@pytest.mark.parametrize("link_at_prefix", [False, True], ids=["parent", "prefix"])
+def test_linked_workspace_prefix_and_transcript_cleanup(
+    sandbox_on, monkeypatch, tmp_path: Path, link_at_prefix: bool
+):
+    destination = tmp_path / "canonical" / "copilot-"
+    destination.mkdir(parents=True)
+    link = tmp_path / "configured"
+    link.symlink_to(
+        destination if link_at_prefix else destination.parent, target_is_directory=True
+    )
+    prefix = link if link_at_prefix else link / "copilot-"
+    module = sandbox_on(os.path, str(prefix))
+    monkeypatch.setattr(service, "make_session_path", module.make_session_path)
+    monkeypatch.setattr(service, "_SDK_CWD_PREFIX", module.WORKSPACE_PREFIX)
+    monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", os.path.realpath(prefix))
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
+    cwd = service._make_sdk_cwd("../../target")
+    target = projects / context.encode_cwd_for_cli(cwd)
+    other = projects / context.encode_cwd_for_cli(module.make_session_path("other"))
+    old_time = time.time() - transcript._STALE_PROJECT_DIR_SECONDS - 100
+    for directory in (target, other):
+        directory.mkdir()
+        os.utime(directory, (old_time, old_time))
+
+    assert transcript.cleanup_stale_project_dirs(target.name) == 1
+    assert not target.exists()
+    assert other.is_dir()
+    assert cwd == str(destination.resolve()) + "target"
+    assert module.get_workspace_dir("target") == cwd
+    assert module.WORKSPACE_PREFIX == transcript._SAFE_CWD_PREFIX
+
+
+def test_relative_prefix_is_bound_before_working_directory_changes(
+    sandbox_on, monkeypatch, tmp_path: Path
+):
+    monkeypatch.chdir(tmp_path)
+    module = sandbox_on(os.path, "workspaces/copilot-")
+    expected = str(tmp_path / "workspaces" / "copilot-abc")
+    different = tmp_path / "different"
+    different.mkdir()
+    monkeypatch.chdir(different)
+
+    assert module.make_session_path("abc") == expected
+
+
 @pytest.mark.parametrize("path_module", [posixpath, ntpath], ids=["posix", "windows"])
 @pytest.mark.parametrize(
     "session_id,safe_id",
@@ -93,8 +139,9 @@ def test_session_id_stays_within_workspace(
 ):
     module = sandbox_on(path_module)
     path = module.make_session_path(session_id)
-    assert path == path_module.normpath(f"/tmp/copilot-{safe_id}")
-    assert path_module.dirname(path) == path_module.normpath("/tmp")
+    prefix = path_module.realpath("/tmp/copilot-")
+    assert path == f"{prefix}{safe_id}"
+    assert path_module.dirname(path) == path_module.dirname(prefix)
 
 
 def test_sdk_imports_shared_workspace_prefix():
@@ -126,11 +173,14 @@ async def test_sdk_cwd_and_cleanup(sandbox_on, monkeypatch, path_module, prefix)
     monkeypatch.setattr(service, "cleanup_stale_project_dirs", sweep)
 
     cwd = service._make_sdk_cwd("../../abc-123")
-    expected = path_module.normpath(f"{prefix or '/tmp/copilot-'}abc-123")
+    expected = f"{path_module.realpath(prefix or '/tmp/copilot-')}abc-123"
     assert cwd == expected
     await service._cleanup_sdk_tool_results(cwd)
 
-    remove.assert_called_once_with(expected, True)
+    assert remove.call_args_list == [
+        call(expected, True),
+        call(f"{expected}.cli", True),
+    ]
     sweep.assert_called_once_with(context.encode_cwd_for_cli(expected))
     assert "-tmp-copilot-" in sweep.call_args.args[0]
 
@@ -158,11 +208,12 @@ async def test_sdk_rejects_paths_outside_workspace(
     sweep.assert_not_called()
 
 
-@pytest.mark.parametrize("workspace_dir,removed", [("tmp", 1), ("workspaces", 0)])
+@pytest.mark.parametrize("workspace_dir", ["tmp", "workspaces"])
 def test_relocated_transcript_cleanup_stays_scoped(
-    sandbox_on, monkeypatch, tmp_path: Path, workspace_dir, removed
+    sandbox_on, monkeypatch, tmp_path: Path, workspace_dir
 ):
     module = sandbox_on(os.path, str(tmp_path / "data" / workspace_dir / "copilot-"))
+    monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", module.WORKSPACE_PREFIX)
     projects = tmp_path / "projects"
     projects.mkdir()
     monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
@@ -175,8 +226,8 @@ def test_relocated_transcript_cleanup_stays_scoped(
         (directory / "transcript.jsonl").write_text("{}\n", encoding="utf-8")
         os.utime(directory, (old_time, old_time))
 
-    assert transcript.cleanup_stale_project_dirs(target_name) == removed
-    assert (projects / target_name).exists() == (removed == 0)
+    assert transcript.cleanup_stale_project_dirs(target_name) == 1
+    assert not (projects / target_name).exists()
     assert (projects / other_name / "transcript.jsonl").is_file()
 
 

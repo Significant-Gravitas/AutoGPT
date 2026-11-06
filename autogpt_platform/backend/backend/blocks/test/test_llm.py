@@ -53,6 +53,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -101,6 +102,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -1500,6 +1502,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hello"},
                 ],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         system_arg = captured_kwargs.get("system")
@@ -1556,6 +1559,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=tools,
+                on_abandoned=None,
             )
 
         an_tools = captured_kwargs.get("tools")
@@ -1594,6 +1598,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=None,
+                on_abandoned=None,
             )
 
         import anthropic
@@ -1631,6 +1636,7 @@ class TestAnthropicCacheControl:
                 llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1669,6 +1675,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hi"},
                 ],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1765,6 +1772,7 @@ class TestLLMRequestTimeout:
                     llm_model=llm.DEFAULT_LLM_MODEL,
                     prompt=[{"role": "user", "content": "Hello"}],
                     max_tokens=100,
+                    on_abandoned=None,
                 )
 
             msg = str(exc_info.value)
@@ -1797,6 +1805,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         # The generation budget lands on the read phase; connect stays short so
@@ -2221,6 +2230,7 @@ class TestClaude5ModelThreading:
                 prompt=[{"role": "user", "content": "hi"}],
                 max_tokens=100,
                 compress_prompt_to_fit=True,
+                on_abandoned=None,
             )
 
         expected_model = llm.DEFAULT_LLM_MODEL.value
@@ -2355,3 +2365,55 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ]
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"name ": "Ada"}, {"name": "Ada"}),
+        ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
+        ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
+        ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
+        ({}, {}),
+    ],
+)
+def test_strip_prompt_value_keys(values, expected):
+    assert llm.strip_prompt_value_keys(values) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = llm.AIStructuredResponseGeneratorBlock()
+    sent: dict[str, Any] = {}
+
+    async def fake_llm_call(*, prompt, **_):
+        sent["prompt"] = prompt
+        return llm.LLMResponse(
+            raw_response="",
+            prompt=[],
+            response="Hello",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+            reasoning=None,
+        )
+
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Greet {{name}}",
+        sys_prompt="You talk to {{name}}.",
+        prompt_values={"name ": "Ada"},
+        expected_format={},
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+    )
+
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    contents = [message["content"] for message in sent["prompt"]]
+    assert any("You talk to Ada." in content for content in contents)
+    assert any("Greet Ada" in content for content in contents)

@@ -58,7 +58,7 @@ async def test_cli_offers_only_allowed_tools(
     offered = await asyncio.wait_for(
         _cli_offered_tools(
             allowed,
-            get_sdk_disallowed_tools(use_e2b=use_e2b),
+            get_sdk_disallowed_tools(),
             tmp_path,
             use_e2b=use_e2b,
         ),
@@ -87,7 +87,7 @@ async def test_mcp_advertises_bash_only_with_a_supported_sandbox(
 
     assert ("mcp__copilot__bash_exec" in offered) is bash_available
     assert offered <= set(get_copilot_tool_names(use_e2b=use_e2b))
-    assert "Bash" in get_sdk_disallowed_tools(use_e2b=use_e2b)
+    assert "Bash" in get_sdk_disallowed_tools()
     assert "Bash" not in get_copilot_tool_names(use_e2b=use_e2b)
     if bash_available:
         bash_tool = next(t for t in result.root.tools if t.name == "bash_exec")

@@ -145,12 +145,33 @@ def test_postgres_probe_uploads_only_its_summary_even_after_failure():
     assert "include-hidden-files" not in upload
 
 
-def test_pull_requests_trigger_desktop_checks_only_for_desktop_changes():
+def test_pull_requests_trigger_checks_only_for_desktop_and_native_file_callers():
     """A path filter naming a file upstream renamed never triggers again."""
     paths = re.findall(r'^\s+- "([^"]+)"$', CALLER.read_text("utf-8"), re.M)
     assert set(paths) == {
         ".github/workflows/platform-desktop-build.yml",
         "autogpt_platform/desktop/**",
+        *(
+            f"autogpt_platform/backend/backend/copilot/{name}"
+            for name in (
+                "host_fs.py",
+                "host_fs_windows.py",
+                "windows_handles.py",
+                "host_private_directory.py",
+                "windows_private.py",
+                "host_fs_portable_test.py",
+                "host_fs_windows_native_checks.py",
+                "sdk/service.py",
+                "tools/workdir.py",
+                "sdk/cli_prelaunch_turn_test.py",
+                "sdk/retry_scenarios_test.py",
+                "sdk/conftest.py",
+                "sdk/transcript_builder.py",
+                "tools/sandbox.py",
+                "tools/workspace_files.py",
+                "transcript.py",
+            )
+        ),
     }
     missing = [path for path in paths if not (REPO / path.removesuffix("/**")).exists()]
     assert (

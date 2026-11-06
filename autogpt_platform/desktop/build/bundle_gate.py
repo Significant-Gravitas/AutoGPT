@@ -64,6 +64,13 @@ PACKAGES = "site"
 NOT_IMPORTABLE: dict[str, str] = {
     "backend.check_db": "a developer's script; it needs faker, which is a development dependency",
 }
+WINDOWS_ONLY_BACKEND = frozenset(
+    {
+        "backend.copilot.host_fs_windows",
+        "backend.copilot.windows_handles",
+        "backend.copilot.windows_private",
+    }
+)
 # Zipped packages that do not import in the bundle, and why that is right.
 # None of the modules under such a package is compared, so each is one whose
 # modules were looked at by hand.
@@ -288,17 +295,18 @@ def unimportable_backend_modules() -> list[str]:
     outcomes = import_all("backend")
     failed = {name: describe(exc) for name, exc in outcomes.items() if exc is not None}
     print(f"  {len(outcomes)} backend modules, {len(failed)} do not import")
-    unexpected = sorted(set(failed) - set(NOT_IMPORTABLE))
-    stale = sorted(
-        name for name in NOT_IMPORTABLE if name in outcomes and name not in failed
-    )
+    expected = set(NOT_IMPORTABLE)
+    if sys.platform != "win32":
+        expected.update(WINDOWS_ONLY_BACKEND)
+    unexpected = sorted(set(failed) - expected)
+    stale = sorted(name for name in expected if name in outcomes and name not in failed)
     return [
         *[
             f"backend module {name} does not import: {failed[name]}"
             for name in unexpected
         ],
         *[
-            f"{name} imports now: take it off NOT_IMPORTABLE in build/bundle_gate.py"
+            f"{name} imports now: remove its import exemption in build/bundle_gate.py"
             for name in stale
         ],
     ]

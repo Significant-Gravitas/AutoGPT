@@ -498,6 +498,14 @@ no CLI is started in the user's home.
 `tmp\copilot-<session>` in the data directory on Windows, which has no
 `/tmp`. The backend reads this location from `COPILOT_WORKSPACE_PREFIX`.
 
+On Windows, the CLI's sibling scratch directory must be private, and every
+ancestor must prevent other users from replacing it. The backend retains
+directory handles for the turn and refuses unsafe permissions or reparse
+points; creating a private leaf inside a writable ancestor is not sufficient.
+It does not change an existing profile's permissions. A custom
+`AUTOGPT_DESKTOP_DATA_DIR` must satisfy the same checks. Tests with a fresh,
+trusted root do not certify an existing profile.
+
 **Which CLI.** The one inside the `claude-agent-sdk` package, at the version
 `backend/poetry.lock` pins: what the Docker image runs. Anthropic publishes
 no Windows build of some SDK versions; the Windows bundle then installs the
@@ -1123,6 +1131,16 @@ see that nothing is started in such a home. Shared backend tests cover workspace
 path confinement, configured CLI selection, and subscription-log privacy.
 Desktop settings tests check that Windows workspaces remain inside the data
 directory and keep the transcript-cleanup naming convention.
+
+The Windows CI lane explicitly runs the native host-filesystem tests through
+`build/host_fs_windows_check.py` on Python 3.13. The runner creates a fresh
+private fixture beneath a verified local-volume root, bounds the worker with
+a Windows Job Object, rejects skipped or missing suites, and records source
+hashes and cleanup results. After runtime assembly, its `--callers` lane imports
+the checkout's real backend callers with bundled dependencies and exercises
+attachment I/O, tool results, transcript resume, and SDK handle cleanup.
+Provider and database boundaries are mocked in that lane; installed-app and
+real-provider journeys remain separate checks.
 
 A few of the shell tests read `electron-updater` and `@electron/osx-sign` to
 notice when a new version of either drops something this relies on; they are

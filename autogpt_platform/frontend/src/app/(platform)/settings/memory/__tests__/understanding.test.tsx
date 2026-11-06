@@ -34,7 +34,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     DREAM_SKILL_LEARNING_ENABLED: "dream-skill-learning-enabled",
     CHAT_MODE_OPTION: "chat-mode-option",
-    ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
   useGetFlag: () => false,
   useFlagStatus: () => ({ enabled: false, answered: true }),
@@ -269,6 +268,7 @@ describe.each(["CLOUD", "LOCAL"])("memory availability in %s", (mode) => {
       expect(await screen.findByText("Harbor Bikes")).toBeDefined();
       expect(screen.getByRole("button", { name: "Forget this" })).toBeDefined();
       expect(screen.queryByRole("button", { name: /erase/i })).toBeNull();
+      await settle();
       expect(graphRequest).not.toHaveBeenCalled();
     },
   );

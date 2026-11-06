@@ -423,6 +423,26 @@ it("keeps learning off under its own flag when graph memory is disabled", async 
   expect(decisions).not.toHaveBeenCalled();
 });
 
+it("shows learning history and pending decisions when graph memory is disabled", async () => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+  render(<SettingsMemoryPage />);
+  expect(
+    await screen.findByText(
+      "Long-term memory is unavailable on this installation.",
+    ),
+  ).toBeDefined();
+  expect(await screen.findByText("Learning history")).toBeDefined();
+  expect(
+    await screen.findByText(
+      "Added an encoding check after the previous import failed.",
+    ),
+  ).toBeDefined();
+  expect(await screen.findByText("Needs your decision")).toBeDefined();
+  expect(
+    await screen.findByText(/Added a duplicate column check/),
+  ).toBeDefined();
+});
+
 it("opens an expert skill link without querying graph memory or personal skill data", async () => {
   vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
   window.history.replaceState(

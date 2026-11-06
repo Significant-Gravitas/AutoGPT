@@ -7,6 +7,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,59 @@ BUILD = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BUILD))
 backend_tests = importlib.import_module("backend_tests")
 bundle_gate = importlib.import_module("bundle_gate")
+
+WINDOWS_HELPERS = (
+    "backend.copilot.host_fs_windows",
+    "backend.copilot.windows_handles",
+    "backend.copilot.windows_private",
+)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_windows_backend_imports_are_required_only_on_windows(monkeypatch, platform):
+    outcomes = {name: ImportError("native Windows module") for name in WINDOWS_HELPERS}
+    monkeypatch.setattr(bundle_gate, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(bundle_gate, "import_all", lambda _package: outcomes)
+    problems = bundle_gate.unimportable_backend_modules()
+    assert len(problems) == (3 if platform == "win32" else 0)
+    outcomes["backend.copilot.host_fs"] = RuntimeError("portable dispatcher broke")
+    assert any(
+        "backend.copilot.host_fs does not import" in problem
+        for problem in bundle_gate.unimportable_backend_modules()
+    )
+
+
+def test_a_stale_windows_backend_import_exemption_fails(monkeypatch):
+    monkeypatch.setattr(bundle_gate, "sys", SimpleNamespace(platform="darwin"))
+    monkeypatch.setattr(
+        bundle_gate,
+        "import_all",
+        lambda _package: {name: None for name in WINDOWS_HELPERS},
+    )
+    assert len(bundle_gate.unimportable_backend_modules()) == 3
+
+
+def test_explicit_native_suite_is_pruned_without_removing_windows_implementation(
+    tmp_path,
+):
+    package = write(
+        tmp_path / "backend",
+        {
+            "__init__.py": "",
+            "copilot/__init__.py": "",
+            "copilot/host_fs_windows_native_checks.py": "import pytest\n",
+            "copilot/host_fs_windows.py": "",
+            "copilot/windows_handles.py": "",
+            "copilot/windows_private.py": "",
+            "copilot/health_checks.py": "",
+        },
+    )
+    removed = backend_tests.prune(package)
+    assert [path.relative_to(package).as_posix() for path in removed] == [
+        "copilot/host_fs_windows_native_checks.py"
+    ]
+    assert (package / "copilot/host_fs_windows.py").is_file()
+    assert (package / "copilot/health_checks.py").is_file()
 
 
 def write(root, files):

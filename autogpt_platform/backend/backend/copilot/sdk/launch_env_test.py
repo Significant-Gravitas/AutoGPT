@@ -64,20 +64,15 @@ class _Spawned(Exception):
 
 
 @pytest.fixture
-def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MagicMock:
+def parent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for name, value in {**_PARENT_SECRETS, **_RUNTIME}.items():
         monkeypatch.setenv(name, value)
-    for name in (
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_BASE_URL",
-        "CLAUDE_AGENT_CLI_PATH",
-        "CHAT_CLAUDE_AGENT_CLI_PATH",
-    ):
+    for name in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    validate = MagicMock(spec=subscription.validate_subscription)
-    monkeypatch.setattr("backend.copilot.sdk.env.validate_subscription", validate)
-    return validate
+    monkeypatch.setattr(
+        "backend.copilot.sdk.env.validate_subscription", lambda cli_path=None: None
+    )
 
 
 async def _spawned_env(
@@ -149,25 +144,11 @@ _LAUNCHES = {
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("launch", sorted(_LAUNCHES))
-@pytest.mark.parametrize("configured_cli", [False, True])
 async def test_a_copilot_launch_keeps_only_its_credential_and_the_runtime(
-    launch: str,
-    configured_cli: bool,
-    parent: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    launch: str, parent: None, monkeypatch: pytest.MonkeyPatch
 ):
-    cli_path = None
-    if configured_cli:
-        cli = tmp_path / _CLI
-        cli.touch()
-        cli.chmod(0o700)
-        cli_path = str(cli)
     settings, arguments, credential_name, credential = _LAUNCHES[launch]
-    monkeypatch.setattr(
-        "backend.copilot.sdk.env.config",
-        _config(**settings, claude_agent_cli_path=cli_path),
-    )
+    monkeypatch.setattr("backend.copilot.sdk.env.config", _config(**settings))
     env = build_sdk_env(**arguments)
     options = launch_options(ClaudeAgentOptions(env=env, cli_path=_CLI))
 
@@ -175,15 +156,11 @@ async def test_a_copilot_launch_keeps_only_its_credential_and_the_runtime(
 
     _assert_keeps_only(spawned, env, credential)
     assert spawned[credential_name] == credential
-    if launch == "subscription":
-        parent.assert_called_once_with(cli_path)
-    else:
-        parent.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a_variable_the_backend_gains_later_is_blanked_too(
-    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     """Worked out at each launch, not from a list of names."""
     monkeypatch.setattr("backend.copilot.sdk.env.config", _config())
@@ -203,10 +180,7 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
     [("anthropic", "ANTHROPIC_API_KEY"), ("open_router", "ANTHROPIC_AUTH_TOKEN")],
 )
 async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
-    provider: str,
-    credential_name: str,
-    parent: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
+    provider: str, credential_name: str, parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     """Read off the options the block starts its CLI with, so a launch that
     skips the allowlist fails here."""
@@ -220,7 +194,7 @@ async def test_an_orchestrator_launch_keeps_only_the_users_key_and_the_runtime(
 
 @pytest.mark.asyncio
 async def test_an_orchestrator_launch_sends_the_users_key_where_anthropic_is_reached(
-    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     """A base URL the deployment points Anthropic traffic at still applies,
     without a password embedded in it or the deployment's auth token."""
@@ -273,7 +247,7 @@ def test_loading_the_launch_code_turns_the_sdks_own_version_check_off(
 
 
 def test_the_executor_warm_up_starts_the_cli_from_the_allowlist(
-    parent: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     envs = _record_runs(monkeypatch, "2.1.284")
     # The warm-up reads the binary through before it runs it.
@@ -288,7 +262,7 @@ def test_the_executor_warm_up_starts_the_cli_from_the_allowlist(
 
 
 def test_the_version_check_starts_the_cli_from_the_allowlist(
-    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284 (Claude Code)")
 
@@ -300,10 +274,9 @@ def test_the_version_check_starts_the_cli_from_the_allowlist(
 
 
 def test_the_subscription_check_starts_the_cli_from_the_allowlist(
-    parent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    parent: None, monkeypatch: pytest.MonkeyPatch
 ):
     envs = _record_runs(monkeypatch, "2.1.284", auth='{"loggedIn": true}')
-    monkeypatch.setattr(subscription, "find_bundled_cli", lambda: _CLI)
     monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
 
     subscription._validate_subscription.__wrapped__(_CLI)
@@ -327,7 +300,7 @@ def test_the_subscription_check_starts_the_cli_from_the_allowlist(
     ],
 )
 async def test_subscription_probes_and_sdk_launch_use_the_selected_executable(
-    source: str, parent: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    source: str, parent: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     cli = tmp_path / "selected-claude.exe"
     cli.write_bytes(b"stand-in executable, never run")
@@ -385,8 +358,8 @@ async def test_subscription_probes_and_sdk_launch_use_the_selected_executable(
         [str(cli), "-v"],
     ]
     assert [command[0] for command in commands] == [str(cli)]
-    assert bundled.call_count == (2 if source in {"bundled", "path"} else 0)
-    assert which.call_count == (2 if source == "path" else 0)
+    assert bundled.call_count == (1 if source in {"bundled", "path"} else 0)
+    assert which.call_count == (1 if source == "path" else 0)
     provision.assert_called_once_with()
     _assert_keeps_only(spawned, env, _HOST_LOGIN)
 

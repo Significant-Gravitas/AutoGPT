@@ -136,7 +136,6 @@ DATA_READ_THROUGH_THE_LOADER: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "groq": ("an empty .keep file", ("lib/.keep",)),
     "langfuse": ("two Markdown notes", ("api/README.md", "api/reference.md")),
-    "langsmith": ("two Markdown notes", ("cli/README.md", "sandbox/README.md")),
     "markdown_it": ("a YAML note about the port, read by nothing", ("port.yaml",)),
 }
 # A file of these kinds is loaded by its path, whatever the list above says.

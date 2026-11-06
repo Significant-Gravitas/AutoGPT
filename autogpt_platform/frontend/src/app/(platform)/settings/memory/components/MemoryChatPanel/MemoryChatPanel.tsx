@@ -19,6 +19,7 @@ interface Props {
   queuedMessages: React.ComponentProps<
     typeof ChatMessagesContainer
   >["queuedMessages"];
+  isTurnSettling: boolean;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -35,6 +36,7 @@ export function MemoryChatPanel({
   status,
   error,
   queuedMessages,
+  isTurnSettling,
   onSend,
   onStop,
   onRetry,
@@ -55,7 +57,7 @@ export function MemoryChatPanel({
           <div className="flex items-center justify-between border-b border-separator px-4 py-3">
             <div className="flex items-center gap-2 text-brand">
               <Icon icon={BrainIcon} size={18} />
-              <span className="text-sm font-semibold text-foreground-emphasis">
+              <span className="text-body font-semibold text-foreground-emphasis">
                 {scopeName}&apos;s memory
               </span>
             </div>
@@ -71,7 +73,7 @@ export function MemoryChatPanel({
 
           <div className="flex h-0 min-h-0 flex-1 flex-col">
             {startError ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-foreground-secondary">
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body text-foreground-secondary">
                 <p className="font-medium text-foreground-emphasis">
                   Could not start the memory chat
                 </p>
@@ -83,7 +85,7 @@ export function MemoryChatPanel({
                 </Button>
               </div>
             ) : isStarting || !sessionId ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-foreground-tertiary">
+              <div className="flex flex-1 items-center justify-center px-4 py-6 text-body text-foreground-tertiary">
                 Starting memory chat…
               </div>
             ) : (
@@ -96,6 +98,7 @@ export function MemoryChatPanel({
                     isLoading={false}
                     sessionID={sessionId}
                     queuedMessages={queuedMessages}
+                    isTurnSettling={isTurnSettling}
                   />
                 </div>
                 <div className="relative shrink-0 border-t border-separator bg-surface px-3 pt-2 pb-2">

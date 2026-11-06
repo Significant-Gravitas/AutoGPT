@@ -20,11 +20,10 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 
 import claude_stub
 import pytest
-
 from autogpt_desktop import apps, claude_code, events, ports, runs, settings, supervisor
 from autogpt_desktop.claude_code import (
     IN_USE,
@@ -188,7 +187,7 @@ def test_a_signed_out_bundled_cli_is_not_replaced_by_the_users(
     bundle: Bundle, data: DataDir, home: Path
 ):
     """The backend's own check asks the bundled CLI whenever there is one
-    (sdk/subscription.py find_bundled_cli), so a signed-in CLI of the user's
+    (sdk/cli_version.py _cli_the_sdk_finds), so a signed-in CLI of the user's
     would only make every turn fail there."""
     bundled = bundled_stub(bundle, logged_in=False)
     users = users_stub(home)
@@ -681,9 +680,6 @@ def test_fallback_launcher_keeps_subscription_auth_on_the_checked_version(
     inherited = ModuleType("backend.copilot.sdk.launch_env")
     inherited.inherited_env = dict
     monkeypatch.setitem(sys.modules, inherited.__name__, inherited)
-    transport = ModuleType("claude_agent_sdk._internal.transport.subprocess_cli")
-    transport.SubprocessCLITransport = SimpleNamespace(_find_bundled_cli=lambda _: None)
-    monkeypatch.setitem(sys.modules, transport.__name__, transport)
     spec = importlib.util.spec_from_file_location(
         "desktop_subscription_contract", BACKEND / "copilot" / "sdk" / "subscription.py"
     )
@@ -695,6 +691,11 @@ def test_fallback_launcher_keeps_subscription_auth_on_the_checked_version(
     monkeypatch.delenv("CLAUDE_AGENT_CLI_PATH", raising=False)
     monkeypatch.setattr(subscription, "provision_credentials_file", lambda: None)
     monkeypatch.setattr(subscription, "host_login_env", dict)
+    monkeypatch.setattr(
+        subscription,
+        "_cli_the_sdk_finds",
+        lambda: pytest.fail("the configured CLI must bypass SDK discovery"),
+    )
     checked = []
 
     def run_subscription(argv, **kwargs):
@@ -703,7 +704,7 @@ def test_fallback_launcher_keeps_subscription_auth_on_the_checked_version(
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
     monkeypatch.setattr(subscription.subprocess, "run", run_subscription)
-    subscription.validate_subscription()
+    subscription.validate_subscription(host["CHAT_CLAUDE_AGENT_CLI_PATH"])
     assert checked == [[str(target), "--version"], [str(target), "auth", "status"]]
 
 
@@ -1325,9 +1326,10 @@ def test_the_backends_sign_in_check_is_still_the_one_the_runtime_mirrors():
         assert (
             needed in subscription
         ), f"validate_subscription no longer has {needed}. {update}"
-    assert (
-        "_find_bundled_cli" in subscription and 'shutil.which("claude")' in subscription
-    ), f"find_bundled_cli no longer looks for the bundled CLI and then `claude` on PATH. {update}"
+    assert "os.path.realpath(cli_path or _cli_the_sdk_finds())" in subscription, update
+    assert "validate_subscription(config.claude_agent_cli_path)" in backend_source(
+        "copilot", "sdk", "env.py"
+    ), update
     for token in settings.CLAUDE_TOKEN_SETTINGS:
         assert f'os.environ.get("{token}"' in subscription, (
             f"the backend no longer reads {token}; settings.CLAUDE_TOKEN_SETTINGS may be "

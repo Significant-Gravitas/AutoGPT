@@ -7,6 +7,22 @@ on:
     paths:
       - ".github/workflows/platform-desktop-build.yml"
       - "autogpt_platform/desktop/**"
+      - "autogpt_platform/backend/backend/copilot/host_fs.py"
+      - "autogpt_platform/backend/backend/copilot/host_fs_windows.py"
+      - "autogpt_platform/backend/backend/copilot/windows_handles.py"
+      - "autogpt_platform/backend/backend/copilot/host_private_directory.py"
+      - "autogpt_platform/backend/backend/copilot/windows_private.py"
+      - "autogpt_platform/backend/backend/copilot/host_fs_portable_test.py"
+      - "autogpt_platform/backend/backend/copilot/host_fs_windows_native_checks.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/service.py"
+      - "autogpt_platform/backend/backend/copilot/tools/workdir.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/cli_prelaunch_turn_test.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/retry_scenarios_test.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/conftest.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/transcript_builder.py"
+      - "autogpt_platform/backend/backend/copilot/tools/sandbox.py"
+      - "autogpt_platform/backend/backend/copilot/tools/workspace_files.py"
+      - "autogpt_platform/backend/backend/copilot/transcript.py"
   schedule:
     - cron: "23 6 * * *"
   workflow_dispatch:
@@ -62,6 +78,27 @@ jobs:
         run: python -B -m pytest -q -p no:cacheprovider -c runtime/pyproject.toml runtime/tests build/tests
       - name: Electron shell unit tests
         run: npm test
+      - name: Native Windows host filesystem acceptance (Python 3.13)
+        id: host_fs_native
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          python -B build/host_fs_windows_check.py `
+            --fixture-drive "$env:SystemDrive" `
+            --result "$env:RUNNER_TEMP/desktop-host-fs/result.json"
+          exit $LASTEXITCODE
+      - name: Retain the native host filesystem summary
+        if: >-
+          always() && runner.os == 'Windows' &&
+          steps.host_fs_native.outcome != 'skipped' &&
+          steps.host_fs_native.outcome != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-host-fs-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/desktop-host-fs/result.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Check Windows PostgreSQL initialization
         id: postgres_native
         if: >-
@@ -161,6 +198,27 @@ jobs:
           retention-days: 7
       - name: Assemble and verify native runtime from this checkout
         run: python -B build/build_runtime.py
+      - name: Native Windows checkout callers with bundled dependencies
+        id: host_fs_callers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          & ./build/runtime/python/python.exe -I -B build/host_fs_windows_check.py `
+            --callers --fixture-drive "$env:SystemDrive" `
+            --result "$env:RUNNER_TEMP/desktop-host-fs-callers/result.json"
+          exit $LASTEXITCODE
+      - name: Retain the native imported caller summary
+        if: >-
+          always() && runner.os == 'Windows' &&
+          steps.host_fs_callers.outcome != 'skipped' &&
+          steps.host_fs_callers.outcome != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-host-fs-callers-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/desktop-host-fs-callers/result.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Package without publishing
         run: |
           npm ci

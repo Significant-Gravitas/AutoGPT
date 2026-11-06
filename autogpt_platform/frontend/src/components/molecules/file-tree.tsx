@@ -400,9 +400,9 @@ const CollapseButton = forwardRef<
     return (
       <Button
         variant="compact-ghost"
-        size="compact"
+        size="compact-icon-sm"
         data-slot="file-tree-collapse-button"
-        className="absolute right-2 bottom-1 h-8 w-fit p-1"
+        className="absolute right-2 bottom-1"
         onClick={
           expandedItems && expandedItems.length > 0
             ? closeAll

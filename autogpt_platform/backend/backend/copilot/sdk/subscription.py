@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 
+from backend.copilot.sdk.cli_version import _cli_the_sdk_finds
 from backend.copilot.sdk.launch_env import inherited_env
 
 logger = logging.getLogger(__name__)
@@ -95,12 +96,16 @@ def provision_credentials_file() -> None:
 def validate_subscription(cli_path: str | None = None) -> None:
     """Validate the configured Claude CLI, or the bundled/PATH fallback.
 
-    Resolve before checking the cache so a changed environment or retargeted
+    Resolve before checking the cache so a changed selection or retargeted
     launcher selects a fresh validation. Invalid overrides cannot provision
     credentials or silently fall back to another executable.
     """
-    cli = _configured_cli(cli_path) or find_bundled_cli()
-    _validate_subscription(os.path.realpath(cli))
+    cli = os.path.realpath(cli_path or _cli_the_sdk_finds())
+    if not os.path.isfile(cli) or not os.access(cli, os.X_OK):
+        raise RuntimeError(
+            f"Configured Claude CLI ({os.path.basename(cli)}) is not an executable file"
+        )
+    _validate_subscription(cli)
 
 
 @functools.cache
@@ -154,19 +159,3 @@ def _validate_subscription(cli: str) -> None:
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")
-
-
-def _configured_cli(cli_path: str | None) -> str | None:
-    configured = (
-        cli_path
-        or os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH")
-        or os.getenv("CLAUDE_AGENT_CLI_PATH")
-    )
-    if not configured:
-        return None
-    path = os.path.realpath(configured)
-    if not os.path.isfile(path) or not os.access(path, os.X_OK):
-        raise RuntimeError(
-            f"Configured Claude CLI ({os.path.basename(path)}) is not an executable file"
-        )
-    return path

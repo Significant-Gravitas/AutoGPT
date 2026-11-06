@@ -20,7 +20,8 @@ vi.mock("@/hooks/useIsBillingEnabled", () => ({
 const posthog = vi.hoisted(() => ({
   __loaded: true,
   is_capturing: () => true,
-  capture: vi.fn(),
+  // posthog-js returns the event it takes, and nothing when it drops one.
+  capture: vi.fn((event: string) => ({ event })),
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 

@@ -77,12 +77,12 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-200",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface-muted to-transparent transition-opacity duration-200",
             hasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-t-border-base px-5 py-3">
         <Button type="button" variant="ghost" size="small" onClick={onClose}>
           Cancel
         </Button>

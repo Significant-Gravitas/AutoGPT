@@ -21,7 +21,9 @@ from pathlib import Path
 
 # pytest's own naming rules plus the backend's tests and fixtures. `.+`, not
 # `.*`: a module called `_test.py` is somebody's helper.
-TEST_NAME = re.compile(r"(.+_test|.+_fixtures|test_.*|conftest)\.py")
+TEST_NAME = re.compile(
+    r"(.+_test|.+_fixtures|test_.*|conftest|host_fs_windows_native_checks)\.py"
+)
 BLOCKS = "blocks"
 
 

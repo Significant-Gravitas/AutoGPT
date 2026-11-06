@@ -1696,9 +1696,9 @@ def test_the_gate_imports_a_package_in_the_environment_a_service_has():
 
 
 def test_the_backend_modules_that_may_fail_to_import_are_still_there():
-    for module in bundle_gate.NOT_IMPORTABLE:
+    for module in set(bundle_gate.NOT_IMPORTABLE) | bundle_gate.WINDOWS_ONLY_BACKEND:
         path = BACKEND.parent / (module.replace(".", "/") + ".py")
         assert path.is_file(), (
-            f"{module} is gone from the backend: take it off NOT_IMPORTABLE in "
+            f"{module} is gone from the backend: remove its import exemption in "
             "desktop/build/bundle_gate.py"
         )

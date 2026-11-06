@@ -91,7 +91,6 @@ FRONTEND_BUILD_ENV = {
     "NEXT_PUBLIC_FRONTEND_BASE_URL": "",
     "NEXT_PUBLIC_APP_ENV": "local",
     "NEXT_PUBLIC_BEHAVE_AS": "LOCAL",
-    "NEXT_PUBLIC_LAUNCHDARKLY_ENABLED": "false",
     "NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID": "",
     "NEXT_PUBLIC_POSTHOG_KEY": "",
     "NEXT_PUBLIC_POSTHOG_HOST": "",
@@ -708,7 +707,10 @@ class Build:
         gate = Path(__file__).with_name("bundle_gate.py")
         command = [str(self.python), "-B", str(gate), str(self.out), *arguments]
         print(f"  $ {' '.join(command)}", flush=True)
-        if subprocess.run(command, stdin=subprocess.DEVNULL).returncode != 0:
+        if (
+            subprocess.run(command, stdin=subprocess.DEVNULL, check=False).returncode
+            != 0
+        ):
             raise RuntimeError("the bundle did not pass its gates; see above")
 
     # --- last ------------------------------------------------------------
