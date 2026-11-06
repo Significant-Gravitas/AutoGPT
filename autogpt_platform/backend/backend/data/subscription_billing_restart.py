@@ -132,6 +132,7 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     if stripe_id(subscription.get("latest_invoice")) != invoice_id:
         # Restarted already, or a newer invoice opened a later period: an old
         # payment never moves the renewal date of the period after it.
+        await _record_finished_reset(invoice_id, subscription, tx)
         return RestartOutcome.NOT_APPLICABLE
     late = late_payment(invoice, current_period_start(subscription))
     if late is None:
@@ -168,6 +169,22 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
         f" payment of invoice {invoice_id}, paid {_iso(late.paid_at)}"
     )
     return RestartOutcome.RESTARTED
+
+
+async def _record_finished_reset(
+    invoice_id: str, subscription: dict, tx: Prisma
+) -> None:
+    """Record a reset Stripe made whose record was lost, when the transaction
+    around it rolled back after the reset, so the audit doesn't list it."""
+    metadata = subscription.get("metadata") or {}
+    if metadata.get(RESTARTED_FROM_INVOICE_KEY) != invoice_id:
+        return
+    recorded = await SubscriptionBillingRestart.prisma(tx).update_many(
+        where={"stripeInvoiceId": invoice_id, "restartedAt": None},
+        data={"restartedAt": datetime.now(UTC)},
+    )
+    if recorded:
+        await invalidate_billing_lookups(stripe_id(subscription.get("customer")))
 
 
 async def _record_progress(
@@ -274,6 +291,8 @@ async def _reset_anchor(sub_id: str, invoice_id: str) -> bool:
             billing_cycle_anchor="now",
             proration_behavior="none",
             payment_behavior="error_if_incomplete",
+            # Set with the reset itself, so a retry can tell it happened.
+            metadata={RESTARTED_FROM_INVOICE_KEY: invoice_id},
             idempotency_key=f"billing-restart-anchor:{invoice_id}",
         )
     except stripe.CardError:

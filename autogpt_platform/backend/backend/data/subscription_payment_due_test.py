@@ -58,7 +58,7 @@ async def _due(*past_due: dict, replaced: bool = False):
             return_value={"price_pro": SubscriptionTier.PRO},
         ),
     ):
-        return await get_subscription_payment_due(CUSTOMER)
+        return await get_subscription_payment_due(CUSTOMER, fresh=True)
 
 
 @pytest.mark.asyncio

@@ -50,6 +50,9 @@ from backend.data.subscription_lookup_cache import (
     invalidate_active_subscription_cache,
     read_active_subscription,
 )
+from backend.data.subscription_payment_due_cache import (
+    invalidate_subscription_payment_due,
+)
 from backend.data.subscription_pending_cache import (
     PENDING_CHANGES,
     PendingChange,
@@ -1824,13 +1827,14 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
     """Drop the customer's cached billing lookups on every worker: the active
-    subscription and any pending change. Every path that changes the
-    customer's subscription in Stripe calls this after the change; it never
-    raises. Both at once, so a Redis outage costs the caller one deadline,
-    not two in a row."""
+    subscription, any pending change and a failed renewal's open bill. Every
+    path that changes the customer's subscription in Stripe calls this after
+    the change; it never raises. All at once, so a Redis outage costs the
+    caller one deadline, not one per lookup."""
     await asyncio.gather(
         invalidate_active_subscription_cache(customer_id),
         invalidate_pending_subscription_change(customer_id),
+        invalidate_subscription_payment_due(customer_id),
     )
 
 

@@ -9,15 +9,19 @@ one and voids its bill, so Stripe's retries stop. While such a bill is
 payable, the paywall offers it and Checkout is refused.
 """
 
+import asyncio
 import logging
 
 import stripe
-from pydantic import BaseModel
 
 from backend.data.credit import build_price_to_tier_map, replaced_by_newer_plan
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.stripe_invoice_payments import stripe_id
 from backend.data.subscription_billing_restart_invoice import current_period_start
+from backend.data.subscription_payment_due_cache import (
+    PAYMENTS_DUE,
+    SubscriptionPaymentDue,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,28 +35,36 @@ UNPAID_BILL_BLOCKS_CHECKOUT = (
 )
 
 
-class SubscriptionPaymentDue(BaseModel):
-    amount_due: int
-    currency: str
-    payment_url: str
-    plan: str | None = None
-    due_since: int | None = None
-
-
 async def get_subscription_payment_due(
-    customer_id: str | None,
+    customer_id: str | None, *, fresh: bool = False
 ) -> SubscriptionPaymentDue | None:
-    """The customer's open renewal bill, newest plan first, if one is payable."""
+    """The customer's open renewal bill, newest plan first, if one is payable.
+
+    Read through a short cache shared by every API worker, since the billing
+    status asks on every page load; ``fresh`` reads Stripe directly, for a
+    decision that changes the customer's billing."""
     if not customer_id:
         return None
-    for status in _PAYMENT_DUE_STATUSES:
-        subscriptions = await stripe_call(
-            stripe.Subscription.list_async,
-            customer=customer_id,
-            status=status,
-            limit=10,
-            expand=["data.latest_invoice"],
+    if fresh:
+        return await _read_payment_due(customer_id)
+    return await PAYMENTS_DUE.read(customer_id, lambda: _read_payment_due(customer_id))
+
+
+async def _read_payment_due(customer_id: str) -> SubscriptionPaymentDue | None:
+    # Stripe lists one status at a time; both lists are read together.
+    pages = await asyncio.gather(
+        *(
+            stripe_call(
+                stripe.Subscription.list_async,
+                customer=customer_id,
+                status=status,
+                limit=10,
+                expand=["data.latest_invoice"],
+            )
+            for status in _PAYMENT_DUE_STATUSES
         )
+    )
+    for subscriptions in pages:
         async for subscription in stripe_list_items(subscriptions):
             due = await _payment_due(customer_id, dict(subscription))
             if due is not None:

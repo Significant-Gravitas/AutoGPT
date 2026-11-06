@@ -784,7 +784,7 @@ async def update_subscription_tier(
         )
     try:
         user = await get_user_by_id(user_id)
-        if await get_subscription_payment_due(user.stripe_customer_id):
+        if await get_subscription_payment_due(user.stripe_customer_id, fresh=True):
             raise HTTPException(status_code=409, detail=UNPAID_BILL_BLOCKS_CHECKOUT)
         url = await create_subscription_checkout(
             user_id=user_id,

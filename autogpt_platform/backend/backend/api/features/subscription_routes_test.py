@@ -2696,6 +2696,29 @@ def test_status_offers_a_failed_renewals_open_bill(
     _no_open_renewal_bill.assert_awaited_once_with("cus_1")
 
 
+def test_status_without_the_bill_when_stripe_cannot_be_read(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    """The status is read on every page load; a Stripe error while reading
+    the open bill leaves the bill out, it doesn't fail the page."""
+    mock_user = Mock(subscription_tier=SubscriptionTier.NO_TIER)
+    mock_user.stripe_customer_id = "cus_1"
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _no_open_renewal_bill.side_effect = stripe.APIConnectionError("Stripe is down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["payment_due"] is None
+    _no_open_renewal_bill.assert_awaited_once_with("cus_1")
+
+
 def test_status_of_a_paying_customer_reads_no_bill(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,

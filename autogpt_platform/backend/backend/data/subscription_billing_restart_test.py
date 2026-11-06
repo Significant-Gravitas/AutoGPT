@@ -18,12 +18,18 @@ import stripe
 from dateutil.relativedelta import relativedelta
 from prisma.enums import SubscriptionTier
 
+from backend.data import credit
+from backend.data import subscription_billing_restart as restart
+from backend.data import subscription_payment_due as payment_due
+from backend.data import versioned_cache
+from backend.data.redis_client import get_redis_async
 from backend.data.subscription_billing_restart import (
     RESTARTED_FROM_INVOICE_KEY,
     RestartOutcome,
     restart_period_after_late_payment,
 )
 from backend.data.subscription_billing_restart_invoice import line_period_start
+from backend.data.subscription_payment_due_cache import PAYMENTS_DUE
 
 CUSTOMER = "cus_1"
 SUB = "sub_1"
@@ -53,6 +59,7 @@ class FakeStripe:
         self.lock_calls: list[tuple] = []
         self.tier: dict = {}
         self.rows: dict[str, MagicMock] = {}
+        self.list_calls: list[str] = []
 
     def add_subscription(
         self, period_start: int, interval: str = "month", **extra
@@ -165,6 +172,7 @@ class FakeStripe:
 
     async def modify_subscription(self, sub_id: str, idempotency_key=None, **params):
         self.modify_started.set()
+        sub = self.subscriptions[sub_id]
         if self.hold_modify is not None:
             await self.hold_modify.wait()
         if (replayed := self._replay(idempotency_key)) is not None:
@@ -176,8 +184,8 @@ class FakeStripe:
             "billing_cycle_anchor": "now",
             "proration_behavior": "none",
             "payment_behavior": "error_if_incomplete",
+            "metadata": {RESTARTED_FROM_INVOICE_KEY: sub["latest_invoice"]},
         }
-        sub = self.subscriptions[sub_id]
         total = self.new_period_total(sub_id)
         from_balance = min(total, -self.balance)
         card = total - from_balance
@@ -201,6 +209,7 @@ class FakeStripe:
             current_period_start=self.now,
             current_period_end=self._advance(self.now, self.now, 1),
             latest_invoice=invoice_id,
+            metadata={**(sub.get("metadata") or {}), **params["metadata"]},
         )
         result = dict(sub)
         if idempotency_key:
@@ -221,13 +230,19 @@ class FakeStripe:
             total = self.preview_total
         return {"total": total, "amount_due": max(0, total + self.balance)}
 
-    async def list_subscriptions(self, customer: str, status: str, limit: int):
+    async def list_subscriptions(
+        self, customer: str, status: str, limit: int, expand: list | None = None
+    ):
+        self.list_calls.append(status)
         page = MagicMock()
         page.data = [
             dict(s)
             for s in self.subscriptions.values()
             if s["customer"] == customer and s["status"] == status
         ]
+        if expand == ["data.latest_invoice"]:
+            for sub in page.data:
+                sub["latest_invoice"] = dict(self.invoices[sub["latest_invoice"]])
         page.has_more = False
         return page
 
@@ -274,6 +289,17 @@ def fake():
             setattr(row, field, value)
         return row
 
+    async def update_many(where, data):
+        row = rows.get(where["stripeInvoiceId"])
+        if row is None or any(
+            getattr(row, field) != value
+            for field, value in where.items()
+            if field != "stripeInvoiceId"
+        ):
+            return 0
+        await update(where, data)
+        return 1
+
     module = "backend.data.subscription_billing_restart"
     with ExitStack() as stack:
         stack.enter_context(
@@ -282,6 +308,7 @@ def fake():
                 return_value=MagicMock(
                     upsert=AsyncMock(side_effect=upsert),
                     update=AsyncMock(side_effect=update),
+                    update_many=AsyncMock(side_effect=update_many),
                 ),
             )
         )
@@ -481,6 +508,79 @@ async def test_a_failure_between_credit_and_reset_is_finished_by_the_retry(fake)
     assert len(fake.credit_notes) == 1
     assert fake.balance == 0
     assert fake.card_charges == [PRICE]
+
+
+@pytest.mark.asyncio
+async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fake):
+    """Stripe reset the period, then the transaction around it rolled back
+    before restartedAt was saved. The retry finds the reset done and records
+    it, so the audit doesn't list a finished account for a person."""
+    _fail_on_3rd_pay_on_9th(fake)
+    table = restart.SubscriptionBillingRestart.prisma()
+    save = table.update.side_effect
+
+    async def lose_restarted_at(where, data):
+        if "restartedAt" in data:
+            raise ConnectionError("database connection lost")
+        return await save(where, data)
+
+    table.update.side_effect = lose_restarted_at
+    with pytest.raises(ConnectionError):
+        await restart_period_after_late_payment("in_march")
+    assert fake.subscriptions[SUB]["current_period_start"] == fake.now
+    assert fake.rows["in_march"].restartedAt is None
+
+    table.update.side_effect = save
+    fake.idempotent.clear()
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NOT_APPLICABLE
+    )
+    assert fake.rows["in_march"].restartedAt is not None
+    assert len(fake.credit_notes) == 1
+    assert fake.card_charges == [PRICE]
+
+
+@pytest.mark.asyncio
+async def test_a_restart_clears_the_cached_open_bill_at_once(fake, monkeypatch):
+    """The paywall polls the billing status while a bill is open, and the
+    status reads the bill through a shared cache. The restart that follows
+    the payment drops it, so the next poll lifts the paywall instead of
+    showing the paid bill until the cache expires."""
+    monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", 5)
+    redis = await asyncio.wait_for(get_redis_async(), 5)
+    assert await asyncio.wait_for(redis.ping(), 5), "this test needs Redis"
+    await PAYMENTS_DUE.invalidate(CUSTOMER)
+    fake.add_subscription(period_start=_ts(2026, 3, 3), status="past_due")
+    fake.add_invoice("in_march", paid_at=None, attempt_count=4)
+    fake.invoices["in_march"].update(
+        amount_due=PRICE,
+        currency="usd",
+        hosted_invoice_url="https://invoice.stripe.com/i/acct_1/test_bill",
+    )
+    monkeypatch.setattr(
+        payment_due, "build_price_to_tier_map", AsyncMock(return_value={})
+    )
+    # The real invalidation, which the fixture otherwise stubs out.
+    monkeypatch.setattr(
+        restart, "invalidate_billing_lookups", credit.invalidate_billing_lookups
+    )
+
+    bill = await payment_due.get_subscription_payment_due(CUSTOMER)
+    assert bill is not None and bill.amount_due == PRICE
+    stripe_reads = list(fake.list_calls)
+    assert stripe_reads.count("past_due") == stripe_reads.count("unpaid") == 1
+    for _ in range(2):
+        assert await payment_due.get_subscription_payment_due(CUSTOMER) == bill
+    assert fake.list_calls == stripe_reads
+
+    fake.pay("in_march", paid_at=fake.now)
+    fake.subscriptions[SUB]["status"] = "active"
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.RESTARTED
+    )
+
+    assert await payment_due.get_subscription_payment_due(CUSTOMER) is None
+    assert fake.list_calls.count("past_due") == 2
 
 
 @pytest.mark.asyncio
