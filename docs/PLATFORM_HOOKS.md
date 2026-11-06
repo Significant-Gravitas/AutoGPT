@@ -9,6 +9,11 @@ All file paths are relative to `autogpt_platform/backend/backend/`.
 
 ## 1. `copilot/config.py` — New Config Fields
 
+> As built (#13050), the rollout gates are per-user PostHog flags, not
+> config fields: `local-pc-executor` for Local PC and
+> `local-pc-computer-use` for computer use (§10.9). The fields below are the
+> original sketch.
+
 ```python
 # Add to CopilotConfig (or ChatConfig, whichever owns executor selection):
 
@@ -365,11 +370,11 @@ OAuth client registration must accept ALL ports in that range as valid
 
 The platform side is written but not merged: it is on PR #13050 (branch
 `experimental/local-pc-executor`), and the platform files named below are
-on that branch, not on `dev`. Once it merges, when all of —
-`config.use_local_pc_executor` AND `config.allow_computer_use` AND
-the per-user `local-pc-executor` PostHog flag AND the connected
-shim advertised `"computer_use"` in its HELLO `capabilities` — are
-true, Otto's computer use runs on the user's shim through cua-driver.
+on that branch, not on `dev`. Once it merges, when all of — the
+per-user `local-pc-executor` and `local-pc-computer-use` PostHog flags
+AND the user's consent for the machine AND the connected shim advertised
+`"computer_use"` in its HELLO `capabilities` — are true, Otto's computer
+use runs on the user's shim through cua-driver.
 
 How the four sketched pieces land there:
 
