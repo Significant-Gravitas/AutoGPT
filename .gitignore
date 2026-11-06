@@ -191,6 +191,8 @@ ig*
 # And the copilot price card: an ignored module is untracked, and ruff
 # (force-exclude) and black skip it too, so it would ship unlinted.
 !autogpt_platform/backend/backend/copilot/price_card*.py
+# And docs such as privacy-objections.md: a doc is never local scratch.
+!docs/**/pri*.md
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py
