@@ -1229,7 +1229,8 @@ def _http_ok(url: str) -> bool:
     if not listening(urllib.parse.urlsplit(url).port or 80):
         return False
     try:
-        with urllib.request.urlopen(url, timeout=3) as response:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(url, timeout=3) as response:
             return response.status < 500
     except urllib.error.HTTPError as exc:
         return exc.code < 500
