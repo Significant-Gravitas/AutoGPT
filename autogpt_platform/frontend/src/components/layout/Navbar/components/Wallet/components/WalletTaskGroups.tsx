@@ -1,6 +1,11 @@
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
+import {
+  ArrowDown01Icon,
+  HelpCircleIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -180,10 +185,10 @@ export function TaskGroups({ groups }: Props) {
           >
             {/* Name, details and completed count */}
             <div className="flex-1">
-              <div className="text-sm font-medium text-foreground-strong">
+              <div className="text-body font-medium text-foreground-strong">
                 {group.name}
               </div>
-              <div className="mt-1 text-xs leading-tight font-normal text-foreground-tertiary">
+              <div className="mt-1 text-caption leading-tight font-normal text-foreground-tertiary">
                 {group.details}
                 <br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
@@ -193,20 +198,22 @@ export function TaskGroups({ groups }: Props) {
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
               {isGroupCompleted(group) ? (
-                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-xs font-medium text-success-foreground">
+                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-caption font-medium text-success-foreground">
                   Done
                 </div>
               ) : (
-                <div className="text-xs leading-tight font-medium text-brand">
+                <div className="text-caption leading-tight font-medium text-brand">
                   $
                   {group.tasks
                     .reduce((sum, task) => sum + task.amount, 0)
                     .toFixed(2)}
                 </div>
               )}
-              <ChevronDown
-                className={`h-5 w-5 text-foreground-base transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
-              />
+              <span
+                className={`flex text-foreground-base transition-transform duration-300 ease-in-out ${openGroups[group.name] ? "rotate-180" : ""}`}
+              >
+                <Icon aria-hidden icon={ArrowDown01Icon} className="h-5 w-5" />
+              </span>
             </div>
           </div>
 
@@ -237,12 +244,18 @@ export function TaskGroups({ groups }: Props) {
                       )}
                     >
                       {isTaskCompleted(task) && (
-                        <Check className="h-3 w-3 text-success" />
+                        <span className="flex text-success">
+                          <Icon
+                            aria-hidden
+                            icon={Tick02Icon}
+                            className="h-3 w-3"
+                          />
+                        </span>
                       )}
                     </div>
                     <span
                       className={cn(
-                        "text-sm font-normal",
+                        "text-body font-normal",
                         isTaskCompleted(task)
                           ? "text-foreground-tertiary line-through"
                           : "text-foreground-emphasis",
@@ -255,7 +268,7 @@ export function TaskGroups({ groups }: Props) {
                   {task.amount > 0 && (
                     <span
                       className={cn(
-                        "text-xs font-normal text-foreground-tertiary",
+                        "text-caption font-normal text-foreground-tertiary",
                         isTaskCompleted(task) ? "line-through" : "",
                       )}
                     >
@@ -278,7 +291,7 @@ export function TaskGroups({ groups }: Props) {
                         }}
                       />
                     </div>
-                    <span className="mx-1 w-8 text-right text-xs font-normal text-foreground-tertiary">
+                    <span className="mx-1 w-8 text-right text-caption font-normal text-foreground-tertiary">
                       {(
                         (task.progress.current / task.progress.target) *
                         100
@@ -292,7 +305,7 @@ export function TaskGroups({ groups }: Props) {
                   <>
                     <div
                       className={cn(
-                        "mt-0 overflow-hidden pt-0 pl-6 text-xs font-normal text-foreground-tertiary transition-all duration-300 ease-in-out",
+                        "mt-0 overflow-hidden pt-0 pl-6 text-caption font-normal text-foreground-tertiary transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
                         openGroups[group.name]
                           ? "max-h-[100px] opacity-100"
@@ -338,10 +351,10 @@ export function TaskGroups({ groups }: Props) {
         <div className="flex items-center justify-between p-3">
           {/* Name and details */}
           <div className="flex-1">
-            <div className="text-sm font-medium text-foreground-strong">
+            <div className="text-body font-medium text-foreground-strong">
               Hidden Tasks
             </div>
-            <div className="mt-1 text-xs leading-tight font-normal text-foreground-tertiary">
+            <div className="mt-1 text-caption leading-tight font-normal text-foreground-tertiary">
               Check back later — new tasks are on the way
             </div>
           </div>
@@ -353,7 +366,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <BadgeQuestionMark />
+                  <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-surface-hover" />
               </div>
@@ -364,7 +377,7 @@ export function TaskGroups({ groups }: Props) {
               {/* Question mark and rectangle */}
               <div className="flex items-center gap-2">
                 <div className="flex h-4 w-4 items-center justify-center">
-                  <BadgeQuestionMark />
+                  <Icon aria-hidden icon={HelpCircleIcon} size={24} />
                 </div>
                 <div className="h-4 w-64 rounded-full bg-surface-hover" />
               </div>

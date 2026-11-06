@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { cn } from "@/lib/utils";
 
@@ -30,8 +31,6 @@ function isExternalPickerOpen(): boolean {
   return document.body.hasAttribute("data-google-picker-open");
 }
 
-// TODO(tokens): black (#141414) is held only by the `foreground-base` role,
-// a text colour, not a scrim (SECRT-3154).
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -41,7 +40,7 @@ const DialogOverlay = React.forwardRef<
     data-dialog-overlay
     data-slot="dialog-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-scrim/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -128,7 +127,12 @@ const DialogContent = React.forwardRef<
           data-slot="dialog-close"
           className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:outline-none disabled:pointer-events-none data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-tertiary"
         >
-          <Cross2Icon data-slot="dialog-close-icon" className="h-4 w-4" />
+          <Icon
+            aria-hidden
+            icon={Cancel01Icon}
+            data-slot="dialog-close-icon"
+            className="h-4 w-4"
+          />
           <span data-slot="dialog-close-label" className="sr-only">
             Close
           </span>
@@ -169,8 +173,7 @@ const DialogFooter = ({
 );
 DialogFooter.displayName = "DialogFooter";
 
-// TODO(tokens): no size role for text-lg (18px) and no tracking role for
-// tracking-tight (-0.025em).
+// TODO(tokens): no tracking role for tracking-tight (-0.025em).
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -179,7 +182,7 @@ const DialogTitle = React.forwardRef<
     ref={ref}
     data-slot="dialog-title"
     className={cn(
-      "text-lg leading-none font-semibold tracking-tight",
+      "text-lead leading-none font-semibold tracking-tight",
       className,
     )}
     {...props}

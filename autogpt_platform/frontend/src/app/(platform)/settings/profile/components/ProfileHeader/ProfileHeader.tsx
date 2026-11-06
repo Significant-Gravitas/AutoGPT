@@ -100,11 +100,11 @@ export function ProfileHeader({
           }}
           transition={{ duration: 0.18, ease: EASE_OUT }}
           // oxlint-disable-next-line design-system/no-arbitrary-values -- a 2px blur under the hover veil; backdrop-blur-sm is 4px
-          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-action-foreground backdrop-blur-[2px]"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-scrim/45 text-action-foreground backdrop-blur-[2px]"
         >
           {isUploading ? (
             // oxlint-disable-next-line design-system/no-restyle -- the upload glyph spins while the photo uploads
-            <Icon icon={Loading03Icon} size={26} className="animate-spin" />
+            <Icon icon={Loading03Icon} size={26} spin />
           ) : (
             <Icon icon={Camera01Icon} size={26} />
           )}

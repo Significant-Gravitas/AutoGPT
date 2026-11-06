@@ -38,7 +38,7 @@ export function ServiceKeyForm({ provider, service, onConnected }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2 rounded-xl bg-surface-muted p-4 text-sm text-foreground-tertiary">
+      <div className="space-y-2 rounded-xl bg-surface-muted p-4 text-body text-foreground-tertiary">
         <p>
           This workflow needs an API key for {service.name}. Otto will use it
           only for requests to {service.host}.

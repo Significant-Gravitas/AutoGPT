@@ -2,9 +2,12 @@
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
+import stat
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -25,6 +28,8 @@ from backend.copilot.graphiti.context_marker import (
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.turn_tracing import TurnTrace
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
@@ -452,6 +457,85 @@ class TestCleanupSdkToolResults:
         # Directory should NOT have been removed (rejected early)
         assert os.path.exists(evil_cwd)
         mock_sweep.assert_not_called()
+
+
+class TestCliTmpdir:
+    @pytest.mark.asyncio
+    async def test_cli_tmpdir_is_private_and_removed_with_the_cwd(self):
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir
+
+        cwd = f"/tmp/copilot-test-cli-tmpdir-{uuid.uuid4().hex}"
+        os.makedirs(cwd, exist_ok=True)
+        tmpdir = _make_cli_tmpdir(cwd)
+        assert os.path.dirname(tmpdir) == os.path.dirname(cwd)
+        assert stat.S_IMODE(os.lstat(tmpdir).st_mode) == 0o700
+        assert _make_cli_tmpdir(cwd) == tmpdir
+
+        with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        assert not os.path.lexists(tmpdir)
+
+    def test_cli_tmpdir_is_reused_only_when_private(self, tmp_path):
+        from backend.copilot.host_fs import cli_tmpdir
+
+        from .service import _make_cli_tmpdir
+
+        cwd = str(tmp_path / "copilot-s1")
+        os.mkdir(cli_tmpdir(cwd))
+        os.chmod(cli_tmpdir(cwd), 0o755)
+        with pytest.raises(FileExistsError):
+            _make_cli_tmpdir(cwd)
+
+    @pytest.mark.asyncio
+    async def test_a_turn_does_not_start_on_a_cli_tmpdir_that_is_not_private(
+        self, tmp_path
+    ):
+        from backend.copilot.host_fs import cli_tmpdir
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.response_model import StreamError, StreamStatus
+
+        from .retry_scenarios_test import _make_sdk_patches
+        from .service import stream_chat_completion_sdk
+
+        cwd = str(tmp_path / "copilot-s1")
+        os.mkdir(cli_tmpdir(cwd))
+        os.chmod(cli_tmpdir(cwd), 0o755)
+        session = ChatSession(
+            session_id="s1",
+            user_id="u1",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[ChatMessage(role="user", content="hello")],
+        )
+        client = MagicMock(side_effect=AssertionError("the CLI must not start"))
+        patches = [
+            (target, {"return_value": cwd} if target.endswith("._make_sdk_cwd") else kw)
+            for target, kw in _make_sdk_patches(session, "", None, client)
+        ]
+        first = None
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stream = stream_chat_completion_sdk(
+                session_id="s1",
+                message="hello",
+                is_user_message=True,
+                user_id="u1",
+                session=session,
+            )
+            async for event in stream:
+                if isinstance(event, (StreamError, StreamStatus)):
+                    first = event
+                    break
+            await stream.aclose()
+
+        assert isinstance(first, StreamError) and first.code == "sdk_cwd_error"
+        client.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1528,7 +1612,7 @@ class TestConsumeSdkUntilDone:
     rig — just verify that the moved-from-while-True body still dispatches
     the SDK message stream correctly across the common branches."""
 
-    def _ctx(self, session_id="s1"):
+    def _ctx(self, session_id="s1", codex_gateway=None):
         from datetime import UTC, datetime
         from unittest.mock import MagicMock
 
@@ -1560,6 +1644,7 @@ class TestConsumeSdkUntilDone:
             attachments=attachments,
             compaction=CompactionTracker(),
             lock=lock,
+            codex_gateway=codex_gateway,
         )
 
     def _state(self, session_id="s1"):
@@ -1645,6 +1730,96 @@ class TestConsumeSdkUntilDone:
         assert any(isinstance(e, StreamFinish) for e in events)
         assert acc.stream_completed is True
         assert loop_state.ended_with_stream_error is False
+
+    @pytest.mark.parametrize(
+        "preceding_text",
+        ["", "a line the model wrote before the error happened. " * 20],
+        ids=["error-alone", "error-behind-a-long-block"],
+    )
+    @pytest.mark.asyncio
+    async def test_a_refusal_from_our_own_gateway_fails_the_turn(self, preceding_text):
+        """The CLI reports a 4xx of ours as an assistant message with an error.
+
+        Forwarded, it becomes the turn's reply: a user read "API Error: 409
+        This tool-result request refers to a completed model call" off a turn
+        that ended as a success with no output (SECRT-3333). It must fail the
+        turn instead, so the chat bot can say why.
+
+        The second case puts the error behind a block long enough to push it
+        out of the 500-character ``repr`` preview the surrounding checks use.
+        """
+        from aiohttp import ClientSession
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.response_model import StreamTextDelta
+        from backend.copilot.sdk.codex_compat_gateway import (
+            GATEWAY_REFUSED_CODE,
+            GATEWAY_REFUSED_MESSAGE,
+            CodexAnthropicGateway,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        class _NeverInvoked:
+            async def invoke(self, *_args, **_kwargs):
+                raise AssertionError("a refused request must not reach the model")
+
+        async with CodexAnthropicGateway(
+            agent_session=_NeverInvoked(),
+            model="gpt-5.6-terra",
+        ) as gateway:
+            async with ClientSession() as client:
+                refused = await client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers={"Authorization": f"Bearer {gateway.auth_token}"},
+                    json=["not an object"],
+                )
+                body = await refused.json()
+            # The gateway's own sentence, in the wording the CLI hands us.
+            reported = f"API Error: {refused.status} {body['error']['message']}"
+
+            ctx = self._ctx(codex_gateway=gateway)
+            state = self._state()
+            acc = self._acc()
+            loop_state = self._loop_state()
+
+            async def fake_iter(client, wake=None, tool_display_wake=None):
+                blocks = [TextBlock(text=reported)]
+                if preceding_text:
+                    blocks.insert(0, TextBlock(text=preceding_text))
+                yield AssistantMessage(
+                    content=blocks,
+                    model="test",
+                    error="unknown",
+                )
+                yield ResultMessage(
+                    subtype="success",
+                    duration_ms=1,
+                    duration_api_ms=1,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="s1",
+                    result=reported,
+                )
+
+            with patch(
+                "backend.copilot.sdk.service._iter_sdk_messages",
+                new=fake_iter,
+            ):
+                events = []
+                async for ev in _consume_sdk_until_done(
+                    MagicMock(), ctx, state, acc, loop_state
+                ):
+                    events.append(ev)
+
+        assert gateway.last_refusal == body["error"]["message"]
+        assert [e for e in events if isinstance(e, StreamTextDelta)] == []
+        assert all(reported not in str(event) for event in events)
+        assert all(
+            reported not in (message.content or "") for message in ctx.session.messages
+        )
+        assert loop_state.ended_with_stream_error is True
+        assert loop_state.stream_error_code == GATEWAY_REFUSED_CODE
+        assert loop_state.stream_error_msg == GATEWAY_REFUSED_MESSAGE
 
     @pytest.mark.asyncio
     async def test_heartbeat_sentinel_yields_heartbeat_event(self):
@@ -2085,6 +2260,37 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in assistant_msgs]
         assert STREAM_INCOMPLETE_MARKER in contents
         assert STOPPED_BY_USER_MARKER not in contents
+
+    @pytest.mark.asyncio
+    async def test_a_hangup_ends_the_turn_failed(self):
+        """The notice is all the turn has in place of a reply, so the turn's
+        outcome is failed, under the notice's code (``turn_tracing``)."""
+        ctx = self._ctx()
+        state = self._state()
+        turn = TurnTrace(MagicMock())
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            async for ev in _run_stream_attempt(ctx, state):
+                turn.observe(ev)
+        turn.set_outcome(None, CANCELLED_MESSAGE)
+
+        assert (turn.outcome, turn.error_code) == ("failed", "stream_incomplete")
 
     @pytest.mark.asyncio
     async def test_ended_with_stream_error_persists_stream_error_marker(self):

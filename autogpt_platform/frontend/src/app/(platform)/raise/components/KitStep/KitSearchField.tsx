@@ -34,7 +34,8 @@ export function KitSearchField({
         icon={Search01Icon}
         size={16}
         aria-hidden
-        className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2 text-muted-foreground"
+        tone="muted"
+        className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2"
       />
       <Input
         id={`raise-${scope}-search`}
@@ -54,14 +55,16 @@ export function KitSearchField({
           icon={Loading03Icon}
           size={16}
           aria-hidden
-          className="absolute top-1/2 right-3.5 z-10 -translate-y-1/2 animate-spin text-muted-foreground motion-reduce:animate-none"
+          spin
+          tone="muted"
+          className="absolute top-1/2 right-3.5 z-10 -translate-y-1/2"
         />
       ) : value ? (
         <button
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute top-1/2 right-2.5 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-surface-hover hover:text-foreground"
+          className="absolute top-1/2 right-2.5 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-foreground-tertiary transition-colors duration-200 hover:bg-surface-hover hover:text-foreground-base"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
         </button>
