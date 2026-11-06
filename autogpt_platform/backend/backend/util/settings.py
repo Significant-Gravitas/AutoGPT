@@ -570,6 +570,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "box pointed at nothing has no egress at all.",
     )
 
+    e2b_egress_proxy_ca_cert: str = Field(
+        default="",
+        description="PEM certificate of the swap proxy's signing CA (the "
+        "certificate only, never the key), installed in every box pinned to "
+        "the proxy (see backend.util.e2b_proxy_trust). Required with "
+        "e2b_egress_proxy_address: without it TLS to bound hosts fails inside "
+        "boxes. Several certificates are trusted together, which is how a "
+        "rotation is rolled out.",
+    )
+
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "

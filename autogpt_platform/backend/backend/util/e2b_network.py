@@ -18,6 +18,11 @@ because every reconnect says so again.  Do not set the address before the
 proxy exists: E2B's proxy option fails closed, so a box pointed at nothing
 has no egress at all, pip, npm and gh included.
 
+A pinned box is also made to trust the proxy's signing CA
+(``e2b_proxy_trust``), on create and on a reconnect whose box lacks it: the
+proxy terminates TLS to bound hosts, and without the CA every such
+connection fails inside the box.
+
 The per-box proxy credential is how the proxy knows whose connection it is
 serving, and that mapping is the tenant boundary on the proxy's side.  A
 credential is minted for one running stretch of a box: fresh at create,
@@ -53,6 +58,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
+from backend.util.e2b_proxy_trust import trust_envs, trust_proxy_ca
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -194,6 +200,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         owner.label,
     )
     _audit_pin("created", sandbox.sandbox_id, owner)
+    await trust_proxy_ca(sandbox)
     return sandbox
 
 
@@ -253,7 +260,18 @@ async def connect_sandbox(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
     _audit_pin("reconnected", sandbox_id, owner)
+    # A box from before the proxy, or from before a rotation, gets the CA now.
+    await trust_proxy_ca(sandbox)
     return sandbox
+
+
+async def proxy_trust_envs(sandbox: AsyncSandbox) -> dict[str, str]:
+    """Environment for a process in *sandbox* that does not read
+    ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA.
+    Empty with no proxy configured, or when the box could not be made to."""
+    if proxy_address() is None:
+        return {}
+    return trust_envs(await trust_proxy_ca(sandbox))
 
 
 async def reattach_command(

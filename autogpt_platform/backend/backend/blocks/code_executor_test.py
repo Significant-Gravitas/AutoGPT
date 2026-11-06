@@ -337,6 +337,37 @@ class TestExecuteCodeWritesFiles:
         }
 
 
+class TestExecuteCodeTrustsTheProxyCA:
+    async def test_the_kernel_gets_the_ca_paths_and_the_callers_envs_win(self):
+        block = ExecuteCodeBlock()
+        execution = MagicMock(error=None, results=[], text="")
+        execution.logs.stdout, execution.logs.stderr = [], []
+        sandbox = MagicMock(sandbox_id="sb")
+        sandbox.run_code = AsyncMock(return_value=execution)
+        trust = {"REQUESTS_CA_BUNDLE": "/ca/bundle.pem", "SSL_CERT_FILE": "/ca/b"}
+        with (
+            patch(
+                "backend.blocks.code_executor.create_sandbox",
+                AsyncMock(return_value=sandbox),
+            ),
+            patch(
+                "backend.blocks.code_executor.proxy_trust_envs",
+                AsyncMock(return_value=trust),
+            ),
+        ):
+            await block.execute_code(
+                api_key="k",
+                code="print(1)",
+                language=ProgrammingLanguage.PYTHON,
+                envs={"SSL_CERT_FILE": "/mine.pem"},
+            )
+
+        assert sandbox.run_code.await_args.kwargs["envs"] == {
+            "REQUESTS_CA_BUNDLE": "/ca/bundle.pem",
+            "SSL_CERT_FILE": "/mine.pem",
+        }
+
+
 class TestCodeSandboxClass:
     """``run_code`` is bounded only on ``OutputLimitedCodeSandbox``."""
 
