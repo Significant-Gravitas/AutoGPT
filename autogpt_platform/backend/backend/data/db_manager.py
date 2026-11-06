@@ -671,6 +671,7 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    check_private_expert = _(experts_db.check_private_expert)
     get_autopilot_mode = _(experts_db.get_autopilot_mode)
     list_expert_identities = _(experts_db.list_expert_identities)
     owns_active_expert = _(experts_db.owns_active_expert)
@@ -917,6 +918,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Graphs
     get_graph_metadata = _(d.get_graph_metadata)
+    get_node = _(d.get_node)
 
     # Credits
     spend_credits = _(d.spend_credits)
@@ -1259,6 +1261,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    check_private_expert = d.check_private_expert
     get_autopilot_mode = d.get_autopilot_mode
     list_expert_identities = d.list_expert_identities
     owns_active_expert = d.owns_active_expert

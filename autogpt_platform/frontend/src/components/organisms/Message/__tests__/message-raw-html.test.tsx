@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Message, MessageResponse } from "../Message";
@@ -124,13 +124,12 @@ describe("MessageResponse with text that looks like HTML", () => {
   it.each(BOTH_BUBBLES)(
     "keeps a placeholder inside a bare app link in the %s's bubble",
     async (from) => {
-      vi.spyOn(window, "open").mockImplementation(() => null);
       const container = await renderBubble(
         from,
         "Hi <first name>, [open <first name>'s workflow](library/agents/1) to run it.",
       );
 
-      const links = container.querySelectorAll<HTMLButtonElement>(
+      const links = container.querySelectorAll<HTMLAnchorElement>(
         '[data-streamdown="link"]',
       );
       expect(Array.from(links, (link) => link.textContent)).toEqual([
@@ -139,9 +138,7 @@ describe("MessageResponse with text that looks like HTML", () => {
       expect(container.textContent).toBe(
         "Hi <first name>, open <first name>'s workflow to run it.",
       );
-      fireEvent.click(links[0]);
-      await waitFor(() => expect(window.open).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(window.open).mock.calls[0][0]).toBe("/library/agents/1");
+      expect(links[0].getAttribute("href")).toBe("/library/agents/1");
     },
   );
 });
