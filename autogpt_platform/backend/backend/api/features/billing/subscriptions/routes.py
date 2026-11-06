@@ -857,11 +857,31 @@ async def _restart_period_if_paid_late(invoice_id: str | None) -> None:
     if not invoice_id:
         return
     outcome = await restart_period_after_late_payment(invoice_id)
-    if outcome == RestartOutcome.NEEDS_MANUAL_FIX:
+    if outcome == RestartOutcome.NEEDS_MANUAL_FIX and await _claim_restart_alert(
+        invoice_id
+    ):
         await alert_tier_reconciliation_discrepancy(
             f"Invoice {invoice_id} was paid late but its subscription's billing"
             " period could not be restarted from the payment; see the logs"
         )
+
+
+async def _claim_restart_alert(invoice_id: str) -> bool:
+    """Whether to send the manual-fix alert: once per invoice, though each
+    payment arrives as three events and Stripe redelivers them for days, and
+    each delivery runs the restart again. On Redis failure, alert anyway."""
+    try:
+        redis_client = await get_redis_async()
+        claimed = await redis_client.set(
+            f"billing_restart_alert:{invoice_id}", "1", nx=True, ex=7 * 86400
+        )
+        return bool(claimed)
+    except Exception:
+        logger.warning(
+            f"Could not dedupe the billing restart alert for invoice {invoice_id}",
+            exc_info=True,
+        )
+        return True
 
 
 def _paid_invoice_id(event_type: str, data_object: dict) -> str | None:

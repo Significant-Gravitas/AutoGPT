@@ -5,6 +5,7 @@ import hmac
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import fastapi
 import fastapi.testclient
@@ -1133,6 +1134,9 @@ def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
     alert = mocker.patch(
         f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
     )
+    mocker.patch(
+        f"{routes}._claim_restart_alert", new_callable=AsyncMock, return_value=True
+    )
 
     _post_event(
         mocker,
@@ -1156,3 +1160,47 @@ def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
     ]
     restart.assert_awaited_once_with("in_late")
     assert alert.await_count == int(outcome == RestartOutcome.NEEDS_MANUAL_FIX)
+
+
+def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """One payment arrives as invoice.paid, invoice.payment_succeeded and
+    invoice_payment.paid, and Stripe redelivers each for days; every delivery
+    runs the restart again. The person is told once."""
+    invoice_id = f"in_{uuid4().hex}"
+    invoice = {"id": invoice_id, "customer": "cus_1", "subscription": "sub_1"}
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
+    )
+    routes = "backend.api.features.billing.subscriptions.routes"
+    for name in (
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+        "recover_claimed_billing_event",
+    ):
+        mocker.patch(f"{routes}.{name}", new_callable=AsyncMock)
+    restart = mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NEEDS_MANUAL_FIX,
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+    )
+    paid = {"id": f"evt_{uuid4().hex}", "type": "invoice.paid"}
+
+    for event in (
+        {**paid, "data": {"object": invoice}},
+        {**paid, "data": {"object": invoice}},  # Stripe's redelivery
+        {
+            "id": f"evt_{uuid4().hex}",
+            "type": "invoice_payment.paid",
+            "data": {"object": {"invoice": invoice_id}},
+        },
+    ):
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    alert.assert_awaited_once()
