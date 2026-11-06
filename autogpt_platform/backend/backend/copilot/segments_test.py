@@ -213,7 +213,12 @@ class TestTheRouteSurvivesTheSavePath:
 
         captured: dict[str, object] = {}
 
-        async def _capture(session_id: str, messages: list, start_sequence: int) -> int:
+        async def _capture(
+            session_id: str,
+            messages: list,
+            start_sequence: int,
+            session_fields: object = None,
+        ) -> int:
             captured["messages"] = messages
             return start_sequence
 

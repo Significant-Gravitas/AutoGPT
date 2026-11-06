@@ -8,22 +8,31 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import ResourceVisibility
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
+    add_chat_messages_batch,
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
     update_chat_message_tool_calls,
+    update_chat_session,
     update_chat_session_llm_route,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
-from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionSaveFields,
+    get_chat_session,
+    upsert_chat_session,
+)
 
 
 def _make_msg(
@@ -99,6 +108,30 @@ async def test_update_chat_session_llm_route_merges_metadata_atomically(
     assert "jsonb_build_object" in sql
     assert '"updatedAt" = NOW()' in sql
     assert params == ["sess-1", "user-1", "codex", "cred-1"]
+
+
+@pytest.mark.asyncio
+async def test_update_chat_session_writes_only_the_columns_it_is_given():
+    """A field left as ``None`` keeps its column as it is, so a partial update
+    never blanks the session's other fields."""
+    with patch.object(PrismaChatSession, "prisma") as mock_prisma:
+        mock_prisma.return_value.update = AsyncMock(return_value=None)
+
+        await update_chat_session(
+            "sess-1",
+            title="Plans",
+            organization_id="org-1",
+            team_id=None,
+            update_tenancy=True,
+        )
+
+    data = mock_prisma.return_value.update.await_args.kwargs["data"]
+    assert set(data) == {"updatedAt", "title", "organizationId", "teamId"}
+    assert (data["title"], data["organizationId"], data["teamId"]) == (
+        "Plans",
+        "org-1",
+        None,
+    )
 
 
 @pytest.mark.asyncio
@@ -596,6 +629,83 @@ async def test_set_turn_duration_no_assistant_message(setup_test_user, test_user
     assert cached is not None
     # User message should not have durationMs
     assert cached.messages[0].duration_ms is None
+
+
+# ---------- Session fields saved with the rows (integration tests) ----------
+
+_NEW_FIELDS = ChatSessionSaveFields(
+    credentials={"github": {"id": "cred-1"}},
+    successful_agent_runs={"graph-1": 2},
+    successful_agent_schedules={"graph-2": 1},
+    total_prompt_tokens=120,
+    total_completion_tokens=30,
+)
+
+
+async def _saved_fields(session_id: str) -> ChatSessionSaveFields:
+    row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    assert row is not None
+    info = ChatSessionInfo.from_db(row)
+    return ChatSessionSaveFields(
+        credentials=info.credentials,
+        successful_agent_runs=info.successful_agent_runs,
+        successful_agent_schedules=info.successful_agent_schedules,
+        total_prompt_tokens=sum(u.prompt_tokens for u in info.usage),
+        total_completion_tokens=sum(u.completion_tokens for u in info.usage),
+    )
+
+
+async def _session_with_one_message(user_id: str) -> ChatSession:
+    session = ChatSession.new(user_id=user_id, dry_run=False)
+    session.messages = [CopilotChatMessage(role="user", content="first")]
+    return await upsert_chat_session(session)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_batch_writes_the_session_fields_with_its_rows(
+    setup_test_user, test_user_id
+):
+    session = await _session_with_one_message(test_user_id)
+
+    await add_chat_messages_batch(
+        session_id=session.session_id,
+        messages=[{"role": "assistant", "content": "reply"}],
+        start_sequence=1,
+        session_fields=_NEW_FIELDS,
+    )
+
+    rows = await PrismaChatMessage.prisma().find_many(
+        where={"sessionId": session.session_id}, order={"sequence": "asc"}
+    )
+    assert [(row.sequence, row.content) for row in rows] == [
+        (0, "first"),
+        (1, "reply"),
+    ]
+    assert await _saved_fields(session.session_id) == _NEW_FIELDS
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_message_batch_that_fails_writes_no_session_fields(
+    setup_test_user, test_user_id
+):
+    """The fields commit with the rows or not at all: a repeated message id
+    (how the route spots a resent message) leaves the session as it was."""
+    session = await _session_with_one_message(test_user_id)
+    before = await _saved_fields(session.session_id)
+    saved = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session.session_id}
+    )
+    assert saved is not None and before != _NEW_FIELDS
+
+    with pytest.raises(UniqueViolationError):
+        await add_chat_messages_batch(
+            session_id=session.session_id,
+            messages=[{"id": saved.id, "role": "user", "content": "first"}],
+            start_sequence=1,
+            session_fields=_NEW_FIELDS,
+        )
+
+    assert await _saved_fields(session.session_id) == before
 
 
 # ---------- update_message_content_by_sequence ----------
