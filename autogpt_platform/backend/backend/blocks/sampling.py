@@ -1,4 +1,5 @@
 import heapq
+import math
 import random
 from collections import defaultdict
 from enum import Enum
@@ -217,9 +218,35 @@ class DataSamplingBlock(Block):
                     f"No valid weights found using key '{input_data.weight_key}'"
                 )
 
-            indices = rng.choices(
-                range(data_size), weights=weights, k=input_data.sample_size
-            )
+            if any(not math.isfinite(weight) for weight in weights):
+                raise ValueError("Weight values must be finite numbers.")
+
+            if any(weight < 0 for weight in weights):
+                raise ValueError("Weight values cannot be negative.")
+
+            # Weighted sampling must not return the same item twice: pick one
+            # item at a time, weighted by the remaining weights, without
+            # replacement (Efraimidis-Spirakis keys).
+            candidates = [i for i, weight in enumerate(weights) if weight > 0]
+            if len(candidates) < input_data.sample_size:
+                raise ValueError(
+                    f"Sample size ({input_data.sample_size}) cannot be larger than "
+                    f"the number of items with a positive weight ({len(candidates)})."
+                )
+
+            # Ranking by log(u) / weight overflows to -inf for subnormal
+            # weights, which ties every candidate and lets the index decide.
+            # The exponential-race key log(-log(u)) - log(weight) stays finite.
+            keyed = [
+                (
+                    math.log(-math.log(max(rng.random(), math.nextafter(0.0, 1.0))))
+                    - math.log(weights[i]),
+                    i,
+                )
+                for i in candidates
+            ]
+            keyed.sort()
+            indices = [i for _, i in keyed[: input_data.sample_size]]
         elif input_data.sampling_method == SamplingMethod.RESERVOIR:
             indices = list(range(input_data.sample_size))
             for i in range(input_data.sample_size, data_size):
