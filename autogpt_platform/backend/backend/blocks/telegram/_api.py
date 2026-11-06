@@ -54,6 +54,13 @@ def get_file_url(bot_token: str, file_path: str) -> str:
     return f"{TELEGRAM_API_BASE}/file/bot{bot_token}/{file_path}"
 
 
+def _parse_message_result(raw_result: Any) -> TelegramMessageResult:
+    """Telegram methods like ``deleteMessage`` return ``true`` rather than an object."""
+    if not isinstance(raw_result, dict):
+        return TelegramMessageResult()
+    return TelegramMessageResult(**raw_result)
+
+
 async def call_telegram_api(
     credentials: APIKeyCredentials,
     method: str,
@@ -84,7 +91,7 @@ async def call_telegram_api(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return TelegramMessageResult(**result.get("result", {}))
+    return _parse_message_result(result.get("result"))
 
 
 async def call_telegram_api_with_file(
@@ -127,7 +134,7 @@ async def call_telegram_api_with_file(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return TelegramMessageResult(**result.get("result", {}))
+    return _parse_message_result(result.get("result"))
 
 
 async def get_file_info(
