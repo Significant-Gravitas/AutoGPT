@@ -745,7 +745,10 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("still renders the Codex device-login page", async () => {
+  it.each([
+    "api/internal/integrations/codex/device-login/login-1",
+    "api/integrations/codex/device-login/login-1",
+  ])("still renders the Codex device-login page at /%s", async (link) => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("<p>sign in</p>", {
         status: 200,
@@ -753,8 +756,8 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const path = ["api", "integrations", "codex", "device-login", "login-1"];
-    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const path = link.split("/");
+    const req = new NextRequest(`https://app.test/api/proxy/${link}`);
     const res = await GET(req, makeParams(path));
 
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");

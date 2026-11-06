@@ -175,7 +175,8 @@ function isDocumentContentType(contentType: string | null): boolean {
   );
 }
 
-function isCodexDeviceLoginPage(path: string[]): boolean {
+function isCodexDeviceLoginPage(requestPath: string[]): boolean {
+  const path = withoutInternalPrefix(requestPath);
   return (
     path.length === 5 &&
     path.slice(0, 4).join("/") === "api/integrations/codex/device-login"
