@@ -28,6 +28,10 @@ export async function POST(request: Request) {
           provider,
           callbackURL:
             redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback",
+          // A refused Microsoft sign-in (an email Microsoft did not confirm,
+          // an address that belongs to another login) is explained on the
+          // login page rather than Better Auth's bare error page.
+          ...(provider === "microsoft" ? { errorCallbackURL: "/login" } : {}),
         },
         headers: request.headers,
       });
