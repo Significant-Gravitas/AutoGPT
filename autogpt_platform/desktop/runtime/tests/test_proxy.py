@@ -134,6 +134,15 @@ def rest_app() -> web.Application:
         await response.write(b"data: second\n\n")
         return response
 
+    async def partial(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse()
+        if request.query["framing"] == "length":
+            response.content_length = 10
+        await response.prepare(request)
+        await response.write(b"first")
+        await request.app[RELEASE].wait()
+        return response
+
     async def cookies(request: web.Request) -> web.Response:
         response = web.Response(text="ok")
         response.headers.add("Set-Cookie", "a=1; Path=/")
@@ -147,6 +156,7 @@ def rest_app() -> web.Application:
     app.router.add_get("/api/normalize", slash_redirect)
     app.router.add_get("/external-api/normalize", slash_redirect)
     app.router.add_get("/api/stream", stream)
+    app.router.add_get("/api/partial", partial)
     app.router.add_get("/api/cookies", cookies)
     app.router.add_route("*", "/{tail:.*}", echo)
     return app
@@ -354,6 +364,81 @@ async def test_event_streams_are_delivered_as_they_are_produced(stack):
         rest[RELEASE].set()
         second = await asyncio.wait_for(response.content.readuntil(b"\n\n"), timeout=5)
         assert second == b"data: second\n\n"
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError, aiohttp.ClientConnectionError, aiohttp.ClientPayloadError]
+)
+@pytest.mark.parametrize("framing", ["length", "chunked"])
+@pytest.mark.parametrize("failure_point", ["prepare", "before-body", "after-body"])
+async def test_stream_failures_truncate_without_second_response(
+    stack, monkeypatch, error, framing, failure_point
+):
+    _, base, rest = stack
+    original = aiohttp.StreamReader.iter_any
+
+    async def interrupted(reader):
+        if failure_point == "after-body":
+            async for chunk in original(reader):
+                yield chunk
+                break
+        raise error("injected upstream stream failure")
+
+    if failure_point == "prepare":
+        original_prepare = web.StreamResponse.prepare
+
+        async def interrupted_prepare(response, request):
+            result = await original_prepare(response, request)
+            if request.path.startswith("/_agpt/") and response.status == 200:
+                raise error("injected failure after sending headers")
+            return result
+
+        monkeypatch.setattr(web.StreamResponse, "prepare", interrupted_prepare)
+    else:
+        monkeypatch.setattr(aiohttp.StreamReader, "iter_any", interrupted)
+    reader, writer = await asyncio.open_connection("127.0.0.1", URL(base).port)
+    try:
+        writer.write(
+            (
+                f"GET /_agpt/api/partial?framing={framing} HTTP/1.1\r\n"
+                f"Host: {URL(base).authority}\r\nConnection: close\r\n\r\n"
+            ).encode()
+        )
+        await writer.drain()
+        raw = await asyncio.wait_for(reader.read(), timeout=30)
+        assert raw.startswith(b"HTTP/1.1 200 OK\r\n"), raw
+        assert raw.count(b"HTTP/1.1 ") == 1, raw
+        headers, body = raw.split(b"\r\n\r\n", 1)
+        if framing == "length":
+            assert b"Content-Length: 10\r\n" in headers
+            assert body == (b"first" if failure_point == "after-body" else b"")
+        else:
+            assert b"Transfer-Encoding: chunked\r\n" in headers
+            assert body == (b"5\r\nfirst\r\n" if failure_point == "after-body" else b"")
+    finally:
+        rest[RELEASE].set()
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.parametrize("error", [TimeoutError, aiohttp.ClientConnectionError])
+async def test_failures_before_upstream_headers_remain_bad_gateway(
+    stack, monkeypatch, error
+):
+    client, base, _ = stack
+    original = aiohttp.ClientSession._request
+
+    async def unavailable(session, method, url, **kwargs):
+        if URL(url).path == "/api/fail-before-headers":
+            raise error("injected upstream request failure")
+        return await original(session, method, url, **kwargs)
+
+    monkeypatch.setattr(aiohttp.ClientSession, "_request", unavailable)
+    async with client.get(f"{base}/_agpt/api/fail-before-headers") as response:
+        assert response.status == 502
+        assert (
+            await response.text() == "AutoGPT is still starting or a service is down."
+        )
 
 
 async def test_websockets_are_proxied_with_their_query_string(stack):

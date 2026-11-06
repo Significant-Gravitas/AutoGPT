@@ -135,6 +135,8 @@ async def _http(
             await response.write_eof()
             return response
     except (TimeoutError, aiohttp.ClientConnectionError):
+        if request.writer.output_size > 0:
+            raise
         raise web.HTTPBadGateway(
             text="AutoGPT is still starting or a service is down."
         ) from None
