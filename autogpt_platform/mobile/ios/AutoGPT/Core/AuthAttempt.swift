@@ -22,11 +22,12 @@ public struct AuthAttempt {
     return url.url!
   }
 
-  public func exchangeBody(callback: URL) -> String? {
+  public static let callbackPath = "/auth/mobile/callback"
+
+  public func exchangeBody(callback: URL, policy: NavigationPolicy) -> String? {
     guard Date().timeIntervalSince(createdAt) < 600,
-      callback.scheme == "autogpt", callback.host == "auth",
-      callback.path == "/callback", callback.user == nil,
-      callback.password == nil, callback.port == nil, callback.fragment == nil,
+      policy.isTrusted(callback), callback.path == Self.callbackPath,
+      callback.fragment == nil,
       let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems,
       items.count == 2,
       items.filter({ $0.name == "state" }).count == 1,
