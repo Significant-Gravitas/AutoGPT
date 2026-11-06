@@ -355,6 +355,22 @@ class ExpertTemplate(Expert):
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 
+class CheckedExpert(BaseModel):
+    """An owner's active PRIVATE expert, with the owner's personal
+    organization and team that the expert's work belongs to.
+
+    Only the expert's own columns are loaded. Roster enrichments such as
+    workflows, credential counts/providers, latest run and weekly spend
+    retain their model defaults; those values are not authoritative. Use
+    the roster's get_expert or list_experts paths when those fields are needed.
+    """
+
+    # The expert's own columns only: no workflows, latest run or spend.
+    expert: Expert
+    organization_id: str
+    team_id: str | None
+
+
 # Membership is deliberately not embedded: clients already hold the expert
 # list and each Expert carries `pod_id`, so the roster groups client-side.
 class ExpertPod(BaseModel):
