@@ -30,7 +30,8 @@ class Effect(str, Enum):
     EXTERNAL_JUDGED = "external_judged"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
-    # review that is already open, or runs nothing.
+    # review that is already open, runs nothing, or applies only what the
+    # user's own Approve on its card allows.
     UNGATED = "ungated"
 
 
@@ -128,8 +129,6 @@ _PLATFORM = frozenset(
         "schedule_routine",
         "setup_agent_webhook_trigger",
         "create_feature_request",
-        "confirm_expert_change",
-        "confirm_expert_soul_update",
         "grant_expert_credential",
         "install_expert_workflow",
         "remove_expert_workflow",
@@ -157,12 +156,14 @@ _UNGATED = frozenset(
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
-        # Previews: they only park a proposal and put it to the user on its own
-        # card. The confirm that applies it is what the gate holds.
+        # A preview parks a proposal on its own card, and its confirm applies
+        # it only on the user's Approve there (``card_approval``): one answer.
         "hire_expert",
         "raise_expert",
         "update_expert",
         "update_expert_soul",
+        "confirm_expert_change",
+        "confirm_expert_soul_update",
     }
 )
 

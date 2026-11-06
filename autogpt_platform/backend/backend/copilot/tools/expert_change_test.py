@@ -8,6 +8,7 @@ session a human is actually driving may reach any of it.
 
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,12 +21,13 @@ from backend.api.features.experts.errors import (
     RaisedExpertLifetimeLimitExceededError,
 )
 from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, ExpertSoulUpdate
+from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.model import ChatMessage, ChatSessionMetadata
 from backend.util.exceptions import ExpertNotFoundError, ExpertWriteNotReadableError
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
-from .expert_proposal import ExpertChangeProposal, apply_proposal, proposal_key
+from .expert_proposal import ExpertChangeProposal, apply_proposal
 from .hire_expert import HireExpertTool
 from .models import (
     ErrorResponse,
@@ -69,6 +71,58 @@ class _FakeRedis:
 
     async def delete(self, key):
         return 1 if self.store.pop(key, None) is not None else 0
+
+
+class _CardAnswers:
+    """The hash surface ``gate.card_approval`` uses, in memory."""
+
+    def __init__(self):
+        self.hashes: dict[str, dict[str, str]] = {}
+
+    def pipeline(self, transaction: bool = True) -> "_HashWrites":
+        return _HashWrites(self.hashes)
+
+    async def hmget(self, key: str, fields: list[str]) -> list[str | None]:
+        return [self.hashes.get(key, {}).get(field) for field in fields]
+
+    async def hdel(self, key: str, field: str) -> int:
+        return 1 if self.hashes.get(key, {}).pop(field, None) is not None else 0
+
+
+class _HashWrites:
+    def __init__(self, hashes: dict[str, dict[str, str]]):
+        self.hashes = hashes
+        self.ops: list[Callable[[], object]] = []
+
+    async def __aenter__(self) -> "_HashWrites":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    def hset(self, key: str, field: str, value: str) -> None:
+        self.ops.append(lambda: self.hashes.setdefault(key, {}).update({field: value}))
+
+    def hdel(self, key: str, field: str) -> None:
+        self.ops.append(lambda: self.hashes.get(key, {}).pop(field, None))
+
+    def expire(self, key: str, seconds: int) -> None:
+        pass
+
+    async def execute(self) -> None:
+        for op in self.ops:
+            op()
+
+
+@contextmanager
+def _card_answers():
+    """Card answers in memory, for a test that drives the confirm tools."""
+    answers = _CardAnswers()
+    with patch(
+        "backend.copilot.gate.card_approval.get_redis_async",
+        AsyncMock(return_value=answers),
+    ):
+        yield answers
 
 
 def _template(template_id: str = "tpl-scout"):
@@ -146,6 +200,7 @@ def _env(
     db.list_experts = AsyncMock(return_value=[])
     shared_redis = AsyncMock(return_value=redis or _FakeRedis())
     with (
+        _card_answers(),
         patch(f"{_HIRE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
@@ -176,10 +231,20 @@ async def _update(session, **kwargs):
     return await UpdateExpertTool()._execute(user_id=_USER, session=session, **kwargs)
 
 
-def _approve(session):
-    """Record the user's "yes" — the human turn a confirm has to answer."""
+async def _approve(session, confirmation_id: str):
+    """The user's Approve on the card, recorded as the chat route records it."""
+    await record_card_decisions(
+        _USER,
+        session.session_id,
+        f"Approved: hire Scout (confirmation_id: {confirmation_id}).",
+    )
+    return session
+
+
+def _say(session, content: str = "yes"):
+    """A reply typed in the chat, which approves nothing."""
     session.messages.append(
-        ChatMessage(role="user", content="yes", sequence=len(session.messages))
+        ChatMessage(role="user", content=content, sequence=len(session.messages))
     )
     return session
 
@@ -411,7 +476,8 @@ class TestUpdate:
             preview = await _update(session, expert_id="exp-2", name="Nick")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "update"
@@ -466,7 +532,8 @@ class TestUpdate:
             preview = await _update(session, expert_id="exp-2", name="Nick")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert "gone" in resp.message
@@ -482,7 +549,8 @@ class TestUpdate:
             preview = await _update(session, expert_id="exp-2", name="Nick")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert "edited somewhere else" in resp.message
@@ -498,7 +566,8 @@ class TestUpdate:
             preview = await _update(session, expert_id="exp-2", name="Nick")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert "was saved" in resp.message
@@ -527,7 +596,8 @@ class TestConfirm:
             preview = await _hire(session, template_id="tpl-scout", name="Recon")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.applied is True
@@ -541,7 +611,8 @@ class TestConfirm:
             preview = await _raise(session, **_CHARTER, weekly_budget=2000)
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
@@ -571,9 +642,13 @@ class TestConfirm:
             session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
-            await _confirm(_approve(session), confirmation_id=preview.confirmation_id)
+            await _confirm(
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
+            )
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert "already confirmed" in resp.message
@@ -621,7 +696,8 @@ class TestConfirm:
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert str(ACTIVE_EXPERT_LIMIT) in resp.message
@@ -633,7 +709,8 @@ class TestConfirm:
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert "template" in resp.message
@@ -646,32 +723,34 @@ class TestConfirm:
             preview = await _raise(session, **_CHARTER)
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ErrorResponse)
         assert str(LIFETIME_RAISED_EXPERT_LIMIT) in resp.message
 
 
-class TestConfirmNeedsAHumanTurn:
+class TestConfirmNeedsTheCardsApprove:
     """The preview hands the model the confirmation_id in its own output, so
-    without a watermark the same assistant turn can preview and confirm and
-    the seam the user is supposed to approve at never happens."""
+    only the user's own Approve on the card stands between it and the change."""
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_confirm_in_the_same_turn_as_the_preview_is_refused(self):
+    async def test_a_confirm_the_card_did_not_approve_is_refused(self):
         with _env() as db:
-            session = _approve(make_session(_USER))
+            session = _say(make_session(_USER))
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(session, confirmation_id=preview.confirmation_id)
+            resp = await _confirm(
+                _say(session), confirmation_id=preview.confirmation_id
+            )
         assert isinstance(resp, ErrorResponse)
-        assert "not answered" in resp.message
+        assert "Approve button" in resp.message
         db.hire_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_update_confirm_in_the_same_turn_is_refused(self):
+    async def test_an_update_the_card_did_not_approve_is_refused(self):
         with _env() as db:
-            session = _approve(make_session(_USER))
+            session = _say(make_session(_USER))
             preview = await _update(session, expert_id="exp-2", name="Nick")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(session, confirmation_id=preview.confirmation_id)
@@ -683,12 +762,13 @@ class TestConfirmNeedsAHumanTurn:
         """The user still gets to say yes: rejecting must not consume the id,
         or an eager model would cost them the preview they were reading."""
         with _env() as db:
-            session = _approve(make_session(_USER))
+            session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
             await _confirm(session, confirmation_id=preview.confirmation_id)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         db.hire_expert.assert_awaited_once()
@@ -831,7 +911,8 @@ class TestHireMessage:
             preview = await _hire(session, template_id="tpl-scout")
             assert isinstance(preview, ExpertChangeProposedResponse)
             resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
+                await _approve(session, preview.confirmation_id),
+                confirmation_id=preview.confirmation_id,
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert "is hired and on the team" in resp.message
@@ -917,59 +998,3 @@ class TestAutomationSessionsCannotStaff:
             )
         assert isinstance(resp, ErrorResponse)
         db.hire_expert.assert_not_called()
-
-
-def _legacy_proposal_json(session_id: str) -> str:
-    """A proposal exactly as pre-watermark code parked it in Redis.
-
-    Raw JSON on purpose: the missing watermark IS a deserialization default,
-    so constructing the model and clearing the field would still pass if the
-    default went back to a number.
-    """
-    return (
-        f'{{"user_id": "{_USER}", "session_id": "{session_id}", '
-        '"preview": {"kind": "hire", "name": "Scout", '
-        '"template_id": "tpl-scout"}}'
-    )
-
-
-class TestProposalsInFlightAcrossTheDeploy:
-    """A proposal written before the watermark existed reads back without one.
-
-    Defaulting it to a number would make any session with one sequenced user
-    message clear the gate, so an absent watermark refuses instead.
-    """
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_proposal_without_a_watermark_deserializes_to_none(self):
-        proposal = ExpertChangeProposal.model_validate_json(
-            _legacy_proposal_json("session-x")
-        )
-        assert proposal.user_turn_watermark is None
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_proposal_without_a_watermark_is_refused(self):
-        redis = _FakeRedis()
-        with _env(redis=redis) as db:
-            session = _approve(make_session(_USER))
-            redis.store[proposal_key("pre-deploy-id")] = _legacy_proposal_json(
-                session.session_id
-            )
-            resp = await _confirm(session, confirmation_id="pre-deploy-id")
-        assert isinstance(resp, ErrorResponse)
-        assert "fresh preview" in resp.message
-        db.hire_expert.assert_not_called()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_the_refusal_does_not_burn_the_proposal(self):
-        """Same courtesy a premature confirm gets: the id survives so the
-        re-preview the model is told to run is the only thing that replaces
-        it."""
-        redis = _FakeRedis()
-        with _env(redis=redis):
-            session = _approve(make_session(_USER))
-            redis.store[proposal_key("pre-deploy-id")] = _legacy_proposal_json(
-                session.session_id
-            )
-            await _confirm(session, confirmation_id="pre-deploy-id")
-        assert proposal_key("pre-deploy-id") in redis.store
