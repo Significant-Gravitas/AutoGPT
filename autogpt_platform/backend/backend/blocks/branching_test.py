@@ -159,3 +159,95 @@ def test_executor_rejects_invalid_inputs(fields: dict[str, object]):
 async def test_incomparable_values_raise_block_execution_error():
     with pytest.raises(BlockExecutionError, match="Comparison failed"):
         await _run(value1=[1], operator=">", value2=3)
+
+
+@pytest.mark.parametrize(
+    "operator,result",
+    [
+        ("==", False),
+        ("!=", True),
+        (">", True),
+        ("<", False),
+        (">=", True),
+        ("<=", False),
+    ],
+)
+async def test_integer_strings_above_float_precision_compare_exactly(
+    operator: str, result: bool
+):
+    outputs = await _run(
+        value1="9007199254740993",
+        operator=operator,
+        value2="9007199254740992",
+    )
+
+    assert outputs["result"] is result
+
+
+async def test_exponent_and_integer_spellings_compare_exactly():
+    outputs = await _run(
+        value1="1e23",
+        operator="==",
+        value2="100000000000000000000000",
+    )
+
+    assert outputs["result"] is True
+
+
+async def test_underscored_integer_strings_compare_exactly():
+    outputs = await _run(
+        value1="9_007_199_254_740_993",
+        operator="==",
+        value2="9007199254740993",
+    )
+
+    assert outputs["result"] is True
+
+
+async def test_digit_limit_strings_fall_back_to_float_instead_of_failing():
+    outputs = await _run(value1="1" * 5000, operator=">", value2=0)
+
+    assert outputs["result"] is True
+
+
+async def test_default_output_keeps_int64_overflow_as_text():
+    huge = "9" * 30
+    outputs = await _run(value1=huge, operator="==", value2=huge)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == huge
+
+
+@pytest.mark.parametrize("text", ["9007199254740993.0", "9007199254740993e0"])
+@pytest.mark.parametrize(
+    "operator,result",
+    [
+        ("==", True),
+        ("!=", False),
+        (">", False),
+        ("<", False),
+        (">=", True),
+        ("<=", True),
+    ],
+)
+async def test_integral_decimal_spellings_compare_exactly(
+    text: str, operator: str, result: bool
+):
+    outputs = await _run(value1=text, operator=operator, value2="9007199254740993")
+
+    assert outputs["result"] is result
+
+
+async def test_plain_decimal_spellings_stay_floats():
+    outputs = await _run(value1="3.0", operator="==", value2="3")
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == 3.0
+
+
+async def test_digit_limit_default_output_keeps_the_text_instead_of_infinity():
+    huge = "1" * 5000
+    outputs = await _run(value1=huge, operator="==", value2=huge)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == huge
