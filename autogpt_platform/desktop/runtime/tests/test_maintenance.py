@@ -175,7 +175,7 @@ def test_incompatible_schema_refuses_before_bootstrap_or_migration(
     "started, expected",
     [
         (100.0, True),
-        (99.0, False),
+        (98.0, False),
         (None, True),
         (True, True),
         ("100", True),
@@ -207,6 +207,26 @@ def test_operation_records_native_birth_time(tmp_path):
         assert owner == {"pid": os.getpid(), "started": psutil.Process().create_time()}
 
 
+@pytest.mark.parametrize("platform", ["linux", "win32", "darwin"])
+@pytest.mark.parametrize("delta", [-1.01, -1.0, -0.01, 0.0, 0.01, 1.0, 1.01])
+def test_live_owner_tolerates_linux_boot_time_rounding(
+    tmp_path, monkeypatch, platform, delta
+):
+    from types import SimpleNamespace
+
+    import psutil
+
+    marker = tmp_path / "owner.json"
+    marker.write_text('{"pid":234,"started":100.0}', encoding="utf-8")
+    monkeypatch.setattr(maintenance, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(psutil, "pid_exists", lambda pid: True)
+    monkeypatch.setattr(maintenance, "process_started", lambda pid: 100.0 + delta)
+
+    assert maintenance.active_owner(marker) is (
+        abs(delta) <= (1.0 if platform == "linux" else 0.0)
+    )
+
+
 def test_reused_shell_pid_no_longer_blocks_maintenance(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
@@ -225,7 +245,7 @@ def test_reused_shell_pid_no_longer_blocks_maintenance(tmp_path, monkeypatch):
     )
     with DataLock(tmp_path / "data") as held:
         lease = held.root.parent / f".autogpt-shell-{held.key}-old.json"
-        lease.write_text(json.dumps({"pid": 234, "started": 99.0}), encoding="utf-8")
+        lease.write_text(json.dumps({"pid": 234, "started": 90.0}), encoding="utf-8")
         with MaintenanceOperation(held):
             assert lease.exists()
 

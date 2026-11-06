@@ -70,7 +70,12 @@ def active_owner(path: Path) -> bool:
             or started <= 0
         ):
             return True
-        return process_started(pid) == started
+        current = process_started(pid)
+        if current is None:
+            return False
+        # Linux boot-time rounding can differ between the marker's two readers.
+        tolerance = 1.0 if sys.platform.startswith("linux") else 0.0
+        return abs(current - started) <= tolerance
     except (OSError, ValueError, OverflowError, psutil.Error):
         return True
 
