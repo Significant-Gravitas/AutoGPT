@@ -1,4 +1,6 @@
 import json
+import math
+import re
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
@@ -13,6 +15,12 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.type import convert
+
+_INTEGER_LITERAL = re.compile(r"[+-]?[0-9](?:_?[0-9])*")
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+# Bound the digits an exponent spelling such as "1e5000" may expand to.
+_MAX_EXACT_DIGITS = 4000
 
 
 class ComparisonOperator(Enum):
@@ -84,22 +92,19 @@ class ConditionBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
+        value1 = _parse_comparison_operand(input_data.value1)
+        value2 = _parse_comparison_operand(input_data.value2)
 
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
-
-        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value1
+        yes_value = (
+            input_data.yes_value
+            if input_data.yes_value is not None
+            else _serializable_default(input_data.value1, value1)
+        )
+        no_value = (
+            input_data.no_value
+            if input_data.no_value is not None
+            else _serializable_default(input_data.value1, value1)
+        )
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
@@ -121,6 +126,64 @@ class ConditionBlock(Block):
             yield "yes_output", yes_value
         else:
             yield "no_output", no_value
+
+
+def _parse_comparison_operand(value: Any) -> Any:
+    """Parse a string operand, keeping integers that a float cannot represent exactly."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if _INTEGER_LITERAL.fullmatch(text):
+        try:
+            exact = int(text)
+        except ValueError:
+            # Python 3.11+ refuses to convert integer strings longer than 4300 digits.
+            return float(text)
+        try:
+            if float(exact) != exact:
+                return exact
+        except OverflowError:
+            return exact
+    try:
+        parsed = float(text)
+    except ValueError:
+        return text
+    return _exact_integral(parsed, text)
+
+
+def _exact_integral(parsed: float, text: str) -> Any:
+    """Keep the integer an integral decimal or exponent spelling denotes.
+
+    ``"9007199254740993.0"`` and ``"9007199254740993e0"`` round to the same
+    float as ``"9007199254740992"``, so comparing them as floats picks the
+    wrong branch. Only spellings that ``float`` actually rounds become ints.
+    """
+    try:
+        exact = Decimal(text)
+    except InvalidOperation:
+        return parsed
+    if not exact.is_finite() or exact != exact.to_integral_value():
+        return parsed
+    if exact.adjusted() >= _MAX_EXACT_DIGITS:
+        return parsed
+    try:
+        integer = int(exact)
+    except (ValueError, OverflowError):
+        return parsed
+    return parsed if Decimal(parsed) == exact else integer
+
+
+def _serializable_default(raw_value: Any, parsed_value: Any) -> Any:
+    """Keep values the executor serializer cannot represent as text."""
+    if isinstance(parsed_value, int) and not _INT64_MIN <= parsed_value <= _INT64_MAX:
+        return raw_value
+    if (
+        isinstance(raw_value, str)
+        and isinstance(parsed_value, float)
+        and not math.isfinite(parsed_value)
+    ):
+        return raw_value
+    return parsed_value
 
 
 def _parse_exact_float(text: str) -> float | Decimal:
