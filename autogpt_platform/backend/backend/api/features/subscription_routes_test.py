@@ -13,6 +13,10 @@ from prisma.enums import SubscriptionTier
 
 from backend.data.credit import PendingChangeUnknown
 from backend.data.pro_activation import UsageActivationState
+from backend.data.subscription_payment_due import (
+    UNPAID_BILL_BLOCKS_CHECKOUT,
+    SubscriptionPaymentDue,
+)
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.testing import Rendezvous
 
@@ -48,6 +52,17 @@ def client() -> fastapi.testclient.TestClient:
         yield fastapi.testclient.TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_open_renewal_bill(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """No failed renewal's bill is open unless a test says so, so the status
+    read and the Checkout guard stay off Stripe."""
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_payment_due",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -2647,3 +2662,91 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     release_mock.assert_not_awaited()
     modify_mock.assert_awaited_once()
     checkout_mock.assert_awaited_once()
+
+
+_OPEN_RENEWAL_BILL = SubscriptionPaymentDue(
+    amount_due=5000,
+    currency="usd",
+    payment_url="https://invoice.stripe.com/i/acct_1/test_bill",
+    plan="PRO",
+    due_since=1772539200,
+)
+
+
+def test_status_offers_a_failed_renewals_open_bill(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    """A renewal whose charge failed leaves NO_TIER with a bill to pay
+    (SECRT-2873); the paywall offers that bill, not a new plan."""
+    mock_user = Mock(subscription_tier=SubscriptionTier.NO_TIER)
+    mock_user.stripe_customer_id = "cus_1"
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _no_open_renewal_bill.return_value = _OPEN_RENEWAL_BILL
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["payment_due"] == _OPEN_RENEWAL_BILL.model_dump()
+    _no_open_renewal_bill.assert_awaited_once_with("cus_1")
+
+
+def test_status_of_a_paying_customer_reads_no_bill(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.json()["payment_due"] is None
+    _no_open_renewal_bill.assert_not_awaited()
+
+
+def test_checkout_is_refused_while_a_failed_renewals_bill_is_open(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    """A new Checkout would cancel the old plan and void its bill, which stops
+    Stripe's retries; paying the bill is the way back."""
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.NO_TIER),
+    )
+    set_platform_payment(True)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    checkout = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+    _no_open_renewal_bill.return_value = _OPEN_RENEWAL_BILL
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == UNPAID_BILL_BLOCKS_CHECKOUT
+    checkout.assert_not_awaited()

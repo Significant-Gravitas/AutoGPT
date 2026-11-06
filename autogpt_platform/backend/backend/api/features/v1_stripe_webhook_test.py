@@ -22,6 +22,7 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.data.subscription_billing_restart import RestartOutcome
 from backend.data.subscription_payment_failure import PaymentFailureOutcome
 from backend.util.test import SpinTestServer
 
@@ -1084,3 +1085,64 @@ def test_trial_ending_event_reconciles_and_queues_trial_reminder(
     notify.assert_awaited_once_with(subscription, "ending")
     for mock in stub_lifecycle_emails.values():
         mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "event_type", ["invoice.paid", "invoice.payment_succeeded", "invoice_payment.paid"]
+)
+@pytest.mark.parametrize("outcome", list(RestartOutcome))
+def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
+    mocker: pytest_mock.MockFixture, event_type, outcome
+) -> None:
+    """A late payment restarts the billing period (SECRT-2873), after access
+    and any trial conversion are recorded against the paid invoice."""
+    invoice = {"id": "in_late", "customer": "cus_1", "subscription": "sub_1"}
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
+    )
+    calls = MagicMock()
+    routes = "backend.api.features.billing.subscriptions.routes"
+    for name in (
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+    ):
+        mocker.patch(
+            f"{routes}.{name}",
+            new=AsyncMock(side_effect=lambda *a, _n=name, **k: calls(_n)),
+        )
+
+    def restarted(invoice_id: str) -> RestartOutcome:
+        calls("restart")
+        return outcome
+
+    restart = mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new=AsyncMock(side_effect=restarted),
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+    )
+
+    _post_event(
+        mocker,
+        {
+            "type": event_type,
+            "data": {
+                "object": (
+                    {"invoice": "in_late"}
+                    if event_type == "invoice_payment.paid"
+                    else invoice
+                )
+            },
+        },
+    )
+
+    assert [c.args[0] for c in calls.call_args_list] == [
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+        "restart",
+    ]
+    restart.assert_awaited_once_with("in_late")
+    assert alert.await_count == int(outcome == RestartOutcome.NEEDS_MANUAL_FIX)
