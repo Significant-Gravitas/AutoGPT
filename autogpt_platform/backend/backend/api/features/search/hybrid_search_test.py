@@ -2,7 +2,10 @@
 Tests for the generic unified hybrid search engine.
 """
 
-from unittest.mock import patch
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ContentType
@@ -44,43 +47,28 @@ def test_tokenize(input_text: str, expected: list[str]):
 async def test_unified_hybrid_search_basic():
     """Test basic unified hybrid search across all content types."""
     mock_results = [
-        {
-            "content_type": "STORE_AGENT",
-            "content_id": "agent-1",
-            "searchable_text": "Test Agent Description",
-            "metadata": {"name": "Test Agent"},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.7,
-            "lexical_score": 0.8,
-            "category_score": 0.5,
-            "recency_score": 0.3,
-            "combined_score": 0.6,
-            "total_count": 2,
-        },
-        {
-            "content_type": "BLOCK",
-            "content_id": "block-1",
-            "searchable_text": "Test Block Description",
-            "metadata": {"name": "Test Block"},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.6,
-            "lexical_score": 0.7,
-            "category_score": 0.4,
-            "recency_score": 0.2,
-            "combined_score": 0.5,
-            "total_count": 2,
-        },
+        _row(
+            content_type="STORE_AGENT",
+            content_id="agent-1",
+            searchable_text="Test Agent Description",
+            metadata={"name": "Test Agent"},
+            category_score=0.5,
+            combined_score=0.6,
+            total_count=2,
+        ),
+        _row(
+            content_type="BLOCK",
+            searchable_text="Test Block Description",
+            metadata={"name": "Test Block"},
+            semantic_score=0.6,
+            lexical_score=0.7,
+            category_score=0.4,
+            recency_score=0.2,
+            total_count=2,
+        ),
     ]
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search(mock_results):
         results, total = await unified_hybrid_search(
             query="test",
             page=1,
@@ -103,30 +91,17 @@ async def test_unified_hybrid_search_output_matches_rpc_contract():
     required ``lexical_raw`` field on ``HybridSearchRow`` made every
     cross-service search RPC log a return-type validation warning."""
     mock_results = [
-        {
-            "content_type": "BLOCK",
-            "content_id": "block-1",
-            "searchable_text": "Test Block Description",
-            "metadata": {"name": "Test Block"},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.6,
-            "lexical_score": 0.7,
-            "category_score": 0.4,
-            "recency_score": 0.2,
-            "combined_score": 0.5,
-            "total_count": 1,
-        },
+        _row(
+            searchable_text="Test Block Description",
+            metadata={"name": "Test Block"},
+            semantic_score=0.6,
+            lexical_score=0.7,
+            category_score=0.4,
+            recency_score=0.2,
+        ),
     ]
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search(mock_results):
         result = await unified_hybrid_search(
             query="test",
             page=1,
@@ -142,19 +117,10 @@ def test_hybrid_search_row_rejects_missing_required_field():
     """The contract TypeAdapter must actually reject rows that drop a required
     field — proving the positive contract assertion above is strict rather
     than silently lenient about the row shape."""
-    incomplete_row = {
-        "content_type": "BLOCK",
-        "content_id": "block-1",
-        "searchable_text": "Test Block",
-        "metadata": {},
-        "updated_at": "2025-01-01T00:00:00Z",
-        "semantic_score": 0.6,
-        "lexical_score": 0.7,
-        "category_score": 0.4,
-        "recency_score": 0.2,
-        # combined_score intentionally omitted — it is a required field.
-        "total_count": 1,
-    }
+    incomplete_row = _row(
+        semantic_score=0.6, lexical_score=0.7, category_score=0.4, recency_score=0.2
+    )
+    del incomplete_row["combined_score"]  # a required field
 
     with pytest.raises(ValidationError):
         TypeAdapter(list[HybridSearchRow]).validate_python([incomplete_row])
@@ -164,31 +130,7 @@ def test_hybrid_search_row_rejects_missing_required_field():
 @pytest.mark.integration
 async def test_unified_hybrid_search_filter_by_content_type():
     """Test unified search filtering by specific content types."""
-    mock_results = [
-        {
-            "content_type": "BLOCK",
-            "content_id": "block-1",
-            "searchable_text": "Test Block",
-            "metadata": {},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.7,
-            "lexical_score": 0.8,
-            "category_score": 0.0,
-            "recency_score": 0.3,
-            "combined_score": 0.5,
-            "total_count": 1,
-        },
-    ]
-
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search([_row(content_type="BLOCK")]) as mock_query:
         results, total = await unified_hybrid_search(
             query="test",
             content_types=[ContentType.BLOCK],
@@ -209,30 +151,15 @@ async def test_unified_hybrid_search_filter_by_content_type():
 async def test_unified_hybrid_search_with_user_id():
     """Test unified search with user_id for private content."""
     mock_results = [
-        {
-            "content_type": "STORE_AGENT",
-            "content_id": "agent-1",
-            "searchable_text": "My Private Agent",
-            "metadata": {},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.7,
-            "lexical_score": 0.8,
-            "category_score": 0.0,
-            "recency_score": 0.3,
-            "combined_score": 0.6,
-            "total_count": 1,
-        },
+        _row(
+            content_type="STORE_AGENT",
+            content_id="agent-1",
+            searchable_text="My Private Agent",
+            combined_score=0.6,
+        ),
     ]
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search(mock_results) as mock_query:
         results, total = await unified_hybrid_search(
             query="test",
             user_id="user-123",
@@ -254,15 +181,7 @@ async def test_unified_hybrid_search_excludes_null_user_library_agents():
     """Defense-in-depth: the SQL filter must NEVER let a LIBRARY_AGENT row
     with NULL userId match an authenticated query — that would leak private
     library data across users."""
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = []
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search([]) as mock_query:
         await unified_hybrid_search(
             query="email summarizer",
             user_id="user-123",
@@ -287,15 +206,7 @@ async def test_unified_hybrid_search_custom_weights():
         recency=0.1,
     )
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = []
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search([]) as mock_query:
         results, total = await unified_hybrid_search(
             query="test",
             weights=custom_weights,
@@ -323,30 +234,16 @@ async def test_unified_hybrid_search_custom_weights():
 async def test_unified_hybrid_search_graceful_degradation(error, warns, caplog):
     """Test unified search gracefully degrades when embeddings unavailable."""
     mock_results = [
-        {
-            "content_type": "DOCUMENTATION",
-            "content_id": "doc-1",
-            "searchable_text": "API Documentation",
-            "metadata": {},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.0,
-            "lexical_score": 0.8,
-            "category_score": 0.0,
-            "recency_score": 0.2,
-            "combined_score": 0.5,
-            "total_count": 1,
-        },
+        _row(
+            content_type="DOCUMENTATION",
+            content_id="doc-1",
+            searchable_text="API Documentation",
+            semantic_score=0.0,
+            recency_score=0.2,
+        ),
     ]
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.side_effect = error
-
+    with _patched_search(mock_results, embedding_error=error):
         # Should NOT raise - graceful degradation
         results, total = await unified_hybrid_search(
             query="test",
@@ -378,31 +275,20 @@ async def test_unified_hybrid_search_empty_query():
 async def test_unified_hybrid_search_pagination():
     """Test unified search pagination with BM25 reranking."""
     mock_results = [
-        {
-            "content_type": "STORE_AGENT",
-            "content_id": f"agent-{i}",
-            "searchable_text": f"Agent {i} description",
-            "metadata": {"name": f"Agent {i}"},
-            "updated_at": "2025-01-01T00:00:00Z",
-            "semantic_score": 0.7,
-            "lexical_score": 0.8 - (i * 0.01),
-            "category_score": 0.5,
-            "recency_score": 0.3,
-            "combined_score": 0.6 - (i * 0.01),
-            "total_count": 50,
-        }
+        _row(
+            content_type="STORE_AGENT",
+            content_id=f"agent-{i}",
+            searchable_text=f"Agent {i} description",
+            metadata={"name": f"Agent {i}"},
+            lexical_score=0.8 - (i * 0.01),
+            category_score=0.5,
+            combined_score=0.6 - (i * 0.01),
+            total_count=50,
+        )
         for i in range(15)
     ]
 
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = mock_results
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search(mock_results) as mock_query:
         results, total = await unified_hybrid_search(
             query="test",
             page=3,
@@ -424,15 +310,7 @@ async def test_unified_hybrid_search_pagination():
 @pytest.mark.integration
 async def test_unified_hybrid_search_schema_prefix():
     """Test unified search uses schema_prefix placeholder."""
-    with (
-        patch(
-            "backend.api.features.search.hybrid_search.query_raw_with_schema"
-        ) as mock_query,
-        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
-    ):
-        mock_query.return_value = []
-        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
-
+    with _patched_search([]) as mock_query:
         await unified_hybrid_search(
             query="test",
             page=1,
@@ -444,6 +322,41 @@ async def test_unified_hybrid_search_schema_prefix():
 
         assert "{schema_prefix}" in sql_template
         assert '"UnifiedContentEmbedding"' in sql_template
+
+
+def _row(**fields: Any) -> dict[str, Any]:
+    defaults: dict[str, Any] = {
+        "content_type": "BLOCK",
+        "content_id": "block-1",
+        "searchable_text": "Test Block",
+        "metadata": {},
+        "updated_at": "2025-01-01T00:00:00Z",
+        "semantic_score": 0.7,
+        "lexical_score": 0.8,
+        "category_score": 0.0,
+        "recency_score": 0.3,
+        "combined_score": 0.5,
+        "total_count": 1,
+    }
+    return defaults | fields
+
+
+@contextmanager
+def _patched_search(
+    rows: list[dict[str, Any]], embedding_error: Exception | None = None
+) -> Iterator[MagicMock | AsyncMock]:
+    with (
+        patch(
+            "backend.api.features.search.hybrid_search.query_raw_with_schema"
+        ) as mock_query,
+        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
+    ):
+        mock_query.return_value = rows
+        if embedding_error is None:
+            mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+        else:
+            mock_embed.side_effect = embedding_error
+        yield mock_query
 
 
 if __name__ == "__main__":
