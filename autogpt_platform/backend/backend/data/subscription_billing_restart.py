@@ -254,9 +254,7 @@ async def _credit_late_invoice(
     return True
 
 
-async def _save_credit_note(
-    invoice_id: str, credit_note_id: str, tx: Prisma
-) -> None:
+async def _save_credit_note(invoice_id: str, credit_note_id: str, tx: Prisma) -> None:
     await SubscriptionBillingRestart.prisma(tx).update(
         where={"stripeInvoiceId": invoice_id},
         data={"stripeCreditNoteId": credit_note_id},
