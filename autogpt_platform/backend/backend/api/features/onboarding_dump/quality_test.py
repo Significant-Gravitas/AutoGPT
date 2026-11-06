@@ -280,10 +280,37 @@ def _spellings(phrase: str) -> list[str]:
     return list(dict.fromkeys(spellings))
 
 
+# Pinned here rather than read from ``STT_ARTIFACT_PHRASES``, so dropping a
+# phrase from the module fails these tests instead of quietly losing them.
+_PINNED_ARTIFACTS = [
+    "thank you",
+    "thank you so much",
+    "thanks for watching",
+    "thank you for watching",
+    "thank you so much for watching",
+    "please subscribe",
+    "like and subscribe",
+    "bye",
+    "bye bye",
+    "you",
+    "music",
+    "applause",
+    "subtitles by the amara org community",
+]
+
 _ARTIFACT_SPELLINGS = [
-    spelling
-    for phrase in sorted(stt_artifacts.STT_ARTIFACT_PHRASES)
-    for spelling in _spellings(phrase)
+    spelling for phrase in _PINNED_ARTIFACTS for spelling in _spellings(phrase)
+]
+
+# Several artifacts in one take: a silent mic often comes back as a run of them.
+_ARTIFACT_RUNS = [
+    "Thank you. Thank you.",
+    "Thank you. Bye.",
+    "Thank you thank you thank you",
+    "Thanks for watching! Please subscribe.",
+    "[Music] [Applause]",
+    "Bye-bye. Thank you so much for watching.",
+    "You. You.",
 ]
 
 
@@ -295,8 +322,12 @@ def test_every_artifact_phrase_is_stored_normalised():
         assert phrase == stt_artifacts.normalise_for_artifact_match(phrase)
 
 
+def test_the_pinned_artifacts_are_the_module_list():
+    assert set(_PINNED_ARTIFACTS) == stt_artifacts.STT_ARTIFACT_PHRASES
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("transcript", _ARTIFACT_SPELLINGS)
+@pytest.mark.parametrize("transcript", _ARTIFACT_SPELLINGS + _ARTIFACT_RUNS)
 async def test_a_speech_to_text_artifact_is_no_usable_speech_for_voice(
     llm, transcript: str
 ):
@@ -314,7 +345,7 @@ async def test_a_speech_to_text_artifact_is_no_usable_speech_for_voice(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "transcript",
-    [f"{phrase.capitalize()}." for phrase in stt_artifacts.STT_ARTIFACT_PHRASES],
+    [f"{phrase.capitalize()}." for phrase in _PINNED_ARTIFACTS] + _ARTIFACT_RUNS,
 )
 async def test_typed_text_that_matches_an_artifact_still_goes_to_the_judge(
     llm, transcript: str
