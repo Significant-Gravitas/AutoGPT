@@ -39,7 +39,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import is_skill_package_path
 from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import answerable, held, resolve_mode
+from . import answered_from_chat_of_origin, held, resolve_mode
 from . import review as review_store
 from . import shadow
 from .content import ContentVerdict, Image, judge_content
@@ -315,7 +315,7 @@ async def screen_mode(user_id: str | None, session: ChatSession) -> ScreenMode:
     """``copilot-read-screen``: true or "enforce" holds a flagged read, "shadow"
     judges and records without holding, anything else is off. It runs only
     where a signed-in user can answer the card, as the action gate does."""
-    if not answerable(user_id, session):
+    if not user_id or not await answered_from_chat_of_origin(user_id, session):
         return "off"
     value = await get_flag_variant(Flag.COPILOT_READ_SCREEN, user_id)
     if value is True or value == "enforce":

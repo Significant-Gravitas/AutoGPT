@@ -57,7 +57,7 @@ export function FileChips({
         >
           <div
             className={cn(
-              "flex w-full flex-wrap gap-2 px-3 pb-2 pt-2",
+              "flex w-full flex-wrap gap-2 px-3 pt-2 pb-2",
               stacked && "gap-1.5 p-0",
             )}
           >
@@ -74,10 +74,8 @@ export function FileChips({
                 const chipIcon = (
                   <Icon
                     icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-foreground-strong",
-                      stacked && "text-foreground-subtle",
-                    )}
+                    tone={stacked ? "subtle" : "primary"}
+                    className="h-3.5 w-3.5 shrink-0"
                   />
                 );
                 const count = isFolder
@@ -119,9 +117,9 @@ export function FileChips({
                       isFolder ? `Folder: ${name}, ${count}` : undefined
                     }
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-sm text-foreground-body",
+                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-body text-foreground-body",
                       stacked &&
-                        "gap-1.5 border border-border-base bg-surface py-0.5 pl-2 pr-1.5 text-xs text-foreground-strong shadow-sm",
+                        "gap-1.5 border border-border-base bg-surface py-0.5 pr-1.5 pl-2 text-caption text-foreground-strong shadow-sm",
                     )}
                   >
                     {isPreviewableImage(mimeType) ? (
@@ -142,7 +140,9 @@ export function FileChips({
                     {showSpinner ? (
                       <Icon
                         icon={Loading03Icon}
-                        className="ml-0.5 h-3 w-3 animate-spin text-foreground-subtle"
+                        spin
+                        tone="subtle"
+                        className="ml-0.5 h-3 w-3"
                       />
                     ) : (
                       <button

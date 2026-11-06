@@ -53,9 +53,7 @@ export function CardProviderIcon({
   );
 }
 
-const BLOCK_ICON = (
-  <Icon icon={PuzzleIcon} size={15} className="text-foreground-secondary" />
-);
+const BLOCK_ICON = <Icon icon={PuzzleIcon} size={15} tone="secondary" />;
 
 export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
@@ -131,13 +129,15 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-success"
+            tone="success"
+            className="shrink-0"
           />
         ) : (
           <Icon
             icon={CancelCircleIcon}
             size={16}
-            className="shrink-0 text-error"
+            tone="error"
+            className="shrink-0"
           />
         )}
       </div>
@@ -148,10 +148,10 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
               Array.isArray(value) && value.length === 1 ? value[0] : value;
             return (
               <div key={key} className="px-2.5 py-1.5">
-                <p className="text-caption-sm uppercase leading-inherit tracking-wide text-foreground-subtle">
+                <p className="text-caption-sm leading-inherit tracking-wide text-foreground-subtle uppercase">
                   {key.replace(/_/g, " ")}
                 </p>
-                <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-body-sm leading-inherit text-foreground-body">
+                <p className="mt-0.5 line-clamp-3 text-body-sm leading-inherit break-words whitespace-pre-wrap text-foreground-body">
                   {inline(flat)}
                 </p>
               </div>

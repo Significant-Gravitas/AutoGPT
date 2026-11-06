@@ -72,7 +72,7 @@ export function DraftRecoveryPopup({
       {isOpen && (
         <motion.div
           ref={popupRef}
-          className={cn("absolute left-1/2 top-4 z-50")}
+          className={cn("absolute top-4 left-1/2 z-50")}
           initial={{
             opacity: 0,
             x: "-50%",
@@ -121,9 +121,10 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="primary"
-                    size="small"
+                    size="icon-sm"
+                    shape="pill"
                     onClick={onLoad}
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
@@ -135,10 +136,12 @@ export function DraftRecoveryPopup({
                 <TooltipTrigger asChild>
                   <Button
                     variant="destructive"
-                    size="icon"
+                    size="icon-sm"
+                    shape="pill"
+                    withTooltip={false}
                     onClick={onDiscard}
                     aria-label="Discard changes"
-                    className="aspect-square min-w-0 p-1.5"
+                    className="size-9"
                   >
                     <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>

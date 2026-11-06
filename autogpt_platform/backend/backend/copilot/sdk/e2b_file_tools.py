@@ -15,6 +15,7 @@ by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 import asyncio
 import base64
 import collections
+import functools
 import hashlib
 import itertools
 import json
@@ -32,8 +33,10 @@ from backend.copilot.context import (
     is_allowed_local_path,
     is_sdk_tool_path,
     is_within_allowed_dirs,
+    resolve_allowed_local_path,
     resolve_sandbox_path,
 )
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.sdk.sandbox_image_read import read_sandbox_image
 from backend.copilot.tool_image import (
     BINARY_IMAGE_READ_GUIDANCE,
@@ -45,6 +48,8 @@ from backend.copilot.tool_image import (
     prepare_image,
 )
 from backend.util.sandbox_login import run_internal
+from backend.util.sandbox_output import read_sandbox_file
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +127,47 @@ def _binary_read_guidance(path: str) -> str:
     )
 
 
+# Read and Edit hold a file whole; past this they refuse it.
+_MAX_READ_BYTES = Config().max_file_size_mb * 1024 * 1024
+
+
+def _read_capped_text(path: str) -> str | None:
+    """A host file as text; ``None`` past ``_MAX_READ_BYTES``."""
+    with open(path, encoding="utf-8", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        text = fh.read(_MAX_READ_BYTES + 1)
+    return None if len(text) > _MAX_READ_BYTES else text
+
+
+def _read_capped_lines(path: str, offset: int, limit: int) -> list[str] | None:
+    """Lines ``offset`` to ``offset + limit`` of a host file, reading no further;
+    ``None`` past ``_MAX_READ_BYTES``."""
+    with open(path, encoding="utf-8", errors="replace", opener=open_no_follow) as fh:
+        if os.fstat(fh.fileno()).st_size > _MAX_READ_BYTES:
+            return None
+        budget = _MAX_READ_BYTES
+        selected: list[str] = []
+        for index in range(offset + limit):
+            line = fh.readline(budget + 1)
+            if not line:
+                break
+            budget -= len(line)
+            if budget < 0:
+                return None
+            if index >= offset:
+                selected.append(line)
+    return selected
+
+
+def _too_large(path: str, done: str) -> str:
+    return (
+        f"{os.path.basename(path)} is larger than {_MAX_READ_BYTES // 2**20} MB "
+        f"and cannot be {done} whole. Use bash_exec with head, tail, "
+        "sed -n or split to work on parts of it."
+    )
+
+
 _PARTIAL_TRUNCATION_MSG = (
     "Your Write call was truncated (file_path missing but content "
     "was present). The content was too large for a single tool call. "
@@ -164,14 +210,10 @@ def _resolve_and_validate(
     """Resolve *file_path* against *sdk_cwd* and validate it stays within bounds.
 
     Returns ``(resolved_path, None)`` on success, or ``(None, error_response)``
-    on failure.
+    on failure.  Open the result with ``open_no_follow``.
     """
-    if not os.path.isabs(file_path):
-        resolved = os.path.realpath(os.path.join(sdk_cwd, file_path))
-    else:
-        resolved = os.path.realpath(file_path)
-
-    if not is_allowed_local_path(resolved, sdk_cwd):
+    resolved = resolve_allowed_local_path(file_path, sdk_cwd)
+    if resolved is None:
         return None, _mcp(
             f"Path must be within the working directory: {os.path.basename(file_path)}",
             error=True,
@@ -373,10 +415,12 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
                 return await asyncio.to_thread(
                     _image_result, raw, offset, args.get("limit")
                 )
-            raw = await sandbox.files.read(remote, format="bytes")
+            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "read"), error=True)
 
         lines = content.splitlines(keepends=True)
         selected = list(itertools.islice(lines, offset, offset + limit))
@@ -408,14 +452,15 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     try:
-        with open(resolved, encoding="utf-8", errors="replace") as f:
-            selected = list(itertools.islice(f, offset, offset + limit))
+        selected = _read_capped_lines(resolved, offset, limit)
     except FileNotFoundError:
         return _mcp(f"File not found: {file_path}", error=True)
     except PermissionError:
         return _mcp(f"Permission denied: {file_path}", error=True)
     except Exception as exc:
         return _mcp(f"Failed to read {file_path}: {exc}", error=True)
+    if selected is None:
+        return _mcp(_too_large(resolved, "read"), error=True)
 
     numbered = "".join(
         f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
@@ -485,10 +530,12 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     assert resolved is not None
 
     try:
-        parent = os.path.dirname(resolved)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(resolved, "w", encoding="utf-8") as f:
+        with open(
+            resolved,
+            "w",
+            encoding="utf-8",
+            opener=functools.partial(open_no_follow, make_parents=True),
+        ) as f:
             f.write(content)
     except Exception as exc:
         logger.error("Write failed for %s: %s", resolved, exc, exc_info=True)
@@ -562,10 +609,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         remote = os.path.join(canonical_parent, os.path.basename(remote))
 
         try:
-            raw = bytes(await sandbox.files.read(remote, format="bytes"))
+            raw = await read_sandbox_file(sandbox, remote, _MAX_READ_BYTES)
             content = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
+        if len(raw) > _MAX_READ_BYTES:
+            return _mcp(_too_large(remote, "edited"), error=True)
 
         count = content.count(old_string)
         if count == 0:
@@ -616,14 +665,15 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     lock = _edit_locks[resolved]
     async with lock:
         try:
-            with open(resolved, encoding="utf-8") as f:
-                content = f.read()
+            content = _read_capped_text(resolved)
         except FileNotFoundError:
             return _mcp(f"File not found: {file_path}", error=True)
         except PermissionError:
             return _mcp(f"Permission denied: {file_path}", error=True)
         except Exception as exc:
             return _mcp(f"Failed to read {file_path}: {exc}", error=True)
+        if content is None:
+            return _mcp(_too_large(resolved, "edited"), error=True)
 
         count = content.count(old_string)
         if count == 0:
@@ -647,7 +697,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         await asyncio.sleep(0)
 
         try:
-            with open(resolved, "w", encoding="utf-8") as f:
+            with open(resolved, "w", encoding="utf-8", opener=open_no_follow) as f:
                 f.write(updated)
         except Exception as exc:
             return _mcp(f"Failed to write {file_path}: {exc}", error=True)
@@ -783,20 +833,20 @@ async def bridge_to_sandbox(
         source = f"{expanded}:transformed" if content is not None else expanded
         source_id = hashlib.sha256(source.encode()).hexdigest()[:12]
         unique_name = f"{source_id}-{basename}"
-        file_size = (
-            os.path.getsize(expanded)
+        read = (
+            await _read_host_file(expanded, _BRIDGE_SKIP_BYTES)
             if content is None
-            else len(content.encode("utf-8"))
+            else (content, len(content.encode("utf-8")))
         )
-        if file_size > _BRIDGE_SKIP_BYTES:
+        if read is None or read[1] > _BRIDGE_SKIP_BYTES:
             logger.warning(
-                "[E2B] Skipping bridge for large file (%d bytes): %s",
-                file_size,
+                "[E2B] Skipping bridge for file over %d bytes: %s",
+                _BRIDGE_SKIP_BYTES,
                 basename,
             )
             return None
 
-        data = content if content is not None else await _read_host_file(expanded)
+        data, file_size = read
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
             sandbox_path = f"/tmp/{unique_name}"
             await _sandbox_write(sandbox, sandbox_path, data)
@@ -836,18 +886,24 @@ async def bridge_and_annotate(
     return f"\n[Sandbox copy available at {sandbox_path}]"
 
 
-async def _read_host_file(path: str) -> str | bytes:
-    """The file as text when it decodes as UTF-8, else its raw bytes."""
+async def _read_host_file(path: str, limit: int) -> tuple[str | bytes, int] | None:
+    """The file as text when it decodes as UTF-8, else its raw bytes, with its
+    size; ``None`` when it holds more than *limit* bytes."""
 
-    def _read_bytes() -> bytes:
-        with open(path, "rb") as fh:
-            return fh.read()
+    def _read_bytes() -> bytes | None:
+        with open(path, "rb", opener=open_no_follow) as fh:
+            if os.fstat(fh.fileno()).st_size > limit:
+                return None
+            raw = fh.read(limit + 1)
+        return None if len(raw) > limit else raw
 
     raw_content = await asyncio.to_thread(_read_bytes)
+    if raw_content is None:
+        return None
     try:
-        return raw_content.decode("utf-8")
+        return raw_content.decode("utf-8"), len(raw_content)
     except UnicodeDecodeError:
-        return raw_content
+        return raw_content, len(raw_content)
 
 
 # Local read (for SDK-internal paths)
@@ -855,12 +911,9 @@ async def _read_host_file(path: str) -> str | bytes:
 
 def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any]:
     """Read from the host filesystem (defence-in-depth path check)."""
-    if not _is_allowed_local(file_path):
+    expanded = resolve_allowed_local_path(file_path, get_sdk_cwd())
+    if expanded is None:
         return _mcp(f"Path not allowed: {file_path}", error=True)
-    expanded = os.path.expanduser(file_path)
-    if not os.path.isabs(expanded):
-        expanded = os.path.join(get_sdk_cwd(), expanded)
-    expanded = os.path.realpath(expanded)
     if os.path.splitext(expanded)[1].lower() in IMAGE_EXTENSIONS:
         return _read_local_image(expanded, offset, limit)
     if _is_likely_binary(expanded):
@@ -871,8 +924,9 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
         )
     try:
         limit = _DEFAULT_READ_LIMIT if limit is None else limit
-        with open(expanded, encoding="utf-8", errors="replace") as fh:
-            selected = list(itertools.islice(fh, offset, offset + limit))
+        selected = _read_capped_lines(expanded, offset, limit)
+        if selected is None:
+            return _mcp(_too_large(expanded, "read"), error=True)
         numbered = "".join(
             f"{i + offset + 1:>6}\t{line}" for i, line in enumerate(selected)
         )
@@ -885,7 +939,7 @@ def _read_local(file_path: str, offset: int, limit: int | None) -> dict[str, Any
 
 def _read_local_image(path: str, offset: int, limit: int | None) -> dict[str, Any]:
     try:
-        with open(path, "rb") as file:
+        with open(path, "rb", opener=open_no_follow) as file:
             raw = file.read(MAX_IMAGE_BYTES + 1)
     except OSError:
         return _mcp(f"Could not read image: {os.path.basename(path)}.", error=True)

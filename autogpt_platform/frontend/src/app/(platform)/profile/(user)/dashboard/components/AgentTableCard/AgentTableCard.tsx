@@ -57,14 +57,14 @@ export const AgentTableCard = ({
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-body-md font-medium leading-inherit text-foreground-emphasis">
+            <h3 className="text-body-md leading-inherit font-medium text-foreground-emphasis">
               {agentName}
             </h3>
             <span className="text-body-sm leading-inherit text-foreground-tertiary">
               v{graph_version}
             </span>
           </div>
-          <p className="line-clamp-2 text-sm text-foreground-secondary">
+          <p className="line-clamp-2 text-body text-foreground-secondary">
             {description}
           </p>
         </div>
@@ -84,14 +84,14 @@ export const AgentTableCard = ({
 
       <div className="mt-4 flex flex-wrap gap-4">
         <SubmissionStatus status={status} />
-        <div className="text-sm text-foreground-secondary">
+        <div className="text-body text-foreground-secondary">
           {submitted_at && submitted_at.toLocaleDateString()}
         </div>
-        <div className="text-sm text-foreground-secondary">
+        <div className="text-body text-foreground-secondary">
           {(run_count ?? 0).toLocaleString()} runs
         </div>
         <div className="flex items-center gap-1 text-foreground-emphasis">
-          <span className="text-sm font-medium text-foreground-emphasis">
+          <span className="text-body font-medium text-foreground-emphasis">
             {(rating ?? 0).toFixed(1)}
           </span>
           <Icon icon={StarFilledGlyph} aria-label="Icon" className="h-4 w-4" />

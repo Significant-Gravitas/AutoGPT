@@ -26,4 +26,22 @@ describe("jsonRenderer", () => {
     expect(screen.getByText(`"enabled":`)).toBeDefined();
     expect(screen.getByText("false")).toBeDefined();
   });
+
+  it("colours strings orange and quiet values in the tertiary role", () => {
+    renderJSON({
+      name: "Otto",
+      tags: [],
+      meta: {},
+      missing: undefined,
+      big: BigInt(10),
+    });
+
+    expect(screen.getByText('"Otto"').className).toContain(
+      "text-orange-foreground",
+    );
+    for (const quiet of ["[]", "{}", "undefined", "10"])
+      expect(screen.getByText(quiet).className).toContain(
+        "text-foreground-tertiary",
+      );
+  });
 });

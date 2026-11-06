@@ -17,12 +17,14 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.api.features.integrations.models import get_all_provider_names
 from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
     to_meta_response,
 )
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.credential_scope import scope_error
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -38,7 +40,9 @@ from backend.integrations.credentials_store import (
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth.microsoft_identity import MICROSOFT_PROVIDERS
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -131,6 +135,12 @@ class CreateUserPasswordCredentialRequest(BaseModel):
     type: Literal["user_password"] = "user_password"
     username: str = Field(..., description="Username")
     password: str = Field(..., description="Password")
+    scope: str | None = Field(
+        None,
+        description="What this login may be used for, as a URI: "
+        "smtp://host[:port] for smtp, postgresql:// mysql:// or mssql:// "
+        "host[:port] for database; required for those providers",
+    )
     title: str = Field(..., description="A name for this credential")
 
 
@@ -207,6 +217,14 @@ def _get_oauth_handler_for_external(
             detail=f"Provider '{provider_name}' does not support OAuth",
         )
 
+    if provider_name in MICROSOFT_PROVIDERS:
+        # Microsoft only redirects to AutoGPT's own callback, and its
+        # connections are matched to their Microsoft account when stored there.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Connect Microsoft in AutoGPT's Settings, under Integrations.",
+        )
+
     # Check if this provider has custom OAuth credentials
     oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_name)
 
@@ -250,7 +268,11 @@ def _get_oauth_handler_for_external(
 # ==================== Endpoints ==================== #
 
 
-@integrations_router.get("/providers", response_model=list[ProviderInfo])
+@integrations_router.get(
+    "/providers",
+    response_model=list[ProviderInfo],
+    dependencies=[READ_LIMIT],
+)
 async def list_providers(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -315,6 +337,7 @@ async def list_providers(
     "/{provider}/oauth/initiate",
     response_model=OAuthInitiateResponse,
     summary="Initiate OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def initiate_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -394,6 +417,7 @@ async def initiate_oauth(
     "/{provider}/oauth/complete",
     response_model=OAuthCompleteResponse,
     summary="Complete OAuth flow",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def complete_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
@@ -473,7 +497,11 @@ async def complete_oauth(
     )
 
 
-@integrations_router.get("/credentials", response_model=list[CredentialsMetaResponse])
+@integrations_router.get(
+    "/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
+)
 async def list_credentials(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
@@ -491,7 +519,9 @@ async def list_credentials(
 
 
 @integrations_router.get(
-    "/{provider}/credentials", response_model=list[CredentialsMetaResponse]
+    "/{provider}/credentials",
+    response_model=list[CredentialsMetaResponse],
+    dependencies=[READ_LIMIT],
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
@@ -515,6 +545,7 @@ async def list_credentials_by_provider(
     response_model=CreateCredentialResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create credentials",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def create_credential(
     provider: Annotated[str, Path(title="The provider to create credentials for")],
@@ -560,10 +591,13 @@ async def create_credential(
             expires_at=request.expires_at,
         )
     elif request.type == "user_password":
+        if error := scope_error(provider, request.scope):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
         credentials = UserPasswordCredentials(
             provider=provider,
             username=SecretStr(request.username),
             password=SecretStr(request.password),
+            scope=request.scope,
             title=request.title,
         )
     elif request.type == "host_scoped":
@@ -584,6 +618,8 @@ async def create_credential(
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
         logger.exception("Failed to store credentials")
         raise HTTPException(
@@ -611,6 +647,7 @@ class DeleteCredentialResponse(BaseModel):
 @integrations_router.delete(
     "/{provider}/credentials/{cred_id}",
     response_model=DeleteCredentialResponse,
+    dependencies=[EXECUTION_LIMIT],
 )
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],

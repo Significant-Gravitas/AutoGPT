@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Optional
 
@@ -31,7 +30,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.util.exceptions import BlockExecutionError, BlockInputError
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType, check_total_file_size, store_media_file
 
 logger = logging.getLogger(__name__)
 
@@ -220,17 +219,18 @@ class ReplicateModelBlock(Block):
         if not input_data.files:
             return model_inputs
 
-        uploaded = await asyncio.gather(
-            *(
-                store_media_file(
-                    file=file,
-                    execution_context=execution_context,
-                    return_format="for_external_api",
-                )
-                for file in input_data.files
+        # One at a time, so the total is checked before the next is loaded.
+        data_uris: list[str] = []
+        total_size = 0
+        for file in input_data.files:
+            data_uri = await store_media_file(
+                file=file,
+                execution_context=execution_context,
+                return_format="for_external_api",
             )
-        )
-        data_uris = [str(uri) for uri in uploaded]
+            total_size += len(data_uri)
+            check_total_file_size(total_size)
+            data_uris.append(str(data_uri))
         model_inputs[input_data.file_input_field] = (
             data_uris[0] if len(data_uris) == 1 else data_uris
         )

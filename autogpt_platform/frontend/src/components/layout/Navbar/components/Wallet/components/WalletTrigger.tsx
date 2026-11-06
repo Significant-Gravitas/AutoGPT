@@ -54,7 +54,7 @@ export function WalletTrigger({
               data-state={open ? "open" : "closed"}
               onClick={onClick}
               className={cn(
-                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
+                "group relative flex flex-nowrap items-center gap-2 rounded-md px-3 py-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-action-hover focus-visible:ring-offset-2",
                 compact
                   ? "size-8 justify-center rounded-lg p-0 text-foreground-body transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-hover data-[state=open]:text-foreground-strong"
                   : "bg-surface-muted",
@@ -70,7 +70,7 @@ export function WalletTrigger({
                 <span
                   aria-hidden
                   data-testid="wallet-unseen-dot"
-                  className="absolute right-0.5 top-0.5 size-2 rounded-full bg-brand ring-2 ring-sidebar"
+                  className="absolute top-0.5 right-0.5 size-2 rounded-full bg-brand ring-2 ring-surface-muted"
                 />
               )}
               {!compact && (
@@ -109,9 +109,9 @@ function ClassicBalance({
         {formattedCredits}
       </Text>
       {completedCount !== null && completedCount < totalCount && (
-        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand" />
+        <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand" />
       )}
-      <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-surface px-4 py-2 shadow-md group-hover:block">
+      <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform rounded-small bg-surface px-4 py-2 whitespace-nowrap shadow-md group-hover:block">
         <Text variant="body-medium">
           {completedCount} of {totalCount} rewards claimed
         </Text>

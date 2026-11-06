@@ -21,7 +21,7 @@ export function SpendingSection({ userId }: Props) {
           <li key={link.href}>
             <NextLink
               href={link.href}
-              className="flex items-center justify-between rounded-lg px-2 py-1.5 font-sans text-body font-medium text-foreground-base hover:bg-surface-muted focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2"
+              className="flex items-center justify-between rounded-lg px-2 py-1.5 font-sans text-body font-medium text-foreground-base hover:bg-surface-muted focus:ring-2 focus:ring-info focus:ring-offset-2 focus:outline-none"
             >
               {link.label}
               <span className="flex text-foreground-tertiary">

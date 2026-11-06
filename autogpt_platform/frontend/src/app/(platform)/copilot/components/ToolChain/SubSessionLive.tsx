@@ -24,11 +24,17 @@ import { asObject, str } from "./resultHelpers";
 import { RowIcon } from "./RowIcon";
 import { SwapText } from "./SwapText";
 import { getCatalogLabel } from "./toolCatalog";
+import {
+  getBackgroundOutcome,
+  isSessionLive,
+  isSessionPending,
+} from "./subSessionStatus";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   subSessionId: string;
   active: boolean;
+  background?: boolean;
 }
 
 const POLL_MS = 3000;
@@ -51,10 +57,15 @@ interface LiveStep {
  *  ``running`` forever, so liveness comes from the polled session itself —
  *  once it goes idle, polling stops and the last state stays up as the
  *  delegate's final answer. */
-export function SubSessionLive({ subSessionId, active }: Props) {
+export function SubSessionLive({
+  subSessionId,
+  active,
+  background = false,
+}: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
+    background,
   );
   if (!active) return null;
 
@@ -70,10 +81,10 @@ export function SubSessionLive({ subSessionId, active }: Props) {
   );
 
   return (
-    <div className="mt-2 border-t border-separator pl-1 pt-2.5">
+    <div className="mt-2 border-t border-separator pt-2.5 pl-1">
       <LiveSteps rows={rows} />
       {latestText && (
-        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+        <p className="mt-1.5 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
           {latestText}
         </p>
       )}
@@ -86,15 +97,21 @@ export function SubSessionLive({ subSessionId, active }: Props) {
  *  nothing at all: a failed fetch, and the poll cap expiring while the run
  *  is still live. Both stop the polling, so both have to be visible —
  *  otherwise a dead card is indistinguishable from a working one. */
-function useLiveSubSession(subSessionId: string, active: boolean) {
+function useLiveSubSession(
+  subSessionId: string,
+  active: boolean,
+  background = false,
+) {
+  // Background work records its outcome durably, so its card follows it to
+  // the end; only a foreground delegation gives up after the cap.
   const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
-      if (!active) return;
+      if (!active || background) return;
       const timer = setTimeout(() => setIsCapped(true), POLL_CAP_MS);
       return () => clearTimeout(timer);
     },
-    [active],
+    [active, background],
   );
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
@@ -103,7 +120,9 @@ function useLiveSubSession(subSessionId: string, active: boolean) {
         if (query.state.status === "error" || isCapped) return false;
         const raw = query.state.data;
         const polled = raw && raw.status === 200 ? raw.data : null;
-        return !polled || isSessionLive(polled) ? POLL_MS : false;
+        return !polled || isSessionPending(polled, background)
+          ? POLL_MS
+          : false;
       },
       select: (res) => (res.status === 200 ? res.data : null),
     },
@@ -114,7 +133,7 @@ function useLiveSubSession(subSessionId: string, active: boolean) {
     isError,
     // A capped poll on a finished session is not "paused" — the last
     // snapshot IS the final answer, so there is nothing left to watch.
-    isPaused: isCapped && (!session || isSessionLive(session)),
+    isPaused: isCapped && (!session || isSessionPending(session, background)),
   };
 }
 
@@ -140,7 +159,7 @@ function LiveNotice({
   subSessionId: string;
 }) {
   return (
-    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-foreground-subtle">
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption text-foreground-subtle">
       {text}
       <Link
         href={`/copilot?sessionId=${subSessionId}`}
@@ -167,7 +186,7 @@ function LiveSteps({ rows }: { rows: ChainRow[] }) {
           <SwapText
             text={row.text}
             shimmer={row.state === "running"}
-            className="max-w-full text-sm leading-5 text-foreground-secondary"
+            className="max-w-full text-body leading-5 text-foreground-secondary"
           />
         </div>
       </div>
@@ -306,7 +325,7 @@ export function SubSessionPendingCard({
             keeping the spinner up would be a guess dressed as a fact. */}
         <StatusPill
           status={isError || isPaused ? "unknown" : "running"}
-          className="text-sm"
+          className="text-body"
         />
         {liveSessionId && (
           <Link
@@ -319,7 +338,7 @@ export function SubSessionPendingCard({
         )}
       </div>
       {!minimal && prompt && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-foreground-tertiary">
+        <p className="mt-1.5 line-clamp-2 pl-9 text-body text-foreground-tertiary">
           {prompt}
         </p>
       )}
@@ -381,11 +400,13 @@ function useDelegatedSessionId(expertId: string | null) {
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
+  background = false,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId ?? "",
     stale && !!subSessionId,
+    background,
   );
   if (!stale) return status;
   // The frozen status is only trustworthy while the poll can refute it. A
@@ -393,6 +414,16 @@ export function useSubSessionEffectiveStatus(
   // dead poll has to show up in the pill or it reads as fact.
   if (isError || isPaused) return "unknown";
   if (!session) return status;
+  if (background) {
+    const outcome = getBackgroundOutcome(session);
+    if (outcome) {
+      return outcome === "timed_out" ? "timed out" : outcome;
+    }
+    const liveStatus = session.chat_status?.toLowerCase();
+    return liveStatus === "running" || liveStatus === "queued"
+      ? liveStatus
+      : status;
+  }
   return liveStatusOf(session);
 }
 
@@ -401,12 +432,6 @@ function liveStatusOf(session: SessionDetailResponse) {
   const status = session.chat_status?.toLowerCase();
   if (status === "running" || status === "queued") return status;
   return "completed";
-}
-
-function isSessionLive(session: SessionDetailResponse): boolean {
-  if (session.active_stream) return true;
-  const status = session.chat_status?.toLowerCase();
-  return status === "running" || status === "queued";
 }
 
 function parseArguments(rawArguments: unknown): unknown {

@@ -127,7 +127,7 @@ function BlockCard({
         data-id={blockDataId}
         className={cn(
           blockMenuButtonBase,
-          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-xl bg-surface-muted px-3.5 py-2.5 text-start",
+          "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 rounded-xl bg-surface-muted px-3.5 py-2.5 text-start whitespace-normal",
           "hover:cursor-default hover:bg-surface-hover active:bg-surface-hover active:ring-1 active:ring-border-strong disabled:cursor-not-allowed",
           isMCPBlock && "hover:cursor-pointer",
           className,
@@ -141,10 +141,8 @@ function BlockCard({
             <Text
               variant="body-medium"
               as="span"
-              tone="emphasis"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "emphasis"}
+              className="line-clamp-1"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -156,10 +154,8 @@ function BlockCard({
             <Text
               variant="small-loose"
               as="span"
-              tone="muted"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="line-clamp-1"
             >
               {highlightText(description, highlightedText, "small-bold-loose")}
             </Text>
@@ -170,10 +166,7 @@ function BlockCard({
             "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
           )}
         >
-          <Icon
-            icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
-          />
+          <Icon icon={PlusSignIcon} tone="inverse" className="h-5 w-5" />
         </div>
       </button>
       {isMCPBlock && (

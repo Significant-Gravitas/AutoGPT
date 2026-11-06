@@ -1,6 +1,9 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
-import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
+import {
+  clearContentCache,
+  forgetArtifactContent,
+} from "./components/ArtifactPanel/components/useArtifactContent";
 import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
@@ -56,6 +59,10 @@ export interface ArtifactRef {
   sizeBytes?: number;
   /** Set when the ref is an expert rather than a workspace file. */
   expert?: ExpertArtifact;
+  /** Set once Otto has overwritten the file: the id it had when the panel first
+   *  showed it. Versions sharing this are one document to the panel: same place
+   *  on the page, same source view. */
+  documentId?: string;
 }
 
 /** The live desktop behind a chat, as `start_desktop` reports it. */
@@ -122,6 +129,21 @@ export function getPersistedNotificationsEnabled(): boolean {
     storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
     typeof Notification !== "undefined" &&
     Notification.permission === "granted"
+  );
+}
+
+export function hasStoredNotificationsOn(): boolean {
+  return isClient && storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true";
+}
+
+// A stored "false" is an off the user chose (an off the browser forced, a
+// revoked permission, removes the key instead), so it counts like dismissing
+// the turn-on banner.
+export function getPersistedNotificationBannerDismissed(): boolean {
+  return (
+    isClient &&
+    (storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true" ||
+      storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "false")
   );
 }
 
@@ -227,6 +249,11 @@ interface CopilotUIState {
 
   isNotificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  /** Off because the browser no longer allows notifications, not a choice. */
+  forgetNotificationsEnabled: () => void;
+
+  isNotificationBannerDismissed: boolean;
+  dismissNotificationBanner: () => void;
 
   isSoundEnabled: boolean;
   toggleSound: () => void;
@@ -241,6 +268,9 @@ interface CopilotUIState {
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
+  /** Otto overwrote `replacedFileId`, whose id is now dead: every ref the panel
+   *  holds to it becomes `next`. Opens nothing and adds no history. */
+  followArtifactOverwrite: (replacedFileId: string, next: ArtifactRef) => void;
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
@@ -372,8 +402,23 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   isNotificationsEnabled: getPersistedNotificationsEnabled(),
   setNotificationsEnabled: (enabled) => {
+    // An "off" stored before the banner existed is its only record of being
+    // dismissed; keep that record once the stored "false" is replaced.
+    if (enabled && getPersistedNotificationBannerDismissed()) {
+      storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    }
     storage.set(Key.COPILOT_NOTIFICATIONS_ENABLED, String(enabled));
     set({ isNotificationsEnabled: enabled });
+  },
+  forgetNotificationsEnabled: () => {
+    storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
+    set({ isNotificationsEnabled: false });
+  },
+
+  isNotificationBannerDismissed: getPersistedNotificationBannerDismissed(),
+  dismissNotificationBanner: () => {
+    storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
+    set({ isNotificationBannerDismissed: true });
   },
 
   isSoundEnabled:
@@ -411,11 +456,14 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           : prevHistory;
       if (isClient && opts?.persist !== false)
         storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
+      // A card for the version already open must not make it a new document.
+      const documentId =
+        activeArtifact?.id === ref.id ? activeArtifact.documentId : undefined;
       return {
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: true,
-          activeArtifact: ref,
+          activeArtifact: documentId ? { ...ref, documentId } : ref,
           history,
           mode: "artifact",
           // A document opened over the computer face takes the panel; the
@@ -560,6 +608,30 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  followArtifactOverwrite: (replacedFileId, next) => {
+    const { activeArtifact, history } = get().artifactPanel;
+    const isHeld =
+      activeArtifact?.id === replacedFileId ||
+      history.some((ref) => ref.id === replacedFileId);
+    if (!isHeld) return;
+    forgetArtifactContent(replacedFileId);
+    const follow = (ref: ArtifactRef) =>
+      ref.id === replacedFileId
+        ? { ...next, documentId: ref.documentId ?? ref.id }
+        : ref;
+    const followedActive = activeArtifact && follow(activeArtifact);
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        activeArtifact: followedActive,
+        // An old card clicked mid-turn pushes the new version onto the back
+        // stack; following would then leave Back going nowhere.
+        history: history
+          .map(follow)
+          .filter((ref) => ref.id !== followedActive?.id),
+      },
+    }));
+  },
   toggleContextPanel: () =>
     set((state) => {
       const nextOpen = !state.artifactPanel.isOpen;
@@ -752,6 +824,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,
       isNotificationsEnabled: false,
+      isNotificationBannerDismissed: false,
       isSoundEnabled: true,
       contextPanelExpert: null,
       artifactPanel: {
