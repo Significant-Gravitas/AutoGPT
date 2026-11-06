@@ -44,7 +44,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
-from backend.copilot.tree import SpawnRequest, TreeRefusal
+from backend.copilot.tree import SpawnRequest, TreeRefusal, TurnEnvelope
 from backend.copilot.turn_pause import TurnPause
 from backend.copilot.turn_queue import queued_turn_refusal
 from backend.data.db_accessors import chat_db
@@ -214,6 +214,7 @@ async def run_copilot_turn_via_queue(
     spawn: SpawnRequest | None = None,
     allow_queue: bool = True,
     message_metadata: dict[str, Any] | None = None,
+    spawner_envelope: "TurnEnvelope | None" = None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
 
@@ -296,6 +297,7 @@ async def run_copilot_turn_via_queue(
             permissions=permissions,
             spawn=spawn,
             message_metadata=message_metadata,
+            spawner_envelope=spawner_envelope,
             delegated=delegated,
             # A child of an impersonated turn is the admin's work too.
             impersonated=is_turn_impersonated(),
@@ -357,6 +359,7 @@ async def run_copilot_turn_via_queue(
                 message_metadata=message_metadata,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
+                spawner_envelope=spawner_envelope,
             )
         # Sub-Otto / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a
@@ -441,6 +444,7 @@ async def _queue_for_slot(
     message_metadata: dict[str, Any] | None,
     llm_auth_provider: CopilotLlmAuthProvider,
     llm_credential_id: str | None,
+    spawner_envelope: TurnEnvelope | None,
 ) -> tuple[SessionOutcome, SessionResult]:
     """A spawn the reserve refused waits in the queue instead, up to the
     inflight cap; past it the spawn is refused as before."""
@@ -456,6 +460,7 @@ async def _queue_for_slot(
             permissions=permissions,
             spawn=spawn,
             message_metadata=message_metadata,
+            spawner_envelope=spawner_envelope,
             impersonated=is_turn_impersonated(),
         )
     except TreeRefusal as refused:
