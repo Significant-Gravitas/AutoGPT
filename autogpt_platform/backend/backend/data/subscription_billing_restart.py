@@ -132,7 +132,7 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     if stripe_id(subscription.get("latest_invoice")) != invoice_id:
         # Restarted already, or a newer invoice opened a later period: an old
         # payment never moves the renewal date of the period after it.
-        await _record_finished_reset(invoice_id, subscription, tx)
+        await _record_finished_reset(invoice, subscription, tx)
         return RestartOutcome.NOT_APPLICABLE
     late = late_payment(invoice, current_period_start(subscription))
     if late is None:
@@ -171,20 +171,30 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     return RestartOutcome.RESTARTED
 
 
-async def _record_finished_reset(
-    invoice_id: str, subscription: dict, tx: Prisma
-) -> None:
+async def _record_finished_reset(invoice: dict, subscription: dict, tx: Prisma) -> None:
     """Record a reset Stripe made whose record was lost, when the transaction
-    around it rolled back after the reset, so the audit doesn't list it."""
+    around it rolled back after the reset, so the audit doesn't list it. The
+    rollback also removes the row when that attempt created it."""
+    invoice_id: str = invoice["id"]
     metadata = subscription.get("metadata") or {}
     if metadata.get(RESTARTED_FROM_INVOICE_KEY) != invoice_id:
         return
-    recorded = await SubscriptionBillingRestart.prisma(tx).update_many(
-        where={"stripeInvoiceId": invoice_id, "restartedAt": None},
-        data={"restartedAt": datetime.now(UTC)},
+    late = late_payment(invoice)
+    customer_id = stripe_id(subscription.get("customer"))
+    user = await User.prisma(tx).find_first(where={"stripeCustomerId": customer_id})
+    if late is None or user is None:
+        return
+    progress = await _record_progress(invoice_id, user.id, subscription["id"], late, tx)
+    if progress.restartedAt is not None:
+        return
+    credit_note_id = progress.stripeCreditNoteId
+    if not credit_note_id:
+        credit_note_id, _ = await _existing_credit_notes(invoice_id)
+    await SubscriptionBillingRestart.prisma(tx).update(
+        where={"stripeInvoiceId": invoice_id},
+        data={"restartedAt": datetime.now(UTC), "stripeCreditNoteId": credit_note_id},
     )
-    if recorded:
-        await invalidate_billing_lookups(stripe_id(subscription.get("customer")))
+    await invalidate_billing_lookups(customer_id)
 
 
 async def _record_progress(

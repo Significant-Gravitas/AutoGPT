@@ -289,17 +289,6 @@ def fake():
             setattr(row, field, value)
         return row
 
-    async def update_many(where, data):
-        row = rows.get(where["stripeInvoiceId"])
-        if row is None or any(
-            getattr(row, field) != value
-            for field, value in where.items()
-            if field != "stripeInvoiceId"
-        ):
-            return 0
-        await update(where, data)
-        return 1
-
     module = "backend.data.subscription_billing_restart"
     with ExitStack() as stack:
         stack.enter_context(
@@ -308,7 +297,6 @@ def fake():
                 return_value=MagicMock(
                     upsert=AsyncMock(side_effect=upsert),
                     update=AsyncMock(side_effect=update),
-                    update_many=AsyncMock(side_effect=update_many),
                 ),
             )
         )
@@ -511,16 +499,22 @@ async def test_a_failure_between_credit_and_reset_is_finished_by_the_retry(fake)
 
 
 @pytest.mark.asyncio
-async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fake):
+@pytest.mark.parametrize("saved_by_an_earlier_attempt", [False, True])
+async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(
+    fake, saved_by_an_earlier_attempt
+):
     """Stripe reset the period, then the transaction around it rolled back
     before restartedAt was saved. The retry finds the reset done and records
-    it, so the audit doesn't list a finished account for a person."""
+    it, so the audit doesn't list a finished account for a person. The
+    rollback removes the row too, unless an earlier attempt saved it."""
     _fail_on_3rd_pay_on_9th(fake)
     table = restart.SubscriptionBillingRestart.prisma()
     save = table.update.side_effect
 
     async def lose_restarted_at(where, data):
         if "restartedAt" in data:
+            if not saved_by_an_earlier_attempt:
+                fake.rows.pop(where["stripeInvoiceId"])
             raise ConnectionError("database connection lost")
         return await save(where, data)
 
@@ -528,7 +522,7 @@ async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fak
     with pytest.raises(ConnectionError):
         await restart_period_after_late_payment("in_march")
     assert fake.subscriptions[SUB]["current_period_start"] == fake.now
-    assert fake.rows["in_march"].restartedAt is None
+    assert ("in_march" in fake.rows) is saved_by_an_earlier_attempt
 
     table.update.side_effect = save
     fake.idempotent.clear()
@@ -536,6 +530,10 @@ async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fak
         RestartOutcome.NOT_APPLICABLE
     )
     assert fake.rows["in_march"].restartedAt is not None
+    assert fake.rows["in_march"].stripeCreditNoteId == "cn_1"
+    assert fake.rows["in_march"].periodStart == datetime.fromtimestamp(
+        _ts(2026, 3, 3), UTC
+    )
     assert len(fake.credit_notes) == 1
     assert fake.card_charges == [PRICE]
 
