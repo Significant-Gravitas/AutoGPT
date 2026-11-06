@@ -645,7 +645,7 @@ async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
-    if not backend.data.db.is_connected():
+    if not await backend.data.db.is_healthy():
         raise UnhealthyServiceError("Database is not connected")
     return {"status": "healthy"}
 
