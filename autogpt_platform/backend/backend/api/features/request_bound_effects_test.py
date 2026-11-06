@@ -94,6 +94,9 @@ async def test_an_invitation_stores_each_team_once(mocker):
     from backend.api.features.orgs import invitation_routes
 
     prisma_client = MagicMock()
+    prisma_client.organization.find_unique = AsyncMock(
+        return_value=SimpleNamespace(isPersonal=False)
+    )
     prisma_client.team.find_many = AsyncMock(
         return_value=[SimpleNamespace(id=TEAM_ID, orgId=ORG_ID, archivedAt=None)]
     )
