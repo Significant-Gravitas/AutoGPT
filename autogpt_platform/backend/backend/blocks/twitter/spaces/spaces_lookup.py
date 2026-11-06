@@ -151,46 +151,40 @@ class TwitterGetSpacesBlock(Block):
         space_fields: SpaceFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "ids": (
-                    identifier.space_ids if isinstance(identifier, SpaceList) else None
-                ),
-                "user_ids": (
-                    identifier.user_ids if isinstance(identifier, UserList) else None
-                ),
-            }
+        params = {
+            "ids": (
+                identifier.space_ids if isinstance(identifier, SpaceList) else None
+            ),
+            "user_ids": (
+                identifier.user_ids if isinstance(identifier, UserList) else None
+            ),
+        }
 
-            params = (
-                SpaceExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_space_fields(space_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            SpaceExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_space_fields(space_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_spaces(**params))
+        response = cast(Response, client.get_spaces(**params))
 
-            ids = []
-            titles = []
+        ids = []
+        titles = []
 
-            included = IncludesSerializer.serialize(response.includes)
+        included = IncludesSerializer.serialize(response.includes)
 
-            if response.data:
-                data = ResponseDataSerializer.serialize_list(response.data)
-                ids = [space["id"] for space in data if "id" in space]
-                titles = [space["title"] for space in data if "title" in space]
+        if response.data:
+            data = ResponseDataSerializer.serialize_list(response.data)
+            ids = [space["id"] for space in data if "id" in space]
+            titles = [space["title"] for space in data if "title" in space]
 
-                return data, included, ids, titles
+            return data, included, ids, titles
 
-            raise Exception("No spaces found")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("No spaces found")
 
     async def run(
         self,
@@ -299,53 +293,45 @@ class TwitterGetSpaceByIdBlock(Block):
         space_fields: SpaceFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "id": space_id,
-            }
+        params = {
+            "id": space_id,
+        }
 
-            params = (
-                SpaceExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_space_fields(space_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            SpaceExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_space_fields(space_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_space(**params))
+        response = cast(Response, client.get_space(**params))
 
-            includes = {}
-            if response.includes:
-                for key, value in response.includes.items():
-                    if isinstance(value, list):
-                        includes[key] = [
-                            item.data if hasattr(item, "data") else item
-                            for item in value
-                        ]
-                    else:
-                        includes[key] = value.data if hasattr(value, "data") else value
+        includes = {}
+        if response.includes:
+            for key, value in response.includes.items():
+                if isinstance(value, list):
+                    includes[key] = [
+                        item.data if hasattr(item, "data") else item for item in value
+                    ]
+                else:
+                    includes[key] = value.data if hasattr(value, "data") else value
 
-            data = {}
-            if response.data:
-                for key, value in response.data.items():
-                    if isinstance(value, list):
-                        data[key] = [
-                            item.data if hasattr(item, "data") else item
-                            for item in value
-                        ]
-                    else:
-                        data[key] = value.data if hasattr(value, "data") else value
+        data = {}
+        if response.data:
+            for key, value in response.data.items():
+                if isinstance(value, list):
+                    data[key] = [
+                        item.data if hasattr(item, "data") else item for item in value
+                    ]
+                else:
+                    data[key] = value.data if hasattr(value, "data") else value
 
-                return data, includes
+            return data, includes
 
-            raise Exception("Space not found")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("Space not found")
 
     async def run(
         self,
@@ -451,37 +437,31 @@ class TwitterGetSpaceBuyersBlock(Block):
         expansions: UserExpansionsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "id": space_id,
-            }
+        params = {
+            "id": space_id,
+        }
 
-            params = (
-                UserExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            UserExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_space_buyers(**params))
+        response = cast(Response, client.get_space_buyers(**params))
 
-            included = IncludesSerializer.serialize(response.includes)
+        included = IncludesSerializer.serialize(response.includes)
 
-            if response.data:
-                data = ResponseDataSerializer.serialize_list(response.data)
-                buyer_ids = [buyer["id"] for buyer in data]
-                usernames = [buyer["username"] for buyer in data]
+        if response.data:
+            data = ResponseDataSerializer.serialize_list(response.data)
+            buyer_ids = [buyer["id"] for buyer in data]
+            usernames = [buyer["username"] for buyer in data]
 
-                return data, included, buyer_ids, usernames
+            return data, included, buyer_ids, usernames
 
-            raise Exception("No buyers found for this Space")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("No buyers found for this Space")
 
     async def run(
         self,
@@ -586,43 +566,37 @@ class TwitterGetSpaceTweetsBlock(Block):
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "id": space_id,
-            }
+        params = {
+            "id": space_id,
+        }
 
-            params = (
-                TweetExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_media_fields(media_fields)
-                .add_place_fields(place_fields)
-                .add_poll_fields(poll_fields)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            TweetExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_media_fields(media_fields)
+            .add_place_fields(place_fields)
+            .add_poll_fields(poll_fields)
+            .add_tweet_fields(tweet_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_space_tweets(**params))
+        response = cast(Response, client.get_space_tweets(**params))
 
-            included = IncludesSerializer.serialize(response.includes)
+        included = IncludesSerializer.serialize(response.includes)
 
-            if response.data:
-                data = ResponseDataSerializer.serialize_list(response.data)
-                tweet_ids = [str(tweet["id"]) for tweet in data]
-                texts = [tweet["text"] for tweet in data]
+        if response.data:
+            data = ResponseDataSerializer.serialize_list(response.data)
+            tweet_ids = [str(tweet["id"]) for tweet in data]
+            texts = [tweet["text"] for tweet in data]
 
-                meta = response.meta or {}
+            meta = response.meta or {}
 
-                return data, included, tweet_ids, texts, meta
+            return data, included, tweet_ids, texts, meta
 
-            raise Exception("No tweets found for this Space")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("No tweets found for this Space")
 
     async def run(
         self,
