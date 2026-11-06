@@ -269,9 +269,15 @@ describe("BackendAPI WebSocket failure logging", () => {
     expect(message).not.toContain("[object");
   });
 
-  it("reports the socket state on an error event instead of the Event object", async () => {
+  it("logs an error event on an established connection at debug level only", async () => {
     const consoleError = vi
       .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    const consoleDebug = vi
+      .spyOn(console, "debug")
       .mockImplementation(() => undefined);
     const socket = await connect();
     socket.state = "connected";
@@ -279,7 +285,10 @@ describe("BackendAPI WebSocket failure logging", () => {
 
     socket.onerror!({ type: "error", target: socket });
 
-    const [message, ...rest] = consoleError.mock.calls[0];
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleWarn).not.toHaveBeenCalled();
+    expect(consoleDebug).toHaveBeenCalledTimes(1);
+    const [message, ...rest] = consoleDebug.mock.calls[0];
     expect(rest).toHaveLength(0);
     expect(message).toContain("[BackendAPI] WebSocket error");
     expect(message).toContain("CLOSED");
