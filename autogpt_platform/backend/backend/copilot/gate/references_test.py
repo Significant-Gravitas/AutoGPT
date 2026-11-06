@@ -29,6 +29,12 @@ _ID_NAME = re.compile(r"(^|_)(ids?|uuids?)$|Ids?$")
 _ID_WORD = re.compile(r"\b(id|ID|ids|IDs|uuid|UUID|identifier)\b")
 
 
+@pytest.fixture(autouse=True)
+def _a_stalled_runner_cannot_cut_the_card(monkeypatch: pytest.MonkeyPatch):
+    """A runner stall must not cut a card; the budget tests patch their own."""
+    monkeypatch.setattr(references, "CARD_SECONDS", 30.0)
+
+
 def test_every_id_shaped_input_of_a_gated_tool_declares_its_entity():
     """A new tool's id must not fall back to a raw uuid unnoticed."""
     from backend.copilot.tools import get_tool
@@ -118,7 +124,8 @@ async def test_one_slow_lookup_is_cut_at_its_own_budget_and_the_rest_still_resol
     with (
         patch.object(references, "library_db", return_value=lib),
         patch.object(references, "LOOKUP_SECONDS", 0.05),
-        patch.object(references, "CARD_SECONDS", 1.0),
+        # Far above the lookup budget, so a stalled runner cannot cut the card first.
+        patch.object(references, "CARD_SECONDS", 30.0),
     ):
         refs = await resolve_references("move_folder", args, "user-1", _session())
 
