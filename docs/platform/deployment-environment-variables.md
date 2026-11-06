@@ -44,7 +44,8 @@ make init-env
 ```
 
 This generates `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`,
-`BETTER_AUTH_SECRET`, and the passwords of the database, RabbitMQ, Redis and
+`BETTER_AUTH_SECRET`, the Web Push key pair (`VAPID_PRIVATE_KEY` and
+`VAPID_PUBLIC_KEY`), and the passwords of the database, RabbitMQ, Redis and
 FalkorDB, for your install only. There is nothing to generate by hand. Most of
 them are required: without `ENCRYPTION_KEY` the backend refuses to start,
 without `POSTGRES_PASSWORD` Docker Compose refuses to start, without the
@@ -62,38 +63,12 @@ in `DATABASE_URL` in `frontend/.env`, which only matter outside Docker. To
 change it, follow
 [Upgrading: service passwords are generated per install](getting-started.md#upgrading-service-passwords-are-generated-per-install).
 
-## 2. Replace the shared push keys
+Set one thing yourself: `VAPID_CLAIM_EMAIL` in `backend/.env`, to `mailto:`
+an address you read. Push services use it to contact you about this server's
+notifications. Leave `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `frontend/.env` blank:
+the frontend fetches the public key from the backend.
 
-`make init-env` does not generate the Web Push keys. The ones in
-`backend/.env.default` are a published development pair, so make your own
-before anyone else uses the server. With the stack running
-(`docker compose up -d`), this prints a new pair from inside the backend
-container:
-
-```bash
-docker compose exec -T rest_server python - <<'EOF'
-import base64
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from py_vapid import Vapid
-v = Vapid()
-v.generate_keys()
-private = v.private_key.private_numbers().private_value.to_bytes(32, "big")
-public = v.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-print("VAPID_PRIVATE_KEY=" + base64.urlsafe_b64encode(private).rstrip(b"=").decode())
-print("VAPID_PUBLIC_KEY=" + base64.urlsafe_b64encode(public).rstrip(b"=").decode())
-EOF
-```
-
-Then set:
-
-| File | Setting | Value |
-|------|---------|-------|
-| `backend/.env` | `VAPID_PRIVATE_KEY` | Your private key |
-| `backend/.env` | `VAPID_PUBLIC_KEY` | Your public key |
-| `backend/.env` | `VAPID_CLAIM_EMAIL` | `mailto:` an address you read |
-| `frontend/.env` | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | The same public key |
-
-## 3. Set your public URLs
+## 2. Set your public URLs
 
 Every default points at `localhost`, which only works in a browser on the
 server itself. From any other machine, people can still sign up and log in,
@@ -104,7 +79,7 @@ the backend.
 
 The examples use `https://autogpt.example.com` for the frontend and
 `https://api.autogpt.example.com` for the backend, behind a reverse proxy (see
-[step 4](#4-put-it-behind-https)). Without one, use the server's address and the
+[step 3](#3-put-it-behind-https)). Without one, use the server's address and the
 published ports instead: `http://<server>:3000` for the frontend,
 `http://<server>:8006` for the backend and `ws://<server>:8001/ws` for the
 WebSocket.
@@ -141,7 +116,7 @@ different machines, read
 [Auth transport security](getting-started.md#auth-transport-security-jwks-over-untrusted-networks)
 first.
 
-## 4. Put it behind HTTPS
+## 3. Put it behind HTTPS
 
 Docker publishes three ports to the network: the frontend on `3000`, the API
 on `8006` and the WebSocket server on `8001`. They speak plain HTTP, and
@@ -182,17 +157,28 @@ only.
 hosted platform: set `1` for a single reverse proxy, or `0` with none. Only
 the External API (`/api/v2`) uses it, for its per-IP rate limits.
 
-The frontend finds the visitor's address separately, for the per-visitor
-limit on store search and for the sign-in history and IP blocks. Set
-`TRUST_X_FORWARDED_FOR=true` in `frontend/.env` when the proxy sets
-`X-Forwarded-For` to the visitor's address, replacing any value the request
-arrived with. Caddy does that by default. In nginx, use
-`proxy_set_header X-Forwarded-For $remote_addr;`, not
+The frontend finds the visitor's address separately: for its per-IP limits on
+sign-in and password-reset attempts, the per-visitor limit on store search,
+and the sign-in history and IP blocks. Set `TRUST_X_FORWARDED_FOR=true` in
+`frontend/.env` when the proxy sets `X-Forwarded-For` to the visitor's
+address, replacing any value the request arrived with. Caddy does that by
+default. In nginx, use `proxy_set_header X-Forwarded-For $remote_addr;`, not
 `$proxy_add_x_forwarded_for`, which keeps what the visitor sent. Without the
-setting, all visitors share one store-search limit and sign-ins record no IP
+setting, sign-in and password-reset attempts are limited only per email
+address, all visitors share one store-search limit, and sign-ins record no IP
 address.
 
-## 5. Decide who can sign up
+If the header can carry more than one address, because there is a chain of
+proxies or one that adds to the header instead of replacing it, set
+`TRUSTED_PROXIES` in `frontend/.env` instead: your proxies' addresses, as a
+comma-separated list of IP addresses or CIDR ranges, for example
+`10.0.0.0/8,172.16.0.0/12`. The visitor is then the first address from the
+right of the header that the list does not cover. A non-empty list trusts the
+header on its own, so it does not need `TRUST_X_FORWARDED_FOR`. An entry that
+is not an IP address or CIDR range stops the frontend from starting. Making
+the proxy replace the header is still the better choice where you can.
+
+## 4. Decide who can sign up
 
 Anyone who can reach the frontend can create an account. To limit that, set
 one of these in `frontend/.env`:
@@ -206,7 +192,7 @@ Sign-up does not check email addresses unless you set
 backend's mailer: set `POSTMARK_SERVER_API_TOKEN` and `POSTMARK_SENDER_EMAIL`
 in `backend/.env`. There is no SMTP setting for login emails.
 
-## 6. Register OAuth callback URLs
+## 5. Register OAuth callback URLs
 
 Integrations (GitHub, Google and the others in `backend/.env`) send people
 back to the frontend. Register this callback with each provider:
@@ -243,11 +229,11 @@ files do not set them, so setting those two in `backend/.env` is enough.
 ## Checklist
 
 - [ ] `make init-env` in `autogpt_platform/`
-- [ ] Your own VAPID keys and a real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`, and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `frontend/.env`
+- [ ] A real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
 - [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`
-- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and `TRUST_X_FORWARDED_FOR=true` in `frontend/.env` if the proxy replaces `X-Forwarded-For`
+- [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, `TRUSTED_PROXY_COUNT` set, and in `frontend/.env` either `TRUST_X_FORWARDED_FOR=true` if the proxy replaces `X-Forwarded-For`, or `TRUSTED_PROXIES` if it does not
 - [ ] Sign-ups limited, if the server is public
 - [ ] `docker compose up -d --build`
 - [ ] From another machine: sign up, log in, and check the browser console shows no `localhost` connection errors
