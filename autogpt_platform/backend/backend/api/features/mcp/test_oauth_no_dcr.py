@@ -182,3 +182,106 @@ async def test_server_accepting_public_clients_keeps_the_placeholder(
     state = manager.store.store_state_token.call_args.kwargs["state_metadata"]
     assert state["client_secret"] == ""
     assert state["token_endpoint_auth_method"] == "none"
+
+
+# What mcp.withallo.com and api.withallo.com served on 2026-10-30: no
+# ``registration_endpoint``, public clients allowed, and no scopes listed by
+# the resource, so sign-in asks for every scope the server advertises.
+ALLO_PROTECTED_RESOURCE = {
+    "resource": "https://mcp.withallo.com/mcp",
+    "authorization_servers": ["https://api.withallo.com"],
+    "bearer_methods_supported": ["header"],
+}
+ALLO_SCOPES = ["CONVERSATIONS_READ", "SMS_SEND", "AGENTS_WRITE"]
+ALLO_AUTH_SERVER = {
+    "issuer": "https://api.withallo.com",
+    "authorization_endpoint": "https://api.withallo.com/v1/oauth/authorize",
+    "token_endpoint": "https://api.withallo.com/v1/oauth/token",
+    "revocation_endpoint": "https://api.withallo.com/v1/oauth/revoke",
+    "response_types_supported": ["code"],
+    "grant_types_supported": [
+        "authorization_code",
+        "refresh_token",
+        "client_credentials",
+    ],
+    "code_challenge_methods_supported": ["S256"],
+    "client_id_metadata_document_supported": True,
+    "authorization_response_iss_parameter_supported": True,
+    "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
+    "scopes_supported": ALLO_SCOPES,
+}
+
+
+@pytest.fixture
+def allo_login(login):
+    _, settings, manager = login
+    with patch("backend.api.features.mcp.routes.MCPClient") as mcp_client:
+        mcp_client.return_value.discover_auth = AsyncMock(
+            return_value=ALLO_PROTECTED_RESOURCE
+        )
+        mcp_client.return_value.discover_auth_server_metadata = AsyncMock(
+            return_value=(dict(ALLO_AUTH_SERVER), "https://api.withallo.com")
+        )
+        settings.secrets.allo_mcp_client_id = ""
+        yield settings, manager
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_allo_signs_in_with_its_public_app(client, allo_login):
+    settings, manager = allo_login
+    settings.secrets.allo_mcp_client_id = "allo-client-id"
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": "https://mcp.withallo.com/mcp"}
+    )
+
+    assert response.status_code == 200
+    login_url = urlsplit(response.json()["login_url"])
+    assert (login_url.scheme, login_url.hostname, login_url.path) == (
+        "https",
+        "api.withallo.com",
+        "/v1/oauth/authorize",
+    )
+    query = parse_qs(login_url.query)
+    assert query["client_id"] == ["allo-client-id"]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["resource"] == ["https://mcp.withallo.com/mcp"]
+    assert query["scope"] == [" ".join(ALLO_SCOPES)]
+    state = manager.store.store_state_token.call_args.kwargs["state_metadata"]
+    assert state["client_id"] == "allo-client-id"
+    assert state["client_secret"] == ""
+    assert state["token_endpoint_auth_method"] == "none"
+    assert state["token_url"] == "https://api.withallo.com/v1/oauth/token"
+    assert state["revoke_url"] == "https://api.withallo.com/v1/oauth/revoke"
+    assert state["iss_required"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_allo_without_an_app_says_sign_in_is_not_set_up(client, allo_login):
+    _, manager = allo_login
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": "https://mcp.withallo.com/mcp"}
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == NO_OAUTH_CODE
+    assert detail["message"].startswith(
+        "Sign-in to mcp.withallo.com is not set up on this platform yet"
+    )
+    manager.store.store_state_token.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hubspot_app_missing_its_secret_is_not_set_up(client, login):
+    _, settings, manager = login
+    settings.secrets.hubspot_mcp_client_id = "hubspot-client-id"
+
+    response = await client.post(
+        "/oauth/login", json={"server_url": "https://mcp.hubspot.com"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == NO_OAUTH_CODE
+    manager.store.store_state_token.assert_not_called()
