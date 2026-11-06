@@ -1607,6 +1607,17 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     )
 
 
+async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
+    """The ids in ``graph_ids`` with any version copied from another graph."""
+    # A version saved in the builder drops ``forkedFromId``, so the latest
+    # version alone can't tell a copy from an original.
+    copies = await AgentGraph.prisma().find_many(
+        where={"id": {"in": graph_ids}, "forkedFromId": {"not": None}},
+        distinct=["id"],
+    )
+    return [copy.id for copy in copies]
+
+
 async def get_graph(
     graph_id: str,
     version: int | None,
