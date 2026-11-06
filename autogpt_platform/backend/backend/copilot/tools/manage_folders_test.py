@@ -23,6 +23,7 @@ from backend.copilot.tools.models import (
     FolderMovedResponse,
     FolderUpdatedResponse,
 )
+from backend.util.exceptions import NotFoundError
 
 from ._test_data import make_session
 
@@ -454,3 +455,58 @@ async def test_move_agents_db_error(move_agents_tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "move_agents_failed"
+
+
+@pytest.mark.asyncio
+async def test_move_agents_none_moved_returns_error(move_agents_tool, session):
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(return_value=[])
+        result = await move_agents_tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_ids=["a1", "a2"],
+            folder_id="folder-1",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "no_agents_moved"
+    assert "Moved" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_move_agents_not_found_error(move_agents_tool, session):
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(
+            side_effect=NotFoundError("Library agents not found: missing-1")
+        )
+        result = await move_agents_tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_ids=["a1", "missing-1"],
+            folder_id="folder-1",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "not_found"
+    assert "missing-1" in result.message
+    assert "Nothing was moved" in result.message
+
+
+@pytest.mark.asyncio
+async def test_move_agents_message_uses_moved_names_only(move_agents_tool, session):
+    agents = [_make_library_agent(id="a1", name="Agent Alpha")]
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        mock_lib.return_value.bulk_move_agents_to_folder = AsyncMock(
+            return_value=agents
+        )
+        result = await move_agents_tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_ids=["graph-1"],
+            folder_id="folder-1",
+        )
+
+    assert isinstance(result, AgentsMovedToFolderResponse)
+    assert result.message == "Moved Agent Alpha to the folder."
+    assert result.count == 1
+    assert result.agent_ids == ["a1"]
