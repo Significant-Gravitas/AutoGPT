@@ -4,7 +4,7 @@ from typing import List
 
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Query, Security
 from prisma.enums import AgentExecutionStatus
 from pydantic import BaseModel
 
@@ -242,9 +242,9 @@ async def list_orphaned_executions(
     summary="List Failed Executions",
 )
 async def list_failed_executions(
-    limit: int = 100,
-    offset: int = 0,
-    hours: int = 24,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    hours: int = Query(24, ge=1, le=8760),
 ):
     """
     Get detailed list of failed executions.
