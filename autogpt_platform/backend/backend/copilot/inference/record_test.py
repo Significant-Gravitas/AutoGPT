@@ -41,7 +41,6 @@ def _ctx(
     *,
     route: RouteDecision | None = None,
     expert_id: str | None = "e1",
-    trace_id: str | None = None,
 ) -> InferenceContext:
     return InferenceContext(
         scope=InferenceScope(user_id="u1", expert_id=expert_id),
@@ -53,7 +52,6 @@ def _ctx(
             tier="standard",
         ),
         route=route or _sync_route(),
-        trace_id=trace_id,
     )
 
 
@@ -113,12 +111,6 @@ async def test_row_metadata_names_the_job_the_path_and_who_pays(persist):
         "discount_applied": 0.0,
         "expert_id": "e1",
     }
-
-
-@pytest.mark.asyncio
-async def test_row_links_the_langfuse_trace_when_there_is_one(persist):
-    await record(_ctx(trace_id="t-123"), _usage(0.01), block_name="b")
-    assert persist.await_args.kwargs["extra_metadata"]["langfuse_trace_id"] == "t-123"
 
 
 @pytest.mark.asyncio

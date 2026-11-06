@@ -78,7 +78,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -88,7 +88,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,
@@ -139,7 +139,7 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  extractReviewTarget: () => null,
+  extractReviewTargets: () => ({ chat: false, runs: [] }),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -663,7 +663,7 @@ describe("groupSessionsByExpert", () => {
       makeSession({ id: "s2", expert_id: "expert-maria" }),
       makeSession({ id: "s3", expert_id: "expert-juan" }),
       makeSession({ id: "s4", expert_id: "expert-maria" }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial mock of the generated response type
     ] as any);
 
     expect(groups.map((group) => group.expertId)).toEqual([
@@ -685,7 +685,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     id: "m1",
     role: "assistant",
     parts: [{ type: "text", text: "Here is your marketing plan." }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial mock of the generated response type
   } as any;
   const mariaIdentity = {
     id: "expert-maria",

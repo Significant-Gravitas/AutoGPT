@@ -9,6 +9,9 @@ import {
 } from "@/tests/integrations/test-utils";
 import type { User } from "@/lib/auth/types";
 import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/onboardingWizardProgress";
+import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   installGtagShim,
   removeGtagShim,
@@ -41,8 +44,20 @@ vi.mock("../steps/BrainDumpStep/BrainDumpStep", () => ({
 vi.mock("../steps/ConnectStep/ConnectStep", () => ({
   ConnectStep: () => <div data-testid="step-connect" />,
 }));
-vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
-  SubscriptionStep: () => <div data-testid="step-subscription" />,
+// Stands in for the plan step: Continue moves on only when there is no
+// paywall, as the real step does; with one, Stripe moves the wizard.
+vi.mock("../steps/SubscriptionStep/PlanTrialStep", () => ({
+  PlanTrialStep: ({ hasPaywall }: { hasPaywall: boolean }) => (
+    <button
+      data-testid="step-subscription"
+      data-paywall={String(hasPaywall)}
+      onClick={() => {
+        if (!hasPaywall) useOnboardingWizardStore.getState().nextStep();
+      }}
+    >
+      Continue
+    </button>
+  ),
 }));
 vi.mock("../steps/IntroStep/IntroStep", () => ({
   IntroStep: ({ slide }: { slide: string }) => (
@@ -54,23 +69,31 @@ vi.mock("../steps/IntroStep/IntroStep", () => ({
     </button>
   ),
 }));
-vi.mock("../steps/HireStep/HireStep", () => ({
-  HireStep: () => (
-    <button
-      data-testid="step-hire"
-      onClick={() => useOnboardingWizardStore.getState().nextStep()}
-    >
-      Continue
-    </button>
-  ),
-}));
-vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
-    <button data-testid="step-preparing" onClick={onComplete}>
-      Finish
-    </button>
-  ),
-}));
+// Finish stands in for the bar filling. With `realPreparing`, the real
+// screen runs beside it, so a test sees whether the plan's team is hired.
+let realPreparing = false;
+vi.mock("../steps/PreparingStep", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../steps/PreparingStep")>();
+  return {
+    PreparingStep: ({
+      onComplete,
+      canHire,
+    }: {
+      onComplete: () => void;
+      canHire?: boolean;
+    }) => (
+      <>
+        {realPreparing && (
+          <actual.PreparingStep onComplete={() => {}} canHire={canHire} />
+        )}
+        <button data-testid="step-preparing" onClick={onComplete}>
+          Finish
+        </button>
+      </>
+    ),
+  };
+});
 
 let params = new URLSearchParams();
 const routerReplace = vi.fn();
@@ -112,6 +135,12 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
 }));
+const { clearSkippedRecordings } = vi.hoisted(() => ({
+  clearSkippedRecordings: vi.fn(),
+}));
+vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
+  clearSkippedRecordings,
+}));
 let tier = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
@@ -133,11 +162,15 @@ vi.mock("@/services/trials/useTrialCheckoutReturn", () => ({
 }));
 let flags: Record<string, boolean> = {};
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ENABLE_PLATFORM_PAYMENT: "payment",
-  },
+  Flag: {},
   useGetFlag: (flag: string) => !!flags[flag],
   useFlagStatus: (flag: string) => ({ enabled: !!flags[flag], ready: true }),
+}));
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: !!flags.payment,
+    isResolved: true,
+  }),
 }));
 let local = false;
 vi.mock("@/services/environment", async (importOriginal) => {
@@ -148,9 +181,6 @@ vi.mock("@/services/environment", async (importOriginal) => {
     environment: { ...actual.environment, isLocal: () => local },
   };
 });
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useLDClient: () => ({ waitForInitialization: () => Promise.resolve() }),
-}));
 
 beforeEach(() => {
   user = {
@@ -167,6 +197,7 @@ beforeEach(() => {
   revision = 0;
   serverDraft = null;
   trial = { ready: true, active: false, error: undefined, retry: vi.fn() };
+  realPreparing = false;
   localStorage.clear();
   sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
@@ -193,6 +224,7 @@ beforeEach(() => {
   );
   completeStep.mockResolvedValue({ status: 200 });
   submitProfile.mockResolvedValue({ status: 200 });
+  clearSkippedRecordings.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
@@ -219,7 +251,7 @@ function makeProgress(overrides: Partial<OnboardingWizardProgress> = {}) {
   } as OnboardingWizardProgress;
 }
 async function completePersonalization() {
-  for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+  for (const key of ["team", "autopilot", "role", "braindump"]) {
     fireEvent.click(await screen.findByTestId(`step-${key}`));
   }
 }
@@ -238,19 +270,34 @@ describe("onboarding before payment", () => {
     expect(completeStep).not.toHaveBeenCalled();
     expect(submitProfile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByTestId("step-hire")).toBeDefined();
+    expect(await screen.findByTestId("step-braindump")).toBeDefined();
   });
 
-  it("keeps the brain dump and real hire step before the paywall", async () => {
+  it("goes from the brain dump straight to the plan and trial, with no hire step", async () => {
     flags = { payment: true };
     render(<OnboardingPage />);
-    for (const key of ["team", "autopilot", "role", "braindump", "hire"]) {
+    for (const key of ["team", "autopilot", "role", "braindump"]) {
       fireEvent.click(await screen.findByTestId(`step-${key}`));
     }
-    expect(await screen.findByTestId("step-subscription")).toBeDefined();
-    expect(useOnboardingWizardStore.getState().completedSteps).toContain(
+    const step = await screen.findByTestId("step-subscription");
+    expect(step.dataset.paywall).toBe("true");
+    expect(screen.queryByTestId("step-hire")).toBeNull();
+    expect(useOnboardingWizardStore.getState().completedSteps).not.toContain(
       "hire",
     );
+  });
+
+  it("resumes a draft saved on the retired hire step at the plan step", async () => {
+    serverDraft = makeBaseProgress({
+      currentStep: "hire",
+      completedSteps: ["team", "autopilot", "role", "painPoints", "hire"],
+      hiredTemplateIds: ["maria"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
+      "maria",
+    ]);
   });
 
   it("restores answers, hires and semantic progress in a fresh session", async () => {
@@ -308,6 +355,8 @@ describe("onboarding before payment", () => {
       expect(completeStep).toHaveBeenCalledWith({
         step: "ONBOARDING_COMPLETE",
       });
+      // A skipped brain-dump take is kept for Back only until here.
+      expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
     },
   );
 
@@ -372,7 +421,18 @@ describe("onboarding before payment", () => {
     },
   );
 
-  it("keeps self-host connection after personalization", async () => {
+  it("keeps self-host connection after the plan", async () => {
+    flags.payment = false;
+    local = true;
+    serverDraft = makeProgress({
+      currentStep: "connect",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-connect")).toBeDefined();
+  });
+
+  it("shows a self-hosted user the plan before the connection", async () => {
     flags.payment = false;
     local = true;
     serverDraft = makeProgress({
@@ -380,6 +440,9 @@ describe("onboarding before payment", () => {
       completedSteps: ["role", "painPoints"],
     });
     render(<OnboardingPage />);
+    const plan = await screen.findByTestId("step-subscription");
+    expect(plan.dataset.paywall).toBe("false");
+    fireEvent.click(plan);
     expect(await screen.findByTestId("step-connect")).toBeDefined();
   });
 
@@ -400,6 +463,7 @@ describe("onboarding before payment", () => {
     expect(routerReplace).not.toHaveBeenCalledWith("/copilot");
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(patchState).not.toHaveBeenCalled();
+    expect(clearSkippedRecordings).toHaveBeenCalledWith("u1");
   });
 
   it("does not drop progress or redirect when completion fails", async () => {
@@ -411,10 +475,97 @@ describe("onboarding before payment", () => {
     expect(await screen.findByText(/couldn't finish setting up/)).toBeDefined();
     expect(routerReplace).not.toHaveBeenCalledWith("/home");
     expect(localStorage.getItem(progressStorageKey("u1"))).not.toBeNull();
+    expect(clearSkippedRecordings).not.toHaveBeenCalled();
+  });
+});
+
+describe("hiring the plan's team", () => {
+  function serveHire() {
+    const hires = { count: 0 };
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ready: true,
+        source: "llm",
+        skipped_dump: false,
+        heard: "You run a bakery.",
+        team: [{ template_id: "tpl-maria", name: "Maria", role: "Sales" }],
+        tasks: [],
+      }),
+      http.post("*/api/onboarding/brain-dump/plan/hire", () => {
+        hires.count += 1;
+        return HttpResponse.json({
+          hired: [
+            { template_id: "tpl-maria", expert_id: "e-1", name: "Maria" },
+          ],
+          failed: [],
+        });
+      }),
+    );
+    return hires;
+  }
+
+  beforeEach(() => {
+    realPreparing = true;
+  });
+
+  it("hires the team once the trial is confirmed", async () => {
+    const hires = serveHire();
+    atPaywall();
+    params = new URLSearchParams("trial=success&step=preparing");
+    trial.active = true;
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Hiring Maria")).toBeDefined();
+    await waitFor(() => expect(hires.count).toBe(1));
+  });
+
+  it("hires nobody for a user who has not paid, even with a draft at preparing", async () => {
+    const hires = serveHire();
+    serverDraft = makeProgress({
+      currentStep: "preparing",
+      completedSteps: ["role", "painPoints", "subscription"],
+    });
+    params = new URLSearchParams("step=preparing");
+    render(<OnboardingPage />);
+
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+    expect(hires.count).toBe(0);
   });
 });
 
 describe("draft recovery", () => {
+  it("saves the role to the account once its step is left, and keeps it at the paywall", async () => {
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-team"));
+    fireEvent.click(await screen.findByTestId("step-autopilot"));
+    await screen.findByTestId("step-role");
+    act(() => useOnboardingWizardStore.getState().setRole("Other"));
+    act(() => useOnboardingWizardStore.getState().setOtherRole("Dentist"));
+    fireEvent.click(screen.getByTestId("step-role"));
+    await screen.findByTestId("step-braindump");
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "painPoints",
+        completedSteps: expect.arrayContaining(["role"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("step-braindump"));
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    await waitFor(() =>
+      expect(serverDraft).toMatchObject({
+        currentStep: "subscription",
+        completedSteps: expect.arrayContaining(["role", "painPoints"]),
+        role: "Other",
+        otherRole: "Dentist",
+      }),
+    );
+    expect(submitProfile).not.toHaveBeenCalled();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
+
   it("saves each step in the background without holding navigation", async () => {
     patchState.mockImplementation(() => new Promise(() => {}));
     render(<OnboardingPage />);
@@ -471,7 +622,6 @@ describe("draft recovery", () => {
       await screen.findByText(/couldn't save your progress/),
     ).toBeDefined();
     fireEvent.click(screen.getByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
   });
 
@@ -659,7 +809,6 @@ it.each(["", "Other"])(
     act(() => useOnboardingWizardStore.getState().setRole("Design"));
     fireEvent.click(screen.getByTestId("step-role"));
     fireEvent.click(await screen.findByTestId("step-braindump"));
-    fireEvent.click(await screen.findByTestId("step-hire"));
     fireEvent.click(await screen.findByTestId("step-preparing"));
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
     expect(submitProfile).toHaveBeenCalledWith(

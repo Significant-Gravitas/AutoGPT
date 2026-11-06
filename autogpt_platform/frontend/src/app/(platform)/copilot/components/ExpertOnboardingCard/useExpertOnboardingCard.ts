@@ -130,9 +130,8 @@ export function useExpertOnboardingCard({ callId, steps, isLive }: Args) {
       setIsSent(true);
     } catch {
       setIsSent(false);
-    } finally {
-      setIsSending(false);
     }
+    setIsSending(false);
   }
 
   function advance() {

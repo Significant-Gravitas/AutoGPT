@@ -38,7 +38,6 @@ class FrontendFlag(str, Enum):
     """
 
     MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms"
-    ENABLE_PLATFORM_PAYMENT = Flag.ENABLE_PLATFORM_PAYMENT.value
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
     GENERIC_TRIGGER_AGENTS = Flag.GENERIC_TRIGGER_AGENTS.value
     CHAT_WORKSPACE_FILES = "chat-workspace-files"
@@ -123,7 +122,7 @@ async def _anonymous_flags() -> dict[FrontendFlag, Any]:
     return flags
 
 
-# Listing LaunchDarkly's flags evaluates all of them; "cannot tell yet" is retried.
+# Cached briefly; "cannot tell yet" (definitions not loaded) is retried.
 @cached(maxsize=1, ttl_seconds=30, cache_none=False)
 def _defined_flags() -> frozenset[str] | None:
     return defined_flag_keys()

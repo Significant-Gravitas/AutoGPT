@@ -177,8 +177,8 @@ async def _race(
     return failures, seen
 
 
-def _saved(run: str, seed: int, index: int) -> store_model.Profile:
-    return store_model.Profile(
+def _saved(run: str, seed: int, index: int) -> store_model.ProfileUpdateRequest:
+    return store_model.ProfileUpdateRequest(
         username=f"saved-{run}-{seed}-{index}",
         name=_saved_name(seed, index),
         description="Saved from the profile page",

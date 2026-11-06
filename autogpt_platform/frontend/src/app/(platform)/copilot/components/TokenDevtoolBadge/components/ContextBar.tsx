@@ -11,17 +11,17 @@ interface Props {
 export function ContextBar({ context }: Props) {
   const threshold = (AUTOCOMPACT_TOKENS / MODEL_CONTEXT_WINDOW) * 100;
   return (
-    <div className="relative h-2 w-full rounded-full bg-zinc-100">
+    <div className="relative h-2 w-full rounded-full bg-surface-hover">
       <div
         className={
           "absolute inset-y-0 left-0 rounded-full transition-all " +
-          (isOverAutocompact(context) ? "bg-amber-400" : "bg-zinc-800")
+          (isOverAutocompact(context) ? "bg-warning" : "bg-action")
         }
         style={{ width: `${windowPercent(context)}%` }}
       />
       <div
         aria-hidden
-        className="absolute inset-y-0 w-px bg-amber-400"
+        className="absolute inset-y-0 w-px bg-warning"
         style={{ left: `${threshold}%` }}
       />
     </div>

@@ -7,10 +7,8 @@ import { useEffect } from "react";
 // its closest new-settings equivalent. Links in the wild (emails, bookmarks,
 // the old sidebar) must land on the new surface.
 const LEGACY_TO_NEW_SETTINGS: Record<string, string> = {
-  "/profile": "/settings/profile",
   "/profile/dashboard": "/settings/creator-dashboard",
   "/profile/credits": "/settings/billing",
-  "/profile/integrations": "/settings/integrations",
   "/profile/api-keys": "/settings/api-keys",
 };
 

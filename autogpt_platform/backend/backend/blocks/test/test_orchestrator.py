@@ -1,6 +1,7 @@
 import logging
 import threading
 from collections import defaultdict
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,7 +12,12 @@ from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext
-from backend.data.model import NodeExecutionStats, ProviderName, User
+from backend.data.model import (
+    GraphExecutionStats,
+    NodeExecutionStats,
+    ProviderName,
+    User,
+)
 from backend.executor import billing
 from backend.executor import utils as executor_utils
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -564,6 +570,50 @@ async def test_orchestrator_parameter_validation():
         assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
         assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
         assert outputs["tools_^_test-sink-node-id_~_optional_param"] == "custom_value"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_retry_a_refused_prompt():
+    """A refusal is not a tool-call mistake to send back to the model."""
+    import backend.blocks.llm as llm_module
+    from backend.blocks.orchestrator import OrchestratorBlock
+    from backend.util.llm.prompt_refusal import PromptRefusedError
+
+    with patch(
+        "backend.blocks.llm.llm_call",
+        new_callable=AsyncMock,
+        side_effect=PromptRefusedError(),
+    ) as mock_llm_call, patch.object(
+        OrchestratorBlock,
+        "_create_tool_node_signatures",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        input_data = OrchestratorBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.DEFAULT_LLM_MODEL,
+            credentials=cast(
+                llm_module.AICredentials, llm_module.TEST_CREDENTIALS_INPUT
+            ),
+            retry=3,
+            agent_mode_max_iterations=0,
+        )
+        with pytest.raises(PromptRefusedError):
+            async for _ in OrchestratorBlock().run(
+                input_data,
+                credentials=llm_module.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+                graph_version=1,
+                execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+                execution_processor=MagicMock(),
+            ):
+                pass
+
+    assert mock_llm_call.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -1233,13 +1283,15 @@ async def _run_nested_tool(
     dry_run: bool = False,
     tool_error: Exception | None = None,
     settle=None,
-) -> None:
-    """Run ``_execute_single_tool_with_manager`` against a tool node whose
-    pre-flight is 60 credits, with the charge and the node run replaced by
-    fakes that record what the executor would see: ``events`` collects
-    "charge" / "run" in call order and ``seen_baseline`` the
-    ``pre_flight_charge`` each run was started with. ``settle``, if given, is
-    awaited with the entry after the run, where the executor reconciles.
+) -> GraphExecutionStats:
+    """Run ``_execute_single_tool_with_manager`` against a tool node, with the
+    charge and the node run replaced by fakes that record what the executor
+    would see; the pre-flight is whatever ``charge_side_effect`` charges.
+    ``events`` collects "charge" / "run" in call order and ``seen_baseline``
+    the ``pre_flight_charge`` each run was started with. ``settle``, if given,
+    is awaited with the entry after the run, where the executor reconciles,
+    and the delta it returns is added to the run's stats as the manager does.
+    Returns the run's stats.
     """
     from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
 
@@ -1261,11 +1313,14 @@ async def _run_nested_tool(
         events.append("charge")
         return await charge_side_effect(entry)
 
-    async def run_node(node_exec, **_kwargs):
+    async def run_node(node_exec, graph_stats_pair, **_kwargs):
         events.append("run")
         seen_baseline.append(node_exec.pre_flight_charge)
         if settle:
-            await settle(node_exec)
+            delta = await settle(node_exec)
+            graph_stats, lock = graph_stats_pair
+            with lock:
+                graph_stats.cost += delta
         stats = MagicMock()
         stats.error = tool_error
         return stats
@@ -1273,7 +1328,7 @@ async def _run_nested_tool(
     processor = MagicMock()
     processor.nodes_input_masks = None
     processor.running_node_execution = defaultdict(MagicMock)
-    processor.execution_stats = MagicMock()
+    processor.execution_stats = GraphExecutionStats()
     processor.execution_stats_lock = threading.Lock()
     processor.charge_node_usage = AsyncMock(side_effect=charge)
     processor.on_node_execution = AsyncMock(side_effect=run_node)
@@ -1299,6 +1354,7 @@ async def _run_nested_tool(
         return_value=mock_db_client,
     ):
         await block._execute_single_tool_with_manager(tool_info, params, processor)
+    return processor.execution_stats
 
 
 @pytest.mark.asyncio
@@ -1333,7 +1389,8 @@ async def test_nested_tool_reconciles_against_the_charge_actually_collected():
 async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
     """If the charge does not happen (dry run) or fails for a reason other than
     the balance, the tool runs with a baseline of 0, so reconciliation can
-    never refund a pre-flight that was not collected."""
+    never refund a pre-flight that was not collected, and nothing is added to
+    the run's cost."""
 
     async def broken_charge(_entry):
         raise RuntimeError("database unavailable")
@@ -1343,14 +1400,15 @@ async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
 
     events: list[str] = []
     seen_baseline: list = []
-    await _run_nested_tool(
+    run_stats = await _run_nested_tool(
         events=events, seen_baseline=seen_baseline, charge_side_effect=broken_charge
     )
     assert events == ["charge", "run"]
     assert seen_baseline == [0]
+    assert run_stats.cost == 0
 
     events, seen_baseline = [], []
-    await _run_nested_tool(
+    run_stats = await _run_nested_tool(
         events=events,
         seen_baseline=seen_baseline,
         charge_side_effect=no_charge,
@@ -1358,6 +1416,7 @@ async def test_nested_tool_baseline_is_zero_when_nothing_was_charged():
     )
     assert events == ["run"]
     assert seen_baseline == [0]
+    assert run_stats.cost == 0
 
 
 @pytest.mark.asyncio
@@ -1380,13 +1439,23 @@ async def test_nested_tool_is_not_run_when_the_balance_cannot_cover_it():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_tool_call_with_no_usage_leaves_the_wallet_unchanged(
-    monkeypatch,
+@pytest.mark.parametrize(
+    ("tool_error", "used_usd", "expected_ledger"),
+    [
+        (RuntimeError("tool failed before any usage was tracked"), None, [25, -25]),
+        (None, 0.40, [25, 35]),
+    ],
+    ids=["failed-before-usage", "succeeded-with-usage"],
+)
+async def test_a_tool_call_bills_its_usage_and_the_run_cost_shows_it(
+    monkeypatch, tool_error, used_usd, expected_ledger
 ):
-    """Through the real charge and reconciliation: a tool call that fails
-    before tracking any usage is charged its pre-flight, then refunded exactly
-    that. The old flow charged only after a successful run, so the refund
-    landed with no charge before it and credited the wallet 25."""
+    """Through the real charge and reconciliation, a tool call's pre-flight is
+    charged and then settled to its tracked usage, and the run's cost shows
+    what the wallet paid. A call that fails before any usage nets 0; the old
+    flow charged only after a successful run, so the refund landed with no
+    charge before it and credited the wallet 25. The run's cost used to miss
+    every tool call's pre-flight and show only the reconciliation delta."""
     ledger: list[int] = []
 
     def spend(*, cost: int, **_kwargs) -> int:
@@ -1409,18 +1478,23 @@ async def test_a_failed_tool_call_with_no_usage_leaves_the_wallet_unchanged(
     )
 
     async def reconcile(node_exec):
-        await billing.charge_reconciled_usage(
+        delta, _ = await billing.charge_reconciled_usage(
             node_exec=node_exec,
-            stats=NodeExecutionStats(),
+            stats=NodeExecutionStats(
+                provider_cost=used_usd,
+                provider_cost_type="cost_usd" if used_usd else None,
+            ),
             pre_flight_charge=node_exec.pre_flight_charge,
         )
+        return delta
 
-    await _run_nested_tool(
+    run_stats = await _run_nested_tool(
         events=[],
         seen_baseline=[],
         charge_side_effect=billing.charge_node_usage,
-        tool_error=RuntimeError("tool failed before any usage was tracked"),
+        tool_error=tool_error,
         settle=reconcile,
     )
 
-    assert ledger == [25, -25]
+    assert ledger == expected_ledger
+    assert run_stats.cost == sum(ledger)

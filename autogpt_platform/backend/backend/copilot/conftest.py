@@ -15,3 +15,17 @@ def _no_bans(mocker):
         mocker.patch(
             f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_cli_prelaunch(mocker):
+    """No turn spawns a real CLI ahead of its query unless a test says so: a
+    mocked ``ClaudeSDKClient`` would take the process and never stop it.
+    Tests of the prelaunch patch ``service.CLIPrelaunch`` back themselves."""
+    mocker.patch("backend.copilot.sdk.service.CLIPrelaunch", _NoCLIPrelaunch)
+
+
+class _NoCLIPrelaunch:
+    @staticmethod
+    async def start(options, log_prefix):
+        return None

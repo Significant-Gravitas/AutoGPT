@@ -1,6 +1,6 @@
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   act,

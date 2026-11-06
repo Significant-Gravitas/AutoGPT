@@ -199,3 +199,28 @@ def test_schema_default_concurrent_turn_limit_is_15() -> None:
     from backend.util.settings import Config
 
     assert Config.model_fields["max_inflight_copilot_turns_per_user"].default == 15
+
+
+@pytest.mark.asyncio
+async def test_a_failed_release_never_hides_the_error_that_caused_it() -> None:
+    """On a failure path the release is cleanup: if it fails too, the error
+    the caller must act on is still the one raised in the block (a publish
+    that may have reached the broker must not turn into a Redis error that
+    reads as "nothing was sent")."""
+    db = _mock_db()
+    db.update_chat_session_status = AsyncMock(side_effect=ConnectionError("db blip"))
+    with patch.object(active_turns, "chat_db", return_value=db):
+        with pytest.raises(RuntimeError, match="publish may have landed"):
+            async with acquire_turn_slot("user-1", "session-a"):
+                raise RuntimeError("publish may have landed")
+    db.update_chat_session_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_release_on_a_clean_exit_still_raises() -> None:
+    db = _mock_db()
+    db.update_chat_session_status = AsyncMock(side_effect=ConnectionError("db blip"))
+    with patch.object(active_turns, "chat_db", return_value=db):
+        with pytest.raises(ConnectionError, match="db blip"):
+            async with acquire_turn_slot("user-1", "session-a"):
+                pass

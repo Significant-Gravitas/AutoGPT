@@ -29,18 +29,21 @@ async def owns_dump(user_id: str, recording_id: str) -> bool:
     return dump is not None and dump.recordingId == recording_id
 
 
-# A take that has reached any of these is being processed, or is already
-# done. Re-claiming it would knock it back to the start of the pipeline.
-# ``failed`` is deliberately absent: retrying a failed take must reset it.
-_IN_FLIGHT_STATUSES = frozenset(
+# A take still being processed. A new typed or skipped take cannot displace
+# one: unlike part 0 of a voice upload, they carry no earlier server-side
+# event that can establish which tab's request is newer.
+_PROCESSING_STATUSES = frozenset(
     {
         BrainDumpStatus.recording_uploaded,
         BrainDumpStatus.transcribing,
         BrainDumpStatus.transcribed,
         BrainDumpStatus.extracting,
-        BrainDumpStatus.completed,
     }
 )
+
+# Re-claiming the same take in any of these would knock it back to the start
+# of the pipeline. ``failed`` is deliberately absent: retrying it must reset it.
+_IN_FLIGHT_STATUSES = _PROCESSING_STATUSES | {BrainDumpStatus.completed}
 
 # Everything a single take owns. One row per user means a new take
 # inherits whatever the last one left here, so unless these are cleared
@@ -78,20 +81,20 @@ async def start_dump(
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried. Typed and skipped
-    finalizes also cannot displace an active take with a different id: unlike
-    part 0 of a voice upload, they carry no earlier server-side event that can
-    establish which tab's request is newer. A different voice recording id is
-    a deliberate new take and claims the row, taking every take-owned column
-    with it.
+    recovery replays part 0 or finalize is retried, and a typed or skipped
+    take with a different id cannot displace one still being processed. Any
+    other new id is a deliberate new take, a re-take after a finished one
+    included, and claims the row, taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
-    if (
-        existing
-        and existing.status in _IN_FLIGHT_STATUSES
-        and (
+    if existing and (
+        (
             existing.recordingId == recording_id
-            or input_mode != BrainDumpInputMode.voice
+            and existing.status in _IN_FLIGHT_STATUSES
+        )
+        or (
+            input_mode != BrainDumpInputMode.voice
+            and existing.status in _PROCESSING_STATUSES
         )
     ):
         return existing
@@ -102,6 +105,7 @@ async def start_dump(
         "status": BrainDumpStatus.recording_uploaded,
         "inputMode": input_mode,
         "errorCode": None,
+        "errorReason": None,
         **(_TAKE_OWNED_RESET if is_new_take else {}),
     }
     return await OnboardingBrainDump.prisma().upsert(
@@ -135,6 +139,51 @@ async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
     return updated == 1
 
 
+async def store_greeting(
+    user_id: str, recording_id: str, greeting: str, prompts: list[dict[str, Any]]
+) -> bool:
+    """Write the greeting, and the tasks under it while the take has none.
+
+    A list already stored stands: the plan step settled on the role plan
+    while the greeting was being written (``plan_service.settle_plan``), or
+    an earlier attempt at this take wrote one, and its ids may be out.
+    Returns ``False`` when the take has been superseded.
+    """
+    with_tasks = await OnboardingBrainDump.prisma().update_many(
+        where={
+            "userId": user_id,
+            "recordingId": recording_id,
+            "suggestedPrompts": {"equals": Json([])},
+        },
+        data={
+            "greeting": greeting,
+            "errorCode": None,
+            "suggestedPrompts": Json(prompts),
+        },
+    )
+    if with_tasks == 1:
+        return True
+    return await update_dump(user_id, recording_id, greeting=greeting, errorCode=None)
+
+
+async def replace_team(
+    user_id: str, recording_id: str, read_at: datetime, team: dict[str, Any]
+) -> bool:
+    """Write the team job's team, unless the row changed since ``read_at`` or
+    now belongs to another take.
+
+    A conditional write rather than a filter on the column: a reset take
+    holds a JSON null there, an older row a SQL null, and no one filter
+    matches both. Returns ``False`` when it did not land, so the caller
+    re-reads.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "recordingId": recording_id, "updatedAt": read_at},
+        data={"recommendedExperts": Json(team)},
+    )
+    return updated == 1
+
+
 async def claim_transition(
     user_id: str,
     recording_id: str,
@@ -161,10 +210,20 @@ async def claim_transition(
     return updated == 1
 
 
-async def mark_failed(user_id: str, recording_id: str, error_code: str) -> None:
-    """Record a terminal failure without ever dropping the stored audio."""
+async def mark_failed(
+    user_id: str, recording_id: str, error_code: str, reason: str | None = None
+) -> None:
+    """Record a terminal failure without ever dropping the stored audio.
+
+    ``reason`` says what decided a quality-gate rejection; any other failure
+    clears the one an earlier attempt left.
+    """
     await update_dump(
-        user_id, recording_id, status=BrainDumpStatus.failed, errorCode=error_code
+        user_id,
+        recording_id,
+        status=BrainDumpStatus.failed,
+        errorCode=error_code,
+        errorReason=reason,
     )
 
 
@@ -213,6 +272,26 @@ async def replace_suggested_prompts(
     updated = await OnboardingBrainDump.prisma().update_many(
         where={"userId": user_id, "updatedAt": read_at},
         data={"suggestedPrompts": Json(prompts)},
+    )
+    return updated == 1
+
+
+async def replace_plan(
+    user_id: str,
+    recording_id: str,
+    read_at: datetime,
+    prompts: list[dict[str, Any]],
+    team: dict[str, Any],
+) -> bool:
+    """Write the ranked prompts and the capped team together, unless the row
+    changed since ``read_at`` or now belongs to another take.
+
+    Returns ``False`` when it did not land, so the caller re-reads, as
+    ``replace_suggested_prompts`` does.
+    """
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={"userId": user_id, "recordingId": recording_id, "updatedAt": read_at},
+        data={"suggestedPrompts": Json(prompts), "recommendedExperts": Json(team)},
     )
     return updated == 1
 
