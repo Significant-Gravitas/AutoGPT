@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
-const { EventEmitter } = require("node:events");
+const { EventEmitter, once } = require("node:events");
 const { PassThrough, Writable } = require("node:stream");
 const vm = require("node:vm");
 
@@ -198,13 +198,15 @@ test("the shell cannot reap a registry without an identity-checking runtime help
   assert.deepEqual(fs.readFileSync(registry), original);
 });
 
-test("runtime output is appended to the log file", async () => {
+test("runtime output is appended to the log file", { timeout: 30000 }, async (t) => {
   const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agpt-desktop-")), "runtime.log");
+  t.after(() => fs.rmSync(path.dirname(logFile), { recursive: true, force: true }));
   const runtime = new Runtime({ command: process.execPath, args: [FAKE, "crash"], logFile });
   const exit = new Promise((resolve) => runtime.once("exit", resolve));
   runtime.start();
+  const closed = once(runtime.log, "close");
   await exit;
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await closed;
   assert.match(fs.readFileSync(logFile, "utf8"), /a plain log line/);
 });
 

@@ -29,10 +29,14 @@ export async function attach(debugPort: number, appUrl: string, timeoutMs: numbe
   const endpoint = `http://127.0.0.1:${debugPort}`;
   const deadline = Date.now() + timeoutMs;
   await poll(deadline, `the debugging port ${debugPort} to answer`, async () => {
-    const response = await fetch(`${endpoint}/json/version`);
+    const response = await fetch(`${endpoint}/json/version`, {
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+    });
     return response.ok;
   });
-  const browser = await chromium.connectOverCDP(endpoint);
+  const browser = await chromium.connectOverCDP(endpoint, {
+    timeout: Math.max(1, deadline - Date.now()),
+  });
   const origin = new URL(appUrl).origin;
   let page: Page | undefined;
   // The main window opens a moment after `ready`; the startup window (a
@@ -54,7 +58,7 @@ async function poll(deadline: number, what: string, check: () => Promise<boolean
     } catch {
       // Not there yet.
     }
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    if (Date.now() >= deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_MS, deadline - Date.now())));
   }
 }

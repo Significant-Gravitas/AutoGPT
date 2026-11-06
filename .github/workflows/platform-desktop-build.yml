@@ -78,6 +78,12 @@ jobs:
         run: python -B -m pytest -q -p no:cacheprovider -c runtime/pyproject.toml runtime/tests build/tests
       - name: Electron shell unit tests
         run: npm test
+      - name: Installed-app harness unit tests and types
+        working-directory: autogpt_platform/desktop/e2e
+        run: |
+          npm ci --ignore-scripts
+          npm run test:unit
+          npm run types
       - name: Native Windows host filesystem acceptance (Python 3.13)
         id: host_fs_native
         if: runner.os == 'Windows'

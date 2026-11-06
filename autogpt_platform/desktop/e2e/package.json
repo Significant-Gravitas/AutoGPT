@@ -6,6 +6,7 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "scripts": {
     "test": "playwright test",
+    "test:unit": "node --test \"lib/*.test.cjs\"",
     "types": "tsc --noEmit"
   },
   "devDependencies": {

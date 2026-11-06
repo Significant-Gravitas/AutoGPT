@@ -56,8 +56,14 @@ function listWindows(): RunningProcess[] {
     "powershell.exe",
     [
       "-NoProfile",
+      "-NonInteractive",
       "-Command",
-      "Get-CimInstance Win32_Process | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress",
+      "$ErrorActionPreference = 'Stop'; " +
+        "$rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ExecutablePath,CommandLine); " +
+        "$json = ConvertTo-Json -InputObject $rows -Compress; " +
+        "$bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json); " +
+        "$stdout = [Console]::OpenStandardOutput(); " +
+        "$stdout.Write($bytes, 0, $bytes.Length); $stdout.Flush()",
     ],
     { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
   );

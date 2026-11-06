@@ -55,7 +55,7 @@ class WindowsInstall implements Platform {
     // version is moved away (resources/installer.nsh). Started from anywhere
     // else, the upgrade measured here would be one no user gets.
     const cwd = fs.existsSync(this.dir) ? this.dir : undefined;
-    await run(artifact, args, { timeoutMs: INSTALL_TIMEOUT_MS, cwd });
+    await run(artifact, args, { timeoutMs: INSTALL_TIMEOUT_MS, cwd, windowsVerbatimArguments: true });
     const leftover = `${this.dir}.old-install`;
     if (fs.existsSync(leftover)) throw new Error(`the installer left the old version behind in ${leftover}`);
     return cwd ? { "upgrade started from": "the install directory, as an update starts it" } : {};
@@ -316,6 +316,7 @@ export const platform: Platform = create();
 
 interface RunOptions {
   timeoutMs?: number;
+  windowsVerbatimArguments?: boolean;
   /** Throw on a non-zero exit code (the default). */
   check?: boolean;
   /** The working directory; the test runner's when not given. */
@@ -329,9 +330,12 @@ interface RunResult {
 
 /** Run a tool to completion without blocking the test runner's event loop. */
 export function run(command: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
-  const { timeoutMs = TOOL_TIMEOUT_MS, check = true, cwd } = options;
+  const { timeoutMs = TOOL_TIMEOUT_MS, check = true, cwd, windowsVerbatimArguments = false } = options;
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, cwd });
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"], windowsHide: true, cwd, windowsVerbatimArguments,
+      argv0: windowsVerbatimArguments ? `"${command}"` : undefined,
+    });
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));

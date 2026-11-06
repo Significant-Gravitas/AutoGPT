@@ -1,10 +1,20 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from autogpt_desktop import rabbitmq
 from autogpt_desktop.layout import Bundle, DataDir
+
+
+def symlink_or_skip(link: Path, target: Path, *, directory: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as exc:
+        if os.name == "nt" and exc.winerror == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
 
 
 def make_bundle(
@@ -436,7 +446,7 @@ def test_linked_scaffold_is_rejected_without_touching_its_target(
     data.rabbitmq.mkdir(parents=True)
     outside = tmp_path / "outside-profile.txt"
     outside.write_bytes(b"keep outside-profile content")
-    (data.rabbitmq / name).symlink_to(outside)
+    symlink_or_skip(data.rabbitmq / name, outside)
 
     with pytest.raises(rabbitmq.IncompatibleDataError, match="Doctor"):
         rabbitmq.check_compatible(bundle, data)
@@ -453,7 +463,7 @@ def test_linked_node_storage_is_not_authorized_by_the_profile_marker(tmp_path: P
     outside = tmp_path / "outside-node"
     outside.mkdir()
     (outside / "schema.DAT").write_bytes(b"unknown writer")
-    (mnesia / "rabbit@localhost-mnesia").symlink_to(outside, target_is_directory=True)
+    symlink_or_skip(mnesia / "rabbit@localhost-mnesia", outside, directory=True)
     record = write_record(data, "4.3.6")
     committed = record.read_bytes()
 
@@ -597,7 +607,9 @@ def test_temporary_names_must_be_regular_unlinked_files(
     elif kind == "hardlink":
         temporary.hardlink_to(outside)
     else:
-        temporary.symlink_to(outside if kind == "symlink" else tmp_path / "missing")
+        symlink_or_skip(
+            temporary, outside if kind == "symlink" else tmp_path / "missing"
+        )
 
     with pytest.raises(rabbitmq.IncompatibleDataError, match="Doctor"):
         rabbitmq.check_compatible(bundle, data)
@@ -704,9 +716,7 @@ def test_all_direct_mnesia_entries_are_checked_without_reading_storage(
     monkeypatch.setattr(Path, "open", metadata_only)
     monkeypatch.setattr(rabbitmq.os, "scandir", no_recursive_storage_walk)
     assert rabbitmq.check_compatible(bundle, data) == "4.3.6"
-    (mnesia / "z-linked-node").symlink_to(
-        tmp_path / "outside", target_is_directory=True
-    )
+    symlink_or_skip(mnesia / "z-linked-node", tmp_path / "outside", directory=True)
 
     with pytest.raises(rabbitmq.IncompatibleDataError, match="Doctor"):
         rabbitmq.check_compatible(bundle, data)

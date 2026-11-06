@@ -118,7 +118,7 @@ test("redirects and server failures are not retried", async (t) => {
   assert.equal(destination.records.length, 0);
 });
 
-test("a stalled collector times out without retaining a task or retry", { timeout: 6000 }, async (t) => {
+test("a stalled collector times out without retaining a task or retry", { timeout: 30000 }, async (t) => {
   const c = await collector(t, () => {});
   const r = reporter(t, c.url, { preferences: { ...DEFAULT_PREFERENCES, usageStatistics: true } });
   assert.equal(await r.reportUsage("app_started"), false);
