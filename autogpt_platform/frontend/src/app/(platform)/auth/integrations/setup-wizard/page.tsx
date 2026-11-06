@@ -19,6 +19,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { CircleIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { UnreviewedAppNotice } from "../../authorize/components/UnreviewedAppNotice";
 
 /**
  * Provider configuration for the setup wizard.
@@ -256,6 +257,10 @@ export default function IntegrationSetupWizardPage() {
             <strong>{appInfo.name}</strong> is requesting you to connect the
             following integrations to your AutoGPT account.
           </Text>
+
+          {appInfo.self_registered && (
+            <UnreviewedAppNotice redirectURI={redirectURI!} />
+          )}
 
           {/* Provider credentials list */}
           <div className="space-y-4">

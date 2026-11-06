@@ -1,9 +1,9 @@
 """An MCP client signs in to the MCP server with OAuth, from the 401 alone.
 
 Driven by the MCP SDK's own OAuth client against the real app and database:
-it discovers the provider from the 401, sends the user to consent, redeems the
-code at the token endpoint the way RFC 6749 clients do, and then calls the
-MCP server with the token it got.
+it discovers the provider from the 401, registers itself if it has no client
+ID, sends the user to consent, redeems the code at the token endpoint the way
+RFC 6749 clients do, and then calls the MCP server with the token it got.
 """
 
 import secrets
@@ -26,6 +26,7 @@ from backend.api.external.v2.mcp_server import (
     mcp_scopes,
     protected_resource_metadata,
 )
+from backend.api.features import oauth_registration
 from backend.api.features.oauth_metadata import AUTHORIZE_PAGE_PATH
 from backend.api.rest_api import app
 from backend.data.user import get_or_create_user_with_status
@@ -46,11 +47,16 @@ INITIALIZE = {
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def oauth_app(server) -> AsyncGenerator[OAuthClientInformationFull, None]:
-    """A pre-registered app allowed every scope the MCP server asks for."""
+async def mcp_user(server) -> str:
     await get_or_create_user_with_status(
         {"sub": USER_ID, "email": "mcp-oauth-test@example.com"}
     )
+    return USER_ID
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def oauth_app(mcp_user: str) -> AsyncGenerator[OAuthClientInformationFull, None]:
+    """A pre-registered app allowed every scope the MCP server asks for."""
     client_id = f"test_client_{secrets.token_urlsafe(8)}"
     client_secret = f"agpt_secret_{secrets.token_urlsafe(16)}"
     secret_hash, secret_salt = APIKeySmith().hash_key(client_secret)
@@ -77,19 +83,58 @@ async def oauth_app(server) -> AsyncGenerator[OAuthClientInformationFull, None]:
 async def test_an_mcp_client_signs_in_with_a_pre_registered_app(
     oauth_app: OAuthClientInformationFull, auth_method: str
 ):
-    server_url = str(protected_resource_metadata().resource)
-    consent = _ConsentPage()
     storage = _Storage(
         oauth_app.model_copy(update={"token_endpoint_auth_method": auth_method})
     )
+    consent = await _sign_in(storage, OAuthClientMetadata(redirect_uris=[REDIRECT_URI]))
+
+    assert urlparse(consent.authorization_url).path == AUTHORIZE_PAGE_PATH
+    assert storage.tokens is not None
+    assert set((storage.tokens.scope or "").split()) == set(mcp_scopes())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_mcp_client_registers_itself_and_signs_in(
+    mcp_user: str, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        oauth_registration.settings.config, "oauth_dynamic_client_registration", True
+    )
+    storage = _Storage(None)
+    try:
+        await _sign_in(
+            storage,
+            OAuthClientMetadata(
+                redirect_uris=[REDIRECT_URI],
+                token_endpoint_auth_method="none",
+                client_name="MCP test client",
+            ),
+        )
+    finally:
+        if storage.client_info:
+            await PrismaOAuthApplication.prisma().delete_many(
+                where={"clientId": storage.client_info.client_id}
+            )
+
+    assert storage.client_info is not None
+    assert storage.client_info.client_secret is None
+    assert storage.tokens is not None
+    assert set((storage.tokens.scope or "").split()) == set(mcp_scopes())
+
+
+async def _sign_in(
+    storage: "_Storage", client_metadata: OAuthClientMetadata
+) -> "_ConsentPage":
+    """Call the MCP server as a signed-out client; it must sign in to get a 200."""
+    server_url = str(protected_resource_metadata().resource)
+    consent = _ConsentPage()
     provider = OAuthClientProvider(
         server_url=server_url,
-        client_metadata=OAuthClientMetadata(redirect_uris=[REDIRECT_URI]),
+        client_metadata=client_metadata,
         storage=storage,
         redirect_handler=consent.open,
         callback_handler=consent.callback,
     )
-
     app.dependency_overrides[get_user_id] = lambda: USER_ID
     try:
         async with mcp_mount.running(), httpx.AsyncClient(
@@ -105,9 +150,7 @@ async def test_an_mcp_client_signs_in_with_a_pre_registered_app(
 
     assert response.status_code == 200, response.text
     assert "autogpt-platform" in response.text
-    assert urlparse(consent.authorization_url).path == AUTHORIZE_PAGE_PATH
-    assert storage.tokens is not None
-    assert set((storage.tokens.scope or "").split()) == set(mcp_scopes())
+    return consent
 
 
 class _ConsentPage:
@@ -146,7 +189,7 @@ class _ConsentPage:
 
 
 class _Storage:
-    def __init__(self, client_info: OAuthClientInformationFull) -> None:
+    def __init__(self, client_info: OAuthClientInformationFull | None) -> None:
         self.client_info = client_info
         self.tokens: OAuthToken | None = None
 
@@ -156,7 +199,7 @@ class _Storage:
     async def set_tokens(self, tokens: OAuthToken) -> None:
         self.tokens = tokens
 
-    async def get_client_info(self) -> OAuthClientInformationFull:
+    async def get_client_info(self) -> OAuthClientInformationFull | None:
         return self.client_info
 
     async def set_client_info(self, client_info: OAuthClientInformationFull) -> None:

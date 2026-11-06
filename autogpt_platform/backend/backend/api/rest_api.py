@@ -115,6 +115,7 @@ from .features.oauth_metadata import (
     WELL_KNOWN_AUTHORIZATION_SERVER_PATH,
     authorization_server_metadata,
 )
+from .features.oauth_registration import register_client
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
@@ -661,7 +662,8 @@ async def oauth_authorization_server_metadata() -> OAuthMetadata:
     """RFC 8414 discovery for the OAuth provider, at the issuer the MCP
     server's resource metadata names."""
     return authorization_server_metadata(
-        token_path=app.url_path_for(backend.api.features.oauth.token.__name__)
+        token_path=app.url_path_for(backend.api.features.oauth.token.__name__),
+        registration_path=app.url_path_for(register_client.__name__),
     )
 
 

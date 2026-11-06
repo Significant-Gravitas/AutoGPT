@@ -41,6 +41,7 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.api.features.oauth_registration import router as registration_router
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.oauth import (
@@ -73,6 +74,7 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+router.include_router(registration_router)
 
 
 # ============================================================================
@@ -107,6 +109,9 @@ class OAuthApplicationPublicInfo(BaseModel):
     description: Optional[str] = None
     logo_url: Optional[str] = None
     scopes: list[str]
+    self_registered: bool = Field(
+        description="The application registered itself; nobody has reviewed it"
+    )
 
 
 # ============================================================================
@@ -163,6 +168,7 @@ async def get_oauth_app_info(
         description=app.description,
         logo_url=app.logo_url,
         scopes=[s.value for s in app.scopes],
+        self_registered=app.owner_id is None,
     )
 
 
@@ -251,6 +257,15 @@ async def authorize(
                 request.state,
                 "unsupported_response_type",
                 "Only 'code' response type is supported",
+            )
+
+        # A public client's code is bound to it by PKCE alone.
+        if app.is_public and request.code_challenge_method != "S256":
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "invalid_request",
+                "A public client must use code_challenge_method S256",
             )
 
         # Parse and validate scopes
@@ -352,7 +367,9 @@ class TokenRequestByCode(BaseModel):
         description="Redirect URI (must match authorization request)"
     )
     client_id: str
-    client_secret: str
+    client_secret: Optional[str] = Field(
+        default=None, description="Omitted by a public client"
+    )
     code_verifier: str = Field(description="PKCE code verifier")
 
 
@@ -360,7 +377,9 @@ class TokenRequestByRefreshToken(BaseModel):
     grant_type: Literal["refresh_token"]
     refresh_token: str
     client_id: str
-    client_secret: str
+    client_secret: Optional[str] = Field(
+        default=None, description="Omitted by a public client"
+    )
 
 
 TokenRequest = Annotated[
@@ -458,6 +477,7 @@ async def token(
     Grant Types:
     1. authorization_code: Exchange authorization code for tokens
        - Required: grant_type, code, redirect_uri, client_id, client_secret
+         (a public client sends no client_secret)
        - Optional: code_verifier (required if PKCE was used)
 
     2. refresh_token: Exchange refresh token for new access token
