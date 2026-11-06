@@ -263,6 +263,9 @@ class ProxyThread:
             raise RuntimeError(f"the local web server failed: {self.failure}")
 
     def stop(self) -> None:
+        if self.failure is not None:
+            self.thread.join(10)
+            return
         if self.runner:
             asyncio.run_coroutine_threadsafe(self.runner.cleanup(), self.loop).result(
                 10
@@ -284,7 +287,16 @@ class ProxyThread:
             self.loop.run_until_complete(site.start())
         except BaseException as exc:
             self.failure = exc
-            self.started.set()
+            try:
+                if self.runner is not None:
+                    self.loop.run_until_complete(self.runner.cleanup())
+            except Exception:
+                logger.exception(
+                    "the local web server failed to clean up after startup"
+                )
+            finally:
+                self.loop.close()
+                self.started.set()
             return
         self.started.set()
         self.loop.run_forever()
