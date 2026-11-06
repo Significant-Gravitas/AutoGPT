@@ -20,8 +20,8 @@ WHERE u."name" IS NOT NULL
     WHERE a."userId" = u."id" AND a."providerId" <> 'credential'
   );
 
--- A name given to Otto or a Tally form was kept only in AutoPilot's understanding, which
--- no longer holds one; it fills an empty account name unless it is the auto-filled local part.
+-- A name given to Otto or a Tally form was kept only in AutoPilot's understanding, whose copy
+-- Otto no longer reads; it fills an empty account name unless it is the auto-filled local part.
 UPDATE "User" u
 SET "name" = btrim(c."data" ->> 'name')
 FROM "CoPilotUnderstanding" c
