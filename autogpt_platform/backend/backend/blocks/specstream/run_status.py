@@ -176,20 +176,23 @@ class SpecStreamWaitForRunBlock(Block):
     ) -> BlockOutput:
         refuse_platform_credentials(self, credentials)
         started = monotonic()
-        gap = float(input_data.check_interval)
+        gap = min(float(input_data.check_interval), float(input_data.max_interval))
 
         def remaining() -> float:
             return input_data.timeout - (monotonic() - started)
 
         async def poll() -> RunStatus | None:
             # A stalled request must not outlast the wait, so each poll gets
-            # only the time that is left.
+            # only the time that is left. A timeout with time still left comes
+            # from the transport, not the deadline, so the block fails with it.
             try:
                 return await wait_for(
                     self.get_run(credentials, input_data.run_id),
                     timeout=max(remaining(), 0),
                 )
             except TimeoutError:
+                if remaining() > 0:
+                    raise
                 return None
 
         run = await poll()
